@@ -1,0 +1,8 @@
+{
+  "name": "SAAS WISE WOLF",
+  "description": "A high-end multi-tenant platform for schools featuring custom branding, teacher operational dashboards, and financial management integrated with simulated Asaas workflows.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
