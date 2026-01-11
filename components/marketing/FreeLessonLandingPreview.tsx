@@ -10,6 +10,7 @@ interface FreeLessonLandingPreviewProps {
     heroImage?: string; // We might use this as a background or specific image
     ctaText?: string;
     tenantId?: string; // Needed for CRM
+    onSubmit?: (data: any) => Promise<void> | void;
 }
 
 const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
@@ -17,7 +18,8 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
     subheadline,
     heroImage,
     ctaText,
-    tenantId
+    tenantId,
+    onSubmit
 }) => {
     // defaults
     const mainHeadline = headline || "Aprenda Inglês online com aulas particulares e acelere sua fluência!";
@@ -25,7 +27,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
     const buttonText = ctaText || "Começar Agora";
 
     // Form State
-    const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
+    const [formData, setFormData] = useState({ name: '', email: '', phone: '', level: 'Iniciante', goal: 'Fluência' });
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
@@ -33,22 +35,11 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
         e.preventDefault();
         setLoading(true);
 
-        // Simulate tenantId if not provided (e.g. in preview mode)
-        const targetTenant = tenantId || 'preview-tenant';
-
         try {
-            if (tenantId) {
-                const { error } = await supabase.from('crm_leads').insert({
-                    tenant_id: targetTenant,
-                    name: formData.name,
-                    email: formData.email,
-                    phone: formData.phone,
-                    status: 'NEW',
-                    notes: 'Capturado via Landing Page Aula Gratuita'
-                });
-                if (error) throw error;
+            if (onSubmit) {
+                await onSubmit(formData);
             } else {
-                // Preview mode simulation
+                // Fallback simulation
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 console.log("Lead captured (Preview):", formData);
             }
@@ -187,6 +178,35 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-700 uppercase ml-1">Nível de Inglês</label>
+                                            <select
+                                                value={formData.level}
+                                                onChange={e => setFormData({ ...formData, level: e.target.value })}
+                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none text-sm font-medium appearance-none"
+                                            >
+                                                <option value="Iniciante">Iniciante</option>
+                                                <option value="Básico">Básico</option>
+                                                <option value="Intermediário">Intermediário</option>
+                                                <option value="Avançado">Avançado</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-700 uppercase ml-1">Objetivo</label>
+                                            <select
+                                                value={formData.goal}
+                                                onChange={e => setFormData({ ...formData, goal: e.target.value })}
+                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none text-sm font-medium appearance-none"
+                                            >
+                                                <option value="Fluência">Fluência Geral</option>
+                                                <option value="Viagem">Viagem</option>
+                                                <option value="Trabalho">Trabalho</option>
+                                                <option value="Exame">Toefl/IELTS</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
                                     <button
                                         type="submit"
                                         disabled={loading}
@@ -206,10 +226,21 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
                                     <CheckCircle2 size={40} className="text-green-600" />
                                 </div>
-                                <h3 className="text-2xl font-black text-[#002366] mb-2">Sucesso!</h3>
-                                <p className="text-gray-600 mb-6">Recebemos seus dados. Em breve nossa equipe entrará em contato para agendar sua aula.</p>
-                                <button onClick={() => setSubmitted(false)} className="text-sm font-bold text-[#D32F2F] hover:underline">
-                                    Voltar
+                                <h3 className="text-2xl font-black text-[#002366] mb-2">Pré-agendamento realizado!</h3>
+                                <p className="text-gray-600 mb-6 max-w-xs mx-auto">
+                                    Para confirmar o horário com um de nossos professores, clique no botão abaixo.
+                                </p>
+                                <a
+                                    href={`https://wa.me/5511999999999?text=Olá, acabei de me cadastrar na aula experimental! Meu nome é ${formData.name}.`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-500/30 transform hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group mb-4"
+                                >
+                                    <Send size={18} />
+                                    Confirmar no WhatsApp
+                                </a>
+                                <button onClick={() => setSubmitted(false)} className="text-xs font-bold text-gray-400 hover:text-gray-600">
+                                    Voltar ao início
                                 </button>
                             </div>
                         )}

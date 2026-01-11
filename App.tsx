@@ -290,6 +290,7 @@ const App: React.FC = () => {
         user.role === UserRole.SCHOOL_ADMIN ?
           <SchoolAdminDashboard
             teachers={teachers}
+            tenantId={currentTenant?.id}
             onViewTeacherSchedule={(name) => {
               setExplorerInitialState({ teacherName: name, autoAllocate: false });
               setActiveTab('schedule_explorer');

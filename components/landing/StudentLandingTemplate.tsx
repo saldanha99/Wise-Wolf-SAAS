@@ -46,8 +46,8 @@ export default function StudentLandingTemplate() {
                 phone: formData.phone,
                 tenant_id: config.tenant_id,
                 status: 'NEW', // Enters the Kanban
-                source: 'landing_page_high_conversion',
-                notes: 'Cadastro via Página de Captura (Aula Experimental)'
+                source: `landing_page_${config.template_type || 'sales'}`,
+                notes: formData.notes || 'Cadastro via Página de Captura'
             });
 
             if (error) throw error;
@@ -73,7 +73,7 @@ export default function StudentLandingTemplate() {
                 </div>
                 <h1 className="text-4xl font-black mb-4">Parabéns! 🎉</h1>
                 <p className="text-lg text-slate-300 max-w-md">
-                    Sua aula experimental foi pré-agendada. Nossa equipe entrará em contato pelo WhatsApp em instantes para confirmar o horário.
+                    Sua solicitação foi recebida. Nossa equipe entrará em contato pelo WhatsApp em instantes.
                 </p>
                 <button
                     onClick={() => window.location.reload()}
@@ -110,7 +110,8 @@ export default function StudentLandingTemplate() {
                 subheadline={config.subheadline}
                 heroImage={config.hero_image}
                 ctaText={config.cta_text}
-            // FreeLessonLandingPreview might not have onSubmit yet, but assuming purely presentation for now or I'd update it too.
+                tenantId={config.tenant_id}
+                onSubmit={handleLeadSubmit}
             />
         );
     }
@@ -123,6 +124,7 @@ export default function StudentLandingTemplate() {
             heroImage={config.hero_image}
             ctaText={config.cta_text}
             plans={config.plans || []}
+            onSubmit={handleLeadSubmit}
         />
     );
 }

@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Globe, Shield, CreditCard, Activity, MoreVertical, Plus, TrendingUp, AlertTriangle, Zap, RefreshCw, Cpu, Database, Server, LayoutDashboard, Package, Users, ArrowUpRight, Calendar, Search, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Tenant } from '../types';
+import MarketingManager from './marketing/MarketingManager';
 import SaasPlansManager from './SaasPlansManager';
 import StudentPlansManager from './StudentPlansManager';
 
 const SuperAdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'saas_plans' | 'student_plans'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'saas_plans' | 'student_plans' | 'marketing'>('dashboard');
   const [isProvisioning, setIsProvisioning] = useState(false);
 
   // Real Data State
@@ -103,6 +104,7 @@ const SuperAdminDashboard: React.FC = () => {
   const renderContent = () => {
     if (activeTab === 'saas_plans') return <SaasPlansManager />;
     if (activeTab === 'student_plans') return <StudentPlansManager />;
+    if (activeTab === 'marketing') return <MarketingManager tenantId="master" />;
 
     if (loading) {
       return (
@@ -389,6 +391,15 @@ const SuperAdminDashboard: React.FC = () => {
               }`}
           >
             Planos Alunos
+          </button>
+          <button
+            onClick={() => setActiveTab('marketing')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'marketing'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+              }`}
+          >
+            Marketing & CRM
           </button>
         </div>
 

@@ -48,13 +48,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         const { data: bookings } = await supabase
           .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, avatar_url, module, current_topic_id)')
+          .select('id, time_slot, start_date, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
           .eq('day_of_week', dayName);
 
         const { data: reschedules } = await supabase
           .from('reschedules')
-          .select('id, time, student:student_id(id, full_name, avatar_url, module, current_topic_id)')
+          .select('id, time, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
           .eq('date', dateStr);
 
@@ -80,15 +80,18 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             topicInfo = t;
           }
 
+          const isTrial = student.status === 'TRIAL' || student.status === 'Aula Experimental';
+
           allLessons.push({
             id: type === 'REGULAR' ? b.id : `repo-${b.id}`,
             studentId: student.id,
             name: student.full_name || 'Estudante',
-            date: i === 0 ? `Hoje às ${time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' ? ' (Rep)' : ''}`,
+            email: student.email, // Added email
+            date: i === 0 ? `Hoje às ${time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : ''}`,
             dateObj: dateStr,
             avatar: student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`,
             level: student.module?.split(' ')[0] || 'N/A',
-            type: type,
+            type: isTrial ? 'AULA EXPERIMENTAL' : type,
             isLate: i > 0,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
@@ -142,17 +145,25 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         if (!item?.studentId) return null;
 
+        const isReschedule = String(bookingId).startsWith('repo-');
+
         return {
           tenant_id: tenantId,
           teacher_id: user.id,
           student_id: item.studentId,
-          booking_id: item.type === 'REGULAR' ? bookingId : null,
-          reschedule_id: item.type === 'REPOSIÇÃO' ? bookingId.replace('repo-', '') : null,
+          booking_id: !isReschedule ? bookingId : null,
+          reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
           presence: data.type || 'Presença',
-          subtype: item.type === 'REPOSIÇÃO' ? 'REPOSIÇÃO' : (data.subtype || null),
+          subtype: item.type === 'AULA EXPERIMENTAL' ? 'AULA EXPERIMENTAL' : (isReschedule ? 'REPOSIÇÃO' : (data.subtype || null)),
           content_covered: data.content || null,
           student_difficulties: data.difficulties || null,
           homework_assigned: data.homework || null,
+
+          // Trial Fields
+          assessment_level: item.type === 'AULA EXPERIMENTAL' ? data.assessment_level : null,
+          psychological_profile: item.type === 'AULA EXPERIMENTAL' ? data.psychological_profile : null,
+          teacher_verdict: item.type === 'AULA EXPERIMENTAL' ? data.teacher_verdict : null,
+
           // Legacy fields mapping
           content: data.content || null,
           observations: data.content || null,
@@ -165,6 +176,21 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // 1. Insert Class Logs
         const { error: logError } = await supabase.from('class_logs').insert(entries);
         if (logError) throw logError;
+
+        // Update CRM Leads to TRIAL_DONE
+        const trialEntries = (entries as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
+        if (trialEntries.length > 0) {
+          const studentIds = trialEntries.map(e => e.student_id);
+          const { data: profiles } = await supabase.from('profiles').select('id, email').in('id', studentIds);
+          const emails = profiles?.map(p => p.email).filter(Boolean) || [];
+
+          if (emails.length > 0) {
+            await supabase.from('crm_leads')
+              .update({ status: 'TRIAL_DONE' })
+              .in('email', emails)
+              .eq('tenant_id', tenantId);
+          }
+        }
 
         // 2. Clear used Reschedules if any
         const completedReschedules = entries.filter(e => e.reschedule_id).map(e => e.reschedule_id);

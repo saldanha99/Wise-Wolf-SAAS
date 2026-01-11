@@ -1,5 +1,6 @@
 import React from 'react';
-import { Check, X, Star, Play, Clock, Shield, Globe, ChevronRight, Lock, ArrowRight, Phone } from 'lucide-react';
+import { Check, X, Star, Play, Clock, Shield, Globe, ChevronRight, Lock, ArrowRight, Phone, User } from 'lucide-react';
+import { SocialProofPopup } from './SocialProofPopup';
 import { motion } from 'framer-motion';
 
 interface HighConversionLandingPreviewProps {
@@ -7,6 +8,16 @@ interface HighConversionLandingPreviewProps {
     subheadline: string;
     heroImage?: string;
     ctaText: string;
+    videoUrl?: string;
+    stats?: { label: string; value: string }[];
+    benefits?: { title: string; description: string; icon: string }[];
+    targetAudience?: { title: string; description: string; icon: string }[];
+    testimonials?: { name: string; role: string; text: string; photo?: string }[];
+    faq?: { question: string; answer: string }[];
+    // New Features
+    focus?: 'general' | 'travel' | 'tech' | 'kids';
+    teachers?: { name: string; bio: string; photo?: string; media_url?: string }[];
+    company_logos?: string[];
     onSubmit?: (data: any) => void;
 }
 
@@ -15,9 +26,20 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
     subheadline,
     heroImage,
     ctaText,
+    videoUrl,
+    stats,
+    benefits,
+    targetAudience,
+    testimonials,
+    faq,
+    focus = 'general',
+    teachers,
+    company_logos,
     onSubmit
 }) => {
     const [formData, setFormData] = React.useState({ name: '', email: '', phone: '' });
+    // ... rest of component
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -48,21 +70,34 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                         </p>
 
                         <div className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start pt-4">
-                            <div className="flex -space-x-3">
-                                {[1, 2, 3, 4].map(i => (
-                                    <img key={i} src={`https://i.pravatar.cc/100?img=${i + 10}`} className="w-10 h-10 rounded-full border-2 border-[#0052cc]" />
-                                ))}
-                            </div>
-                            <div className="text-left">
-                                <div className="flex items-center gap-1 text-yellow-400">
-                                    <Star size={14} fill="currentColor" />
-                                    <Star size={14} fill="currentColor" />
-                                    <Star size={14} fill="currentColor" />
-                                    <Star size={14} fill="currentColor" />
-                                    <Star size={14} fill="currentColor" />
+                            {videoUrl ? (
+                                <div className="w-full max-w-lg aspect-video rounded-2xl overflow-hidden shadow-2xl border-4 border-white/10 relative group bg-black">
+                                    <iframe
+                                        src={videoUrl.includes('youtube') ? videoUrl.replace('watch?v=', 'embed/') : videoUrl}
+                                        className="w-full h-full"
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                        allowFullScreen
+                                    />
                                 </div>
-                                <p className="text-xs font-bold text-white/80">Mais de 7.000 alunos aprovados</p>
-                            </div>
+                            ) : (
+                                <>
+                                    <div className="flex -space-x-3">
+                                        {[1, 2, 3, 4].map(i => (
+                                            <img key={i} src={`https://i.pravatar.cc/100?img=${i + 10}`} className="w-10 h-10 rounded-full border-2 border-[#0052cc]" />
+                                        ))}
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="flex items-center gap-1 text-yellow-400">
+                                            <Star size={14} fill="currentColor" />
+                                            <Star size={14} fill="currentColor" />
+                                            <Star size={14} fill="currentColor" />
+                                            <Star size={14} fill="currentColor" />
+                                            <Star size={14} fill="currentColor" />
+                                        </div>
+                                        <p className="text-xs font-bold text-white/80">Mais de 7.000 alunos aprovados</p>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -120,17 +155,42 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                 </div>
             </section>
 
-            {/* 2. SOCIAL PROOF & LOGOS */}
-            <section className="bg-slate-50 border-b border-slate-100 py-8">
-                <div className="max-w-6xl mx-auto px-6 text-center">
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6">Método validado por grandes empresas</p>
-                    <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-                        {/* Placeholder Logos */}
-                        <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
-                        <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
-                        <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
-                        <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
+            {/* 1.5 LOGOS / TRUST */}
+            {company_logos && company_logos.length > 0 && (
+                <div className="bg-slate-950 py-10 border-b border-slate-900 overflow-hidden">
+                    <p className="text-center text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">Nossos alunos trabalham em</p>
+                    <div className="flex gap-12 items-center justify-center opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                        {company_logos.map((logo, i) => (
+                            logo ? <img key={i} src={logo} className="h-8 object-contain" /> : null
+                        ))}
                     </div>
+                </div>
+            )}
+
+            {/* 2. SOCIAL PROOF & LOGOS */}
+            <section className="bg-slate-50 border-b border-slate-100 py-12">
+                <div className="max-w-6xl mx-auto px-6 text-center">
+                    {stats && stats.length > 0 ? (
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                            {stats.map((stat, i) => (
+                                <div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                                    <p className="text-4xl font-black text-blue-600 mb-1">{stat.value}</p>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400">{stat.label}</p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <>
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6">Método validado por grandes empresas</p>
+                            <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                                {/* Placeholder Logos */}
+                                <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
+                                <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
+                                <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
+                                <div className="h-8 w-24 bg-slate-400/20 rounded-lg animate-pulse" />
+                            </div>
+                        </>
+                    )}
                 </div>
             </section>
 
@@ -142,78 +202,92 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                         <h2 className="text-3xl md:text-4xl font-black text-slate-900">Por que somos diferentes?</h2>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-8 relative z-10">
-                        {/* Traditional School */}
-                        <div className="bg-white border-2 border-slate-100 rounded-[2rem] p-8 opacity-80 hover:opacity-100 transition-opacity">
-                            <h3 className="text-xl font-black text-slate-400 mb-8 flex items-center gap-3">
-                                <span className="w-3 h-3 rounded-full bg-slate-300" />
-                                Escola Tradicional
-                            </h3>
-                            <ul className="space-y-6">
-                                <li className="flex items-start gap-4 text-slate-500 font-medium">
-                                    <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
-                                        <X size={14} strokeWidth={4} />
+                    {benefits && benefits.length > 0 ? (
+                        <div className="grid md:grid-cols-3 gap-8">
+                            {benefits.map((item, i) => (
+                                <div key={i} className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 hover:border-blue-200 transition-colors group">
+                                    <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-blue-600 mb-6 group-hover:scale-110 transition-transform">
+                                        <Check strokeWidth={3} />
                                     </div>
-                                    Turmas lotadas (15+ alunos)
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-500 font-medium">
-                                    <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
-                                        <X size={14} strokeWidth={4} />
-                                    </div>
-                                    Foco excessivo em gramática
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-500 font-medium">
-                                    <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
-                                        <X size={14} strokeWidth={4} />
-                                    </div>
-                                    Contratos longos e multas
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-500 font-medium">
-                                    <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
-                                        <X size={14} strokeWidth={4} />
-                                    </div>
-                                    Horários fixos e rígidos
-                                </li>
-                            </ul>
+                                    <h3 className="text-xl font-black text-slate-900 mb-3">{item.title}</h3>
+                                    <p className="text-slate-500 font-medium leading-relaxed">{item.description}</p>
+                                </div>
+                            ))}
                         </div>
-
-                        {/* Wise Wolf / King */}
-                        <div className="bg-white border-2 border-blue-600 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden transform md:-translate-y-4">
-                            <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-xl">
-                                Recomendado
+                    ) : (
+                        <div className="grid md:grid-cols-2 gap-8 relative z-10">
+                            {/* Traditional School */}
+                            <div className="bg-white border-2 border-slate-100 rounded-[2rem] p-8 opacity-80 hover:opacity-100 transition-opacity">
+                                <h3 className="text-xl font-black text-slate-400 mb-8 flex items-center gap-3">
+                                    <span className="w-3 h-3 rounded-full bg-slate-300" />
+                                    Escola Tradicional
+                                </h3>
+                                <ul className="space-y-6">
+                                    <li className="flex items-start gap-4 text-slate-500 font-medium">
+                                        <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
+                                            <X size={14} strokeWidth={4} />
+                                        </div>
+                                        Turmas lotadas (15+ alunos)
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-500 font-medium">
+                                        <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
+                                            <X size={14} strokeWidth={4} />
+                                        </div>
+                                        Foco excessivo em gramática
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-500 font-medium">
+                                        <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
+                                            <X size={14} strokeWidth={4} />
+                                        </div>
+                                        Contratos longos e multas
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-500 font-medium">
+                                        <div className="min-w-6 h-6 rounded-full bg-red-100 text-red-500 flex items-center justify-center">
+                                            <X size={14} strokeWidth={4} />
+                                        </div>
+                                        Horários fixos e rígidos
+                                    </li>
+                                </ul>
                             </div>
-                            <h3 className="text-2xl font-black text-blue-900 mb-8 flex items-center gap-3">
-                                <Shield className="text-blue-600 fill-blue-100" />
-                                Nossa Metodologia
-                            </h3>
-                            <ul className="space-y-6">
-                                <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
-                                    <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
-                                        <Check size={14} strokeWidth={4} />
-                                    </div>
-                                    Aulas particulares ou duplas
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
-                                    <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
-                                        <Check size={14} strokeWidth={4} />
-                                    </div>
-                                    100% focado em conversação
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
-                                    <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
-                                        <Check size={14} strokeWidth={4} />
-                                    </div>
-                                    Sem multa de fidelidade
-                                </li>
-                                <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
-                                    <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
-                                        <Check size={14} strokeWidth={4} />
-                                    </div>
-                                    Horários flexíveis (7h às 22h)
-                                </li>
-                            </ul>
+
+                            {/* Wise Wolf / King */}
+                            <div className="bg-white border-2 border-blue-600 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden transform md:-translate-y-4">
+                                <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-xl">
+                                    Recomendado
+                                </div>
+                                <h3 className="text-2xl font-black text-blue-900 mb-8 flex items-center gap-3">
+                                    <Shield className="text-blue-600 fill-blue-100" />
+                                    Nossa Metodologia
+                                </h3>
+                                <ul className="space-y-6">
+                                    <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                            <Check size={14} strokeWidth={4} />
+                                        </div>
+                                        Aulas particulares ou duplas
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                            <Check size={14} strokeWidth={4} />
+                                        </div>
+                                        100% focado em conversação
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                            <Check size={14} strokeWidth={4} />
+                                        </div>
+                                        Sem multa de fidelidade
+                                    </li>
+                                    <li className="flex items-start gap-4 text-slate-700 font-bold text-lg">
+                                        <div className="min-w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-sm">
+                                            <Check size={14} strokeWidth={4} />
+                                        </div>
+                                        Horários flexíveis (7h às 22h)
+                                    </li>
+                                </ul>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* CTA #2 */}
                     <div className="text-center mt-12">
@@ -230,6 +304,47 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                 </div>
             </section>
 
+            {/* 3.5 TEACHERS */}
+            {teachers && teachers.length > 0 && (
+                <section className="bg-slate-50 py-24 px-6">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="text-center mb-16">
+                            <span className="text-purple-600 font-black uppercase tracking-widest text-xs mb-2 block">Quem vai te ensinar</span>
+                            <h2 className="text-3xl md:text-5xl font-black text-slate-900">Conheça nossos especialistas</h2>
+                        </div>
+
+                        <div className="grid md:grid-cols-3 gap-8">
+                            {teachers.map((teacher, i) => (
+                                <div key={i} className="bg-white p-6 rounded-3xl shadow-xl shadow-slate-200 border border-slate-100 hover:-translate-y-2 transition-transform duration-300">
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden">
+                                            {teacher.photo ? <img src={teacher.photo} className="w-full h-full object-cover" /> : <User size={32} className="m-auto mt-4 text-slate-400" />}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 text-lg">{teacher.name}</h4>
+                                            <p className="text-purple-600 text-xs font-bold uppercase">{teacher.bio}</p>
+                                        </div>
+                                    </div>
+                                    {teacher.media_url && (
+                                        <div className="bg-slate-100 rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-200 transition-colors">
+                                            <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+                                                <Play size={12} fill="white" className="text-white ml-0.5" />
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="h-1 bg-slate-300 rounded-full w-full mb-1">
+                                                    <div className="h-full w-1/3 bg-purple-500 rounded-full" />
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase">Ouvir apresentação</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            )}
+
             {/* 3.5. NEW SECTION: WHO IS THIS FOR? */}
             <section className="bg-slate-900 py-20 px-6 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-600 rounded-full blur-[120px] opacity-20 -mr-20 -mt-20 pointer-events-none" />
@@ -240,15 +355,17 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-6">
-                        {[
-                            { title: 'Profissionais', desc: 'Que precisam do inglês para reuniões, apresentações e crescer na carreira.', icon: '💼' },
-                            { title: 'Viajantes', desc: 'Que querem viajar o mundo sem passar perrengue ou depender de tradutor.', icon: '✈️' },
-                            { title: 'Universitários', desc: 'Que buscam bolsas de estudo fora do país ou acesso a conteúdos globais.', icon: '🎓' }
-                        ].map((item, i) => (
+                        {(targetAudience && targetAudience.length > 0 ? targetAudience : [
+                            { title: 'Profissionais', description: 'Que precisam do inglês para reuniões, apresentações e crescer na carreira.', icon: 'Briefcase' },
+                            { title: 'Viajantes', description: 'Que querem viajar o mundo sem passar perrengue ou depender de tradutor.', icon: 'Plane' },
+                            { title: 'Universitários', description: 'Que buscam bolsas de estudo fora do país ou acesso a conteúdos globais.', icon: 'GraduationCap' }
+                        ]).map((item, i) => (
                             <div key={i} className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700 hover:bg-slate-800 transition-colors">
-                                <div className="text-4xl mb-4">{item.icon}</div>
-                                <h3 className="text-xl font-bold mb-2">{item.title}</h3>
-                                <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
+                                <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 mb-6">
+                                    <Check size={24} />
+                                </div>
+                                <h3 className="text-xl font-bold mb-2 text-white">{item.title}</h3>
+                                <p className="text-slate-400 text-sm leading-relaxed">{item.description}</p>
                             </div>
                         ))}
                     </div>
@@ -310,7 +427,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                 </div>
             </section>
 
-            {/* 5. VIDEO TESTIMONIALS */}
+            {/* 5. TESTIMONIALS */}
             <section className="bg-slate-900 text-white py-24 px-6 relative overflow-hidden">
                 <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none" />
 
@@ -321,20 +438,38 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                     </div>
 
                     <div className="grid md:grid-cols-3 gap-6">
-                        {[1, 2, 3].map((_, i) => (
-                            <div key={i} className="group relative aspect-[9/16] md:aspect-video rounded-3xl bg-slate-800 border border-slate-700 overflow-hidden cursor-pointer shadow-2xl">
-                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/20 transition-all">
-                                    <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <Play fill="white" className="text-white ml-1" />
+                        {(testimonials && testimonials.length > 0 ? testimonials : [1, 2, 3]).map((t: any, i) => (
+                            testimonials && testimonials.length > 0 ? (
+                                <div key={i} className="bg-slate-800 p-8 rounded-3xl border border-slate-700 relative hover:-translate-y-1 transition-transform">
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <div className="w-12 h-12 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center font-bold text-lg">
+                                            {t.photo ? <img src={t.photo} className="w-full h-full object-cover" /> : t.name[0]}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-white">{t.name}</p>
+                                            <p className="text-xs text-slate-400 uppercase tracking-wider">{t.role}</p>
+                                        </div>
                                     </div>
+                                    <div className="flex text-yellow-500 mb-4 gap-1">
+                                        {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} fill="currentColor" />)}
+                                    </div>
+                                    <p className="text-slate-300 leading-relaxed italic">"{t.text}"</p>
                                 </div>
-                                <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent">
-                                    <p className="font-bold text-white">Aluno {i + 1}</p>
-                                    <p className="text-xs text-slate-300">Fluente em 12 meses</p>
+                            ) : (
+                                // Default Videos
+                                <div key={i} className="group relative aspect-[9/16] md:aspect-video rounded-3xl bg-slate-800 border border-slate-700 overflow-hidden cursor-pointer shadow-2xl">
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/20 transition-all">
+                                        <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <Play fill="white" className="text-white ml-1" />
+                                        </div>
+                                    </div>
+                                    <div className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent">
+                                        <p className="font-bold text-white">Aluno {i + 1}</p>
+                                        <p className="text-xs text-slate-300">Fluente em 12 meses</p>
+                                    </div>
+                                    <img src={`https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80`} className="w-full h-full object-cover -z-10" />
                                 </div>
-                                {/* Placeholder Image */}
-                                <img src={`https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80`} className="w-full h-full object-cover -z-10" />
-                            </div>
+                            )
                         ))}
                     </div>
 
@@ -366,6 +501,36 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                 </div>
             </section>
 
+            {/* 5.6 FAQ */}
+            <section className="bg-slate-900 border-t border-slate-800 py-20 px-6">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-16">
+                        <span className="text-emerald-400 font-black uppercase tracking-widest text-xs mb-2 block">Dúvidas Frequentes</span>
+                        <h2 className="text-3xl md:text-4xl font-black text-white">Tire suas dúvidas antes de começar</h2>
+                    </div>
+
+                    <div className="space-y-4">
+                        {(faq && faq.length > 0 ? faq : [
+                            { question: 'As aulas são individuais?', answer: 'Sim! Você terá atenção total do professor.' },
+                            { question: 'Tem certificado?', answer: 'Com certeza. Ao final de cada nível você recebe um certificado oficial.' },
+                            { question: 'E se eu não gostar?', answer: 'Você tem 7 dias de garantia incondicional.' }
+                        ]).map((item, i) => (
+                            <details key={i} className="group bg-slate-800 border-l-4 border-slate-700 open:border-emerald-500 rounded-lg open:bg-slate-800/80 transition-all duration-300">
+                                <summary className="flex cursor-pointer items-center justify-between p-6 list-none">
+                                    <h3 className="font-bold text-white group-hover:text-emerald-400 transition-colors">{item.question}</h3>
+                                    <span className="ml-4 flex-shrink-0 text-slate-500 group-open:rotate-180 group-open:text-emerald-500 transition-transform duration-300">
+                                        <ChevronRight />
+                                    </span>
+                                </summary>
+                                <div className="px-6 pb-6 text-slate-300 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-300">
+                                    {item.answer}
+                                </div>
+                            </details>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
             {/* 6. URGENCY & FINAL CTA */}
             <section className="bg-red-600 py-24 relative overflow-hidden">
                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10" />
@@ -392,6 +557,7 @@ const HighConversionLandingPreview: React.FC<HighConversionLandingPreviewProps> 
                 <p>&copy; {new Date().getFullYear()} - Todos os direitos reservados</p>
             </footer>
 
+            <SocialProofPopup />
         </div>
     );
 };

@@ -14,6 +14,7 @@ interface PremiumLandingPreviewProps {
     heroImage?: string;
     ctaText?: string;
     plans?: Plan[];
+    onSubmit?: (data: any) => Promise<void> | void;
 }
 
 const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
@@ -21,8 +22,36 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
     subheadline,
     heroImage,
     ctaText,
-    plans = []
+    plans = [],
+    onSubmit
 }) => {
+    // Lead Capture State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedInterest, setSelectedInterest] = useState('');
+    const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleOpenModal = (interest: string) => {
+        setSelectedInterest(interest);
+        setIsModalOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            if (onSubmit) {
+                await onSubmit({ ...formData, notes: `Interesse: ${selectedInterest}` });
+            }
+            setIsModalOpen(false);
+            setFormData({ name: '', email: '', phone: '' });
+            alert("Recebemos seu contato! Em breve um consultor falará com você.");
+        } catch (error) {
+            console.error("Error submitting", error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
     // Defaults
     const mainHeadline = headline || "Sua Escola de Inglês Premium";
     const mainSubheadline = subheadline || "Metodologia exclusiva para você dominar o idioma com professores nativos e foco total em conversação.";
@@ -70,13 +99,14 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
 
                         <div className="flex flex-col sm:flex-row gap-4 pt-2">
                             <button
-                                onClick={scrollToPlans}
+                                onClick={() => handleOpenModal('Botão Hero Principal')}
                                 className="bg-[#D32F2F] hover:bg-[#b71c1c] text-white font-black py-4 px-8 rounded-xl shadow-lg shadow-red-500/30 transform hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group text-lg"
                             >
                                 {buttonText}
                                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                             </button>
                             <button
+                                onClick={() => handleOpenModal('Falar com Consultor (Hero)')}
                                 className="bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-xl backdrop-blur-sm border border-white/20 transition-all flex items-center justify-center text-lg"
                             >
                                 Falar com Consultor
@@ -216,10 +246,12 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                         ))}
                                     </ul>
 
-                                    <button className={`w-full py-4 rounded-xl font-bold transition-all ${index === 1
+                                    <button
+                                        onClick={() => handleOpenModal(`Plano: ${plan.name}`)}
+                                        className={`w-full py-4 rounded-xl font-bold transition-all ${index === 1
                                             ? 'bg-[#002366] hover:bg-[#001a4d] text-white shadow-lg shadow-blue-900/20'
                                             : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-                                        }`}>
+                                            }`}>
                                         Quero este plano
                                     </button>
                                 </motion.div>
@@ -299,7 +331,65 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                 </div>
             </footer>
 
-        </div>
+
+
+            {/* LEAD MODAL */}
+            {
+                isModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative">
+                            <button
+                                onClick={() => setIsModalOpen(false)}
+                                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+                            >
+                                <XCircle size={24} />
+                            </button>
+
+                            <div className="text-center mb-6">
+                                <h3 className="text-2xl font-black text-[#002366]">Fale com um Consultor</h3>
+                                <p className="text-gray-500 text-sm mt-1">Preencha seus dados para receber o contato.</p>
+                            </div>
+
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <input
+                                    type="text"
+                                    placeholder="Nome Completo"
+                                    required
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                />
+                                <input
+                                    type="email"
+                                    placeholder="Seu melhor e-mail"
+                                    required
+                                    value={formData.email}
+                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                />
+                                <input
+                                    type="tel"
+                                    placeholder="WhatsApp com DDD"
+                                    required
+                                    value={formData.phone}
+                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#002366] outline-none"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="w-full bg-[#D32F2F] text-white font-bold py-4 rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    {submitting ? 'Enviando...' : 'Solicitar Contato'}
+                                    {!submitting && <ArrowRight size={18} />}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )
+            }
+
+        </div >
     );
 };
 

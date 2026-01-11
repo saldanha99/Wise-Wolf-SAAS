@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { HeroScrollDemo } from './HeroScrollDemo';
 import { PricingBasic } from './PricingBasic';
 import { RadialOrbitalTimelineDemo } from './TimelineDemo';
@@ -6,10 +6,48 @@ import { TestimonialsDemo } from './TestimonialsDemo';
 import { FeaturesGrid } from './FeaturesGrid';
 import { FaqSection } from './FaqSection';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, CheckCircle, ShieldCheck, TrendingUp, Users } from 'lucide-react';
+import { ArrowRight, CheckCircle, ShieldCheck, TrendingUp, Users, X } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { supabase } from '../../lib/supabase';
 
 export default function SaasLandingPage() {
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [formData, setFormData] = useState({ name: '', email: '', phone: '', source: 'saas_hero' });
+    const [loading, setLoading] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+
+    const handleOpenModal = (source: string) => {
+        setFormData(prev => ({ ...prev, source }));
+        setIsModalOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            // Using 'master' as the tenant_id for the SaaS itself
+            // If this fails due to UUID constraints, we might need a real UUID here.
+            // For now, assuming text 'master' is handled or we use a fallback if user created a dedicated tenant.
+            const { error } = await supabase.from('crm_leads').insert({
+                tenant_id: 'master',
+                name: formData.name,
+                email: formData.email,
+                phone: formData.phone,
+                status: 'NEW',
+                source: `saas_landing_${formData.source}`,
+                notes: 'Lead interessado no SaaS Wise Wolf'
+            });
+
+            if (error) throw error;
+            setSubmitted(true);
+        } catch (err: any) {
+            console.error("Error submitting lead:", err);
+            alert("Erro ao enviar. Tente novamente ou contate suporte.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-black text-white selection:bg-blue-500 selection:text-white overflow-x-hidden font-sans">
 
@@ -29,7 +67,9 @@ export default function SaasLandingPage() {
                     </div>
                     <div className="flex gap-4">
                         <Button variant="ghost" className="text-zinc-300 hover:text-white hover:bg-white/10">Login</Button>
-                        <Button className="bg-white text-black hover:bg-blue-50 font-bold rounded-full px-6 transition-all hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                        <Button
+                            onClick={() => handleOpenModal('nav_button')}
+                            className="bg-white text-black hover:bg-blue-50 font-bold rounded-full px-6 transition-all hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                             Começar Agora
                         </Button>
                     </div>
@@ -57,7 +97,9 @@ export default function SaasLandingPage() {
                     </p>
 
                     <div className="flex flex-col sm:flex-row justify-center gap-4 mb-20">
-                        <Button size="lg" className="h-16 px-10 text-xl rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-[0_0_50px_-10px_rgba(37,99,235,0.5)] hover:scale-105 transition-all w-full sm:w-auto">
+                        <Button
+                            onClick={() => handleOpenModal('hero_primary')}
+                            size="lg" className="h-16 px-10 text-xl rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-[0_0_50px_-10px_rgba(37,99,235,0.5)] hover:scale-105 transition-all w-full sm:w-auto">
                             Criar Conta Gratuita <ArrowRight className="ml-2 w-6 h-6" />
                         </Button>
                         <Button size="lg" variant="outline" className="h-16 px-10 text-xl rounded-full border-zinc-700 hover:bg-zinc-800 text-white w-full sm:w-auto">
@@ -166,7 +208,9 @@ export default function SaasLandingPage() {
                         Não deixe para amanhã o crescimento que você pode ter hoje. Junte-se a centenas de escolas.
                     </p>
                     <div className="flex flex-col items-center gap-4">
-                        <Button size="lg" className="h-20 px-16 rounded-full text-2xl bg-white text-black hover:bg-zinc-200 font-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.5)] hover:scale-105 transition-transform">
+                        <Button
+                            onClick={() => handleOpenModal('footer_cta')}
+                            size="lg" className="h-20 px-16 rounded-full text-2xl bg-white text-black hover:bg-zinc-200 font-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.5)] hover:scale-105 transition-transform">
                             Acessar Plataforma <ArrowRight className="ml-3 w-8 h-8" />
                         </Button>
                         <p className="text-sm text-zinc-500 mt-4">
@@ -175,6 +219,96 @@ export default function SaasLandingPage() {
                     </div>
                 </div>
             </section>
+
+            {/* CAPTURE MODAL */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-md w-full shadow-2xl relative text-white">
+                        <button
+                            onClick={() => setIsModalOpen(false)}
+                            className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
+                        >
+                            <X size={24} />
+                        </button>
+
+                        {!submitted ? (
+                            <>
+                                <div className="text-center mb-8">
+                                    <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-900/50">
+                                        <Users className="text-white" />
+                                    </div>
+                                    <h3 className="text-2xl font-black tracking-tight">Crie sua Conta</h3>
+                                    <p className="text-zinc-400 text-sm mt-2">Dê o primeiro passo para transformar sua escola.</p>
+                                </div>
+
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Nome da Escola</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={formData.name}
+                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                            className="w-full px-4 py-3 bg-black/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-white placeholder:text-zinc-600"
+                                            placeholder="Ex: Wise Wolf Academy"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Email Corporativo</label>
+                                        <input
+                                            type="email"
+                                            required
+                                            value={formData.email}
+                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                            className="w-full px-4 py-3 bg-black/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-white placeholder:text-zinc-600"
+                                            placeholder="diretoria@suaescola.com"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-zinc-500 uppercase ml-1">WhatsApp</label>
+                                        <input
+                                            type="tel"
+                                            required
+                                            value={formData.phone}
+                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                            className="w-full px-4 py-3 bg-black/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-white placeholder:text-zinc-600"
+                                            placeholder="(00) 90000-0000"
+                                        />
+                                    </div>
+
+                                    <Button
+                                        type="submit"
+                                        disabled={loading}
+                                        className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl mt-4"
+                                    >
+                                        {loading ? 'Processando...' : 'Iniciar Teste Gratuito'}
+                                    </Button>
+                                    <p className="text-[10px] text-center text-zinc-500">
+                                        Ao continuar, você concorda com nossos termos.
+                                    </p>
+                                </form>
+                            </>
+                        ) : (
+                            <div className="text-center py-10">
+                                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <CheckCircle size={40} className="text-green-500" />
+                                </div>
+                                <h3 className="text-2xl font-black text-white mb-2">Solicitação Recebida!</h3>
+                                <p className="text-zinc-400 mb-6">
+                                    Nossa equipe comercial entrará em contato em breve para liberar seu acesso.
+                                </p>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => { setIsModalOpen(false); setSubmitted(false); }}
+                                    className="border-zinc-700 text-white hover:bg-zinc-800"
+                                >
+                                    Fechar
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
         </div>
     );

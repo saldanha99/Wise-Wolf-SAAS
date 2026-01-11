@@ -10,6 +10,7 @@ export interface ClassLogItem {
     suggestedTopic?: string;
     suggestedMaterial?: string;
     suggestedMaterialUrl?: string; // Add URL for direct access
+    type?: string;
 }
 
 interface ClassLogFormProps {
@@ -193,47 +194,86 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                                 </div>
 
                                 {/* Detailed Pedagogical Fields */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-2 pb-4">
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex justify-between items-center">
-                                            <label className="text-[9px] font-black uppercase text-slate-400">O que foi visto?</label>
-                                            {item.suggestedTopic && !getFieldValue(item.id, 'content') && (
-                                                <button onClick={() => handleChange(item.id, 'content', `Aula: ${item.suggestedTopic}`)} className="text-[9px] text-indigo-500 font-bold hover:underline">Usar Sugestão</button>
-                                            )}
+                                {item.type === 'AULA EXPERIMENTAL' ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-2 pb-4 bg-purple-50/50 dark:bg-purple-900/10 -mx-4 px-6 pt-4 mt-2">
+                                        <div className="flex-1 space-y-1">
+                                            <label className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400">Nível Identificado</label>
+                                            <select
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-purple-100 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-purple-500 outline-none h-16"
+                                                value={getFieldValue(item.id, 'assessment_level')}
+                                                onChange={e => handleChange(item.id, 'assessment_level', e.target.value)}
+                                            >
+                                                <option value="">Selecione...</option>
+                                                <option value="A1">A1 - Iniciante</option>
+                                                <option value="A2">A2 - Básico</option>
+                                                <option value="B1">B1 - Intermediário</option>
+                                                <option value="B2">B2 - Independente</option>
+                                                <option value="C1">C1 - Avançado</option>
+                                                <option value="C2">C2 - Fluente</option>
+                                            </select>
                                         </div>
-                                        <textarea
-                                            placeholder={`Conteúdo técnico... ${item.suggestedTopic ? `(Sugestão: ${item.suggestedTopic})` : ''}`}
-                                            className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
-                                            value={getFieldValue(item.id, 'content')}
-                                            onChange={e => handleChange(item.id, 'content', e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="flex-1 space-y-1">
-                                        <label className="text-[9px] font-black uppercase text-slate-400 block">Dificuldades</label>
-                                        <textarea
-                                            placeholder="Monitoramento..."
-                                            className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
-                                            value={getFieldValue(item.id, 'difficulties')}
-                                            onChange={e => handleChange(item.id, 'difficulties', e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex justify-between items-center">
-                                            <label className="text-[9px] font-black uppercase text-slate-400">Tarefa de Casa</label>
-                                            {item.suggestedMaterial && (
-                                                <div className="flex items-center gap-1">
-                                                    <span className="text-[9px] text-slate-400">Base: {item.suggestedMaterial}</span>
-                                                </div>
-                                            )}
+                                        <div className="flex-1 space-y-1">
+                                            <label className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400">Perfil Psicológico</label>
+                                            <textarea
+                                                placeholder="Ex: Tímido, visual, foca em gramática..."
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-purple-100 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-purple-500 outline-none resize-none h-16"
+                                                value={getFieldValue(item.id, 'psychological_profile')}
+                                                onChange={e => handleChange(item.id, 'psychological_profile', e.target.value)}
+                                            />
                                         </div>
-                                        <textarea
-                                            placeholder="Para o aluno..."
-                                            className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
-                                            value={getFieldValue(item.id, 'homework')}
-                                            onChange={e => handleChange(item.id, 'homework', e.target.value)}
-                                        />
+                                        <div className="flex-1 space-y-1">
+                                            <label className="text-[9px] font-black uppercase text-purple-600 dark:text-purple-400">Veredito do Professor</label>
+                                            <textarea
+                                                placeholder="Sugestão de plano ou obs para o comercial..."
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-purple-100 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-purple-500 outline-none resize-none h-16"
+                                                value={getFieldValue(item.id, 'teacher_verdict')}
+                                                onChange={e => handleChange(item.id, 'teacher_verdict', e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 px-2 pb-4">
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">O que foi visto?</label>
+                                                {item.suggestedTopic && !getFieldValue(item.id, 'content') && (
+                                                    <button onClick={() => handleChange(item.id, 'content', `Aula: ${item.suggestedTopic}`)} className="text-[9px] text-indigo-500 font-bold hover:underline">Usar Sugestão</button>
+                                                )}
+                                            </div>
+                                            <textarea
+                                                placeholder={`Conteúdo técnico... ${item.suggestedTopic ? `(Sugestão: ${item.suggestedTopic})` : ''}`}
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
+                                                value={getFieldValue(item.id, 'content')}
+                                                onChange={e => handleChange(item.id, 'content', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <label className="text-[9px] font-black uppercase text-slate-400 block">Dificuldades</label>
+                                            <textarea
+                                                placeholder="Monitoramento..."
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
+                                                value={getFieldValue(item.id, 'difficulties')}
+                                                onChange={e => handleChange(item.id, 'difficulties', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[9px] font-black uppercase text-slate-400">Tarefa de Casa</label>
+                                                {item.suggestedMaterial && (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-[9px] text-slate-400">Base: {item.suggestedMaterial}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <textarea
+                                                placeholder="Para o aluno..."
+                                                className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium focus:ring-2 focus:ring-tenant-primary outline-none resize-none h-16"
+                                                value={getFieldValue(item.id, 'homework')}
+                                                onChange={e => handleChange(item.id, 'homework', e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
 
