@@ -393,10 +393,13 @@ const App: React.FC = () => {
     faviconUrl: ''
   };
 
+  if (user.role === UserRole.SUPER_ADMIN) {
+    return <SuperAdminDashboard onLogout={handleLogout} />;
+  }
+
   return (
     <div className={`flex min-h-screen w-full ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="flex w-full bg-gradient-to-br from-slate-50 to-purple-50 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 font-sans">
-
         <ModernSidebar
           tenant={{ ...currentTenant, branding: currentBranding } as any}
           user={user}

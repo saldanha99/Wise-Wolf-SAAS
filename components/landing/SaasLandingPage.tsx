@@ -12,7 +12,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function SaasLandingPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState({ name: '', email: '', phone: '', source: 'saas_hero' });
+    const [formData, setFormData] = useState({ name: '', school_name: '', email: '', phone: '', source: 'saas_hero' });
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
 
@@ -25,17 +25,14 @@ export default function SaasLandingPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            // Using 'master' as the tenant_id for the SaaS itself
-            // If this fails due to UUID constraints, we might need a real UUID here.
-            // For now, assuming text 'master' is handled or we use a fallback if user created a dedicated tenant.
-            const { error } = await supabase.from('crm_leads').insert({
-                tenant_id: 'master',
+            // Insert into B2B SaaS Leads table
+            const { error } = await supabase.from('saas_leads').insert({
                 name: formData.name,
+                school_name: formData.school_name, // Capture School Name
                 email: formData.email,
                 phone: formData.phone,
-                status: 'NEW',
-                source: `saas_landing_${formData.source}`,
-                notes: 'Lead interessado no SaaS Wise Wolf'
+                status: 'LEAD',
+                notes: `Source: ${formData.source}`
             });
 
             if (error) throw error;
@@ -247,10 +244,21 @@ export default function SaasLandingPage() {
                                         <input
                                             type="text"
                                             required
+                                            value={formData.school_name}
+                                            onChange={e => setFormData({ ...formData, school_name: e.target.value })}
+                                            className="w-full px-4 py-3 bg-black/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-white placeholder:text-zinc-600"
+                                            placeholder="Ex: Wise Wolf Academy"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-zinc-500 uppercase ml-1">Seu Nome</label>
+                                        <input
+                                            type="text"
+                                            required
                                             value={formData.name}
                                             onChange={e => setFormData({ ...formData, name: e.target.value })}
                                             className="w-full px-4 py-3 bg-black/50 border border-zinc-800 rounded-xl focus:ring-2 focus:ring-blue-600 outline-none text-white placeholder:text-zinc-600"
-                                            placeholder="Ex: Wise Wolf Academy"
+                                            placeholder="Ex: Daniel Marques"
                                         />
                                     </div>
                                     <div>

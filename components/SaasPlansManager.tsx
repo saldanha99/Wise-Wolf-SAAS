@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Package, Plus, Edit3, Trash2, CheckCircle, XCircle, HardDrive, Zap, Users, Shield } from 'lucide-react';
+import { Package, Plus, Edit3, Trash2, HardDrive, Users, Shield } from 'lucide-react';
 
 const SaasPlansManager: React.FC = () => {
     const [plans, setPlans] = useState<any[]>([]);
@@ -8,16 +8,14 @@ const SaasPlansManager: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPlan, setEditingPlan] = useState<any>(null);
 
-    const [darkMode, setDarkMode] = useState(false); // Quick hack to ensure dark mode styles work if parent doesn't pass it, though usually handled by 'dark' class on html
-
     // Form State
     const [formData, setFormData] = useState({
         name: '',
         description: '',
-        storage_limit_gb: 1,
+        storage_limit_gb: 5,
         max_students: 50,
-        max_users: 5,
-        price_monthly: 0,
+        max_users: 1,
+        price: 0,
         price_yearly: 0,
         active: true
     });
@@ -31,7 +29,7 @@ const SaasPlansManager: React.FC = () => {
         const { data, error } = await supabase
             .from('saas_plans')
             .select('*')
-            .order('price_monthly', { ascending: true });
+            .order('price', { ascending: true });
 
         if (!error) {
             setPlans(data || []);
@@ -44,11 +42,11 @@ const SaasPlansManager: React.FC = () => {
         setFormData({
             name: plan.name,
             description: plan.description || '',
-            storage_limit_gb: plan.storage_limit_gb,
+            storage_limit_gb: plan.max_storage_gb, // Note mapping: max_storage_gb in DB
             max_students: plan.max_students,
             max_users: plan.max_users,
-            price_monthly: plan.price_monthly,
-            price_yearly: plan.price_yearly,
+            price: plan.price,
+            price_yearly: plan.price_yearly || 0,
             active: plan.active
         });
         setIsModalOpen(true);
@@ -60,10 +58,10 @@ const SaasPlansManager: React.FC = () => {
             name: '',
             description: '',
             storage_limit_gb: 5,
-            max_students: 999999,
-            max_users: 5,
-            price_monthly: 297,
-            price_yearly: 2997,
+            max_students: 50,
+            max_users: 1,
+            price: 197,
+            price_yearly: 1997,
             active: true
         });
         setIsModalOpen(true);
@@ -71,16 +69,27 @@ const SaasPlansManager: React.FC = () => {
 
     const handleSave = async () => {
         try {
+            const payload = {
+                name: formData.name,
+                description: formData.description,
+                max_storage_gb: formData.storage_limit_gb,
+                max_students: formData.max_students,
+                max_users: formData.max_users,
+                price: formData.price,
+                price_yearly: formData.price_yearly,
+                active: formData.active
+            };
+
             if (editingPlan) {
                 const { error } = await supabase
                     .from('saas_plans')
-                    .update(formData)
+                    .update(payload)
                     .eq('id', editingPlan.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
                     .from('saas_plans')
-                    .insert([formData]);
+                    .insert([payload]);
                 if (error) throw error;
             }
             setIsModalOpen(false);
@@ -106,14 +115,14 @@ const SaasPlansManager: React.FC = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
-                        <Package className="text-tenant-primary" size={24} />
-                        Planos SaaS (Tenants)
+                        <Package className="text-blue-600" size={24} />
+                        Planos SaaS (Infraestrutura)
                     </h3>
-                    <p className="text-slate-500 text-xs mt-1">Defina os tiers de serviço para as escolas.</p>
+                    <p className="text-slate-500 text-xs mt-1">Defina os tiers, limites e preços da plataforma.</p>
                 </div>
                 <button
                     onClick={handleAddNew}
-                    className="bg-tenant-primary hover:bg-tenant-primary/90 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-tenant-primary/20 transition-all hover:scale-105 active:scale-95"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all"
                 >
                     <Plus size={16} /> Novo Plano
                 </button>
@@ -123,7 +132,7 @@ const SaasPlansManager: React.FC = () => {
                 {loading ? (
                     <p className="text-slate-400 text-xs">Carregando planos...</p>
                 ) : plans.map((plan) => (
-                    <div key={plan.id} className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-tenant-primary/20">
+                    <div key={plan.id} className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-blue-200">
                         <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${plan.active ? 'from-emerald-500/10 to-teal-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
 
                         <div className="flex justify-between items-start mb-4 relative z-10">
@@ -145,8 +154,8 @@ const SaasPlansManager: React.FC = () => {
 
                         <div className="space-y-3 mb-6 relative z-10">
                             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
-                                <HardDrive size={14} className="text-tenant-primary" />
-                                <span>{plan.storage_limit_gb} GB Armazenamento</span>
+                                <HardDrive size={14} className="text-blue-600" />
+                                <span>{plan.max_storage_gb} GB Armazenamento</span>
                             </div>
                             <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
                                 <Users size={14} className="text-blue-500" />
@@ -160,10 +169,10 @@ const SaasPlansManager: React.FC = () => {
 
                         <div className="pt-4 border-t border-slate-50 dark:border-slate-800 relative z-10">
                             <div className="flex items-baseline gap-1">
-                                <span className="text-2xl font-black text-slate-800 dark:text-white">R$ {plan.price_monthly}</span>
+                                <span className="text-2xl font-black text-slate-800 dark:text-white">R$ {plan.price}</span>
                                 <span className="text-xs font-bold text-slate-400">/mês</span>
                             </div>
-                            <p className="text-[10px] text-slate-400 mt-1">Ou R$ {plan.price_yearly} /ano</p>
+                            {plan.price_yearly && <p className="text-[10px] text-slate-400 mt-1">Ou R$ {plan.price_yearly} /ano</p>}
                         </div>
                     </div>
                 ))}
@@ -184,8 +193,8 @@ const SaasPlansManager: React.FC = () => {
                                     type="text"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
-                                    placeholder="Ex: Start, Pro, Enterprise"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    placeholder="Ex: Start, Pro"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -194,7 +203,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.storage_limit_gb}
                                     onChange={e => setFormData({ ...formData, storage_limit_gb: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -203,7 +212,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.max_students}
                                     onChange={e => setFormData({ ...formData, max_students: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -212,16 +221,16 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.max_users}
                                     onChange={e => setFormData({ ...formData, max_users: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Preço Mensal (R$)</label>
                                 <input
                                     type="number"
-                                    value={formData.price_monthly}
-                                    onChange={e => setFormData({ ...formData, price_monthly: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                    value={formData.price}
+                                    onChange={e => setFormData({ ...formData, price: Number(e.target.value) })}
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -230,7 +239,7 @@ const SaasPlansManager: React.FC = () => {
                                     type="number"
                                     value={formData.price_yearly}
                                     onChange={e => setFormData({ ...formData, price_yearly: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
+                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 space-y-2">
@@ -238,7 +247,7 @@ const SaasPlansManager: React.FC = () => {
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full h-24 bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-tenant-primary resize-none"
+                                    className="w-full h-24 bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600 resize-none"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 flex items-center gap-3">
@@ -261,7 +270,7 @@ const SaasPlansManager: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleSave}
-                                className="flex-1 py-4 bg-tenant-primary text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                                className="flex-1 py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-600/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
                             >
                                 Salvar Plano
                             </button>
