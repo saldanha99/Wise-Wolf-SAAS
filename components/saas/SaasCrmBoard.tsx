@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Plus, MoreHorizontal, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import ProvisionTenantModal from './ProvisionTenantModal';
 
 interface SaasLead {
     id: string;
@@ -25,6 +26,10 @@ const SaasCrmBoard: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [showNewLeadModal, setShowNewLeadModal] = useState(false);
     const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', school_name: '', notes: '' });
+
+    // Provisioning State
+    const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
+    const [provisionLeadData, setProvisionLeadData] = useState<any>(null);
 
     useEffect(() => {
         fetchLeads();
@@ -60,6 +65,16 @@ const SaasCrmBoard: React.FC = () => {
     };
 
     const handleMoveLead = async (leadId: string, newStatus: string) => {
+        // If moving to CLOSED_WON (Active), Intercept with Provision Modal
+        if (newStatus === 'CLOSED_WON') {
+            const lead = leads.find(l => l.id === leadId);
+            if (lead) {
+                setProvisionLeadData(lead);
+                setIsProvisionModalOpen(true);
+                return; // Stop here, modal success handles the rest
+            }
+        }
+
         try {
             // Optimistic update
             setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus as any } : l));
@@ -132,6 +147,9 @@ const SaasCrmBoard: React.FC = () => {
                                                     </button>
                                                 </div>
                                             )}
+                                            {col.id === 'CLOSED_WON' && (
+                                                <span className="text-emerald-500 flex items-center gap-1"><CheckCircle size={10} /> Ativo</span>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -141,7 +159,7 @@ const SaasCrmBoard: React.FC = () => {
                 </div>
             </div>
 
-            {/* Modal Logic would go here (Simplified for brevity) */}
+            {/* Modal Logic */}
             {showNewLeadModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-md p-6 rounded-2xl shadow-xl">
@@ -172,6 +190,16 @@ const SaasCrmBoard: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <ProvisionTenantModal
+                isOpen={isProvisionModalOpen}
+                onClose={() => setIsProvisionModalOpen(false)}
+                leadData={provisionLeadData}
+                onSuccess={() => {
+                    fetchLeads();
+                    // Maybe show success toast
+                }}
+            />
         </div>
     );
 };
