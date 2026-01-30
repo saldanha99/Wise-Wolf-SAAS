@@ -51,6 +51,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const [studentsList, setStudentsList] = useState<any[]>([]);
   const [availableSlots, setAvailableSlots] = useState<Set<string>>(new Set());
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
+  const [debugRawData, setDebugRawData] = useState<any>(null);
 
   useEffect(() => {
     if (teachers && teachers.length > 0) {
@@ -108,6 +109,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       .from('teacher_availability')
       .select('*')
       .eq('teacher_id', selectedTeacher.id);
+
+    setDebugRawData({ data: availData, error: availError, count: availData?.length });
 
     console.log('TeacherScheduleExplorer Debug:', {
       teacherId: selectedTeacher.id,
@@ -569,6 +572,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           />
         </div>
       )}
+      {/* DEBUG PANEL */}
+      <div className="fixed bottom-4 right-4 bg-black/80 text-green-400 p-4 rounded-xl text-xs font-mono z-[200] max-w-sm overflow-auto max-h-60 shadow-2xl border border-green-500/30">
+        <h4 className="font-bold border-b border-green-500/30 mb-2 pb-1">Debug Sincronização</h4>
+        <p>Teacher ID: {selectedTeacher?.id}</p>
+        <p className="mt-1">Slots Carregados (Raw): {bookings ? Object.keys(bookings).length : 0}</p>
+        <p>Disponibilidade (Set): {availableSlots.size}</p>
+        <p className="mt-2 text-white/70 font-bold">Sample do Banco (teacher_availability):</p>
+        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-blue-300">
+          {debugRawData ? JSON.stringify(debugRawData, null, 2).substring(0, 300) : 'Carregando...'}
+        </pre>
+      </div>
     </div>
   );
 };
