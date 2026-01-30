@@ -292,7 +292,7 @@ const App: React.FC = () => {
     return <PublicRegistration />;
   }
 
-  if (path === '/teacher-onboarding') {
+  if (path === '/teacher-onboarding' || path.startsWith('/teacher-onboarding')) {
     return <TeacherOnboarding />;
   }
   // --------------------------------------------------
