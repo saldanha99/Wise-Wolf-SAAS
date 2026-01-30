@@ -28,7 +28,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
         const json = JSON.stringify(payload);
         const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
             function toSolidBytes(match, p1) {
-                return String.fromCharCode(parseInt(p1, 16));
+                return String.fromCharCode('0x' + p1);
             }));
 
         // Construct URL

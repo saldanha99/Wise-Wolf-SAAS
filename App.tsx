@@ -292,6 +292,7 @@ const App: React.FC = () => {
     return <PublicRegistration />;
   }
 
+  // Esta verificação deve vir ANTES de qualquer <AuthProvider> ou verificação de sessão
   if (path === '/teacher-onboarding' || path.startsWith('/teacher-onboarding')) {
     return <TeacherOnboarding />;
   }
