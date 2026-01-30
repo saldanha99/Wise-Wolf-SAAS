@@ -410,7 +410,6 @@ const App: React.FC = () => {
       'profile': <TeacherProfile />,
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
-      'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
     };
 
