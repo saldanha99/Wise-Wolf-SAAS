@@ -105,33 +105,43 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
 
     // 2. Fetch Availability
-    const { data: availData, error: availError } = await supabase
-      .from('teacher_availability')
-      .select('*')
-      .eq('teacher_id', selectedTeacher.id);
+    if (selectedTeacher.id) {
+      try {
+        const { data: availData, error: availError } = await supabase
+          .from('teacher_availability')
+          .select('*')
+          .eq('teacher_id', selectedTeacher.id);
 
-    setDebugRawData({ data: availData, error: availError, count: availData?.length });
+        setDebugRawData({ data: availData, error: availError, count: availData?.length, teacherId: selectedTeacher.id });
 
-    console.log('TeacherScheduleExplorer Debug:', {
-      teacherId: selectedTeacher.id,
-      availData,
-      availError,
-      tableName: 'teacher_availability'
-    });
+        console.log('TeacherScheduleExplorer Debug:', {
+          teacherId: selectedTeacher.id,
+          availData,
+          availError,
+          tableName: 'teacher_availability'
+        });
 
-    if (availData) {
-      const newAvail = new Set<string>();
-      availData.forEach((item: any) => {
-        // Database: 1=Monday, 6=Saturday
-        // UI Index: 0=Monday, 5=Saturday (item.day_of_week is 1-based)
-        const dIdx = item.day_of_week - 1;
+        if (availData) {
+          const newAvail = new Set<string>();
+          availData.forEach((item: any) => {
+            // Database: 1=Monday, 6=Saturday
+            // UI Index: 0=Monday, 5=Saturday (item.day_of_week is 1-based)
+            const dIdx = item.day_of_week - 1;
 
-        if (dIdx >= 0 && dIdx <= 5 && item.start_time) {
-          const timeKey = item.start_time.substring(0, 5);
-          newAvail.add(`${dIdx}-${timeKey}`);
+            if (dIdx >= 0 && dIdx <= 5 && item.start_time) {
+              const timeKey = item.start_time.substring(0, 5);
+              newAvail.add(`${dIdx}-${timeKey}`);
+            }
+          });
+          setAvailableSlots(newAvail);
         }
-      });
-      setAvailableSlots(newAvail);
+      } catch (err) {
+        console.error("Crash fetching availability:", err);
+        setDebugRawData({ crash: err });
+      }
+    } else {
+      console.warn("Skipping fetch: No Teacher ID");
+      setDebugRawData({ error: "No Teacher ID" });
     }
 
     // 3. Fetch Students
@@ -573,14 +583,14 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         </div>
       )}
       {/* DEBUG PANEL */}
-      <div className="fixed bottom-4 right-4 bg-black/80 text-green-400 p-4 rounded-xl text-xs font-mono z-[200] max-w-sm overflow-auto max-h-60 shadow-2xl border border-green-500/30">
-        <h4 className="font-bold border-b border-green-500/30 mb-2 pb-1">Debug Sincronização</h4>
-        <p>Teacher ID: {selectedTeacher?.id}</p>
-        <p className="mt-1">Slots Carregados (Raw): {bookings ? Object.keys(bookings).length : 0}</p>
-        <p>Disponibilidade (Set): {availableSlots.size}</p>
-        <p className="mt-2 text-white/70 font-bold">Sample do Banco (teacher_availability):</p>
-        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-blue-300">
-          {debugRawData ? JSON.stringify(debugRawData, null, 2).substring(0, 300) : 'Carregando...'}
+      <div className="fixed top-20 right-4 bg-black/90 text-green-400 p-4 rounded-xl text-xs font-mono z-[9999] max-w-sm overflow-auto max-h-[80vh] shadow-2xl border-2 border-green-500 box-content">
+        <h4 className="font-bold border-b border-green-500/30 mb-2 pb-1 text-lg">Debug v2</h4>
+        <p>Selected Teacher: {selectedTeacher ? selectedTeacher.name : 'NULL'}</p>
+        <p>Teacher ID: {selectedTeacher?.id || 'UNDEFINED'}</p>
+        <p>ID Length: {selectedTeacher?.id?.length}</p>
+        <p className="mt-2 text-yellow-300">Raw Data State:</p>
+        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-blue-300 break-all">
+          {debugRawData ? JSON.stringify(debugRawData, null, 2) : 'Aguardando fetch...'}
         </pre>
       </div>
     </div>
