@@ -105,19 +105,19 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
     // 2. Fetch Availability
     const { data: availData } = await supabase
-      .from('availabilities')
+      .from('teacher_availability')
       .select('*')
       .eq('teacher_id', selectedTeacher.id);
 
     if (availData) {
       const newAvail = new Set<string>();
       availData.forEach((item: any) => {
-        const dayMap: Record<string, number> = {
-          'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5
-        };
-        const dIdx = dayMap[item.day_of_week];
-        const timeKey = item.start_time.substring(0, 5);
-        if (dIdx !== undefined) {
+        // Database: 1=Monday, 6=Saturday
+        // UI Index: 0=Monday, 5=Saturday
+        const dIdx = item.day_of_week - 1;
+
+        if (dIdx >= 0 && dIdx <= 5 && item.start_time) {
+          const timeKey = item.start_time.substring(0, 5);
           newAvail.add(`${dIdx}-${timeKey}`);
         }
       });
