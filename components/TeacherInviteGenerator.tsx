@@ -24,8 +24,9 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
             tenantId
         };
 
-        // Convert to Base64
-        const base64Payload = btoa(JSON.stringify(payload));
+        // Convert to Base64 (UTF-8 Safe)
+        const jsonStr = JSON.stringify(payload);
+        const base64Payload = btoa(unescape(encodeURIComponent(jsonStr)));
 
         // Construct URL
         const url = `${APP_BASE_URL}/teacher-onboarding?offer=${base64Payload}`;

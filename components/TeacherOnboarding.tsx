@@ -31,7 +31,7 @@ const TeacherOnboarding: React.FC = () => {
 
         if (encodedOffer) {
             try {
-                const jsonStr = atob(encodedOffer);
+                const jsonStr = decodeURIComponent(escape(window.atob(encodedOffer)));
                 const data = JSON.parse(jsonStr);
                 // Schema: { hourlyRate: number, subject: string, tenantId: string }
                 setOfferData(data);
