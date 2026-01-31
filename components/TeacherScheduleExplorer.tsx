@@ -441,6 +441,15 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const filteredTeachers = (teachers || []).filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
+  // Sanitize Avatar Helper (Prevent blob: errors)
+  const getSafeAvatar = (url: string | undefined) => {
+      if (!url || url.startsWith('blob:') || url === 'undefined') {
+        return `https://ui-avatars.com/api/?name=${selectedTeacher?.name || 'Teacher'}`;
+      }
+      return url;
+    };
+
+  return (
     <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
       <div className="w-full xl:w-72 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-[2rem] flex flex-col shadow-sm">
@@ -470,7 +479,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 : 'bg-white dark:bg-slate-900 border-gray-50 dark:border-slate-800 hover:border-tenant-primary/30'
                 }`}
             >
-              <img src={teacher.avatar} className="w-8 h-8 rounded-lg border-2 border-white/20" alt="" />
+              <img
+                src={teacher.avatar && !teacher.avatar.startsWith('blob:') ? teacher.avatar : `https://ui-avatars.com/api/?name=${teacher.name}`}
+                className="w-8 h-8 rounded-lg border-2 border-white/20"
+                alt=""
+              />
               <div className="flex-1 overflow-hidden">
                 <p className={`text-[10px] font-black truncate leading-tight ${selectedTeacher?.id === teacher.id ? 'text-white' : 'text-gray-800 dark:text-slate-200'}`}>
                   {teacher.name}
@@ -494,7 +507,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             {/* Detail Header - Compact */}
             <div className="px-6 py-4 border-b dark:border-slate-800 flex justify-between items-center bg-gray-50/30 dark:bg-slate-800/20">
               <div className="flex items-center gap-4">
-                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-slate-700" alt="" />
+                <img
+                  src={getSafeAvatar(selectedTeacher.avatar)}
+                  className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-slate-700"
+                  alt=""
+                />
                 <div>
                   <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-none">{selectedTeacher.name}</h2>
                   <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 font-bold">
@@ -618,18 +635,18 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           />
         </div>
       )}
-      {/* DEBUG PANEL */}
-      <div className="fixed top-20 right-4 bg-black/90 text-green-400 p-4 rounded-xl text-xs font-mono z-[9999] max-w-sm overflow-auto max-h-[80vh] shadow-2xl border-2 border-green-500 box-content">
-        <div className="flex justify-between items-center border-b border-green-500/30 mb-2 pb-1">
-          <h4 className="font-bold text-lg">Debug v3</h4>
-          <button onClick={fetchDetailData} className="bg-green-700 text-white px-2 py-1 rounded hover:bg-green-600">Retry Fetch</button>
+      {/* DEBUG PANEL - Moved to bottom-left and high contrast */}
+      <div className="fixed bottom-4 left-4 bg-red-900/90 text-white p-4 rounded-xl text-xs font-mono z-[10000] max-w-sm overflow-auto shadow-2xl border-2 border-red-500 box-content">
+        <div className="flex justify-between items-center border-b border-red-500/30 mb-2 pb-1">
+          <h4 className="font-bold text-lg">Debug V4 (FIXED)</h4>
+          <button onClick={fetchDetailData} className="bg-red-700 text-white px-2 py-1 rounded hover:bg-red-600 font-bold">FORCE FETCH</button>
         </div>
-        <p>Selected Teacher: {selectedTeacher ? selectedTeacher.name : 'NULL'}</p>
-        <p>Teacher ID: {JSON.stringify(selectedTeacher?.id)}</p>
-        <p>ID Length: {selectedTeacher?.id?.length}</p>
-        <p className="mt-2 text-yellow-300">Raw Data State:</p>
-        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-blue-300 break-all">
-          {debugRawData ? JSON.stringify(debugRawData, null, 2) : 'Aguardando fetch...'}
+        <p>TenantID: {currentTenantId || 'UNDEFINED'}</p>
+        <p>Teacher: {selectedTeacher ? selectedTeacher.name : 'NULL'}</p>
+        <p>Teacher ID: {selectedTeacher?.id}</p>
+        <p className="mt-2 text-yellow-300 font-bold">STATUS:</p>
+        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-white break-all bg-black/50 p-2 rounded">
+          {debugRawData ? JSON.stringify(debugRawData, null, 2) : 'Waiting...'}
         </pre>
       </div>
     </div>
