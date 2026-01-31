@@ -80,7 +80,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
           status,
           date: due_date,
           payment_date,
-          profiles!inner(name, tenant_id)
+          profiles(name, tenant_id)
         `)
         .eq('profiles.tenant_id', tenantId);
       // We fetch a broader range or filter in memory to handle the two different logic (Cash vs Accrual)
