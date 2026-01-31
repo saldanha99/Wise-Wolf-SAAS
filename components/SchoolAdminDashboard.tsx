@@ -163,7 +163,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
           value,
           status,
           payment_date,
-          profiles!inner(name, tenant_id)
+          profiles(name, tenant_id)
         `)
         .eq('profiles.tenant_id', tenantId)
         .neq('status', 'PENDING') // Show finished/problematic ones? Or all? User said "items of student_payments". Let's show all recent.
