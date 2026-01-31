@@ -440,14 +440,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
   const filteredTeachers = (teachers || []).filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  return (
   // Sanitize Avatar Helper (Prevent blob: errors)
   const getSafeAvatar = (url: string | undefined) => {
-      if (!url || url.startsWith('blob:') || url === 'undefined') {
-        return `https://ui-avatars.com/api/?name=${selectedTeacher?.name || 'Teacher'}`;
-      }
-      return url;
-    };
+    if (!url || url.startsWith('blob:') || url === 'undefined') {
+      return `https://ui-avatars.com/api/?name=${selectedTeacher?.name || 'Teacher'}`;
+    }
+    return url;
+  };
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
