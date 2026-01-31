@@ -66,11 +66,29 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
   }, [teachers, initialTeacherName]);
 
-  const fetchDetailData = async () => {
-    if (!selectedTeacher) {
-      setDebugRawData({ error: "No teacher selected" });
+  // CHECKPOINT: Função segregada para debug do clique
+  const handleSelectTeacher = (teacher: Teacher) => {
+    console.log("👆 [UI] Card do Professor Clicado:", teacher.name);
+    console.log("   ➤ ID RECEBIDO:", teacher.id);
+
+    if (!teacher.id || teacher.id === 'undefined') {
+      console.error("❌ ERRO CRÍTICO: Professor com ID Inválido!", teacher);
+      alert("Erro: Cadastro do professor parece incompleto (sem ID).");
       return;
     }
+
+    setSelectedTeacher(teacher);
+  };
+
+  const fetchDetailData = async () => {
+    // 1. GUARDA ROBUSTA (Solicitada no Diagnóstico)
+    if (!selectedTeacher?.id || selectedTeacher.id === 'undefined') {
+      console.warn("⛔ [FETCH ABORTADO] Nenhum professor válido selecionado para busca.");
+      setDebugRawData({ error: "Fetch Abortado: ID Inválido ou Nulo" });
+      return; // ABORTAR IMEDIATAMENTE
+    }
+
+    console.log('🔍 Buscando agenda para ID:', selectedTeacher.id);
 
     // 1. Fetch Bookings
     const { data: bookingsData } = await supabase
@@ -108,43 +126,38 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
 
     // 2. Fetch Availability
-    if (selectedTeacher.id && selectedTeacher.id !== 'undefined' && selectedTeacher.id.length > 30) {
-      try {
-        const { data: availData, error: availError } = await supabase
-          .from('teacher_availability')
-          .select('*')
-          .eq('teacher_id', selectedTeacher.id);
+    // Já validamos o ID na guarda acima, mas mantemos o try/catch para erros de rede/banco
+    try {
+      const { data: availData, error: availError } = await supabase
+        .from('teacher_availability')
+        .select('*')
+        .eq('teacher_id', selectedTeacher.id);
 
-        setDebugRawData({ data: availData, error: availError, count: availData?.length, teacherId: selectedTeacher.id, status: 'fetched' });
+      setDebugRawData({ data: availData, error: availError, count: availData?.length, teacherId: selectedTeacher.id, status: 'fetched' });
 
-        console.log('TeacherScheduleExplorer Debug:', {
-          teacherId: selectedTeacher.id,
-          availData,
-          availError,
-          tableName: 'teacher_availability'
+      console.log('✅ [DB] Availability Data:', {
+        teacherId: selectedTeacher.id,
+        count: availData?.length,
+        error: availError
+      });
+
+      if (availData) {
+        const newAvail = new Set<string>();
+        availData.forEach((item: any) => {
+          // Database: 1=Monday, 6=Saturday
+          // UI Index: 0=Monday, 5=Saturday (item.day_of_week is 1-based)
+          const dIdx = item.day_of_week - 1;
+
+          if (dIdx >= 0 && dIdx <= 5 && item.start_time) {
+            const timeKey = item.start_time.substring(0, 5);
+            newAvail.add(`${dIdx}-${timeKey}`);
+          }
         });
-
-        if (availData) {
-          const newAvail = new Set<string>();
-          availData.forEach((item: any) => {
-            // Database: 1=Monday, 6=Saturday
-            // UI Index: 0=Monday, 5=Saturday (item.day_of_week is 1-based)
-            const dIdx = item.day_of_week - 1;
-
-            if (dIdx >= 0 && dIdx <= 5 && item.start_time) {
-              const timeKey = item.start_time.substring(0, 5);
-              newAvail.add(`${dIdx}-${timeKey}`);
-            }
-          });
-          setAvailableSlots(newAvail);
-        }
-      } catch (err: any) {
-        console.error("Crash fetching availability:", err);
-        setDebugRawData({ crash: err.message || err });
+        setAvailableSlots(newAvail);
       }
-    } else {
-      console.warn("Skipping fetch: Invalid Teacher ID", selectedTeacher.id);
-      setDebugRawData({ error: "Invalid Teacher ID", id: selectedTeacher.id });
+    } catch (err: any) {
+      console.error("❌ Crash fetching availability:", err);
+      setDebugRawData({ crash: err.message || err });
     }
 
     // 3. Fetch Students
@@ -431,7 +444,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           {filteredTeachers.map((teacher) => (
             <button
               key={teacher.id}
-              onClick={() => setSelectedTeacher(teacher)}
+              onClick={() => handleSelectTeacher(teacher)}
               className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacher?.id === teacher.id
                 ? 'bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
                 : 'bg-white dark:bg-slate-900 border-gray-50 dark:border-slate-800 hover:border-tenant-primary/30'
