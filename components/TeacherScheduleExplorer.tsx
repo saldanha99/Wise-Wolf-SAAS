@@ -634,18 +634,42 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           />
         </div>
       )}
-      {/* DEBUG PANEL - Moved to bottom-left and high contrast */}
-      <div className="fixed bottom-4 left-4 bg-red-900/90 text-white p-4 rounded-xl text-xs font-mono z-[10000] max-w-sm overflow-auto shadow-2xl border-2 border-red-500 box-content">
-        <div className="flex justify-between items-center border-b border-red-500/30 mb-2 pb-1">
-          <h4 className="font-bold text-lg">Debug V4 (FIXED)</h4>
-          <button onClick={fetchDetailData} className="bg-red-700 text-white px-2 py-1 rounded hover:bg-red-600 font-bold">FORCE FETCH</button>
+      {/* DEBUG PANEL - Moved to Top Center and High Contrast */}
+      <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-red-900 text-white p-6 rounded-xl text-xs font-mono z-[99999] shadow-2xl border-4 border-yellow-400 max-w-lg w-full max-h-[80vh] overflow-auto">
+        <div className="flex justify-between items-center border-b border-red-500/50 mb-4 pb-2">
+          <h4 className="font-bold text-xl text-yellow-400">🚨 DEBUG MASTER V5</h4>
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                if (!selectedTeacher?.id) return;
+                const { count, error } = await supabase.from('teacher_availability').select('*', { count: 'exact', head: true }).eq('teacher_id', selectedTeacher.id);
+                alert(`DB Check:\nTeacher ID: ${selectedTeacher.id}\nRows Found: ${count}\nError: ${error?.message || 'None'}`);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-bold"
+            >
+              CHECK DB DIRECTLY
+            </button>
+            <button onClick={fetchDetailData} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold">
+              RETRY FETCH
+            </button>
+          </div>
         </div>
-        <p>TenantID: {currentTenantId || 'UNDEFINED'}</p>
-        <p>Teacher: {selectedTeacher ? selectedTeacher.name : 'NULL'}</p>
-        <p>Teacher ID: {selectedTeacher?.id}</p>
-        <p className="mt-2 text-yellow-300 font-bold">STATUS:</p>
-        <pre className="whitespace-pre-wrap text-[10px] mt-1 text-white break-all bg-black/50 p-2 rounded">
-          {debugRawData ? JSON.stringify(debugRawData, null, 2) : 'Waiting...'}
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-black/40 p-3 rounded-lg">
+            <p className="text-gray-400 font-bold mb-1">TENANT CONTEXT</p>
+            <p className="text-lg">{currentTenantId || '⛔ UNDEFINED'}</p>
+          </div>
+          <div className="bg-black/40 p-3 rounded-lg">
+            <p className="text-gray-400 font-bold mb-1">SELECTED TEACHER</p>
+            <p className="text-lg truncate">{selectedTeacher?.name || 'NONE'}</p>
+            <p className="text-[10px] font-mono opacity-70 break-all">{selectedTeacher?.id}</p>
+          </div>
+        </div>
+
+        <p className="text-yellow-300 font-bold mb-1">RAW DATA STATE:</p>
+        <pre className="whitespace-pre-wrap text-[10px] text-green-300 break-all bg-black/80 p-4 rounded-lg border border-white/10">
+          {debugRawData ? JSON.stringify(debugRawData, null, 2) : '⚠️ AGUARDANDO DADOS...'}
         </pre>
       </div>
     </div>
