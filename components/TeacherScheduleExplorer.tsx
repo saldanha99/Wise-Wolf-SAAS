@@ -67,16 +67,26 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   }, [teachers, initialTeacherName]);
 
   // CHECKPOINT: Função segregada para debug do clique
-  const handleSelectTeacher = (teacher: Teacher) => {
-    console.log("👆 [UI] Card do Professor Clicado:", teacher.name);
-    console.log("   ➤ ID RECEBIDO:", teacher.id);
+  const handleSelectTeacher = (teacher: any) => {
+    // Tenta garantir o ID correto, independente da estrutura do objeto
+    const validId = teacher.user_id || teacher.id || teacher.profile_id;
 
-    if (!teacher.id || teacher.id === 'undefined') {
-      console.error("❌ ERRO CRÍTICO: Professor com ID Inválido!", teacher);
+    console.log("🖱️ CLIQUE NO PROFESSOR:", {
+      nome: teacher.full_name || teacher.name,
+      id_encontrado: validId,
+      objeto_completo: teacher
+    });
+
+    if (!validId || validId === 'undefined') {
+      console.error("⛔ ERRO: Professor sem ID válido!", teacher);
       alert("Erro: Cadastro do professor parece incompleto (sem ID).");
       return;
     }
 
+    // Ensure we passed a clean object or just set the teacher if it's already structured
+    // If the input was 'any', we might want to ensure we have the right structure for selectedTeacher
+    // But for now, we assume 'teacher' has the rest of the props or we construct it.
+    // The previous code passed 'teacher' directly.
     setSelectedTeacher(teacher);
   };
 
