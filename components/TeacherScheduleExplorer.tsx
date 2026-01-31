@@ -170,9 +170,19 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       setDebugRawData({ crash: err.message || err });
     }
 
-    // 3. Fetch Students
-    const { data: stds } = await supabase.from('profiles').select('*').eq('role', 'STUDENT').eq('tenant_id', currentTenantId);
-    if (stds) setStudentsList(stds);
+    // 3. Fetch Students (Guard against undefined tenant)
+    if (currentTenantId) {
+      const { data: stds, error: stdError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'STUDENT')
+        .eq('tenant_id', currentTenantId);
+
+      if (stdError) console.error("❌ Error fetching students:", stdError);
+      else if (stds) setStudentsList(stds);
+    } else {
+      console.warn("⚠️ Skipping students fetch: Tenant ID missing");
+    }
   };
 
   useEffect(() => {
