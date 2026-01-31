@@ -67,7 +67,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   }, [teachers, initialTeacherName]);
 
   const fetchDetailData = async () => {
-    if (!selectedTeacher) return;
+    if (!selectedTeacher) {
+      setDebugRawData({ error: "No teacher selected" });
+      return;
+    }
 
     // 1. Fetch Bookings
     const { data: bookingsData } = await supabase
@@ -105,14 +108,14 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
 
     // 2. Fetch Availability
-    if (selectedTeacher.id) {
+    if (selectedTeacher.id && selectedTeacher.id !== 'undefined' && selectedTeacher.id.length > 30) {
       try {
         const { data: availData, error: availError } = await supabase
           .from('teacher_availability')
           .select('*')
           .eq('teacher_id', selectedTeacher.id);
 
-        setDebugRawData({ data: availData, error: availError, count: availData?.length, teacherId: selectedTeacher.id });
+        setDebugRawData({ data: availData, error: availError, count: availData?.length, teacherId: selectedTeacher.id, status: 'fetched' });
 
         console.log('TeacherScheduleExplorer Debug:', {
           teacherId: selectedTeacher.id,
@@ -135,13 +138,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           });
           setAvailableSlots(newAvail);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Crash fetching availability:", err);
-        setDebugRawData({ crash: err });
+        setDebugRawData({ crash: err.message || err });
       }
     } else {
-      console.warn("Skipping fetch: No Teacher ID");
-      setDebugRawData({ error: "No Teacher ID" });
+      console.warn("Skipping fetch: Invalid Teacher ID", selectedTeacher.id);
+      setDebugRawData({ error: "Invalid Teacher ID", id: selectedTeacher.id });
     }
 
     // 3. Fetch Students
@@ -584,9 +587,12 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       )}
       {/* DEBUG PANEL */}
       <div className="fixed top-20 right-4 bg-black/90 text-green-400 p-4 rounded-xl text-xs font-mono z-[9999] max-w-sm overflow-auto max-h-[80vh] shadow-2xl border-2 border-green-500 box-content">
-        <h4 className="font-bold border-b border-green-500/30 mb-2 pb-1 text-lg">Debug v2</h4>
+        <div className="flex justify-between items-center border-b border-green-500/30 mb-2 pb-1">
+          <h4 className="font-bold text-lg">Debug v3</h4>
+          <button onClick={fetchDetailData} className="bg-green-700 text-white px-2 py-1 rounded hover:bg-green-600">Retry Fetch</button>
+        </div>
         <p>Selected Teacher: {selectedTeacher ? selectedTeacher.name : 'NULL'}</p>
-        <p>Teacher ID: {selectedTeacher?.id || 'UNDEFINED'}</p>
+        <p>Teacher ID: {JSON.stringify(selectedTeacher?.id)}</p>
         <p>ID Length: {selectedTeacher?.id?.length}</p>
         <p className="mt-2 text-yellow-300">Raw Data State:</p>
         <pre className="whitespace-pre-wrap text-[10px] mt-1 text-blue-300 break-all">
