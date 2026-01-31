@@ -93,12 +93,12 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const fetchDetailData = async () => {
     // 1. GUARDA ROBUSTA (Solicitada no Diagnóstico)
     if (!selectedTeacher?.id || selectedTeacher.id === 'undefined') {
-      console.warn("⛔ [FETCH ABORTADO] Nenhum professor válido selecionado para busca.");
+      console.warn("⚠️ Mapa aguardando ID válido..."); // Exact requested log
       setDebugRawData({ error: "Fetch Abortado: ID Inválido ou Nulo" });
       return; // ABORTAR IMEDIATAMENTE
     }
 
-    console.log('🔍 Buscando agenda para ID:', selectedTeacher.id);
+    console.log("🔍 Buscando agenda para:", selectedTeacher.id);
 
     // 1. Fetch Bookings
     const { data: bookingsData } = await supabase
