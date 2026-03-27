@@ -138,7 +138,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         evaluationUnlocked: profile.evaluation_unlocked,
         hourlyRate: profile.hourly_rate,
         status_financial: profile.status_financial,
-        due_day: profile.due_day
+        due_day: profile.due_day,
+        is_trainer: profile.is_trainer
       };
 
       // Check for Redirect (Priority)

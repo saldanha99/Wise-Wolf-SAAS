@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Video, CheckCircle, AlertCircle, Play, MoreVertical, FileText, Upload, Users, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Video, CheckCircle, Play, FileText, Upload, Users, DollarSign } from 'lucide-react';
+import TeacherTrainingView from './TeacherTrainingView';
 
 interface TrainingModule {
     id: string;
@@ -15,9 +16,12 @@ interface TrainingModule {
 
 interface TeacherTrainingAdminProps {
     tenantId: string;
+    currentUser?: any; // To pass created_by
 }
 
-const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId }) => {
+const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, currentUser }) => {
+    const [activeTab, setActiveTab] = useState<'admin' | 'view'>('admin');
+
     const [modules, setModules] = useState<TrainingModule[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
@@ -98,7 +102,8 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId })
                     video_url: newModule.resource_type === 'video' ? newModule.video_url : '',
                     pdf_url: newModule.resource_type === 'pdf' ? finalPdfUrl : null,
                     is_mandatory: newModule.is_mandatory,
-                    category: newModule.category
+                    category: newModule.category,
+                    created_by: currentUser?.id || null
                 });
 
             if (error) throw error;
@@ -150,6 +155,26 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId })
         }
     };
 
+    if (activeTab === 'view') {
+        return (
+            <div className="space-y-6 animate-in fade-in">
+                 <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <div>
+                        <h2 className="text-xl font-black text-slate-800 dark:text-white">Meus Treinamentos</h2>
+                        <p className="text-sm text-slate-500">Área do aluno para assistir aos treinamentos obrigatórios.</p>
+                    </div>
+                    <button
+                        onClick={() => setActiveTab('admin')}
+                        className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-4 py-2 rounded-xl font-bold hover:bg-purple-200 transition-colors"
+                    >
+                        Painel do Treinador
+                    </button>
+                 </div>
+                 <TeacherTrainingView tenantId={tenantId} teacherId={currentUser?.id} />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -158,14 +183,25 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId })
                         <Video className="text-purple-600" />
                         Treinamento de Professores
                     </h2>
-                    <p className="text-slate-500 text-sm">Gerencie vídeos, PDFs e atribuições de treinamento.</p>
+                    <p className="text-slate-500 text-sm">Gerencie vídeos, PDFs e atribuições de treinamento para sua equipe.</p>
                 </div>
-                <button
-                    onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 bg-tenant-primary hover:opacity-90 text-white px-4 py-2 rounded-xl font-bold transition-colors shadow-lg shadow-purple-500/20"
-                >
-                    <Plus size={18} /> Novo Módulo
-                </button>
+                <div className="flex gap-3">
+                    {currentUser?.is_trainer && currentUser?.role === 'TEACHER' && (
+                        <button
+                            onClick={() => setActiveTab('view')}
+                            className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl font-bold transition-colors"
+                            title="Alternar para visão de aluno"
+                        >
+                            Ver Meus Treinamentos
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setIsAdding(true)}
+                        className="flex items-center gap-2 bg-tenant-primary hover:opacity-90 text-white px-4 py-2 rounded-xl font-bold transition-colors shadow-lg shadow-purple-500/20"
+                    >
+                        <Plus size={18} /> Novo Módulo
+                    </button>
+                </div>
             </div>
 
             {/* List */}

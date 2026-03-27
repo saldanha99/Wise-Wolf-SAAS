@@ -54,6 +54,7 @@ export interface User {
   due_day?: number;
   contract_accepted?: boolean;
   accepted_at?: string;
+  is_trainer?: boolean;
 }
 
 export interface Lesson {

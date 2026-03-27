@@ -448,8 +448,8 @@ const App: React.FC = () => {
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,
       'trials': <TrialsToContracts tenantId={currentTenant?.id} user={user} />,
       'hr': <HRModule user={user} tenantId={currentTenant?.id} />,
-      'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN
-        ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} />
+      'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || user.is_trainer
+        ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
     };
 
