@@ -19,6 +19,7 @@ const PublicRegistration: React.FC = () => {
 
     // Affiliate Ref
     const [referrerTeacherId, setReferrerTeacherId] = useState<string | null>(null);
+    const [referrerStudentId, setReferrerStudentId] = useState<string | null>(null);
 
     // Form Fields
     const [name, setName] = useState('');
@@ -82,7 +83,9 @@ const PublicRegistration: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         const encodedData = params.get('data');
         const ref = params.get('ref');
+        const refStudent = params.get('ref_student');
         if (ref) setReferrerTeacherId(ref);
+        if (refStudent) setReferrerStudentId(refStudent);
 
         if (encodedData) {
             try {
@@ -198,9 +201,13 @@ const PublicRegistration: React.FC = () => {
                 // TEMPORARY FIX: Removed professor_id_2 to avoid schema cache "not found" error
             };
 
-            // Affiliate tracking
+            // Affiliate tracking — teacher referral
             if (referrerTeacherId) {
                 profileData.referrer_teacher_id = referrerTeacherId;
+            }
+            // Affiliate tracking — student referral
+            if (referrerStudentId) {
+                profileData.referrer_student_id = referrerStudentId;
             }
 
             const { error: profileError } = await supabase.from('profiles').upsert(profileData);

@@ -29,7 +29,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
             const referrals = count || 0;
             setStats({
                 referrals,
-                totalEarnings: referrals * 49 // R$49 fixos por indicação
+                totalEarnings: referrals * 45 // R$45 fixos por indicação
             });
         } catch (err) {
             console.error('Error fetching affiliate stats:', err);

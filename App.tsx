@@ -51,6 +51,7 @@ const HRModule = lazy(() => import('./components/HRModule'));
 const TeacherTrainingAdmin = lazy(() => import('./components/training/TeacherTrainingAdmin'));
 const TeacherTrainingView = lazy(() => import('./components/training/TeacherTrainingView'));
 const ManualTrialScheduler = lazy(() => import('./components/ManualTrialScheduler'));
+const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
@@ -323,7 +324,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
-      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile'];
+      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral'];
       if (!allowedStudentTabs.includes(activeTab)) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-red-100 dark:border-red-900/30 shadow-xl overflow-hidden relative">
@@ -451,6 +452,7 @@ const App: React.FC = () => {
       'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || user.is_trainer
         ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
+      'referral': <AffiliatePanel user={user} />,
     };
 
     return contentMap[activeTab] || contentMap['dashboard'];
@@ -536,7 +538,8 @@ const App: React.FC = () => {
                       'tenants': 'Tenants',
                       'billing': 'Faturamento',
                       'settings': 'Configurações',
-                      'profile': 'Meu Perfil'
+                      'profile': 'Meu Perfil',
+                      'referral': 'Indicações & Afiliação'
                     };
                     return titles[activeTab] || activeTab.replace('_', ' ');
                   })()}

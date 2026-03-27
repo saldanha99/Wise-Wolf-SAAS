@@ -30,7 +30,8 @@ import {
     Search,
     School,
     Brain, // Added
-    Briefcase
+    Briefcase,
+    Gift
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
 
@@ -86,6 +87,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
         { id: 'training', label: 'Treinamentos', icon: GraduationCap },
         { id: 'automation', label: 'Smart', icon: Zap },
+        { id: 'referral', label: 'Indicações', icon: Gift },
     ];
 
     const studentMenu: MenuItem[] = [
@@ -96,6 +98,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'materials', label: 'Materiais', icon: Book },
         { id: 'financial', label: 'Financeiro', icon: CreditCard },
         { id: 'evolution', label: 'Evolução', icon: Sparkles },
+        { id: 'referral', label: 'Indicações', icon: Gift },
     ];
 
     const schoolAdminMenu: MenuItem[] = [
