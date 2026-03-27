@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Clock,
   RefreshCw,
-  Plus
+  Plus,
+  Zap
 } from 'lucide-react';
 import { MOCK_BOOKINGS } from '../constants';
 import { Teacher, Reschedule } from '../types';
@@ -63,27 +64,40 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const fetchDetailData = async () => {
     if (!selectedTeacher) return;
 
-    // 1. Fetch Bookings
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select(`
-              id, day_of_week, time_slot, type, module,
-              student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)
-          `)
-      .eq('teacher_id', selectedTeacher.id);
+    // 1. Fetch Bookings, Availability and Trials in Parallel
+    const [bookingsRes, availRes, trialsRes, stdsRes] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('id, day_of_week, time_slot, type, module, student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)')
+        .eq('teacher_id', selectedTeacher.id),
+      supabase
+        .from('teacher_availability')
+        .select('*')
+        .eq('teacher_id', selectedTeacher.id),
+      supabase
+        .from('appointments')
+        .select('*')
+        .eq('teacher_id', selectedTeacher.id)
+        .eq('type', 'experimental'),
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'STUDENT')
+        .eq('tenant_id', currentTenantId)
+    ]);
 
-    if (bookingsData) {
-      const newBookings: Record<string, any> = {};
-      bookingsData.forEach((b: any) => {
+    const newBookings: Record<string, any> = {};
+
+    if (bookingsRes.data) {
+      bookingsRes.data.forEach((b: any) => {
         const dayMap: Record<string, number> = {
           'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5
         };
         const dIdx = dayMap[b.day_of_week];
         if (typeof b.time_slot === 'string') {
-          const timeKey = b.time_slot.substring(0, 5); // Ensure HH:mm format
+          const timeKey = b.time_slot.substring(0, 5);
           if (dIdx !== undefined) {
-            const key = `${dIdx}-${timeKey}`;
-            newBookings[key] = {
+             newBookings[`${dIdx}-${timeKey}`] = {
               id: b.id,
               studentId: b.student?.id,
               student: b.student?.full_name || 'Aluno',
@@ -95,22 +109,33 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           }
         }
       });
-      setBookings(newBookings);
     }
 
-    // 2. Fetch Availability (New Table)
-    const { data: availData } = await supabase
-      .from('teacher_availability')
-      .select('*')
-      .eq('teacher_id', selectedTeacher.id);
+    if (trialsRes.data) {
+      trialsRes.data.forEach((t: any) => {
+        const dateObj = new Date(t.date);
+        const day = dateObj.getDay(); 
+        const dIdx = day === 0 ? -1 : day - 1; 
 
-    if (availData) {
+        if (dIdx >= 0 && dIdx <= 5 && t.time) {
+          const timeKey = t.time.substring(0, 5);
+          newBookings[`${dIdx}-${timeKey}`] = {
+            id: `trial-${t.id}`,
+            student: t.student_name || 'Aula Experimental',
+            module: 'TRIAL',
+            type: 'AULA EXPERIMENTAL',
+            isTrial: true
+          };
+        }
+      });
+    }
+
+    setBookings(newBookings);
+
+    if (availRes.data) {
       const newAvail = new Set<string>();
-      availData.forEach((item: any) => {
-        // DB Integer: 1=Mon, 6=Sat
-        // Explorer Index: 0=Mon, 5=Sat
+      availRes.data.forEach((item: any) => {
         const dIdx = item.day_of_week - 1;
-
         if (item.start_time) {
           const timeKey = item.start_time.substring(0, 5);
           if (dIdx >= 0 && dIdx <= 5) {
@@ -121,9 +146,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       setAvailableSlots(newAvail);
     }
 
-    // 3. Fetch Students
-    const { data: stds } = await supabase.from('profiles').select('*').eq('role', 'STUDENT').eq('tenant_id', currentTenantId);
-    if (stds) setStudentsList(stds);
+    if (stdsRes.data) {
+      setStudentsList(stdsRes.data);
+    }
   };
 
   useEffect(() => {
@@ -614,13 +639,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                 </div>
                               ) : booking ? (
                                 <div
-                                  onClick={() => setEditingBooking(booking)}
-                                  className="w-full h-full bg-emerald-500 dark:bg-emerald-600 border border-emerald-600 dark:border-emerald-500 rounded-md p-1 flex flex-col justify-center hover:scale-[1.02] transition-transform cursor-pointer shadow-md group/booking"
+                                  onClick={() => !booking.isTrial && setEditingBooking(booking)}
+                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-transform cursor-pointer shadow-md group/booking ${booking.isTrial 
+                                    ? 'bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse hover:scale-105' 
+                                    : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'}`}
                                 >
-                                  <p className="text-[7px] font-black text-white uppercase truncate leading-tight">{booking.student}</p>
+                                  <div className="flex items-center gap-1 overflow-hidden">
+                                     {booking.isTrial && <Zap size={6} className="text-white fill-current shrink-0" />}
+                                     <p className="text-[7px] font-black text-white uppercase truncate leading-tight">{booking.student}</p>
+                                  </div>
                                   <div className="flex justify-between items-center mt-0.5">
                                     <p className="text-[6px] font-bold text-emerald-100 uppercase">{booking.module}</p>
-                                    {/* Removed Plus icon to save space */}
                                   </div>
                                 </div>
                               ) : isAvailable ? (

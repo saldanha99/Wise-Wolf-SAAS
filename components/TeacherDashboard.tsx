@@ -101,11 +101,15 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       // 3. Earnings (Sum from logs this month)
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('presence, subtype, class_date, created_at')
+        .select('presence, subtype, class_date, created_at, booking_id, reschedule_id, appointment_id')
         .eq('teacher_id', user.id)
         .gte('class_date', startOfMonth);
 
-      const paidLogs = (logs || []).filter(l => l.presence !== 'Falta do Professor' && l.subtype !== 'REPOSIÇÃO');
+      // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
+      const paidLogs = (logs || []).filter(l => 
+        l.presence !== 'Falta do Professor' && 
+        l.subtype !== 'REPOSIÇÃO'
+      );
       const earnings = paidLogs.length * (user.hourlyRate || 7.50);
 
       setStats({
@@ -131,8 +135,19 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('tenant_id', effectiveTenantId)
         .or(`start_date.lte.${todayISO},start_date.is.null`);
 
+      // 3. Trials Today (from appointments table)
+      const { data: trials } = await supabase
+        .from('appointments')
+        .select(`
+          id, time, date, student_name, student_phone, type, status
+        `)
+        .eq('teacher_id', user.id)
+        .eq('date', todayISO)
+        .eq('type', 'experimental')
+        .eq('tenant_id', effectiveTenantId);
+
       const upcomingRegular = (bComplete || [])
-        .filter(b => b.time_slot >= currentTimeStr)
+        .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
         .map(b => ({
           name: (b.student as any)?.full_name || 'Desconhecido',
           time: b.time_slot,
@@ -144,7 +159,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         }));
 
       const upcomingRepos = (todayRepos || [])
-        .filter(r => r.time >= currentTimeStr)
+        .filter(r => r.time >= currentTimeStr && !logs?.some(l => l.reschedule_id === r.id && l.class_date === todayISO))
         .map(r => ({
           name: (r.student as any)?.full_name || 'Reposição',
           time: r.time,
@@ -155,7 +170,22 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           type: 'REPOSIÇÃO'
         }));
 
-      setUpcomingLessons([...upcomingRegular, ...upcomingRepos].sort((a, b) => a.time.localeCompare(b.time)).slice(0, 4));
+      const upcomingTrials = (trials || [])
+        .filter(t => t.time >= currentTimeStr && !logs?.some(l => l.appointment_id === t.id && l.class_date === todayISO))
+        .map(t => ({
+          name: t.student_name || 'Aula Experimental',
+          time: t.time,
+          module: 'EXPERIMENTAL',
+          img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
+          meet: user.meeting_link, // Usually teacher's own link
+          phone: t.student_phone,
+          type: 'TRIAL'
+        }));
+
+      setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials]
+        .sort((a, b) => a.time.localeCompare(b.time))
+        .slice(0, 4)
+      );
 
       // 5. Weekly Chart Data (Last 7 days)
       const last7DaysLogs = (logs || []).filter(l => {
@@ -404,19 +434,25 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 relative z-10 custom-scrollbar">
               {upcomingLessons.length > 0 ? upcomingLessons.map((aula, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 hover:border-purple-200 transition-all group">
+                <div key={i} className={`flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-800/50 border transition-all group ${aula.type === 'TRIAL' 
+                    ? 'border-purple-200 dark:border-purple-900/50 bg-purple-50/30' 
+                    : 'border-slate-100 dark:border-slate-700 hover:border-purple-100'}`}>
                   <div className="relative shrink-0">
                     <img src={aula.img} className="w-12 h-12 rounded-2xl object-cover shadow-sm" alt={aula.name} />
-                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full" />
+                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 border-2 border-white dark:border-slate-800 rounded-full ${aula.type === 'TRIAL' ? 'bg-purple-500' : 'bg-emerald-500'}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{aula.name}</p>
                     <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
                       <span className="flex items-center gap-1 font-medium bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md shadow-sm">
-                        <Clock size={10} className="text-purple-500" /> {aula.time}
+                        <Clock size={10} className={aula.type === 'TRIAL' ? 'text-purple-600' : 'text-purple-500'} /> {aula.time}
                       </span>
-                      <span className="truncate">{aula.module}</span>
+                      {aula.type === 'TRIAL' ? (
+                        <span className="text-[9px] font-black bg-purple-600 text-white px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse">Experimental</span>
+                      ) : (
+                        <span className="truncate">{aula.module}</span>
+                      )}
                     </div>
                   </div>
 

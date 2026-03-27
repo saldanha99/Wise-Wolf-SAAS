@@ -152,17 +152,27 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                                 <div className="grid grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_minmax(120px,1fr)_minmax(100px,1fr)_minmax(200px,2fr)] gap-4 py-4 items-center">
                                     {/* Student Info */}
                                     <div className="flex items-center gap-3 pr-4 pl-2">
-                                        {item.avatar ? (
-                                            <img src={item.avatar} className="w-9 h-9 rounded-xl object-cover shadow-sm bg-slate-100 shrink-0" alt="" />
-                                        ) : (
-                                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm shrink-0">
-                                                {item.name.substring(0, 2).toUpperCase()}
-                                            </div>
-                                        )}
+                                        <div className="relative">
+                                            {item.avatar ? (
+                                                <img src={item.avatar} className={`w-9 h-9 rounded-xl object-cover shadow-sm bg-slate-100 shrink-0 border-2 ${item.type === 'AULA EXPERIMENTAL' ? 'border-purple-500' : 'border-transparent'}`} alt="" />
+                                            ) : (
+                                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-sm shrink-0 ${item.type === 'AULA EXPERIMENTAL' ? 'bg-purple-600' : 'bg-gradient-to-br from-indigo-500 to-purple-500'}`}>
+                                                    {item.name.substring(0, 2).toUpperCase()}
+                                                </div>
+                                            )}
+                                            {item.type === 'AULA EXPERIMENTAL' && (
+                                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-600 border border-white dark:border-slate-800 rounded-full animate-pulse" />
+                                            )}
+                                        </div>
                                         <div className="overflow-hidden min-w-0">
-                                            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate" title={item.name}>{item.name}</h4>
+                                            <div className="flex items-center gap-2">
+                                                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate" title={item.name}>{item.name}</h4>
+                                                {item.type === 'AULA EXPERIMENTAL' && (
+                                                    <span className="text-[7px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded uppercase tracking-[0.1em] animate-pulse">Trial</span>
+                                                )}
+                                            </div>
                                             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 truncate">
-                                                {item.level && <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider shrink-0">{item.level}</span>}
+                                                {item.level && <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider shrink-0 ${item.type === 'AULA EXPERIMENTAL' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-black' : 'bg-slate-100 dark:bg-slate-800'}`}>{item.level}</span>}
                                                 {item.date}
                                             </p>
                                         </div>

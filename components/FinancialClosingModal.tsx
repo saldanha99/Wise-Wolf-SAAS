@@ -47,6 +47,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
             if (error) throw error;
 
+            // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
             const paidLessons = (logs || []).filter(l =>
                 l.presence !== 'Falta do Professor' &&
                 l.subtype !== 'REPOSIÇÃO'

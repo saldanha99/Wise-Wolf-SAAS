@@ -58,9 +58,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .eq('teacher_id', user.id)
           .eq('date', dateStr);
 
+        const { data: appointments } = await supabase
+          .from('appointments')
+          .select('id, time, student_name, student_phone, type, status, date')
+          .eq('teacher_id', user.id)
+          .eq('date', dateStr)
+          .eq('type', 'experimental');
+
         const { data: logs } = await supabase
           .from('class_logs')
-          .select('booking_id, reschedule_id')
+          .select('booking_id, reschedule_id, appointment_id')
           .eq('teacher_id', user.id)
           .eq('class_date', dateStr);
 
@@ -125,6 +132,32 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             }
           }
         }
+
+        // Trials (from appointments)
+        if (appointments) {
+          for (const t of appointments) {
+            if (i === 0) {
+              const [h, m] = t.time.split(':').map(Number);
+              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
+            }
+            if (!logs?.some(l => l.appointment_id === t.id)) {
+              allLessons.push({
+                id: `trial-${t.id}`,
+                studentId: null, // Lead doesn't have a profile yet usually
+                leadName: t.student_name,
+                name: t.student_name || 'Aula Experimental',
+                date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
+                dateObj: dateStr,
+                avatar: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
+                level: 'TRIAL',
+                type: 'AULA EXPERIMENTAL',
+                isLate: i > 0,
+                suggestedTopic: 'Avaliação de Nível',
+                suggestedMaterial: null
+              });
+            }
+          }
+        }
       }
 
       const currentMonthYear = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
@@ -165,21 +198,21 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const item = todayLessons.find(l => String(l.id) === bookingId);
         const data = formData[bookingId];
 
-        if (!item?.studentId) return null;
+        if (!item) return null;
 
         const isReschedule = String(bookingId).startsWith('repo-');
+        const isTrial = String(bookingId).startsWith('trial-');
 
         return {
           tenant_id: tenantId,
           teacher_id: user.id,
-          student_id: item.studentId,
-          booking_id: !isReschedule ? bookingId : null,
+          student_id: item.studentId || null,
+          booking_id: (!isReschedule && !isTrial) ? bookingId : null,
           reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
+          appointment_id: isTrial ? bookingId.replace('trial-', '') : null,
           presence: data.type || 'Presença',
           subtype: item.type === 'AULA EXPERIMENTAL' ? 'AULA EXPERIMENTAL' : (isReschedule ? 'REPOSIÇÃO' : (data.subtype || null)),
           content_covered: data.lastApplied || null, // Book Selection
-          student_difficulties: null, // Removed field
-          homework_assigned: null, // Removed field
           observations: data.observation || null, // Free text OBS
 
           // Trial Fields
