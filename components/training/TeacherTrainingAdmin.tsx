@@ -29,13 +29,15 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
     const [assignModalModule, setAssignModalModule] = useState<string | null>(null);
     const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
 
+    const defaultResourceType = currentUser?.role === 'TEACHER' ? 'meet' : 'video';
+
     // New Module Form
     const [newModule, setNewModule] = useState({
         title: '',
         description: '',
         video_url: '',
         pdf_url: '',
-        resource_type: 'video' as 'video' | 'pdf' | 'meet',
+        resource_type: defaultResourceType as 'video' | 'pdf' | 'meet',
         is_mandatory: true,
         category: 'Methodology'
     });
@@ -108,7 +110,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
 
             if (error) throw error;
 
-            setNewModule({ title: '', description: '', video_url: '', pdf_url: '', resource_type: 'video', is_mandatory: true, category: 'Methodology' });
+            setNewModule({ title: '', description: '', video_url: '', pdf_url: '', resource_type: defaultResourceType as 'video' | 'pdf' | 'meet', is_mandatory: true, category: 'Methodology' });
             setPdfFile(null);
             setIsAdding(false);
             fetchModules();
@@ -313,14 +315,16 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             {/* Resource Type Toggle */}
                             <div>
                                 <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Tipo de Conteúdo</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setNewModule({ ...newModule, resource_type: 'video' })}
-                                        className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'video' ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
-                                    >
-                                        <Video size={16} /> Vídeo
-                                    </button>
+                                <div className={`grid gap-3 ${currentUser?.role !== 'TEACHER' ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                                    {currentUser?.role !== 'TEACHER' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewModule({ ...newModule, resource_type: 'video' })}
+                                            className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'video' ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                                        >
+                                            <Video size={16} /> Vídeo
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => setNewModule({ ...newModule, resource_type: 'meet' })}
@@ -328,13 +332,15 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                     >
                                         <Mic size={16} /> Ao Vivo
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setNewModule({ ...newModule, resource_type: 'pdf' })}
-                                        className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'pdf' ? 'border-red-600 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
-                                    >
-                                        <FileText size={16} /> PDF
-                                    </button>
+                                    {currentUser?.role !== 'TEACHER' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewModule({ ...newModule, resource_type: 'pdf' })}
+                                            className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'pdf' ? 'border-red-600 bg-red-50 text-red-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                                        >
+                                            <FileText size={16} /> PDF
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
