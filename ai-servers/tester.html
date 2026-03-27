@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolfie Multi-Agent Tester</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        textarea, input { width: 100%; background: #0f172a; color: white; border: 1px solid #334155; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-family: inherit; }
+        button { background: #3b82f6; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2563eb; }
+        pre { background: #000; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px; color: #10b981; }
+        .flex { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🐺 Tester: Multi-Agent Architecture</h1>
+    <p>Test each agent individually on its dedicated port.</p>
+
+    <div class="card">
+        <h3>Gemini API Key</h3>
+        <input type="password" id="apiKey" placeholder="Cole sua GEMINI_API_KEY aqui para testar">
+    </div>
+
+    <div class="card">
+        <h3>1. Proofreader (Port 3001)</h3>
+        <textarea id="p-input" rows="2">what does you means?</textarea>
+        <button onclick="testAgent(3001, { text: document.getElementById('p-input').value }, 'p-out')">Test Proofreader</button>
+        <pre id="p-out">Response will appear here...</pre>
+    </div>
+
+    <div class="card">
+        <h3>2. Chat (Port 3002)</h3>
+        <textarea id="c-input" rows="2">what does you means?</textarea>
+        <button onclick="testAgent(3002, { text: document.getElementById('c-input').value }, 'c-out')">Test Chat</button>
+        <pre id="c-out">Response will appear here...</pre>
+    </div>
+
+    <div class="card">
+        <h3>3. Translator (Port 3003)</h3>
+        <textarea id="t-input" rows="2">I mean, what exactly are you trying to say? Can you explain further?</textarea>
+        <button onclick="testAgent(3003, { text: document.getElementById('t-input').value }, 't-out')">Test Translator</button>
+        <pre id="t-out">Response will appear here...</pre>
+    </div>
+
+    <div class="card">
+        <h3>4. Vocabulary (Port 3004)</h3>
+        <div class="flex">
+            <textarea id="v-student" rows="2" placeholder="Student">what does you means?</textarea>
+            <textarea id="v-tutor" rows="2" placeholder="Tutor">I mean, what exactly are you trying to say? Can you elucidate further?</textarea>
+        </div>
+        <button onclick="testAgent(3004, { studentText: document.getElementById('v-student').value, tutorText: document.getElementById('v-tutor').value }, 'v-out')">Test Vocabulary</button>
+        <pre id="v-out">Response will appear here...</pre>
+    </div>
+
+    <div class="card">
+        <h3>5. Quiz (Port 3005)</h3>
+        <div class="flex">
+            <textarea id="q-student" rows="2" placeholder="Student">I work with property evaluation.</textarea>
+            <textarea id="q-tutor" rows="2" placeholder="Tutor">That's amazing! Real estate evaluation is a very interesting field. How long have you been an appraiser?</textarea>
+        </div>
+        <button onclick="testAgent(3005, { studentText: document.getElementById('q-student').value, tutorText: document.getElementById('q-tutor').value }, 'q-out')">Test Quiz</button>
+        <pre id="q-out">Response will appear here...</pre>
+    </div>
+
+    <script>
+        async function testAgent(port, payload, outId) {
+            const outNode = document.getElementById(outId);
+            const apiKey = document.getElementById('apiKey').value;
+            if (!apiKey) {
+                alert("Por favor, cole a API Key primeiro.");
+                return;
+            }
+            
+            outNode.textContent = "Loading...";
+            try {
+                const res = await fetch(`http://localhost:${port}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...payload, apiKey })
+                });
+                
+                const data = await res.json();
+                outNode.textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                outNode.textContent = "Erro de conexão! O servidor está rodando na porta " + port + "?\n" + err.message;
+            }
+        }
+    </script>
+</body>
+</html>

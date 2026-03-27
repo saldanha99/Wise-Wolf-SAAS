@@ -1,0 +1,84 @@
+# Prompt: Criação da Página "Trabalhe Conosco" (Módulo de RH)
+
+**Contexto:**
+Você atua como Arquiteto Frontend Sênior trabalhando no site institucional da "Wise Wolf Language" (ou instituição com `tenant_id` específico). O site institucional e o SAAS de gestão (Painel Administrativo) compartilham o mesmo banco de dados Supabase. 
+
+Nós acabamos de criar um módulo de **Recursos Humanos (RH)** no painel do Diretor para gerenciar candidaturas de emprego. 
+
+**Objetivo:**
+Sua missão agora é criar ou atualizar a página **Trabalhe Conosco** no repositório do Site Institucional para que os candidatos consigam enviar seus currículos.
+
+A página deve conter:
+1. Uma seção de cabeçalho (Hero) comunicando cultura e valores da empresa.
+2. Vagas em aberto (se desejar mockar ou puxar do banco, opcional).
+3. **Um formulário de inscrição obrigatório**.
+
+### Formulário de Currículo
+O formulário de inscrição deve conter os seguintes campos:
+- **Nome Completo** (Input text)
+- **WhatsApp** (Input text, de preferência com máscara)
+- **Currículo** (Input file - aceitando apenas PDF)
+
+### Lógica de Envio (Integração com Supabase JS)
+Quando o candidato clicar em "Enviar Currículo", você deve implementar a seguinte lógica sequencial utilizando o `@supabase/supabase-js`:
+
+1.  **Validação:** Garantir que o Nome, WhatsApp e o arquivo PDF foram preenchidos.
+2.  **Upload do Currículo para o Storage:**
+    -   Hospedar o PDF no bucket chamado `resumes`.
+    -   O caminho sugerido é: `${tenant_id}/${Date.now()}_${file.name}`.
+    -   Exemplo de código:
+        ```javascript
+        const filePath = `default/${Date.now()}_${pdfFile.name}`; // Troque 'default' pelo tenant_id correto se houver
+        const { data: uploadData, error: uploadError } = await supabase
+          .storage
+          .from('resumes')
+          .upload(filePath, pdfFile);
+        
+        // Obter URL Pública após upload:
+        const { data: publicURLData } = supabase.storage.from('resumes').getPublicUrl(uploadData.path);
+        const resume_url = publicURLData.publicUrl;
+        ```
+3.  **Inserção na Tabela `job_applications`:**
+    -   Após recuperar a `resume_url`, insira uma nova linha na tabela `job_applications`.
+    -   Objeto esperado:
+        ```javascript
+        const { error: insertError } = await supabase
+          .from('job_applications')
+          .insert({
+            tenant_id: 'default', // Substitua pelo ID do seu tenant (ex: da variavel de ambiente ou constante)
+            name: nomeCompleto,
+            whatsapp: numeroWhatsApp,
+            resume_url: resume_url,
+            status: 'Novo'
+          });
+        ```
+4.  **Disparo Automático de WhatsApp (Edge Function):**
+    -   Imediatamente após a inserção com sucesso, chame a Edge Function `whatsapp-hr-welcome` para enviar uma mensagem de confirmação ao candidato via WhatsApp (pela instância conectada da escola).
+    -   Exemplo de código:
+        ```javascript
+        // Após o insert com sucesso:
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        await fetch(`${supabaseUrl}/functions/v1/whatsapp-hr-welcome`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            whatsapp: numeroWhatsApp,
+            name: nomeCompleto,
+            tenant_id: 'default' // Mesmo tenant_id usado no insert
+          })
+        });
+        ```
+    -   **Nota:** Esse disparo NÃO deve bloquear o fluxo do usuário. Se falhar, apenas logue o erro no console. O candidato já terá a confirmação visual na tela.
+5.  **Feedback:** Apresentar Toast ou Mensagem de Sucesso para o candidato e limpar o formulário.
+
+**Requisitos Técnicos:**
+- Use **Next.js 14**, **Tailwind CSS**, e **Lucide React**.
+- A página deve manter o design system premium ("glassmorphism", sombras suaves).
+- Garanta que a inserção vai respeitar o RLS público configurado.
+
+**Instruções para o Agente:**
+Implemente os componentes visuais dessa página (`TrabalheConosco.tsx` ou similar), crie o formulário, certifique-se de configurar o Supabase client adequadamente com `NEXT_PUBLIC_SUPABASE_URL` e `anon_key`, e realize os testes de upload para o bucket `resumes`.
+

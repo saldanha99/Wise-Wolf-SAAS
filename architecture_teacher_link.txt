@@ -1,0 +1,125 @@
+# Arquitetura do Sistema: Gerador de Links de Professores
+
+Este documento detalha o funcionamento técnico, fluxo de dados e infraestrutura do sistema de convites para professores ("Teacher Invite Generator").
+
+## 1. Visão Geral do Fluxo
+
+O sistema permite que administradores gerem links únicos para cadastro de novos professores. Esses links carregam parâmetros de configuração (valor hora/aula, matéria) codificados na URL, garantindo que o professor se cadastre já com os termos corretos da proposta.
+
+### Fluxo de Alto Nível
+1.  **Geração**: Admin insere dados -> Sistema codifica em Base64 -> Gera URL única.
+2.  **Roteamento**: Usuário acessa URL -> Vercel reescreve para SPA -> React Router carrega componente.
+3.  **Consumo**: Componente lê URL -> Decodifica Base64 -> Preenche formulário.
+
+---
+
+## 2. Componentes Envolvidos
+
+### Indíce de Arquivos
+1.  `components/TeacherInviteGenerator.tsx` (Produtor)
+2.  `constants.tsx` (Configuração de Ambiente)
+3.  `App.tsx` (Roteador Central)
+4.  `vercel.json` (Configuração de Servidor / Edge)
+5.  `components/TeacherOnboarding.tsx` (Consumidor)
+
+---
+
+## 3. Detalhamento Técnico
+
+### A. Geração do Link (Producer)
+**Arquivo:** `components/TeacherInviteGenerator.tsx`
+
+O componente coleta `hourlyRate` e `subject` e cria um payload JSON:
+
+```typescript
+const payload = {
+    hourlyRate: 35,
+    subject: "Inglês",
+    tenantId: "wise-wolf-school"
+};
+```
+
+**Codificação:**
+Para tornar a URL limpa e transportável, o payload é serializado em JSON e depois codificado em Base64 (função `btoa`).
+
+**Construção da URL:**
+Utiliza a constante `APP_BASE_URL` para garantir que o link funcione tanto em desenvolvimento (localhost) quanto em produção.
+-   Formato: `{APP_BASE_URL}/teacher-onboarding?offer={BASE64_PAYLOAD}`
+
+### B. Configuração de Ambiente
+**Arquivo:** `constants.tsx`
+
+A constante `APP_BASE_URL` define a raiz do link. Foi implementada uma lógica dinâmica para detectar o ambiente:
+
+```typescript
+export const APP_BASE_URL = window.location.origin;
+```
+Isso resolve problemas de hardcoding, permitindo que links gerados em `localhost:3000` apontem para `localhost:3000` e em produção apontem para o domínio real.
+
+### C. Infraestrutura de Roteamento (Server-Side)
+**Arquivo:** `vercel.json`
+
+Como é uma Single Page Application (SPA), o servidor precisa saber lidar com rotas que não são arquivos físicos.
+A regra de reescrita (Rewrite) configurada captura qualquer caminho que não seja um arquivo estático e redireciona para o `index.html`:
+
+```json
+{
+  "source": "/(.*)",
+  "destination": "/index.html"
+}
+```
+Isso previne o erro **404 Not Found** ao acessar diretamente links internos como `/teacher-onboarding`.
+
+### D. Roteamento da Aplicação (Client-Side)
+**Arquivo:** `App.tsx`
+
+O roteador simples verifica o `window.location.pathname`. Se for `/teacher-onboarding`, ele interrompe o fluxo padrão (Dashboard/Login) e renderiza o componente público de cadastro.
+
+```typescript
+if (path === '/teacher-onboarding') {
+    return <TeacherOnboarding />;
+}
+```
+
+### E. Consumo e Decodificação (Consumer)
+**Arquivo:** `components/TeacherOnboarding.tsx`
+
+Ao carregar, o componente executa um `useEffect` para:
+1.  Ler os parâmetros da URL (`window.location.search`).
+2.  Extrair o parâmetro `offer`.
+3.  Decodificar de Base64 para String (`atob`).
+4.  Parsear JSON para Objeto JS.
+
+```typescript
+const encodedOffer = params.get('offer');
+const jsonStr = atob(encodedOffer);
+const data = JSON.parse(jsonStr);
+```
+
+**Validação de Integridade:**
+Se o JSON estiver malformado ou o Base64 inválido, o sistema captura o erro no bloco `try-catch` e exibe uma mensagem de "Link Inválido".
+
+## 4. Diagrama de Dados
+
+[Admin] 
+   | (Input: R$ 50, Inglês)
+   v
+[TeacherInviteGenerator]
+   | JSON: { hourlyRate: 50, subject: "Inglês" }
+   | Base64: eyJob3VybHlSYXRlIjo1MCwic3ViamVjdCI6IkluZ2zDqnMifQ==
+   v
+[URL Gerada]
+   | https://site.com/teacher-onboarding?offer=eyJob...
+   v
+[Vercel Server]
+   | Recebe request em /teacher-onboarding
+   | Rewrite -> /index.html
+   v
+[App.tsx]
+   | Detecta rota /teacher-onboarding
+   | Renderiza <TeacherOnboarding />
+   v
+[TeacherOnboarding]
+   | Decode Base64 -> JSON
+   | Popula tela com "Valor: R$ 50" e "Inglês"
+```

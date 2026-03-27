@@ -1,0 +1,62 @@
+
+# Prompt: Criação do Site Institucional Wise Wolf Language
+
+**Contexto:**
+Você atua como Arquiteto Frontend Sênior e deve criar o código fonte para o site institucional da "Wise Wolf Language". Este projeto ficará em um repositório separado, mas se conectará ao backend Supabase existente para captura de leads e autenticação (se necessário).
+
+**Objetivo:**
+Criar uma Landing Page de alta conversão, com design moderno ("Enterprise/Premium"), que transmita autoridade e inovação. O site deve seguir a identidade visual da Wise Wolf (tons de azul escuro, roxo, vidro/glassmorphism, tipografia moderna).
+
+**Tech Stack:**
+- **Framework:** Next.js 14 (App Router)
+- **Styling:** Tailwind CSS (foco em animações sutis, gradientes e glassmorphism)
+- **Icons:** Lucide React
+- **Backend Integration:** Supabase JS Client (`@supabase/supabase-js`)
+- **Animation:** Framer Motion (para transições de entrada e hover effects)
+
+**Estrutura do Site (Single Page ou Multi-page):**
+
+1.  **Header (Navbar):**
+    -   Logo "Wise Wolf".
+    -   Links: Metodologia, Planos, Sobre, Contato.
+    -   CTA: "Área do Aluno" (Link para o sistema SAAS: `app.wisewolf.com.br` - *exemplo*).
+
+2.  **Hero Section (Dobra Principal):**
+    -   Headline impactante (ex: "Domine o Inglês com Inteligência e Flexibilidade").
+    -   Subheadline focada em dor/solução (ex: "Aulas personalizadas, horários flexíveis e plataforma gamificada").
+    -   CTA Principal: "Agendar Aula Experimental" (Scroll para formulário).
+    -   Background com "Aurora Effect" ou vídeo sutil.
+
+3.  **Seção de Metodologia (The Wolf Method):**
+    -   Explicação visual dos diferenciais (Foco em conversação, material interativo, etc).
+    -   Cards com ícones (Lucide) explicando os pilares.
+
+4.  **Prova Social (Testimonials):**
+    -   Carrossel de alunos satisfeitos com fotos e depoimentos.
+
+5.  **Planos e Preços (Pricing):**
+    -   Cards comparativos (Mensal, Semestral, Anual).
+    -   Destaque para o plano "Best Seller".
+    -   Botão "Quero este plano" redirecionando para WhatsApp ou Formulário.
+
+6.  **Captura de Leads (Formulário CRM):**
+    -   Campos: Nome, Email, Telefone (WhatsApp), Objetivo.
+    -   **Integração Crítica:** Ao submeter, este formulário deve inserir os dados na tabela `leads` (ou disparar Edge Function) do Supabase da Wise Wolf.
+    -   *Nota Técnica:* O código deve inicializar o cliente Supabase usando variáveis de ambiente (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+
+7.  **Footer:**
+    -   Links institucionais.
+    -   Redes Sociais.
+    -   Copyright.
+
+**Requisitos Técnicos e de Qualidade:**
+-   **Responsividade:** Mobile-first total.
+-   **SEO:** Meta tags otimizadas, estrutura semântica (H1, H2...).
+-   **Performance:** Imagens otimizadas (next/image), lazy loading.
+-   **Design:** Use sombras suaves (`shadow-2xl`, `shadow-blue-500/20`), bordas finas com transparência (`border-white/10`), e fundos com blur (`backdrop-blur-md`).
+
+**Instruções para o Desenvolvedor (AI):**
+1.  Comece configurando o projeto Next.js com Tailwind.
+2.  Crie os componentes separadamente (`Hero.tsx`, `Pricing.tsx`, `LeadForm.tsx`).
+3.  No `LeadForm.tsx`, implemente a chamada `supabase.from('leads').insert({...})`. Caso a tabela `leads` não exista publicamente, instrua a criar uma Edge Function ou tabela de staging.
+4.  Entregue o código organizado e pronto para deploy na Vercel.

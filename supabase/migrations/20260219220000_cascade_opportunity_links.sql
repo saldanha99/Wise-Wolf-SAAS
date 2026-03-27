@@ -1,0 +1,1 @@
+ALTER TABLE public.enrollment_links DROP CONSTRAINT IF EXISTS enrollment_links_opportunity_id_fkey; ALTER TABLE public.enrollment_links ADD CONSTRAINT enrollment_links_opportunity_id_fkey FOREIGN KEY (opportunity_id) REFERENCES public.opportunities(id) ON DELETE CASCADE;  
