@@ -1,0 +1,64 @@
+# Dependências
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build e Saída
+dist/
+build/
+out/
+.next/
+.vercel/
+
+# Logs e Dumps de Dados
+*.log
+build_output*.log
+*.txt
+*.csv
+*.xlsx
+*.pdf
+*.docx
+*.json
+!package.json
+!tsconfig.json
+!*.config.json
+!supabase/seed.json
+
+# Arquivos Temporários e HTMLs de Cache
+temp_*.html
+raw.html
+*.tmp
+*.temp
+
+# Mídia e Assets Pesados
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.svg
+*.ico
+*.mp4
+*.mov
+*.avi
+*.zip
+*.tar.gz
+*.rar
+
+# Scripts de uma única execução (SQL Migrations no root)
+*.sql
+
+# Python (Arquivos de extração de dados)
+*.py
+__pycache__/
+*.pyc
+
+# IDE e Outros
+.git/
+.svn/
+.DS_Store
+Thumbs.db
+.agent/
+.agents/
+.agent_scratchpad/

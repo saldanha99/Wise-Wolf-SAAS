@@ -110,7 +110,24 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         l.presence !== 'Falta do Professor' && 
         l.subtype !== 'REPOSIÇÃO'
       );
-      const earnings = paidLogs.length * (user.hourlyRate || 7.50);
+
+      // Fetch Paid Trainings (Ao Vivo / Meet)
+      const { data: completedTrainings } = await supabase
+        .from('training_assignments')
+        .select(`
+          status,
+          completed_at,
+          module:module_id(resource_type)
+        `)
+        .eq('teacher_id', user.id)
+        .eq('status', 'COMPLETED')
+        .gte('completed_at', startOfMonth);
+
+      const paidTrainings = (completedTrainings || []).filter(t => 
+        (t.module as any)?.resource_type === 'meet'
+      );
+
+      const earnings = (paidLogs.length + paidTrainings.length) * (user.hourlyRate || 7.50);
 
       setStats({
         activeStudents: uniqueStudents.size,

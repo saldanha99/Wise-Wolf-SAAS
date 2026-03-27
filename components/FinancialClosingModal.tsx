@@ -53,8 +53,27 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
                 l.subtype !== 'REPOSIÇÃO'
             );
 
-            setLessons(paidLessons);
-            setTotalEarned(paidLessons.length * (user.hourlyRate || 7.50));
+            // Fetch Paid Trainings (Ao Vivo / Meet)
+            const { data: completedTrainings } = await supabase
+                .from('training_assignments')
+                .select(`
+                  status,
+                  completed_at,
+                  module:module_id(resource_type)
+                `)
+                .eq('teacher_id', user.id)
+                .eq('status', 'COMPLETED')
+                .gte('completed_at', startOfMonth)
+                .lt('completed_at', endOfMonth);
+
+            const paidTrainings = (completedTrainings || []).filter(t => 
+                (t.module as any)?.resource_type === 'meet'
+            );
+
+            const combinedItems = [...paidLessons, ...paidTrainings];
+
+            setLessons(combinedItems);
+            setTotalEarned(combinedItems.length * (user.hourlyRate || 7.50));
 
         } catch (err) {
             console.error('Error fetching modal data:', err);

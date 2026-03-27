@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Video, CheckCircle, Play, FileText, Upload, Users, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Video, CheckCircle, Play, FileText, Upload, Users, DollarSign, Mic } from 'lucide-react';
 import TeacherTrainingView from './TeacherTrainingView';
 
 interface TrainingModule {
@@ -9,7 +9,7 @@ interface TrainingModule {
     description: string;
     video_url: string;
     pdf_url?: string;
-    resource_type: 'video' | 'pdf';
+    resource_type: 'video' | 'pdf' | 'meet';
     is_mandatory: boolean;
     category: string;
 }
@@ -35,7 +35,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
         description: '',
         video_url: '',
         pdf_url: '',
-        resource_type: 'video' as 'video' | 'pdf',
+        resource_type: 'video' as 'video' | 'pdf' | 'meet',
         is_mandatory: true,
         category: 'Methodology'
     });
@@ -99,7 +99,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                     tenant_id: tenantId,
                     title: newModule.title,
                     description: newModule.description,
-                    video_url: newModule.resource_type === 'video' ? newModule.video_url : '',
+                    video_url: (newModule.resource_type === 'video' || newModule.resource_type === 'meet') ? newModule.video_url : '',
                     pdf_url: newModule.resource_type === 'pdf' ? finalPdfUrl : null,
                     is_mandatory: newModule.is_mandatory,
                     category: newModule.category,
@@ -214,6 +214,11 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                     <FileText size={48} className="text-red-400" />
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">PDF</span>
                                 </div>
+                            ) : module.resource_type === 'meet' ? (
+                                <div className="flex flex-col items-center gap-2">
+                                    <Mic size={48} className="text-emerald-500" />
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ao Vivo (Meet)</span>
+                                </div>
                             ) : module.video_url?.includes('youtube') ? (
                                 <img
                                     src={`https://img.youtube.com/vi/${module.video_url.split('v=')[1]?.split('&')[0]}/maxresdefault.jpg`}
@@ -222,7 +227,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             ) : (
                                 <Video size={48} className="text-slate-300" />
                             )}
-                            {!(module.resource_type === 'pdf' || module.pdf_url) && (
+                            {!(module.resource_type === 'pdf' || module.pdf_url || module.resource_type === 'meet') && (
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="w-12 h-12 bg-white/30 backdrop-blur-sm rounded-full flex items-center justify-center">
                                         <Play fill="white" className="text-white ml-1" size={20} />
@@ -263,7 +268,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                     rel="noreferrer"
                                     className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1"
                                 >
-                                    {module.pdf_url ? <>Abrir PDF <FileText size={10} /></> : <>Assistir <Play size={10} /></>}
+                                    {module.resource_type === 'meet' ? <>Link da Reunião <Mic size={10} /></> : module.pdf_url ? <>Abrir PDF <FileText size={10} /></> : <>Assistir <Play size={10} /></>}
                                 </a>
                             </div>
                         </div>
@@ -308,13 +313,20 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             {/* Resource Type Toggle */}
                             <div>
                                 <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Tipo de Conteúdo</label>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-3 gap-3">
                                     <button
                                         type="button"
                                         onClick={() => setNewModule({ ...newModule, resource_type: 'video' })}
                                         className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'video' ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
                                     >
                                         <Video size={16} /> Vídeo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewModule({ ...newModule, resource_type: 'meet' })}
+                                        className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${newModule.resource_type === 'meet' ? 'border-emerald-600 bg-emerald-50 text-emerald-700' : 'border-slate-100 bg-slate-50 text-slate-400'}`}
+                                    >
+                                        <Mic size={16} /> Ao Vivo
                                     </button>
                                     <button
                                         type="button"
@@ -326,7 +338,7 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                 </div>
                             </div>
 
-                            {/* Video URL or PDF Upload */}
+                            {/* Video URL, Meet Link, or PDF Upload */}
                             {newModule.resource_type === 'video' ? (
                                 <div>
                                     <label className="text-xs font-bold uppercase text-slate-500">Video URL (YouTube)</label>
@@ -336,6 +348,18 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                                         onChange={e => setNewModule({ ...newModule, video_url: e.target.value })}
                                         required
                                         placeholder="https://youtube.com/watch?v=..."
+                                    />
+                                </div>
+                            ) : newModule.resource_type === 'meet' ? (
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-slate-500">Link da Reunião (Zoom/Meet)</label>
+                                    <input
+                                        type="url"
+                                        className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none outline-none text-sm text-slate-600 dark:text-slate-300 focus:ring-2 focus:ring-emerald-500"
+                                        value={newModule.video_url}
+                                        onChange={e => setNewModule({ ...newModule, video_url: e.target.value })}
+                                        required
+                                        placeholder="https://meet.google.com/..."
                                     />
                                 </div>
                             ) : (
@@ -428,10 +452,10 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
                             ))}
                         </div>
 
-                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-xl mt-4 flex items-center gap-2">
-                            <DollarSign size={14} className="text-emerald-600" />
-                            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                                Professores serão remunerados pelo valor da aula ao concluir.
+                        <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl mt-4 flex items-center gap-2 border border-amber-200 dark:border-amber-900/30">
+                            <DollarSign size={16} className="text-amber-600" />
+                            <span className="text-xs font-bold text-amber-700 dark:text-amber-400">
+                                Importante: Os professores só serão remunerados se o treinamento for do tipo <strong>Ao Vivo (Meet)</strong>. Treinamentos em Vídeo ou PDF não geram pagamento em saldo!
                             </span>
                         </div>
 

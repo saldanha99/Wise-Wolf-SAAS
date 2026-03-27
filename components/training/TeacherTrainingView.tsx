@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Play, CheckCircle, Lock, Award, Clock, FileText, Download, DollarSign } from 'lucide-react';
+import { Play, CheckCircle, Lock, Award, Clock, FileText, Download, DollarSign, Mic, Video } from 'lucide-react';
 
 interface TrainingModule {
     id: string;
@@ -8,6 +8,7 @@ interface TrainingModule {
     description: string;
     video_url: string;
     pdf_url?: string;
+    resource_type: 'video' | 'pdf' | 'meet';
     is_mandatory: boolean;
     category: string;
 }
@@ -141,7 +142,7 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                             Você tem {assignments.filter(a => a.status === 'PENDING').length} treinamento(s) atribuído(s)
                         </p>
                         <p className="text-xs text-amber-600 dark:text-amber-300">
-                            Complete para receber remuneração pelo valor da sua aula.
+                            <strong>Atenção:</strong> Apenas treinamentos classificados como <strong>Ao Vivo (Meet)</strong> geram remuneração baseada na sua hora-aula.
                         </p>
                     </div>
                 </div>
@@ -171,13 +172,18 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                                         <FileText size={40} className="text-red-400" />
                                         <span className="text-[10px] font-bold text-slate-400 uppercase">PDF</span>
                                     </div>
+                                ) : module.resource_type === 'meet' ? (
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Mic size={40} className="text-emerald-500" />
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ao Vivo (Meet)</span>
+                                    </div>
                                 ) : module.video_url?.includes('youtube') ? (
                                     <img
                                         src={`https://img.youtube.com/vi/${module.video_url.split('v=')[1]?.split('&')[0]}/maxresdefault.jpg`}
                                         className="w-full h-full object-cover"
                                     />
                                 ) : (
-                                    <Play size={40} className="text-slate-300" />
+                                    <Video size={40} className="text-slate-300" />
                                 )}
 
                                 {isCompleted && (
@@ -219,6 +225,8 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                                     >
                                         {isPdf ? (
                                             <span className="flex items-center justify-center gap-1"><Download size={12} /> Abrir PDF</span>
+                                        ) : module.resource_type === 'meet' ? (
+                                            <span className="flex items-center justify-center gap-1"><Mic size={12} /> Link da Reunião</span>
                                         ) : (
                                             <span className="flex items-center justify-center gap-1"><Play size={12} /> Assistir</span>
                                         )}
