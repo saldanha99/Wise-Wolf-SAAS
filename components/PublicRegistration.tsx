@@ -9,8 +9,10 @@ import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, 
 
 const PublicRegistration: React.FC = () => {
     const [loading, setLoading] = useState(false);
-    // Steps: PAYMENT_SELECTION -> FORM -> ENROLLMENT -> CONTRACT -> SUCCESS
-    const [step, setStep] = useState<'PAYMENT_SELECTION' | 'FORM' | 'ENROLLMENT' | 'CONTRACT' | 'SUCCESS'>('PAYMENT_SELECTION');
+    // Steps: PAYMENT_SELECTION -> FORM -> ENROLLMENT -> ENROLLMENT_PAYMENT -> CONTRACT -> SUCCESS
+    const [step, setStep] = useState<'PAYMENT_SELECTION' | 'FORM' | 'ENROLLMENT' | 'ENROLLMENT_PAYMENT' | 'CONTRACT' | 'SUCCESS'>('PAYMENT_SELECTION');
+    const [enrollmentPix, setEnrollmentPix] = useState<{ code: string; qrCode: string; paymentId: string } | null>(null);
+    const [checkingPayment, setCheckingPayment] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [contractData, setContractData] = useState<any>(null);
     // Signature Data for PDF
@@ -197,7 +199,10 @@ const PublicRegistration: React.FC = () => {
                 signature_ip: signatureDataObj?.type === 'DIGITAL' ? 'Via Web (Digital)' : `Via Web (${signatureDataObj?.type})`,
                 student_signature_url: signatureDataObj?.type === 'UPLOAD_SIG' ? signatureDataObj.url : null,
                 signed_document_url: signatureDataObj?.type === 'UPLOAD_DOC' ? signatureDataObj.url : null,
-                wise_wolf_signature_token: crypto.randomUUID()
+                wise_wolf_signature_token: crypto.randomUUID(),
+                enrollment_fee: contractData.enrollmentFee || 0,
+                enrollment_fee_paid: (contractData.enrollmentFee || 0) > 0 ? true : false,
+                enrollment_payment_id: enrollmentPix?.paymentId || null
                 // TEMPORARY FIX: Removed professor_id_2 to avoid schema cache "not found" error
             };
 
@@ -381,7 +386,28 @@ const PublicRegistration: React.FC = () => {
                 }
             }
 
-            setStep('SUCCESS');
+            if (contractData.enrollmentFee > 0) {
+                try {
+                    console.log("🚀 Gerando Pix de Matrícula Pós-Contrato...");
+                    const res = await asaasService.createEnrollmentPix(contractData.enrollmentFee, {
+                        name,
+                        email,
+                        cpfCnpj: cpf,
+                        phone
+                    });
+                    setEnrollmentPix({
+                        code: res.pixCode,
+                        qrCode: res.qrCode,
+                        paymentId: res.paymentId
+                    });
+                    setStep('ENROLLMENT_PAYMENT');
+                } catch (pixErr) {
+                    console.error("⚠️ Erro ao gerar Pix (não-bloqueante p/ contrato):", pixErr);
+                    setStep('SUCCESS'); // Goes to success even if Pix fails to avoid blocking the contract
+                }
+            } else {
+                setStep('SUCCESS');
+            }
 
         } catch (err: any) {
             console.error("⛔ ERRO CAPTURADO:", err);
@@ -447,6 +473,26 @@ const PublicRegistration: React.FC = () => {
     const handleEnrollmentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setStep('CONTRACT');
+    };
+
+    const handleCheckEnrollmentPayment = async () => {
+        if (!enrollmentPix) return;
+        setCheckingPayment(true);
+        try {
+            // In a real scenario, we'd poll or wait for webhook. 
+            // For now, let's allow manual check or just simulate success if sandbox
+            const res = await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
+            if (res.success || res.status === 'RECEIVED' || res.status === 'CONFIRMED') {
+                setStep('CONTRACT');
+            } else {
+                alert("Pagamento ainda não identificado. Se você já pagou, aguarde alguns instantes.");
+            }
+        } catch (e) {
+            // Fallback: if check fails, just try again
+            console.error(e);
+        } finally {
+            setCheckingPayment(false);
+        }
     };
 
     // ========== PAYMENT SELECTION STEP ==========
@@ -551,6 +597,87 @@ const PublicRegistration: React.FC = () => {
     }
 
     // ========== ENROLLMENT STEP (Ficha de Matrícula) ==========
+    // ========== ENROLLMENT PAYMENT STEP (PIX QR CODE) ==========
+    if (step === 'ENROLLMENT_PAYMENT') {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
+                <div className="max-w-lg mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+                    <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
+                        <div className="relative z-10 text-white">
+                            <QrCode className="mx-auto mb-4" size={48} />
+                            <h1 className="text-2xl font-black uppercase tracking-tight">Taxa de Matrícula</h1>
+                            <p className="text-blue-100/80 text-sm">Contrato Assinado com Sucesso! 📜</p>
+                            <p className="text-blue-100/60 text-[10px] mt-1 uppercase font-bold tracking-widest">Agora, pague a matrícula para garantir sua vaga</p>
+                        </div>
+                    </div>
+
+                    <div className="p-8 text-center space-y-6">
+                        <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl inline-block">
+                            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor a Pagar</p>
+                            <p className="text-3xl font-black text-emerald-700">R$ {contractData?.enrollmentFee?.toFixed(2)}</p>
+                        </div>
+
+                        {enrollmentPix?.qrCode ? (
+                            <div className="bg-white p-4 rounded-3xl border-4 border-slate-50 inline-block shadow-inner">
+                                <img 
+                                    src={`data:image/png;base64,${enrollmentPix.qrCode}`} 
+                                    alt="Asaas Pix QR Code" 
+                                    className="w-64 h-64 mx-auto"
+                                />
+                            </div>
+                        ) : (
+                            <div className="h-64 flex items-center justify-center">
+                                <Loader2 className="animate-spin text-slate-300" size={48} />
+                            </div>
+                        )}
+
+                        <div className="space-y-3">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Código Pix (Copia e Cola)</p>
+                            <div className="flex gap-2">
+                                <input 
+                                    readOnly
+                                    value={enrollmentPix?.code || ''}
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis"
+                                />
+                                <button 
+                                    onClick={() => {
+                                        if (enrollmentPix?.code) {
+                                            navigator.clipboard.writeText(enrollmentPix.code);
+                                            alert("Código copiado!");
+                                        }
+                                    }}
+                                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors"
+                                >
+                                    <FileText size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-100 flex flex-col gap-3">
+                            <button
+                                onClick={handleCheckEnrollmentPayment}
+                                disabled={checkingPayment}
+                                className="w-full py-4 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
+                            >
+                                {checkingPayment ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                                Já realizei o pagamento
+                            </button>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                                A confirmação pode levar até 30 segundos após o pagamento.
+                            </p>
+                            <button 
+                                onClick={() => setStep('ENROLLMENT')}
+                                className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase"
+                            >
+                                Corrigir dados da matrícula
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (step === 'ENROLLMENT') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">

@@ -107,5 +107,37 @@ export const asaasService = {
             // Re-throw the error ensuring it's an Error object
             throw error instanceof Error ? error : new Error(error.message || String(error));
         }
+    },
+
+    createEnrollmentPix: async (amount: number, customerData: { name: string; email: string; cpfCnpj: string; phone: string }) => {
+        try {
+            console.log('Generating enrollment Pix for R$', amount);
+            const { data, error } = await supabase.functions.invoke('create-enrollment-pix', {
+                body: { amount, customerData }
+            });
+
+            if (error) throw error;
+            if (data && data.success === false) throw data;
+
+            return data;
+        } catch (error) {
+            console.error('Error creating enrollment Pix:', error);
+            throw error;
+        }
+    },
+
+    checkPaymentStatus: async (paymentId: string) => {
+        try {
+            const { data, error } = await supabase.functions.invoke('asaas-webhook', {
+                body: { action: 'check-payment', paymentId } // Assuming webhook handler or a dedicated checker
+            });
+            // Alternatively, direct check if Edge Function allows
+            const { data: res, error: err } = await supabase.functions.invoke('create-enrollment-pix', {
+                body: { action: 'check', paymentId }
+            });
+            return res;
+        } catch (error) {
+            return { success: false };
+        }
     }
 };

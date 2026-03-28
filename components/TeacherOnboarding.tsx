@@ -184,6 +184,7 @@ const TeacherOnboarding: React.FC = () => {
                         teacherCPF={cpf}
                         teacherAddress={address}
                         teacherBirthDate={birthDate}
+                        hourlyRate={offerData?.hourlyRate}
                         contractCity="Santa Isabel/SP"
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                     />

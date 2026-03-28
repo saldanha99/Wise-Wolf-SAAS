@@ -42,6 +42,8 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [frequency, setFrequency] = useState<number>(2); // 2, 3, 4, 5
     const [dueDay, setDueDay] = useState(10);
     const [monthlyFee, setMonthlyFee] = useState(0);
+    const [chargeEnrollmentFee, setChargeEnrollmentFee] = useState(true);
+    const [enrollmentFee, setEnrollmentFee] = useState(49);
 
     // Academic State
     const [professors, setProfessors] = useState<any[]>([]);
@@ -149,7 +151,8 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             professorId2: selectedProfessor2 || null,
             schedule: validSchedule.length > 0 ? validSchedule : null,
             startDate: startDate,
-            requiresEnrollment: duration !== 0 // Avulso não precisa de ficha de matrícula
+            requiresEnrollment: duration !== 0, // Avulso não precisa de ficha de matrícula (exceto se forçado)
+            enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0
         };
 
         const jsonStr = JSON.stringify(data);
@@ -314,6 +317,37 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             <div className="md:hidden p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800 flex justify-between items-center text-emerald-700">
                                 <span className="text-xs font-bold uppercase">Total Mensal</span>
                                 <span className="font-black text-lg">R$ {monthlyFee.toFixed(2)}</span>
+                            </div>
+
+                            {/* Enrollment Fee Control */}
+                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400 cursor-pointer hover:text-blue-500 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={chargeEnrollmentFee}
+                                            onChange={(e) => setChargeEnrollmentFee(e.target.checked)}
+                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                        />
+                                        Cobrar Taxa de Matrícula
+                                    </label>
+                                    {chargeEnrollmentFee && (
+                                        <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/40 px-3 py-1 rounded-lg border border-blue-100 dark:border-blue-800">
+                                            <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">R$</span>
+                                            <input
+                                                type="number"
+                                                value={enrollmentFee}
+                                                onChange={(e) => setEnrollmentFee(Number(e.target.value))}
+                                                className="w-12 bg-transparent border-none p-0 text-sm font-black text-blue-700 dark:text-blue-300 outline-none focus:ring-0"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[9px] text-slate-400 font-medium">
+                                    {chargeEnrollmentFee 
+                                        ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
+                                        : 'A taxa de matrícula não será cobrada neste link.'}
+                                </p>
                             </div>
                         </div>
                     </div>
