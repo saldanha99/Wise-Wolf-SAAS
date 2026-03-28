@@ -52,6 +52,7 @@ const TeacherTrainingAdmin = lazy(() => import('./components/training/TeacherTra
 const TeacherTrainingView = lazy(() => import('./components/training/TeacherTrainingView'));
 const ManualTrialScheduler = lazy(() => import('./components/ManualTrialScheduler'));
 const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
+const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGenerator'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
@@ -453,6 +454,7 @@ const App: React.FC = () => {
         ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
       'referral': <AffiliatePanel user={user} />,
+      'recruiting': <div className="max-w-md mx-auto py-10"><TeacherInviteGenerator tenantId={currentTenant?.id || ''} /></div>,
     };
 
     return contentMap[activeTab] || contentMap['dashboard'];
@@ -539,7 +541,8 @@ const App: React.FC = () => {
                       'billing': 'Faturamento',
                       'settings': 'Configurações',
                       'profile': 'Meu Perfil',
-                      'referral': 'Indicações & Afiliação'
+                      'referral': 'Indicações & Afiliação',
+                      'recruiting': 'Recrutamento'
                     };
                     return titles[activeTab] || activeTab.replace('_', ' ');
                   })()}

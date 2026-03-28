@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, BookOpen, Clock, Zap, ArrowUpRight, TrendingDown, Target, Award, AlertCircle, Search, MoreHorizontal, UserCheck, Calendar, RefreshCw, FileDown, UserPlus, MoreVertical, Video, DollarSign, Wallet, Beaker } from 'lucide-react';
-import AvailabilityHeatmap from './AvailabilityHeatmap'; // Keeping if needed elsewhere, otherwise remove
+import TeacherInviteGenerator from './TeacherInviteGenerator';
+import AvailabilityHeatmap from './AvailabilityHeatmap';
 import TeacherTrainingAdmin from './training/TeacherTrainingAdmin';
 import FinancialCharts from './FinancialCharts';
 import RegistrationLinkGenerator from './RegistrationLinkGenerator';
@@ -22,7 +23,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'payments' | 'contracts'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'payments' | 'contracts' | 'recruiting'>('analytics');
   const [showTrialScheduler, setShowTrialScheduler] = useState(false);
 
   const [stats, setStats] = useState({
@@ -252,6 +253,12 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'contracts' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
             >
               Contratos
+            </button>
+            <button
+              onClick={() => setActiveTab('recruiting')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'recruiting' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+            >
+              Recrutamento (Link)
             </button>
           </div>
 
@@ -603,6 +610,11 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
       {activeTab === 'payments' && <AdminPaymentsList tenantId={tenantId || ''} />}
       {activeTab === 'contracts' && <ContractManagement />}
+      {activeTab === 'recruiting' && (
+        <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
+          <TeacherInviteGenerator tenantId={tenantId || ''} />
+        </div>
+      )}
 
       {/* Manual Trial Scheduler Modal */}
       {showTrialScheduler && (

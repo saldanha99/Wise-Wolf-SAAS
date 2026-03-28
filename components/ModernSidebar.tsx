@@ -31,7 +31,8 @@ import {
     School,
     Brain, // Added
     Briefcase,
-    Gift
+    Gift,
+    UserPlus
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
 
@@ -118,6 +119,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'crm', label: 'CRM & Pipeline', icon: Users },
         { id: 'marketing', label: 'Site & Vendas', icon: Globe },
         { id: 'hr', label: 'Recursos Humanos', icon: Briefcase },
+        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus }, // Novo
     ];
 
     const superAdminMenu: MenuItem[] = [
