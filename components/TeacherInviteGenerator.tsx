@@ -58,7 +58,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                 {/* Inputs */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Valor Hora/Aula (R$)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Valor da Hora (60 min)</label>
                         <div className="relative">
                             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                             <input
@@ -68,6 +68,9 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                                 className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
                             />
                         </div>
+                        <p className="text-[10px] text-tenant-primary font-bold mt-1 ml-1 animate-pulse">
+                            Equivale a R$ {(parseFloat(hourlyRate || '0') / 2).toFixed(2)} por aula de 30 min.
+                        </p>
                     </div>
 
                     <div className="space-y-1">
