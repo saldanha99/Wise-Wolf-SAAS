@@ -123,7 +123,8 @@ serve(async (req) => {
                 address: address,
                 birth_date: birthDate,
                 contract_accepted: contractAccepted,
-                accepted_at: acceptedAt
+                accepted_at: acceptedAt,
+                user_ip: userIp
             });
 
         if (profileError) {

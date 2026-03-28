@@ -3,7 +3,7 @@ import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST } from './constants';
 import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
-import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut } from 'lucide-react';
+import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -53,6 +53,7 @@ const TeacherTrainingView = lazy(() => import('./components/training/TeacherTrai
 const ManualTrialScheduler = lazy(() => import('./components/ManualTrialScheduler'));
 const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
 const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGenerator'));
+const PublicContractView = lazy(() => import('./components/PublicContractView'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
@@ -300,6 +301,12 @@ const App: React.FC = () => {
 
   if (path === '/matricula') {
     return <PublicRegistration />;
+  }
+
+  if (path === '/view-contract') {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <PublicContractView />
+    </Suspense>;
   }
 
   // Esta verificação deve vir ANTES de qualquer <AuthProvider> ou verificação de sessão

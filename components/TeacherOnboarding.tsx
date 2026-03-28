@@ -23,20 +23,20 @@ const TeacherOnboarding: React.FC = () => {
     const [cpf, setCpf] = useState('');
     const [address, setAddress] = useState('');
     const [birthDate, setBirthDate] = useState('');
+    const [userIp, setUserIp] = useState('');
+    const [contractAccepted, setContractAccepted] = useState(false);
 
     useEffect(() => {
-        // Decode Query Params
+        // 1. Decode Query Params
         const params = new URLSearchParams(window.location.search);
         const encodedOffer = params.get('offer');
 
         if (encodedOffer) {
             try {
-                // Decode Base64 (UTF-8 Safe - Robust)
                 const jsonStr = decodeURIComponent(atob(encodedOffer).split('').map(function (c) {
                     return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
                 }).join(''));
                 const data = JSON.parse(jsonStr);
-                // Schema: { hourlyRate: number, subject: string, tenantId: string }
                 setOfferData(data);
             } catch (e) {
                 setError("Link de convite inválido ou expirado.");
@@ -44,6 +44,19 @@ const TeacherOnboarding: React.FC = () => {
         } else {
             setError("Link de convite inválido.");
         }
+
+        // 2. Fetch Public IP for judicial validity
+        const fetchIp = async () => {
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                if (data.ip) setUserIp(data.ip);
+            } catch (e) {
+                console.warn("⚠️ Falha ao capturar IP:", e);
+                setUserIp('Oculto/CDN');
+            }
+        };
+        fetchIp();
     }, []);
 
     const goToContract = (e: React.FormEvent) => {
@@ -52,79 +65,67 @@ const TeacherOnboarding: React.FC = () => {
     };
 
     const handleRegister = async () => {
-        // e.preventDefault(); // Called mainly from button now
-        if (!offerData) return;
+        if (!offerData || !contractAccepted) return;
         setLoading(true);
         setError(null);
 
         try {
             console.log("🚀 Enviando registro para Edge Function...");
 
-            // Call the Secure Edge Function
             const { data, error: fnError } = await supabase.functions.invoke('register-teacher', {
                 body: {
                     email,
                     password,
                     name,
-                    phone,
+                    phone: phone.replace(/\D/g, ''), // Send clean phone
                     pixKey,
                     meetLink,
                     avatar: avatarUrl,
-                    offerPayload: new URLSearchParams(window.location.search).get('offer'), // Send original payload
+                    offerPayload: new URLSearchParams(window.location.search).get('offer'),
                     rg,
-                    cpf,
+                    cpf: cpf.replace(/\D/g, ''),
                     address,
                     birthDate,
                     contractAccepted: true,
                     acceptedAt: new Date().toISOString(),
-                    userIp: 'IP_ADDRESS_PLACEHOLDER' // Ideally fetch via API if possible, or function gets it from header
+                    userIp: userIp || 'Pendente'
                 }
             });
 
             if (fnError) throw new Error(fnError.message || "Erro ao conectar com o servidor.");
+            if (data?.error) throw new Error(data.error);
 
-            if (data?.error) {
-                throw new Error(data.error);
-            }
+            const registeredUserId = data.userId;
 
-            // Success
-
-            // AUTOMATION: Send Welcome WhatsApp
+            // AUTOMATION: Send Welcome WhatsApp with Contract Link
             try {
-                if (offerData?.tenantId) {
-                    console.log("🚀 Buscando instância do diretor para boas-vindas...");
-
-                    // 1. Get Director's Instance Name securely
+                if (offerData?.tenantId && registeredUserId) {
                     const { data: instanceName, error: rpcError } = await supabase.rpc('get_tenant_whatsapp_instance', {
                         target_tenant_id: offerData.tenantId
                     });
 
                     if (instanceName && !rpcError) {
-                        console.log(`✅ Instância encontrada: ${instanceName}. Enviando mensagem...`);
-
-                        // 2. Import service dynamically or use existing import (using existing import)
                         const { whatsappService } = await import('../services/whatsappService');
 
+                        const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${registeredUserId}`;
+                        
                         const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
                             `*Seus dados de acesso:*\n` +
                             `📧 Login: ${email}\n` +
                             `🔑 Senha: ${password}\n\n` +
+                            `📜 *Seu Contrato Assinado:* ${contractUrl}\n\n` +
                             `Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
 
                         await whatsappService.sendText(
                             offerData.tenantId,
                             instanceName,
-                            phone,
+                            phone.replace(/\D/g, ''),
                             msg
                         );
-                        console.log("✅ Mensagem de boas-vindas enviada!");
-                    } else {
-                        console.warn("⚠️ Não foi possível encontrar instância conectada do diretor.", rpcError);
                     }
                 }
             } catch (autoErr) {
                 console.error("Erro na automação de boas-vindas:", autoErr);
-                // Don't block success flow if automation fails
             }
 
             setStep('SUCCESS');
@@ -144,9 +145,9 @@ const TeacherOnboarding: React.FC = () => {
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
                 <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
                     <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">Link Inválido</h2>
+                    <h2 className="text-xl font-bold text-slate-800 mb-2">Ops! Alguma coisa deu errado</h2>
                     <p className="text-slate-500 mb-6">{error}</p>
-                    <a href="/" className="text-tenant-primary font-bold hover:underline">Voltar ao Início</a>
+                    <button onClick={() => setError(null)} className="text-tenant-primary font-bold hover:underline">Tentar Novamente</button>
                 </div>
             </div>
         );
@@ -159,25 +160,44 @@ const TeacherOnboarding: React.FC = () => {
     if (step === 'CONTRACT') {
         return (
             <div className="min-h-screen bg-gray-100 relative">
-                <div className="fixed bottom-0 left-0 w-full p-4 bg-white border-t border-gray-200 z-50 flex justify-between items-center shadow-2xl">
-                    <button onClick={() => setStep('FORM')} className="text-gray-600 font-bold px-6">
-                        Voltar
-                    </button>
-                    <div className="flex items-center gap-4">
-                        <p className="text-xs text-gray-500 max-w-md text-right hidden md:block">
-                            Ao clicar em "Assinar e Concluir", você concorda com os termos do contrato apresentado acima.
-                        </p>
-                        <button
-                            onClick={handleRegister}
-                            disabled={loading}
-                            className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-wide hover:bg-emerald-700 transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-                        >
-                            {loading ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20} /> Assinar e Concluir</>}
-                        </button>
+                <div className="fixed bottom-0 left-0 w-full p-6 bg-white border-t border-gray-200 z-50 shadow-2xl">
+                    <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    id="accept-contract"
+                                    checked={contractAccepted}
+                                    onChange={e => setContractAccepted(e.target.checked)}
+                                    className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer"
+                                />
+                                <label htmlFor="accept-contract" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                    Li e aceito os termos do contrato de prestação de serviço docente.
+                                </label>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono uppercase tracking-wider ml-8 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                <span>🔒 Assinatura vinculada ao IP: <span className="text-blue-500 font-bold">{userIp || 'Detectando...'}</span></span>
+                                <span className="mx-2 opacity-30">|</span>
+                                <span>🕒 Timestamp: <span className="text-slate-600 font-bold">{new Date().toLocaleString('pt-BR')}</span></span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 shrink-0">
+                            <button onClick={() => setStep('FORM')} className="text-slate-400 text-sm font-black uppercase tracking-widest hover:text-slate-600 transition-colors px-4">
+                                Corrigir Dados
+                            </button>
+                            <button
+                                onClick={handleRegister}
+                                disabled={loading || !contractAccepted}
+                                className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/20 disabled:opacity-30 disabled:grayscale disabled:scale-95"
+                            >
+                                {loading ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20} /> Assinar e Concluir</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div className="pb-24 pointer-events-none opacity-100">
-                    {/* Contract View (Read Only) */}
+
+                <div className="pb-32">
                     <TeacherContractDocument
                         teacherName={name}
                         teacherRG={rg}
@@ -187,6 +207,8 @@ const TeacherOnboarding: React.FC = () => {
                         hourlyRate={offerData?.hourlyRate}
                         contractCity="Santa Isabel/SP"
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        acceptedAt={contractAccepted ? new Date().toISOString() : undefined}
+                        userIp={userIp}
                     />
                 </div>
             </div>
