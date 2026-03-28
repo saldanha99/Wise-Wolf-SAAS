@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { whatsappService } from '../services/whatsappService';
 import { User, Mail, Lock, Phone, Award, CheckCircle, AlertCircle, ArrowRight, Loader2, DollarSign, Camera, Link as LinkIcon, Briefcase, FileText } from 'lucide-react';
 import { TeacherContractDocument } from './TeacherContractDocument';
 
@@ -100,13 +101,13 @@ const TeacherOnboarding: React.FC = () => {
             // AUTOMATION: Send Welcome WhatsApp with Contract Link
             try {
                 if (offerData?.tenantId && registeredUserId) {
+                    console.log(`🚀 Iniciando disparo de boas-vindas para: ${phone}`);
+
                     const { data: instanceName, error: rpcError } = await supabase.rpc('get_tenant_whatsapp_instance', {
                         target_tenant_id: offerData.tenantId
                     });
 
                     if (instanceName && !rpcError) {
-                        const { whatsappService } = await import('../services/whatsappService');
-
                         const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${registeredUserId}`;
                         
                         const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
@@ -116,12 +117,18 @@ const TeacherOnboarding: React.FC = () => {
                             `📜 *Seu Contrato Assinado:* ${contractUrl}\n\n` +
                             `Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
 
+                        const cleanPhone = phone.replace(/\D/g, '');
+                        console.log(`✅ Instância: ${instanceName} | Destinatário: ${cleanPhone}`);
+
                         await whatsappService.sendText(
                             offerData.tenantId,
                             instanceName,
-                            phone.replace(/\D/g, ''),
+                            cleanPhone,
                             msg
                         );
+                        console.log("✅ Boas-vindas enviadas com sucesso!");
+                    } else {
+                        console.error("❌ Erro ao buscar instância:", rpcError);
                     }
                 }
             } catch (autoErr) {

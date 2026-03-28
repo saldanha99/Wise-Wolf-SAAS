@@ -462,6 +462,7 @@ const App: React.FC = () => {
         : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
       'referral': <AffiliatePanel user={user} />,
       'recruiting': <div className="max-w-md mx-auto py-10"><TeacherInviteGenerator tenantId={currentTenant?.id || ''} /></div>,
+      'contract_teacher': <PublicContractView id={user.id} />,
     };
 
     return contentMap[activeTab] || contentMap['dashboard'];

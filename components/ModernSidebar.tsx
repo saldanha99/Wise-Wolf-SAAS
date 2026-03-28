@@ -89,6 +89,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'training', label: 'Treinamentos', icon: GraduationCap },
         { id: 'automation', label: 'Smart', icon: Zap },
         { id: 'referral', label: 'Indicações', icon: Gift },
+        { id: 'contract_teacher', label: 'Meu Contrato', icon: FileText },
     ];
 
     const studentMenu: MenuItem[] = [

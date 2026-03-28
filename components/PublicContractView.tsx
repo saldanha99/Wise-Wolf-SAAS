@@ -3,14 +3,18 @@ import { supabase } from '../lib/supabase';
 import { TeacherContractDocument } from './TeacherContractDocument';
 import { Loader2, AlertCircle, FileText } from 'lucide-react';
 
-const PublicContractView: React.FC = () => {
+interface PublicContractViewProps {
+    id?: string;
+}
+
+const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<any>(null);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const id = params.get('id');
+        const id = propId || params.get('id');
 
         if (!id) {
             setError("ID do contrato não fornecido.");
