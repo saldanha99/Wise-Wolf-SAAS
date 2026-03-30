@@ -123,8 +123,21 @@ const App: React.FC = () => {
         .eq('role', 'STUDENT')
         .eq('tenant_id', user.tenantId);
 
+      // 4. Fetch All Bookings
+      const { data: allBookings } = await supabase
+        .from('bookings')
+        .select('teacher_id, student_id')
+        .eq('tenant_id', user.tenantId);
+
       if (studentsData) {
-        setStudents(studentsData.map(s => ({
+        let filteredStudents = studentsData;
+        
+        if (user.role === UserRole.TEACHER && allBookings) {
+          const teacherStudentIds = new Set(allBookings.filter(b => b.teacher_id === user.id).map(b => b.student_id));
+          filteredStudents = studentsData.filter(s => teacherStudentIds.has(s.id));
+        }
+
+        setStudents(filteredStudents.map(s => ({
           id: s.id,
           name: s.full_name,
           module: s.module || 'N/A',
@@ -132,12 +145,6 @@ const App: React.FC = () => {
           evaluationUnlocked: s.evaluation_unlocked
         })));
       }
-
-      // 4. Fetch All Bookings
-      const { data: allBookings } = await supabase
-        .from('bookings')
-        .select('teacher_id, student_id')
-        .eq('tenant_id', user.tenantId);
 
       if (teachersData) {
         const formattedTeachers: Teacher[] = teachersData.map((t: any) => {
@@ -168,7 +175,7 @@ const App: React.FC = () => {
       }
 
       // 5. Fetch Reschedules
-      const { data: reschedulesData } = await supabase
+      let reschedulesQuery = supabase
         .from('reschedules')
         .select(`
             id,
@@ -181,6 +188,12 @@ const App: React.FC = () => {
             student_id
         `)
         .eq('tenant_id', user.tenantId);
+
+      if (user.role === UserRole.TEACHER) {
+        reschedulesQuery = reschedulesQuery.eq('teacher_id', user.id);
+      }
+
+      const { data: reschedulesData } = await reschedulesQuery;
 
       if (reschedulesData) {
         const formattedReschedules: Reschedule[] = reschedulesData.map((r: any) => ({
