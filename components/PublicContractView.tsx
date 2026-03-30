@@ -11,10 +11,12 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<any>(null);
+    const [resolvedId, setResolvedId] = useState<string | null>(propId || null);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const id = propId || params.get('id');
+        setResolvedId(id);
 
         if (!id) {
             setError("ID do contrato não fornecido.");
@@ -77,7 +79,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     <span className="text-[10px] font-black uppercase tracking-widest">Documento Digital Autêntico</span>
                 </div>
                 <div className="text-[10px] font-bold">
-                    ID: {new URLSearchParams(window.location.search).get('id')?.substring(0, 8)}...
+                    ID: {resolvedId?.substring(0, 8)}...
                 </div>
             </div>
 
@@ -90,7 +92,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                 hourlyRate={profile.hourly_rate}
                 acceptedAt={profile.accepted_at}
                 userIp={profile.user_ip}
-                subscriptionId={new URLSearchParams(window.location.search).get('id') || undefined}
+                subscriptionId={resolvedId || undefined}
             />
         </div>
     );

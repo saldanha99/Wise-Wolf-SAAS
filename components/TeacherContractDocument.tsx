@@ -32,12 +32,13 @@ export function TeacherContractDocument({
     const componentRef = useRef(null);
 
     const handlePrint = useReactToPrint({
-        content: () => componentRef.current,
+        contentRef: componentRef,
         documentTitle: `Contrato_Professor_WiseWolf_${teacherName}`,
     });
 
     // Cálculos dinâmicos
-    const halfHourlyRate = hourlyRate / 2;
+    const finalHourlyRate = hourlyRate || 16;
+    const halfHourlyRate = finalHourlyRate / 2;
 
     // Data atual se não fornecida
     const displayDate = contractDate || new Date().toLocaleDateString('pt-BR', {
@@ -114,7 +115,7 @@ export function TeacherContractDocument({
                         <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 3ª – REMUNERAÇÃO</h3>
                         <p className="text-justify">3.1 Pelos serviços prestados, o CONTRATADO receberá:</p>
                         <div className="pl-4 space-y-1 mt-1">
-                            <p>a) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de aula ministrada, equivalente a R$ {hourlyRate.toFixed(2).replace('.', ',')} por hora;</p>
+                            <p>a) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de aula ministrada, equivalente a R$ {finalHourlyRate.toFixed(2).replace('.', ',')} por hora;</p>
                             <p>b) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de participação em treinamentos internos promovidos pela CONTRATANTE;</p>
                             <p>c) Bonificação de R$ 50,00 (cinquenta reais) por indicação de professor que venha a ser efetivamente contratado pela CONTRATANTE.</p>
                         </div>
