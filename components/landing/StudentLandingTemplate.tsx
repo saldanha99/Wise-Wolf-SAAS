@@ -55,7 +55,26 @@ export default function StudentLandingTemplate() {
             // 2. Show Success
             setSubmitted(true);
 
-            // Optional: Here we could trigger an automation webhook
+            // 3. WhatsApp Notification (fire-and-forget)
+            if (formData.phone) {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://dvalxbtngopxopzcbfdm.supabase.co';
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                fetch(`${supabaseUrl}/functions/v1/whatsapp-lead-notification`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(supabaseAnonKey ? { 'Authorization': `Bearer ${supabaseAnonKey}` } : {})
+                    },
+                    body: JSON.stringify({
+                        name: formData.name || 'Lead Interest',
+                        email: formData.email,
+                        phone: formData.phone,
+                        tenant_id: config.tenant_id,
+                        source: `landing_page_${config.template_type || 'sales'}`,
+                        notes: formData.notes || 'Cadastro via Página de Captura'
+                    })
+                }).catch(err => console.error('WhatsApp notification error:', err));
+            }
 
         } catch (err) {
             console.error("Error submitting lead:", err);

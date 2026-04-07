@@ -18,11 +18,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [loading, setLoading] = useState(true);
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
 
+  const effectiveTenantId = tenantId || user.tenantId;
+
   useEffect(() => {
-    if (user && tenantId) {
+    if (user && effectiveTenantId) {
       fetchTodaySchedule();
     }
-  }, [user, tenantId]);
+  }, [user, effectiveTenantId]);
 
   const fetchTodaySchedule = async () => {
     setLoading(true);
@@ -180,10 +182,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const now = new Date();
       const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 
-      const closedMonths = Object.keys(formData).map(id => {
-        const item = todayLessons.find(l => String(l.id) === id);
+      const closedMonths = todayLessons.map(item => {
         const lessonMonthYear = item?.dateObj ? item.dateObj.substring(0, 7) : null;
-        
         if (lessonMonthYear && lessonMonthYear < currentMonthYear) {
           return lessonMonthYear;
         }
@@ -194,9 +194,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         throw new Error(`O mês ${closedMonths[0]} já está encerrado. Não é possível lançar aulas de meses anteriores.`);
       }
 
-      const entries = Object.keys(formData).map(bookingId => {
-        const item = todayLessons.find(l => String(l.id) === bookingId);
-        const data = formData[bookingId];
+      const entries = todayLessons.map(item => {
+        const bookingId = String(item.id);
+        const data = formData[bookingId] || { type: 'COMPLETED', subtype: '', personalized: '', lastApplied: '', observation: '' };
 
         if (!item) return null;
 
@@ -204,13 +204,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const isTrial = String(bookingId).startsWith('trial-');
 
         return {
-          tenant_id: tenantId,
+          tenant_id: effectiveTenantId,
           teacher_id: user.id,
           student_id: item.studentId || null,
           booking_id: (!isReschedule && !isTrial) ? bookingId : null,
           reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
           appointment_id: isTrial ? bookingId.replace('trial-', '') : null,
-          presence: data.type || 'Presença',
+          presence: data.type || 'COMPLETED',
           subtype: item.type === 'AULA EXPERIMENTAL' ? 'AULA EXPERIMENTAL' : (isReschedule ? 'REPOSIÇÃO' : (data.subtype || null)),
           content_covered: data.lastApplied || null, // Book Selection
           observations: data.observation || null, // Free text OBS
@@ -243,7 +243,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             await supabase.from('crm_leads')
               .update({ status: 'TRIAL_DONE' })
               .in('email', emails)
-              .eq('tenant_id', tenantId);
+              .eq('tenant_id', effectiveTenantId);
           }
         }
 
@@ -280,7 +280,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
             if (!countError && canCreate) {
               await supabase.from('reschedules').insert([{
-                tenant_id: tenantId,
+                tenant_id: effectiveTenantId,
                 teacher_id: user.id,
                 student_id: a.student_id,
                 original_booking_id: a.booking_id,

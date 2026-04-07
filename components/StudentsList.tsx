@@ -66,7 +66,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       const { data: bookingsData } = await supabase
         .from('bookings')
         .select('student_id, teacher_id, start_date, day_of_week, time_slot, teacher:teacher_id(id, full_name)')
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .match(user?.role === UserRole.TEACHER ? { teacher_id: user.id } : {});
 
       console.log('Bookings Data:', bookingsData);
 

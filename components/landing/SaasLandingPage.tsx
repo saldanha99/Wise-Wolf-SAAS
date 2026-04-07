@@ -37,6 +37,28 @@ export default function SaasLandingPage() {
 
             if (error) throw error;
             setSubmitted(true);
+
+            // WhatsApp Notification (fire-and-forget)
+            if (formData.phone) {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://dvalxbtngopxopzcbfdm.supabase.co';
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                fetch(`${supabaseUrl}/functions/v1/whatsapp-lead-notification`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(supabaseAnonKey ? { 'Authorization': `Bearer ${supabaseAnonKey}` } : {})
+                    },
+                    body: JSON.stringify({
+                        name: formData.name,
+                        email: formData.email,
+                        phone: formData.phone,
+                        school_name: formData.school_name,
+                        tenant_id: 'default',
+                        source: formData.source,
+                        notes: `SaaS Lead - ${formData.school_name}`
+                    })
+                }).catch(err => console.error('WhatsApp notification error:', err));
+            }
         } catch (err: any) {
             console.error("Error submitting lead:", err);
             alert("Erro ao enviar. Tente novamente ou contate suporte.");

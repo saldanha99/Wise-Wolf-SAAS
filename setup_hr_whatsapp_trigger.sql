@@ -21,7 +21,8 @@ BEGIN
   payload := jsonb_build_object(
     'whatsapp', NEW.whatsapp,
     'name', NEW.name,
-    'tenant_id', NEW.tenant_id
+    'tenant_id', NEW.tenant_id,
+    'resume_url', NEW.resume_url
   );
 
   -- Disparar a Edge Function via pg_net (assíncrono, não bloqueia o INSERT)
