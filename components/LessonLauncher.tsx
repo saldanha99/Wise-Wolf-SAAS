@@ -12,7 +12,6 @@ interface LessonLauncherProps {
 }
 
 const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefresh }) => {
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,158 +26,103 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   }, [user, effectiveTenantId]);
 
   const fetchTodaySchedule = async () => {
+    if (!user || !effectiveTenantId) return;
     setLoading(true);
     try {
-      const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const todayDay = DAYS[today.getDay()];
-
+      const now = new Date();
+      // Fetch for last 3 days to catch immediate backlog plus today
       const startDate = new Date();
-      startDate.setDate(today.getDate() - 7);
+      startDate.setDate(now.getDate() - 3);
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = now.toISOString().split('T')[0];
 
+      // 1. Fetch EVERYTHING in bulk
+      const [
+        { data: bookingsData },
+        { data: reschedulesData },
+        { data: trialsData },
+        { data: logsData }
+      ] = await Promise.all([
+        supabase.from('bookings').select('*, student:student_id(id, full_name, module, avatar_url, current_topic_id)').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId),
+        supabase.from('reschedules').select('*, student:student_id(id, full_name, module, avatar_url)').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('date', startDateStr).lte('date', endDateStr),
+        supabase.from('appointments').select('*').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('date', startDateStr).lte('date', endDateStr),
+        supabase.from('class_logs').select('booking_id, reschedule_id, appointment_id, class_date').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('class_date', startDateStr).lte('class_date', endDateStr)
+      ]);
+
+      const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
       const allLessons: any[] = [];
-      const currentDate = new Date();
 
-      for (let i = 0; i < 8; i++) {
+      // 2. Iterate days in memory (D-3 to Today)
+      for (let i = 0; i <= 3; i++) {
         const checkDate = new Date();
-        checkDate.setDate(today.getDate() - i);
+        checkDate.setDate(now.getDate() - i);
+        const dayName = daysOfWeek[checkDate.getDay()];
         const dateStr = checkDate.toISOString().split('T')[0];
-        const dayName = DAYS[checkDate.getDay()];
 
         if (dayName === 'Domingo') continue;
 
-        // NEW: Filter out lessons from previous months
-        // Only allow lessons within the current calendar month
-        if (checkDate.getMonth() !== today.getMonth() || checkDate.getFullYear() !== today.getFullYear()) {
-          continue;
-        }
-
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', effectiveTenantId)
-          .eq('day_of_week', dayName);
-
-        const { data: reschedules } = await supabase
-          .from('reschedules')
-          .select('id, time, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', effectiveTenantId)
-          .eq('date', dateStr);
-
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id, time, student_name, student_phone, type, status, date')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', effectiveTenantId)
-          .eq('date', dateStr)
-          .eq('type', 'experimental');
-
-        const { data: logs } = await supabase
-          .from('class_logs')
-          .select('booking_id, reschedule_id, appointment_id')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', effectiveTenantId)
-          .eq('class_date', dateStr);
-
-        // Helper to process lesson
-        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
-          const student = b.student as any;
-          if (!student) return;
-
-          // Fetch Topic Info if exists
-          let topicInfo = null;
-          if (student.current_topic_id) {
-            const { data: t } = await supabase
-              .from('module_topics')
-              .select('title, base_material:base_material_id(title, file_url)')
-              .eq('id', student.current_topic_id)
-              .single();
-            topicInfo = t;
+        // Regular bookings mapping
+        bookingsData?.filter(b => b.day_of_week === dayName).forEach(b => {
+          if (b.start_date && dateStr < b.start_date) return;
+          
+          const hasLog = logsData?.some(l => 
+            l.class_date === dateStr && l.booking_id && String(l.booking_id) === String(b.id)
+          );
+          if (!hasLog) {
+            allLessons.push({
+              id: b.id,
+              studentId: b.student?.id,
+              name: b.student?.full_name || 'Desconhecido',
+              date: i === 0 ? `Hoje às ${b.time_slot}` : `${checkDate.toLocaleDateString('pt-BR')} às ${b.time_slot}`,
+              dateObj: dateStr,
+              avatar: b.student?.avatar_url || `https://ui-avatars.com/api/?name=${b.student?.full_name}`,
+              level: b.student?.module?.split(' ')[0] || 'N/A',
+              type: 'REGULAR',
+              time: b.time_slot
+            });
           }
+        });
 
-          const isTrial = student.status === 'TRIAL' || student.status === 'Aula Experimental';
-
-          allLessons.push({
-            id: type === 'REGULAR' ? b.id : `repo-${b.id}`,
-            studentId: student.id,
-            name: student.full_name || 'Estudante',
-            email: student.email, // Added email
-            date: i === 0 ? `Hoje às ${time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : ''}`,
-            dateObj: dateStr,
-            avatar: student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`,
-            level: student.module?.split(' ')[0] || 'N/A',
-            type: isTrial ? 'AULA EXPERIMENTAL' : type,
-            isLate: i > 0,
-            suggestedTopic: topicInfo?.title || null,
-            suggestedMaterial: topicInfo?.base_material?.title || null,
-            suggestedMaterialUrl: topicInfo?.base_material?.file_url || null
-          });
-        };
-
-        // Bookings
-        if (bookings) {
-          for (const b of bookings) {
-            if (b.start_date && dateStr < b.start_date) continue;
-            if (i === 0) {
-              const [h, m] = b.time_slot.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
-            if (!logs?.some(l => l.booking_id === b.id)) {
-              await processLesson(b, 'REGULAR', b.time_slot);
-            }
+        // Reschedules mapping
+        reschedulesData?.filter(r => r.date === dateStr).forEach(r => {
+          const hasLog = logsData?.some(l => l.reschedule_id && String(l.reschedule_id) === String(r.id));
+          if (!hasLog) {
+            allLessons.push({
+              id: `repo-${r.id}`,
+              studentId: r.student?.id,
+              name: r.student?.full_name || 'Desconhecido',
+              date: i === 0 ? `Hoje às ${r.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${r.time}`,
+              dateObj: dateStr,
+              avatar: r.student?.avatar_url || `https://ui-avatars.com/api/?name=${r.student?.full_name}`,
+              level: r.student?.module?.split(' ')[0] || 'N/A',
+              type: 'REPOSIÇÃO',
+              time: r.time
+            });
           }
-        }
+        });
 
-        // Reschedules
-        if (reschedules) {
-          for (const r of reschedules) {
-            if (i === 0) {
-              const [h, m] = (r as any).time.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
-            if (!logs?.some(l => l.reschedule_id === r.id)) {
-              await processLesson(r, 'REPOSIÇÃO', (r as any).time);
-            }
+        // Trial mapping
+        trialsData?.filter(t => t.date === dateStr).forEach(t => {
+          const hasLog = logsData?.some(l => l.appointment_id && String(l.appointment_id) === String(t.id));
+          if (!hasLog) {
+            allLessons.push({
+              id: `trial-${t.id}`,
+              studentId: null,
+              name: t.student_name || 'Prospect Trial',
+              date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
+              dateObj: dateStr,
+              avatar: `https://ui-avatars.com/api/?name=${t.student_name}`,
+              level: t.module || 'TRIAL',
+              type: 'AULA EXPERIMENTAL',
+              time: t.time
+            });
           }
-        }
-
-        // Trials (from appointments)
-        if (appointments) {
-          for (const t of appointments) {
-            if (i === 0) {
-              const [h, m] = t.time.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
-            if (!logs?.some(l => l.appointment_id === t.id)) {
-              allLessons.push({
-                id: `trial-${t.id}`,
-                studentId: null, // Lead doesn't have a profile yet usually
-                leadName: t.student_name,
-                name: t.student_name || 'Aula Experimental',
-                date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
-                dateObj: dateStr,
-                avatar: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
-                level: 'TRIAL',
-                type: 'AULA EXPERIMENTAL',
-                isLate: i > 0,
-                suggestedTopic: 'Avaliação de Nível',
-                suggestedMaterial: null
-              });
-            }
-          }
-        }
+        });
       }
 
-      const currentMonthYear = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
-      setTodayLessons(allLessons
-        .filter(l => l.dateObj.substring(0, 7) === currentMonthYear)
-        .sort((a, b) => a.isLate === b.isLate ? 0 : a.isLate ? 1 : -1)
-      );
-    } catch (err) {
-      console.error('Error fetching today schedule:', err);
+      setTodayLessons(allLessons.sort((a, b) => a.time.localeCompare(b.time)));
+    } catch (error) {
+      console.error('Error in fetchTodaySchedule:', error);
     } finally {
       setLoading(false);
     }
@@ -188,127 +132,48 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // 1. Validar Fechamento Automático (Bloqueio para meses passados)
       const now = new Date();
       const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 
-      const closedMonths = todayLessons.map(item => {
-        const lessonMonthYear = item?.dateObj ? item.dateObj.substring(0, 7) : null;
-        if (lessonMonthYear && lessonMonthYear < currentMonthYear) {
-          return lessonMonthYear;
-        }
-        return null;
-      }).filter(Boolean);
-
-      if (closedMonths.length > 0) {
-        throw new Error(`O mês ${closedMonths[0]} já está encerrado. Não é possível lançar aulas de meses anteriores.`);
-      }
-
       const entries = todayLessons.map(item => {
-        const bookingId = String(item.id);
-        const data = formData[bookingId] || { type: 'COMPLETED', subtype: '', personalized: '', lastApplied: '', observation: '' };
+        const lessonId = String(item.id);
+        const data = formData[lessonId];
+        if (!data) return null;
 
-        if (!item) return null;
-
-        const isReschedule = String(bookingId).startsWith('repo-');
-        const isTrial = String(bookingId).startsWith('trial-');
+        const isReschedule = lessonId.startsWith('repo-');
+        const isTrial = lessonId.startsWith('trial-');
 
         return {
           tenant_id: effectiveTenantId,
           teacher_id: user.id,
           student_id: item.studentId || null,
-          booking_id: (!isReschedule && !isTrial) ? bookingId : null,
-          reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
-          appointment_id: isTrial ? bookingId.replace('trial-', '') : null,
+          booking_id: (!isReschedule && !isTrial) ? lessonId : null,
+          reschedule_id: isReschedule ? lessonId.replace('repo-', '') : null,
+          appointment_id: isTrial ? lessonId.replace('trial-', '') : null,
           presence: data.type || 'COMPLETED',
           subtype: item.type === 'AULA EXPERIMENTAL' ? 'AULA EXPERIMENTAL' : (isReschedule ? 'REPOSIÇÃO' : (data.subtype || null)),
-          content_covered: data.lastApplied || null, // Book Selection
-          observations: data.observation || null, // Free text OBS
-
-          // Trial Fields
-          assessment_level: item.type === 'AULA EXPERIMENTAL' ? data.assessment_level : null,
-          psychological_profile: item.type === 'AULA EXPERIMENTAL' ? data.psychological_profile : null,
-          teacher_verdict: item.type === 'AULA EXPERIMENTAL' ? data.teacher_verdict : null,
-
-          // Legacy fields mapping
-          content: data.lastApplied || null,
-          class_date: item.dateObj, // Use the real date of the class
+          content_covered: data.lastApplied || null,
+          observations: data.observation || null,
+          class_date: item.dateObj,
           created_at: new Date().toISOString()
         };
       }).filter(Boolean);
 
       if (entries.length > 0) {
-        // 1. Insert Class Logs
-        const { error: logError } = await supabase.from('class_logs').insert(entries);
-        if (logError) throw logError;
+        const { error } = await supabase.from('class_logs').insert(entries);
+        if (error) throw error;
 
-        // Update CRM Leads to TRIAL_DONE
-        const trialEntries = (entries as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
-        if (trialEntries.length > 0) {
-          const studentIds = trialEntries.map(e => e.student_id);
-          const { data: profiles } = await supabase.from('profiles').select('id, email').in('id', studentIds);
-          const emails = profiles?.map(p => p.email).filter(Boolean) || [];
-
-          if (emails.length > 0) {
-            await supabase.from('crm_leads')
-              .update({ status: 'TRIAL_DONE' })
-              .in('email', emails)
-              .eq('tenant_id', effectiveTenantId);
-          }
-        }
-
-        // 2. Clear used Reschedules if any
+        // Cleanup Reschedules
         const completedReschedules = entries.filter(e => e.reschedule_id).map(e => e.reschedule_id);
         if (completedReschedules.length > 0) {
           await supabase.from('reschedules').delete().in('id', completedReschedules);
         }
 
-        // 3. Create credits for absences
-        const absences = (entries as any[]).filter(e =>
-          (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada' || e.presence === 'TEACHER_ABSENCE')
-          && e.subtype !== 'REPOSIÇÃO'
-        );
-
-        if (absences.length > 0) {
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-
-          for (const a of absences) {
-            // Rule: Teacher Fault = Always Create. Student Fault = Limit 5.
-            const isTeacherFault = a.presence === 'TEACHER_ABSENCE';
-
-            // Check existing student-caused reschedules this month
-            const { count, error: countError } = await supabase
-              .from('reschedules')
-              .select('id', { count: 'exact', head: true })
-              .eq('student_id', a.student_id)
-              .eq('created_by_fault', 'STUDENT') // Assuming we track this or infer it. If not, we count all. 
-              // Better approach for now: check total created this month.
-              .gte('created_at', startOfMonth);
-
-            const currentCount = count || 0;
-            const canCreate = isTeacherFault || currentCount < 5;
-
-            if (!countError && canCreate) {
-              await supabase.from('reschedules').insert([{
-                tenant_id: effectiveTenantId,
-                teacher_id: user.id,
-                student_id: a.student_id,
-                original_booking_id: a.booking_id,
-                date: 'Pendente',
-                time: 'Pendente',
-                created_at: new Date().toISOString(),
-                // Optional: We could add a 'fault_type' column to DB to distinguishing later, 
-                // but for now we just apply the logic at creation time.
-              }]);
-            }
-          }
-        }
+        setShowSuccess(true);
+        if (onRefresh) onRefresh();
+        setTimeout(() => setShowSuccess(false), 3000);
+        await fetchTodaySchedule();
       }
-
-      setShowSuccess(true);
-      if (onRefresh) onRefresh();
-      setTimeout(() => setShowSuccess(false), 3000);
-      await fetchTodaySchedule();
     } catch (err: any) {
       console.error('Save Error:', err);
       alert(`Erro: ${err.message}`);
@@ -319,20 +184,17 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 relative h-[calc(100vh-140px)] flex flex-col">
-
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <div>
           <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">Lançamento Rápido</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Registre a presença e conteúdo das aulas de hoje.</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Registre a presença e conteúdo das aulas ocorridas.</p>
         </div>
         <div className="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-50 dark:bg-slate-900 px-4 py-2 rounded-full border border-slate-100 dark:border-slate-800">
           <Calendar size={14} />
           {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </div>
-      </div>
+      </header>
 
-      {/* Success Toast */}
       {showSuccess && (
         <div className="fixed top-10 right-10 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-500">
           <div className="bg-white/20 p-2 rounded-full"><CheckCircle size={20} /></div>
@@ -343,7 +205,6 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         </div>
       )}
 
-      {/* Bulk Form */}
       <div className="flex-1 min-h-0">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
@@ -354,7 +215,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           <ClassLogForm
             items={todayLessons}
             onSave={handleBulkSave}
-            title="Aulas Programadas para Hoje"
+            title="Aulas Recentes e de Hoje"
             loading={isSubmitting}
           />
         ) : (
@@ -362,8 +223,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-300 mb-6">
               <Calendar size={40} />
             </div>
-            <h4 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Sem aulas hoje</h4>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 font-medium">Você não possui aulas agendadas para esta {new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}.</p>
+            <h4 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Sem aulas pendentes</h4>
+            <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 font-medium">Você está em dia com seus lançamentos recentes.</p>
           </div>
         )}
       </div>

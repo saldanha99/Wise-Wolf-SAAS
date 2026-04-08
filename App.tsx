@@ -86,32 +86,7 @@ const App: React.FC = () => {
 
   // Notifications State
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      title: 'Bem-vindo ao Novo Portal 🐺',
-      description: 'Sua interface Wise Wolf foi atualizada com melhorias de velocidade e design premium.',
-      type: 'info',
-      timestamp: 'Agora',
-      isRead: false
-    },
-    {
-      id: '2',
-      title: 'Mês de Março Encerrado',
-      description: 'As pendências de março foram zeradas conforme a política de fechamento mensal.',
-      type: 'success',
-      timestamp: 'Há 2h',
-      isRead: true
-    },
-    {
-      id: '3',
-      title: 'Lançamento de Aulas',
-      description: 'Não esqueça de lançar suas aulas de hoje para manter seu faturamento em dia.',
-      type: 'urgent',
-      timestamp: 'Hoje',
-      isRead: false
-    }
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Fetch Initial Data on Login
   const loadAppData = async () => {
@@ -240,50 +215,64 @@ const App: React.FC = () => {
         setReschedules(formattedReschedules as any);
       }
 
-      // (Inside loadAppData after fetching teachers and reschedules)
       if (user.role === UserRole.TEACHER) {
         const now = new Date();
-        const threeDaysAgo = new Date();
-        threeDaysAgo.setDate(now.getDate() - 3);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const dateStrStart = startOfMonth.toISOString().split('T')[0];
 
+        // 1. Fetch ALL logs for the current month in ONE query
         const { data: logs } = await supabase
           .from('class_logs')
           .select('booking_id, reschedule_id, student_id, class_date')
           .eq('teacher_id', user.id)
-          .gte('class_date', threeDaysAgo.toISOString().split('T')[0]);
+          .gte('class_date', dateStrStart);
+
+        // 2. Fetch ALL regular bookings for the teacher in ONE query
+        const { data: bks } = await supabase
+          .from('bookings')
+          .select('id, time_slot, student_id, start_date, day_of_week')
+          .eq('teacher_id', user.id);
+
+        // 3. Fetch ALL reschedules for the teacher for the current month in ONE query
+        const { data: rps } = await supabase
+          .from('reschedules')
+          .select('id, time, student_id, date')
+          .eq('teacher_id', user.id)
+          .gte('date', dateStrStart);
 
         const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
         let count = 0;
 
-        for (let i = 1; i <= 30; i++) {
+        // 4. In-memory check: Iterate days of current month up to yesterday
+        for (let i = 1; i < 32; i++) {
           const checkDate = new Date();
           checkDate.setDate(now.getDate() - i);
-          const dayName = daysOfWeek[checkDate.getDay()];
-          const dateStr = checkDate.toISOString().split('T')[0];
           
+          // Safety: Stop if we go before current month
           if (checkDate.getMonth() !== now.getMonth() || checkDate.getFullYear() !== now.getFullYear()) {
-            continue;
+            break;
           }
 
+          const dayName = daysOfWeek[checkDate.getDay()];
+          const dateStr = checkDate.toISOString().split('T')[0];
           if (dayName === 'Domingo') continue;
 
-          const { data: bks } = await supabase.from('bookings').select('id, time_slot, student_id, start_date').eq('teacher_id', user.id).eq('day_of_week', dayName);
-          bks?.forEach(b => {
-            if (b.start_date && dateStr < b.start_date) return;
-
-            const hasLog = logs?.some(l => {
-              return (l.booking_id && String(l.booking_id) === String(b.id) && l.class_date === dateStr) ||
-                (String(l.student_id) === String(b.student_id) && l.class_date === dateStr);
-            });
-            if (!hasLog) count++;
+          // Regular lessons checking
+          bks?.filter(b => b.day_of_week === dayName).forEach(b => {
+             if (b.start_date && dateStr < b.start_date) return;
+             const hasLog = logs?.some(l => 
+               l.class_date === dateStr && (
+                 (l.booking_id && String(l.booking_id) === String(b.id)) ||
+                 (String(l.student_id) === String(b.student_id))
+               )
+             );
+             if (!hasLog) count++;
           });
 
-          const { data: rps } = await supabase.from('reschedules').select('id, time, student_id').eq('teacher_id', user.id).eq('date', dateStr);
-          rps?.forEach(r => {
-            const hasLog = logs?.some(l =>
-              (l.reschedule_id && String(l.reschedule_id) === String(r.id)) // Reschedules are unique per date/ID by design
-            );
-            if (!hasLog) count++;
+          // Reschedules checking
+          rps?.filter(r => r.date === dateStr).forEach(r => {
+             const hasLog = logs?.some(l => l.reschedule_id && String(l.reschedule_id) === String(r.id));
+             if (!hasLog) count++;
           });
         }
         setPendingLessonsCount(count);
@@ -311,6 +300,68 @@ const App: React.FC = () => {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // --- Notification Handlers ---
+  const fetchNotifications = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (data) {
+      setNotifications(data.map(n => ({
+        id: n.id,
+        title: n.title,
+        description: n.description,
+        type: n.type as any,
+        timestamp: new Date(n.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        isRead: n.is_read
+      })));
+    }
+  };
+
+  const markNotificationAsRead = async (id: string) => {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const clearAllNotifications = async () => {
+    if (!user) return;
+    await supabase.from('notifications').delete().eq('user_id', user.id);
+    setNotifications([]);
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      
+      // Subscribe to real-time notifications
+      const sub = supabase
+        .channel('public:notifications')
+        .on('postgres_changes', { 
+           event: 'INSERT', 
+           schema: 'public', 
+           table: 'notifications',
+           filter: `user_id=eq.${user.id}`
+        }, (payload) => {
+           const n = payload.new;
+           setNotifications(prev => [{
+             id: n.id,
+             title: n.title,
+             description: n.description,
+             type: n.type as any,
+             timestamp: 'Agora',
+             isRead: false
+           }, ...prev]);
+        })
+        .subscribe();
+
+      return () => { supabase.removeChannel(sub); };
+    }
+  }, [user]);
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
@@ -626,8 +677,8 @@ const App: React.FC = () => {
                     <NotificationCenter 
                       notifications={notifications}
                       onClose={() => setShowNotifications(false)}
-                      onMarkAsRead={(id) => setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n))}
-                      onClearAll={() => setNotifications([])}
+                      onMarkAsRead={markNotificationAsRead}
+                      onClearAll={clearAllNotifications}
                     />
                   )}
                 </div>

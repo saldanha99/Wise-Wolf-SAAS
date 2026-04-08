@@ -28,46 +28,47 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
     setLoading(true);
     try {
       const now = new Date();
-      // Start 60 days ago (Expanded to catch older lessons)
-      const startDate = new Date();
-      startDate.setDate(now.getDate() - 60);
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startDateStr = startOfMonth.toISOString().split('T')[0];
 
-      // End 7 days ago (Grace Period)
+      // End 3 days ago (Grace Period)
       const endDate = new Date();
-      endDate.setDate(now.getDate() - 7);
+      endDate.setDate(now.getDate() - 3);
+      const endDateStr = endDate.toISOString().split('T')[0];
 
       const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-      // We'll collect all expected lessons in the range [Day-30 to Day-7]
       const allExpected: any[] = [];
 
-      // Iterate dates from startDate to endDate
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      // 1. Fetch ALL records in bulk
+      const [
+        { data: bookings },
+        { data: reschedules },
+        { data: logs }
+      ] = await Promise.all([
+        supabase.from('bookings').select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, module)').eq('teacher_id', user.id).eq('tenant_id', tenantId),
+        supabase.from('reschedules').select('id, time, date, student:student_id(id, full_name, module)').eq('teacher_id', user.id).eq('tenant_id', tenantId).gte('date', startDateStr).lte('date', endDateStr),
+        supabase.from('class_logs').select('booking_id, reschedule_id, student_id, class_date').eq('teacher_id', user.id).eq('tenant_id', tenantId).gte('class_date', startDateStr).lte('class_date', endDateStr)
+      ]);
+
+      // 2. Iterate dates in memory
+      for (let d = new Date(startOfMonth); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dayName = daysOfWeek[d.getDay()];
         const dateStr = d.toISOString().split('T')[0];
 
-        // NEW: Mandatory Monthly Cutoff
-        // If the date is from a different month/year than today, skip it.
-        // This effectively "zeros out" pending history from previous months.
-        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) {
-          continue;
-        }
-
         if (dayName === 'Domingo') continue;
 
-        // 1. Fetch regular bookings for this day
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, module)')
-          .eq('teacher_id', user.id)
-          .eq('day_of_week', dayName)
-          .eq('tenant_id', tenantId);
+        // Regular bookings check
+        bookings?.filter(b => b.day_of_week === dayName).forEach(b => {
+          if (b.start_date && dateStr < b.start_date) return;
+          
+          const hasLog = logs?.some(log => 
+            log.class_date === dateStr && (
+              (log.booking_id && String(log.booking_id) === String(b.id)) ||
+              (String(log.student_id) === String((b.student as any)?.id))
+            )
+          );
 
-        if (bookings) {
-          bookings.forEach(b => {
-            if (b.start_date && dateStr < b.start_date) return;
-            // No need to check future time since we are > 7 days ago
-
+          if (!hasLog) {
             allExpected.push({
               id: `book-${b.id}-${dateStr}`,
               bookingId: b.id,
@@ -79,19 +80,14 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               time: b.time_slot,
               type: 'REGULAR'
             });
-          });
-        }
+          }
+        });
 
-        // 2. Fetch reschedules
-        const { data: reschedules } = await supabase
-          .from('reschedules')
-          .select('id, time, student:student_id(id, full_name, module)')
-          .eq('teacher_id', user.id)
-          .eq('date', dateStr)
-          .eq('tenant_id', tenantId);
-
-        if (reschedules) {
-          reschedules.forEach(r => {
+        // Reschedules check
+        reschedules?.filter(r => r.date === dateStr).forEach(r => {
+          const hasLog = logs?.some(log => log.reschedule_id && String(log.reschedule_id) === String(r.id));
+          
+          if (!hasLog) {
             allExpected.push({
               id: `repo-${r.id}`,
               rescheduleId: r.id,
@@ -103,44 +99,11 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
               time: r.time,
               type: 'REPOSIÇÃO'
             });
-          });
-        }
+          }
+        });
       }
 
-      // 3. Fetch logs from strict range to filter out
-      const { data: logs } = await supabase
-        .from('class_logs')
-        .select('booking_id, reschedule_id, student_id, class_date')
-        .eq('teacher_id', user.id)
-        .eq('tenant_id', tenantId)
-        .gte('class_date', startDate.toISOString().split('T')[0])
-        .lte('class_date', endDate.toISOString().split('T')[0]);
-
-      const nowMonth = now.getMonth();
-      const nowYear = now.getFullYear();
-
-      // Filter: Keep only those that DON'T have a log AND are in the current month
-      const pendingLessons = allExpected.filter(exp => {
-        // Hard Monthly Cutoff: Only show lessons from the current calendar month
-        const [y, m] = exp.rawDate.split('-').map(Number);
-        if (y !== nowYear || (m - 1) !== nowMonth) return false;
-
-        const hasLog = logs?.some(log => {
-          const lDate = log.class_date;
-          const expDate = exp.rawDate;
-
-          if (exp.type === 'REGULAR' && log.booking_id && String(log.booking_id) === String(exp.bookingId)) {
-            return lDate === expDate;
-          }
-          if (exp.type === 'REPOSIÇÃO' && log.reschedule_id && String(log.reschedule_id) === String(exp.rescheduleId)) {
-            return true;
-          }
-          return String(log.student_id) === String(exp.studentId) && lDate === expDate;
-        });
-        return !hasLog;
-      });
-
-      setPending(pendingLessons);
+      setPending(allExpected);
     } catch (err) {
       console.error('Error fetching pending lessons:', err);
     } finally {
