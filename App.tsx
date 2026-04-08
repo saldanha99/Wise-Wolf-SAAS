@@ -60,6 +60,7 @@ import ModernSidebar from './components/ModernSidebar';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { StudentProvider } from './components/contexts/StudentContext';
+import NotificationCenter, { Notification } from './components/NotificationCenter';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -82,6 +83,35 @@ const App: React.FC = () => {
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
+
+  // Notifications State
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: '1',
+      title: 'Bem-vindo ao Novo Portal 🐺',
+      description: 'Sua interface Wise Wolf foi atualizada com melhorias de velocidade e design premium.',
+      type: 'info',
+      timestamp: 'Agora',
+      isRead: false
+    },
+    {
+      id: '2',
+      title: 'Mês de Março Encerrado',
+      description: 'As pendências de março foram zeradas conforme a política de fechamento mensal.',
+      type: 'success',
+      timestamp: 'Há 2h',
+      isRead: true
+    },
+    {
+      id: '3',
+      title: 'Lançamento de Aulas',
+      description: 'Não esqueça de lançar suas aulas de hoje para manter seu faturamento em dia.',
+      type: 'urgent',
+      timestamp: 'Hoje',
+      isRead: false
+    }
+  ]);
 
   // Fetch Initial Data on Login
   const loadAppData = async () => {
@@ -232,6 +262,12 @@ const App: React.FC = () => {
           checkDate.setDate(now.getDate() - i);
           const dayName = daysOfWeek[checkDate.getDay()];
           const dateStr = checkDate.toISOString().split('T')[0];
+          
+          // NEW: Mandatory Monthly Cutoff for Badge Sync
+          // If the date belongs to a previous month, skip counting it.
+          if (checkDate.getMonth() !== now.getMonth() || checkDate.getFullYear() !== now.getFullYear()) {
+            continue;
+          }
 
           if (dayName === 'Domingo') continue;
 
@@ -582,13 +618,26 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                <button 
-                  onClick={() => alert('Sistema de notificações em desenvolvimento. Em breve você receberá avisos importantes aqui!')}
-                  className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className={`relative p-2 rounded-full transition-colors ${showNotifications ? 'bg-indigo-50 dark:bg-indigo-900/20 text-tenant-primary' : 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'}`}
+                  >
+                    <Bell className="w-5 h-5" />
+                    {notifications.some(n => !n.isRead) && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
+                    )}
+                  </button>
+
+                  {showNotifications && (
+                    <NotificationCenter 
+                      notifications={notifications}
+                      onClose={() => setShowNotifications(false)}
+                      onMarkAsRead={(id) => setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n))}
+                      onClearAll={() => setNotifications([])}
+                    />
+                  )}
+                </div>
 
                 <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors">
                   {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
