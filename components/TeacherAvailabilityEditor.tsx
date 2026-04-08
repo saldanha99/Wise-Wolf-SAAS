@@ -78,7 +78,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     const { data: appointmentsData } = await supabase
       .from('appointments')
       .select('id, start_time, student_name, student_phone, type, status')
-      .eq('professor_id', teacherId)
+      .eq('teacher_id', teacherId) // Standardised to teacher_id
       .eq('type', 'experimental')
       .in('status', ['scheduled', 'confirmed']); // Adjust status as needed based on ClaimOpportunity
 

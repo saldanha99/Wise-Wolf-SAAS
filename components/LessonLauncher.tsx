@@ -52,18 +52,21 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .from('bookings')
           .select('id, time_slot, start_date, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', effectiveTenantId)
           .eq('day_of_week', dayName);
 
         const { data: reschedules } = await supabase
           .from('reschedules')
           .select('id, time, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', effectiveTenantId)
           .eq('date', dateStr);
 
         const { data: appointments } = await supabase
           .from('appointments')
           .select('id, time, student_name, student_phone, type, status, date')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', effectiveTenantId)
           .eq('date', dateStr)
           .eq('type', 'experimental');
 
@@ -71,6 +74,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .from('class_logs')
           .select('booking_id, reschedule_id, appointment_id')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', effectiveTenantId)
           .eq('class_date', dateStr);
 
         // Helper to process lesson
