@@ -48,6 +48,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         if (dayName === 'Domingo') continue;
 
+        // NEW: Filter out lessons from previous months
+        // Only allow lessons within the current calendar month
+        if (checkDate.getMonth() !== today.getMonth() || checkDate.getFullYear() !== today.getFullYear()) {
+          continue;
+        }
+
         const { data: bookings } = await supabase
           .from('bookings')
           .select('id, time_slot, start_date, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')

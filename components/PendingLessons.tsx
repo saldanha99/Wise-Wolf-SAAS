@@ -46,6 +46,13 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         const dayName = daysOfWeek[d.getDay()];
         const dateStr = d.toISOString().split('T')[0];
 
+        // NEW: Mandatory Monthly Cutoff
+        // If the date is from a different month/year than today, skip it.
+        // This effectively "zeros out" pending history from previous months.
+        if (d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) {
+          continue;
+        }
+
         if (dayName === 'Domingo') continue;
 
         // 1. Fetch regular bookings for this day
