@@ -110,31 +110,32 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       // 3. Fetch logs from strict range to filter out
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('booking_id, reschedule_id, student_id, created_at')
+        .select('booking_id, reschedule_id, student_id, class_date')
         .eq('teacher_id', user.id)
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString() + 'T23:59:59Z');
+        .gte('class_date', startDate.toISOString().split('T')[0])
+        .lte('class_date', endDate.toISOString().split('T')[0]);
 
-      const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+      const nowMonth = now.getMonth();
+      const nowYear = now.getFullYear();
 
       // Filter: Keep only those that DON'T have a log AND are in the current month
       const pendingLessons = allExpected.filter(exp => {
         // Hard Monthly Cutoff: Only show lessons from the current calendar month
-        const expMonthYear = exp.rawDate.substring(0, 7);
-        if (expMonthYear < currentMonthYear) return false;
+        const [y, m] = exp.rawDate.split('-').map(Number);
+        if (y !== nowYear || (m - 1) !== nowMonth) return false;
 
         const hasLog = logs?.some(log => {
-          const logDate = log.created_at.split('T')[0];
+          const lDate = log.class_date;
           const expDate = exp.rawDate;
 
           if (exp.type === 'REGULAR' && log.booking_id && String(log.booking_id) === String(exp.bookingId)) {
-            return logDate === expDate;
+            return lDate === expDate;
           }
           if (exp.type === 'REPOSIÇÃO' && log.reschedule_id && String(log.reschedule_id) === String(exp.rescheduleId)) {
             return true;
           }
-          return String(log.student_id) === String(exp.studentId) && logDate === expDate;
+          return String(log.student_id) === String(exp.studentId) && lDate === expDate;
         });
         return !hasLog;
       });

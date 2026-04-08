@@ -248,23 +248,19 @@ const App: React.FC = () => {
 
         const { data: logs } = await supabase
           .from('class_logs')
-          .select('booking_id, reschedule_id, student_id, created_at')
+          .select('booking_id, reschedule_id, student_id, class_date')
           .eq('teacher_id', user.id)
-          .gte('created_at', threeDaysAgo.toISOString());
+          .gte('class_date', threeDaysAgo.toISOString().split('T')[0]);
 
         const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
         let count = 0;
 
-        // Loop through last 7 to 30 days to count PENDING (Critical) lessons
-        // Grace period is 7 days. Older than 30 days is ignored for performance.
-        for (let i = 7; i <= 30; i++) {
+        for (let i = 1; i <= 30; i++) {
           const checkDate = new Date();
           checkDate.setDate(now.getDate() - i);
           const dayName = daysOfWeek[checkDate.getDay()];
           const dateStr = checkDate.toISOString().split('T')[0];
           
-          // NEW: Mandatory Monthly Cutoff for Badge Sync
-          // If the date belongs to a previous month, skip counting it.
           if (checkDate.getMonth() !== now.getMonth() || checkDate.getFullYear() !== now.getFullYear()) {
             continue;
           }
@@ -274,12 +270,10 @@ const App: React.FC = () => {
           const { data: bks } = await supabase.from('bookings').select('id, time_slot, student_id, start_date').eq('teacher_id', user.id).eq('day_of_week', dayName);
           bks?.forEach(b => {
             if (b.start_date && dateStr < b.start_date) return;
-            // No time check needed as we are > 7 days ago
 
             const hasLog = logs?.some(l => {
-              const lDate = l.created_at.split('T')[0];
-              return (l.booking_id && String(l.booking_id) === String(b.id) && lDate === dateStr) ||
-                (String(l.student_id) === String(b.student_id) && lDate === dateStr);
+              return (l.booking_id && String(l.booking_id) === String(b.id) && l.class_date === dateStr) ||
+                (String(l.student_id) === String(b.student_id) && l.class_date === dateStr);
             });
             if (!hasLog) count++;
           });
@@ -287,8 +281,7 @@ const App: React.FC = () => {
           const { data: rps } = await supabase.from('reschedules').select('id, time, student_id').eq('teacher_id', user.id).eq('date', dateStr);
           rps?.forEach(r => {
             const hasLog = logs?.some(l =>
-              (l.reschedule_id && String(l.reschedule_id) === String(r.id)) ||
-              (String(l.student_id) === String(r.student_id) && l.created_at.split('T')[0] === dateStr)
+              (l.reschedule_id && String(l.reschedule_id) === String(r.id)) // Reschedules are unique per date/ID by design
             );
             if (!hasLog) count++;
           });
