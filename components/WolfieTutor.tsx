@@ -343,6 +343,62 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         await sendToWolfieBrain({ message: text });
     };
 
+    const [liveCall, setLiveCall] = useState(false);
+    const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const speechStartTimeRef = useRef<number | null>(null);
+
+    // ============================================================
+    // VAD & INTERRUPTION LOGIC (Live Call Mode)
+    // ============================================================
+    const handleVoiceDetection = (detected: boolean) => {
+        setIsVoiceDetected(detected);
+        if (!liveCall) return;
+
+        // 1. Interruption Logic: If AI is speaking and user talks -> Stop AI immediately
+        if (state === 'SPEAKING' && detected) {
+            if (!speechStartTimeRef.current) speechStartTimeRef.current = Date.now();
+            
+            // Requires 300ms of continuous speech to interrupt (avoid false positives from coughs)
+            if (Date.now() - speechStartTimeRef.current > 300) {
+                stopSpeaking();
+                startRecording();
+                speechStartTimeRef.current = null;
+            }
+            return;
+        }
+
+        // 2. Start Recording: If IDLE and user starts talking
+        if (state === 'IDLE' && detected) {
+            if (!speechStartTimeRef.current) speechStartTimeRef.current = Date.now();
+            
+            if (Date.now() - speechStartTimeRef.current > 400) {
+                startRecording();
+                speechStartTimeRef.current = null;
+            }
+        } 
+        
+        // 3. Auto-Submit: If LISTENING and silence persists
+        if (state === 'LISTENING') {
+            if (detected) {
+                // User is still talking, clear silence timer
+                if (silenceTimeoutRef.current) {
+                    clearTimeout(silenceTimeoutRef.current);
+                    silenceTimeoutRef.current = null;
+                }
+            } else {
+                // User stopped talking, start silence timer (1.5s)
+                if (!silenceTimeoutRef.current) {
+                    silenceTimeoutRef.current = setTimeout(() => {
+                        stopRecordingAndSend();
+                        silenceTimeoutRef.current = null;
+                    }, 1500); 
+                }
+            }
+        }
+
+        if (!detected) speechStartTimeRef.current = null;
+    };
+
     const sendToWolfieBrain = async (input: { message?: string; audioBase64?: string }) => {
         try {
             const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Wolfie'}: ${m.content}`).join('\n');
@@ -450,16 +506,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
     };
 
-    const handleModeSelection = (mode: 'voice' | 'text') => {
+    const handleModeSelection = (mode: 'voice' | 'text' | 'live') => {
         setTopic('Conversa Livre');
         setContext('');
         setShowTextInput(mode === 'text');
+        setLiveCall(mode === 'live');
         
         // Ativar de propósito para começar a conversa
         setHasSelectedTopic(true);
 
-        // Se escolheu voz, podemos até já acionar o áudio, ou deixar ele apertar. 
-        // Vamos deixar ele apertar o orb, já avisamos no prompt o que fazer.
+        if (mode === 'live') {
+            setAutoSpeakEnabled(true);
+            setTranslationEnabled(false); // More immersive
+            // Play a start-call sound effect if possible, or just start
+        }
     };
 
     // ============================================================
@@ -495,18 +555,32 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl mx-auto">
+                        {/* Live Call Mode */}
+                        <button
+                            onClick={() => handleModeSelection('live')}
+                            className="group relative p-8 rounded-3xl bg-indigo-600/20 backdrop-blur-xl border border-indigo-500/30 hover:bg-indigo-600/40 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center shadow-[0_0_40px_rgba(79,70,229,0.2)]"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                            <div className="w-20 h-20 rounded-full bg-indigo-500/40 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300 relative">
+                                <Zap size={32} className="text-white animate-pulse" />
+                                <div className="absolute inset-0 rounded-full border-2 border-white/20 animate-ping" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-3">Live Call ⚡</h3>
+                            <p className="text-indigo-200/70 text-sm">Conversa 100% automática e fluida. Como uma ligação real.</p>
+                        </button>
+
                         {/* Voice Mode */}
                         <button
                             onClick={() => handleModeSelection('voice')}
                             className="group relative p-8 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 hover:bg-slate-800/60 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center"
                         >
-                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <div className="w-20 h-20 rounded-full bg-indigo-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300">
-                                <Mic size={32} className="text-indigo-400 group-hover:text-white transition-colors" />
+                            <div className="absolute inset-0 bg-gradient-to-br from-slate-500/20 to-slate-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                            <div className="w-20 h-20 rounded-full bg-slate-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-slate-500 transition-all duration-300">
+                                <Mic size={32} className="text-slate-400 group-hover:text-white transition-colors" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Conversa por Voz</h3>
-                            <p className="text-slate-400">Pratique com conversas em tempo real usando o microfone.</p>
+                            <h3 className="text-2xl font-bold text-white mb-3">Mãos dadas</h3>
+                            <p className="text-slate-400 text-sm">Pressione para falar. Você controla o tempo da conversa.</p>
                         </button>
 
                         {/* Text Mode */}
@@ -519,7 +593,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                                 <MessageSquare size={32} className="text-emerald-400 group-hover:text-white transition-colors" />
                             </div>
                             <h3 className="text-2xl font-bold text-white mb-3">Chat por Texto</h3>
-                            <p className="text-slate-400">Pratique a escrita através do chat interativo do Wolfie.</p>
+                            <p className="text-slate-400 text-sm">Pratique a escrita através do chat interativo do Wolfie.</p>
                         </button>
                     </div>
                 </div>
@@ -561,21 +635,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
                 {/* Timer + Level + Controls */}
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                        <Clock size={10} className="text-slate-400" />
-                        <span className="text-[10px] font-mono text-slate-400">{formatTime(elapsed)}</span>
-                    </div>
-                    <div className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
-                        {studentLevel}
-                    </div>
-                    {/* Translation Toggle */}
-                    <button
-                        onClick={() => setTranslationEnabled(p => !p)}
-                        className={`p-1.5 rounded-full border transition-all ${translationEnabled ? 'bg-sky-500/15 border-sky-500/30 text-sky-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
-                        title={translationEnabled ? 'Tradução ON' : 'Tradução OFF'}
-                    >
-                        <Languages size={12} />
-                    </button>
+                    {/* Only show these in non-live mode or as secondary HUD */}
+                    {!liveCall && (
+                        <>
+                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+                                <Clock size={10} className="text-slate-400" />
+                                <span className="text-[10px] font-mono text-slate-400">{formatTime(elapsed)}</span>
+                            </div>
+                            <div className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
+                                {studentLevel}
+                            </div>
+                            {/* Translation Toggle */}
+                            <button
+                                onClick={() => setTranslationEnabled(p => !p)}
+                                className={`p-1.5 rounded-full border transition-all ${translationEnabled ? 'bg-sky-500/15 border-sky-500/30 text-sky-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
+                                title={translationEnabled ? 'Tradução ON' : 'Tradução OFF'}
+                            >
+                                <Languages size={12} />
+                            </button>
+                        </>
+                    )}
+                    
                     {/* Auto-Speak Toggle */}
                     <button
                         onClick={() => { setAutoSpeakEnabled(p => !p); if (state === 'SPEAKING') stopSpeaking(); }}
@@ -584,23 +664,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     >
                         {autoSpeakEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
                     </button>
-                    {/* Text Toggle */}
-                    <button
-                        onClick={() => setShowTextInput(p => !p)}
-                        className={`p-1.5 rounded-full border transition-all ${showTextInput ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
-                        title={showTextInput ? 'Teclado ON' : 'Teclado OFF'}
-                    >
-                        <MessageSquare size={12} />
-                    </button>
-                    {/* Slow Replay */}
-                    <button
-                        onClick={slowReplay}
-                        disabled={!lastSpokenTextRef.current}
-                        className="p-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
-                        title="Repetir devagar (0.7x)"
-                    >
-                        <RotateCcw size={12} />
-                    </button>
+                    
+                    {!liveCall && (
+                        <>
+                            <button
+                                onClick={() => setShowTextInput(p => !p)}
+                                className={`p-1.5 rounded-full border transition-all ${showTextInput ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
+                                title={showTextInput ? 'Teclado ON' : 'Teclado OFF'}
+                            >
+                                <MessageSquare size={12} />
+                            </button>
+                            <button
+                                onClick={slowReplay}
+                                disabled={!lastSpokenTextRef.current}
+                                className="p-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
+                                title="Repetir devagar (0.7x)"
+                            >
+                                <RotateCcw size={12} />
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {/* Idle Hint */}
@@ -626,24 +709,30 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             <div className="relative z-20 flex flex-col items-center justify-center w-full h-full max-w-5xl mx-auto">
                 <div
-                    className="relative w-[320px] h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none flex items-center justify-center group"
-                    onMouseDown={startRecording}
-                    onMouseUp={stopRecordingAndSend}
-                    onMouseLeave={() => state === 'LISTENING' && stopRecordingAndSend()}
-                    onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
-                    onTouchEnd={(e) => { e.preventDefault(); stopRecordingAndSend(); }}
+                    className={`relative cursor-pointer touch-none flex items-center justify-center group ${liveCall ? 'w-[350px] h-[350px] md:w-[600px] md:h-[600px]' : 'w-[320px] h-[320px] md:w-[500px] md:h-[500px]'}`}
+                    onMouseDown={!liveCall ? startRecording : undefined}
+                    onMouseUp={!liveCall ? stopRecordingAndSend : undefined}
                 >
+                    {/* PINGING RINGS (Live Mode) */}
+                    {liveCall && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className={`absolute w-[80%] h-[80%] rounded-full border-2 border-indigo-500/20 transition-all duration-700 ${state === 'LISTENING' ? 'animate-ping scale-110 border-red-500/30' : 'animate-pulse'}`} />
+                            <div className={`absolute w-[95%] h-[95%] rounded-full border border-indigo-500/10 transition-all duration-1000 ${state === 'SPEAKING' ? 'scale-105 border-cyan-500/20' : ''}`} />
+                        </div>
+                    )}
+
                     <VoicePoweredOrb
                         hue={getOrbHue()}
                         audioStream={audioStream}
-                        voiceSensitivity={2.0}
-                        maxRotationSpeed={1.5}
-                        maxHoverIntensity={1.0}
-                        onVoiceDetected={setIsVoiceDetected}
+                        voiceSensitivity={2.5}
+                        maxRotationSpeed={1.8}
+                        maxHoverIntensity={1.2}
+                        onVoiceDetected={handleVoiceDetection}
+                        state={state === 'IDLE' ? 0 : state === 'LISTENING' ? 1 : state === 'THINKING' ? 2 : 3}
                     />
 
                     {/* Hover Hint */}
-                    {state === 'IDLE' && (
+                    {state === 'IDLE' && !liveCall && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500">
                             <div className="px-5 py-2.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 tracking-[0.2em] text-white/90 text-[10px] font-bold uppercase shadow-2xl">
                                 Segure para falar
@@ -653,9 +742,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 </div>
 
                 {/* Subtitles */}
-                <div className="absolute bottom-20 md:bottom-28 left-0 right-0 px-8 text-center pointer-events-none z-30 min-h-[80px] flex flex-col items-center justify-end">
+                <div className={`absolute left-0 right-0 px-8 text-center pointer-events-none z-30 flex flex-col items-center justify-end transition-all ${liveCall ? 'bottom-32 md:bottom-40' : 'bottom-20 md:bottom-28'}`}>
                     {subtitle ? (
-                        <p className="text-xl md:text-2xl lg:text-3xl font-light text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.8)] animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-4xl mx-auto leading-relaxed">
+                        <p className={`${liveCall ? 'text-2xl md:text-4xl lg:text-5xl font-black' : 'text-xl md:text-2xl lg:text-3xl font-light'} text-white drop-shadow-[0_4px_30px_rgba(0,0,0,0.9)] animate-in fade-in slide-in-from-bottom-10 duration-700 max-w-5xl mx-auto leading-tight italic`}>
                             "{subtitle}"
                         </p>
                     ) : state !== 'IDLE' ? (
@@ -664,6 +753,21 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         </p>
                     ) : null}
                 </div>
+
+                {/* HANG UP BUTTON (Live Mode Only) */}
+                {liveCall && (
+                    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50">
+                        <button 
+                            onClick={onClose}
+                            className="group flex flex-col items-center gap-2"
+                        >
+                            <div className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center text-white shadow-[0_0_30px_rgba(220,38,38,0.5)] hover:bg-red-500 hover:scale-110 active:scale-95 transition-all duration-300 ring-4 ring-white/10">
+                                <X size={28} strokeWidth={3} />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500/80">Encerrar</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* ============================================================ */}

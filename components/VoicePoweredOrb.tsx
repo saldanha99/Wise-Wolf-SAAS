@@ -11,6 +11,7 @@ interface VoicePoweredOrbProps {
     voiceSensitivity?: number;
     maxRotationSpeed?: number;
     maxHoverIntensity?: number;
+    state?: number;
     onVoiceDetected?: (detected: boolean) => void;
 }
 
@@ -21,6 +22,7 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
     voiceSensitivity = 1.5,
     maxRotationSpeed = 1.2,
     maxHoverIntensity = 0.8,
+    state = 0,
     onVoiceDetected,
 }) => {
     const ctnDom = useRef<HTMLDivElement>(null);
@@ -50,6 +52,7 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
     uniform float hover;
     uniform float rot;
     uniform float hoverIntensity;
+    uniform float uState;
     varying vec2 vUv;
 
     vec3 rgb2yiq(vec3 c) {
@@ -179,6 +182,13 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
       uv.x += hover * hoverIntensity * 0.1 * sin(uv.y * 10.0 + iTime);
       uv.y += hover * hoverIntensity * 0.1 * sin(uv.x * 10.0 + iTime);
 
+      if (uState > 1.5) { // THINKING (2.0)
+         uv *= 1.0 + 0.1 * sin(iTime * 5.0);
+      }
+      if (uState > 0.5 && uState < 1.5) { // LISTENING (1.0)
+         uv *= 0.95 + 0.05 * cos(iTime * 10.0);
+      }
+
       return draw(uv);
     }
 
@@ -219,10 +229,11 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
             uniforms: {
                 iTime: { value: 0 },
                 iResolution: { value: new Vec3(gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height) },
-                hue: { value: hue }, // Initial hue, will be updated by the loop
+                hue: { value: hue }, 
                 hover: { value: 0 },
                 rot: { value: 0 },
                 hoverIntensity: { value: 0 },
+                uState: { value: 0 }, // 0: IDLE, 1: LISTENING, 2: THINKING, 3: SPEAKING
             },
         });
 
@@ -263,10 +274,12 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
 
             // Read latest prop values from mutable ref (hack to avoid re-init)
             const currentHue = (ctnDom.current as any)?.__hue ?? 0;
+            const currentState = (ctnDom.current as any)?.__state ?? 0;
             const hasStream = !!(ctnDom.current as any)?.__hasStream;
 
             program.uniforms.iTime.value = t * 0.001;
             program.uniforms.hue.value = currentHue;
+            program.uniforms.uState.value = currentState;
 
             let voiceLevel = 0;
             if (hasStream && analyserRef.current && dataArrayRef.current) {
@@ -326,8 +339,9 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
         if (ctnDom.current) {
             (ctnDom.current as any).__hue = hue;
             (ctnDom.current as any).__hasStream = !!audioStream;
+            (ctnDom.current as any).__state = state;
         }
-    }, [hue, audioStream]);
+    }, [hue, audioStream, state]);
 
     // 3. Audio Setup (Using external stream)
     useEffect(() => {
