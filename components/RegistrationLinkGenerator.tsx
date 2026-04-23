@@ -401,7 +401,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-80 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-[100] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
                                             {professors.filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase()))
@@ -463,7 +463,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList2(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-80 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-[100] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
                                             {professors.filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase()))
