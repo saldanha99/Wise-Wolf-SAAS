@@ -7,7 +7,7 @@ interface TeacherInviteGeneratorProps {
 }
 
 const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantId }) => {
-    const [hourlyRate, setHourlyRate] = useState('35');
+    const [hourlyRate, setHourlyRate] = useState('16');
     const [subject, setSubject] = useState('');
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
@@ -19,7 +19,7 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
         }
 
         const payload = {
-            hourlyRate: parseFloat(hourlyRate),
+            hourlyRate: parseFloat(hourlyRate) || 16,
             subject,
             tenantId
         };

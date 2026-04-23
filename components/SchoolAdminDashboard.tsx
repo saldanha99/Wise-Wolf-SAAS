@@ -149,7 +149,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
         if (log.presence === 'Presente') attendanceCount++;
         const rate = teacherRates.get(log.teacher_id) || 0;
         if (log.presence !== 'Falta do Professor') {
-          payroll += rate;
+          payroll += (rate / 2);
         }
       });
 

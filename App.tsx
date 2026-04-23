@@ -165,7 +165,7 @@ const App: React.FC = () => {
             avatar: t.avatar_url || `https://ui-avatars.com/api/?name=${t.full_name}`,
             module: t.module || 'General',
             modules: [t.module || 'General'],
-            hourlyRate: t.hourly_rate || 50,
+            hourlyRate: t.hourly_rate || 16,
             pixKey: t.pix_key || '',
             phone: t.phone || '',
             studentsCount: uniqueStudents.size,
