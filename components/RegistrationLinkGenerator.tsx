@@ -354,7 +354,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                 </div>
 
                 {/* SECTION 2: ALOCAÇÃO ACADÊMICA */}
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/50">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/50 !overflow-visible">
                     <div className="flex items-center gap-2 mb-6">
                         <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm">
                             <GraduationCap size={18} className="text-purple-600 dark:text-purple-400" />
@@ -364,7 +364,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                         </h3>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 !overflow-visible">
                         {/* Professor Select (Searchable) */}
                         <div className="lg:col-span-1 relative z-50 flex flex-col gap-4">
                             <div>
@@ -401,7 +401,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-[100] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
+                                        <div className="absolute top-full left-0 right-0 min-w-[280px] mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-[9999] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
                                             {professors.filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase()))
@@ -463,7 +463,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList2(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-[100] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
+                                        <div className="absolute top-full left-0 right-0 min-w-[280px] mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-[9999] animate-in fade-in zoom-in-95 duration-200 custom-scrollbar">
                                             {professors.filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase()))
