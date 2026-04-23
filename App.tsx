@@ -118,7 +118,7 @@ const App: React.FC = () => {
       const { data: teachersData } = await supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'TEACHER')
+        .in('role', ['TEACHER', 'teacher'])
         .eq('tenant_id', user.tenantId);
 
       // 3. Fetch Students
