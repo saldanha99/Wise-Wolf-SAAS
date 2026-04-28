@@ -106,7 +106,7 @@ export function ContractDocument({
 
                 <h3 className="font-bold mb-2 uppercase text-[#002366]">Cláusula 4 - Obrigações do Contratante</h3>
                 <p className="mb-4 text-justify">
-                    Compromete-se o CONTRATANTE a: I) Possuir os equipamentos necessários (computador/celular e internet) para acesso às aulas; II) Cumprir os pagamentos nas datas acordadas; III) Comunicar ausências com antecedência mínima de 24 horas para direito à reposição (limitado a 1 por mês).
+                    Compromete-se o CONTRATANTE a: I) Possuir os equipamentos necessários (computador/celular e internet) para acesso às aulas; II) Cumprir os pagamentos nas datas acordadas; III) Comunicar ausências com antecedência mínima de 24 horas para direito à reposição (limitado a 4 por mês).
                 </p>
 
                 <h3 className="font-bold mb-2 uppercase text-[#002366]">Cláusula 5 - Direitos da Contratada</h3>
