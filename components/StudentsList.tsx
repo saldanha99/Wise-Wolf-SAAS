@@ -284,7 +284,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               name: profilePayload.full_name,
               email: profilePayload.email,
               cpf: studentCpf || '',
-              phone: profilePayload.phone || '27999999999',
+              phone: profilePayload.phone || '11999998888',
               postalCode: profilePayload.postal_code || '29000000',
               address: profilePayload.address || 'Endereço não informado',
               addressNumber: profilePayload.address_number || 'SN',
@@ -367,7 +367,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           name: formData.name,
           email: formData.email || 'email@placeholder.com', // fallback
           cpf: studentCpf || '',
-          phone: formData.phone || '27999999999',
+          phone: formData.phone || '11999998888',
           postalCode: formData.postalCode || '29000000',
           address: formData.address || 'Endereço não informado',
           addressNumber: formData.addressNumber || 'SN',
