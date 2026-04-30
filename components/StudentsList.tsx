@@ -161,7 +161,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             addressNumber: s.address_number,
             asaasCustomerId: s.asaas_customer_id,
             professor_id: s.professor_id,
-            monthly_fee: s.monthly_fee
+            monthly_fee: s.monthly_fee,
+            due_day: s.due_day,
+            email: s.email,
+            planDuration: s.fidelity_plan,
+            subscription_id: s.subscription_id,
+            status_financial: s.status_financial
           };
         });
         setStudents(mappedStudents);
@@ -351,6 +356,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           address_number: formData.addressNumber,
           professor_id: formData.professor_id || null,
           monthly_fee: formData.monthly_fee,
+          monthly_tuition: formData.monthly_fee,
           due_day: formData.due_day,
           fidelity_plan: formData.planDuration,
           email: formData.email, // Save email in profiles in case it was modified for Asaas
