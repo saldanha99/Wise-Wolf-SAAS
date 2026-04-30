@@ -119,10 +119,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 name: formData.name,
                 email: formData.email || 'sem_email@wisewolf.com.br',
                 cpf: formData.cpf.replace(/\D/g, ''),
-                phone: formData.phone,
-                postalCode: formData.postalCode,
-                address: formData.address,
-                addressNumber: formData.addressNumber,
+                phone: formData.phone || '27999999999',
+                postalCode: formData.postalCode || '29000000',
+                address: formData.address || 'Endereço não informado',
+                addressNumber: formData.addressNumber || 'SN',
                 tenant_id: initialData.tenant_id,
                 monthly_fee: Number(String(formData.monthly_fee).replace(',', '.')),
                 due_day: Number(formData.due_day),
@@ -214,7 +214,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 name: formData.name,
                 email: formData.email || 'sem_email@wisewolf.com.br',
                 cpfCnpj: formData.cpf.replace(/\D/g, ''),
-                phone: formData.phone
+                phone: formData.phone || '27999999999'
             };
             const pixData = await asaasService.createEnrollmentPix(49, customerData);
 
