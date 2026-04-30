@@ -166,7 +166,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             email: s.email,
             planDuration: s.fidelity_plan,
             subscription_id: s.subscription_id,
-            status_financial: s.status_financial
+            status_financial: s.status_financial,
+            start_date: s.start_date,
+            class_frequency: s.class_frequency
           };
         });
         setStudents(mappedStudents);
@@ -360,6 +362,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           due_day: formData.due_day,
           fidelity_plan: formData.planDuration,
           email: formData.email, // Save email in profiles in case it was modified for Asaas
+          start_date: formData.start_date || null,
+          class_frequency: formData.class_frequency || null
         })
         .eq('id', editingStudent.id);
 

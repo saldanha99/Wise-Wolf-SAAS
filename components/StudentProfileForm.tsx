@@ -266,7 +266,8 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 await supabase.from('profiles').update({
                     contract_accepted: true,
                     accepted_at: new Date().toISOString(),
-                    signature_ip: 'Assinado Manualmente (Direção)'
+                    signature_ip: 'Assinado Manualmente (Direção)',
+                    documentation_status: 'APPROVED'
                 }).eq('id', initialData.id);
             });
         }

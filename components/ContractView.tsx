@@ -95,13 +95,22 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
     // Format Dates — align start date with due_day
     const enrollmentDate = new Date(profile.created_at || new Date());
     const dueDay = profile.due_day || 1;
-    // Build start date: same month as enrollment, but on the due_day.
-    // If the enrollment day is already past the due_day, roll to the next month.
-    let startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth(), dueDay);
-    if (enrollmentDate.getDate() > dueDay) {
-        startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth() + 1, dueDay);
+    
+    // Build start date: prioritize profile.start_date, fallback to calculation
+    let startDateObj: Date;
+    
+    if (profile.start_date) {
+        // start_date from DB is usually YYYY-MM-DD
+        const [year, month, day] = profile.start_date.split('-').map(Number);
+        startDateObj = new Date(year, month - 1, day);
+    } else {
+        startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth(), dueDay);
+        if (enrollmentDate.getDate() > dueDay) {
+            startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth() + 1, dueDay);
+        }
     }
-    const endDateObj = new Date(startDateObj.getFullYear(), startDateObj.getMonth() + duration, dueDay);
+    
+    const endDateObj = new Date(startDateObj.getFullYear(), startDateObj.getMonth() + duration, startDateObj.getDate());
     const startDate = startDateObj.toLocaleDateString('pt-BR');
     const endDate = endDateObj.toLocaleDateString('pt-BR');
 
