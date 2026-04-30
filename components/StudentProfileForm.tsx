@@ -408,60 +408,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
                         </div>
 
-                        {/* Billing Info - DIRECTORS ONLY */}
-                        {isDirector && (
-                            <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                            CPF (Obrigatório para Asaas)
-                                        </label>
-                                        <input
-                                            value={formData.cpf}
-                                            onChange={e => setFormData({ ...formData, cpf: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
-                                            placeholder="000.000.000-00"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                            CEP
-                                        </label>
-                                        <input
-                                            value={formData.postalCode}
-                                            onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
-                                            placeholder="00000-000"
-                                        />
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div className="md:col-span-2 space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                            Endereço
-                                        </label>
-                                        <input
-                                            value={formData.address}
-                                            onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
-                                            placeholder="Rua, Av..."
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                            Número
-                                        </label>
-                                        <input
-                                            value={formData.addressNumber}
-                                            onChange={e => setFormData({ ...formData, addressNumber: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
-                                            placeholder="123"
-                                        />
-                                    </div>
-                                </div>
-                            </>
-                        )}
 
                         {/* Current Module */}
                         <div className="space-y-2">
@@ -626,6 +573,70 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <p className="text-slate-500 text-sm font-bold">Nenhuma assinatura ativa encontrada.</p>
                             </div>
                         )}
+
+                        <div className="pt-2 space-y-4">
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Dados Fiscais (Asaas)</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">Email</label>
+                                    <input
+                                        value={formData.email}
+                                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="Email do aluno"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">Telefone</label>
+                                    <input
+                                        value={formData.phone}
+                                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="27999999999"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">CPF</label>
+                                    <input
+                                        value={formData.cpf}
+                                        onChange={e => setFormData({ ...formData, cpf: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="000.000.000-00"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">CEP</label>
+                                    <input
+                                        value={formData.postalCode}
+                                        onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="00000-000"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="md:col-span-2 space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">Endereço</label>
+                                    <input
+                                        value={formData.address}
+                                        onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="Rua, Av..."
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">Número</label>
+                                    <input
+                                        value={formData.addressNumber}
+                                        onChange={e => setFormData({ ...formData, addressNumber: e.target.value })}
+                                        className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                        placeholder="123"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 dark:border-slate-800"></div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
