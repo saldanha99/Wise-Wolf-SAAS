@@ -353,8 +353,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           monthly_fee: formData.monthly_fee,
           due_day: formData.due_day,
           fidelity_plan: formData.planDuration,
-          start_date: formData.start_date,
-          class_frequency: formData.class_frequency,
           email: formData.email, // Save email in profiles in case it was modified for Asaas
         })
         .eq('id', editingStudent.id);
