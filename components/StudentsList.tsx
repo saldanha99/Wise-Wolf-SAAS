@@ -349,9 +349,13 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           postal_code: formData.postalCode,
           address: formData.address,
           address_number: formData.addressNumber,
-          professor_id: formData.professor_id,
+          professor_id: formData.professor_id || null,
           monthly_fee: formData.monthly_fee,
-          due_day: formData.due_day
+          due_day: formData.due_day,
+          fidelity_plan: formData.planDuration,
+          start_date: formData.start_date,
+          class_frequency: formData.class_frequency,
+          email: formData.email, // Save email in profiles in case it was modified for Asaas
         })
         .eq('id', editingStudent.id);
 

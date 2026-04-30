@@ -11,6 +11,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
 }
 
 serve(async (req) => {
@@ -77,9 +78,11 @@ serve(async (req) => {
         return new Response(
             JSON.stringify({ 
                 success: true, 
+                id: paymentData.id,
                 paymentId: paymentData.id, 
-                pixCode: qrCodeData.payload, 
-                qrCode: qrCodeData.encodedImage 
+                pixCode: qrCodeData?.payload, 
+                qrCode: qrCodeData?.encodedImage,
+                invoiceUrl: paymentData.invoiceUrl || paymentData.bankSlipUrl || paymentData.transactionReceiptUrl
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );
