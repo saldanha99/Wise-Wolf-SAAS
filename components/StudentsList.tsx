@@ -72,6 +72,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       console.log('Bookings Data:', bookingsData);
 
       if (studentsData) {
+        console.log('[DEBUG] Alunos carregados do BD:', studentsData.map(s => ({ name: s.full_name, start_date: s.start_date, freq: s.class_frequency })));
         const mappedStudents = studentsData.map(s => {
           // Normalize IDs to string for comparison safety
           const sId = String(s.id);
@@ -367,7 +368,16 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         })
         .eq('id', editingStudent.id);
 
-      if (error) throw error;
+      console.log('[DEBUG] Salvando perfil no BD:', { 
+        id: editingStudent.id, 
+        start_date: formData.start_date, 
+        class_frequency: formData.class_frequency 
+      });
+
+      if (error) {
+        console.error('[DEBUG] Erro ao salvar no Supabase:', error);
+        throw error;
+      }
 
       alert('Perfil do aluno atualizado com sucesso!');
       setEditingStudent(null);
