@@ -190,9 +190,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         let finalStudentId = existingInTenant?.id;
 
         if (!finalStudentId) {
+          // Se o email estiver vazio, geramos um provisório para evitar conflito na matrícula pública
+          const safeEmail = formData.email?.trim() || `experimental_${Date.now()}@temp.wisewolf.com`;
+
           // Cria o usuário na tabela Auth
           const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: formData.email,
+            email: safeEmail,
             password: '123456',
           });
 
@@ -236,11 +239,13 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         const rnd = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
         const meetingLink = formData.meeting_link || `https://meet.google.com/${rnd(3)}-${rnd(4)}-${rnd(3)}`;
 
+        const safeEmail = formData.email?.trim() || `experimental_${Date.now()}@temp.wisewolf.com`;
+
         // Cria ou atualiza o perfil (com TODOS os dados)
         const profilePayload: any = {
           id: finalStudentId,
           full_name: formData.name,
-          email: formData.email,
+          email: safeEmail,
           role: 'STUDENT',
           tenant_id: targetTenantId,
           module: formData.currentModuleStatus,

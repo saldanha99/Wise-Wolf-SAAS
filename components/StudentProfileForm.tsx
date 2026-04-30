@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock } from 'lucide-react';
+import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Download } from 'lucide-react';
 import { asaasService } from '../services/asaasService';
 import StudentScheduleManager from './StudentScheduleManager';
+import { ContractDocument } from './ContractDocument';
+import { useReactToPrint } from 'react-to-print';
+import { useRef } from 'react';
 
 interface StudentProfileFormProps {
     initialData?: any;
@@ -179,6 +182,76 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         }
     };
 
+    const [generatingEnrollmentFee, setGeneratingEnrollmentFee] = useState(false);
+
+    const handleCreateEnrollmentFee = async () => {
+        if (!formData.cpf) return alert("CPF é obrigatório para gerar o Pix da matrícula.");
+        setGeneratingEnrollmentFee(true);
+        try {
+            const customerData = {
+                name: formData.name,
+                email: formData.email || 'sem_email@wisewolf.com.br',
+                cpfCnpj: formData.cpf.replace(/\D/g, ''),
+                phone: formData.phone
+            };
+            const pixData = await asaasService.createEnrollmentPix(49, customerData);
+
+            if (pixData?.invoiceUrl) {
+                // Atualiza o banco de dados marcando que o boleto foi gerado
+                if (initialData?.id) {
+                    await import('../lib/supabase').then(async ({ supabase }) => {
+                        await supabase.from('profiles').update({ enrollment_payment_id: pixData.id }).eq('id', initialData.id);
+                    });
+                }
+                
+                alert('PIX de Matrícula gerado com sucesso!\n\nVocê será redirecionado para o link do Asaas para copiar e mandar para o aluno.');
+                window.open(pixData.invoiceUrl, '_blank');
+            } else {
+                alert('PIX gerado, mas link não retornado. Verifique o painel do Asaas.');
+            }
+        } catch (error: any) {
+            alert('Erro ao gerar PIX da matrícula: ' + error.message);
+        } finally {
+            setGeneratingEnrollmentFee(false);
+        }
+    };
+
+    // --- CONTRATO SIMULADO ---
+    const contractRef = useRef<HTMLDivElement>(null);
+    const handlePrintContract = useReactToPrint({
+        contentRef: contractRef,
+        documentTitle: `Contrato_WiseWolf_${formData.name ? formData.name.replace(/\s+/g, '_') : 'Aluno'}`,
+    });
+
+    const getContractDates = () => {
+        const start = new Date();
+        const duration = formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1;
+        const end = new Date(start);
+        end.setMonth(end.getMonth() + duration);
+        return {
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0]
+        };
+    };
+
+    const handleSimulateContract = () => {
+        if (!formData.cpf) return alert("Preencha o CPF na aba Financeiro.");
+        if (!formData.address) return alert("Preencha o Endereço na aba Financeiro.");
+        
+        // Simula a aceitação atualizando o banco, opcionalmente
+        if (initialData?.id) {
+            import('../lib/supabase').then(async ({ supabase }) => {
+                await supabase.from('profiles').update({
+                    contract_accepted: true,
+                    accepted_at: new Date().toISOString(),
+                    signature_ip: 'Assinado Manualmente (Direção)'
+                }).eq('id', initialData.id);
+            });
+        }
+
+        handlePrintContract();
+    };
+
     return (
         <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
 
@@ -252,14 +325,14 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                    Email (Obrigatório)
+                                    Email (Opcional p/ Exp.)
                                 </label>
                                 <input
                                     disabled={!isDirector || !!initialData?.id} // Only editable on creation logic ideally, or let them edit but warn it doesn't change auth? Let's disable if ID exists.
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || !!initialData?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    placeholder="exemplo@email.com"
+                                    placeholder="Deixe vazio se for experimental"
                                 />
                             </div>
 
@@ -612,6 +685,23 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <span className="flex items-center gap-2"><FileText size={14} /> Gerar Carnê Interno (12x)</span>
                                     <span className="opacity-75 text-[9px] text-center">Apenas lança no sistema (Para alunos manuais)</span>
                                 </button>
+                                
+                                <button
+                                    onClick={handleCreateEnrollmentFee}
+                                    disabled={generatingEnrollmentFee || !formData.cpf}
+                                    className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-purple-600/20 flex flex-col items-center justify-center gap-1 col-span-1 md:col-span-2 mt-2"
+                                >
+                                    <span className="flex items-center gap-2"><DollarSign size={14} /> Gerar PIX/Boleto da Matrícula (R$ 49)</span>
+                                    <span className="opacity-75 text-[9px] text-center">Abre o link avulso na hora para enviar ao aluno</span>
+                                </button>
+                                
+                                <button
+                                    onClick={handleSimulateContract}
+                                    className="w-full py-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex flex-col items-center justify-center gap-1 col-span-1 md:col-span-2 border border-slate-200 dark:border-slate-700 mt-2"
+                                >
+                                    <span className="flex items-center gap-2"><Download size={14} /> Gerar Contrato em PDF (Assinado)</span>
+                                    <span className="opacity-75 text-[9px] text-center">Simula assinatura do aluno e baixa o PDF oficial</span>
+                                </button>
                             </div>
 
                             {formData.planDuration !== 'RECURRENT' && (
@@ -667,6 +757,30 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                     >
                         <Save size={16} /> Salvar Perfil
                     </button>
+                </div>
+            </div>
+
+            {/* Hidden Contract Form for PDF Printing */}
+            <div className="hidden">
+                <div ref={contractRef}>
+                    <ContractDocument
+                        studentName={formData.name.toUpperCase()}
+                        studentCPF={formData.cpf.replace(/\D/g, '')}
+                        studentAddress={`${formData.address}, ${formData.addressNumber} - CEP: ${formData.postalCode}`}
+                        studentEmail={formData.email}
+                        studentPhone={formData.phone}
+                        planName={`Plano ${formData.planDuration === 'ANNUAL' ? 'Anual' : formData.planDuration === 'SEMESTER' ? 'Semestral' : 'Mensal'}`}
+                        planValue={Number(formData.monthly_fee).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        totalValue={(Number(formData.monthly_fee) * (formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        planDuration={formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1}
+                        startDate={getContractDates().startDate}
+                        endDate={getContractDates().endDate}
+                        dueDay={formData.due_day}
+                        classFrequency={2} // Média simulada ou buscar dos agendamentos
+                        acceptedAt={new Date().toISOString()}
+                        userIp="Assinado Manualmente (Sistema Interno Wise Wolf)"
+                        subscriptionId={formData.subscription_id || "Aguardando Vínculo Financeiro"}
+                    />
                 </div>
             </div>
 

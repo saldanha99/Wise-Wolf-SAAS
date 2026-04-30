@@ -163,7 +163,8 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
     const handleAssign = () => {
         if (!isNewStudent && !selectedStudentId) return alert("Selecione um aluno.");
         if (isNewStudent && !newName) return alert("Informe o nome do novo aluno.");
-        if (isNewStudent && !newEmail) return alert("Informe o e-mail para o novo acesso.");
+        // Email is no longer required to prevent conflicts
+        // if (isNewStudent && !newEmail) return alert("Informe o e-mail para o novo acesso.");
 
         const days = Object.keys(schedule);
         if (days.length === 0) return alert("Selecione ao menos um dia.");
@@ -199,7 +200,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
             isNew: isNewStudent,
             studentData: isNewStudent ? {
                 name: newName,
-                email: newEmail,
+                email: newEmail.trim() || `experimental_${Date.now()}@temp.wisewolf.com`,
                 phone: newPhone,
                 occupation: newOccupation,
                 interests: newInterests.split(',').map(i => i.trim()).filter(i => i !== ''),
@@ -287,8 +288,8 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                 <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="Nome Completo" />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email (Login)</label>
-                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="email@exemplo.com" />
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email (Opcional p/ Exp.)</label>
+                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="Deixe vazio se for experimental" />
                             </div>
                         </div>
 
