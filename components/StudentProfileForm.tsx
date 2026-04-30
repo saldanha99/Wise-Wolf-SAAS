@@ -109,9 +109,27 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
     const handleCreateSubscription = async () => {
         if (!initialData?.id) return alert('Salve o aluno antes de criar assinatura.');
         if (!formData.monthly_fee || Number(String(formData.monthly_fee).replace(',', '.')) <= 0) return alert('Informe um valor de mensalidade válido.');
+        if (!formData.cpf) return alert('CPF é obrigatório para gerar assinatura.');
 
         setLoadingSubscription(true);
         try {
+            // First, sync student to ensure Asaas Customer ID exists
+            await asaasService.syncStudent({
+                user_id: initialData.id,
+                name: formData.name,
+                email: formData.email || 'sem_email@wisewolf.com.br',
+                cpf: formData.cpf.replace(/\D/g, ''),
+                phone: formData.phone,
+                postalCode: formData.postalCode,
+                address: formData.address,
+                addressNumber: formData.addressNumber,
+                tenant_id: initialData.tenant_id,
+                monthly_fee: Number(String(formData.monthly_fee).replace(',', '.')),
+                due_day: Number(formData.due_day),
+                documentation_status: 'APPROVED'
+            });
+
+            // Then create subscription
             await asaasService.createSubscription({
                 user_id: initialData.id,
                 value: Number(String(formData.monthly_fee).replace(',', '.')),
