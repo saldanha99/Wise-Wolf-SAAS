@@ -43,12 +43,14 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         addressNumber: '',
         professor_id: '',
         // Financial
-        monthly_fee: 0,
+        monthly_fee: 0 as number | string,
         due_day: 10,
         subscription_id: '',
         status_financial: '',
         billingType: 'PIX',
-        planDuration: 'RECURRENT'
+        planDuration: 'RECURRENT',
+        class_frequency: 2,
+        start_date: new Date().toISOString().split('T')[0]
     });
 
     const [newInterest, setNewInterest] = useState('');
@@ -78,7 +80,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 subscription_id: initialData.subscription_id || '',
                 status_financial: initialData.status_financial || '',
                 billingType: 'PIX',
-                planDuration: initialData.planDuration || 'RECURRENT'
+                planDuration: initialData.planDuration || 'RECURRENT',
+                class_frequency: initialData.class_frequency || 2,
+                start_date: initialData.start_date || new Date().toISOString().split('T')[0]
             });
         }
     }, [initialData]);
@@ -104,13 +108,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
     const handleCreateSubscription = async () => {
         if (!initialData?.id) return alert('Salve o aluno antes de criar assinatura.');
-        if (!formData.monthly_fee || formData.monthly_fee <= 0) return alert('Informe um valor de mensalidade válido.');
+        if (!formData.monthly_fee || Number(String(formData.monthly_fee).replace(',', '.')) <= 0) return alert('Informe um valor de mensalidade válido.');
 
         setLoadingSubscription(true);
         try {
             await asaasService.createSubscription({
                 user_id: initialData.id,
-                value: Number(formData.monthly_fee),
+                value: Number(String(formData.monthly_fee).replace(',', '.')),
                 dueDay: Number(formData.due_day),
                 billingType: formData.billingType as any,
                 planDuration: formData.planDuration as any
@@ -126,7 +130,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
     const handleGenerateManualPayments = async () => {
         if (!initialData?.id) return alert('Salve o aluno antes de gerar o carnê.');
-        if (!formData.monthly_fee || formData.monthly_fee <= 0) return alert('Informe um valor de mensalidade válido.');
+        if (!formData.monthly_fee || Number(String(formData.monthly_fee).replace(',', '.')) <= 0) return alert('Informe um valor de mensalidade válido.');
 
         if (!confirm(`Confirma a geração de 12 mensalidades de R$ ${formData.monthly_fee} para este aluno? Isso irá popular o "A Receber" do financeiro.`)) return;
 
@@ -156,7 +160,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 payments.push({
                     student_id: initialData.id,
                     tenant_id: initialData.tenant_id, // Critical for RLS
-                    value: Number(formData.monthly_fee),
+                    value: Number(String(formData.monthly_fee).replace(',', '.')),
                     status: 'PENDING',
                     due_date: targetDate.toISOString().split('T')[0],
                     billing_type: formData.billingType || 'MANUAL',
@@ -224,7 +228,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
     });
 
     const getContractDates = () => {
-        const start = new Date();
+        const start = new Date(formData.start_date || new Date());
         const duration = formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1;
         const end = new Date(start);
         end.setMonth(end.getMonth() + duration);
@@ -611,11 +615,15 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <DollarSign size={12} /> Valor Mensal (R$)
                                 </label>
                                 <input
-                                    type="number"
+                                    type="text"
                                     value={formData.monthly_fee}
-                                    onChange={e => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
+                                    onChange={e => {
+                                        // Allow only numbers and comma/dot
+                                        const val = e.target.value.replace(/[^0-9.,]/g, '');
+                                        setFormData({ ...formData, monthly_fee: val });
+                                    }}
                                     className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xl font-black text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
-                                    placeholder="0.00"
+                                    placeholder="229,00"
                                 />
                             </div>
 
@@ -660,6 +668,38 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 >
                                     <option value="PIX">PIX</option>
                                     <option value="BOLETO">BOLETO</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        {/* New Contract Fields */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                    <Calendar size={12} /> Início das Aulas (Contrato)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={formData.start_date}
+                                    onChange={e => setFormData({ ...formData, start_date: e.target.value })}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                    <Clock size={12} /> Frequência de Aulas (Por Semana)
+                                </label>
+                                <select
+                                    value={formData.class_frequency}
+                                    onChange={e => setFormData({ ...formData, class_frequency: Number(e.target.value) })}
+                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                >
+                                    <option value={1}>1 vez por semana</option>
+                                    <option value={2}>2 vezes por semana</option>
+                                    <option value={3}>3 vezes por semana</option>
+                                    <option value={4}>4 vezes por semana</option>
+                                    <option value={5}>5 vezes por semana</option>
                                 </select>
                             </div>
                         </div>
@@ -770,13 +810,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         studentEmail={formData.email}
                         studentPhone={formData.phone}
                         planName={`Plano ${formData.planDuration === 'ANNUAL' ? 'Anual' : formData.planDuration === 'SEMESTER' ? 'Semestral' : 'Mensal'}`}
-                        planValue={Number(formData.monthly_fee).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        totalValue={(Number(formData.monthly_fee) * (formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        planValue={Number(String(formData.monthly_fee).replace(',', '.')).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        totalValue={(Number(String(formData.monthly_fee).replace(',', '.')) * (formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         planDuration={formData.planDuration === 'ANNUAL' ? 12 : formData.planDuration === 'SEMESTER' ? 6 : 1}
                         startDate={getContractDates().startDate}
                         endDate={getContractDates().endDate}
                         dueDay={formData.due_day}
-                        classFrequency={2} // Média simulada ou buscar dos agendamentos
+                        classFrequency={formData.class_frequency}
                         acceptedAt={new Date().toISOString()}
                         userIp="Assinado Manualmente (Sistema Interno Wise Wolf)"
                         subscriptionId={formData.subscription_id || "Aguardando Vínculo Financeiro"}
