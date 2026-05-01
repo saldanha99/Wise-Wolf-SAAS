@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Mic, StopCircle, RefreshCw, MessageSquare, AlertCircle, Sparkles, Zap, BookOpen, Volume2 } from 'lucide-react';
+import { X, Mic, StopCircle, RefreshCw, MessageSquare, AlertCircle, Sparkles, Zap, BookOpen, Volume2, Trophy, Clock, CheckCircle, Star } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { VoicePoweredOrb } from './VoicePoweredOrb';
 
@@ -35,6 +35,9 @@ export default function WolfieLiveCallV2({
     const [scenarioStep, setScenarioStep] = useState(1);
     const [error, setError] = useState<string | null>(null);
     const [activeCorrectionPopUp, setActiveCorrectionPopUp] = useState<CorrectionItem | null>(null);
+    const [showSummary, setShowSummary] = useState(false);
+    const [vocabLearned, setVocabLearned] = useState(0);
+    const sessionStartRef = useRef<number>(Date.now());
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -159,6 +162,11 @@ export default function WolfieLiveCallV2({
                     setActiveCorrectionPopUp(newCorr);
                 }
 
+                // Accumulate vocab count
+                if (data.vocabulary?.keyTerms?.length) {
+                    setVocabLearned(prev => prev + data.vocabulary.keyTerms.length);
+                }
+
                 setTranscript(prev => [
                     ...prev,
                     { role: 'user', content: transcribed || '[Mensagem de Áudio]' },
@@ -246,6 +254,44 @@ export default function WolfieLiveCallV2({
         speak(`Repeat after me: ${phrase}`);
     };
 
+    const handleAttemptClose = () => {
+        stopSpeaking();
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+        setState('IDLE');
+        setShowSummary(true);
+    };
+
+    const handleRealClose = async () => {
+        const totalTurns = Math.floor(transcript.length / 2);
+        const totalXP = (totalTurns * 5) + (corrections.length * 2);
+        if (totalXP > 0) {
+            try {
+                const { data: currentProfile } = await supabase
+                    .from('profiles')
+                    .select('xp')
+                    .eq('id', user.id)
+                    .single();
+                const currentXP = currentProfile?.xp || 0;
+                await supabase
+                    .from('profiles')
+                    .update({ xp: currentXP + totalXP })
+                    .eq('id', user.id);
+            } catch (e) {
+                console.error('Error saving XP:', e);
+            }
+        }
+        onClose();
+    };
+
+    const getSessionDuration = () => {
+        const diff = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+        const mins = Math.floor(diff / 60);
+        const secs = diff % 60;
+        return `${mins}min ${secs.toString().padStart(2, '0')}s`;
+    };
+
     return (
         <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col font-sans overflow-hidden">
             {/* CORRECTION POP-UP MODAL */}
@@ -307,6 +353,72 @@ export default function WolfieLiveCallV2({
                 </div>
             )}
 
+            {/* SESSION SUMMARY MODAL */}
+            {showSummary && (
+                <div className="absolute inset-0 z-[300] flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
+                    <div className="bg-slate-900 border-2 border-emerald-500 rounded-3xl w-full max-w-md shadow-2xl shadow-emerald-500/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-10">
+                        {/* Header */}
+                        <div className="bg-emerald-500/10 p-6 border-b border-emerald-500/20 text-center">
+                            <Trophy className="text-emerald-400 w-12 h-12 mx-auto mb-3" />
+                            <h3 className="text-white font-black text-2xl">Sessão Concluída!</h3>
+                            <p className="text-slate-400 text-sm mt-1">Veja como você foi:</p>
+                        </div>
+
+                        {/* Stats Grid */}
+                        <div className="p-6 grid grid-cols-2 gap-4">
+                            <div className="bg-slate-950/50 rounded-2xl p-4 border border-white/5 text-center">
+                                <MessageSquare className="w-6 h-6 text-indigo-400 mx-auto mb-2" />
+                                <p className="text-2xl font-black text-white">{Math.floor(transcript.length / 2)}</p>
+                                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Turnos</p>
+                            </div>
+                            <div className="bg-slate-950/50 rounded-2xl p-4 border border-white/5 text-center">
+                                <CheckCircle className="w-6 h-6 text-pink-400 mx-auto mb-2" />
+                                <p className="text-2xl font-black text-white">{corrections.length}</p>
+                                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Correções</p>
+                            </div>
+                            <div className="bg-slate-950/50 rounded-2xl p-4 border border-white/5 text-center">
+                                <BookOpen className="w-6 h-6 text-amber-400 mx-auto mb-2" />
+                                <p className="text-2xl font-black text-white">{vocabLearned}</p>
+                                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Palavras Novas</p>
+                            </div>
+                            <div className="bg-slate-950/50 rounded-2xl p-4 border border-white/5 text-center">
+                                <Clock className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
+                                <p className="text-2xl font-black text-white">{getSessionDuration()}</p>
+                                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Tempo</p>
+                            </div>
+                        </div>
+
+                        {/* XP Badge */}
+                        <div className="px-6 pb-2">
+                            <div className="bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-center gap-3">
+                                <Star className="w-8 h-8 text-amber-400" />
+                                <div>
+                                    <p className="text-amber-400 font-black text-2xl">+{(Math.floor(transcript.length / 2) * 5) + (corrections.length * 2)} XP</p>
+                                    <p className="text-amber-400/60 text-xs font-bold uppercase tracking-wider">Experiência ganha</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="p-6 flex flex-col gap-3">
+                            <button
+                                onClick={() => setShowSummary(false)}
+                                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-600/20"
+                            >
+                                <Mic size={20} />
+                                Praticar mais
+                            </button>
+                            <button
+                                onClick={handleRealClose}
+                                className="w-full py-3 text-slate-400 hover:text-white font-bold text-sm transition-colors"
+                            >
+                                Encerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Dynamic Background */}
             <div className={`absolute inset-0 transition-colors duration-1000 ${state === 'LISTENING' ? 'bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-indigo-900/30 via-slate-950 to-slate-950' :
                 state === 'SPEAKING' ? 'bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-cyan-900/20 via-slate-950 to-slate-950' :
@@ -337,7 +449,7 @@ export default function WolfieLiveCallV2({
                             <div className="w-px h-3 bg-slate-700"></div>
                             <span className="text-xs font-bold text-slate-200 capitalize">{avatarId}</span>
                         </div>
-                        <button onClick={onClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
+                        <button onClick={handleAttemptClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
                             <X size={20} />
                         </button>
                     </div>
