@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Zap, CheckCircle2, Languages, BookOpen, BrainCircuit, Volume2, VolumeX, Mic, Send, Loader2, RotateCcw, Clock, MessageSquare, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Zap, CheckCircle2, Languages, BookOpen, BrainCircuit, Volume2, VolumeX, Mic, Send, Loader2, RotateCcw, Clock, RefreshCw, MessageSquare, ChevronUp, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { VoicePoweredOrb } from './VoicePoweredOrb';
 
