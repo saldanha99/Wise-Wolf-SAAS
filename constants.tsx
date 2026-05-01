@@ -142,18 +142,20 @@ export const MOCK_ACCOUNTS = [
 
 export const MOCK_STUDENTS_LIST = [];
 
+const SB_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co/storage/v1/object/public/materials/books';
+
 export const PEDAGOGICAL_BOOKS = {
   'A1': [
-    { part: 1, url: 'https://wisewolflanguage.com.br/books/book-a1-part-1.pdf' },
-    { part: 2, url: 'https://wisewolflanguage.com.br/books/book-a1-part-2.pdf' },
-    { part: 3, url: 'https://wisewolflanguage.com.br/books/book-a1-part-3.pdf' },
-    { part: 4, url: 'https://wisewolflanguage.com.br/books/book-a1-part-4.pdf' },
+    { part: 1, url: `${SB_URL}/book-a1-part-1.pdf` },
+    { part: 2, url: `${SB_URL}/book-a1-part-2.pdf` },
+    { part: 3, url: `${SB_URL}/book-a1-part-3.pdf` },
+    { part: 4, url: `${SB_URL}/book-a1-part-4.pdf` },
   ],
   'A2': [
-    { part: 1, url: 'https://wisewolflanguage.com.br/books/book-a2-part-1.pdf' },
+    { part: 1, url: `${SB_URL}/book-a2-part-1.pdf` },
   ],
   'B1': [
-    { part: 1, url: 'https://wisewolflanguage.com.br/books/book-b1-part-1.pdf' },
+    { part: 1, url: `${SB_URL}/book-b1-part-1.pdf` },
   ]
 };
 
