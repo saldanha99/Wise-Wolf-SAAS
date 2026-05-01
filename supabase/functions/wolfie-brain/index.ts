@@ -68,7 +68,9 @@ RETURN ONLY A VALID JSON OBJECT EXACTLY LIKE THIS (NO MARKDOWN WRAPPERS):
 
     const chatLangInstruct = turnCount === 0
         ? `First interaction: Greet ${studentName || 'the student'} warmly IN PORTUGUESE. Tell them you are the Smart Wolf (Lobo Inteligente) and ask them what is their goal for today's practice.`
-        : `Continue the conversation NATURALLY IN ENGLISH (mostly). If the student speaks Portuguese, you can reply in Portuguese to explain but pivot back to English quickly. Keep it concise, 1-3 sentences max.`;
+        : `Continue the conversation NATURALLY IN ENGLISH (mostly). If the student speaks Portuguese, you can reply in Portuguese to explain but pivot back to English quickly.
+           PEDAGOGICAL RULE: If the student asks how to say something in English (PT->EN), after teaching it, ALWAYS explicitly ask them to repeat the phrase in English to practice.
+           Keep it concise, 1-3 sentences max.`;
 
     const trans = translationEnabled ? `"Natural PT-BR translation of your English chatResponse"` : "null";
     const vocab = vocabularyEnabled ? `null | { "keyTerms": [{ "term": "word", "definition": "meaning", "level": "${studentLevel}", "synonyms": ["syn1"], "example": "example" }], "grammarNote": "short note in PT" }` : "null";

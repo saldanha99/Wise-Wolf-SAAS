@@ -38,7 +38,9 @@ export default function WolfieLiveCallV2({
     const [activeCorrectionPopUp, setActiveCorrectionPopUp] = useState<CorrectionItem | null>(null);
     const [showSummary, setShowSummary] = useState(false);
     const [vocabLearned, setVocabLearned] = useState(0);
+    const [speakSlower, setSpeakSlower] = useState(false);
     const sessionStartRef = useRef<number>(Date.now());
+    const lastSpokenTextRef = useRef<string>('');
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -276,6 +278,7 @@ export default function WolfieLiveCallV2({
         setState('SPEAKING');
         setSubtitle('');
         window.speechSynthesis.cancel();
+        lastSpokenTextRef.current = text;
 
         const cleaned = text.trim();
         if (!cleaned) { setState('IDLE'); return; }
@@ -291,7 +294,7 @@ export default function WolfieLiveCallV2({
             const voice = pickBestVoice(lang);
             if (voice) u.voice = voice;
             u.lang = lang;
-            u.rate = lang === 'pt-BR' ? 1.05 : 1.0;
+            u.rate = speed ?? (speakSlower ? 0.75 : (lang === 'pt-BR' ? 1.05 : 1.0));
             u.pitch = 1.0;
 
             if (i === 0) {
@@ -522,6 +525,24 @@ export default function WolfieLiveCallV2({
                             <div className="w-px h-3 bg-slate-700"></div>
                             <span className="text-xs font-bold text-slate-200 capitalize">{avatarId}</span>
                         </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setSpeakSlower(p => !p)}
+                                className={`p-2 rounded-full border transition-all ${speakSlower ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
+                                title={speakSlower ? 'Velocidade: Devagar' : 'Velocidade: Normal'}
+                            >
+                                <Clock size={18} />
+                            </button>
+                            <button
+                                onClick={() => speak(lastSpokenTextRef.current)}
+                                disabled={!lastSpokenTextRef.current}
+                                className="p-2 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
+                                title="Repetir última frase"
+                            >
+                                <RefreshCw size={18} />
+                            </button>
+                        </div>
+                        <div className="w-px h-6 bg-white/10 mx-2"></div>
                         <button onClick={handleAttemptClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
                             <X size={20} />
                         </button>

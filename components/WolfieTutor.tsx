@@ -357,7 +357,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // 1. Interruption Logic: If AI is speaking and user talks -> Stop AI immediately
         if (state === 'SPEAKING' && detected) {
             if (!speechStartTimeRef.current) speechStartTimeRef.current = Date.now();
-            
+
             // Requires 300ms of continuous speech to interrupt (avoid false positives from coughs)
             if (Date.now() - speechStartTimeRef.current > 300) {
                 stopSpeaking();
@@ -370,13 +370,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // 2. Start Recording: If IDLE and user starts talking
         if (state === 'IDLE' && detected) {
             if (!speechStartTimeRef.current) speechStartTimeRef.current = Date.now();
-            
+
             if (Date.now() - speechStartTimeRef.current > 400) {
                 startRecording();
                 speechStartTimeRef.current = null;
             }
-        } 
-        
+        }
+
         // 3. Auto-Submit: If LISTENING and silence persists
         if (state === 'LISTENING') {
             if (detected) {
@@ -391,7 +391,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     silenceTimeoutRef.current = setTimeout(() => {
                         stopRecordingAndSend();
                         silenceTimeoutRef.current = null;
-                    }, 1500); 
+                    }, 1500);
                 }
             }
         }
@@ -511,7 +511,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         setContext('');
         setShowTextInput(mode === 'text');
         setLiveCall(mode === 'live');
-        
+
         // Ativar de propósito para começar a conversa
         setHasSelectedTopic(true);
 
@@ -655,7 +655,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             </button>
                         </>
                     )}
-                    
+
                     {/* Auto-Speak Toggle */}
                     <button
                         onClick={() => { setAutoSpeakEnabled(p => !p); if (state === 'SPEAKING') stopSpeaking(); }}
@@ -664,7 +664,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     >
                         {autoSpeakEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
                     </button>
-                    
+
                     {!liveCall && (
                         <>
                             <button
@@ -757,7 +757,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 {/* HANG UP BUTTON (Live Mode Only) */}
                 {liveCall && (
                     <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50">
-                        <button 
+                        <button
                             onClick={onClose}
                             className="group flex flex-col items-center gap-2"
                         >
