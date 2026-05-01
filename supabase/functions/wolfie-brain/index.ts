@@ -224,12 +224,18 @@ serve(async (req) => {
 
         let sessionId = conversationId;
         if (!sessionId) {
-            const { data: newSession } = await supabaseClient.from('wolfie_sessions').insert({
+            const { data: newSession, error: sessionError } = await supabaseClient.from('wolfie_sessions').insert({
                 student_id: user.id,
                 tenant_id: user.user_metadata?.tenant_id || '00000000-0000-0000-0000-000000000000',
-                topic: config.topic, mode: config.mode, student_level: config.studentLevel,
-                config_snapshot: config, started_at: new Date().toISOString()
+                topic: config.topic, 
+                mode: config.mode, 
+                student_level: config.studentLevel,
+                config_snapshot: config
             }).select('id').single();
+            
+            if (sessionError) {
+                console.error("Error creating session:", sessionError);
+            }
             if (newSession) sessionId = newSession.id;
         }
 
@@ -330,7 +336,12 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     } catch (error: any) {
-        return new Response(JSON.stringify({ error: error.stack || error.message }), {
+        console.error("[wolfie-brain] CRITICAL ERROR:", error.message, error.stack);
+        return new Response(JSON.stringify({ 
+            error: error.message, 
+            stack: error.stack,
+            type: 'WOLFIE_BRAIN_CRITICAL'
+        }), {
             status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
     }
