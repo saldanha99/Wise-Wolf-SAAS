@@ -39,80 +39,44 @@ export default function WolfieLiveCallV2({
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
-    const recognitionRef = useRef<any>(null);
-    const finalTranscriptRef = useRef<string>('');
+    const mimeTypeRef = useRef<string>('audio/webm');
 
     // Format Scenario Title
     const missionTitle = scenarioId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
     // Init Audio & Speech Recognition
+    // Init audio — cross-platform (Chrome desktop, Chrome Android, Safari iOS)
     useEffect(() => {
         const initAudio = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 setAudioStream(stream);
 
-                const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? { mimeType: 'audio/webm;codecs=opus' }
-                    : { mimeType: 'audio/webm' };
+                // iOS Safari only supports audio/mp4; prefer webm where available
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                    ? 'audio/webm;codecs=opus'
+                    : MediaRecorder.isTypeSupported('audio/webm')
+                        ? 'audio/webm'
+                        : 'audio/mp4';
+                mimeTypeRef.current = mimeType;
 
-                const mediaRecorder = new MediaRecorder(stream, options);
+                const currentChunks: Blob[] = [];
+                audioChunksRef.current = currentChunks;
+
+                const mediaRecorder = new MediaRecorder(stream, { mimeType });
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        currentChunks.push(event.data);
-                    }
+                    if (event.data.size > 0) currentChunks.push(event.data);
                 };
                 mediaRecorderRef.current = mediaRecorder;
             } catch (err) {
-                console.error("Microphone access denied:", err);
-                alert("Permissão de microfone necessária.");
+                console.error('Microphone access denied:', err);
+                alert('Permissão de microfone necessária.');
                 onClose();
             }
         };
 
-        const initSpeechRecognition = () => {
-            // @ts-ignore
-            const windowEl = window as any;
-            const SpeechRecognition = windowEl.SpeechRecognition || windowEl.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                const recognition = new SpeechRecognition();
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.lang = 'pt-BR'; // Force Portuguese BR so it doesn't butcher the user's native language
-
-                recognition.onresult = (event: any) => {
-                    let interimTranscript = '';
-                    let finalTranscript = '';
-
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            finalTranscript += event.results[i][0].transcript;
-                        } else {
-                            interimTranscript += event.results[i][0].transcript;
-                        }
-                    }
-                    if (finalTranscript) {
-                        finalTranscriptRef.current += finalTranscript + ' ';
-                    }
-                };
-
-                recognition.onerror = (event: any) => {
-                    console.error("Speech recognition error", event.error);
-                };
-
-                recognitionRef.current = recognition;
-            }
-        };
-
-        const currentChunks: Blob[] = [];
-        audioChunksRef.current = currentChunks;
-
         initAudio();
-        initSpeechRecognition();
-
-        return () => {
-            stopSpeaking();
-        };
+        return () => { stopSpeaking(); };
     }, []);
 
     // Cleanup Stream
@@ -129,15 +93,7 @@ export default function WolfieLiveCallV2({
         if (!mediaRecorderRef.current) return;
 
         audioChunksRef.current = [];
-        finalTranscriptRef.current = ''; // Reset transcript
-
         mediaRecorderRef.current.start();
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.start();
-            } catch (e) { console.error(e) }
-        }
-
         setState('LISTENING');
         setSubtitle('Ouvindo...');
         setError(null);
@@ -147,24 +103,19 @@ export default function WolfieLiveCallV2({
         if (state !== 'LISTENING' || !mediaRecorderRef.current) return;
 
         mediaRecorderRef.current.stop();
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.stop();
-            } catch (e) { console.error(e) }
-        }
-
         setState('THINKING');
         setSubtitle('Hmm, let me think...');
 
         setTimeout(() => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            processAudio(audioBlob);
-        }, 300); // Increased slightly to give ASR time to finalize
+            const mimeType = mimeTypeRef.current;
+            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+            processAudio(audioBlob, mimeType);
+        }, 300);
     };
 
-    const processAudio = async (audioBlob: Blob) => {
+    const processAudio = async (audioBlob: Blob, mimeType: string) => {
         try {
-            if (audioBlob.size > 5 * 1024 * 1024) throw new Error("Áudio muito longo.");
+            if (audioBlob.size > 5 * 1024 * 1024) throw new Error('Áudio muito longo.');
 
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
@@ -172,69 +123,55 @@ export default function WolfieLiveCallV2({
                 const base64String = reader.result as string;
                 const contextList = transcript.slice(-4).map(m => `${m.role === 'user' ? 'Student' : 'Wolfie'}: ${m.content}`);
                 const previousContext = contextList.join('\n');
-                const userText = finalTranscriptRef.current.trim();
 
                 const payload = {
-                    message: userText,
-                    audioBase64: base64String, // Re-enabled to allow Gemini to hear the real English pronunciation instead of relying solely on the buggy PT-centric browser STT
+                    // No 'message' field — Groq Whisper is the sole STT source
+                    audioBase64: base64String,
+                    audioMimeType: mimeType,
                     studentLevel: wolfieConfig?.level || 'A1',
                     topic: scenarioId,
                     mode: wolfieConfig?.goal === 'Fluency' ? 'fluency' : 'grammar_focus',
                     correctionStrictness: wolfieConfig?.correctionStrictness || 2,
-                    previousContext: previousContext,
-                    conversationId: `${user.id}-${scenarioId}-${Date.now()}` // Simplify session tracking for now
+                    previousContext,
+                    turnCount: transcript.filter(m => m.role === 'user').length,
                 };
 
-                const { data, error: supabaseError } = await supabase.functions.invoke('wolfie-brain', {
-                    body: payload
-                });
+                const { data, error: supabaseError } = await supabase.functions.invoke('wolfie-brain', { body: payload });
 
                 if (supabaseError) throw supabaseError;
-                if (data.error) throw new Error(data.error);
+                if (data?.error) throw new Error(data.error);
 
-                const rawAiText = data.aiText || '';
+                const aiText: string = data.chatResponse || data.aiText || '';
+                const transcribedText: string = data.transcribedText || '[Áudio]';
 
-                // Parse Corrections from the raw text using Regex to extract the JSON block
-                let cleanAiText = rawAiText;
-                const correctionRegex = /\[CORRECTION_JSON\s*:\s*({.*?})\]/s;
-                const match = rawAiText.match(correctionRegex);
-
-                if (match) {
-                    try {
-                        const parsedCorr = JSON.parse(match[1]);
-                        const newCorr: CorrectionItem = {
-                            id: Math.random().toString(36).substring(7),
-                            explanation: parsedCorr.explanation_pt,
-                            wrongSentence: parsedCorr.wrong_sentence,
-                            correctSentence: parsedCorr.correct_sentence
-                        };
-                        setCorrections(prev => [newCorr, ...prev]);
-                        setActiveTab('CORRECTIONS'); // Auto switch to corrections tab to show feedback
-                        setActiveCorrectionPopUp(newCorr); // Show modal directly
-                    } catch (e) {
-                        console.error("Error parsing correction JSON", e);
-                    }
-                    // Remove the correction block from the text that will be spoken
-                    cleanAiText = rawAiText.replace(correctionRegex, '').trim();
+                // Handle structured correction from Groq response
+                if (data.correction) {
+                    const newCorr: CorrectionItem = {
+                        id: Math.random().toString(36).substring(7),
+                        explanation: data.correction.explanation_pt,
+                        wrongSentence: data.correction.original,
+                        correctSentence: data.correction.corrected,
+                    };
+                    setCorrections(prev => [newCorr, ...prev]);
+                    setActiveTab('CORRECTIONS');
+                    setActiveCorrectionPopUp(newCorr);
                 }
 
                 setTranscript(prev => [
                     ...prev,
-                    { role: 'user', content: userText || '[Mensagem de Áudio]' },
-                    { role: 'assistant', content: cleanAiText }
+                    { role: 'user', content: transcribedText },
+                    { role: 'assistant', content: aiText },
                 ]);
 
-                // Update scenario step (simple progression mock)
                 if (transcript.length > 0 && transcript.length % 2 === 0) {
                     setScenarioStep(s => Math.min(s + 1, 4));
                 }
 
-                speak(cleanAiText);
+                speak(aiText);
             };
-
         } catch (err: any) {
-            console.error("Call Error:", err);
-            setError("Wolfie teve um erro técnico ao falar com o servidor de IA. Tente novamente em alguns segundos.");
+            console.error('Call Error:', err);
+            setError('Wolfie teve um erro técnico. Tente novamente.');
             setState('IDLE');
             setSubtitle('Aperte para tentar novamente.');
         }
