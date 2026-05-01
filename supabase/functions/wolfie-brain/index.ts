@@ -51,7 +51,7 @@ const GROQ_BASE = 'https://api.groq.com/openai/v1';
 const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 const GROQ_LLM_MODEL = 'llama-3.3-70b-versatile';
 
-function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string): string {
+function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string, interests?: string[]): string {
     const isPedagogicalAdvisor = previousContext?.includes('Pedagogical Advisor');
     if (isPedagogicalAdvisor) {
         return `You are a Pedagogical Advisor. You will be asked to suggest a topic.
@@ -80,6 +80,9 @@ STUDENT INFO:
 - Name: ${studentName || 'Student'}
 - Level: ${studentLevel}
 - Goal: ${studentGoal || 'practice speaking fluently'}
+
+STUDENT'S INTERESTS: ${(interests || []).join(', ') || 'general topics'}
+When the conversation lulls or you need a topic, prefer one of these.
 
 ${levelGuidance}
 
@@ -170,7 +173,7 @@ serve(async (req) => {
         const { data: { user }, error: authError } = await supabaseClient.auth.getUser(jwt);
         if (authError || !user) throw new Error(`Auth Error: ${authError?.message || 'No User'}`);
 
-        const { data: profile } = await supabaseClient.from('profiles').select('full_name, goal, student_profile_json').eq('id', user.id).single();
+        const { data: profile } = await supabaseClient.from('profiles').select('full_name, goal, student_profile_json, interests').eq('id', user.id).single();
 
         const now = new Date();
         const { data: payments } = await supabaseClient.from('student_payments').select('due_date').eq('student_id', user.id).neq('status', 'RECEIVED').neq('status', 'CONFIRMED').lt('due_date', now.toISOString());
@@ -210,7 +213,7 @@ serve(async (req) => {
         }
 
         // STEP 2: LLM via Groq Llama
-        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext);
+        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, profile?.interests);
         const userPromptParts: string[] = [];
         if (previousContext) userPromptParts.push(`CONVERSATION HISTORY:\n${previousContext}`);
         if (userText) userPromptParts.push(`Student says: "${userText}"`);

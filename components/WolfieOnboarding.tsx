@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Sparkles, Brain, Plane, Briefcase, GraduationCap, MessageCircle, ArrowRight, Loader2, Target, Zap, Shield } from 'lucide-react';
+import { Sparkles, Brain, Plane, Briefcase, GraduationCap, MessageCircle, ArrowRight, Loader2, Target, Zap, Shield, Music, Film, Trophy, Cpu, Globe, TrendingUp, Gamepad2, DollarSign, UtensilsCrossed, BookOpen } from 'lucide-react';
 
 interface WolfieOnboardingProps {
     user: any;
@@ -15,6 +15,7 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
     const [goal, setGoal] = useState('');
     const [level, setLevel] = useState('A1');
     const [strictness, setStrictness] = useState<1 | 2 | 3>(2);
+    const [interests, setInterests] = useState<string[]>([]);
     const [duration, setDuration] = useState(15);
 
     const goals = [
@@ -39,6 +40,23 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
         { id: 3, icon: Shield, label: 'Tough Mentor', desc: 'Corrige quase tudo para máxima precisão.', strictness: 3 },
     ];
 
+    const interestOptions = [
+        { id: 'music', icon: Music, label: 'Música' },
+        { id: 'movies', icon: Film, label: 'Séries/Filmes' },
+        { id: 'sports', icon: Trophy, label: 'Esportes' },
+        { id: 'tech', icon: Cpu, label: 'Tecnologia' },
+        { id: 'travel', icon: Globe, label: 'Viagem' },
+        { id: 'career', icon: TrendingUp, label: 'Carreira' },
+        { id: 'games', icon: Gamepad2, label: 'Games' },
+        { id: 'business', icon: DollarSign, label: 'Negócios' },
+        { id: 'food', icon: UtensilsCrossed, label: 'Comida' },
+        { id: 'books', icon: BookOpen, label: 'Livros' },
+    ];
+
+    const toggleInterest = (id: string) => {
+        setInterests(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
     const handleComplete = async () => {
         setIsSaving(true);
         const settings = {
@@ -52,7 +70,7 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
         try {
             const { error } = await supabase
                 .from('profiles')
-                .update({ wolfie_settings: settings })
+                .update({ wolfie_settings: settings, interests })
                 .eq('id', user.id);
 
             if (error) throw error;
@@ -71,7 +89,7 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
             {/* Background Effects */}
             <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950 pointer-events-none"></div>
             <div className="absolute top-0 w-full h-1 bg-slate-800">
-                <div className="h-full bg-indigo-500 transition-all duration-500 ease-out" style={{ width: `${(step / 4) * 100}%` }}></div>
+                <div className="h-full bg-indigo-500 transition-all duration-500 ease-out" style={{ width: `${(step / 5) * 100}%` }}></div>
             </div>
 
             <div className="relative z-10 w-full max-w-2xl p-8 flex flex-col items-center animate-in fade-in slide-in-from-bottom-8 duration-500">
@@ -102,6 +120,12 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                         </>
                     )}
                     {step === 4 && (
+                        <>
+                            <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">Sobre o que você curte conversar?</h1>
+                            <p className="text-slate-400 text-lg">Escolha pelo menos 2. Wolfie vai usar esses temas nas conversas.</p>
+                        </>
+                    )}
+                    {step === 5 && (
                         <>
                             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">Preparation complete</h1>
                             <p className="text-slate-400 text-lg">Wolfie is calibrating your personal curriculum.</p>
@@ -176,17 +200,36 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                             })}
                         </div>
                     )}
+
+                    {step === 4 && (
+                        <div className="flex flex-wrap gap-3 justify-center">
+                            {interestOptions.map(opt => {
+                                const Icon = opt.icon;
+                                const isSelected = interests.includes(opt.id);
+                                return (
+                                    <button
+                                        key={opt.id}
+                                        onClick={() => toggleInterest(opt.id)}
+                                        className={`flex items-center gap-2 px-5 py-3 rounded-full border text-sm font-bold transition-all duration-200 ${isSelected ? 'bg-indigo-500/20 border-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                                    >
+                                        <Icon className="w-4 h-4" />
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer Controls */}
                 <div className="w-full mt-12 flex items-center justify-between border-t border-white/5 pt-6">
-                    {step > 1 && step < 4 ? (
+                    {step > 1 && step < 5 ? (
                         <button onClick={() => setStep(step - 1)} className="px-6 py-3 text-slate-400 font-bold hover:text-white transition-colors">
                             Back
                         </button>
                     ) : <div></div>}
 
-                    {step < 3 ? (
+                    {step < 4 ? (
                         <button
                             onClick={() => setStep(step + 1)}
                             disabled={step === 1 && !goal}
@@ -194,13 +237,14 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                         >
                             Continue <ArrowRight className="w-5 h-5" />
                         </button>
-                    ) : step === 3 ? (
+                    ) : step === 4 ? (
                         <button
                             onClick={() => {
-                                setStep(4);
+                                setStep(5);
                                 handleComplete();
                             }}
-                            className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-wider hover:bg-indigo-500 transition-colors shadow-[0_0_30px_rgba(79,70,229,0.4)]"
+                            disabled={interests.length < 2}
+                            className="flex items-center gap-2 px-8 py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-wider hover:bg-indigo-500 transition-colors shadow-[0_0_30px_rgba(79,70,229,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Start Practicing <Sparkles className="w-5 h-5" />
                         </button>
