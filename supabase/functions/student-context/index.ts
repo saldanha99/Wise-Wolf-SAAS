@@ -122,23 +122,29 @@ serve(async (req) => {
             console.warn("[student-context] Billing check failed (non-blocking):", e);
         }
 
-        // 5. NEXT BOOKING
-        let nextBooking = null;
+        // 6. ASSIGNED MATERIALS
+        let assignedMaterials = [];
         try {
-            const { data: nb } = await supabaseAdmin
-                .from('bookings')
-                .select('*')
+            const { data: assignments } = await supabaseAdmin
+                .from('student_assignments')
+                .select('*, material:material_id(*)')
                 .eq('student_id', user.id)
-                .gte('start_time', now.toISOString())
-                .order('start_time', { ascending: true })
-                .limit(1)
-                .maybeSingle();
-            nextBooking = nb;
+                .order('assigned_at', { ascending: false });
+            
+            if (assignments) {
+                assignedMaterials = assignments.map(a => ({
+                    assignment_id: a.id,
+                    ...a.material,
+                    assigned_at: a.assigned_at,
+                    status: a.status,
+                    notes: a.notes
+                }));
+            }
         } catch (e) {
-            console.warn("[student-context] Booking fetch failed (non-blocking):", e);
+            console.warn("[student-context] Assignments fetch failed (non-blocking):", e);
         }
 
-        // 6. Return
+        // 7. Return
         console.log("[student-context] SUCCESS — returning data for", profile.full_name);
         return new Response(
             JSON.stringify({
@@ -150,7 +156,8 @@ serve(async (req) => {
                     nextLevelProgress: ((profile.xp || 0) % 1000) / 10
                 },
                 billing: { status: billingStatus, oldestDue: oldestDue ? oldestDue.toISOString() : null },
-                nextClass: nextBooking
+                nextClass: nextBooking,
+                assignedMaterials
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         );

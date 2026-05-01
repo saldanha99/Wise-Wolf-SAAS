@@ -15,6 +15,7 @@ interface StudentData {
         oldestDue: string | null;
     };
     nextClass: any;
+    assignedMaterials: any[];
 }
 
 interface StudentContextType {

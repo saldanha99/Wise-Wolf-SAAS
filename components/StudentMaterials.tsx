@@ -219,6 +219,69 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                 </div>
             </div>
 
+            {/* Assigned Materials Section */}
+            {(studentContext?.assignedMaterials?.length || 0) > 0 && (
+                <div className="pt-10 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-3 mb-8">
+                        <div className="p-2 bg-indigo-500 text-white rounded-lg">
+                            <Book size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Materiais do Professor</h3>
+                            <p className="text-xs text-slate-500 font-medium">Conteúdo personalizado atribuído para você.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {studentContext?.assignedMaterials?.map((m: any) => (
+                            <div 
+                                key={m.assignment_id} 
+                                onClick={() => handleAccessBook(m.file_url)}
+                                className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer flex items-center gap-5"
+                            >
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-[10px] shadow-sm transition-transform group-hover:scale-110 ${
+                                    m.type === 'PDF' ? 'bg-red-50 text-red-600' :
+                                    m.type === 'VIDEO' ? 'bg-blue-50 text-blue-600' : 
+                                    'bg-emerald-50 text-emerald-600'
+                                }`}>
+                                    {m.type}
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="font-black text-sm text-slate-800 dark:text-white group-hover:text-indigo-600 transition-colors line-clamp-1">
+                                        {m.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 mt-1.5">
+                                        <span className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full uppercase font-black text-slate-500">
+                                            {m.level_tag || 'Geral'}
+                                        </span>
+                                        {m.niche && m.niche !== 'GENERAL' && (
+                                            <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black ${
+                                                m.niche === 'MEDICINE' ? 'bg-emerald-50 text-emerald-600' :
+                                                m.niche === 'TECH' ? 'bg-blue-50 text-blue-600' :
+                                                m.niche === 'BUSINESS' ? 'bg-purple-50 text-purple-600' :
+                                                m.niche === 'TRAVEL' ? 'bg-orange-50 text-orange-600' :
+                                                'bg-slate-100 text-slate-500'
+                                            }`}>
+                                                {m.niche}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1 mt-2 text-slate-400">
+                                        <Clock size={10} />
+                                        <span className="text-[9px] uppercase font-black tracking-tighter">
+                                            {new Date(m.assigned_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                                    <Play size={12} fill="currentColor" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Evaluation Modal */}
             {showEval && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
