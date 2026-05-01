@@ -253,13 +253,20 @@ export default function WolfieLiveCallV2({
     };
 
     const NEURAL_EN = [
+        'Google US English',
+        'Samantha', // iOS
+        'Alex', // macOS/iOS
+        'Siri', // iOS
+        'Nicky', // iOS
+        'Aaron', // iOS
+        'en-us-x', // Android
         'Microsoft Aria Online (Natural) - English (United States)',
         'Microsoft Jenny Online (Natural) - English (United States)',
         'Microsoft Ava Online (Natural) - English (United States)',
         'Microsoft Eddy (English (United States))',
-        'Google US English',
-        'Samantha',
-        'Karen',
+        'Microsoft David',
+        'Microsoft Zira',
+        'Daniel',
     ];
     const NEURAL_PT = [
         'Microsoft Francisca Online (Natural) - Portuguese (Brazil)',
@@ -270,12 +277,22 @@ export default function WolfieLiveCallV2({
     ];
 
     const pickBestVoice = (lang: 'en-US' | 'pt-BR'): SpeechSynthesisVoice | undefined => {
-        const list = lang === 'en-US' ? NEURAL_EN : NEURAL_PT;
         const voices = window.speechSynthesis.getVoices();
+        if (voices.length === 0) return undefined;
+
+        const list = lang === 'en-US' ? NEURAL_EN : NEURAL_PT;
+        
+        // 1. Try exact matches from our preferred list
         for (const name of list) {
             const v = voices.find(v => v.name === name);
             if (v) return v;
         }
+
+        // 2. Fallback: try to find any voice with the exact lang (e.g. en-US)
+        const exactLangMatch = voices.find(v => v.lang === lang || v.lang === lang.replace('-', '_'));
+        if (exactLangMatch) return exactLangMatch;
+
+        // 3. Ultimate fallback: starts with the language code (e.g. en)
         return voices.find(v => v.lang.startsWith(lang.slice(0, 2)));
     };
 
@@ -539,7 +556,7 @@ export default function WolfieLiveCallV2({
                             <h2 className="text-lg font-black text-white tracking-wide">{missionTitle}</h2>
                             <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mt-1">Step {scenarioStep} of 4</p>
                         </div>
-                        <div className="w-[280px] h-[280px] md:w-[400px] md:h-[400px] relative mt-10 lg:mt-0">
+                        <div className="w-[240px] h-[240px] sm:w-[280px] sm:h-[280px] md:w-[400px] md:h-[400px] relative mt-10 lg:mt-0">
                             <VoicePoweredOrb
                                 hue={getOrbColor()}
                                 audioStream={audioStreamReady}

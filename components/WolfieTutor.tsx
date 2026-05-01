@@ -182,23 +182,39 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             if (voices.length === 0) return;
 
             const preferredNames = [
-                'Samantha', 'Serena', 'Karen', 'Daniel',
-                'Google US English', 'Google UK English Female',
-                'Google UK English Male', 'Microsoft Zira', 'Microsoft David'
+                'Google US English',
+                'Samantha', // iOS US
+                'Alex', // macOS/iOS US
+                'Siri', // iOS Generic
+                'Nicky', // iOS US
+                'Aaron', // iOS US
+                'en-us-x', // Android US
+                'Microsoft Aria Online (Natural) - English (United States)',
+                'Microsoft Jenny Online (Natural) - English (United States)',
+                'Microsoft David',
+                'Microsoft Zira',
+                'Daniel'
             ];
 
             let found: SpeechSynthesisVoice | null = null;
             for (const name of preferredNames) {
-                found = voices.find(v => v.name.includes(name)) || null;
+                found = voices.find(v => v.name.includes(name) || v.name.toLowerCase().includes(name.toLowerCase())) || null;
                 if (found) break;
             }
+
+            // Fallback 1: Try any en-US voice
+            if (!found) {
+                found = voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') || null;
+            }
+
+            // Fallback 2: Any English voice
             if (!found) {
                 found = voices.find(v => v.lang.startsWith('en-')) || null;
             }
 
             if (found) {
                 englishVoiceRef.current = found;
-                console.log('🎙️ TTS Voice Selected:', found.name, found.lang);
+                console.log('🎙️ Wolfie Voice:', found.name, found.lang);
             }
         };
 
@@ -211,20 +227,40 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     useEffect(() => {
         const initAudio = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    } 
+                });
                 setAudioStream(stream);
 
-                const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? { mimeType: 'audio/webm;codecs=opus' }
-                    : { mimeType: 'audio/webm' };
+                // CROSS-PLATFORM MIME TYPE (Crucial for iOS)
+                const candidates = [
+                    'audio/webm;codecs=opus',
+                    'audio/webm',
+                    'audio/mp4;codecs=mp4a.40.2',
+                    'audio/mp4',
+                    'audio/wav'
+                ];
+                
+                let selectedMimeType = 'audio/webm';
+                for (const t of candidates) {
+                    if (MediaRecorder.isTypeSupported(t)) {
+                        selectedMimeType = t;
+                        break;
+                    }
+                }
 
-                const mediaRecorder = new MediaRecorder(stream, options);
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) audioChunksRef.current.push(event.data);
                 };
                 mediaRecorderRef.current = mediaRecorder;
             } catch (err) {
                 console.error("Microphone access denied:", err);
+                setError("Acesso ao microfone negado. Verifique as permissões do navegador.");
             }
         };
 
@@ -735,7 +771,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             <div className="relative z-20 flex flex-col items-center justify-center w-full h-full max-w-5xl mx-auto">
                 <div
-                    className={`relative cursor-pointer touch-none flex items-center justify-center group ${liveCall ? 'w-[350px] h-[350px] md:w-[600px] md:h-[600px]' : 'w-[320px] h-[320px] md:w-[500px] md:h-[500px]'}`}
+                    className={`relative cursor-pointer touch-none flex items-center justify-center group ${liveCall ? 'w-[280px] h-[280px] sm:w-[350px] sm:h-[350px] md:w-[600px] md:h-[600px]' : 'w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] md:w-[500px] md:h-[500px]'}`}
                     onMouseDown={!liveCall ? startRecording : undefined}
                     onMouseUp={!liveCall ? stopRecordingAndSend : undefined}
                 >
