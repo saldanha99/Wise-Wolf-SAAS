@@ -250,7 +250,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     className="w-full relative group/btn h-12 rounded-xl overflow-hidden"
                                 >
                                     <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-[#D32F2F] opacity-90 group-hover/btn:opacity-100 transition-opacity" />
-                                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20" />
+                                    <div className="absolute inset-0 bg-slate-900/50 opacity-20" />
 
                                     <div className="relative flex items-center justify-center gap-2 text-white font-bold text-sm tracking-wide uppercase">
                                         {isLoading ? (

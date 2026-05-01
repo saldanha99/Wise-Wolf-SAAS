@@ -94,8 +94,16 @@ CRITICAL — RETURN ONLY A SINGLE RAW JSON OBJECT (no markdown):
   "correction": null | { "original": "wrong text", "corrected": "natural correct version", "explanation_pt": "short PT explanation" },
   "translation": ${trans},
   "vocabulary": ${vocab},
-  "quiz": null
-}`;
+  "quiz": null,
+  "repeatRequired": boolean,
+  "targetPhrase": "the exact phrase the student MUST repeat if repeatRequired is true"
+}
+
+PEDAGOGICAL REPETITION RULE:
+- If you teach a new English phrase (especially in response to a PT query), set 'repeatRequired' to true and 'targetPhrase' to that phrase.
+- In your 'chatResponse', you must explicitly tell the student to repeat it.
+- If the student's next turn is NOT an attempt to repeat the 'targetPhrase', you must INSIST and ask them again before continuing the conversation.
+`;
 }
 
 async function groqTranscribe(groqKey: string, audioBase64: string, mimeType: string): Promise<string> {

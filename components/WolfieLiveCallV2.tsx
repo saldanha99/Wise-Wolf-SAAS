@@ -39,6 +39,8 @@ export default function WolfieLiveCallV2({
     const [showSummary, setShowSummary] = useState(false);
     const [vocabLearned, setVocabLearned] = useState(0);
     const [speakSlower, setSpeakSlower] = useState(false);
+    const [repeatRequired, setRepeatRequired] = useState(false);
+    const [targetPhrase, setTargetPhrase] = useState<string | null>(null);
     const sessionStartRef = useRef<number>(Date.now());
     const lastSpokenTextRef = useRef<string>('');
 
@@ -112,7 +114,7 @@ export default function WolfieLiveCallV2({
         if (stateRef.current === 'SPEAKING') {
             window.speechSynthesis.cancel();
         }
-        if (!isMuted && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'recording') {
+        if (!isMuted && mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
             audioChunksRef.current = [];
             mediaRecorderRef.current.start();
             setState('LISTENING');
@@ -146,29 +148,25 @@ export default function WolfieLiveCallV2({
     // Legacy push-to-talk kept as fallback for manual trigger
     const startRecording = () => {
         if (state === 'SPEAKING' || state === 'THINKING' || activeCorrectionPopUp) return;
-        if (!mediaRecorderRef.current) return;
-        audioChunksRef.current = [];
-        mediaRecorderRef.current.start();
-        setState('LISTENING');
-        setSubtitle('');
-        setError(null);
+        if (mediaRecorderRef.current.state === 'inactive') {
+            audioChunksRef.current = [];
+            mediaRecorderRef.current.start();
+            setState('LISTENING');
+            setSubtitle('');
+            setError(null);
+        }
     };
 
     const stopRecordingAndSend = () => {
         if (state !== 'LISTENING' || !mediaRecorderRef.current) return;
         const recorder = mediaRecorderRef.current;
-        recorder.onstop = () => {
-            const mimeType = audioMimeTypeRef.current;
-            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-            if (audioBlob.size < 1000) {
-                setState('IDLE');
-                return;
-            }
-            processAudio(audioBlob, mimeType);
-        };
-        recorder.stop();
-        setState('THINKING');
-        setSubtitle('');
+        if (recorder.state === 'recording') {
+            recorder.stop();
+            setState('THINKING');
+            setSubtitle('');
+        } else {
+            setState('IDLE');
+        }
     };
 
     const processAudio = async (audioBlob: Blob, mimeType: string) => {
@@ -218,6 +216,15 @@ export default function WolfieLiveCallV2({
                 if (data.vocabulary?.keyTerms?.length) {
                     setVocabLearned(prev => prev + data.vocabulary.keyTerms.length);
                 }
+                
+                // Repeat enforcement
+                if (data.repeatRequired) {
+                    setRepeatRequired(true);
+                    setTargetPhrase(data.targetPhrase);
+                } else {
+                    setRepeatRequired(false);
+                    setTargetPhrase(null);
+                }
 
                 setTranscript(prev => [
                     ...prev,
@@ -245,15 +252,14 @@ export default function WolfieLiveCallV2({
         return (hasAccents || ptWords) ? 'pt-BR' : 'en-US';
     };
 
-    // Neural voice whitelist — ordered by quality (best first)
     const NEURAL_EN = [
         'Microsoft Aria Online (Natural) - English (United States)',
         'Microsoft Jenny Online (Natural) - English (United States)',
         'Microsoft Ava Online (Natural) - English (United States)',
         'Microsoft Eddy (English (United States))',
         'Google US English',
-        'Samantha',   // iOS/macOS Siri
-        'Karen',      // iOS/macOS
+        'Samantha',
+        'Karen',
     ];
     const NEURAL_PT = [
         'Microsoft Francisca Online (Natural) - Portuguese (Brazil)',
@@ -273,7 +279,6 @@ export default function WolfieLiveCallV2({
         return voices.find(v => v.lang.startsWith(lang.slice(0, 2)));
     };
 
-    // Per-sentence TTS — enqueues each sentence for faster perceived latency
     const speak = (text: string) => {
         setState('SPEAKING');
         setSubtitle('');
@@ -294,7 +299,7 @@ export default function WolfieLiveCallV2({
             const voice = pickBestVoice(lang);
             if (voice) u.voice = voice;
             u.lang = lang;
-            u.rate = speed ?? (speakSlower ? 0.75 : (lang === 'pt-BR' ? 1.05 : 1.0));
+            u.rate = speakSlower ? 0.75 : (lang === 'pt-BR' ? 1.05 : 1.0);
             u.pitch = 1.0;
 
             if (i === 0) {
@@ -305,7 +310,7 @@ export default function WolfieLiveCallV2({
                 u.onerror = () => setState('IDLE');
             }
 
-            window.speechSynthesis.speak(u); // browser enqueues
+            window.speechSynthesis.speak(u);
         });
     };
 
@@ -315,10 +320,10 @@ export default function WolfieLiveCallV2({
 
     const getOrbColor = () => {
         switch (state) {
-            case 'IDLE': return 220; // Blue
-            case 'LISTENING': return 0; // Red
-            case 'THINKING': return 280; // Purple
-            case 'SPEAKING': return 180; // Cyan
+            case 'IDLE': return 220;
+            case 'LISTENING': return 0;
+            case 'THINKING': return 280;
+            case 'SPEAKING': return 180;
             default: return 220;
         }
     };
@@ -329,7 +334,6 @@ export default function WolfieLiveCallV2({
         const phrase = activeCorrectionPopUp.correctSentence;
         setActiveCorrectionPopUp(null);
 
-        // Send as a single block so the `speak` function uses EN-US voice
         speak(`Repeat after me: ${phrase}`);
     };
 
@@ -373,11 +377,9 @@ export default function WolfieLiveCallV2({
 
     return (
         <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col font-sans overflow-hidden">
-            {/* CORRECTION POP-UP MODAL */}
             {activeCorrectionPopUp && (
                 <div className="absolute inset-0 z-[300] flex flex-col items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-slate-900 border-2 border-indigo-500 rounded-3xl w-full max-w-md shadow-2xl shadow-indigo-500/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-10 touch-none">
-                        {/* Header */}
                         <div className="bg-indigo-500/10 p-5 border-b border-indigo-500/20 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <BookOpen className="text-indigo-400" size={24} />
@@ -390,29 +392,23 @@ export default function WolfieLiveCallV2({
                                 <X size={20} />
                             </button>
                         </div>
-
-                        {/* Content */}
                         <div className="p-6 space-y-6">
                             <div>
                                 <p className="text-slate-300 text-sm leading-relaxed">
                                     {activeCorrectionPopUp.explanation}
                                 </p>
                             </div>
-
                             <div className="space-y-4 bg-slate-950/50 p-4 rounded-2xl border border-white/5">
                                 <div>
                                     <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest block mb-1">Como você disse:</span>
                                     <p className="text-slate-400 font-medium line-through decoration-red-500/50">{activeCorrectionPopUp.wrongSentence}</p>
                                 </div>
-
                                 <div>
                                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">Forma mais natural:</span>
                                     <p className="text-white font-bold text-lg">{activeCorrectionPopUp.correctSentence}</p>
                                 </div>
                             </div>
                         </div>
-
-                        {/* Actions */}
                         <div className="p-6 pt-0 flex flex-col gap-3">
                             <button
                                 onClick={handleRepeatCorrection}
@@ -432,18 +428,14 @@ export default function WolfieLiveCallV2({
                 </div>
             )}
 
-            {/* SESSION SUMMARY MODAL */}
             {showSummary && (
                 <div className="absolute inset-0 z-[300] flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
                     <div className="bg-slate-900 border-2 border-emerald-500 rounded-3xl w-full max-w-md shadow-2xl shadow-emerald-500/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-10">
-                        {/* Header */}
                         <div className="bg-emerald-500/10 p-6 border-b border-emerald-500/20 text-center">
                             <Trophy className="text-emerald-400 w-12 h-12 mx-auto mb-3" />
                             <h3 className="text-white font-black text-2xl">Sessão Concluída!</h3>
                             <p className="text-slate-400 text-sm mt-1">Veja como você foi:</p>
                         </div>
-
-                        {/* Stats Grid */}
                         <div className="p-6 grid grid-cols-2 gap-4">
                             <div className="bg-slate-950/50 rounded-2xl p-4 border border-white/5 text-center">
                                 <MessageSquare className="w-6 h-6 text-indigo-400 mx-auto mb-2" />
@@ -466,8 +458,6 @@ export default function WolfieLiveCallV2({
                                 <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Tempo</p>
                             </div>
                         </div>
-
-                        {/* XP Badge */}
                         <div className="px-6 pb-2">
                             <div className="bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-center gap-3">
                                 <Star className="w-8 h-8 text-amber-400" />
@@ -477,8 +467,6 @@ export default function WolfieLiveCallV2({
                                 </div>
                             </div>
                         </div>
-
-                        {/* Actions */}
                         <div className="p-6 flex flex-col gap-3">
                             <button
                                 onClick={() => setShowSummary(false)}
@@ -498,11 +486,9 @@ export default function WolfieLiveCallV2({
                 </div>
             )}
 
-            {/* Static Background — no transition-colors to avoid repaint flicker */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950"></div>
 
             <div className="relative z-10 flex flex-col h-full">
-                {/* TOP BAR */}
                 <header className="flex items-center justify-between p-6 border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-full border border-white/10">
@@ -513,12 +499,10 @@ export default function WolfieLiveCallV2({
                             <span className="text-xs font-bold text-slate-300 tracking-wider">LIVE</span>
                         </div>
                     </div>
-
                     <div className="text-center absolute left-1/2 -translate-x-1/2 hidden md:block">
                         <h2 className="text-lg font-black text-white tracking-wide">{missionTitle}</h2>
                         <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mt-1">Step {scenarioStep} of 4</p>
                     </div>
-
                     <div className="flex items-center gap-4">
                         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-full border border-white/10">
                             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{wolfieConfig.level}</span>
@@ -549,19 +533,12 @@ export default function WolfieLiveCallV2({
                     </div>
                 </header>
 
-                {/* MAIN SPLIT VIEW */}
                 <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-
-                    {/* LEFT: VISUAL ORB & SUBTITLES */}
                     <div className="flex-1 relative flex flex-col items-center justify-center p-8 lg:border-r border-white/5">
-
-                        {/* Mobile Header (fallback when center is hidden) */}
                         <div className="text-center md:hidden absolute top-6 w-full px-6">
                             <h2 className="text-lg font-black text-white tracking-wide">{missionTitle}</h2>
                             <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mt-1">Step {scenarioStep} of 4</p>
                         </div>
-
-                        {/* Orb */}
                         <div className="w-[280px] h-[280px] md:w-[400px] md:h-[400px] relative mt-10 lg:mt-0">
                             <VoicePoweredOrb
                                 hue={getOrbColor()}
@@ -571,8 +548,6 @@ export default function WolfieLiveCallV2({
                                 maxRotationSpeed={state === 'THINKING' ? 3.0 : 1.2}
                             />
                         </div>
-
-                        {/* Active Subtitle */}
                         <div className="absolute bottom-12 w-full max-w-2xl px-6 text-center">
                             {error && (
                                 <div className="inline-block px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-sm font-bold mb-4">
@@ -587,9 +562,7 @@ export default function WolfieLiveCallV2({
                         </div>
                     </div>
 
-                    {/* RIGHT: SIDEBAR (Transcript & Corrections) */}
                     <div className="w-full lg:w-[450px] bg-slate-950/50 flex flex-col border-t lg:border-t-0 border-white/5">
-                        {/* Tabs */}
                         <div className="flex px-4 pt-4 border-b border-white/5 gap-2">
                             <button
                                 onClick={() => setActiveTab('TRANSCRIPT')}
@@ -607,8 +580,6 @@ export default function WolfieLiveCallV2({
                                 )}
                             </button>
                         </div>
-
-                        {/* Tab Content */}
                         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                             {activeTab === 'TRANSCRIPT' && (
                                 <div className="space-y-6">

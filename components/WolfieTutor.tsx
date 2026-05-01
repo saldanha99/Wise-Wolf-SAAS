@@ -162,6 +162,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const englishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+    const [speakSlower, setSpeakSlower] = useState(false);
+    const [repeatRequired, setRepeatRequired] = useState(false);
+    const [targetPhrase, setTargetPhrase] = useState<string | null>(null);
     const lastSpokenTextRef = useRef<string>('');
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -222,7 +225,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 mediaRecorderRef.current = mediaRecorder;
             } catch (err) {
                 console.error("Microphone access denied:", err);
-                // Don't block — user can still type
             }
         };
 
@@ -261,7 +263,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         lastSpokenTextRef.current = text;
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = speed ?? getTTSSpeed(studentLevel);
+        utterance.rate = speed ?? (speakSlower ? 0.7 : getTTSSpeed(studentLevel));
 
         if (englishVoiceRef.current) {
             utterance.voice = englishVoiceRef.current;
@@ -274,7 +276,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         utterance.onerror = () => { setState('IDLE'); setSubtitle(''); };
 
         window.speechSynthesis.speak(utterance);
-    }, [studentLevel]);
+    }, [studentLevel, speakSlower]);
 
     const stopSpeaking = () => {
         window.speechSynthesis.cancel();
@@ -302,14 +304,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         setError(null);
 
         audioChunksRef.current = [];
-        mediaRecorderRef.current.start(100);
-        setState('LISTENING');
+        if (mediaRecorderRef.current.state === 'inactive') {
+            mediaRecorderRef.current.start(100);
+            setState('LISTENING');
+        }
     };
 
     const stopRecordingAndSend = () => {
         if (state !== 'LISTENING' || !mediaRecorderRef.current) return;
-        mediaRecorderRef.current.stop();
-        setState('THINKING');
+        if (mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setState('THINKING');
+        } else {
+            setState('IDLE');
+        }
 
         setTimeout(() => {
             const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
@@ -456,6 +464,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             if (data.vocabulary?.keyTerms?.length > 0) setVocabulary(data.vocabulary);
             if (data.quiz) setQuiz(data.quiz);
 
+            // Repeat enforcement
+            if (data.repeatRequired) {
+                setRepeatRequired(true);
+                setTargetPhrase(data.targetPhrase);
+            } else {
+                setRepeatRequired(false);
+                setTargetPhrase(null);
+            }
+
             // Auto-speak
             if (autoSpeakEnabled && chatText) {
                 speak(chatText);
@@ -561,6 +578,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             onClick={() => handleModeSelection('voice')}
                             className="group relative p-8 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-white/10 hover:bg-slate-800/60 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center"
                         >
+                            <div className="absolute inset-0 bg-slate-900/50 opacity-20" />
                             <div className="absolute inset-0 bg-gradient-to-br from-slate-500/20 to-slate-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="w-20 h-20 rounded-full bg-slate-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-slate-500 transition-all duration-300">
                                 <Mic size={32} className="text-slate-400 group-hover:text-white transition-colors" />
@@ -599,7 +617,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     state === 'SPEAKING' ? 'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-slate-950 to-slate-950' :
                         'bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950'
                 }`}></div>
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none mix-blend-overlay"></div>
 
             {/* CLOSE BUTTON */}
             {onClose && (
@@ -612,11 +629,34 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
                 {/* Status Badge */}
                 <div className="flex items-center gap-3 px-5 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
+                    {/* Status Indicator */}
                     <div className={`w-2 h-2 rounded-full ${state === 'LISTENING' ? 'bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]' :
                         state === 'THINKING' ? 'bg-purple-500 animate-pulse' :
                             state === 'SPEAKING' ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]' :
                                 'bg-indigo-500'}`} />
-                    <span className="text-[10px] font-bold text-white/90 tracking-[0.2em] uppercase">{getStatusLabel()}</span>
+                    
+                    <span className="text-[10px] font-bold text-white/90 tracking-[0.2em] uppercase mr-2">{getStatusLabel()}</span>
+                    
+                    <div className="w-px h-4 bg-white/10 mx-1"></div>
+
+                    {/* Controls */}
+                    <div className="flex items-center gap-1.5 ml-1">
+                        <button
+                            onClick={() => setSpeakSlower(p => !p)}
+                            className={`p-1.5 rounded-full border transition-all ${speakSlower ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-500'}`}
+                            title={speakSlower ? 'Velocidade: Devagar' : 'Velocidade: Normal'}
+                        >
+                            <Clock size={14} />
+                        </button>
+                        <button
+                            onClick={() => speak(lastSpokenTextRef.current)}
+                            disabled={!lastSpokenTextRef.current}
+                            className="p-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
+                            title="Repetir última frase"
+                        >
+                            <RefreshCw size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Timer + Level + Controls */}
