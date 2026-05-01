@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Mic, StopCircle, RefreshCw, MessageSquare, AlertCircle, Sparkles, Zap, BookOpen, Volume2, Trophy, Clock, CheckCircle, Star } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Mic, MicOff, StopCircle, RefreshCw, MessageSquare, AlertCircle, Sparkles, Zap, BookOpen, Volume2, Trophy, Clock, CheckCircle, Star } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { VoicePoweredOrb } from './VoicePoweredOrb';
+import { useVAD } from '../hooks/useVAD';
 
 interface WolfieLiveCallV2Props {
     user: any;
@@ -42,7 +43,11 @@ export default function WolfieLiveCallV2({
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const audioMimeTypeRef = useRef<string>('audio/webm');
-    const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+    const audioStreamRef = useRef<MediaStream | null>(null);
+    const [audioStreamReady, setAudioStreamReady] = useState<MediaStream | null>(null);
+    const [isMuted, setIsMuted] = useState(false);
+    const stateRef = useRef<CallState>('IDLE');
+    stateRef.current = state;
 
     // Format Scenario Title
     const missionTitle = scenarioId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -65,8 +70,17 @@ export default function WolfieLiveCallV2({
 
         const initAudio = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                setAudioStream(stream);
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000,
+                        channelCount: 1,
+                    }
+                });
+                audioStreamRef.current = stream;
+                setAudioStreamReady(stream);
                 const mimeType = pickMimeType();
                 const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
                 audioMimeTypeRef.current = mediaRecorder.mimeType || mimeType || 'audio/webm';
@@ -84,25 +98,57 @@ export default function WolfieLiveCallV2({
         audioChunksRef.current = currentChunks;
         initAudio();
 
-        return () => { stopSpeaking(); };
+        return () => {
+            stopSpeaking();
+            audioStreamRef.current?.getTracks().forEach(t => t.stop());
+        };
     }, []);
 
-    // Cleanup Stream
-    useEffect(() => {
-        return () => {
-            if (audioStream) {
-                audioStream.getTracks().forEach(track => track.stop());
-            }
-        };
-    }, [audioStream]);
+    // VAD — auto-listening
+    const startRecordingVAD = useCallback(() => {
+        if (stateRef.current === 'THINKING' || activeCorrectionPopUp) return;
+        if (stateRef.current === 'SPEAKING') {
+            window.speechSynthesis.cancel();
+        }
+        if (!isMuted && mediaRecorderRef.current && mediaRecorderRef.current.state !== 'recording') {
+            audioChunksRef.current = [];
+            mediaRecorderRef.current.start();
+            setState('LISTENING');
+            setSubtitle('');
+            setError(null);
+        }
+    }, [isMuted, activeCorrectionPopUp]);
 
+    const stopRecordingVAD = useCallback(() => {
+        if (stateRef.current !== 'LISTENING' || !mediaRecorderRef.current) return;
+        const recorder = mediaRecorderRef.current;
+        recorder.onstop = () => {
+            const mimeType = audioMimeTypeRef.current;
+            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+            if (audioBlob.size < 1000) {
+                setState('IDLE');
+                return;
+            }
+            processAudio(audioBlob, mimeType);
+        };
+        recorder.stop();
+        setState('THINKING');
+        setSubtitle('');
+    }, []);
+
+    useVAD(audioStreamReady, !isMuted && !showSummary && !activeCorrectionPopUp, {
+        onSpeechStart: startRecordingVAD,
+        onSpeechEnd: stopRecordingVAD,
+    });
+
+    // Legacy push-to-talk kept as fallback for manual trigger
     const startRecording = () => {
         if (state === 'SPEAKING' || state === 'THINKING' || activeCorrectionPopUp) return;
         if (!mediaRecorderRef.current) return;
         audioChunksRef.current = [];
         mediaRecorderRef.current.start();
         setState('LISTENING');
-        setSubtitle('Ouvindo...');
+        setSubtitle('');
         setError(null);
     };
 
@@ -112,11 +158,15 @@ export default function WolfieLiveCallV2({
         recorder.onstop = () => {
             const mimeType = audioMimeTypeRef.current;
             const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+            if (audioBlob.size < 1000) {
+                setState('IDLE');
+                return;
+            }
             processAudio(audioBlob, mimeType);
         };
         recorder.stop();
         setState('THINKING');
-        setSubtitle('Hmm, let me think...');
+        setSubtitle('');
     };
 
     const processAudio = async (audioBlob: Blob, mimeType: string) => {
@@ -193,6 +243,35 @@ export default function WolfieLiveCallV2({
         return (hasAccents || ptWords) ? 'pt-BR' : 'en-US';
     };
 
+    // Neural voice whitelist — ordered by quality (best first)
+    const NEURAL_EN = [
+        'Microsoft Aria Online (Natural) - English (United States)',
+        'Microsoft Jenny Online (Natural) - English (United States)',
+        'Microsoft Ava Online (Natural) - English (United States)',
+        'Microsoft Eddy (English (United States))',
+        'Google US English',
+        'Samantha',   // iOS/macOS Siri
+        'Karen',      // iOS/macOS
+    ];
+    const NEURAL_PT = [
+        'Microsoft Francisca Online (Natural) - Portuguese (Brazil)',
+        'Microsoft Antonio Online (Natural) - Portuguese (Brazil)',
+        'Microsoft Thalita Online (Natural) - Portuguese (Brazil)',
+        'Google português do Brasil',
+        'Luciana',
+    ];
+
+    const pickBestVoice = (lang: 'en-US' | 'pt-BR'): SpeechSynthesisVoice | undefined => {
+        const list = lang === 'en-US' ? NEURAL_EN : NEURAL_PT;
+        const voices = window.speechSynthesis.getVoices();
+        for (const name of list) {
+            const v = voices.find(v => v.name === name);
+            if (v) return v;
+        }
+        return voices.find(v => v.lang.startsWith(lang.slice(0, 2)));
+    };
+
+    // Per-sentence TTS — enqueues each sentence for faster perceived latency
     const speak = (text: string) => {
         setState('SPEAKING');
         setSubtitle('');
@@ -201,33 +280,30 @@ export default function WolfieLiveCallV2({
         const cleaned = text.trim();
         if (!cleaned) { setState('IDLE'); return; }
 
-        const voices = window.speechSynthesis.getVoices();
-        const enVoice = voices.find(v => v.lang === 'en-US' && v.name.includes('Natural'))
-            || voices.find(v => v.lang.includes('en') && v.name.includes('Aria'))
-            || voices.find(v => v.lang.includes('en') && v.name.includes('Jenny'))
-            || voices.find(v => v.name.includes('Google US English'))
-            || voices.find(v => v.lang.startsWith('en'));
+        const sentences = cleaned.match(/[^.!?]+[.!?]+/g) || [cleaned];
+        const lastIndex = sentences.length - 1;
 
-        const ptVoice = voices.find(v => v.lang === 'pt-BR' && v.name.includes('Natural'))
-            || voices.find(v => v.lang === 'pt-BR' && v.name.includes('Online'))
-            || voices.find(v => v.lang === 'pt-BR' && v.name.includes('Google português'))
-            || voices.find(v => v.lang.startsWith('pt') && !v.name.includes('Maria'))
-            || voices.find(v => v.lang.startsWith('pt'));
+        sentences.forEach((s, i) => {
+            const trimmed = s.trim();
+            if (!trimmed) return;
+            const lang = detectLanguage(trimmed);
+            const u = new SpeechSynthesisUtterance(trimmed);
+            const voice = pickBestVoice(lang);
+            if (voice) u.voice = voice;
+            u.lang = lang;
+            u.rate = lang === 'pt-BR' ? 1.05 : 1.0;
+            u.pitch = 1.0;
 
-        const lang = detectLanguage(cleaned);
-        setSubtitle(cleaned);
+            if (i === 0) {
+                u.onstart = () => setSubtitle(cleaned);
+            }
+            if (i === lastIndex) {
+                u.onend = () => setState('IDLE');
+                u.onerror = () => setState('IDLE');
+            }
 
-        const utterance = new SpeechSynthesisUtterance(cleaned);
-        utterance.lang = lang;
-        utterance.rate = lang === 'pt-BR' ? 1.05 : 1.0;
-        utterance.pitch = 1.0;
-        if (lang === 'pt-BR' && ptVoice) utterance.voice = ptVoice;
-        if (lang === 'en-US' && enVoice) utterance.voice = enVoice;
-
-        utterance.onend = () => setState('IDLE');
-        utterance.onerror = () => setState('IDLE');
-
-        window.speechSynthesis.speak(utterance);
+            window.speechSynthesis.speak(u); // browser enqueues
+        });
     };
 
     const stopSpeaking = () => {
@@ -419,11 +495,8 @@ export default function WolfieLiveCallV2({
                 </div>
             )}
 
-            {/* Dynamic Background */}
-            <div className={`absolute inset-0 transition-colors duration-1000 ${state === 'LISTENING' ? 'bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-indigo-900/30 via-slate-950 to-slate-950' :
-                state === 'SPEAKING' ? 'bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-cyan-900/20 via-slate-950 to-slate-950' :
-                    'bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950'
-                }`}></div>
+            {/* Static Background — no transition-colors to avoid repaint flicker */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950"></div>
 
             <div className="relative z-10 flex flex-col h-full">
                 {/* TOP BAR */}
@@ -471,7 +544,7 @@ export default function WolfieLiveCallV2({
                         <div className="w-[280px] h-[280px] md:w-[400px] md:h-[400px] relative mt-10 lg:mt-0">
                             <VoicePoweredOrb
                                 hue={getOrbColor()}
-                                audioStream={audioStream}
+                                audioStream={audioStreamReady}
                                 className="w-full h-full scale-125"
                                 maxHoverIntensity={state === 'SPEAKING' ? 1.5 : 0.8}
                                 maxRotationSpeed={state === 'THINKING' ? 3.0 : 1.2}
@@ -572,40 +645,28 @@ export default function WolfieLiveCallV2({
                     </div>
                 </main>
 
-                {/* BOTTOM ACTION BAR */}
-                <footer className="p-6 border-t border-white/5 bg-slate-950 flex justify-center pb-8 lg:pb-6">
+                {/* BOTTOM ACTION BAR — Mute toggle (VAD handles recording) */}
+                <footer className="p-6 border-t border-white/5 bg-slate-950 flex flex-col items-center justify-center pb-8 lg:pb-6 gap-3">
                     <button
-                        onMouseDown={startRecording}
-                        onMouseUp={stopRecordingAndSend}
-                        onTouchStart={startRecording}
-                        onTouchEnd={stopRecordingAndSend}
-                        disabled={state === 'SPEAKING' || state === 'THINKING' || !!activeCorrectionPopUp}
-                        className={`relative group overflow-hidden flex items-center justify-center gap-4 px-10 py-5 rounded-full font-black uppercase tracking-widest transition-all duration-300 select-none
-                            ${(state === 'SPEAKING' || state === 'THINKING' || !!activeCorrectionPopUp) ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5' :
-                                state === 'LISTENING' ? 'bg-indigo-500 scale-105 shadow-[0_0_40px_rgba(99,102,241,0.5)] text-white' :
-                                    'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl hover:shadow-2xl hover:-translate-y-1'}
+                        onClick={() => setIsMuted(m => !m)}
+                        className={`relative group overflow-hidden flex items-center justify-center gap-4 w-20 h-20 rounded-full font-black transition-all duration-300 select-none
+                            ${isMuted ? 'bg-red-500/20 border-2 border-red-500/40 text-red-400 hover:bg-red-500/30' :
+                                state === 'LISTENING' ? 'bg-indigo-500 scale-110 shadow-[0_0_40px_rgba(99,102,241,0.5)] text-white' :
+                                    'bg-indigo-600/20 border-2 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30'}
                         `}
                     >
-                        {state === 'LISTENING' && (
+                        {state === 'LISTENING' && !isMuted && (
                             <span className="absolute inset-0 border-4 border-white/20 rounded-full animate-ping pointer-events-none"></span>
                         )}
-
-                        {state === 'IDLE' && <Mic size={24} />}
-                        {state === 'LISTENING' && <StopCircle size={24} className="animate-pulse" />}
-                        {state === 'THINKING' && <RefreshCw size={24} className="animate-spin text-slate-400" />}
-                        {state === 'SPEAKING' && <Zap size={24} className="opacity-50" />}
-
-                        <span>
-                            {state === 'IDLE' ? 'Segure para Falar' : state === 'LISTENING' ? 'Solte para Enviar' : state === 'THINKING' ? 'Processando' : 'Wolfie Falando'}
-                        </span>
+                        {isMuted ? <MicOff size={28} /> : <Mic size={28} />}
                     </button>
-
-                    {/* Instructions hint */}
-                    {state === 'IDLE' && (
-                        <div className="absolute bottom-2 text-center w-full pointer-events-none">
-                            <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Push and hold to speak</span>
-                        </div>
-                    )}
+                    <span className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">
+                        {isMuted ? 'Microfone desligado' :
+                            state === 'LISTENING' ? 'Ouvindo...' :
+                            state === 'THINKING' ? 'Processando...' :
+                            state === 'SPEAKING' ? 'Wolfie falando' :
+                            'Aguardando sua voz'}
+                    </span>
                 </footer>
             </div>
 

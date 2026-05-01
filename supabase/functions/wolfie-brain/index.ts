@@ -141,11 +141,32 @@ async function groqChat(groqKey: string, systemPrompt: string, userPrompt: strin
     return text;
 }
 
+// Streaming variant — proxies Groq SSE chunks to client
+async function groqChatStream(groqKey: string, systemPrompt: string, userPrompt: string): Promise<ReadableStream> {
+    const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: GROQ_LLM_MODEL,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.7,
+            max_tokens: 800,
+            stream: true,
+        }),
+    });
+    if (!res.ok) throw new Error(`Groq LLM stream error: ${await res.text()}`);
+    if (!res.body) throw new Error('Groq returned no stream body');
+    return res.body;
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
     try {
         const body = await req.json();
-        const { message, audioBase64, audioMimeType, previousContext, conversationId } = body;
+        const { message, audioBase64, audioMimeType, previousContext, conversationId, stream: wantsStream } = body;
 
         const config: WolfieConfig = {
             topic: body.topic || 'General Conversation',
@@ -236,6 +257,22 @@ serve(async (req) => {
             }
         } catch (e) {
             console.error('Error fetching recent corrections:', e);
+        }
+
+        // STEP 2: LLM via Groq Llama
+        // If client requests streaming, proxy SSE directly
+        if (wantsStream) {
+            const sseStream = await groqChatStream(groqKey, systemPrompt, userPromptParts.join('\n\n'));
+            return new Response(sseStream, {
+                headers: {
+                    ...corsHeaders,
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Wolfie-Transcribed': userText || '',
+                    'X-Wolfie-Session': sessionId || '',
+                },
+            });
         }
 
         const aiRawResult = await groqChat(groqKey, systemPrompt, userPromptParts.join('\n\n'));
