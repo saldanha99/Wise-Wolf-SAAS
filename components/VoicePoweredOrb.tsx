@@ -240,7 +240,7 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
         const mesh = new Mesh(gl, { geometry, program });
 
         // Store mutable state for the animation loop
-        const state = {
+        const webglState = {
             renderer,
             gl,
             mesh,
@@ -268,18 +268,18 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
 
         // Loop
         const update = (t: number) => {
-            state.rafId = requestAnimationFrame(update);
-            const dt = (t - state.lastTime) * 0.001;
-            state.lastTime = t;
+            webglState.rafId = requestAnimationFrame(update);
+            const dt = (t - webglState.lastTime) * 0.001;
+            webglState.lastTime = t;
 
             // Read latest prop values from mutable ref (hack to avoid re-init)
             const currentHue = (ctnDom.current as any)?.__hue ?? 0;
-            const currentState = (ctnDom.current as any)?.__state ?? 0;
+            const currentState = (ctnDom.current as any)?.__numericState ?? 0;
             const hasStream = !!(ctnDom.current as any)?.__hasStream;
 
             program.uniforms.iTime.value = t * 0.001;
             program.uniforms.hue.value = currentHue;
-            program.uniforms.uState.value = currentState;
+            program.uniforms.uState.value = Number(currentState) || 0;
 
             let voiceLevel = 0;
             if (hasStream && analyserRef.current && dataArrayRef.current) {
@@ -306,7 +306,7 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
 
             if (voiceLevel > 0.01) { // Only apply rotation and hover if voice is detected
                 const voiceRotationSpeed = 0.3 + (voiceLevel * maxRotationSpeed * 2.0);
-                state.currentRot += dt * voiceRotationSpeed;
+            webglState.currentRot = (webglState.currentRot || 0) + dt * voiceRotationSpeed;
                 program.uniforms.hover.value = Math.min(voiceLevel * 2.0, 1.0);
                 program.uniforms.hoverIntensity.value = Math.min(voiceLevel * maxHoverIntensity * 0.8, maxHoverIntensity);
             } else {
@@ -315,15 +315,15 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
                 program.uniforms.hoverIntensity.value *= 0.95;
             }
 
-            program.uniforms.rot.value = state.currentRot;
+            program.uniforms.rot.value = webglState.currentRot;
 
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             renderer.render({ scene: mesh });
         };
-        state.rafId = requestAnimationFrame(update);
+        webglState.rafId = requestAnimationFrame(update);
 
         return () => {
-            cancelAnimationFrame(state.rafId);
+            cancelAnimationFrame(webglState.rafId);
             window.removeEventListener("resize", resize);
             // Cleanup WebGL
             if (gl) {
@@ -339,7 +339,7 @@ export const VoicePoweredOrb: FC<VoicePoweredOrbProps> = ({
         if (ctnDom.current) {
             (ctnDom.current as any).__hue = hue;
             (ctnDom.current as any).__hasStream = !!audioStream;
-            (ctnDom.current as any).__state = state;
+            (ctnDom.current as any).__numericState = state; // 'state' is the prop (number)
         }
     }, [hue, audioStream, state]);
 

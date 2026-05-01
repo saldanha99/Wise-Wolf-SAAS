@@ -555,21 +555,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl mx-auto">
-                        {/* Live Call Mode */}
-                        <button
-                            onClick={() => handleModeSelection('live')}
-                            className="group relative p-8 rounded-3xl bg-indigo-600/20 backdrop-blur-xl border border-indigo-500/30 hover:bg-indigo-600/40 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center shadow-[0_0_40px_rgba(79,70,229,0.2)]"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <div className="w-20 h-20 rounded-full bg-indigo-500/40 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300 relative">
-                                <Zap size={32} className="text-white animate-pulse" />
-                                <div className="absolute inset-0 rounded-full border-2 border-white/20 animate-ping" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Live Call ⚡</h3>
-                            <p className="text-indigo-200/70 text-sm">Conversa 100% automática e fluida. Como uma ligação real.</p>
-                        </button>
-
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mx-auto">
                         {/* Voice Mode */}
                         <button
                             onClick={() => handleModeSelection('voice')}
@@ -579,8 +565,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             <div className="w-20 h-20 rounded-full bg-slate-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-slate-500 transition-all duration-300">
                                 <Mic size={32} className="text-slate-400 group-hover:text-white transition-colors" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Mãos dadas</h3>
-                            <p className="text-slate-400 text-sm">Pressione para falar. Você controla o tempo da conversa.</p>
+                            <h3 className="text-2xl font-bold text-white mb-3">Praticar Conversa</h3>
+                            <p className="text-slate-400 text-sm">Pressione a esfera para falar. Você controla o tempo da conversa.</p>
                         </button>
 
                         {/* Text Mode */}
