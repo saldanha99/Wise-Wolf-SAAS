@@ -38,44 +38,49 @@ export default function WolfieLiveCallV2({
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
+    const audioMimeTypeRef = useRef<string>('audio/webm');
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
-    const mimeTypeRef = useRef<string>('audio/webm');
 
     // Format Scenario Title
     const missionTitle = scenarioId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-    // Init Audio & Speech Recognition
     // Init audio — cross-platform (Chrome desktop, Chrome Android, Safari iOS)
     useEffect(() => {
+        const pickMimeType = (): string => {
+            const candidates = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/mp4',
+                'audio/ogg;codecs=opus',
+            ];
+            for (const t of candidates) {
+                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
+            }
+            return '';
+        };
+
         const initAudio = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 setAudioStream(stream);
-
-                // iOS Safari only supports audio/mp4; prefer webm where available
-                const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? 'audio/webm;codecs=opus'
-                    : MediaRecorder.isTypeSupported('audio/webm')
-                        ? 'audio/webm'
-                        : 'audio/mp4';
-                mimeTypeRef.current = mimeType;
-
-                const currentChunks: Blob[] = [];
-                audioChunksRef.current = currentChunks;
-
-                const mediaRecorder = new MediaRecorder(stream, { mimeType });
+                const mimeType = pickMimeType();
+                const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+                audioMimeTypeRef.current = mediaRecorder.mimeType || mimeType || 'audio/webm';
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) currentChunks.push(event.data);
                 };
                 mediaRecorderRef.current = mediaRecorder;
             } catch (err) {
-                console.error('Microphone access denied:', err);
                 alert('Permissão de microfone necessária.');
                 onClose();
             }
         };
 
+        const currentChunks: Blob[] = [];
+        audioChunksRef.current = currentChunks;
         initAudio();
+
         return () => { stopSpeaking(); };
     }, []);
 
@@ -91,7 +96,6 @@ export default function WolfieLiveCallV2({
     const startRecording = () => {
         if (state === 'SPEAKING' || state === 'THINKING' || activeCorrectionPopUp) return;
         if (!mediaRecorderRef.current) return;
-
         audioChunksRef.current = [];
         mediaRecorderRef.current.start();
         setState('LISTENING');
@@ -101,21 +105,21 @@ export default function WolfieLiveCallV2({
 
     const stopRecordingAndSend = () => {
         if (state !== 'LISTENING' || !mediaRecorderRef.current) return;
-
-        mediaRecorderRef.current.stop();
-        setState('THINKING');
-        setSubtitle('Hmm, let me think...');
-
-        setTimeout(() => {
-            const mimeType = mimeTypeRef.current;
+        const recorder = mediaRecorderRef.current;
+        recorder.onstop = () => {
+            const mimeType = audioMimeTypeRef.current;
             const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
             processAudio(audioBlob, mimeType);
-        }, 300);
+        };
+        recorder.stop();
+        setState('THINKING');
+        setSubtitle('Hmm, let me think...');
     };
 
     const processAudio = async (audioBlob: Blob, mimeType: string) => {
         try {
             if (audioBlob.size > 5 * 1024 * 1024) throw new Error('Áudio muito longo.');
+            if (audioBlob.size < 1000) throw new Error('Áudio muito curto, segure o botão por mais tempo.');
 
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
@@ -125,7 +129,6 @@ export default function WolfieLiveCallV2({
                 const previousContext = contextList.join('\n');
 
                 const payload = {
-                    // No 'message' field — Groq Whisper is the sole STT source
                     audioBase64: base64String,
                     audioMimeType: mimeType,
                     studentLevel: wolfieConfig?.level || 'A1',
@@ -133,18 +136,17 @@ export default function WolfieLiveCallV2({
                     mode: wolfieConfig?.goal === 'Fluency' ? 'fluency' : 'grammar_focus',
                     correctionStrictness: wolfieConfig?.correctionStrictness || 2,
                     previousContext,
-                    turnCount: transcript.filter(m => m.role === 'user').length,
+                    turnCount: Math.floor(transcript.length / 2),
+                    conversationId: `${user.id}-${scenarioId}-${Date.now()}`,
                 };
 
                 const { data, error: supabaseError } = await supabase.functions.invoke('wolfie-brain', { body: payload });
-
                 if (supabaseError) throw supabaseError;
-                if (data?.error) throw new Error(data.error);
+                if (data.error) throw new Error(data.error);
 
-                const aiText: string = data.chatResponse || data.aiText || '';
-                const transcribedText: string = data.transcribedText || '[Áudio]';
+                const cleanAiText = (data.aiText || '').trim();
+                const transcribed = (data.transcribedText || '').trim();
 
-                // Handle structured correction from Groq response
                 if (data.correction) {
                     const newCorr: CorrectionItem = {
                         id: Math.random().toString(36).substring(7),
@@ -159,36 +161,37 @@ export default function WolfieLiveCallV2({
 
                 setTranscript(prev => [
                     ...prev,
-                    { role: 'user', content: transcribedText },
-                    { role: 'assistant', content: aiText },
+                    { role: 'user', content: transcribed || '[Mensagem de Áudio]' },
+                    { role: 'assistant', content: cleanAiText },
                 ]);
 
                 if (transcript.length > 0 && transcript.length % 2 === 0) {
                     setScenarioStep(s => Math.min(s + 1, 4));
                 }
 
-                speak(aiText);
+                speak(cleanAiText);
             };
         } catch (err: any) {
-            console.error('Call Error:', err);
-            setError('Wolfie teve um erro técnico. Tente novamente.');
+            setError(err?.message || 'Wolfie teve um erro técnico ao falar com o servidor de IA.');
             setState('IDLE');
             setSubtitle('Aperte para tentar novamente.');
         }
     };
 
+    const detectLanguage = (text: string): 'pt-BR' | 'en-US' => {
+        const lower = text.toLowerCase();
+        const hasAccents = /[áàâãéêíóôõúç]/i.test(text);
+        const ptWords = /\b(você|olá|oi|tudo bem|qual|seu|sua|meu|minha|para|não|sim|obrigad[oa]|prática|prazer|hoje|aprender)\b/i.test(lower);
+        return (hasAccents || ptWords) ? 'pt-BR' : 'en-US';
+    };
+
     const speak = (text: string) => {
         setState('SPEAKING');
         setSubtitle('');
-        window.speechSynthesis.cancel(); // Clear queue
+        window.speechSynthesis.cancel();
 
-        // Text is expected to be strictly 2 blocks now: [PT Block] \n [EN Block]
-        const blocks = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-        if (blocks.length === 0) {
-            setState('IDLE');
-            return;
-        }
+        const cleaned = text.trim();
+        if (!cleaned) { setState('IDLE'); return; }
 
         const voices = window.speechSynthesis.getVoices();
         const enVoice = voices.find(v => v.lang === 'en-US' && v.name.includes('Natural'))
@@ -197,51 +200,26 @@ export default function WolfieLiveCallV2({
             || voices.find(v => v.name.includes('Google US English'))
             || voices.find(v => v.lang.startsWith('en'));
 
-        // Prioridade atualizada: 1. MS Natural, 2. MS Online, 3. Google, 4. Qualquer PT (que não seja a da Maria antiga)
         const ptVoice = voices.find(v => v.lang === 'pt-BR' && v.name.includes('Natural'))
             || voices.find(v => v.lang === 'pt-BR' && v.name.includes('Online'))
             || voices.find(v => v.lang === 'pt-BR' && v.name.includes('Google português'))
             || voices.find(v => v.lang.startsWith('pt') && !v.name.includes('Maria'))
             || voices.find(v => v.lang.startsWith('pt'));
 
-        const speakChunk = (chunkIndex: number) => {
-            if (chunkIndex >= blocks.length) {
-                setState('IDLE');
-                return;
-            }
+        const lang = detectLanguage(cleaned);
+        setSubtitle(cleaned);
 
-            const chunkText = blocks[chunkIndex];
-            setSubtitle(chunkText);
+        const utterance = new SpeechSynthesisUtterance(cleaned);
+        utterance.lang = lang;
+        utterance.rate = lang === 'pt-BR' ? 1.05 : 1.0;
+        utterance.pitch = 1.0;
+        if (lang === 'pt-BR' && ptVoice) utterance.voice = ptVoice;
+        if (lang === 'en-US' && enVoice) utterance.voice = enVoice;
 
-            const utterance = new SpeechSynthesisUtterance(chunkText);
+        utterance.onend = () => setState('IDLE');
+        utterance.onerror = () => setState('IDLE');
 
-            // According to our new strict prompt, the first block (index 0) is always PT-BR.
-            // The subsequent blocks are always EN-US.
-            if (chunkIndex === 0 && blocks.length > 1) { // Only PT if there's more than 1 block, otherwise assume EN
-                utterance.lang = 'pt-BR';
-                if (ptVoice) utterance.voice = ptVoice;
-                utterance.rate = 1.05; // Velocidade natural e confortável (1.35 distorce a voz e a faz parecer velha)
-                utterance.pitch = 1.0;
-            } else {
-                utterance.lang = 'en-US';
-                if (enVoice) utterance.voice = enVoice;
-                utterance.rate = 1.0;
-                utterance.pitch = 1.0;
-            }
-
-            utterance.onend = () => {
-                speakChunk(chunkIndex + 1);
-            };
-
-            utterance.onerror = (e) => {
-                console.error("TTS Error processing chunk:", e);
-                speakChunk(chunkIndex + 1);
-            };
-
-            window.speechSynthesis.speak(utterance);
-        };
-
-        speakChunk(0);
+        window.speechSynthesis.speak(utterance);
     };
 
     const stopSpeaking = () => {
