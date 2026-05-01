@@ -219,6 +219,25 @@ serve(async (req) => {
         if (userText) userPromptParts.push(`Student says: "${userText}"`);
         if (userPromptParts.length === 0) userPromptParts.push('Hello Wolfie');
 
+        // Recent error patterns (cross-session memory)
+        try {
+            const { data: recentErrors } = await supabaseClient
+                .from('student_recent_corrections')
+                .select('wrong_sentence, correct_sentence')
+                .eq('student_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(3);
+
+            if (recentErrors && recentErrors.length > 0) {
+                const errorList = recentErrors
+                    .map((e: any) => `- "${e.wrong_sentence}" → "${e.correct_sentence}"`)
+                    .join('\n');
+                userPromptParts.push(`STUDENT'S RECENT MISTAKES (watch for these):\n${errorList}`);
+            }
+        } catch (e) {
+            console.error('Error fetching recent corrections:', e);
+        }
+
         const aiRawResult = await groqChat(groqKey, systemPrompt, userPromptParts.join('\n\n'));
         let parsedResult: any = {};
         try {
