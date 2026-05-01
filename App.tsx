@@ -501,7 +501,7 @@ const App: React.FC = () => {
       'financial': user.role === UserRole.STUDENT ? <StudentBilling user={user} /> : <FinancialReport role={user.role} tenantId={currentTenant?.id} />,
       'billing': <SuperAdminDashboard />,
       'tenants': <SuperAdminDashboard />,
-      'materials': user.role === UserRole.STUDENT ? <StudentPedagogicalView user={user} tenantId={currentTenant?.id} /> : <PedagogicalConfig user={user} tenantId={currentTenant?.id} />,
+      'materials': user.role === UserRole.STUDENT ? <StudentMaterials user={user} /> : <PedagogicalConfig user={user} tenantId={currentTenant?.id} />,
       'reschedules': <TeacherReschedules
         reschedules={reschedules}
         students={students}

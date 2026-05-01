@@ -146,6 +146,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     <a
                                         href={profile.meeting_link}
                                         target="_blank"
+                                        rel="noopener noreferrer"
                                         className="mt-2 w-full py-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-tenant-primary hover:text-white dark:hover:bg-tenant-primary dark:hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
                                     >
                                         <Video size={14} /> Entrar
@@ -201,6 +202,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     <a
                                         href={profile.meeting_link}
                                         target="_blank"
+                                        rel="noopener noreferrer"
                                         className="absolute inset-0 z-10"
                                         title="Acessar Aula"
                                     />

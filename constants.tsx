@@ -150,10 +150,10 @@ export const PEDAGOGICAL_BOOKS = {
     { part: 4, url: 'https://wisewolflanguage.com.br/books/book-a1-part-4.pdf' },
   ],
   'A2': [
-    { part: 1, url: 'http://wisewolflanguage.com.br/books/book-a2-part-1.pdf' },
+    { part: 1, url: 'https://wisewolflanguage.com.br/books/book-a2-part-1.pdf' },
   ],
   'B1': [
-    { part: 1, url: 'http://wisewolflanguage.com.br/books/book-b1-part-1.pdf' },
+    { part: 1, url: 'https://wisewolflanguage.com.br/books/book-b1-part-1.pdf' },
   ]
 };
 

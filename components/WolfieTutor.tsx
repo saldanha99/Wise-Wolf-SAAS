@@ -166,7 +166,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const studentLevel = user.levelBadge || 'A1';
+    const studentLevel = user.levelBadge || user.module || 'A1';
 
     // ============================================================
     // EFFECTS

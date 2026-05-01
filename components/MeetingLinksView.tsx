@@ -162,16 +162,24 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             </p>
 
                             <div className="flex flex-col sm:flex-row gap-4">
-                                <a
-                                    href={studentLink || '#'}
+                                {studentLink ? (
+                                  <a
+                                    href={studentLink}
                                     target="_blank"
+                                    rel="noopener noreferrer"
                                     className="bg-white text-tenant-primary px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 hover:scale-105 transition-all shadow-xl shadow-black/20"
-                                >
+                                  >
                                     <Monitor size={20} /> Entrar Agora
-                                </a>
+                                  </a>
+                                ) : (
+                                  <div className="bg-white/50 text-tenant-primary/50 px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 cursor-not-allowed">
+                                    <Monitor size={20} /> Link não configurado
+                                  </div>
+                                )}
                                 <button
-                                    onClick={() => handleCopy(studentLink || '', 'me')}
-                                    className="bg-white/10 hover:bg-white/20 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 transition-all border border-white/20 backdrop-blur-md"
+                                    onClick={() => studentLink && handleCopy(studentLink, 'me')}
+                                    disabled={!studentLink}
+                                    className={`${!studentLink ? 'opacity-50 cursor-not-allowed' : ''} bg-white/10 hover:bg-white/20 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 transition-all border border-white/20 backdrop-blur-md`}
                                 >
                                     {copySuccess === 'me' ? <CheckCircle size={20} className="text-emerald-400" /> : <Copy size={20} />}
                                     {copySuccess === 'me' ? 'Copiado!' : 'Copiar Link'}
@@ -236,13 +244,20 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                 </div>
 
                                 <div className="space-y-2">
-                                    <a
-                                        href={student.meeting_link || '#'}
+                                    {student.meeting_link ? (
+                                      <a
+                                        href={student.meeting_link}
                                         target="_blank"
-                                        className={`w-full py-3 bg-tenant-primary text-white rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-opacity ${!student.meeting_link ? 'opacity-50 pointer-events-none' : ''}`}
-                                    >
+                                        rel="noopener noreferrer"
+                                        className="w-full py-3 bg-tenant-primary text-white rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                                      >
                                         <Video size={14} /> Entrar na Sala
-                                    </a>
+                                      </a>
+                                    ) : (
+                                      <div className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 cursor-not-allowed">
+                                        <Video size={14} /> Sem Link
+                                      </div>
+                                    )}
 
                                     <div className="flex gap-2">
                                         <button

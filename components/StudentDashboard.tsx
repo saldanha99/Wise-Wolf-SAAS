@@ -40,7 +40,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
     return {
       time: nc.time_slot,
       teacher: assignedTeacher?.full_name || 'Professor',
-      meet: profile?.meeting_link || '#',
+      meet: profile?.meeting_link || null,
       rawDate: typeof rawDate === 'number' ? new Date(rawDate) : rawDate
     };
   })() : null;
@@ -249,10 +249,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               </div>
             </div>
             <div className="flex flex-col items-stretch md:items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-white text-indigo-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
-                <Video size={18} className="group-hover:scale-110 transition-transform" />
-                Entrar na Sala
-              </a>
+              {nextClass.meet ? (
+                <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto px-12 py-5 bg-white text-indigo-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
+                  <Video size={18} className="group-hover:scale-110 transition-transform" />
+                  Entrar na Sala
+                </a>
+              ) : (
+                <div className="w-full md:w-auto px-12 py-5 bg-white/50 text-indigo-400 rounded-2xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-3 cursor-not-allowed">
+                  <Video size={18} />
+                  Link não configurado
+                </div>
+              )}
               <p className="text-[11px] font-black text-indigo-200 uppercase tracking-widest text-center">
                 {minutesToClass && minutesToClass > 0 ? `Começa em ${minutesToClass} minutos` : 'A sala já está aberta!'}
               </p>
@@ -276,9 +283,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
                   <p className="text-slate-500 font-medium mt-2 text-lg">com Professor(a) <span className="font-bold text-slate-700 dark:text-slate-300">{nextClass.teacher}</span></p>
                 </div>
                 <div className="h-16 w-px bg-slate-200 dark:bg-slate-800 hidden md:block"></div>
-                <a href={nextClass.meet} target="_blank" className="w-full md:w-auto md:min-w-[180px] bg-slate-900 dark:bg-slate-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-600 transition-colors flex items-center justify-center gap-3 shadow-lg shadow-slate-900/10">
-                  Ver Link <ChevronRight size={16} />
-                </a>
+                {nextClass.meet ? (
+                  <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto md:min-w-[180px] bg-slate-900 dark:bg-slate-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-600 transition-colors flex items-center justify-center gap-3 shadow-lg shadow-slate-900/10">
+                    Ver Link <ChevronRight size={16} />
+                  </a>
+                ) : (
+                  <div className="w-full md:w-auto md:min-w-[180px] bg-slate-200 dark:bg-slate-800 text-slate-400 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 cursor-not-allowed">
+                    Sem Link
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 py-8 text-center relative z-10">

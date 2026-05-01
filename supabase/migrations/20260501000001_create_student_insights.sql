@@ -12,6 +12,7 @@ alter table public.student_insights enable row level security;
 
 -- 3. Cria Políticas de Acesso
 -- Aluno pode LER seus próprios insights
+drop policy if exists "Alunos veem seus insights" on public.student_insights;
 create policy "Alunos veem seus insights"
 on public.student_insights for select
 using (auth.uid() = student_id);

@@ -1,21 +1,55 @@
 
 import React, { useState, useEffect } from 'react';
-import { MessageSquareText } from 'lucide-react';
+import { MessageSquareText, RefreshCw } from 'lucide-react';
 import CompetencyRadarChart from './CompetencyRadarChart';
 import AIReportCard from './AIReportCard';
+import { supabase } from '../lib/supabase';
 
 interface EvolutionViewProps {
   user?: any;
 }
 
 const EvolutionView: React.FC<EvolutionViewProps> = ({ user }) => {
+  const [latestFeedback, setLatestFeedback] = useState<string | null>(null);
+  const [feedbackTeacher, setFeedbackTeacher] = useState<string>('');
+  const [loadingFeedback, setLoadingFeedback] = useState(true);
+
+  const studentFirstName = user?.name?.split(' ')[0] || 'Aluno';
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchLatestFeedback();
+    }
+  }, [user?.id]);
+
+  const fetchLatestFeedback = async () => {
+    setLoadingFeedback(true);
+    try {
+      const { data } = await supabase
+        .from('class_logs')
+        .select('content, teacher:teacher_id(full_name)')
+        .eq('student_id', user.id)
+        .not('content', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0 && data[0].content) {
+        setLatestFeedback(data[0].content);
+        setFeedbackTeacher((data[0].teacher as any)?.full_name || 'Professor');
+      }
+    } catch (err) {
+      console.error('Error fetching feedback:', err);
+    } finally {
+      setLoadingFeedback(false);
+    }
+  };
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in duration-700">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-black text-gray-800 dark:text-slate-100 tracking-tight">Sua Evolução</h2>
-          <p className="text-gray-500 dark:text-slate-400 text-sm">Baseado em dados reais de suas últimas 12 aulas.</p>
+          <p className="text-gray-500 dark:text-slate-400 text-sm">Acompanhe o seu progresso e desempenho, {studentFirstName}.</p>
         </div>
       </header>
 
@@ -48,7 +82,16 @@ const EvolutionView: React.FC<EvolutionViewProps> = ({ user }) => {
             </div>
             <div>
               <p className="text-[10px] text-gray-400 dark:text-slate-500 font-black uppercase tracking-widest">Feedback Recente do Prof.</p>
-              <p className="text-sm font-bold text-gray-800 dark:text-slate-200 mt-0.5">"Julia está muito mais confiante para falar sobre temas técnicos em reuniões!"</p>
+              {loadingFeedback ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <RefreshCw size={12} className="animate-spin text-slate-300" />
+                  <span className="text-xs text-slate-400">Carregando...</span>
+                </div>
+              ) : latestFeedback ? (
+                <p className="text-sm font-bold text-gray-800 dark:text-slate-200 mt-0.5">"{latestFeedback}"</p>
+              ) : (
+                <p className="text-sm font-medium text-slate-400 dark:text-slate-500 mt-0.5 italic">Nenhum feedback registrado pelo professor ainda.</p>
+              )}
             </div>
           </div>
         </div>

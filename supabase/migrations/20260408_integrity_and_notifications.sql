@@ -1,1 +1,2 @@
-w
+-- Integrity and Notifications Migration (Placeholder)
+-- This file was empty or corrupted.
