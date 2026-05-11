@@ -26,8 +26,25 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const [selectedOption, setSelectedOption] = useState<number | null>(null);
     const [answers, setAnswers] = useState<number[]>([]);
     const [isFinished, setIsFinished] = useState(false);
+    const [libraryMaterials, setLibraryMaterials] = useState<any[]>([]);
 
-    // No useEffect needed for profile fetch anymore!
+    useEffect(() => {
+        fetchLibraryMaterials();
+    }, []);
+
+    const fetchLibraryMaterials = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('pedagogical_materials')
+                .select('*')
+                .order('level_tag', { ascending: true });
+            
+            if (error) throw error;
+            setLibraryMaterials(data || []);
+        } catch (err) {
+            console.error('Error fetching library materials:', err);
+        }
+    };
 
     const handleAccessBook = async (url: string) => {
         if (!url) {
@@ -118,17 +135,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
         </div>
     );
 
-    const parts = (PEDAGOGICAL_BOOKS as any)[currentModule] || [];
     const currentPartIndex = parseInt(currentPartKey.split('-')[1]) || 1;
-
-    const gradients = [
-        'from-emerald-400 to-teal-600',
-        'from-blue-400 to-indigo-600',
-        'from-violet-400 to-purple-600',
-        'from-fuchsia-400 to-pink-600',
-        'from-orange-400 to-red-600',
-        'from-amber-400 to-orange-600'
-    ];
 
     return (
         <div className="space-y-10 animate-in fade-in duration-700 pb-20">
@@ -144,7 +151,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     <p className="text-slate-500 dark:text-slate-400 font-medium">Explore sua coleção de materiais do nível <span className="text-indigo-600 font-black">{currentModule}</span>.</p>
                 </div>
                 <div className="hidden md:block">
-                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{parts.length} Títulos Disponíveis</span>
+                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{libraryMaterials.filter(m => m.level_tag === currentModule).length} Títulos Disponíveis</span>
                 </div>
             </div>
 
@@ -155,17 +162,24 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             />
 
             {/* Gallery Grid */}
+            {/* Dynamic Gallery Grid from Library */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                {parts.map((part: any, index: number) => {
+                {libraryMaterials.filter(m => m.level_tag === currentModule || m.scope === 'GLOBAL').map((mat: any, index: number) => {
+                    const gradients = [
+                        'from-emerald-400 to-teal-600',
+                        'from-blue-400 to-indigo-600',
+                        'from-violet-400 to-purple-600',
+                        'from-fuchsia-400 to-pink-600',
+                        'from-orange-400 to-red-600',
+                        'from-amber-400 to-orange-600'
+                    ];
                     const gradient = gradients[index % gradients.length];
-                    const isCurrent = part.part === currentPartIndex;
-                    const isLocked = part.part > currentPartIndex;
-
+                    
                     return (
                         <div
-                            key={index}
-                            onClick={() => !isLocked && handleAccessBook(part.url)}
-                            className={`group relative aspect-[3/4] rounded-[2rem] overflow-hidden transition-all duration-300 ${isLocked ? 'grayscale opacity-60 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-2 hover:shadow-2xl shadow-lg'}`}
+                            key={mat.id}
+                            onClick={() => handleAccessBook(mat.file_url)}
+                            className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-2 hover:shadow-2xl shadow-lg"
                         >
                             {/* Cover Art Background */}
                             <div className={`absolute inset-0 bg-gradient-to-br ${gradient} p-6 flex flex-col justify-between`}>
@@ -174,32 +188,34 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                 <div className="relative z-10 w-full">
                                     <div className="flex justify-between items-start">
                                         <span className="px-3 py-1 bg-black/20 backdrop-blur-sm rounded-lg text-[10px] font-black text-white uppercase tracking-widest border border-white/10">
-                                            {currentModule}
+                                            {mat.level_tag || 'GERAL'}
                                         </span>
-                                        {isCurrent && <span className="w-2 h-2 rounded-full bg-white animate-pulse shadow-[0_0_10px_white]"></span>}
+                                    </div>
+
+                                    <div className="mt-8">
+                                        <h4 className="text-white font-black text-xl leading-tight uppercase line-clamp-3">
+                                            {mat.title}
+                                        </h4>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                                                <Play size={10} className="text-white fill-white" />
+                                            </div>
+                                            <span className="text-[10px] font-bold text-white/80 uppercase tracking-tighter">Acessar Agora</span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="relative z-10 text-center">
-                                    <h3 className="text-4xl md:text-5xl font-black text-white tracking-tighter drop-shadow-md opacity-90">
-                                        Part<br />{part.part}
-                                    </h3>
-                                    <div className="w-8 h-1 bg-white/30 mx-auto mt-4 rounded-full"></div>
-                                </div>
-
-                                <div className="relative z-10 mt-auto flex justify-center opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0">
-                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-slate-900 shadow-xl">
-                                        <Play size={20} className="ml-1" fill="currentColor" />
+                                <div className="relative z-10 flex justify-between items-center">
+                                    <div className="flex -space-x-2">
+                                        <div className="w-8 h-8 rounded-full border-2 border-white/20 bg-white/10 flex items-center justify-center backdrop-blur-md">
+                                            <Star size={12} className="text-yellow-400 fill-yellow-400" />
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl group-hover:bg-white/30 transition-colors">
+                                        <ChevronRight size={20} className="text-white" />
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Overlay for Locked */}
-                            {isLocked && (
-                                <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center z-20">
-                                    <Lock className="text-white/50" size={48} />
-                                </div>
-                            )}
                         </div>
                     );
                 })}
