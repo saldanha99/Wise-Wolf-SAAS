@@ -1,0 +1,172 @@
+# Guia Completo de Integração: Evolution API (WhatsApp)
+
+Este guia descreve o processo de funcionamento, instalação e integração com a Evolution API para automação de WhatsApp.
+
+## 1. O que é a Evolution API?
+A Evolution API é uma interface RESTful robusta baseada na biblioteca Baileys, que permite transformar um número de WhatsApp comum em uma API programável. Ela roda independentemente (via Docker ou Node.js) e gerencia a conexão com o WhatsApp Web.
+
+Principais funcionalidades:
+- Envio de mensagens (texto, mídia, áudio gravado, botões, listas).
+- Webhooks para receber mensagens e eventos (status de entrega, desconexão).
+- Gerenciamento de múltiplas instâncias (vários números).
+
+---
+
+## 2. Instalação e Configuração (Self-Hosted)
+A forma mais recomendada de rodar a API é via **Docker**.
+
+### Pré-requisitos:
+- VPS (Ubuntu 20.04+ recomendado)
+- Docker e Docker Compose instalados
+- Um subdomínio apontado para o IP da VPS (ex: `api.seudominio.com`)
+
+### Passo a Passo (Docker Compose):
+
+1. Crie um arquivo `docker-compose.yml`:
+```yaml
+version: '3.3'
+services:
+  evolution-api:
+    image: atendai/evolution-api:v1.8.2 # Verifique a versão mais recente
+    container_name: evolution_api
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+    environment:
+      - SERVER_URL=https://api.seudominio.com
+      - API_KEY=SuaChaveMestaSuperSecreta123
+      - AUTHENTICATION_API_KEY=true
+      # Webhook Global (Opcional)
+      - WEBHOOK_GLOBAL_URL=https://seusistema.com/api/webhook/whatsapp
+      - WEBHOOK_GLOBAL_ENABLED=false
+      # Configurações do Banco de Dados (Redis/Mongo - Opcionais mas recomendados para produção)
+      
+volumes:
+  evolution_instances:
+  evolution_store:
+```
+
+2. Suba o container:
+```bash
+docker-compose up -d
+```
+
+3. (Opcional) Configure um Proxy Reverso (NGINX/Traefik) para adicionar SSL (HTTPS) na porta 8080.
+
+---
+
+## 3. Autenticação e Instâncias
+
+Para usar a API, você precisa criar uma "Instância" (sessão) e conectar o WhatsApp via QR Code.
+
+### Header de Autenticação
+Todas as requisições devem conter o header:
+`apikey: SUA_API_KEY_DEFINIDA_NO_ENV`
+
+### 3.1 Criar uma Instância
+**Endpoint:** `POST /instance/create`
+**URL:** `https://api.seudominio.com/instance/create`
+
+**Body:**
+```json
+{
+  "instanceName": "nome-da-instancia",
+  "token": "token-seguro-da-instancia", # Opcional, gera um token específico para esta instância
+  "qrcode": true # Retorna o base64 do QR Code na resposta
+}
+```
+
+### 3.2 Conectar (Ler QR Code)
+Se você não pegou o QR Code na criação:
+**Endpoint:** `GET /instance/connect/nome-da-instancia`
+
+A resposta conterá o QR Code (base64) para ser exibido no seu frontend. O usuário escaneia com o celular (WhatsApp > Aparelhos Conectados).
+
+---
+
+## 4. Enviando Mensagens
+
+Exemplo prático de como enviar mensagem de texto (baseado no uso atual do seu sistema).
+
+**Endpoint:** `POST /message/sendText/{nome-da-instancia}`
+**Headers:**
+```
+Content-Type: application/json
+apikey: SUA_API_KEY_GLOBAL (ou o token da instância)
+```
+
+**Body (Payload Completo):**
+```json
+{
+  "number": "5511999999999", # DDI + DDD + Numero (sempre 55 no Brasil)
+  "options": {
+    "delay": 1200,          # Delay simulado em ms
+    "presence": "composing", # Mostra "digitando..."
+    "linkPreview": true
+  },
+  "textMessage": {
+    "text": "Olá! Esta é uma mensagem de teste enviada via API."
+  }
+}
+```
+
+### Exemplo em JavaScript (Fetch):
+```javascript
+const response = await fetch('https://api.seudominio.com/message/sendText/nome-da-instancia', {
+    method: 'POST',
+    headers: {
+        'apikey': 'SuaChaveMesta',
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+        number: "5511971681451",
+        options: { delay: 1000, presence: "composing" },
+        textMessage: { text: "Olá Diretor, tudo bem?" }
+    })
+});
+```
+
+---
+
+## 5. Webhooks (Recebendo Dados)
+
+Para receber mensagens, atualizações de status (enviado, lido) ou eventos de conexão, você configura um Webhook.
+
+**Configuração na Instância:**
+`POST /webhook/set/{nome-da-instancia}`
+
+**Body:**
+```json
+{
+  "url": "https://seu-sistema.com/api/webhook/whatsapp",
+  "enabled": true,
+  "events": [
+    "MESSAGES_UPSERT",       # Quando chega mensagem nova
+    "MESSAGES_UPDATE",       # Atualização de status (Lida/Entregue)
+    "CONNECTION_UPDATE"      # Conectado/Desconectado
+  ]
+}
+```
+
+O seu sistema deve ter uma rota (ex: Supabase Function) pronta para receber esses `POST`s e processar a lógica.
+
+---
+
+## 6. Documentação Oficial
+
+Para funcionalidades avançadas (Mídia, Grupos, Status, Profile Picture), consulte a documentação oficial, que é muito completa:
+
+*   **Documentação:** https://doc.evolution-api.com/
+*   **Repositório Github:** https://github.com/EvolutionAPI/evolution-api
+*   **Postman Collection:** Disponível na documentação para importar e testar.
+
+## Resumo do Processo de Integração
+1.  **Subir a API** (ou contratar serviço hospedado).
+2.  **Criar Instância** via endpoint `/instance/create`.
+3.  **Exibir QR Code** no seu frontend (admin) chamando `/instance/connect`.
+4.  **Ler QR Code** com o celular físico.
+5.  **Salvar Estado**: O sistema deve saber que esta instância está `connected`.
+6.  **Chamar endpoints** de envio (`/message/sendText`) quando ocorrerem eventos no seu SaaS (ex: Nova Venda, Cadastro, etc.).

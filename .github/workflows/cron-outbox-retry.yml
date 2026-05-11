@@ -1,0 +1,43 @@
+# ============================================================================
+# Cron: Outbox Retry Sweep (every 5 minutes)
+# Calls process-outbox Edge Function to:
+#   1. Recover stuck PROCESSING messages (> 5min old)
+#   2. Retry messages in RETRY status
+#   3. Move expired retries to DLQ
+# ============================================================================
+name: "Cron: Outbox Retry"
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"    # Every 5 minutes
+  workflow_dispatch: {}       # Manual trigger for testing
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  CRON_TRIGGER_SECRET: ${{ secrets.CRON_TRIGGER_SECRET }}
+
+jobs:
+  outbox-retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call process-outbox
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "${SUPABASE_URL}/functions/v1/process-outbox" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${CRON_TRIGGER_SECRET}" \
+            -d '{"trigger":"github-actions-retry"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -ge 500 ]; then
+            echo "::error::Outbox retry failed with HTTP $HTTP_CODE"
+            exit 1
+          fi

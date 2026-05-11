@@ -1,0 +1,144 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { User, CreditCard, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { User as UserType } from '../types';
+
+interface TeacherPixSettingsProps {
+    user: UserType;
+}
+
+const PIX_TYPES = [
+    { value: 'CPF', label: 'CPF' },
+    { value: 'CNPJ', label: 'CNPJ' },
+    { value: 'EMAIL', label: 'E-mail' },
+    { value: 'PHONE', label: 'Telefone (Celular)' },
+    { value: 'EVP', label: 'Chave Aleatória (EVP)' },
+];
+
+const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
+    const [pixKey, setPixKey] = useState('');
+    const [pixKeyType, setPixKeyType] = useState('CPF');
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    useEffect(() => {
+        fetchPixData();
+    }, [user.id]);
+
+    const fetchPixData = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('pix_key, pix_key_type')
+                .eq('id', user.id)
+                .single();
+
+            if (data) {
+                setPixKey(data.pix_key || '');
+                setPixKeyType(data.pix_key_type || 'CPF');
+            }
+        } catch (err) {
+            console.error('Error fetching Pix data:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
+        setMessage(null);
+
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    pix_key: pixKey,
+                    pix_key_type: pixKeyType,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', user.id);
+
+            if (error) throw error;
+            setMessage({ type: 'success', text: 'Chave Pix salva com sucesso!' });
+        } catch (err) {
+            console.error('Error saving Pix data:', err);
+            setMessage({ type: 'error', text: 'Erro ao salvar. Tente novamente.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm p-8">
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-teal-50 dark:bg-teal-900/20 rounded-xl">
+                    <CreditCard className="text-teal-600 dark:text-teal-400" size={24} />
+                </div>
+                <div>
+                    <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Dados de Recebimento (Pix)</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Cadastre sua chave Pix para receber automaticamente.</p>
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="flex justify-center py-8">
+                    <Loader2 className="animate-spin text-slate-300" />
+                </div>
+            ) : (
+                <form onSubmit={handleSave} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Tipo de Chave</label>
+                            <select
+                                value={pixKeyType}
+                                onChange={(e) => setPixKeyType(e.target.value)}
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20"
+                            >
+                                {PIX_TYPES.map(t => (
+                                    <option key={t.value} value={t.value}>{t.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Chave Pix</label>
+                            <input
+                                type="text"
+                                value={pixKey}
+                                onChange={(e) => setPixKey(e.target.value)}
+                                placeholder="Digite sua chave pix..."
+                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    {message && (
+                        <div className={`p-4 rounded-xl flex items-center gap-3 text-sm font-bold ${message.type === 'success'
+                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                : 'bg-red-50 text-red-600 border border-red-100'
+                            }`}>
+                            {message.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+                            {message.text}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="flex items-center gap-2 px-8 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-teal-500/20 disabled:opacity-50"
+                        >
+                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            {saving ? 'Salvando...' : 'Salvar Dados Pix'}
+                        </button>
+                    </div>
+                </form>
+            )}
+        </div>
+    );
+};
+
+export default TeacherPixSettings;

@@ -1,0 +1,27 @@
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config({ path: './.env' });
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function run() {
+  const { data: profiles, error: pErr } = await supabase.from('profiles').select('id, full_name, fixed_schedule').ilike('full_name', '%Bianca%Crepaldi%');
+  console.log("Profiles:", profiles, pErr);
+  
+  if (profiles && profiles.length > 0) {
+      const { data: bookings, error: bErr } = await supabase.from('bookings').select('id, day_of_week, time_slot, start_date').eq('student_id', profiles[0].id);
+      console.log("Bookings:", bookings, bErr);
+      
+      for (const booking of bookings || []) {
+          if (booking.day_of_week === 'Wednesday' || booking.day_of_week === 'wednesday') {
+              console.log("Found invalid day_of_week, fixing...");
+              const { error: updErr } = await supabase.from('bookings').update({ day_of_week: 'Quarta' }).eq('id', booking.id);
+              console.log("Updated booking to Quarta:", updErr);
+          }
+      }
+  }
+}
+run();

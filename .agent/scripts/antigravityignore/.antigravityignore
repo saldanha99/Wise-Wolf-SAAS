@@ -1,0 +1,95 @@
+# Dependências e Cache
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.cache/
+.turbo/
+.contentlayer/
+__pycache__/
+*.pyc
+
+# Build e Saída
+dist/
+build/
+out/
+.next/
+.vercel/
+
+# Logs e Dados Binários
+*.log
+build_output*.log
+*.sqlite
+*.db
+*.csv
+*.xlsx
+*.pdf
+*.docx
+*.pptx
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Scripts de Debug/Legacy e Raiz (Clutter)
+*.sql
+*.cjs
+*.mjs
+*.ps1
+check_constraints.js
+check_logs_v2.js
+check_reschedules.js
+debug_auth.cjs
+debug_auth_v2.cjs
+debug_broadcast.js
+investigate_ledger.cjs
+investigate_ledger.js
+
+# Documentação Pesada/Manuais (Root)
+architecture_teacher_link.txt
+guia_integracao_evolution_api.txt
+prompt_site_institucional.txt
+prompt_site_institucional_rh.txt
+system_architecture_prompt.md
+
+# Mídia e Assets Pesados
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.svg
+*.ico
+*.mp4
+*.mov
+*.avi
+*.mp3
+*.wav
+*.ogg
+
+# IDE, Ambientes e Outros
+.git/
+.svn/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.env*
+
+# Configurações de AI (Evitar Recursão)
+.agent/
+.agents/
+.agent_scratchpad/
+
+# JSONs (Manter Apenas Essenciais)
+*.json
+!package.json
+!tsconfig.json
+!*.config.json
+!supabase/seed.json
+
+# Temporários
+temp_*.html
+raw.html
+*.tmp
+*.temp

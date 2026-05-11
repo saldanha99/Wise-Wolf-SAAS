@@ -1,0 +1,41 @@
+# ============================================================================
+# Cron: League Reset (weekly Monday 00:00 UTC-3 = 03:00 UTC)
+# Calls reset-league-seasons Edge Function.
+# Calculates ranks, promotes/demotes tiers, creates new week entries.
+# ============================================================================
+name: "Cron: League Reset"
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"       # 03:00 UTC Monday = 00:00 BRT Monday
+  workflow_dispatch: {}
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  CRON_TRIGGER_SECRET: ${{ secrets.CRON_TRIGGER_SECRET }}
+
+jobs:
+  league-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call reset-league-seasons
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "${SUPABASE_URL}/functions/v1/reset-league-seasons" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${CRON_TRIGGER_SECRET}" \
+            -d '{"trigger":"github-actions-weekly"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -ge 500 ]; then
+            echo "::error::League reset failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
