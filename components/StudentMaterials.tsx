@@ -15,22 +15,49 @@ import { useStudentContext } from './contexts/StudentContext';
 
 const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
+    const { profile } = useAuth();
+    const [libraryMaterials, setLibraryMaterials] = useState<any[]>([]);
+    const [directAssignments, setDirectAssignments] = useState<any[]>([]);
+    const [loadingDirect, setLoadingDirect] = useState(true);
     const [showEval, setShowEval] = useState(false);
-    const [evalScore, setEvalScore] = useState<number | null>(null);
-
-    // Derived from Context
-    const profile = studentContext?.profile;
-
-    // Quiz State
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedOption, setSelectedOption] = useState<number | null>(null);
-    const [answers, setAnswers] = useState<number[]>([]);
     const [isFinished, setIsFinished] = useState(false);
-    const [libraryMaterials, setLibraryMaterials] = useState<any[]>([]);
+    const [evalScore, setEvalScore] = useState<number | null>(null);
+    const [answers, setAnswers] = useState<number[]>([]);
 
     useEffect(() => {
+        fetchDirectMaterials();
         fetchLibraryMaterials();
-    }, []);
+    }, [user.id]);
+
+    const fetchDirectMaterials = async () => {
+        setLoadingDirect(true);
+        try {
+            console.log("Fetching materials for student:", user.id);
+            // 1. Get assignments
+            const { data: assignments, error: assignError } = await supabase
+                .from('student_assignments')
+                .select('*, pedagogical_materials(*)')
+                .eq('student_id', user.id);
+
+            if (assignError) throw assignError;
+
+            if (assignments) {
+                const formatted = assignments.map(a => ({
+                    assignment_id: a.id,
+                    ...a.pedagogical_materials,
+                    assigned_at: a.assigned_at
+                }));
+                console.log("Direct materials found:", formatted);
+                setDirectAssignments(formatted);
+            }
+        } catch (err) {
+            console.error("Error fetching direct materials:", err);
+        } finally {
+            setLoadingDirect(false);
+        }
+    };
 
     const fetchLibraryMaterials = async () => {
         try {
@@ -164,7 +191,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             {/* Gallery Grid */}
             {/* Dynamic Gallery Grid from Library */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                {studentContext?.assignedMaterials?.map((mat: any, index: number) => {
+                {directAssignments.map((mat: any, index: number) => {
                     const gradients = [
                         'from-emerald-400 to-teal-600',
                         'from-blue-400 to-indigo-600',
