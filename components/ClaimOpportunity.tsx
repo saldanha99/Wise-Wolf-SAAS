@@ -392,7 +392,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, claimToken }) =
 
             if (claimRpcError) {
                 console.error('[ClaimOpp] RPC error:', claimRpcError);
-                throw new Error('Erro interno ao processar reivindicação.');
+                throw new Error(claimRpcError.message || 'Erro interno ao processar reivindicação.');
             }
 
             if (!claimResult?.success) {

@@ -11,7 +11,7 @@ BEGIN;
 ALTER TABLE public.prospects ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Anon insert prospects" ON public.prospects;
 DROP POLICY IF EXISTS "Admins manage prospects" ON public.prospects;
-DROP POLICY IF EXISTS "Service role full access" ON public.prospects;
+DROP POLICY IF EXISTS "Service role full access prospects" ON public.prospects;
 
 -- Prospects: anon read ONLY via Edge Function (revoke SELECT from anon).
 REVOKE SELECT ON public.prospects FROM anon;
@@ -39,7 +39,7 @@ CREATE POLICY "Admins manage prospects" ON public.prospects
 -- 2. ENROLLMENT_SIGNATURES
 ALTER TABLE public.enrollment_signatures ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins read own tenant signatures" ON public.enrollment_signatures;
-DROP POLICY IF EXISTS "Service role full access" ON public.enrollment_signatures;
+DROP POLICY IF EXISTS "Service role full access enrollment_signatures" ON public.enrollment_signatures;
 
 CREATE POLICY "Service role full access enrollment_signatures" ON public.enrollment_signatures FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -59,7 +59,7 @@ REVOKE SELECT (signer_cpf_encrypted) ON public.enrollment_signatures FROM authen
 
 -- 3. SIGNATURE_AUDIT_LOG
 ALTER TABLE public.signature_audit_log ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Service role only" ON public.signature_audit_log;
+DROP POLICY IF EXISTS "Service role full access signature_audit_log" ON public.signature_audit_log;
 CREATE POLICY "Service role full access signature_audit_log" ON public.signature_audit_log FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 -- Append only: revoke UPDATE and DELETE
@@ -67,9 +67,9 @@ REVOKE UPDATE, DELETE ON public.signature_audit_log FROM authenticated, anon, pu
 
 -- 4. STUDENT_CREDITS
 ALTER TABLE public.student_credits ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Service role full access" ON public.student_credits;
+DROP POLICY IF EXISTS "Service role full access student_credits" ON public.student_credits;
 DROP POLICY IF EXISTS "Students read own credits" ON public.student_credits;
-DROP POLICY IF EXISTS "Admins read tenant credits" ON public.student_credits;
+DROP POLICY IF EXISTS "Admins manage tenant credits" ON public.student_credits;
 
 CREATE POLICY "Service role full access student_credits" ON public.student_credits FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Students read own credits" ON public.student_credits FOR SELECT TO authenticated USING (student_id = auth.uid());
@@ -181,7 +181,7 @@ REVOKE ALL ON public.outbox_messages FROM authenticated, anon, public;
 -- 11. TENTATIVE_ENROLLMENTS
 ALTER TABLE public.tentative_enrollments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Admins manage tentative enrollments" ON public.tentative_enrollments;
-DROP POLICY IF EXISTS "Service role full access" ON public.tentative_enrollments;
+DROP POLICY IF EXISTS "Service role full access tentative_enrollments" ON public.tentative_enrollments;
 CREATE POLICY "Service role full access tentative_enrollments" ON public.tentative_enrollments FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Admins manage tentative enrollments" ON public.tentative_enrollments
     FOR ALL TO authenticated
@@ -215,6 +215,7 @@ ALTER TABLE public.trial_feedback_audit ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role full access trial_feedback_audit" ON public.trial_feedback_audit;
 CREATE POLICY "Service role full access trial_feedback_audit" ON public.trial_feedback_audit FOR ALL TO service_role USING (true) WITH CHECK (true);
 -- Read-only for admins
+DROP POLICY IF EXISTS "Admins read trial_feedback_audit" ON public.trial_feedback_audit;
 CREATE POLICY "Admins read trial_feedback_audit" ON public.trial_feedback_audit
     FOR SELECT TO authenticated
     USING (
@@ -229,6 +230,7 @@ REVOKE UPDATE, DELETE, INSERT ON public.trial_feedback_audit FROM authenticated,
 -- 14. TENANT_REFERRAL_SETTINGS
 ALTER TABLE public.tenant_referral_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role full access tenant_referral_settings" ON public.tenant_referral_settings;
+DROP POLICY IF EXISTS "Admins manage tenant_referral_settings" ON public.tenant_referral_settings;
 CREATE POLICY "Service role full access tenant_referral_settings" ON public.tenant_referral_settings FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY "Admins manage tenant_referral_settings" ON public.tenant_referral_settings
     FOR ALL TO authenticated

@@ -21,6 +21,7 @@ WHERE kind = 'ENROLLMENT';
 
 -- 3. Apply the CHECK constraint ensuring the invariant holds:
 -- (requires_enrollment = false AND enrollment_fee = 0) OR (requires_enrollment = true)
+ALTER TABLE public.offers DROP CONSTRAINT IF EXISTS offers_enrollment_check;
 ALTER TABLE public.offers
 ADD CONSTRAINT offers_enrollment_check
 CHECK (

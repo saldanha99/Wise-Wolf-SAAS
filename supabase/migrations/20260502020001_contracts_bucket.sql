@@ -18,6 +18,7 @@ VALUES (
 
 -- 2. Storage Policies for Contracts
 -- Admins can view contracts
+DROP POLICY IF EXISTS "Admins read contracts" ON storage.objects;
 CREATE POLICY "Admins read contracts" ON storage.objects
     FOR SELECT TO authenticated
     USING (
@@ -30,6 +31,7 @@ CREATE POLICY "Admins read contracts" ON storage.objects
     );
 
 -- Service role has full access
+DROP POLICY IF EXISTS "Service role full access contracts" ON storage.objects;
 CREATE POLICY "Service role full access contracts" ON storage.objects
     FOR ALL TO service_role
     USING (bucket_id = 'contracts')
