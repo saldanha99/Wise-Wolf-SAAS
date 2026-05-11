@@ -52,7 +52,7 @@ serve(async (req) => {
 
                 if (!offerId && !oppId) {
                     return new Response(
-                        JSON.stringify({ error: 'Invalid token: missing offer_id or opp_id' }),
+                        JSON.stringify({ error: '[DEBUG] Invalid token: missing offer_id or opp_id' }),
                         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                     );
                 }
