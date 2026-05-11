@@ -142,7 +142,7 @@ export const MOCK_ACCOUNTS = [
 
 export const MOCK_STUDENTS_LIST = [];
 
-const SB_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co/storage/v1/object/public/materials/books';
+const SB_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co/storage/v1/object/public/materials';
 
 export const PEDAGOGICAL_BOOKS = {
   'A1': [
