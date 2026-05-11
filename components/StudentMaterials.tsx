@@ -175,11 +175,15 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     ];
                     const gradient = gradients[index % gradients.length];
                     
+                    // Dynamic lock logic: Material is locked if it's NOT in the assignedMaterials list
+                    const isAssigned = studentContext?.assignedMaterials?.some(am => am.id === mat.id);
+                    const isLocked = !isAssigned;
+
                     return (
                         <div
                             key={mat.id}
-                            onClick={() => handleAccessBook(mat.file_url)}
-                            className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-2 hover:shadow-2xl shadow-lg"
+                            onClick={() => !isLocked && handleAccessBook(mat.file_url)}
+                            className={`group relative aspect-[3/4] rounded-[2rem] overflow-hidden transition-all duration-300 ${isLocked ? 'grayscale opacity-60 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-2 hover:shadow-2xl shadow-lg'}`}
                         >
                             {/* Cover Art Background */}
                             <div className={`absolute inset-0 bg-gradient-to-br ${gradient} p-6 flex flex-col justify-between`}>
@@ -190,6 +194,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                         <span className="px-3 py-1 bg-black/20 backdrop-blur-sm rounded-lg text-[10px] font-black text-white uppercase tracking-widest border border-white/10">
                                             {mat.level_tag || 'GERAL'}
                                         </span>
+                                        {isAssigned && <span className="w-2 h-2 rounded-full bg-white animate-pulse shadow-[0_0_10px_white]"></span>}
                                     </div>
 
                                     <div className="mt-8">
@@ -198,9 +203,11 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                         </h4>
                                         <div className="flex items-center gap-2 mt-2">
                                             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                                                <Play size={10} className="text-white fill-white" />
+                                                {isLocked ? <Lock size={10} className="text-white" /> : <Play size={10} className="text-white fill-white" />}
                                             </div>
-                                            <span className="text-[10px] font-bold text-white/80 uppercase tracking-tighter">Acessar Agora</span>
+                                            <span className="text-[10px] font-bold text-white/80 uppercase tracking-tighter">
+                                                {isLocked ? 'Bloqueado pelo Professor' : 'Acessar Agora'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -208,14 +215,23 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                 <div className="relative z-10 flex justify-between items-center">
                                     <div className="flex -space-x-2">
                                         <div className="w-8 h-8 rounded-full border-2 border-white/20 bg-white/10 flex items-center justify-center backdrop-blur-md">
-                                            <Star size={12} className="text-yellow-400 fill-yellow-400" />
+                                            <Star size={12} className={isLocked ? 'text-white/40' : 'text-yellow-400 fill-yellow-400'} />
                                         </div>
                                     </div>
                                     <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl group-hover:bg-white/30 transition-colors">
-                                        <ChevronRight size={20} className="text-white" />
+                                        {isLocked ? <Lock size={20} className="text-white/40" /> : <ChevronRight size={20} className="text-white" />}
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Status Overlay for Locked */}
+                            {isLocked && (
+                                <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+                                    <div className="w-12 h-12 rounded-full bg-black/20 flex items-center justify-center border border-white/20">
+                                        <Lock size={24} className="text-white/60" />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
