@@ -147,14 +147,14 @@ serve(async (req) => {
         try {
             const { data: assignments } = await supabaseAdmin
                 .from('student_assignments')
-                .select('*, material:pedagogical_materials(*)')
+                .select('*, pedagogical_materials(*)')
                 .eq('student_id', user.id)
                 .order('assigned_at', { ascending: false });
             
             if (assignments) {
                 assignedMaterials = assignments.map(a => ({
                     assignment_id: a.id,
-                    ...a.material,
+                    ...a.pedagogical_materials,
                     assigned_at: a.assigned_at,
                     status: a.status,
                     notes: a.notes
