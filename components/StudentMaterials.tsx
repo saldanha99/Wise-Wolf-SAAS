@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Lock, CheckCircle, Play, Star, Sparkles, Layers } from 'lucide-react';
+import { Book, Lock, CheckCircle, Play, Star, Sparkles, Layers, ChevronRight, FileText, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
