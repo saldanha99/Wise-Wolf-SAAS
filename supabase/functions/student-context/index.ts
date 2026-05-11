@@ -145,13 +145,18 @@ serve(async (req) => {
         // 6. ASSIGNED MATERIALS
         let assignedMaterials = [];
         try {
-            const { data: assignments } = await supabaseAdmin
+            console.log("[student-context] Step 6: Fetching assignments for student:", user.id);
+            const { data: assignments, error: assignError } = await supabaseAdmin
                 .from('student_assignments')
-                .select('*, pedagogical_materials(*)')
-                .eq('student_id', user.id)
-                .order('assigned_at', { ascending: false });
+                .select('*, pedagogical_materials!inner(*)') // Use !inner to force join
+                .eq('student_id', user.id);
             
+            if (assignError) {
+                console.error("[student-context] Assignment fetch error:", JSON.stringify(assignError));
+            }
+
             if (assignments) {
+                console.log("[student-context] Assignments found count:", assignments.length);
                 assignedMaterials = assignments.map(a => ({
                     assignment_id: a.id,
                     ...a.pedagogical_materials,
@@ -159,6 +164,8 @@ serve(async (req) => {
                     status: a.status,
                     notes: a.notes
                 }));
+            } else {
+                console.log("[student-context] No assignments found for this user.");
             }
         } catch (e) {
             console.warn("[student-context] Assignments fetch failed (non-blocking):", e);
