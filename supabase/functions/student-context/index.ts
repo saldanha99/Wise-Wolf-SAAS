@@ -142,33 +142,43 @@ serve(async (req) => {
             console.warn("[student-context] Next class fetch failed (non-blocking):", e);
         }
 
-        // 6. ASSIGNED MATERIALS
+        // 6. ASSIGNED MATERIALS (Brute Force Approach)
         let assignedMaterials = [];
         try {
-            console.log("[student-context] Step 6: Fetching assignments for student:", user.id);
+            console.log("[student-context] Step 6: Fetching assignments (Brute Force)...");
             const { data: assignments, error: assignError } = await supabaseAdmin
                 .from('student_assignments')
-                .select('*, pedagogical_materials!inner(*)') // Use !inner to force join
+                .select('*')
                 .eq('student_id', user.id);
             
-            if (assignError) {
-                console.error("[student-context] Assignment fetch error:", JSON.stringify(assignError));
-            }
+            if (assignError) throw assignError;
 
-            if (assignments) {
-                console.log("[student-context] Assignments found count:", assignments.length);
-                assignedMaterials = assignments.map(a => ({
-                    assignment_id: a.id,
-                    ...a.pedagogical_materials,
-                    assigned_at: a.assigned_at,
-                    status: a.status,
-                    notes: a.notes
-                }));
-            } else {
-                console.log("[student-context] No assignments found for this user.");
+            if (assignments && assignments.length > 0) {
+                const materialIds = assignments.map(a => a.material_id);
+                console.log("[student-context] Found IDs:", materialIds);
+
+                const { data: materials, error: matError } = await supabaseAdmin
+                    .from('pedagogical_materials')
+                    .select('*')
+                    .in('id', materialIds);
+                
+                if (matError) throw matError;
+
+                assignedMaterials = assignments.map(a => {
+                    const mat = materials?.find(m => m.id === a.material_id);
+                    return {
+                        assignment_id: a.id,
+                        ...mat,
+                        assigned_at: a.assigned_at,
+                        status: a.status,
+                        notes: a.notes
+                    };
+                }).filter(a => a.id); // Filter out any assignments where material was not found
+                
+                console.log("[student-context] Final assigned materials count:", assignedMaterials.length);
             }
         } catch (e) {
-            console.warn("[student-context] Assignments fetch failed (non-blocking):", e);
+            console.warn("[student-context] Assignments fetch failed:", e);
         }
 
         // 7. Return
