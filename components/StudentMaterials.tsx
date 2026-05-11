@@ -15,7 +15,6 @@ import { useStudentContext } from './contexts/StudentContext';
 
 const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
-    const { profile } = useAuth();
     const [libraryMaterials, setLibraryMaterials] = useState<any[]>([]);
     const [directAssignments, setDirectAssignments] = useState<any[]>([]);
     const [loadingDirect, setLoadingDirect] = useState(true);
@@ -25,6 +24,9 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const [isFinished, setIsFinished] = useState(false);
     const [evalScore, setEvalScore] = useState<number | null>(null);
     const [answers, setAnswers] = useState<number[]>([]);
+
+    const currentModule = studentContext?.profile?.module || 'A1';
+    const currentPartKey = studentContext?.profile?.current_book_part || `${currentModule}-1`;
 
     useEffect(() => {
         fetchDirectMaterials();
@@ -122,7 +124,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
         try {
             const { data, error } = await supabase.functions.invoke('submit-quiz', {
                 body: {
-                    bookPart: profile?.current_book_part || `${profile?.module || 'A1'}-1`,
+                    bookPart: studentContext?.profile?.current_book_part || `${studentContext?.profile?.module || 'A1'}-1`,
                     answers: finalAnswers
                 }
             });
