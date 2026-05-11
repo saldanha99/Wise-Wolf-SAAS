@@ -164,7 +164,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             {/* Gallery Grid */}
             {/* Dynamic Gallery Grid from Library */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
-                {libraryMaterials.filter(m => (m.level_tag === currentModule || m.scope === 'GLOBAL') && studentContext?.assignedMaterials?.some(am => am.id === m.id)).map((mat: any, index: number) => {
+                {studentContext?.assignedMaterials?.map((mat: any, index: number) => {
                     const gradients = [
                         'from-emerald-400 to-teal-600',
                         'from-blue-400 to-indigo-600',
@@ -177,7 +177,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     
                     return (
                         <div
-                            key={mat.id}
+                            key={mat.assignment_id || mat.id}
                             onClick={() => handleAccessBook(mat.file_url)}
                             className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden transition-all duration-300 cursor-pointer hover:-translate-y-2 hover:shadow-2xl shadow-lg"
                         >
