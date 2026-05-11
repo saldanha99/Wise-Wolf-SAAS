@@ -117,7 +117,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       let finalUrl = newMaterial.url;
       if (newMaterial.type === 'PDF' && newMaterial.file) {
         const fileExt = newMaterial.file.name.split('.').pop();
-        const fileName = `materials/${Date.now()}.${fileExt}`;
+        const fileName = `${Date.now()}.${fileExt}`;
         if (newMaterial.file.size > 500 * 1024 * 1024) throw new Error('O arquivo deve ter menos de 500MB. Para arquivos maiores, aumente o limite no Supabase.');
         const { error: upErr } = await supabase.storage.from('materials').upload(fileName, newMaterial.file);
         if (upErr) throw upErr;
