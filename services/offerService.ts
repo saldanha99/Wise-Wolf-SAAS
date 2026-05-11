@@ -8,10 +8,9 @@
  *  - PublicRegistration, TeacherOnboarding, CommercialOnboarding (consumers)
  */
 
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 
-const PROJECT_REF = 'dvalxbtngopxopzcbfdm';
-const FUNCTION_BASE = `https://${PROJECT_REF}.supabase.co/functions/v1`;
+const FUNCTION_BASE = `${supabaseUrl}/functions/v1`;
 
 /**
  * Create a signed offer link via the sign-offer Edge Function.
@@ -26,8 +25,7 @@ export async function createSignedOffer(params: {
     try {
         const { data: sessionData } = await supabase.auth.getSession();
         const accessToken = sessionData.session?.access_token;
-        // @ts-ignore
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase['supabaseKey'];
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabaseAnonKey;
 
         if (!accessToken) {
             throw new Error('No session');
@@ -92,8 +90,7 @@ export async function resolveOffer(params: {
     }
 
     try {
-        // @ts-ignore
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase['supabaseKey'];
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || supabaseAnonKey;
 
         const response = await fetch(`${FUNCTION_BASE}/resolve-offer`, {
             method: 'POST',

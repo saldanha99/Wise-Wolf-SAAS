@@ -48,13 +48,48 @@ serve(async (req) => {
                 const { payload: jwtPayload } = await jwtVerify(token, secret);
 
                 const offerId = jwtPayload.offer_id as string;
-                if (!offerId) {
+                const oppId = jwtPayload.opp_id as string;
+
+                if (!offerId && !oppId) {
                     return new Response(
-                        JSON.stringify({ error: 'Invalid token: missing offer_id' }),
+                        JSON.stringify({ error: 'Invalid token: missing offer_id or opp_id' }),
                         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                     );
                 }
 
+                // ── CASE A: Opportunity Claim Token (opp_id) ──────────────────
+                if (oppId) {
+                    const { data: opp, error: oppError } = await supabaseAdmin
+                        .from('opportunities')
+                        .select('id, student_name, student_phone, interests, slots_proposed')
+                        .eq('id', oppId)
+                        .single();
+
+                    if (oppError || !opp) {
+                        return new Response(
+                            JSON.stringify({ error: 'OPPORTUNITY_NOT_FOUND', message: 'Vaga não encontrada ou expirada.' }),
+                            { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                        );
+                    }
+
+                    const slot = (opp.slots_proposed as any[])?.[0] || {};
+
+                    return new Response(
+                        JSON.stringify({
+                            success: true,
+                            source: 'jwt',
+                            opp_id: opp.id,
+                            student_name: opp.student_name,
+                            student_phone: opp.student_phone,
+                            interests: opp.interests,
+                            date: slot.date,
+                            time: slot.time
+                        }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    );
+                }
+
+                // ── CASE B: Offer Token (offer_id) ────────────────────────────
                 // Validate offer in database
                 const { data: result } = await supabaseAdmin.rpc('validate_offer', {
                     p_offer_id: offerId,

@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { Smartphone, Check, Calendar, Clock, ArrowRight, MessageCircle, Lock, AlertCircle, TrendingUp, ShieldAlert } from 'lucide-react';
 import { User as AuthUser } from '@supabase/supabase-js';
 
 // CONSTANTES
 const DIRECTOR_GROUP_ID = "120363422315263337@g.us";
-// @ts-ignore
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || supabaseAnonKey;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || supabaseUrl || '';
 
 interface ClaimProps {
     opportunityId: string | null;
