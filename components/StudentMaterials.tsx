@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Lock, CheckCircle, Play, Star, Sparkles, Layers, ChevronRight, FileText, Clock } from 'lucide-react';
+import { Book, Lock, CheckCircle, Play, Star, Layers, ChevronRight, FileText, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS, PEDAGOGICAL_EVALUATIONS } from '../constants';
+import { useStudentContext } from './contexts/StudentContext';
 
 interface StudentMaterialsProps {
     user: UserType;
 }
 
-import { useStudentContext } from './contexts/StudentContext';
-
 const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
-    const [libraryMaterials, setLibraryMaterials] = useState<any[]>([]);
     const [directAssignments, setDirectAssignments] = useState<any[]>([]);
     const [loadingDirect, setLoadingDirect] = useState(true);
     const [showEval, setShowEval] = useState(false);
@@ -30,7 +28,6 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
     useEffect(() => {
         fetchDirectMaterials();
-        fetchLibraryMaterials();
     }, [user.id]);
 
     const fetchDirectMaterials = async () => {
@@ -61,45 +58,13 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
         }
     };
 
-    const fetchLibraryMaterials = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('pedagogical_materials')
-                .select('*')
-                .order('level_tag', { ascending: true });
-            
-            if (error) throw error;
-            setLibraryMaterials(data || []);
-        } catch (err) {
-            console.error('Error fetching library materials:', err);
-        }
-    };
-
-    const handleAccessBook = async (url: string) => {
+    const handleAccessBook = (url: string) => {
         if (!url) {
-            alert('Erro: Link do material não encontrado. Contate seu professor.');
+            alert("Material ainda não disponível para este módulo.");
             return;
         }
-
-        // Use window.open for external links/PDFs
         window.open(url, '_blank');
-
-        try {
-            // Fix: Pass correct arguments to gamification service (userId, tenantId, amount, source)
-            const result = await gamificationService.addXP(user.id, user.tenantId, 15, 'PEDAGOGICAL_MATERIAL');
-            if (result?.leveledUp) {
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-            }
-        } catch (err) {
-            console.error('Error adding XP for material access:', err);
-        }
-        
-        refresh(); // Update global context
     };
-
-    const currentModule = profile?.module || 'A1';
-    const currentPartKey = profile?.current_book_part || `${currentModule}-1`;
-    const questions = PEDAGOGICAL_EVALUATIONS[currentPartKey] || [];
 
     const handleNextQuestion = () => {
         if (selectedOption === null) return;
@@ -107,8 +72,11 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
         const newAnswers = [...answers, selectedOption];
         setAnswers(newAnswers);
 
+        const currentParts = PEDAGOGICAL_EVALUATIONS[currentPartKey as keyof typeof PEDAGOGICAL_EVALUATIONS] || [];
+        const questions = currentParts[0]?.questions || [];
+
         if (currentQuestionIndex < questions.length - 1) {
-            setCurrentQuestionIndex(prev => prev + 1);
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
             setSelectedOption(null);
         } else {
             // Submit to Backend
@@ -117,10 +85,6 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     };
 
     const handleSubmitQuiz = async (finalAnswers: number[]) => {
-        // Optimistic UI or Loading?
-        // Let's show a loading state in the modal maybe?
-        // For now, simple await.
-
         try {
             const { data, error } = await supabase.functions.invoke('submit-quiz', {
                 body: {
@@ -131,21 +95,23 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
             if (error) throw error;
 
-            setEvalScore(data.score); // Backend score
+            setEvalScore(data.score);
             setIsFinished(true);
 
-            if (data.passed) {
-                confetti({ particleCount: 200, spread: 90, origin: { y: 0.5 } });
-                // Refresh context to show new XP/Level/Module immediately
-                refresh();
-            } else {
-                // Logic for failure (maybe retry button?)
-            }
+            // Celebration
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#4F46E5', '#10B981', '#F59E0B']
+            });
 
+            // Gamification
+            await gamificationService.addXP(user.id, data.score * 20);
+            refresh(); // Refresh context to update evaluation status
         } catch (err) {
-            console.error('Quiz Submission Error:', err);
-            alert('Erro ao enviar avaliação. Tente novamente.');
-            setShowEval(false); // Close on error
+            console.error("Error submitting quiz:", err);
+            alert("Erro ao enviar avaliação. Tente novamente.");
         }
     };
 
@@ -158,13 +124,13 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
         setIsFinished(false);
     };
 
-    if (contextLoading) return (
+    if (contextLoading || loadingDirect) return (
         <div className="flex items-center justify-center h-96">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
     );
 
-    const currentPartIndex = parseInt(currentPartKey.split('-')[1]) || 1;
+    const questions = (PEDAGOGICAL_EVALUATIONS[currentPartKey as keyof typeof PEDAGOGICAL_EVALUATIONS] || [])[0]?.questions || [];
 
     return (
         <div className="space-y-10 animate-in fade-in duration-700 pb-20">
@@ -172,7 +138,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2 bg-tenant-primary text-white rounded-lg">
+                        <div className="p-2 bg-indigo-600 text-white rounded-lg">
                             <Layers size={20} />
                         </div>
                         <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Estante Virtual</h2>
@@ -180,18 +146,14 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     <p className="text-slate-500 dark:text-slate-400 font-medium">Explore sua coleção de materiais do nível <span className="text-indigo-600 font-black">{currentModule}</span>.</p>
                 </div>
                 <div className="hidden md:block">
-                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{libraryMaterials.filter(m => m.level_tag === currentModule).length} Títulos Disponíveis</span>
+                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{directAssignments.length} Títulos Disponíveis</span>
                 </div>
             </div>
 
-            <GamificationHeader
-                xp={studentContext?.gamification?.xp || 0}
-                level={studentContext?.gamification?.level || 1}
-                streak={studentContext?.gamification?.streak || 0}
-            />
+            {/* Gamification Stats */}
+            <GamificationHeader studentId={user.id} />
 
             {/* Gallery Grid */}
-            {/* Dynamic Gallery Grid from Library */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
                 {directAssignments.map((mat: any, index: number) => {
                     const gradients = [
@@ -252,15 +214,15 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     );
                 })}
 
-                {/* Evaluation Logic as a Card if unlocked or as the next step */}
-                <div className={`aspect-[3/4] rounded-[2rem] p-1 flex flex-col relative overflow-hidden group transition-all duration-300 ${profile?.evaluation_unlocked
+                {/* Evaluation Card */}
+                <div className={`aspect-[3/4] rounded-[2rem] p-1 flex flex-col relative overflow-hidden group transition-all duration-300 ${studentContext?.profile?.evaluation_unlocked
                     ? 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-xl cursor-pointer hover:-translate-y-2 hover:shadow-2xl'
                     : 'bg-slate-100 dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800'
                     }`}
-                    onClick={() => profile?.evaluation_unlocked && setShowEval(true)}
+                    onClick={() => studentContext?.profile?.evaluation_unlocked && setShowEval(true)}
                 >
                     <div className="h-full w-full bg-white/5 backdrop-blur-sm rounded-[1.8rem] flex flex-col items-center justify-center text-center p-6">
-                        {profile?.evaluation_unlocked ? (
+                        {studentContext?.profile?.evaluation_unlocked ? (
                             <>
                                 <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-purple-600 mb-6 shadow-lg animate-bounce">
                                     <CheckCircle size={32} />
@@ -279,69 +241,6 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                     </div>
                 </div>
             </div>
-
-            {/* Assigned Materials Section */}
-            {(studentContext?.assignedMaterials?.length || 0) > 0 && (
-                <div className="pt-10 border-t border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-3 mb-8">
-                        <div className="p-2 bg-indigo-500 text-white rounded-lg">
-                            <Book size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Materiais do Professor</h3>
-                            <p className="text-xs text-slate-500 font-medium">Conteúdo personalizado atribuído para você.</p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {studentContext?.assignedMaterials?.map((m: any) => (
-                            <div 
-                                key={m.assignment_id} 
-                                onClick={() => handleAccessBook(m.file_url)}
-                                className="group bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] hover:shadow-xl transition-all cursor-pointer flex items-center gap-5"
-                            >
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-[10px] shadow-sm transition-transform group-hover:scale-110 ${
-                                    m.type === 'PDF' ? 'bg-red-50 text-red-600' :
-                                    m.type === 'VIDEO' ? 'bg-blue-50 text-blue-600' : 
-                                    'bg-emerald-50 text-emerald-600'
-                                }`}>
-                                    {m.type}
-                                </div>
-                                <div className="flex-1">
-                                    <h4 className="font-black text-sm text-slate-800 dark:text-white group-hover:text-indigo-600 transition-colors line-clamp-1">
-                                        {m.title}
-                                    </h4>
-                                    <div className="flex items-center gap-2 mt-1.5">
-                                        <span className="text-[9px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full uppercase font-black text-slate-500">
-                                            {m.level_tag || 'Geral'}
-                                        </span>
-                                        {m.niche && m.niche !== 'GENERAL' && (
-                                            <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase font-black ${
-                                                m.niche === 'MEDICINE' ? 'bg-emerald-50 text-emerald-600' :
-                                                m.niche === 'TECH' ? 'bg-blue-50 text-blue-600' :
-                                                m.niche === 'BUSINESS' ? 'bg-purple-50 text-purple-600' :
-                                                m.niche === 'TRAVEL' ? 'bg-orange-50 text-orange-600' :
-                                                'bg-slate-100 text-slate-500'
-                                            }`}>
-                                                {m.niche}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-1 mt-2 text-slate-400">
-                                        <Clock size={10} />
-                                        <span className="text-[9px] uppercase font-black tracking-tighter">
-                                            {new Date(m.assigned_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                                    <Play size={12} fill="currentColor" />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
             {/* Evaluation Modal */}
             {showEval && (
@@ -362,7 +261,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                         </p>
 
                                         <div className="space-y-3">
-                                            {questions[currentQuestionIndex]?.options.map((opt, idx) => (
+                                            {questions[currentQuestionIndex]?.options.map((opt: string, idx: number) => (
                                                 <button
                                                     key={idx}
                                                     onClick={() => setSelectedOption(idx)}
@@ -390,7 +289,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                         <CheckCircle size={48} />
                                     </div>
                                     <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{evalScore}/{questions.length}</h2>
-                                    <p className="text-slate-500 mb-8 uppercase text-xs font-black tracking-widest">Resultado do Exame {currentPartKey}</p>
+                                    <p className="text-slate-500 mb-8 uppercase text-xs font-black tracking-widest">Resultado do Exame</p>
 
                                     <div className="bg-emerald-50 dark:bg-emerald-900/10 p-6 rounded-2xl text-emerald-600 font-bold text-sm mb-8 leading-relaxed">
                                         Exame concluído com sucesso! Você ganhou {(evalScore || 0) * 20} XP extras.
@@ -399,9 +298,9 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
                                     <button
                                         onClick={resetQuiz}
-                                        className="px-10 py-4 bg-tenant-primary text-white rounded-xl font-black uppercase text-xs hover:scale-105 transition-all shadow-lg"
+                                        className="px-8 py-4 bg-slate-900 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all"
                                     >
-                                        FECHAR E CONTINUAR ESTUDOS
+                                        Fechar
                                     </button>
                                 </div>
                             )}
