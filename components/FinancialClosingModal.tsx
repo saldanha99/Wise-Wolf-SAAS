@@ -48,15 +48,14 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
             if (error) throw error;
 
-            // Rule: Pay if completed class or experimental class or training
-            // Exclude Teacher Absence, Student Absence, Repositions, and Oral Tests
+            // Rule: Pay if NOT Teacher Absence, NOT Reposition, and NOT Oral Test Only.
+            // Note: Student absences ARE paid per business rule.
             const paidLessons = (logs || []).filter(l => {
-                const isAbsence = l.presence === 'TEACHER_ABSENCE' || l.presence === 'Falta do Professor' || l.presence === 'STUDENT_ABSENCE' || l.presence === 'Falta' || l.presence === 'Falta Justificada' || l.presence === 'EXPIRED';
+                const isTeacherAbsence = l.presence === 'TEACHER_ABSENCE' || l.presence === 'Falta do Professor';
                 const isReplacement = l.subtype === 'REPOSIÇÃO';
                 const isOralTestOnly = l.subtype === 'Teste Oral';
-                const isWorkDone = l.presence === 'COMPLETED' || l.presence === 'AULA EXPERIMENTAL' || l.subtype === 'AULA EXPERIMENTAL';
                 
-                return isWorkDone && !isAbsence && !isReplacement && !isOralTestOnly;
+                return !isTeacherAbsence && !isReplacement && !isOralTestOnly;
             });
 
             // Fetch Paid Trainings (Ao Vivo / Meet)

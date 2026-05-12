@@ -113,14 +113,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     };
 
     const isLessonPaid = (log: any) => {
-        const isAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta' || log.presence === 'Falta Justificada' || log.presence === 'EXPIRED';
+        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
         const isReplacement = log.subtype === 'REPOSIÇÃO';
         const isOralTestOnly = log.subtype === 'Teste Oral';
         
-        // Paid if it's a completed class or experimental class or training
-        const isWorkDone = log.presence === 'COMPLETED' || log.presence === 'AULA EXPERIMENTAL' || log.subtype === 'AULA EXPERIMENTAL' || log.subtype === 'TREINAMENTO';
-        
-        return isWorkDone && !isAbsence && !isReplacement && !isOralTestOnly;
+        // Paid if NOT Teacher Absence, NOT Reposition, and NOT Oral Test Only.
+        // Student absence IS paid per business rule.
+        return !isTeacherAbsence && !isReplacement && !isOralTestOnly;
     };
 
     const canCloseMonth = () => {
