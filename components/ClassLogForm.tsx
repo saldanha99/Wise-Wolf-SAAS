@@ -198,9 +198,9 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                                             className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-tenant-primary outline-none disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                                             value={getFieldValue(item.id, 'subtype')}
                                             onChange={e => handleChange(item.id, 'subtype', e.target.value)}
-                                            disabled={getDefaultType(item.id) === 'COMPLETED'}
                                         >
                                             <option value="">Selecione...</option>
+                                            <option>Teste Oral</option>
                                             <option>Doença</option>
                                             <option>Trabalho</option>
                                             <option>Viagem</option>

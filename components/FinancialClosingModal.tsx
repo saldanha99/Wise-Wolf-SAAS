@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, CheckCircle2, AlertCircle, DollarSign, TrendingUp, MessageSquare } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
+import { LESSON_RATE } from '../constants';
 
 interface FinancialClosingModalProps {
     user: User;
@@ -47,11 +48,16 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
             if (error) throw error;
 
-            // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
-            const paidLessons = (logs || []).filter(l =>
-                l.presence !== 'Falta do Professor' &&
-                l.subtype !== 'REPOSIÇÃO'
-            );
+            // Rule: Pay if completed class or experimental class or training
+            // Exclude Teacher Absence, Student Absence, Repositions, and Oral Tests
+            const paidLessons = (logs || []).filter(l => {
+                const isAbsence = l.presence === 'TEACHER_ABSENCE' || l.presence === 'Falta do Professor' || l.presence === 'STUDENT_ABSENCE' || l.presence === 'Falta' || l.presence === 'Falta Justificada' || l.presence === 'EXPIRED';
+                const isReplacement = l.subtype === 'REPOSIÇÃO';
+                const isOralTestOnly = l.subtype === 'Teste Oral';
+                const isWorkDone = l.presence === 'COMPLETED' || l.presence === 'AULA EXPERIMENTAL' || l.subtype === 'AULA EXPERIMENTAL';
+                
+                return isWorkDone && !isAbsence && !isReplacement && !isOralTestOnly;
+            });
 
             // Fetch Paid Trainings (Ao Vivo / Meet)
             const { data: completedTrainings } = await supabase
@@ -73,7 +79,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
             const combinedItems = [...paidLessons, ...paidTrainings];
 
             setLessons(combinedItems);
-            setTotalEarned(combinedItems.length * (user.hourlyRate || 7.50));
+            setTotalEarned(combinedItems.length * (user.hourlyRate || LESSON_RATE));
 
         } catch (err) {
             console.error('Error fetching modal data:', err);

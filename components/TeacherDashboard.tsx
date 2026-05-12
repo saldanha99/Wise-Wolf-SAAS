@@ -5,6 +5,7 @@ import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
+import { LESSON_RATE } from '../constants';
 import FinancialClosingModal from './FinancialClosingModal';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
@@ -105,11 +106,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('teacher_id', user.id)
         .gte('class_date', startOfMonth);
 
-      // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
-      const paidLogs = (logs || []).filter(l => 
-        l.presence !== 'Falta do Professor' && 
-        l.subtype !== 'REPOSIÇÃO'
-      );
+      // Rule: Pay if completed class or experimental class or training
+      // Exclude Teacher Absence, Student Absence, Repositions, and Oral Tests
+      const paidLogs = (logs || []).filter(l => {
+        const isAbsence = l.presence === 'TEACHER_ABSENCE' || l.presence === 'Falta do Professor' || l.presence === 'STUDENT_ABSENCE' || l.presence === 'Falta' || l.presence === 'Falta Justificada' || l.presence === 'EXPIRED';
+        const isReplacement = l.subtype === 'REPOSIÇÃO';
+        const isOralTestOnly = l.subtype === 'Teste Oral';
+        const isWorkDone = l.presence === 'COMPLETED' || l.presence === 'AULA EXPERIMENTAL' || l.subtype === 'AULA EXPERIMENTAL';
+        
+        return isWorkDone && !isAbsence && !isReplacement && !isOralTestOnly;
+      });
 
       // Fetch Paid Trainings (Ao Vivo / Meet)
       const { data: completedTrainings } = await supabase
@@ -127,7 +133,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         (t.module as any)?.resource_type === 'meet'
       );
 
-      const earnings = (paidLogs.length + paidTrainings.length) * (user.hourlyRate || 7.50);
+      const earnings = (paidLogs.length + paidTrainings.length) * (user.hourlyRate || LESSON_RATE);
 
       setStats({
         activeStudents: uniqueStudents.size,

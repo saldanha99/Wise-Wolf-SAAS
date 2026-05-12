@@ -4,7 +4,7 @@ import { Tenant, User, UserRole } from './types';
 // URL Base do App
 export const APP_BASE_URL = window.location.origin;
 
-export const LESSON_RATE = 7.50;
+export const LESSON_RATE = 8.00;
 export const MAX_REPLACEMENTS = 5;
 
 // Mock de agendamentos fixos - ZERADO para início limpo

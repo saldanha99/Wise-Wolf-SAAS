@@ -64,7 +64,23 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             if (logsError) throw logsError;
             setLessons(logs || []);
 
-            // 2. Fetch Closing Status (Using new schema)
+            // 2. Fetch Trainings
+            const { data: trainings, error: trainingError } = await supabase
+                .from('training_assignments')
+                .select(`
+                    id,
+                    status,
+                    completed_at,
+                    module:module_id(title, resource_type)
+                `)
+                .eq('teacher_id', user.id)
+                .eq('status', 'COMPLETED')
+                .gte('completed_at', start)
+                .lt('completed_at', end);
+
+            if (trainingError) console.error("Error fetching trainings", trainingError);
+
+            // 3. Fetch Closing Status (Using new schema)
             const { data: closingData, error: closingError } = await supabase
                 .from('teacher_closings')
                 .select('*')
@@ -74,6 +90,19 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 .maybeSingle();
 
             if (closingError) console.error("Error fetching closing", closingError);
+            
+            // Combine lessons and trainings for display if needed or keep separate
+            // For the extrato, we might want to show both.
+            // Let's add trainings to the list with a 'TRAINING' type.
+            const trainingLogs = (trainings || []).map(t => ({
+                id: t.id,
+                class_date: t.completed_at,
+                presence: 'COMPLETED',
+                subtype: 'TREINAMENTO',
+                student: { full_name: (t.module as any)?.title || 'Treinamento' }
+            }));
+
+            setLessons([...(logs || []), ...trainingLogs]);
             setClosing(closingData);
 
         } catch (error) {
@@ -84,8 +113,14 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     };
 
     const isLessonPaid = (log: any) => {
-        // Shared logic with Modal: Paid if not Teacher Absence and not Replacement (usually)
-        return log.presence !== 'Falta do Professor' && log.subtype !== 'REPOSIÇÃO';
+        const isAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta' || log.presence === 'Falta Justificada' || log.presence === 'EXPIRED';
+        const isReplacement = log.subtype === 'REPOSIÇÃO';
+        const isOralTestOnly = log.subtype === 'Teste Oral';
+        
+        // Paid if it's a completed class or experimental class or training
+        const isWorkDone = log.presence === 'COMPLETED' || log.presence === 'AULA EXPERIMENTAL' || log.subtype === 'AULA EXPERIMENTAL' || log.subtype === 'TREINAMENTO';
+        
+        return isWorkDone && !isAbsence && !isReplacement && !isOralTestOnly;
     };
 
     const canCloseMonth = () => {
@@ -134,8 +169,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 period_start: `${selectedMonth}-01`,
                 period_end: new Date(new Date(selectedMonth + '-02').setMonth(new Date(selectedMonth + '-02').getMonth() + 1) - 1).toISOString().split('T')[0], // Last day of month
                 total_lessons_count: paidLessons.length,
+                total_amount: totalCents / 100,
                 total_amount_cents: totalCents,
-                class_log_ids: logIds,
+                class_log_ids: paidLessons.filter(l => l.subtype !== 'TREINAMENTO').map(l => l.id),
                 status: 'CONFIRMED_TEACHER',
                 notes_teacher: null, // Clear notes if confirming
                 updated_at: new Date().toISOString()
@@ -157,7 +193,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         try {
             const paidLessons = lessons.filter(isLessonPaid);
             const totalCents = Math.round(paidLessons.length * (user.hourlyRate || LESSON_RATE) * 100);
-            const logIds = paidLessons.map(l => l.id);
+            const logIds = paidLessons.filter(l => l.subtype !== 'TREINAMENTO').map(l => l.id);
 
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
@@ -165,6 +201,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 period_start: `${selectedMonth}-01`,
                 period_end: new Date(new Date(selectedMonth + '-02').setMonth(new Date(selectedMonth + '-02').getMonth() + 1) - 1).toISOString().split('T')[0],
                 total_lessons_count: paidLessons.length,
+                total_amount: totalCents / 100,
                 total_amount_cents: totalCents,
                 class_log_ids: logIds,
                 status: 'DISPUTED',
@@ -379,16 +416,18 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     <td className="px-8 py-6">
                                         <div className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${(log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'EXPIRED') ? 'bg-red-50 dark:bg-red-900/20 text-red-600' :
                                             log.subtype === 'REPOSIÇÃO' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' :
-                                                (log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta') ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600' :
-                                                    log.presence === 'Falta Justificada' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' :
-                                                        'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
+                                                log.subtype === 'TREINAMENTO' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' :
+                                                    (log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta') ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600' :
+                                                        log.presence === 'Falta Justificada' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' :
+                                                            'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
                                             }`}>
                                             {log.subtype === 'REPOSIÇÃO' ? 'Reposição' :
-                                                log.presence === 'COMPLETED' ? 'Realizada' :
-                                                    log.presence === 'STUDENT_ABSENCE' ? 'Falta Aluno' :
-                                                        log.presence === 'TEACHER_ABSENCE' ? 'Falta Prof.' :
-                                                            log.presence === 'EXPIRED' ? 'Expirada (Prazo)' :
-                                                                log.presence}
+                                                log.subtype === 'TREINAMENTO' ? 'Treinamento' :
+                                                    log.presence === 'COMPLETED' ? 'Realizada' :
+                                                        log.presence === 'STUDENT_ABSENCE' ? 'Falta Aluno' :
+                                                            log.presence === 'TEACHER_ABSENCE' ? 'Falta Prof.' :
+                                                                log.presence === 'EXPIRED' ? 'Expirada (Prazo)' :
+                                                                    log.presence}
                                         </div>
                                     </td>
                                     <td className="px-8 py-6">
