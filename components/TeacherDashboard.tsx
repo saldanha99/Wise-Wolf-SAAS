@@ -161,12 +161,13 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       const { data: trials } = await supabase
         .from('appointments')
         .select(`
-          id, time, date, student_name, student_phone, type, status
+          id, start_time, student_name, student_phone, type, status
         `)
-        .eq('teacher_id', user.id)
-        .eq('date', todayISO)
+        .eq('professor_id', user.id)
         .eq('type', 'experimental')
-        .eq('tenant_id', effectiveTenantId);
+        .eq('status', 'scheduled')
+        .gte('start_time', `${todayISO}T00:00:00`)
+        .lte('start_time', `${todayISO}T23:59:59`);
 
       const upcomingRegular = (bComplete || [])
         .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
@@ -193,6 +194,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         }));
 
       const upcomingTrials = (trials || [])
+        .map(t => ({...t, time: t.start_time ? t.start_time.substring(11, 16) : ''}))
         .filter(t => t.time >= currentTimeStr && !logs?.some(l => l.appointment_id === t.id && l.class_date === todayISO))
         .map(t => ({
           name: t.student_name || 'Aula Experimental',

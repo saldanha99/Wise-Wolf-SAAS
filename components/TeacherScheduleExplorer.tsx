@@ -77,7 +77,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       supabase
         .from('appointments')
         .select('*')
-        .eq('teacher_id', selectedTeacher.id)
+        .eq('professor_id', selectedTeacher.id)
         .eq('type', 'experimental'),
       supabase
         .from('profiles')
@@ -113,13 +113,21 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
     if (trialsRes.data) {
       trialsRes.data.forEach((t: any) => {
-        const dateObj = new Date(t.date);
-        const day = dateObj.getDay(); 
-        const dIdx = day === 0 ? -1 : day - 1; 
-
-        if (dIdx >= 0 && dIdx <= 5 && t.time) {
-          const timeKey = t.time.substring(0, 5);
-          newBookings[`${dIdx}-${timeKey}`] = {
+        const rawDate = t.start_time;
+        if (!rawDate) return;
+        
+        // Parse manual para evitar problemas de timezone
+        const dateStr = rawDate.substring(0, 10); // "2026-05-14"
+        const timeStr = rawDate.substring(11, 16); // "14:00"
+        const [year, month, day] = dateStr.split('-').map(Number);
+        
+        // Usar Date.UTC para dia da semana sem distorção de tz
+        const utcDate = new Date(Date.UTC(year, month - 1, day));
+        const dayOfWeek = utcDate.getUTCDay(); // 0=Dom, 1=Seg...
+        const dIdx = dayOfWeek === 0 ? -1 : dayOfWeek - 1;
+        
+        if (dIdx >= 0 && dIdx <= 5) {
+          newBookings[`${dIdx}-${timeStr}`] = {
             id: `trial-${t.id}`,
             student: t.student_name || 'Aula Experimental',
             module: 'TRIAL',

@@ -45,7 +45,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       ] = await Promise.all([
         supabase.from('bookings').select('*, student:student_id(id, full_name, module, avatar_url, current_topic_id)').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId),
         supabase.from('reschedules').select('*, student:student_id(id, full_name, module, avatar_url)').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('date', startDateStr).lte('date', endDateStr),
-        supabase.from('appointments').select('*').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('date', startDateStr).lte('date', endDateStr),
+        supabase.from('appointments').select('*').eq('professor_id', user.id).eq('type', 'experimental').eq('status', 'scheduled').gte('start_time', `${startDateStr}T00:00:00`).lte('start_time', `${endDateStr}T23:59:59`),
         supabase.from('class_logs').select('booking_id, reschedule_id, appointment_id, class_date').eq('teacher_id', user.id).eq('tenant_id', effectiveTenantId).gte('class_date', startDateStr).lte('class_date', endDateStr)
       ]);
 
@@ -102,19 +102,23 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         });
 
         // Trial mapping
-        trialsData?.filter(t => t.date === dateStr).forEach(t => {
+        trialsData?.filter(t => {
+          if (!t.start_time) return false;
+          return t.start_time.startsWith(dateStr);
+        }).forEach(t => {
+          const tTime = t.start_time.substring(11, 16);
           const hasLog = logsData?.some(l => l.appointment_id && String(l.appointment_id) === String(t.id));
           if (!hasLog) {
             allLessons.push({
               id: `trial-${t.id}`,
               studentId: null,
-              name: t.student_name || 'Prospect Trial',
-              date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
+              name: t.student_name || 'Aula Experimental',
+              date: i === 0 ? `Hoje às ${tTime}` : `${checkDate.toLocaleDateString('pt-BR')} às ${tTime}`,
               dateObj: dateStr,
               avatar: `https://ui-avatars.com/api/?name=${t.student_name}`,
               level: t.module || 'TRIAL',
               type: 'AULA EXPERIMENTAL',
-              time: t.time
+              time: tTime
             });
           }
         });
