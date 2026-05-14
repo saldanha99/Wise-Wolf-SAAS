@@ -43,11 +43,13 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       const [
         { data: bookings },
         { data: reschedules },
-        { data: logs }
+        { data: logs },
+        { data: trialAppts }
       ] = await Promise.all([
         supabase.from('bookings').select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, module)').eq('teacher_id', user.id).eq('tenant_id', tenantId),
         supabase.from('reschedules').select('id, time, date, student:student_id(id, full_name, module)').eq('teacher_id', user.id).eq('tenant_id', tenantId).gte('date', startDateStr).lte('date', endDateStr),
-        supabase.from('class_logs').select('booking_id, reschedule_id, student_id, class_date').eq('teacher_id', user.id).eq('tenant_id', tenantId).gte('class_date', startDateStr).lte('class_date', endDateStr)
+        supabase.from('class_logs').select('booking_id, reschedule_id, student_id, class_date').eq('teacher_id', user.id).eq('tenant_id', tenantId).gte('class_date', startDateStr).lte('class_date', endDateStr),
+        supabase.from('appointments').select('id, start_time, student_name, status').eq('professor_id', user.id).eq('type', 'experimental').in('status', ['scheduled']).lte('start_time', endDate.toISOString())
       ]);
 
       // 2. Iterate dates in memory
@@ -103,6 +105,29 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         });
       }
 
+      // Add trials to allExpected
+      trialAppts?.forEach(t => {
+        if (!t.start_time) return;
+        const trialDate = t.start_time.substring(0, 10);
+        if (trialDate < startDateStr || trialDate > endDateStr) return;
+
+        // Checa se já foi lançado (appointments com status completed/no_show)
+        if (t.status === 'completed' || t.status === 'no_show') return;
+
+        const trialDateObj = new Date(t.start_time);
+        allExpected.push({
+          id: `trial-${t.id}`,
+          appointmentId: t.id,
+          studentId: null,       // trial não tem student_id vinculado
+          student: t.student_name || 'Aula Experimental',
+          module: 'TRIAL',
+          date: trialDateObj.toLocaleDateString('pt-BR'),
+          rawDate: trialDate,
+          time: t.start_time.substring(11, 16),
+          type: 'AULA EXPERIMENTAL'
+        });
+      });
+
       setPending(allExpected);
     } catch (err) {
       console.error('Error fetching pending lessons:', err);
@@ -139,16 +164,31 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         throw new Error(`O mês ${closedMonths[0]} já está encerrado. O sistema bloqueia lançamentos de meses anteriores para garantir a integridade do fechamento.`);
       }
 
-      const entries = Object.keys(formData).map(lessonId => {
+      const logEntries = [];
+
+      for (const lessonId of Object.keys(formData)) {
         const lesson = pending.find(p => p.id === lessonId) || (selectedLesson?.id === lessonId ? selectedLesson : null);
-        if (!lesson) return null;
+        if (!lesson) continue;
 
         const data = formData[lessonId];
-        if (!data) return null;
+        if (!data) continue;
+
+        if (lesson.type === 'AULA EXPERIMENTAL') {
+          // Atualiza appointment em vez de inserir class_log
+          await supabase
+            .from('appointments')
+            .update({
+              status: data.type === 'COMPLETED' ? 'completed' : 'no_show',
+              observations: data.observation || null,
+              content: data.lastApplied || null,
+            })
+            .eq('id', lesson.appointmentId);
+          continue; // pula o insert em class_logs para trials
+        }
 
         let finalPresence = data.type || 'COMPLETED';
 
-        return {
+        logEntries.push({
           tenant_id: tenantId,
           teacher_id: user.id,
           student_id: lesson.studentId,
@@ -160,13 +200,15 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
           observations: data.observation || null,
           class_date: lesson.rawDate,
           created_at: lesson.rawDate ? `${lesson.rawDate}T12:00:00Z` : new Date().toISOString()
-        };
-      }).filter(Boolean);
+        });
+      }
 
-      if (entries.length === 0) return;
+      const entries = logEntries;
 
-      const { error } = await supabase.from('class_logs').insert(entries);
-      if (error) throw error;
+      if (logEntries.length > 0) {
+        const { error } = await supabase.from('class_logs').insert(logEntries);
+        if (error) throw error;
+      }
 
       // Clear used Reschedules 
       const completedReschedules = entries.filter(e => e.reschedule_id).map(e => e.reschedule_id);

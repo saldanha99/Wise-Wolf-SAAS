@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import StudentProfileForm from './StudentProfileForm';
 import StudentAssignmentModal from './StudentAssignmentModal';
+import ClassLogForm from './ClassLogForm';
 import {
   Users,
   Search,
@@ -47,6 +48,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const [studentsList, setStudentsList] = useState<any[]>([]);
   const [availableSlots, setAvailableSlots] = useState<Set<string>>(new Set());
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
+  const [launchingTrial, setLaunchingTrial] = useState<any | null>(null);
 
   useEffect(() => {
     if (teachers && teachers.length > 0) {
@@ -513,6 +515,31 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
   };
 
+  const handleTrialLog = async (formData: any) => {
+    const trialId = launchingTrial?.id?.replace('trial-', '');
+    if (!trialId) return;
+
+    const entry = Object.values(formData)[0] as any;
+
+    // Atualiza o appointment com o resultado da aula
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        status: entry?.type === 'COMPLETED' ? 'completed' : 'no_show',
+        observations: entry?.observation || null,
+        content: entry?.lastApplied || null,
+      })
+      .eq('id', trialId);
+
+    if (error) {
+      alert('Erro ao lançar aula: ' + error.message);
+      return;
+    }
+
+    setLaunchingTrial(null);
+    await fetchDetailData();
+  };
+
   const getRescheduleForSlot = (dayIdx: number, hour: number | string) => {
     if (!reschedules) return null;
     return reschedules.find(r => {
@@ -647,7 +674,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                 </div>
                               ) : booking ? (
                                 <div
-                                  onClick={() => !booking.isTrial && setEditingBooking(booking)}
+                                  onClick={() => {
+                                    if (booking.isTrial) {
+                                      setLaunchingTrial(booking);
+                                    } else {
+                                      setEditingBooking(booking);
+                                    }
+                                  }}
                                   className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-transform cursor-pointer shadow-md group/booking ${booking.isTrial 
                                     ? 'bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse hover:scale-105' 
                                     : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'}`}
@@ -715,6 +748,27 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             currentUserRole={user?.role}
             title="Gerenciar Alocação"
           />
+        </div>
+      )}
+
+      {/* Launch Trial Modal */}
+      {launchingTrial && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-2xl">
+            <ClassLogForm
+              items={[{
+                id: launchingTrial.id,
+                name: launchingTrial.student,
+                date: 'Aula Experimental - Hoje',
+                level: 'TRIAL',
+                type: 'AULA EXPERIMENTAL'
+              }]}
+              onCancel={() => setLaunchingTrial(null)}
+              onSave={handleTrialLog}
+              title="Lançar Aula Experimental"
+              loading={false}
+            />
+          </div>
         </div>
       )}
     </div>
