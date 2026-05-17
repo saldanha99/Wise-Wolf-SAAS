@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
     LayoutDashboard,
     BookOpen,
+    Target,
     Repeat,
     AlertCircle,
     Users,
@@ -115,6 +116,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'payments', label: 'Pagamentos', icon: DollarSign },
         { id: 'financial', label: 'Caixa', icon: Wallet },
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
+        { id: 'learning_paths_builder', label: 'Trilhas', icon: Target },
         { id: 'automation', label: 'Smart', icon: Zap },
         { id: 'training', label: 'Treinamento', icon: GraduationCap },
         { id: 'settings_school', label: 'Branding', icon: Palette },

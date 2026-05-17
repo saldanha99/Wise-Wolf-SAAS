@@ -25,6 +25,40 @@ interface ActivityPlayerProps {
 const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose }) => {
     const [saving, setSaving] = useState(false);
 
+    // Mapeia o tipo de atividade para a skill primaria (alem de unit.skill_focus se houver)
+    const skillsForActivityType: Record<string, string[]> = {
+        vocab_cards: ['vocabulary'],
+        quiz: ['grammar', 'vocabulary'],
+        grammar_drill: ['grammar'],
+        reading: ['reading'],
+        speaking_wolfie: ['speaking', 'pronunciation'],
+        listening: ['listening'],
+        writing: ['writing'],
+    };
+
+    const updateSkillScore = async (skill: string, newScore: number) => {
+        // EMA (exponential moving average) alpha=0.4 para responder rapido a tendencias recentes
+        const { data: existing } = await supabase
+            .from('student_skill_scores')
+            .select('current_score, total_activities')
+            .eq('student_id', userId)
+            .eq('skill', skill)
+            .maybeSingle();
+
+        const alpha = 0.4;
+        const prevScore = Number(existing?.current_score) || 0;
+        const ema = existing ? Math.round((alpha * newScore + (1 - alpha) * prevScore) * 10) / 10 : newScore;
+        const total = (existing?.total_activities || 0) + 1;
+
+        await supabase.from('student_skill_scores').upsert({
+            student_id: userId,
+            skill,
+            current_score: ema,
+            total_activities: total,
+            last_updated: new Date().toISOString(),
+        }, { onConflict: 'student_id, skill' });
+    };
+
     const handleSubmit = async (score: number) => {
         if (saving) return;
         setSaving(true);
@@ -40,6 +74,25 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 completed_at: new Date().toISOString(),
                 last_attempt_at: new Date().toISOString(),
             }, { onConflict: 'student_id, activity_id' });
+
+            // Atualizar skill scores (skills da unit + skill primaria do tipo)
+            try {
+                const { data: unitData } = await supabase
+                    .from('learning_units')
+                    .select('skill_focus')
+                    .eq('id', activity.unit_id)
+                    .maybeSingle();
+
+                const skillsToUpdate = new Set<string>([
+                    ...(unitData?.skill_focus || []),
+                    ...(skillsForActivityType[activity.type] || []),
+                ]);
+                for (const skill of skillsToUpdate) {
+                    await updateSkillScore(skill, score);
+                }
+            } catch (skillErr) {
+                console.error('Skill score update failed (non-blocking):', skillErr);
+            }
 
             // Award XP proporcional ao score
             const xpEarned = Math.round((activity.xp_reward || 30) * (score / 100));

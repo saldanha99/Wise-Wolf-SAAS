@@ -7,6 +7,7 @@ import GamificationHeader from './GamificationHeader';
 import ContractView from './ContractView';
 import StudentActivities from './StudentActivities';
 import StudentLearningPaths from './StudentLearningPaths';
+import SkillsRadar from './SkillsRadar';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
@@ -364,7 +365,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
         </div>
       </div>
 
-      {/* 5. LEARNING PATHS (trilhas didaticas) */}
+      {/* 5. SKILLS RADAR (evolucao por habilidade) */}
+      <SkillsRadar userId={user.id} />
+
+      {/* 6. LEARNING PATHS (trilhas didaticas) */}
       <StudentLearningPaths userId={user.id} tenantId={tenantId || profile?.tenant_id} wolfieConfig={profile?.wolfie_settings} />
 
       {/* 6. COMPLEMENTARY ACTIVITIES (geradas por IA) */}

@@ -153,6 +153,98 @@ export const getPedagogicalSuggestion = async (module: string, lastContent: stri
   }
 };
 
+// =============================================================
+// LEARNING PATHS BUILDER — AI content generation
+// =============================================================
+export const generateUnitActivityContent = async (
+  briefing: {
+    activityType: 'vocab_cards' | 'quiz' | 'grammar_drill' | 'reading' | 'speaking_wolfie';
+    unitTitle: string;
+    unitDescription?: string;
+    targetLevel: string; // A1..C2
+    category: string;
+    extraInstructions?: string;
+  }
+): Promise<any> => {
+  const { activityType, unitTitle, unitDescription, targetLevel, category, extraInstructions } = briefing;
+
+  const schemaByType: Record<string, string> = {
+    vocab_cards: `{
+  "cards": [
+    { "term": "english word/phrase", "translation": "tradução em pt-BR", "example": "frase de exemplo em inglês" }
+  ]
+}
+Gere 10 cards. Foco no nivel ${targetLevel} e no contexto: ${category}.`,
+
+    quiz: `{
+  "questions": [
+    { "q": "pergunta em inglês", "options": ["opt1","opt2","opt3","opt4"], "correct": 0, "exp": "explicação curta em pt-BR" }
+  ]
+}
+Gere 5 perguntas multipla escolha. 4 opções cada. Foco em ${targetLevel}.`,
+
+    grammar_drill: `{
+  "rule_pt": "explicação concisa da regra gramatical em pt-BR",
+  "exercises": [
+    { "sentence": "frase com lacuna ___ aqui.", "options": ["opcao1","opcao2"], "correct": 0, "exp": "por que essa opção em pt-BR" }
+  ]
+}
+Gere 5 exercícios. Apenas 2 opções por exercício (foco em escolha A vs B). Nivel ${targetLevel}.`,
+
+    reading: `{
+  "text": "texto em inglês de 80-150 palavras adequado ao nivel ${targetLevel} e tema ${category}",
+  "questions": [
+    { "q": "pergunta de compreensão em inglês ou pt", "options": ["opt1","opt2","opt3","opt4"], "correct": 0, "exp": "explicação curta em pt-BR" }
+  ]
+}
+Gere o texto e 3 perguntas de interpretação.`,
+
+    speaking_wolfie: `{
+  "scenario": "identificador_curto_snake_case",
+  "instructions_pt": "instruções em pt-BR para o aluno do que ele deve fazer falando (1-2 frases)",
+  "target_phrases": ["phrase 1","phrase 2","phrase 3","phrase 4"]
+}
+Gere o briefing falado adequado ao nivel ${targetLevel} e tema ${category}.`
+  };
+
+  const prompt = `Você está criando conteúdo pedagógico para uma trilha de inglês.
+
+UNIDADE: "${unitTitle}"
+${unitDescription ? `DESCRIÇÃO DA UNIDADE: ${unitDescription}` : ''}
+NÍVEL CEFR: ${targetLevel}
+CATEGORIA: ${category}
+TIPO DE ATIVIDADE: ${activityType}
+${extraInstructions ? `INSTRUÇÕES EXTRAS: ${extraInstructions}` : ''}
+
+Retorne APENAS um JSON válido com este schema EXATO (sem markdown wrappers, sem texto extra):
+
+${schemaByType[activityType]}
+
+Regras importantes:
+- Conteúdo 100% alinhado ao nivel ${targetLevel} (vocab, gramática).
+- Sem markdown, asteriscos ou bullets dentro dos valores JSON.
+- Explicações em pt-BR (campo "exp" ou "explanation_pt") quando aplicável.
+- Resposta DEVE ser JSON válido parseável.`;
+
+  try {
+    const { data, error } = await supabase.functions.invoke('wolfie-brain', {
+      body: {
+        message: prompt,
+        studentLevel: targetLevel,
+        previousContext: 'System: You are a JSON-only pedagogical content generator. Output strict JSON only.'
+      }
+    });
+    if (error) throw error;
+    const raw = data?.aiText || data?.chatResponse || '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI did not return valid JSON');
+    return JSON.parse(match[0]);
+  } catch (err) {
+    console.error('generateUnitActivityContent error:', err);
+    throw err;
+  }
+};
+
 export const generateBillingReminder = async (studentName: string, amount: number, dueDate: string, tone: 'friendly' | 'professional' | 'urgent') => {
   try {
     const ai = getRequestConfig();

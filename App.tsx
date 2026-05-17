@@ -18,6 +18,7 @@ const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleE
 const SchoolAdminDashboard = lazy(() => import('./components/SchoolAdminDashboard'));
 const InvoiceManager = lazy(() => import('./components/InvoiceManager'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
+const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
 const TenantSettings = lazy(() => import('./components/TenantSettings'));
 const StudentBilling = lazy(() => import('./components/StudentBilling'));
 const TeacherInvoices = lazy(() => import('./components/TeacherInvoices'));
@@ -400,6 +401,7 @@ const App: React.FC = () => {
       'approvals': <InvoiceManager tenantId={currentTenant?.id} />,
       'payments': <TeacherPayments tenantId={currentTenant?.id} />,
       'pedagogical': <PedagogicalConfig user={user} tenantId={currentTenant?.id} />,
+      'learning_paths_builder': <LearningPathsBuilder user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,
 
       'settings_school': <TenantSettings tenant={currentTenant!} onUpdate={handleUpdateTenant} />,
