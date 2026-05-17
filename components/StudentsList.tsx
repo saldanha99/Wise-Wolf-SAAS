@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle } from 'lucide-react';
+import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
 import StudentProfileForm from './StudentProfileForm';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
+import StudentProfileEditor from './StudentProfileEditor';
 
 interface StudentsListProps {
   tenantId?: string;
@@ -20,6 +21,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const [loading, setLoading] = useState(true);
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [pedagogicalStudent, setPedagogicalStudent] = useState<any | null>(null);
+  const [wolfProfileStudent, setWolfProfileStudent] = useState<any | null>(null);
 
   // Deletion Modal State
   const [studentToDelete, setStudentToDelete] = useState<any>(null);
@@ -631,7 +633,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-3 gap-2 pt-2">
+                  <div className="grid grid-cols-4 gap-2 pt-2">
                     {/* WhatsApp */}
                     <button
                       onClick={() => {
@@ -664,6 +666,16 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                     >
                       <Folder size={18} className="text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
                       <span className="text-[9px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-wide">Materiais</span>
+                    </button>
+
+                    {/* Wolf Intelligence */}
+                    <button
+                      onClick={() => setWolfProfileStudent(student)}
+                      className="flex flex-col items-center justify-center gap-1 p-2 bg-violet-50 hover:bg-violet-100 dark:bg-violet-900/20 dark:hover:bg-violet-900/30 border border-violet-100 dark:border-violet-900/30 rounded-xl transition-colors group"
+                      title="Perfil Wolf Intelligence"
+                    >
+                      <Brain size={18} className="text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform" />
+                      <span className="text-[9px] font-black text-violet-700 dark:text-violet-300 uppercase tracking-wide">Wolf AI</span>
                     </button>
                   </div>
 
@@ -708,6 +720,16 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             currentUserRole={user?.role}
           />
         </div>
+      )}
+
+      {/* Wolf Intelligence Profile Editor */}
+      {wolfProfileStudent && (
+        <StudentProfileEditor
+          studentId={wolfProfileStudent.id}
+          studentName={wolfProfileStudent.name}
+          onClose={() => setWolfProfileStudent(null)}
+          onSaved={fetchStudents}
+        />
       )}
 
       {/* Delete Confirmation Modal with Fine Calculation */}

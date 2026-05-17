@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
 import ContractView from './ContractView';
+import StudentActivities from './StudentActivities';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
@@ -377,6 +378,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           </div>
         </div>
       </div>
+
+      {/* 5. COMPLEMENTARY ACTIVITIES */}
+      <StudentActivities userId={user.id} tenantId={tenantId || profile?.tenant_id} />
 
       {showContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">

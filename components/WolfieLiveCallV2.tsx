@@ -193,7 +193,12 @@ export default function WolfieLiveCallV2({
                     conversationId: `${user.id}-${scenarioId}-${Date.now()}`,
                 };
 
-                const { data, error: supabaseError } = await supabase.functions.invoke('wolfie-brain', { body: payload });
+                // Timeout de 25s para evitar travamento indefinido
+                const invokePromise = supabase.functions.invoke('wolfie-brain', { body: payload });
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Tempo de resposta excedido (25s). Tente novamente.')), 25000)
+                );
+                const { data, error: supabaseError } = await Promise.race([invokePromise, timeoutPromise]);
                 if (supabaseError) throw supabaseError;
                 if (data.error) throw new Error(data.error);
 
@@ -239,7 +244,8 @@ export default function WolfieLiveCallV2({
                 speak(cleanAiText);
             };
         } catch (err: any) {
-            setError(err?.message || 'Wolfie teve um erro técnico ao falar com o servidor de IA.');
+            console.error("Call Error:", err);
+            setError(err?.message || 'Wolfie teve um erro técnico ao falar com o servidor de IA. Tente novamente em alguns segundos.');
             setState('IDLE');
             setSubtitle('Aperte para tentar novamente.');
         }
@@ -297,7 +303,7 @@ export default function WolfieLiveCallV2({
     };
 
     const speak = (text: string) => {
-        setState('SPEAKING');
+        updateState('SPEAKING');
         setSubtitle('');
         window.speechSynthesis.cancel();
         lastSpokenTextRef.current = text;

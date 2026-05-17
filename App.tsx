@@ -59,6 +59,9 @@ const CommercialDashboard = lazy(() => import('./components/CommercialDashboard'
 const CommercialOnboarding = lazy(() => import('./components/CommercialOnboarding'));
 const CommercialManagement = lazy(() => import('./components/CommercialManagement'));
 const CommercialInviteGenerator = lazy(() => import('./components/CommercialInviteGenerator'));
+const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
+const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
+const RegistrationLinkGenerator = lazy(() => import('./components/RegistrationLinkGenerator'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
@@ -170,6 +173,7 @@ const App: React.FC = () => {
             avatar: t.avatar_url || `https://ui-avatars.com/api/?name=${t.full_name}`,
             module: t.module || 'General',
             modules: [t.module || 'General'],
+            specializations: t.specializations || [],
             hourlyRate: t.hourly_rate || 16,
             pixKey: t.pix_key || '',
             phone: t.phone || '',
@@ -445,6 +449,15 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    // SECURITY GUARD: Strict Vendor Access Check
+    if (user.role === UserRole.SALESPERSON) {
+      const allowedVendorTabs = ['vendor_dashboard', 'vendor_schedule', 'vendor_trial', 'vendor_enrollment', 'vendor_commissions'];
+      if (!allowedVendorTabs.includes(activeTab)) {
+        setActiveTab('vendor_dashboard');
+        return null;
+      }
+    }
+
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
       const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral'];
@@ -487,6 +500,7 @@ const App: React.FC = () => {
             }}
           /> :
           user.role === UserRole.STUDENT ? <StudentDashboard user={user} tenantId={currentTenant?.id} /> :
+          user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} /> :
             <TeacherDashboard user={user} tenantId={currentTenant?.id} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />,
 
       'approvals': <InvoiceManager tenantId={currentTenant?.id} />,
@@ -583,6 +597,18 @@ const App: React.FC = () => {
       'referral': <AffiliatePanel user={user} />,
       'recruiting': <div className="max-w-md mx-auto py-10"><TeacherInviteGenerator tenantId={currentTenant?.id || ''} /></div>,
       'contract_teacher': <PublicContractView id={user.id} />,
+
+      // VENDEDOR tabs
+      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} />,
+      'vendor_schedule': <TeacherScheduleExplorer
+        user={user}
+        teachers={teachers}
+        reschedules={[]}
+        currentTenantId={currentTenant?.id}
+      />,
+      'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={teachers} /></div>,
+      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={teachers} tenantId={currentTenant?.id || ''} vendorId={user.id} /></div>,
+      'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} />,
     };
 
     return contentMap[activeTab] || contentMap['dashboard'];

@@ -7,6 +7,23 @@ export const APP_BASE_URL = window.location.origin;
 export const LESSON_RATE = 8.00;
 export const MAX_REPLACEMENTS = 5;
 
+// Categorias de especialização de professores
+export const TEACHER_SPECIALIZATIONS = [
+  'Inglês Geral / Conversação',
+  'Business English',
+  'TOEFL / IELTS',
+  'Inglês para Crianças',
+  'Inglês para Viagens',
+  'Inglês Acadêmico',
+  'Inglês para Tecnologia',
+  'Inglês para Saúde / Medicina',
+] as const;
+
+export type TeacherSpecialization = typeof TEACHER_SPECIALIZATIONS[number];
+
+// Comissão padrão por matrícula (em centavos)
+export const DEFAULT_COMMISSION_RATE_CENTS = 3000; // R$30,00
+
 // Mock de agendamentos fixos - ZERADO para início limpo
 export const MOCK_BOOKINGS: Record<string, { student: string; module: string }> = {};
 

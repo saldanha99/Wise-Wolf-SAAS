@@ -131,6 +131,17 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // Class schedule (weekday + time) based on frequency
     const [classSchedule, setClassSchedule] = useState<ScheduleSlot[]>([]);
 
+    // Pro-rata & start date
+    const [enableProRata, setEnableProRata] = useState(false);
+    const [billingStartMonth, setBillingStartMonth] = useState(() => {
+        const now = new Date();
+        // Default to next month if we're past the 15th
+        if (now.getDate() > 15) {
+            now.setMonth(now.getMonth() + 1);
+        }
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+
     // Generated link
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
@@ -280,6 +291,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setGeneratedLink('');
         setCopied(false);
         setIsManualPrice(false);
+        setEnableProRata(false);
+        const now = new Date();
+        if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
+        setBillingStartMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 
         // Pre-fill from feedback
         const freq = fb ? planToFrequency(fb.recommended_plan) : 2;
@@ -319,6 +334,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setWizardSaving(true);
 
         try {
+            // Calculate pro-rata value if enabled
+            const today = new Date();
+            const proRataValue = enableProRata ? (() => {
+                const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                const remainingDays = daysInMonth - today.getDate() + 1;
+                return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
+            })() : 0;
+
             // Build offer payload (same schema as RegistrationLinkGenerator)
             const payload = {
                 unitId: tenantId,
@@ -331,6 +354,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 startDate: startDate,
                 requiresEnrollment: duration !== 0,
                 enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
+                enableProRata,
+                proRataValue: enableProRata ? proRataValue : undefined,
+                billingStartMonth,
                 // Extra fields for opportunity tracking
                 opportunityId: wizardOpp.id,
                 studentName: wizardOpp.student_name,
@@ -1022,6 +1048,51 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         <Check size={12} /> Professor da aula experimental
                                     </p>
                                 )}
+                            </div>
+
+                            {/* SECTION: PRO-RATA & BILLING START */}
+                            <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100">
+                                <h3 className="text-xs font-black text-amber-700 uppercase tracking-widest flex items-center gap-2 mb-3">
+                                    <Calendar size={14} /> Início de Cobrança
+                                </h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de início da mensalidade</label>
+                                        <input
+                                            type="month"
+                                            value={billingStartMonth}
+                                            onChange={(e) => setBillingStartMonth(e.target.value)}
+                                            className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+                                        />
+                                        <p className="text-[9px] text-slate-400 mt-1">Deixe como próximo mês para iniciar normalmente, ou escolha um mês futuro para diferir a cobrança.</p>
+                                    </div>
+
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={enableProRata}
+                                                onChange={(e) => setEnableProRata(e.target.checked)}
+                                                className="sr-only"
+                                            />
+                                            <div className={`w-10 h-6 rounded-full transition-colors ${enableProRata ? 'bg-amber-500' : 'bg-slate-200'}`} />
+                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${enableProRata ? 'translate-x-4' : ''}`} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700">Cobrar Pro-Rata do mês atual</p>
+                                            {enableProRata && monthlyFee > 0 && (
+                                                <p className="text-xs text-amber-600 font-bold">
+                                                    Cobrança proporcional: R$ {(() => {
+                                                        const today = new Date();
+                                                        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                                                        const remainingDays = daysInMonth - today.getDate() + 1;
+                                                        return ((monthlyFee / daysInMonth) * remainingDays).toFixed(2);
+                                                    })()}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </label>
+                                </div>
                             </div>
 
                             {/* GENERATE BUTTON & RESULT */}

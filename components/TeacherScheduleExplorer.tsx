@@ -16,7 +16,7 @@ import {
   Plus,
   Zap
 } from 'lucide-react';
-import { MOCK_BOOKINGS } from '../constants';
+import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS } from '../constants';
 import { Teacher, Reschedule } from '../types';
 import { supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
@@ -42,6 +42,7 @@ interface TeacherScheduleExplorerProps {
 const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user, teachers = [], initialTeacherName, autoAllocate, reschedules = [], currentTenantId, onRefresh }) => {
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [specFilter, setSpecFilter] = useState<string>('');
   const [isAllocating, setIsAllocating] = useState(false);
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [bookings, setBookings] = useState<Record<string, any>>({});
@@ -559,7 +560,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     });
   };
 
-  const filteredTeachers = (teachers || []).filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredTeachers = (teachers || []).filter(t => {
+    const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSpec = !specFilter || (t.specializations || []).includes(specFilter);
+    return matchesSearch && matchesSpec;
+  });
 
   return (
     <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
@@ -569,16 +574,26 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           <h3 className="font-black text-gray-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
             <Users size={14} className="text-tenant-primary" /> Corpo Docente
           </h3>
-          <div className="relative">
+          <div className="relative mb-2">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
             <input
               type="text"
-              placeholder="Buscar..."
+              placeholder="Buscar por nome..."
               className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-none font-medium"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
+          <select
+            value={specFilter}
+            onChange={e => setSpecFilter(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-none"
+          >
+            <option value="">Todas as especialidades</option>
+            {TEACHER_SPECIALIZATIONS.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
@@ -619,8 +634,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 <div>
                   <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-none">{selectedTeacher.name}</h2>
                   <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 font-bold">
-                    Especialista em {selectedTeacher.module}
+                    {selectedTeacher.module}
                   </p>
+                  {(selectedTeacher.specializations || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {(selectedTeacher.specializations || []).map(s => (
+                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[8px] font-black rounded-full border border-amber-100 dark:border-amber-800">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

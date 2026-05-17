@@ -32,6 +32,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
     const [generatedPlan, setGeneratedPlan] = useState<any>(null);
     const [history, setHistory] = useState<any[]>([]);
     const [studentProfile, setStudentProfile] = useState<any>(null);
+    const [wolfIntelligence, setWolfIntelligence] = useState<any>(null);
 
     useEffect(() => {
         fetchStudents();
@@ -58,22 +59,15 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
     };
 
     const fetchStudentContext = async (studentId: string) => {
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', studentId)
-            .single();
+        const [profileRes, wolfRes, historyRes] = await Promise.all([
+            supabase.from('profiles').select('*').eq('id', studentId).single(),
+            supabase.from('wolf_intelligence').select('*').eq('student_id', studentId).single(),
+            supabase.from('lesson_plans').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(5),
+        ]);
 
-        setStudentProfile(profile);
-
-        const { data: historyData } = await supabase
-            .from('lesson_plans')
-            .select('*')
-            .eq('student_id', studentId)
-            .order('created_at', { ascending: false })
-            .limit(5);
-
-        setHistory(historyData || []);
+        setStudentProfile(profileRes.data);
+        setWolfIntelligence(wolfRes.data || null);
+        setHistory(historyRes.data || []);
     };
 
     useEffect(() => {
@@ -172,13 +166,54 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                             </div>
 
                             {studentProfile && (
-                                <div className="p-4 bg-tenant-primary/5 rounded-2xl border border-tenant-primary/10">
-                                    <p className="text-[9px] font-black text-tenant-primary uppercase tracking-widest mb-1">Perfil Detalhado</p>
-                                    <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                                        Nível: <span className="text-slate-800 dark:text-slate-200">{studentProfile.module}</span><br />
-                                        Cargo: <span className="text-slate-800 dark:text-slate-200">{studentProfile.occupation || 'N/A'}</span><br />
-                                        Interesses: <span className="text-slate-800 dark:text-slate-200">{studentProfile.interests?.join(', ') || 'N/A'}</span>
-                                    </p>
+                                <div className="space-y-3">
+                                    <div className="p-4 bg-tenant-primary/5 rounded-2xl border border-tenant-primary/10">
+                                        <p className="text-[9px] font-black text-tenant-primary uppercase tracking-widest mb-2">Perfil do Aluno</p>
+                                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400 space-y-1">
+                                            <span className="block">Nível: <span className="text-slate-800 dark:text-slate-200">{studentProfile.module || 'N/A'}</span></span>
+                                            <span className="block">Cargo: <span className="text-slate-800 dark:text-slate-200">{studentProfile.occupation || 'N/A'}</span></span>
+                                            {studentProfile.english_for && (
+                                                <span className="block">Objetivo: <span className="text-slate-800 dark:text-slate-200">{studentProfile.english_for}</span></span>
+                                            )}
+                                            {studentProfile.personality && (
+                                                <span className="block">Perfil: <span className="text-slate-800 dark:text-slate-200">{studentProfile.personality}</span></span>
+                                            )}
+                                            {studentProfile.preferred_topics?.length > 0 && (
+                                                <span className="block">Tópicos: <span className="text-slate-800 dark:text-slate-200">{studentProfile.preferred_topics.join(', ')}</span></span>
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    {wolfIntelligence && (
+                                        <div className="p-4 bg-violet-50 dark:bg-violet-900/20 rounded-2xl border border-violet-100 dark:border-violet-800">
+                                            <p className="text-[9px] font-black text-violet-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                <Brain size={10} /> Wolf Intelligence
+                                            </p>
+                                            {wolfIntelligence.accumulated_context && (
+                                                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed mb-2">{wolfIntelligence.accumulated_context}</p>
+                                            )}
+                                            {wolfIntelligence.strong_points?.length > 0 && (
+                                                <div className="mb-1">
+                                                    <p className="text-[9px] font-black text-emerald-600 uppercase">Pontos Fortes</p>
+                                                    {wolfIntelligence.strong_points.slice(0, 2).map((p: string, i: number) => (
+                                                        <p key={i} className="text-[9px] text-slate-500 dark:text-slate-400">• {p}</p>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {wolfIntelligence.weak_points?.length > 0 && (
+                                                <div className="mb-1">
+                                                    <p className="text-[9px] font-black text-red-500 uppercase">A Melhorar</p>
+                                                    {wolfIntelligence.weak_points.slice(0, 2).map((p: string, i: number) => (
+                                                        <p key={i} className="text-[9px] text-slate-500 dark:text-slate-400">• {p}</p>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {wolfIntelligence.recommended_approach && (
+                                                <p className="text-[9px] text-violet-600 dark:text-violet-400 italic mt-1">{wolfIntelligence.recommended_approach}</p>
+                                            )}
+                                            <p className="text-[8px] text-slate-400 mt-2">{wolfIntelligence.total_classes_analyzed} aulas analisadas</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
