@@ -606,7 +606,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-4 gap-2 pt-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
                     {/* WhatsApp */}
                     <button
                       onClick={() => {

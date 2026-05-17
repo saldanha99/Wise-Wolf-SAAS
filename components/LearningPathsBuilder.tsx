@@ -199,7 +199,7 @@ const PathForm: React.FC<{ initial?: any; onSubmit: (form: any) => void; onCance
         <div className="bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-4 space-y-3">
             <Input label="Nome" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="Ex: Business English B1" />
             <Input label="Descrição" value={form.description} onChange={v => setForm({ ...form, description: v })} placeholder="Para quem é esta trilha?" multiline />
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Select label="Nível" value={form.target_level} onChange={v => setForm({ ...form, target_level: v })} options={LEVELS.map(l => ({ id: l, label: l }))} />
                 <Select label="Categoria" value={form.category} onChange={v => setForm({ ...form, category: v })} options={CATEGORIES.map(c => ({ id: c.id, label: c.label }))} />
                 <Input label="Horas estimadas" type="number" value={String(form.estimated_hours)} onChange={v => setForm({ ...form, estimated_hours: v })} />

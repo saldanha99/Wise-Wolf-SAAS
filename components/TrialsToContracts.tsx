@@ -732,7 +732,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                                     {/* Plan Duration Cards */}
-                                    <div className="lg:col-span-2 grid grid-cols-3 gap-3">
+                                    <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         {[
                                             { val: 12, label: 'Anual', sub: '12 Meses' },
                                             { val: 6, label: 'Semestral', sub: '6 Meses' },

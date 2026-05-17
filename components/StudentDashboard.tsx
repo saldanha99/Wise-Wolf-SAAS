@@ -387,7 +387,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
             >
               <X size={20} className="text-brand-muted" />
             </button>
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               <ContractView userId={user.id} classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)} />
             </div>
           </div>

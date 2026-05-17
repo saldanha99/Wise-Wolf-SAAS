@@ -440,16 +440,16 @@ export default function WolfieLiveCallV2({
                 <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
                     {/* LEFT: VISUAL ORB & SUBTITLES */}
-                    <div className="flex-1 relative flex flex-col items-center justify-center p-8 lg:border-r border-white/5">
+                    <div className="flex-1 relative flex flex-col items-center justify-center p-4 sm:p-8 lg:border-r border-white/5 min-h-[60vh] lg:min-h-0">
 
                         {/* Mobile Header (fallback when center is hidden) */}
-                        <div className="text-center md:hidden absolute top-6 w-full px-6">
-                            <h2 className="text-lg font-black text-white tracking-wide">{missionTitle}</h2>
-                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest mt-1">Step {scenarioStep} of 4</p>
+                        <div className="text-center md:hidden absolute top-4 w-full px-4">
+                            <h2 className="text-base font-black text-white tracking-wide">{missionTitle}</h2>
+                            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-0.5">Step {scenarioStep} of 4</p>
                         </div>
 
                         {/* Orb */}
-                        <div className="w-[280px] h-[280px] md:w-[400px] md:h-[400px] relative mt-10 lg:mt-0">
+                        <div className="w-[220px] h-[220px] sm:w-[280px] sm:h-[280px] md:w-[400px] md:h-[400px] relative mt-12 lg:mt-0">
                             <VoicePoweredOrb
                                 hue={getOrbColor()}
                                 audioStream={audioStream}
@@ -460,14 +460,14 @@ export default function WolfieLiveCallV2({
                         </div>
 
                         {/* Active Subtitle */}
-                        <div className="absolute bottom-12 w-full max-w-2xl px-6 text-center">
+                        <div className="absolute bottom-6 sm:bottom-12 w-full max-w-2xl px-4 sm:px-6 text-center">
                             {error && (
-                                <div className="inline-block px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-sm font-bold mb-4">
+                                <div className="inline-block px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-xs sm:text-sm font-bold mb-3">
                                     {error}
                                 </div>
                             )}
-                            <div className={`p-6 rounded-3xl backdrop-blur-md transition-all duration-300 ${state === 'SPEAKING' ? 'bg-brand-surface/80 border border-white/10 shadow-2xl scale-100' : 'bg-transparent scale-95 opacity-50'}`}>
-                                <p className="text-2xl md:text-3xl font-medium text-white leading-relaxed">
+                            <div className={`p-4 sm:p-6 rounded-3xl backdrop-blur-md transition-all duration-300 ${state === 'SPEAKING' ? 'bg-brand-surface/80 border border-white/10 shadow-2xl scale-100' : 'bg-transparent scale-95 opacity-50'}`}>
+                                <p className="text-base sm:text-2xl md:text-3xl font-medium text-white leading-relaxed">
                                     {subtitle}
                                 </p>
                             </div>
