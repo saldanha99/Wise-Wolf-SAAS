@@ -9,3 +9,13 @@ entrypoint = "./functions/delete-student-account/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/delete-student-account/*.html" ]
+
+[functions.asaas-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/asaas-webhook/index.ts"
+
+[functions.kiwify-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/kiwify-webhook/index.ts"
