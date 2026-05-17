@@ -109,6 +109,24 @@ serve(async (req) => {
             description: `Mensalidade Wise Wolf School - Plano ${planLabel}`
         };
 
+        // 3.1 Asaas Split: se o tenant tiver wallet, configurar split
+        // (a maior parte vai para a escola; plataforma fica com o complemento)
+        try {
+            const { data: tenant } = await supabaseAdmin
+                .from('tenants')
+                .select('asaas_wallet_id, asaas_split_percentage')
+                .eq('id', profile.tenant_id)
+                .single();
+            if (tenant?.asaas_wallet_id) {
+                payload.split = [{
+                    walletId: tenant.asaas_wallet_id,
+                    percentualValue: tenant.asaas_split_percentage ?? 90.0,
+                }];
+            }
+        } catch (splitErr) {
+            console.warn('[asaas split] tenant sem subconta, cobrando direto p/ plataforma:', splitErr);
+        }
+
         // 4. Handle Credit Card Specifics
         if (billingType === 'CREDIT_CARD') {
             if (!creditCard) throw new Error("Dados do cartão de crédito obrigatórios para este meio de pagamento.");

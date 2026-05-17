@@ -44,6 +44,7 @@ const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLa
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
+const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
@@ -339,6 +340,11 @@ const App: React.FC = () => {
   if (path === '/vendor-onboarding' || path.startsWith('/vendor-onboarding')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
       <VendorOnboarding />
+    </Suspense>;
+  }
+  if (path === '/comece' || path === '/signup' || path.startsWith('/comece')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <SchoolSignupPage />
     </Suspense>;
   }
   // --------------------------------------------------
