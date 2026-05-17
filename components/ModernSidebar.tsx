@@ -126,7 +126,8 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'crm', label: 'CRM & Pipeline', icon: Users },
         { id: 'marketing', label: 'Site & Vendas', icon: Globe },
         { id: 'hr', label: 'Recursos Humanos', icon: Briefcase },
-        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus }, // Novo
+        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus },
+        { id: 'tenant_advanced', label: 'Avançado', icon: Settings },
     ];
 
     const superAdminMenu: MenuItem[] = [

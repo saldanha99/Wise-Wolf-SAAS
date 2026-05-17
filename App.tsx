@@ -12,6 +12,7 @@ const StudentsList = lazy(() => import('./components/StudentsList'));
 const AvailabilityHeatmap = lazy(() => import('./components/AvailabilityHeatmap'));
 const FinancialReport = lazy(() => import('./components/FinancialReport'));
 const SuperAdminDashboard = lazy(() => import('./components/SuperAdminDashboard'));
+const SuperAdminMetrics = lazy(() => import('./components/SuperAdminMetrics'));
 const PendingLessons = lazy(() => import('./components/PendingLessons'));
 const TeacherAvailabilityEditor = lazy(() => import('./components/TeacherAvailabilityEditor'));
 const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleExplorer'));
@@ -45,6 +46,7 @@ const PublicRegistration = lazy(() => import('./components/PublicRegistration'))
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
+const TenantAdvancedSettings = lazy(() => import('./components/TenantAdvancedSettings'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
@@ -419,6 +421,7 @@ const App: React.FC = () => {
       'learning_paths_builder': <LearningPathsBuilder user={user} tenantId={currentTenant?.id} />,
       'class_skills': <ClassSkillsDashboard user={user} tenantId={currentTenant?.id} />,
       'msg_settings': <TeacherMessageSettings user={user} />,
+      'tenant_advanced': <TenantAdvancedSettings user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,
 
       'settings_school': <TenantSettings tenant={currentTenant!} onUpdate={handleUpdateTenant} />,

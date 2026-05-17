@@ -8,6 +8,7 @@ import {
 // Sub Components
 // Sub Components
 import SaasGlobalDashboard from './saas/SaasGlobalDashboard';
+import SuperAdminMetrics from './SuperAdminMetrics';
 import SaasTenantManager from './saas/SaasTenantManager';
 import SaasCrmBoard from './saas/SaasCrmBoard';
 import SaasPlansManager from './SaasPlansManager';
@@ -72,12 +73,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'global': return <SaasGlobalDashboard stats={globalStats} />;
+      case 'global': return <SuperAdminMetrics />;
       case 'tenants': return <SaasTenantManager />;
       case 'crm': return <SaasCrmBoard />;
       case 'infra': return <SaasPlansManager />;
       case 'billing': return <SaasBilling />;
-      default: return <SaasGlobalDashboard stats={globalStats} />;
+      default: return <SuperAdminMetrics />;
     }
   };
 
