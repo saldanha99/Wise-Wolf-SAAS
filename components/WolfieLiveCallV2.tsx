@@ -303,7 +303,7 @@ export default function WolfieLiveCallV2({
     };
 
     const speak = (text: string) => {
-        updateState('SPEAKING');
+        setState('SPEAKING');
         setSubtitle('');
         window.speechSynthesis.cancel();
         lastSpokenTextRef.current = text;

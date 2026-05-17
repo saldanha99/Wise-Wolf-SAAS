@@ -48,7 +48,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         const { data: teacherBookings } = await supabase
           .from('bookings')
           .select('student_id')
-          .eq('teacher_id', user.id);
+          .eq('teacher_id', user.id)
+          .eq('tenant_id', tenantId);
 
         const studentIds = Array.from(new Set(teacherBookings?.map(b => b.student_id) || []));
         if (studentIds.length > 0) {

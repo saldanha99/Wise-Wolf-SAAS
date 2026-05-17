@@ -129,11 +129,16 @@ const TeacherOnboarding: React.FC = () => {
 
 
 
-            // Consume the signed offer (if it was JWT-based) to prevent reuse
+            // Consume the signed offer (if it was JWT-based) to prevent reuse.
+            // BLOQUEANTE: se a oferta nao puder ser consumida, o cadastro falha
+            // para impedir reuso do mesmo link de convite.
             if (offerData._offerId) {
-                supabase.rpc('consume_offer', { p_offer_id: offerData._offerId })
-                    .then(() => console.log('✅ Offer consumed:', offerData._offerId))
-                    .catch((e: any) => console.warn('consume_offer failed (non-blocking):', e));
+                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: offerData._offerId });
+                if (consumeErr) {
+                    console.error('❌ consume_offer failed:', consumeErr);
+                    throw new Error('Este link de convite já foi utilizado ou expirou. Solicite um novo link à escola.');
+                }
+                console.log('✅ Offer consumed:', offerData._offerId);
             }
 
             setStep('SUCCESS');

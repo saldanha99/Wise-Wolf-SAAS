@@ -30,7 +30,14 @@ serve(async (req) => {
         )
 
         // 2. PARSE BODY
-        const { email, password, name, phone, pixKey, meetLink, avatar, offerPayload, rg, cpf, address, birthDate, contractAccepted, acceptedAt, userIp } = await req.json()
+        const { email, password, name, phone, pixKey, meetLink, avatar, offerPayload, rg, cpf, address, birthDate, contractAccepted } = await req.json()
+
+        // Auditoria server-side: IP e timestamp capturados aqui (nao confia no frontend)
+        const trustedIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || req.headers.get('cf-connecting-ip')
+            || req.headers.get('x-real-ip')
+            || 'unknown';
+        const trustedAcceptedAt = new Date().toISOString();
 
         if (!email || !password || !name || !offerPayload) {
             return new Response(
@@ -123,8 +130,8 @@ serve(async (req) => {
                 address: address,
                 birth_date: birthDate,
                 contract_accepted: contractAccepted,
-                accepted_at: acceptedAt,
-                user_ip: userIp
+                accepted_at: trustedAcceptedAt,
+                user_ip: trustedIp
             });
 
         if (profileError) {

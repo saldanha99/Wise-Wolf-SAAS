@@ -6,37 +6,13 @@ import {
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
 import { createSignedOffer } from '../services/offerService';
+import { pricingService, PricingMatrix } from '../services/pricingService';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
     teachers?: any[];
     vendorId?: string; // ID do vendedor para rastreamento de comissão
 }
-
-// Business Rules Configuration
-const PRICING_TABLE: Record<number, Record<number, number>> = {
-    // Fidelidade 12 Meses (Anual)
-    12: {
-        2: 139.90, // 2 aulas/semana
-        3: 187.00, // 3 aulas/semana
-        4: 271.00, // 4 aulas/semana
-        5: 297.00  // 5 aulas/semana
-    },
-    // Fidelidade 6 Meses (Semestral)
-    6: {
-        2: 188.00,
-        3: 251.00,
-        4: 345.00,
-        5: 366.00
-    },
-    // Mensal (Exemplo - Adicionado para completar a UI)
-    1: {
-        2: 220.00,
-        3: 290.00,
-        4: 390.00,
-        5: 450.00
-    }
-};
 
 const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ tenantId, teachers = [], vendorId }) => {
     // Form State
@@ -82,12 +58,20 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
 
+    // Pricing carregado do banco (com fallback hardcoded)
+    const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        pricingService.loadPricing(tenantId).then(setPricingMatrix);
+    }, [tenantId]);
+
     // Auto-calculate price
     useEffect(() => {
         if (isManualPrice) return;
-        const price = PRICING_TABLE[duration]?.[frequency] || 0;
+        const price = pricingMatrix[duration]?.[frequency] || 0;
         setMonthlyFee(price);
-    }, [duration, frequency, isManualPrice]);
+    }, [duration, frequency, isManualPrice, pricingMatrix]);
 
     // Update slots when frequency changes
     useEffect(() => {

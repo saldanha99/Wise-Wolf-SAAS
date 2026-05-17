@@ -151,6 +151,17 @@ const PublicRegistration: React.FC = () => {
         setError(null);
 
         try {
+            // BLOQUEANTE: consome a oferta ANTES de criar qualquer estado persistente.
+            // Se o link ja foi usado/expirou, abortamos antes de criar conta/cobrança.
+            if (contractData._offerId) {
+                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: contractData._offerId });
+                if (consumeErr) {
+                    console.error('❌ consume_offer failed:', consumeErr);
+                    throw new Error('Este link de matrícula já foi utilizado ou expirou. Solicite um novo link à escola.');
+                }
+                console.log('✅ Offer consumed:', contractData._offerId);
+            }
+
             // Map numeric duration to Enum
             const durationEnum = contractData.planDuration === 12 ? 'ANNUAL' : contractData.planDuration === 6 ? 'SEMESTER' : 'RECURRENT';
 
@@ -442,13 +453,6 @@ const PublicRegistration: React.FC = () => {
                     // Non-blocking — don't fail registration because of funnel tracking
                     console.error('⚠️ Erro ao atualizar funil (não-bloqueante):', funnelErr);
                 }
-            }
-
-            // Consume the signed offer (if it was JWT-based) to prevent reuse
-            if (contractData._offerId) {
-                supabase.rpc('consume_offer', { p_offer_id: contractData._offerId })
-                    .then(() => console.log('✅ Offer consumed:', contractData._offerId))
-                    .catch((e: any) => console.warn('consume_offer failed (non-blocking):', e));
             }
 
             if (contractData.requiresEnrollment !== false && contractData.enrollmentFee > 0) {

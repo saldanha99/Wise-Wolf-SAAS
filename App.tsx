@@ -234,19 +234,22 @@ const App: React.FC = () => {
           .from('class_logs')
           .select('booking_id, reschedule_id, student_id, class_date')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', user.tenantId)
           .gte('class_date', dateStrStart);
 
         // 2. Fetch ALL regular bookings for the teacher in ONE query
         const { data: bks } = await supabase
           .from('bookings')
           .select('id, time_slot, student_id, start_date, day_of_week')
-          .eq('teacher_id', user.id);
+          .eq('teacher_id', user.id)
+          .eq('tenant_id', user.tenantId);
 
         // 3. Fetch ALL reschedules for the teacher for the current month in ONE query
         const { data: rps } = await supabase
           .from('reschedules')
           .select('id, time, student_id, date')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', user.tenantId)
           .gte('date', dateStrStart);
 
         const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
