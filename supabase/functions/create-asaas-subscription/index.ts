@@ -34,7 +34,7 @@ serve(async (req) => {
             throw new Error("Invalid Request Body: Failed to parse JSON");
         });
 
-        const { user_id, customer, value, dueDay, billingType, planDuration, creditCard, creditCardHolderInfo } = body;
+        const { user_id, customer, value, dueDay, billingType, planDuration, creditCard, creditCardHolderInfo, startDate, proRata, proRataValue } = body;
 
         if (!user_id || !value || !dueDay || !billingType) {
             return new Response(
@@ -66,17 +66,26 @@ serve(async (req) => {
         }
 
         // 2. Calculate nextDueDate
-        const today = new Date();
-        let year = today.getFullYear();
-        let month = today.getMonth(); // 0-11
+        let nextDueDate: string;
 
-        // If today >= dueDay, ensure next payment is next month
-        if (today.getDate() >= dueDay) {
-            month++;
+        if (startDate) {
+            // Use explicit billing start date (pro-rata or deferred billing)
+            const [startYear, startMonth] = startDate.split('-').map(Number);
+            const dueDateObj = new Date(startYear, startMonth - 1, dueDay);
+            nextDueDate = dueDateObj.toISOString().split('T')[0];
+        } else {
+            const today = new Date();
+            let year = today.getFullYear();
+            let month = today.getMonth(); // 0-11
+
+            // If today >= dueDay, ensure next payment is next month
+            if (today.getDate() >= dueDay) {
+                month++;
+            }
+
+            const nextDueDateObj = new Date(year, month, dueDay);
+            nextDueDate = nextDueDateObj.toISOString().split('T')[0];
         }
-
-        const nextDueDateObj = new Date(year, month, dueDay);
-        const nextDueDate = nextDueDateObj.toISOString().split('T')[0];
 
         let maxPayments = null;
         let planLabel = "Recorrente";
@@ -129,6 +138,49 @@ serve(async (req) => {
             // Validate essential holder fields
             if (!payload.creditCardHolderInfo.cpfCnpj) throw new Error("CPF do titular do cartão é obrigatório.");
             if (!payload.creditCardHolderInfo.phone) throw new Error("Telefone do titular do cartão é obrigatório.");
+        }
+
+        // 4.5 Create pro-rata one-time charge if requested
+        let proRataChargeId: string | null = null;
+        if (proRata && proRataValue && proRataValue > 0) {
+            try {
+                let pathPrefixProRata = '/api/v3';
+                if (ASAAS_URL.includes('api-sandbox') || ASAAS_URL.includes('api.asaas.com')) {
+                    pathPrefixProRata = '/v3';
+                }
+
+                const today = new Date();
+                const proRataDueDate = today.toISOString().split('T')[0];
+
+                const proRataPayload: any = {
+                    customer: asaasCustomerId,
+                    billingType: billingType === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX',
+                    value: proRataValue,
+                    dueDate: proRataDueDate,
+                    description: `Pro-Rata - Wise Wolf School (${proRataValue.toFixed(2)} ref. dias restantes do mês)`,
+                };
+
+                if (billingType === 'CREDIT_CARD' && payload.creditCard) {
+                    proRataPayload.creditCard = payload.creditCard;
+                    proRataPayload.creditCardHolderInfo = payload.creditCardHolderInfo;
+                }
+
+                const proRataRes = await fetch(`${ASAAS_URL}${pathPrefixProRata}/payments`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'access_token': ASAAS_API_KEY! },
+                    body: JSON.stringify(proRataPayload),
+                });
+
+                if (proRataRes.ok) {
+                    const proRataData = await proRataRes.json();
+                    proRataChargeId = proRataData.id;
+                    console.log(`[Subscription] Pro-rata charge created: ${proRataChargeId}`);
+                } else {
+                    console.warn('[Subscription] Pro-rata charge failed (non-blocking):', await proRataRes.text());
+                }
+            } catch (proRataErr: any) {
+                console.error('[Subscription] Pro-rata error (non-blocking):', proRataErr.message);
+            }
         }
 
         // 5. Build Asaas Payload including Remote IP
@@ -245,7 +297,7 @@ serve(async (req) => {
         }
 
         return new Response(
-            JSON.stringify({ success: true, subscription_id: subscriptionId }),
+            JSON.stringify({ success: true, subscription_id: subscriptionId, pro_rata_charge_id: proRataChargeId }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
         )
 

@@ -25,9 +25,15 @@ async function callGemini(apiKey, text) {
         contents: [{ parts: [{ text: `Proofread this: "${text}"` }] }],
     };
 
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal });
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "Error";
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 const server = createServer(async (req, res) => {

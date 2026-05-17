@@ -41,6 +41,13 @@ export default function WolfieLiveCallV2({
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
     const recognitionRef = useRef<any>(null);
     const finalTranscriptRef = useRef<string>('');
+    // Ref espelha o state para que closures de eventos do browser enxerguem o valor atual
+    const callStateRef = useRef<CallState>('IDLE');
+
+    const updateState = (s: CallState) => {
+        callStateRef.current = s;
+        setState(s);
+    };
 
     // Format Scenario Title
     const missionTitle = scenarioId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -96,8 +103,21 @@ export default function WolfieLiveCallV2({
                     }
                 };
 
+                // Auto-reinicia quando o browser encerra a sessão (acontece após ~5min)
+                recognition.onend = () => {
+                    if (callStateRef.current === 'LISTENING') {
+                        try { recognition.start(); } catch (e) { /* já reiniciando */ }
+                    }
+                };
+
                 recognition.onerror = (event: any) => {
+                    if (event.error === 'aborted') return; // encerramento intencional
                     console.error("Speech recognition error", event.error);
+                    if (callStateRef.current === 'LISTENING') {
+                        setTimeout(() => {
+                            try { recognition.start(); } catch (e) {}
+                        }, 300);
+                    }
                 };
 
                 recognitionRef.current = recognition;
@@ -112,6 +132,12 @@ export default function WolfieLiveCallV2({
 
         return () => {
             stopSpeaking();
+            if (recognitionRef.current) {
+                try { recognitionRef.current.abort(); } catch (e) {}
+            }
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                try { mediaRecorderRef.current.stop(); } catch (e) {}
+            }
         };
     }, []);
 
@@ -138,7 +164,7 @@ export default function WolfieLiveCallV2({
             } catch (e) { console.error(e) }
         }
 
-        setState('LISTENING');
+        updateState('LISTENING');
         setSubtitle('Ouvindo...');
         setError(null);
     };
@@ -153,7 +179,7 @@ export default function WolfieLiveCallV2({
             } catch (e) { console.error(e) }
         }
 
-        setState('THINKING');
+        updateState('THINKING');
         setSubtitle('Hmm, let me think...');
 
         setTimeout(() => {
@@ -185,9 +211,12 @@ export default function WolfieLiveCallV2({
                     conversationId: `${user.id}-${scenarioId}-${Date.now()}` // Simplify session tracking for now
                 };
 
-                const { data, error: supabaseError } = await supabase.functions.invoke('wolfie-brain', {
-                    body: payload
-                });
+                // Timeout de 25s para evitar travamento indefinido
+                const invokePromise = supabase.functions.invoke('wolfie-brain', { body: payload });
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Tempo de resposta excedido (25s). Tente novamente.')), 25000)
+                );
+                const { data, error: supabaseError } = await Promise.race([invokePromise, timeoutPromise]);
 
                 if (supabaseError) throw supabaseError;
                 if (data.error) throw new Error(data.error);
@@ -234,14 +263,14 @@ export default function WolfieLiveCallV2({
 
         } catch (err: any) {
             console.error("Call Error:", err);
-            setError("Wolfie teve um erro técnico ao falar com o servidor de IA. Tente novamente em alguns segundos.");
-            setState('IDLE');
+            setError(err.message || "Wolfie teve um erro técnico ao falar com o servidor de IA. Tente novamente em alguns segundos.");
+            updateState('IDLE');
             setSubtitle('Aperte para tentar novamente.');
         }
     };
 
     const speak = (text: string) => {
-        setState('SPEAKING');
+        updateState('SPEAKING');
         setSubtitle('');
         window.speechSynthesis.cancel(); // Clear queue
 
@@ -249,7 +278,7 @@ export default function WolfieLiveCallV2({
         const blocks = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
         if (blocks.length === 0) {
-            setState('IDLE');
+            updateState('IDLE');
             return;
         }
 
@@ -269,7 +298,7 @@ export default function WolfieLiveCallV2({
 
         const speakChunk = (chunkIndex: number) => {
             if (chunkIndex >= blocks.length) {
-                setState('IDLE');
+                updateState('IDLE');
                 return;
             }
 

@@ -32,7 +32,8 @@ import {
     Brain, // Added
     Briefcase,
     Gift,
-    UserPlus
+    UserPlus,
+    TrendingUp
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
 
@@ -131,10 +132,19 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'automation', label: 'Smart', icon: Zap },
     ];
 
+    const salespersonMenu: MenuItem[] = [
+        { id: 'vendor_dashboard', label: 'Dashboard', icon: TrendingUp },
+        { id: 'vendor_schedule', label: 'Agenda Professores', icon: CalendarClock },
+        { id: 'vendor_trial', label: 'Link Experimental', icon: Zap },
+        { id: 'vendor_enrollment', label: 'Gerar Matrícula', icon: UserPlus },
+        { id: 'vendor_commissions', label: 'Minhas Comissões', icon: DollarSign },
+    ];
+
     const getMenuItems = () => {
         if (user.role === UserRole.SUPER_ADMIN) return superAdminMenu;
         if (user.role === UserRole.SCHOOL_ADMIN) return schoolAdminMenu;
         if (user.role === UserRole.STUDENT) return studentMenu;
+        if (user.role === UserRole.SALESPERSON) return salespersonMenu;
         return teacherMenu;
     };
 
