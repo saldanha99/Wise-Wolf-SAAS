@@ -9,6 +9,7 @@ import { APP_BASE_URL } from '../constants';
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
     teachers?: any[];
+    vendorId?: string; // ID do vendedor para rastreamento de comissão
 }
 
 // Business Rules Configuration
@@ -36,7 +37,7 @@ const PRICING_TABLE: Record<number, Record<number, number>> = {
     }
 };
 
-const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ tenantId, teachers = [] }) => {
+const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ tenantId, teachers = [], vendorId }) => {
     // Form State
     const [duration, setDuration] = useState<number>(12); // 12, 6, 1
     const [frequency, setFrequency] = useState<number>(2); // 2, 3, 4, 5
@@ -63,6 +64,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
     // Date State
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Pro-rata & billing start month
+    const [enableProRata, setEnableProRata] = useState(false);
+    const [billingStartMonth, setBillingStartMonth] = useState(() => {
+        const now = new Date();
+        if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
 
     // Link State
     const [generatedLink, setGeneratedLink] = useState('');
@@ -134,32 +143,56 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         });
     };
 
-    const generateLink = () => {
+    const generateLink = async () => {
         if (!tenantId) return alert("Erro: ID da unidade não encontrado.");
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
 
         // Filter valid schedule slots
         const validSchedule = scheduleSlots.filter(s => s.day && s.time);
 
-        const data = {
-            unitId: tenantId,
-            value: monthlyFee,
-            planDuration: duration,
-            classesPerWeek: frequency,
-            dueDay: dueDay,
-            professorId: selectedProfessor || null,
-            professorId2: selectedProfessor2 || null,
-            schedule: validSchedule.length > 0 ? validSchedule : null,
-            startDate: startDate,
-            requiresEnrollment: duration !== 0, // Avulso não precisa de ficha de matrícula (exceto se forçado)
-            enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0
-        };
+        setGenerating(true);
+        try {
+            // Calculate pro-rata value
+            const todayPR = new Date();
+            const proRataValue = enableProRata ? (() => {
+                const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
+                const remainingDays = daysInMonth - todayPR.getDate() + 1;
+                return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
+            })() : 0;
 
-        const jsonStr = JSON.stringify(data);
-        const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-        const url = `${APP_BASE_URL}/matricula?data=${base64}`;
-        setGeneratedLink(url);
-        setCopied(false);
+            const payload = {
+                unitId: tenantId,
+                value: monthlyFee,
+                planDuration: duration,
+                classesPerWeek: frequency,
+                dueDay: dueDay,
+                professorId: selectedProfessor || null,
+                professorId2: selectedProfessor2 || null,
+                schedule: validSchedule.length > 0 ? validSchedule : null,
+                startDate: startDate,
+                requiresEnrollment: duration !== 0,
+                enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
+                enableProRata,
+                proRataValue: enableProRata ? proRataValue : undefined,
+                billingStartMonth,
+                vendorId: vendorId || null
+            };
+
+            const result = await createSignedOffer({
+                kind: 'ENROLLMENT',
+                payload,
+                tenantId,
+                expiresIn: '30d',
+            });
+
+            setGeneratedLink(result.url);
+            setCopied(false);
+        } catch (err) {
+            console.error('Failed to generate signed link:', err);
+            alert('Erro ao gerar link. Tente novamente.');
+        } finally {
+            setGenerating(false);
+        }
     };
 
     const copyToClipboard = () => {
@@ -349,6 +382,47 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         : 'A taxa de matrícula não será cobrada neste link.'}
                                 </p>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* PRO-RATA & BILLING START */}
+                <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-6 border border-amber-100 dark:border-amber-800/30">
+                    <h3 className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                        <Calendar size={14} /> Início de Cobrança (Opcional)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de início da mensalidade</label>
+                            <input
+                                type="month"
+                                value={billingStartMonth}
+                                onChange={(e) => setBillingStartMonth(e.target.value)}
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1">Escolha um mês futuro para diferir o início da cobrança recorrente.</p>
+                        </div>
+                        <div className="flex flex-col justify-center gap-2">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <div className="relative flex-shrink-0">
+                                    <input type="checkbox" checked={enableProRata} onChange={(e) => setEnableProRata(e.target.checked)} className="sr-only" />
+                                    <div className={`w-10 h-6 rounded-full transition-colors ${enableProRata ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${enableProRata ? 'translate-x-4' : ''}`} />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Cobrar Pro-Rata</p>
+                                    <p className="text-[9px] text-slate-400">Cobrança proporcional pelos dias do mês atual</p>
+                                </div>
+                            </label>
+                            {enableProRata && monthlyFee > 0 && (
+                                <div className="ml-13 pl-14 text-xs font-black text-amber-600 dark:text-amber-400">
+                                    Valor proporcional: R$ {(() => {
+                                        const d = new Date();
+                                        const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                                        return ((monthlyFee / dim) * (dim - d.getDate() + 1)).toFixed(2);
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

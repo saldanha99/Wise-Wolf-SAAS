@@ -3,7 +3,8 @@ export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   SCHOOL_ADMIN = 'SCHOOL_ADMIN',
   TEACHER = 'TEACHER',
-  STUDENT = 'STUDENT'
+  STUDENT = 'STUDENT',
+  SALESPERSON = 'SALESPERSON'
 }
 
 export enum PresenceStatus {
@@ -93,6 +94,7 @@ export interface Teacher {
   avatar: string;
   module: string;
   modules: string[];
+  specializations: string[]; // ex: ['TOEFL / IELTS', 'Business English']
   hourlyRate: number;
   pixKey: string;
   phone: string;
@@ -102,6 +104,16 @@ export interface Teacher {
   tpi: number;
   status: 'Ativo' | 'Férias' | 'Inativo';
   occupancy: number;
+}
+
+export interface Vendor {
+  id: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: UserRole.SALESPERSON;
+  avatar?: string;
+  commission_rate: number; // valor em centavos por matrícula
 }
 
 export type ClosingStatus =

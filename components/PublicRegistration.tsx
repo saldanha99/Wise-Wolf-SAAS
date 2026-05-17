@@ -354,6 +354,29 @@ const PublicRegistration: React.FC = () => {
                 setSignedPdfUrl(signatureDataObj.url);
             }
 
+            // ===== VENDOR COMMISSION TRACKING =====
+            if (contractData.vendorId && userId) {
+                try {
+                    const { data: vendorProfile } = await supabase
+                        .from('profiles')
+                        .select('commission_rate')
+                        .eq('id', contractData.vendorId)
+                        .single();
+
+                    const commissionAmount = vendorProfile?.commission_rate ?? 3000;
+
+                    await supabase.from('vendor_commissions').insert({
+                        vendor_id: contractData.vendorId,
+                        student_id: userId,
+                        amount_brl: commissionAmount,
+                        status: 'PENDING',
+                        tenant_id: contractData.unitId,
+                    });
+                } catch (commErr) {
+                    console.error('⚠️ Erro ao registrar comissão (não-bloqueante):', commErr);
+                }
+            }
+
             // ===== OPPORTUNITY CONVERSION TRACKING =====
             // If this link came from an experimental trial, mark the opportunity as WON
             if (contractData.opportunityId && userId) {

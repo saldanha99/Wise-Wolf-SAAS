@@ -19,6 +19,7 @@ import {
     FileText
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
+import { TEACHER_SPECIALIZATIONS } from '../constants';
 
 import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
@@ -56,9 +57,11 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     };
     const [formData, setFormData] = useState({ ...initialFormState, status: 'Ativo' });
     const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
+    const [selectedSpecs, setSelectedSpecs] = useState<string[]>([]);
 
     const handleEdit = (teacher: Teacher) => {
         setEditingTeacherId(teacher.id);
+        setSelectedSpecs(teacher.specializations || []);
         setFormData({
             name: teacher.name,
             email: teacher.email,
@@ -73,6 +76,12 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
             contractUrl: (teacher as any).contractUrl || ''
         } as any);
         setIsModalOpen(true);
+    };
+
+    const toggleSpec = (spec: string) => {
+        setSelectedSpecs(prev =>
+            prev.includes(spec) ? prev.filter(s => s !== spec) : [...prev, spec]
+        );
     };
 
     const handleSave = async () => {
@@ -96,7 +105,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         status: (formData as any).status,
                         meeting_link: (formData as any).meetingLink,
                         whatsapp_instance: (formData as any).whatsappInstance,
-                        contract_url: (formData as any).contractUrl || null
+                        contract_url: (formData as any).contractUrl || null,
+                        specializations: selectedSpecs
                     })
                     .eq('id', editingTeacherId);
 
@@ -174,6 +184,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     avatar: `https://ui-avatars.com/api/?name=${formData.name}&background=random`,
                     module: formData.module,
                     modules: [formData.module],
+                    specializations: selectedSpecs,
                     hourlyRate: parseFloat(formData.hourlyRate),
                     pixKey: formData.pixKey,
                     phone: formData.phone,
@@ -190,6 +201,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
             setIsModalOpen(false);
             setEditingTeacherId(null);
+            setSelectedSpecs([]);
             setFormData(initialFormState as any);
         } catch (err: any) {
             alert("Erro ao salvar: " + err.message);
@@ -302,9 +314,25 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                         </span>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <BookOpen size={14} className="text-tenant-primary" />
-                                            <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.module}</span>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-2">
+                                                <BookOpen size={14} className="text-tenant-primary shrink-0" />
+                                                <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.module}</span>
+                                            </div>
+                                            {(teacher.specializations || []).length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {(teacher.specializations || []).slice(0, 2).map(s => (
+                                                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-100 dark:border-amber-800">
+                                                            {s}
+                                                        </span>
+                                                    ))}
+                                                    {(teacher.specializations || []).length > 2 && (
+                                                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 text-gray-400 text-[9px] font-black rounded-full">
+                                                            +{(teacher.specializations || []).length - 2}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -420,6 +448,29 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 </select>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+
+                                {/* Especialização */}
+                                <div className="space-y-4 md:col-span-2">
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-amber-600 flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600" /> Especialização (selecione todas que se aplicam)
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {TEACHER_SPECIALIZATIONS.map(spec => (
+                                            <button
+                                                key={spec}
+                                                type="button"
+                                                onClick={() => toggleSpec(spec)}
+                                                className={`px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+                                                    selectedSpecs.includes(spec)
+                                                        ? 'bg-amber-500 text-white border-amber-500 shadow-md'
+                                                        : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:border-amber-400 hover:text-amber-600'
+                                                }`}
+                                            >
+                                                {selectedSpecs.includes(spec) ? '✓ ' : ''}{spec}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
 
