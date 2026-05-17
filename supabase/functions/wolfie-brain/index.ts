@@ -32,10 +32,17 @@ export interface WolfieConfig {
 
 interface AgentResponse {
     chatResponse: string;
+    transcribedText?: string | null;
     correction: {
         original: string;
         corrected: string;
         explanation_pt: string;
+    } | null;
+    pronunciation?: {
+        score: number;
+        level: 'POOR' | 'FAIR' | 'GOOD' | 'EXCELLENT';
+        issues: string[];
+        tip_pt: string;
     } | null;
     translation: string | null;
     vocabulary: {
@@ -61,7 +68,19 @@ interface AgentResponse {
 const WOLFIE_MOODS = ['bubbly', 'contemplative', 'cheerful', 'playful', 'warm'] as const;
 const sessionMood = WOLFIE_MOODS[Math.floor(Math.random() * WOLFIE_MOODS.length)];
 
-function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string): string {
+interface WolfMemory {
+    accumulated_context?: string;
+    weak_points?: string[];
+    strong_points?: string[];
+    recommended_approach?: string;
+    recent_corrections?: { wrong: string; correct: string; explanation?: string }[];
+    short_term_goal?: string;
+    english_for?: string;
+    preferred_topics?: string[];
+    avoided_topics?: string[];
+}
+
+function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string, memory?: WolfMemory): string {
     const isPedagogicalAdvisor = previousContext?.includes('Pedagogical Advisor');
 
     if (isPedagogicalAdvisor) {
@@ -91,6 +110,30 @@ RETURN ONLY A VALID JSON OBJECT EXACTLY LIKE THIS (NO MARKDOWN WRAPPERS):
     const trans = translationEnabled ? `"Natural PT-BR translation of your English chatResponse (if your response was in English)"` : "null";
     const vocab = vocabularyEnabled ? `null | {\n    "keyTerms": [\n      { "term": "word", "definition": "meaning", "level": "${studentLevel}", "synonyms": ["syn1"], "example": "example" }\n    ],\n    "grammarNote": "short note in PT if a specific grammatical point is relevant"\n  }` : "null";
 
+    // Memory block: o que sabemos sobre o aluno entre sessoes
+    let memoryBlock = '';
+    if (memory) {
+        const parts: string[] = [];
+        if (memory.english_for) parts.push(`- Studying English for: ${memory.english_for}`);
+        if (memory.short_term_goal) parts.push(`- Short-term goal: ${memory.short_term_goal}`);
+        if (memory.preferred_topics?.length) parts.push(`- Likes to talk about: ${memory.preferred_topics.join(', ')}`);
+        if (memory.avoided_topics?.length) parts.push(`- Avoid these topics: ${memory.avoided_topics.join(', ')}`);
+        if (memory.accumulated_context) parts.push(`- Background: ${memory.accumulated_context}`);
+        if (memory.strong_points?.length) parts.push(`- Already strong at: ${memory.strong_points.slice(0, 4).join(', ')}`);
+        if (memory.weak_points?.length) parts.push(`- Still struggles with: ${memory.weak_points.slice(0, 4).join(', ')}`);
+        if (memory.recommended_approach) parts.push(`- Recommended teaching approach: ${memory.recommended_approach}`);
+
+        if (memory.recent_corrections?.length) {
+            const recent = memory.recent_corrections.slice(0, 3)
+                .map(c => `  · said "${c.wrong}" → should be "${c.correct}"`).join('\n');
+            parts.push(`- Recent corrections you made (don't repeat the same fix; if they repeat the SAME error, name it explicitly so they notice):\n${recent}`);
+        }
+
+        if (parts.length > 0) {
+            memoryBlock = `\nSTUDENT MEMORY (from past sessions — use it naturally, never quote it verbatim):\n${parts.join('\n')}\n`;
+        }
+    }
+
     return `You are WOLFIE (Smart Wolf), an advanced native English Tutor and friendly Conversation Partner from Wise Wolf.
 YOUR MOOD THIS SESSION: ${sessionMood}. Let this subtly influence your tone.
 
@@ -98,7 +141,7 @@ STUDENT INFO:
 - Name: ${studentName || 'Student'}
 - Level: ${studentLevel}
 - Goal: ${studentGoal || 'practice speaking fluently'}
-
+${memoryBlock}
 ${levelGuidance}
 
 CRITICAL INSTRUCTION - STRUCTURED JSON OUTPUT ONLY:
@@ -108,17 +151,26 @@ DO NOT WRAP THE JSON IN MARKDOWN BLOCKS (\`\`\`json). RETURN ONLY THE RAW BRACES
 EXPECTED JSON FORMAT:
 {
   "chatResponse": "Your actual spoken reply to the student. ${chatLangInstruct} Use contractions (I'm, don't). DO NOT include markdown, emojis, asterisks or bullet points here because it will be passed to Text-to-Speech.",
-  
+
+  "transcribedText": "If the input was audio, write what the student ACTUALLY said in English (best transcription). Null if input was text-only.",
+
   "correction": null | {
     "original": "the exact text the student got wrong, if any major grammar/lexical errors occurred in their English",
     "corrected": "the natural/correct way to say it",
     "explanation_pt": "short explanation in Portuguese about the correction"
   },
-  
+
+  "pronunciation": null | {
+    "score": 0-100,
+    "level": "POOR" | "FAIR" | "GOOD" | "EXCELLENT",
+    "issues": ["concise issue 1 (e.g. 'th' pronounced as 'd'", "vowel /æ/ confused with /e/"],
+    "tip_pt": "ONE actionable tip in Portuguese (max 1 sentence)"
+  },
+
   "translation": ${trans},
-  
+
   "vocabulary": ${vocab},
-  
+
   "quiz": null
 }
 
@@ -127,6 +179,14 @@ RULES:
 - If the student made a noticeable English error, provide a 'correction' object. Otherwise, set it to null.
 - If 'vocabularyEnabled' is true and you used useful terms, populate 'vocabulary' (up to 2 terms). Otherwise, set to null.
 - The 'chatResponse' is text-to-speech, so make it conversational and VERY natural to speak aloud.
+
+PRONUNCIATION RULES (when audio is provided):
+- LISTEN to the actual audio natively. Don't only judge transcription.
+- Set 'pronunciation' object whenever you can hear ENGLISH speech (skip for PT-only).
+- score: holistic 0-100 (clarity, vowels, consonants, rhythm, intonation).
+- issues: at most 2 SHORT phonetic issues. Empty array if pronunciation is good.
+- tip_pt: ONE specific actionable tip in Portuguese, friendly tone. Skip empty tips.
+- If the student spoke only Portuguese, set 'pronunciation' to null (we only score English speech).
 `;
 }
 
@@ -220,9 +280,61 @@ serve(async (req) => {
 
         const { data: profile } = await supabaseClient
             .from('profiles')
-            .select('full_name, goal, student_profile_json')
+            .select('full_name, goal, student_profile_json, english_for, short_term_goal, preferred_topics, avoided_topics, personality')
             .eq('id', user.id)
             .single();
+
+        // ── Wolf Intelligence: memoria entre sessoes ──
+        const [wolfIntelRes, recentCorrectionsRes] = await Promise.all([
+            supabaseClient
+                .from('wolf_intelligence')
+                .select('accumulated_context, weak_points, strong_points, recommended_approach')
+                .eq('student_id', user.id)
+                .maybeSingle(),
+            supabaseClient
+                .from('wolfie_corrections')
+                .select('wrong_sentence, correct_sentence, explanation_pt, created_at, session_id')
+                .eq('session_id', conversationId || '00000000-0000-0000-0000-000000000000') // dummy se nao houver
+                .order('created_at', { ascending: false })
+                .limit(5)
+        ]);
+
+        // Se nao temos correcoes da sessao atual ainda, busca historicas via sessoes do aluno
+        let historicCorrections: any[] = recentCorrectionsRes.data || [];
+        if (historicCorrections.length === 0) {
+            const { data: sessions } = await supabaseClient
+                .from('wolfie_sessions')
+                .select('id')
+                .eq('student_id', user.id)
+                .order('started_at', { ascending: false })
+                .limit(5);
+            const sessionIds = (sessions || []).map((s: any) => s.id);
+            if (sessionIds.length > 0) {
+                const { data: corr } = await supabaseClient
+                    .from('wolfie_corrections')
+                    .select('wrong_sentence, correct_sentence, explanation_pt')
+                    .in('session_id', sessionIds)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+                historicCorrections = corr || [];
+            }
+        }
+
+        const wolfMemory: WolfMemory = {
+            accumulated_context: wolfIntelRes.data?.accumulated_context,
+            weak_points: wolfIntelRes.data?.weak_points,
+            strong_points: wolfIntelRes.data?.strong_points,
+            recommended_approach: wolfIntelRes.data?.recommended_approach,
+            short_term_goal: profile?.short_term_goal,
+            english_for: profile?.english_for,
+            preferred_topics: profile?.preferred_topics,
+            avoided_topics: profile?.avoided_topics,
+            recent_corrections: historicCorrections.map((c: any) => ({
+                wrong: c.wrong_sentence,
+                correct: c.correct_sentence,
+                explanation: c.explanation_pt,
+            })),
+        };
 
         const now = new Date();
         const { data: payments } = await supabaseClient
@@ -299,7 +411,7 @@ serve(async (req) => {
         
         console.log(`[Agent:SingleGemini] Starting...`);
 
-        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext);
+        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory);
 
         const aiRawResult = await callGemini(
             geminiKey,
@@ -343,13 +455,43 @@ serve(async (req) => {
                     explanation_pt: parsedResult.correction.explanation_pt,
                     error_type: 'general'
                 }).catch((e: any) => console.error("Error saving correction:", e));
+
+                // ── Atualizar wolf_intelligence incrementalmente (non-blocking) ──
+                // Extrai um "weak_point" sucinto da explicacao para o feed entre sessoes.
+                try {
+                    const newWeakPoint = (parsedResult.correction.explanation_pt || parsedResult.correction.original || '').slice(0, 140);
+                    if (newWeakPoint) {
+                        const existingWeaks = wolfMemory.weak_points || [];
+                        // Dedupe simples por substring para evitar lista repetitiva
+                        const isDuplicate = existingWeaks.some((w: string) =>
+                            w.toLowerCase().includes(newWeakPoint.toLowerCase().slice(0, 30))
+                            || newWeakPoint.toLowerCase().includes(w.toLowerCase().slice(0, 30))
+                        );
+                        if (!isDuplicate) {
+                            const updatedWeaks = [newWeakPoint, ...existingWeaks].slice(0, 10);
+                            await supabaseClient.from('wolf_intelligence').upsert({
+                                student_id: user.id,
+                                tenant_id: user.user_metadata?.tenant_id || profile?.tenant_id || null,
+                                weak_points: updatedWeaks,
+                                total_classes_analyzed: (wolfIntelRes.data as any)?.total_classes_analyzed
+                                    ? ((wolfIntelRes.data as any).total_classes_analyzed + 1)
+                                    : 1,
+                                last_updated_at: new Date().toISOString(),
+                            }, { onConflict: 'student_id' });
+                        }
+                    }
+                } catch (memErr) {
+                    console.error('Error updating wolf_intelligence:', memErr);
+                }
             }
         }
 
         // ── Build Structured Response ──
         const agentResponse: AgentResponse = {
             chatResponse: parsedResult.chatResponse,
+            transcribedText: parsedResult.transcribedText ?? null,
             correction: parsedResult.correction,
+            pronunciation: parsedResult.pronunciation ?? null,
             translation: parsedResult.translation,
             vocabulary: parsedResult.vocabulary,
             quiz: parsedResult.quiz,

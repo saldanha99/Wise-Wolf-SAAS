@@ -6,6 +6,7 @@ import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
 import ContractView from './ContractView';
 import StudentActivities from './StudentActivities';
+import StudentLearningPaths from './StudentLearningPaths';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
@@ -363,7 +364,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
         </div>
       </div>
 
-      {/* 5. COMPLEMENTARY ACTIVITIES */}
+      {/* 5. LEARNING PATHS (trilhas didaticas) */}
+      <StudentLearningPaths userId={user.id} tenantId={tenantId || profile?.tenant_id} wolfieConfig={profile?.wolfie_settings} />
+
+      {/* 6. COMPLEMENTARY ACTIVITIES (geradas por IA) */}
       <StudentActivities userId={user.id} tenantId={tenantId || profile?.tenant_id} />
 
       {showContract && (

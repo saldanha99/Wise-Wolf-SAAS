@@ -35,6 +35,9 @@ export default function WolfieLiveCallV2({
     const [scenarioStep, setScenarioStep] = useState(1);
     const [error, setError] = useState<string | null>(null);
     const [activeCorrectionPopUp, setActiveCorrectionPopUp] = useState<CorrectionItem | null>(null);
+    // Pronunciation score retornado pelo backend (Phase 2 - Gemini Audio)
+    const [pronunciation, setPronunciation] = useState<null | { score: number; level: string; issues: string[]; tip_pt: string }>(null);
+    const [pronHistory, setPronHistory] = useState<{ score: number; level: string; ts: number }[]>([]);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -195,35 +198,37 @@ export default function WolfieLiveCallV2({
                 if (supabaseError) throw supabaseError;
                 if (data.error) throw new Error(data.error);
 
-                const rawAiText = data.aiText || '';
+                const cleanAiText = data.aiText || '';
 
-                // Parse Corrections from the raw text using Regex to extract the JSON block
-                let cleanAiText = rawAiText;
-                const correctionRegex = /\[CORRECTION_JSON\s*:\s*({.*?})\]/s;
-                const match = rawAiText.match(correctionRegex);
-
-                if (match) {
-                    try {
-                        const parsedCorr = JSON.parse(match[1]);
-                        const newCorr: CorrectionItem = {
-                            id: Math.random().toString(36).substring(7),
-                            explanation: parsedCorr.explanation_pt,
-                            wrongSentence: parsedCorr.wrong_sentence,
-                            correctSentence: parsedCorr.correct_sentence
-                        };
-                        setCorrections(prev => [newCorr, ...prev]);
-                        setActiveTab('CORRECTIONS'); // Auto switch to corrections tab to show feedback
-                        setActiveCorrectionPopUp(newCorr); // Show modal directly
-                    } catch (e) {
-                        console.error("Error parsing correction JSON", e);
-                    }
-                    // Remove the correction block from the text that will be spoken
-                    cleanAiText = rawAiText.replace(correctionRegex, '').trim();
+                // Estruturado direto do backend (substitui o regex parsing antigo)
+                if (data.correction && data.correction.original) {
+                    const newCorr: CorrectionItem = {
+                        id: Math.random().toString(36).substring(7),
+                        explanation: data.correction.explanation_pt,
+                        wrongSentence: data.correction.original,
+                        correctSentence: data.correction.corrected,
+                    };
+                    setCorrections(prev => [newCorr, ...prev]);
+                    setActiveTab('CORRECTIONS');
+                    setActiveCorrectionPopUp(newCorr);
                 }
+
+                // Pronuncia (Phase 2): score + tip
+                if (data.pronunciation && typeof data.pronunciation.score === 'number') {
+                    setPronunciation(data.pronunciation);
+                    setPronHistory(prev => [...prev, {
+                        score: data.pronunciation.score,
+                        level: data.pronunciation.level,
+                        ts: Date.now()
+                    }].slice(-20));
+                }
+
+                // Prefere a transcricao do Gemini (que ouve o ingles real) se houver
+                const userDisplayText = data.transcribedText || userText || '[Mensagem de Áudio]';
 
                 setTranscript(prev => [
                     ...prev,
-                    { role: 'user', content: userText || '[Mensagem de Áudio]' },
+                    { role: 'user', content: userDisplayText },
                     { role: 'assistant', content: cleanAiText }
                 ]);
 
@@ -471,6 +476,46 @@ export default function WolfieLiveCallV2({
 
                     {/* RIGHT: SIDEBAR (Transcript & Corrections) */}
                     <div className="w-full lg:w-[450px] bg-slate-950/50 flex flex-col border-t lg:border-t-0 border-white/5">
+                        {/* Pronunciation Banner (Phase 2 - Gemini Audio) */}
+                        {pronunciation && (
+                            <div className={`px-4 py-3 border-b border-white/5 ${
+                                pronunciation.level === 'EXCELLENT' ? 'bg-emerald-500/10' :
+                                pronunciation.level === 'GOOD' ? 'bg-blue-500/10' :
+                                pronunciation.level === 'FAIR' ? 'bg-amber-500/10' :
+                                'bg-rose-500/10'
+                            }`}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`text-2xl font-black ${
+                                            pronunciation.level === 'EXCELLENT' ? 'text-emerald-400' :
+                                            pronunciation.level === 'GOOD' ? 'text-blue-400' :
+                                            pronunciation.level === 'FAIR' ? 'text-amber-400' :
+                                            'text-rose-400'
+                                        }`}>{pronunciation.score}</div>
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-widest text-brand-muted font-bold">Pronuncia</p>
+                                            <p className="text-xs font-bold text-white">{pronunciation.level}</p>
+                                        </div>
+                                    </div>
+                                    {pronHistory.length > 1 && (
+                                        <div className="text-[10px] text-brand-muted">
+                                            Média: <span className="text-white font-bold">{Math.round(pronHistory.reduce((s, p) => s + p.score, 0) / pronHistory.length)}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                {pronunciation.tip_pt && (
+                                    <p className="text-xs text-slate-300 mt-2 leading-relaxed">💡 {pronunciation.tip_pt}</p>
+                                )}
+                                {pronunciation.issues && pronunciation.issues.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {pronunciation.issues.map((iss, i) => (
+                                            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300">{iss}</span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Tabs */}
                         <div className="flex px-4 pt-4 border-b border-white/5 gap-2">
                             <button
