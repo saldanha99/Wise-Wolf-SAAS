@@ -8,6 +8,7 @@ import ContractView from './ContractView';
 import StudentActivities from './StudentActivities';
 import StudentLearningPaths from './StudentLearningPaths';
 import SkillsRadar from './SkillsRadar';
+import VocabReviewCard from './VocabReviewCard';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
@@ -364,6 +365,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           </div>
         </div>
       </div>
+
+      {/* 4b. VOCAB REVIEW (Spaced Repetition - so aparece se ha cards due) */}
+      <VocabReviewCard userId={user.id} />
 
       {/* 5. SKILLS RADAR (evolucao por habilidade) */}
       <SkillsRadar userId={user.id} />

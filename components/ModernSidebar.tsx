@@ -83,6 +83,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'students', label: 'Alunos', icon: Users },
         { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles },
         { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
+        { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
         { id: 'schedule', label: 'Agenda', icon: Calendar },
         { id: 'invoices', label: 'Notas Fiscais', icon: FileText },
         { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign },
@@ -117,6 +118,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'financial', label: 'Caixa', icon: Wallet },
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
         { id: 'learning_paths_builder', label: 'Trilhas', icon: Target },
+        { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
         { id: 'automation', label: 'Smart', icon: Zap },
         { id: 'training', label: 'Treinamento', icon: GraduationCap },
         { id: 'settings_school', label: 'Branding', icon: Palette },

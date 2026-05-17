@@ -130,7 +130,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6">
-                    {activity.type === 'vocab_cards' && <VocabCardsRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
+                    {activity.type === 'vocab_cards' && <VocabCardsRunner content={activity.content} activityId={activity.id} userId={userId} onFinish={handleSubmit} saving={saving} />}
                     {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
                     {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} />}
                     {activity.type === 'reading' && <ReadingRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
@@ -153,7 +153,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 // ─────────────────────────────────────────────────────────────
 // VOCAB CARDS
 // ─────────────────────────────────────────────────────────────
-const VocabCardsRunner: React.FC<{ content: any; onFinish: (score: number) => void; saving: boolean }> = ({ content, onFinish, saving }) => {
+const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: string; onFinish: (score: number) => void; saving: boolean }> = ({ content, activityId, userId, onFinish, saving }) => {
     const cards = content.cards || [];
     const [idx, setIdx] = useState(0);
     const [flipped, setFlipped] = useState(false);
@@ -164,8 +164,27 @@ const VocabCardsRunner: React.FC<{ content: any; onFinish: (score: number) => vo
     const card = cards[idx];
     const isLast = idx === cards.length - 1;
 
+    // SRS: agenda revisao para cards "nao sei ainda" (1 dia depois)
+    const scheduleReview = async (card: any) => {
+        try {
+            await supabase.from('student_vocab_reviews').upsert({
+                student_id: userId,
+                term: card.term,
+                translation: card.translation,
+                example: card.example,
+                source_activity_id: activityId,
+                interval_days: 1,
+                consecutive_correct: 0,
+                next_review_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            }, { onConflict: 'student_id, term', ignoreDuplicates: false });
+        } catch (err) {
+            console.error('scheduleReview error:', err);
+        }
+    };
+
     const markKnown = (known: boolean) => {
         if (known) setKnownCount(k => k + 1);
+        else scheduleReview(card); // marca para revisar amanha
         if (isLast) {
             const finalScore = Math.round(((knownCount + (known ? 1 : 0)) / cards.length) * 100);
             onFinish(finalScore);

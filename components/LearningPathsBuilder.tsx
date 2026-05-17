@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
     Plus, Edit2, Trash2, Save, X, ChevronRight, ChevronLeft, Loader2, Sparkles,
     BookOpen, Briefcase, GraduationCap, Plane, Cpu, Heart, Globe, Target,
-    Layers, FileText, Mic, HelpCircle, Pen, Check
+    Layers, FileText, Mic, HelpCircle, Pen, Check, GripVertical, UserPlus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateUnitActivityContent } from '../services/geminiService';
+import PathAssignmentModal from './PathAssignmentModal';
 
 interface Props {
     user: { id: string; tenantId?: string; role: string };
@@ -221,6 +222,8 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
     const [units, setUnits] = useState<any[]>([]);
     const [editing, setEditing] = useState(false);
     const [creatingUnit, setCreatingUnit] = useState(false);
+    const [assigning, setAssigning] = useState(false);
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
 
     useEffect(() => { load(); }, [pathId]);
 
@@ -263,6 +266,30 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
         load();
     };
 
+    // Drag-and-drop reordering das units
+    const handleDragStart = (idx: number) => setDragIndex(idx);
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+    const handleDrop = async (targetIdx: number) => {
+        if (dragIndex === null || dragIndex === targetIdx) return;
+        const reordered = [...units];
+        const [moved] = reordered.splice(dragIndex, 1);
+        reordered.splice(targetIdx, 0, moved);
+        setUnits(reordered);
+        setDragIndex(null);
+
+        // Persistir novos order_index (1, 2, 3...)
+        try {
+            const updates = reordered.map((u, i) => supabase
+                .from('learning_units')
+                .update({ order_index: i + 1 })
+                .eq('id', u.id));
+            await Promise.all(updates);
+        } catch (err) {
+            console.error('Reorder error:', err);
+            load(); // recarrega se falhar
+        }
+    };
+
     if (!path) return <Loader />;
 
     return (
@@ -271,9 +298,9 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                 <PathForm initial={path} onSubmit={savePath} onCancel={() => setEditing(false)} />
             ) : (
                 <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">{path.target_level}</span>
                                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{CATEGORIES.find(c => c.id === path.category)?.label}</span>
                                 <span className="text-[9px] text-slate-400">~{path.estimated_hours}h</span>
@@ -281,11 +308,28 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                             <h4 className="text-lg font-black text-slate-800 dark:text-white">{path.name}</h4>
                             <p className="text-xs text-slate-500 mt-1">{path.description}</p>
                         </div>
-                        {path.tenant_id && (
-                            <button onClick={() => setEditing(true)} className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"><Edit2 size={12} /> Editar</button>
-                        )}
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                            <button
+                                onClick={() => setAssigning(true)}
+                                className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-3 py-1.5 rounded-lg hover:brightness-110 flex items-center gap-1"
+                            >
+                                <UserPlus size={12} /> Atribuir
+                            </button>
+                            {path.tenant_id && (
+                                <button onClick={() => setEditing(true)} className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"><Edit2 size={12} /> Editar</button>
+                            )}
+                        </div>
                     </div>
                 </div>
+            )}
+
+            {assigning && (
+                <PathAssignmentModal
+                    path={path}
+                    user={user}
+                    tenantId={tenantId}
+                    onClose={() => setAssigning(false)}
+                />
             )}
 
             <div className="flex items-center justify-between">
@@ -299,7 +343,17 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
 
             <div className="space-y-2">
                 {units.map((u, i) => (
-                    <div key={u.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700">
+                    <div
+                        key={u.id}
+                        draggable
+                        onDragStart={() => handleDragStart(i)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleDrop(i)}
+                        className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
+                            dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
+                        }`}
+                    >
+                        <GripVertical size={14} className="text-slate-300 cursor-grab active:cursor-grabbing shrink-0" />
                         <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 font-black text-sm shrink-0">{i + 1}</div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-black text-slate-800 dark:text-white">{u.title}</p>
@@ -348,6 +402,27 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
     const [activities, setActivities] = useState<any[]>([]);
     const [creating, setCreating] = useState(false);
     const [creatingType, setCreatingType] = useState<string>('vocab_cards');
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+    const handleDragStart = (idx: number) => setDragIndex(idx);
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+    const handleDrop = async (targetIdx: number) => {
+        if (dragIndex === null || dragIndex === targetIdx) return;
+        const reordered = [...activities];
+        const [moved] = reordered.splice(dragIndex, 1);
+        reordered.splice(targetIdx, 0, moved);
+        setActivities(reordered);
+        setDragIndex(null);
+        try {
+            await Promise.all(reordered.map((a, i) => supabase
+                .from('unit_activities')
+                .update({ order_index: i + 1 })
+                .eq('id', a.id)));
+        } catch (err) {
+            console.error('Reorder activities error:', err);
+            load();
+        }
+    };
 
     useEffect(() => { load(); }, [unitId]);
 
@@ -420,7 +495,17 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
                     const meta = ACTIVITY_TYPES.find(t => t.id === a.type);
                     const Icon = meta?.icon || BookOpen;
                     return (
-                        <div key={a.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700">
+                        <div
+                            key={a.id}
+                            draggable
+                            onDragStart={() => handleDragStart(i)}
+                            onDragOver={handleDragOver}
+                            onDrop={() => handleDrop(i)}
+                            className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
+                                dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
+                            }`}
+                        >
+                            <GripVertical size={14} className="text-slate-300 cursor-grab active:cursor-grabbing shrink-0" />
                             <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 shrink-0">
                                 <Icon size={14} />
                             </div>
