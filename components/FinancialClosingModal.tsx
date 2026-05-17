@@ -73,7 +73,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
             const combinedItems = [...paidLessons, ...paidTrainings];
 
             setLessons(combinedItems);
-            setTotalEarned(combinedItems.length * (user.hourlyRate || 7.50));
+            setTotalEarned(combinedItems.length * (user.hourlyRate || 8.00));
 
         } catch (err) {
             console.error('Error fetching modal data:', err);

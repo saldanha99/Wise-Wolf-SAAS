@@ -41,13 +41,11 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                 .from('opportunities')
                 .insert({
                     tenant_id: tenantId,
-                    lead_name: leadName,
-                    lead_phone: leadPhone,
-                    teacher_id: selectedTeacher,
-                    status: 'EXPERIMENTAL_SCHEDULED',
-                    source: 'MANUAL',
-                    scheduled_date: date,
-                    scheduled_time: time,
+                    student_name: leadName,
+                    student_phone: leadPhone,
+                    winner_teacher_id: selectedTeacher,
+                    status: 'CLAIMED',
+                    slots_proposed: [],
                 })
                 .select()
                 .single();

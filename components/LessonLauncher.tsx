@@ -145,6 +145,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                 id: `trial-${t.id}`,
                 studentId: null, // Lead doesn't have a profile yet usually
                 leadName: t.student_name,
+                leadPhone: t.student_phone,
                 name: t.student_name || 'Aula Experimental',
                 date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
                 dateObj: dateStr,
@@ -235,15 +236,22 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // Update CRM Leads to TRIAL_DONE
         const trialEntries = (entries as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
         if (trialEntries.length > 0) {
-          const studentIds = trialEntries.map(e => e.student_id);
-          const { data: profiles } = await supabase.from('profiles').select('id, email').in('id', studentIds);
-          const emails = profiles?.map(p => p.email).filter(Boolean) || [];
-
-          if (emails.length > 0) {
-            await supabase.from('crm_leads')
-              .update({ status: 'TRIAL_DONE' })
-              .in('email', emails)
-              .eq('tenant_id', tenantId);
+          for (const entry of trialEntries) {
+            const item = todayLessons.find(l => String(l.id) === `trial-${entry.appointment_id}`);
+            
+            if (entry.student_id) {
+              // Update by student_id if we have it
+              await supabase.from('crm_leads')
+                .update({ status: 'TRIAL_DONE' })
+                .eq('student_id', entry.student_id)
+                .eq('tenant_id', tenantId);
+            } else if (item?.leadPhone) {
+              // Update by phone if no student_id
+              await supabase.from('crm_leads')
+                .update({ status: 'TRIAL_DONE' })
+                .eq('phone', item.leadPhone)
+                .eq('tenant_id', tenantId);
+            }
           }
         }
 

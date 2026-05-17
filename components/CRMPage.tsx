@@ -36,10 +36,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
     const COLUMN_CONFIG = {
-        'NEW': { label: 'Novos Leads', color: 'border-blue-500', bg: 'bg-blue-50/50', text: 'text-blue-700', iconColor: 'text-blue-600' },
-        'CONTACTED': { label: 'Em Contato', color: 'border-yellow-500', bg: 'bg-yellow-50/50', text: 'text-yellow-700', iconColor: 'text-yellow-600' },
-        'TRIAL': { label: 'Aula Agendada', color: 'border-purple-500', bg: 'bg-purple-50/50', text: 'text-purple-700', iconColor: 'text-purple-600' },
-        'WON': { label: 'Matriculados', color: 'border-green-500', bg: 'bg-green-50/50', text: 'text-green-700', iconColor: 'text-green-600' }
+        'NEW': { label: 'Novos Leads', color: 'border-blue-500', bg: 'bg-brand-surface-2', text: 'text-blue-500', iconColor: 'text-blue-500' },
+        'CONTACTED': { label: 'Em Contato', color: 'border-amber-500', bg: 'bg-brand-surface-2', text: 'text-amber-500', iconColor: 'text-amber-500' },
+        'TRIAL': { label: 'Aula Agendada', color: 'border-brand-accent', bg: 'bg-brand-surface-2', text: 'text-brand-accent', iconColor: 'text-brand-accent' },
+        'WON': { label: 'Matriculados', color: 'border-emerald-500', bg: 'bg-brand-surface-2', text: 'text-emerald-500', iconColor: 'text-emerald-500' }
         // LOST is hidden from main board or put in a separate view usually, but we keep 4 cols as requested
         // If user wants 4 cols, we fit NEW, CONTACTED, TRIAL, WON.
     };
@@ -134,51 +134,51 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50 dark:bg-slate-900 overflow-hidden">
+        <div className="flex flex-col h-screen bg-brand-bg overflow-hidden font-sans">
             {/* 1. TOP BAR / KPI DASHBOARD */}
-            <header className="h-[80px] shrink-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 px-6 flex items-center justify-between z-10">
+            <header className="h-[80px] shrink-0 bg-brand-surface border-b border-brand-border px-6 flex items-center justify-between z-10 shadow-sm">
                 <div className="flex items-center gap-6">
-                    <h1 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        <Kanban className="text-blue-600" /> Pipeline de Vendas
+                    <h1 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text flex items-center gap-2">
+                        <Kanban className="text-brand-accent" /> Pipeline de Vendas
                     </h1>
 
                     {/* Vertical Divider */}
-                    <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 mx-2" />
+                    <div className="h-8 w-px bg-brand-border mx-2" />
 
                     {/* KPIs */}
                     <div className="flex gap-8">
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Oportunidades</p>
-                            <p className="text-xl font-black text-gray-800 dark:text-white">{metrics.opportunities}</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Oportunidades</p>
+                            <p className="text-xl font-extrabold text-brand-text">{metrics.opportunities}</p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pipeline Total</p>
-                            <p className="text-xl font-black text-emerald-600">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Pipeline Total</p>
+                            <p className="text-xl font-extrabold text-emerald-500">
                                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(metrics.pipelineValue)}
                             </p>
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Conversão</p>
-                            <p className="text-xl font-black text-blue-600">{metrics.conversion}%</p>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Conversão</p>
+                            <p className="text-xl font-extrabold text-brand-accent">{metrics.conversion}%</p>
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <div className="relative">
-                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
                         <input
                             type="text"
-                            placeholder="Buscar alunos..."
+                            placeholder="Buscar leads..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-9 pr-4 py-2 bg-gray-100 dark:bg-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-64 transition-all"
+                            className="pl-9 pr-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm outline-none focus:border-brand-accent w-64 transition-all text-brand-text placeholder-brand-muted"
                         />
                     </div>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all">
+                    <button className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg transition-all">
                         <Plus size={16} /> Nova Oportunidade
                     </button>
-                    <button className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg">
+                    <button className="p-2 border border-brand-border text-brand-muted hover:text-brand-text hover:bg-brand-surface-2 rounded-xl transition-colors">
                         <Filter size={20} />
                     </button>
                 </div>
@@ -197,23 +197,23 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                 key={status}
                                 onDragOver={handleDragOver}
                                 onDrop={(e) => handleDrop(e, status)}
-                                className={`flex flex-col h-full rounded-2xl bg-gray-100/50 dark:bg-slate-800/50 border border-transparent transition-colors ${draggedLead ? 'hover:bg-blue-50/50 hover:border-blue-200 dark:hover:bg-slate-800' : ''}`}
+                                className={`flex flex-col h-full rounded-2xl bg-brand-surface border border-brand-border transition-colors ${draggedLead ? 'hover:border-brand-accent/50 hover:bg-brand-surface-2' : ''}`}
                             >
                                 {/* Column Header */}
-                                <div className={`p-4 rounded-t-2xl border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-between items-start sticky top-0 z-10 shadow-sm`}>
+                                <div className={`p-4 rounded-t-2xl border-b border-brand-border bg-brand-surface-2 flex justify-between items-start sticky top-0 z-10 shadow-sm`}>
                                     <div>
-                                        <div className={`text-xs font-black uppercase tracking-widest mb-1 ${config.text}`}>
+                                        <div className={`text-xs font-bold uppercase tracking-widest mb-1 ${config.text}`}>
                                             {config.label}
                                         </div>
-                                        <div className="text-xs font-medium text-gray-400">
+                                        <div className="text-[10px] font-semibold text-brand-muted uppercase tracking-widest">
                                             {columnLeads.length} leads • {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(colTotalValue)}
                                         </div>
                                     </div>
-                                    <div className={`w-2 h-2 rounded-full ${config.text.replace('text-', 'bg-')}`} />
+                                    <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(var(--brand-accent),0.5)] ${config.text.replace('text-', 'bg-')}`} />
                                 </div>
 
                                 {/* Column Scrollable Area */}
-                                <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600">
+                                <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
                                     {columnLeads.map((lead) => {
                                         const daysInStage = getDaysInStage(lead.last_status_change || lead.created_at);
                                         const isStagnant = daysInStage > 3;
@@ -223,31 +223,31 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                 key={lead.id}
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, lead)}
-                                                className="group bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 hover:shadow-md hover:border-blue-400 dark:hover:border-blue-500 cursor-grab active:cursor-grabbing transition-all relative"
+                                                className="group bg-brand-surface-2 p-4 rounded-xl shadow-sm border border-brand-border hover:border-brand-accent cursor-grab active:cursor-grabbing transition-all relative"
                                             >
                                                 {/* Header: Name + Avatar */}
                                                 <div className="flex items-start gap-3 mb-3">
-                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900 dark:to-slate-800 flex items-center justify-center text-blue-600 font-bold shrink-0">
+                                                    <div className="w-10 h-10 rounded-xl bg-brand-surface border border-brand-border flex items-center justify-center text-brand-text font-bold shrink-0">
                                                         {lead.name[0]}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <h4 className="font-bold text-gray-900 dark:text-white truncate text-sm" title={lead.name}>
+                                                        <h4 className="font-bold text-brand-text truncate text-sm" title={lead.name}>
                                                             {lead.name}
                                                         </h4>
-                                                        <p className="text-xs text-gray-400 truncate">{lead.source}</p>
+                                                        <p className="text-xs text-brand-muted truncate">{lead.source}</p>
                                                     </div>
-                                                    <button className="text-gray-300 hover:text-gray-600 dark:hover:text-gray-200">
+                                                    <button className="text-brand-muted hover:text-brand-accent transition-colors">
                                                         <MoreHorizontal size={16} />
                                                     </button>
                                                 </div>
 
                                                 {/* Details: Value + Tags */}
                                                 <div className="flex flex-wrap gap-2 mb-4">
-                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] font-bold uppercase">
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-400/10 text-emerald-500 border border-emerald-400/20 text-[10px] font-bold uppercase">
                                                         R$ {lead.value || 0}
                                                     </span>
                                                     {lead.tags?.slice(0, 2).map((tag: string, i: number) => (
-                                                        <span key={i} className="px-2 py-1 rounded bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300 text-[10px] font-bold uppercase">
+                                                        <span key={i} className="px-2 py-1 rounded bg-brand-surface border border-brand-border text-brand-muted text-[10px] font-bold uppercase">
                                                             {tag}
                                                         </span>
                                                     ))}
@@ -255,14 +255,14 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
                                                 {/* Warning: Time in Stage */}
                                                 {isStagnant && (
-                                                    <div className="flex items-center gap-1.5 mb-3 text-red-500 text-[10px] font-bold bg-red-50 dark:bg-red-900/10 px-2 py-1 rounded w-fit">
+                                                    <div className="flex items-center gap-1.5 mb-3 text-amber-500 text-[10px] font-bold bg-amber-400/10 border border-amber-400/20 px-2 py-1 rounded w-fit">
                                                         <Clock size={12} />
                                                         {daysInStage} dias nesta etapa
                                                     </div>
                                                 )}
 
                                                 {/* Divider */}
-                                                <div className="h-px bg-gray-100 dark:bg-slate-700 mb-3" />
+                                                <div className="h-px bg-brand-border mb-3" />
 
                                                 {/* Footer Actions */}
                                                 <div className="flex items-center justify-between">
@@ -272,20 +272,20 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                                 href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors"
+                                                                className="p-1.5 rounded-lg text-brand-muted hover:text-emerald-500 hover:bg-emerald-400/10 transition-colors"
                                                                 title="WhatsApp"
                                                             >
                                                                 <MessageCircle size={16} />
                                                             </a>
                                                         )}
                                                         <button
-                                                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                            className="p-1.5 rounded-lg text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-colors"
                                                             title="Editar"
                                                         >
                                                             <Edit2 size={16} />
                                                         </button>
                                                     </div>
-                                                    <span className="text-[10px] text-gray-400 font-medium">
+                                                    <span className="text-[10px] text-brand-muted font-medium uppercase tracking-wider">
                                                         {new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                                     </span>
                                                 </div>

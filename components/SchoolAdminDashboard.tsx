@@ -211,52 +211,52 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
   };
 
   return (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500 font-sans">
+    <div className="space-y-6 md:space-y-8 animate-fade-in-up font-sans">
       {/* Header Section */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-gray-100 dark:border-gray-800 pb-6 mb-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-brand-border pb-6 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+          <h2 className="text-2xl font-[family-name:var(--font-display)] font-extrabold text-brand-text uppercase tracking-wide">
             {activeTab === 'analytics' ? 'Analytics da Unidade' : 'Academia de Professores'}
           </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+          <p className="text-brand-muted text-sm mt-0.5">
             {activeTab === 'analytics' ? 'Monitoramento de hierarquias: Professores e Alunos.' : 'Gestão de treinamentos e padronização.'}
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          <div className="flex bg-brand-surface border border-brand-border p-1 rounded-2xl">
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'analytics' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Analytics
             </button>
             <button
               onClick={() => setActiveTab('training')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'training' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Treinamento
             </button>
             <button
               onClick={() => setActiveTab('registration')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'registration' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Link Matrícula
             </button>
             <button
               onClick={() => setActiveTab('payments')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'payments' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Fluxo de Caixa
             </button>
             <button
               onClick={() => setActiveTab('contracts')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'contracts' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'contracts' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Contratos
             </button>
             <button
               onClick={() => setActiveTab('recruiting')}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'recruiting' ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-sm ring-1 ring-slate-200 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Recrutamento (Link)
             </button>
@@ -266,13 +266,13 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
             <div className="flex gap-2">
               <button
                 onClick={() => setShowTrialScheduler(true)}
-                className="flex items-center gap-2 bg-tenant-primary hover:opacity-90 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-lg shadow-purple-500/20"
+                className="flex items-center gap-2 bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors shadow-lg"
               >
                 <Beaker size={14} /> Agendar Experimental
               </button>
               <button
                 onClick={fetchAnalytics}
-                className="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 transition-colors"
+                className="p-2 rounded-xl border border-brand-border bg-brand-surface hover:bg-brand-surface-2 text-brand-muted transition-colors"
                 title="Atualizar Dados"
               >
                 <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -280,7 +280,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               <button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                className="bg-brand-surface border border-brand-border px-4 py-2 rounded-xl text-xs font-semibold text-brand-text hover:bg-brand-surface-2 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
               >
                 {isExporting ? <RefreshCw className="animate-spin" size={14} /> : <FileDown size={14} />}
                 {isExporting ? 'Exportando...' : 'Exportar Dados'}
@@ -324,18 +324,28 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                 iconBg: 'bg-red-100 text-red-600'
               },
             ].map((stat, i) => (
-              <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800 relative group transition-all hover:-translate-y-1 hover:shadow-lg">
-                <div className="flex justify-between items-start mb-4">
-                  <div className={`p-3 rounded-2xl ${stat.iconBg} dark:bg-opacity-20`}>
-                    <stat.icon size={24} strokeWidth={1.5} />
-                  </div>
-                  <button className="text-slate-300 hover:text-slate-500 transition-colors">
-                    <MoreVertical size={20} />
-                  </button>
+              <div key={i} className="group relative bg-brand-surface border border-brand-border rounded-2xl p-5 overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl cursor-default">
+                <div
+                  className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-2xl"
+                  style={{ background: `radial-gradient(ellipse at 80% 0%, var(--brand-accent) 0%, transparent 65%)`, opacity: 0.1 }}
+                />
+                <div
+                  className="absolute top-0 left-4 right-4 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  style={{ background: `linear-gradient(90deg, transparent, var(--brand-accent), transparent)`, opacity: 0.5 }}
+                />
+
+                <div className="flex justify-between items-start mb-3">
+                  <span className="text-brand-muted text-[11px] uppercase tracking-widest font-semibold">{stat.label}</span>
+                  <span className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 ${stat.iconBg}`}>
+                    <stat.icon size={20} strokeWidth={2} />
+                  </span>
                 </div>
-                <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{loading ? '...' : stat.value}</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">{stat.label}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{stat.sub}</p>
+                <div className="flex items-end gap-2">
+                  <h3 className="text-brand-text text-[2rem] font-extrabold leading-none tabular-nums tracking-tight">
+                    {loading ? '...' : stat.value}
+                  </h3>
+                </div>
+                <p className="text-brand-muted text-xs mt-1.5">{stat.sub}</p>
               </div>
             ))}
           </div>
@@ -346,35 +356,37 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
             <div className="lg:col-span-2 space-y-6">
 
               {/* Main Chart Section */}
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800">
+              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
                 <div className="flex justify-between items-center mb-6">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Fluxo Financeiro</h3>
-                    <p className="text-sm text-slate-500">Visão geral de receitas (Presencial x Online)</p>
+                    <h3 className="text-brand-text font-bold text-sm">Fluxo Financeiro</h3>
+                    <p className="text-brand-muted text-xs mt-0.5">Visão geral de receitas (Presencial x Online)</p>
                   </div>
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-full px-4 py-2">
-                    <Calendar size={14} className="text-slate-500" />
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Este Mês</span>
-                    <ArrowUpRight size={14} className="text-slate-500 ml-1" />
+                  <div className="flex items-center gap-2 bg-brand-surface-2 border border-brand-border rounded-lg px-2.5 py-1.5">
+                    <Calendar size={14} className="text-brand-muted" />
+                    <span className="text-xs font-semibold text-brand-muted">Este Mês</span>
+                    <ArrowUpRight size={14} className="text-brand-muted ml-1" />
                   </div>
                 </div>
 
                 <div className="flex items-center gap-8 mb-8">
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Presencial (Prop.)</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold text-slate-900 dark:text-white">
-                        R$ {stats.presencialRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                      </span>
+                  <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-blue-400" />
+                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Presencial (Prop.)</span>
                     </div>
+                    <span className="text-brand-text text-xl font-bold leading-tight">
+                      R$ {stats.presencialRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs text-slate-500 mb-1">Online (Prop.)</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl font-bold text-slate-900 dark:text-white">
-                        R$ {stats.onlineRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                      </span>
+                  <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-purple-400" />
+                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Online (Prop.)</span>
                     </div>
+                    <span className="text-brand-text text-xl font-bold leading-tight">
+                      R$ {stats.onlineRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                    </span>
                   </div>
                 </div>
 
@@ -386,44 +398,44 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               </div>
 
               {/* Recent Payments List (Replaces Team Performance in this view) */}
-              <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800 overflow-hidden">
-                <div className="p-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Recebimentos Recentes</h3>
-                  <button className="text-sm text-purple-600 font-semibold hover:underline" onClick={() => setActiveTab('payments')}>
+              <div className="bg-brand-surface rounded-2xl border border-brand-border overflow-hidden">
+                <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <h3 className="text-brand-text font-bold text-sm">Recebimentos Recentes</h3>
+                  <button className="text-xs text-brand-accent font-semibold hover:text-brand-accent-hover transition-colors" onClick={() => setActiveTab('payments')}>
                     Ver Todos
                   </button>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
-                    <thead className="text-xs text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
+                    <thead className="text-xs text-brand-muted font-semibold border-b border-brand-border">
                       <tr>
-                        <th className="px-8 py-4 font-medium">Aluno</th>
-                        <th className="px-8 py-4 font-medium">Valor</th>
-                        <th className="px-8 py-4 font-medium">Status</th>
-                        <th className="px-8 py-4 text-right font-medium">Data Pagamento</th>
+                        <th className="px-6 py-4 font-medium">Aluno</th>
+                        <th className="px-6 py-4 font-medium">Valor</th>
+                        <th className="px-6 py-4 font-medium">Status</th>
+                        <th className="px-6 py-4 text-right font-medium">Data Pagamento</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                    <tbody className="divide-y divide-brand-border/50">
                       {recentPayments.length > 0 ? recentPayments.map((pay, i) => (
-                        <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="px-8 py-5 font-medium text-slate-800 dark:text-slate-200">
+                        <tr key={i} className="hover:bg-brand-surface-2 transition-colors">
+                          <td className="px-6 py-4 font-medium text-brand-text">
                             {pay.profiles?.name || 'Aluno Desconhecido'}
                           </td>
-                          <td className="px-8 py-5 text-slate-600 dark:text-slate-300">
+                          <td className="px-6 py-4 text-brand-text font-semibold">
                             R$ {Number(pay.value).toFixed(2)}
                           </td>
-                          <td className="px-8 py-5">
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'bg-green-100 text-green-700' :
-                              pay.status === 'OVERDUE' ? 'bg-red-100 text-red-700' :
-                                'bg-yellow-100 text-yellow-700'
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
+                              pay.status === 'OVERDUE' ? 'bg-red-400/10 text-red-500 border-red-400/30' :
+                                'bg-amber-400/10 text-amber-500 border-amber-400/30'
                               }`}>
                               {pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'PAGO' :
                                 pay.status === 'OVERDUE' ? 'ATRASADO' : 'PENDENTE'}
                             </span>
                           </td>
-                          <td className="px-8 py-5 text-right text-slate-500 flex items-center justify-end gap-2">
-                            <span>{pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('pt-BR') : '-'}</span>
+                          <td className="px-6 py-4 text-right text-brand-muted flex items-center justify-end gap-2">
+                            <span className="text-xs">{pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('pt-BR') : '-'}</span>
 
                             {(pay.status === 'PENDING' || pay.status === 'OVERDUE') && (
                               <button
@@ -468,7 +480,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                                     alert('Erro: ' + err.message);
                                   }
                                 }}
-                                className="ml-2 p-1 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition-colors"
+                                className="ml-2 p-1 text-emerald-500 hover:bg-emerald-400/10 rounded transition-colors"
                                 title="Confirmar Pagamento Manual"
                               >
                                 <Clock size={14} className="text-emerald-500" />
@@ -478,7 +490,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                         </tr>
                       )) : (
                         <tr>
-                          <td colSpan={4} className="px-8 py-8 text-center text-slate-500">
+                          <td colSpan={4} className="px-6 py-8 text-center text-brand-muted">
                             Nenhum pagamento recente encontrado.
                           </td>
                         </tr>
@@ -496,13 +508,13 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               {userRole === 'TEACHER' && <AutomacaoSmart />}
 
               {/* Financial Summary Widget */}
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800">
+              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Resumo Financeiro</h3>
-                    <p className="text-sm text-slate-500">Mês Atual</p>
+                    <h3 className="text-brand-text font-bold text-sm">Resumo Financeiro</h3>
+                    <p className="text-brand-muted text-xs mt-0.5">Mês Atual</p>
                   </div>
-                  <div className={`px-3 py-1 rounded-full text-xs font-bold ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                  <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' : 'bg-red-400/10 text-red-500 border-red-400/30'}`}>
                     {(stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'Superávit' : 'Déficit')}
                   </div>
                 </div>
@@ -510,16 +522,16 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                 <div className="space-y-6">
                   {/* Income */}
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-slate-600 dark:text-slate-300">Entradas (Real + Previsto)</span>
-                      <span className="text-slate-900 dark:text-slate-100">R$ {(stats.realRevenue + stats.pendingRevenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="text-brand-muted">Entradas (Real + Previsto)</span>
+                      <span className="text-brand-text">R$ {(stats.realRevenue + stats.pendingRevenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
                     {/* Multi-color bar */}
-                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                      <div style={{ width: `${(stats.realRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-emerald-500 h-full" title="Recebido" />
-                      <div style={{ width: `${(stats.pendingRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-emerald-300 h-full" title="Pendente" />
+                    <div className="w-full h-2 bg-brand-surface-2 border border-brand-border rounded-full overflow-hidden flex">
+                      <div style={{ width: `${(stats.realRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-brand-accent h-full" title="Recebido" />
+                      <div style={{ width: `${(stats.pendingRevenue / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100}%` }} className="bg-brand-accent/40 h-full" title="Pendente" />
                     </div>
-                    <div className="flex justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    <div className="flex justify-between text-[10px] text-brand-muted font-semibold uppercase tracking-wider mt-1">
                       <span>Recebido: {stats.realRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                       <span>Pendente: {stats.pendingRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                     </div>
@@ -527,24 +539,24 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
                   {/* Expenses (Payroll) */}
                   <div className="space-y-2">
-                    <div className="flex justify-between text-sm font-bold">
-                      <span className="text-slate-600 dark:text-slate-300">Saídas (Folha Professores)</span>
-                      <span className="text-red-500">R$ {stats.payroll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="text-brand-muted">Saídas (Folha Professores)</span>
+                      <span className="text-red-400">R$ {stats.payroll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-brand-surface-2 border border-brand-border rounded-full overflow-hidden">
                       {/* Scale payroll relative to income for visualization, max 100% */}
-                      <div style={{ width: `${Math.min(100, (stats.payroll / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100)}%` }} className="bg-red-500 h-full" />
+                      <div style={{ width: `${Math.min(100, (stats.payroll / (stats.realRevenue + stats.pendingRevenue + 0.1)) * 100)}%` }} className="bg-red-400 h-full" />
                     </div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    <p className="text-[10px] text-brand-muted font-semibold uppercase tracking-wider mt-1">
                       Baseado em {stats.activeStudents} alunos ativos
                     </p>
                   </div>
 
                   {/* Net Result Forecast */}
-                  <div className="pt-4 border-t border-slate-50 dark:border-slate-800">
+                  <div className="pt-4 border-t border-brand-border">
                     <div className="flex justify-between items-end">
-                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Saldo Previsto</span>
-                      <span className={`text-2xl font-black ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                      <span className="text-[10px] font-semibold text-brand-muted uppercase tracking-widest">Saldo Previsto</span>
+                      <span className={`text-2xl font-extrabold ${stats.realRevenue + stats.pendingRevenue - stats.payroll >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         R$ {(stats.realRevenue + stats.pendingRevenue - stats.payroll).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </span>
                     </div>
@@ -557,46 +569,46 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                   I replaced the block containing Success Rate, so I need to decide.
                   I'll keep a simpler version.
                */}
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800 flex justify-between items-center">
+              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex justify-between items-center">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Taxa de Presença</h3>
-                  <p className="text-sm text-slate-500">Geral da Escola</p>
+                  <h3 className="text-brand-text font-bold text-sm">Taxa de Presença</h3>
+                  <p className="text-brand-muted text-xs mt-0.5">Geral da Escola</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-3xl font-black text-purple-600">{stats.successRate.toFixed(1)}%</p>
-                  <p className="text-xs text-slate-400 font-bold uppercase">Calculado</p>
+                  <p className="text-3xl font-extrabold text-brand-accent">{stats.successRate.toFixed(1)}%</p>
+                  <p className="text-[10px] text-brand-muted font-bold uppercase mt-0.5">Calculado</p>
                 </div>
               </div>
 
 
               {/* Real-Time Monitor */}
-              <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800">
+              <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h3 className="text-brand-text font-bold text-sm flex items-center gap-2">
                       Monitoramento ao Vivo
                     </h3>
-                    <p className="text-sm text-slate-500">Status das salas de aula</p>
+                    <p className="text-brand-muted text-xs mt-0.5">Status das salas de aula</p>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-                    <span className="text-xs font-bold text-emerald-600">AO VIVO</span>
+                  <div className="flex items-center gap-2 px-2.5 py-1 bg-emerald-400/10 border border-emerald-400/30 rounded-full">
+                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                    <span className="text-[10px] font-bold text-emerald-500">AO VIVO</span>
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {teachers.slice(0, 3).map((t, i) => (
-                    <div key={i} className="group flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 transition-colors">
+                    <div key={i} className="group flex items-center justify-between p-3 rounded-xl bg-brand-surface-2 border border-brand-border hover:-translate-y-0.5 transition-all duration-200">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xs font-bold text-purple-600 shadow-sm">
+                        <div className="w-8 h-8 rounded-lg bg-brand-surface border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent shadow-sm">
                           {i + 1}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{t.name}</p>
-                          <p className="text-xs text-slate-500">Aula em andamento</p>
+                          <p className="text-sm font-bold text-brand-text leading-tight">{t.name}</p>
+                          <p className="text-xs text-brand-muted mt-0.5">Aula em andamento</p>
                         </div>
                       </div>
-                      <span className="text-xs font-semibold text-slate-400 group-hover:text-purple-500">Monitorar</span>
+                      <span className="text-[10px] font-semibold text-brand-muted group-hover:text-brand-accent transition-colors uppercase tracking-wider">Monitorar</span>
                     </div>
                   ))}
                 </div>

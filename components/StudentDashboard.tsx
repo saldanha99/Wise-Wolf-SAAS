@@ -124,24 +124,24 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pb-20 font-sans">
+    <div className="space-y-8 animate-fade-in-up pb-20 font-sans">
 
       {/* 1. HERO SECTION: Premium Welcome Header */}
-      <div className="relative rounded-[3rem] overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 shadow-2xl shadow-indigo-500/30 text-white p-8 md:p-12">
+      <div className="relative rounded-[3rem] overflow-hidden bg-brand-accent shadow-2xl shadow-brand-accent/20 text-white p-8 md:p-12">
         {/* Dynamic Background Gradients */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-black/10 rounded-full blur-[60px] translate-y-1/3 -translate-x-1/3"></div>
 
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 text-[10px] font-black uppercase tracking-widest mb-6 text-indigo-300 shadow-inner">
-              <Sparkles size={12} className="text-indigo-400" />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-[10px] font-black uppercase tracking-widest mb-6 text-white shadow-inner">
+              <Sparkles size={12} className="text-white" />
               <span>Portal Premium</span>
             </div>
-            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black tracking-tighter mb-3 bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-[family-name:var(--font-display)] font-extrabold tracking-tighter mb-3 text-white">
               Olá, {user.name.split(' ')[0]}! 👋
             </h1>
-            <p className="text-slate-400 font-medium text-lg max-w-md">Vamos evoluir 1% hoje? Sua jornada rumo à fluência continua agora.</p>
+            <p className="text-white/80 font-medium text-lg max-w-md">Vamos evoluir 1% hoje? Sua jornada rumo à fluência continua agora.</p>
           </div>
 
           {/* Documentation Alerts (Fixed Logic) */}
@@ -173,87 +173,87 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {/* 2. STATS ROW */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white/70 backdrop-blur-xl dark:bg-slate-900/80 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-orange-400/20 to-transparent rounded-full blur-3xl group-hover:from-orange-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-500/20 dark:to-orange-500/5 text-orange-500 rounded-2xl shadow-sm border border-orange-100 dark:border-orange-500/20">
+            <div className="p-3 bg-orange-400/10 text-orange-500 rounded-2xl shadow-sm border border-orange-400/20">
               <Zap size={24} className="fill-current" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Ofensiva</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Ofensiva</span>
           </div>
           <div className="z-10 mt-4">
-            <h3 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter flex items-baseline gap-1">
-              {gamification.streak || 0} <span className="text-sm font-bold text-slate-400 tracking-normal">dias</span>
+            <h3 className="text-4xl font-extrabold text-brand-text tracking-tighter flex items-baseline gap-1">
+              {gamification.streak || 0} <span className="text-sm font-bold text-brand-muted tracking-normal">dias</span>
             </h3>
             <p className="text-xs font-bold text-orange-500 mt-1">Sua constância é a chave!</p>
           </div>
         </div>
 
-        <div className="bg-white/70 backdrop-blur-xl dark:bg-slate-900/80 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-purple-400/20 to-transparent rounded-full blur-3xl group-hover:from-purple-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-500/20 dark:to-purple-500/5 text-purple-600 rounded-2xl shadow-sm border border-purple-100 dark:border-purple-500/20">
+            <div className="p-3 bg-purple-400/10 text-purple-500 rounded-2xl shadow-sm border border-purple-400/20">
               <Star size={24} className="fill-current" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Milestones</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Milestones</span>
           </div>
           <div className="z-10 w-full mt-4">
-            <h3 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter flex items-baseline gap-1 mb-3">
-              {gamification.xp || 0} <span className="text-sm font-bold text-slate-400 tracking-normal">xp</span>
+            <h3 className="text-4xl font-extrabold text-brand-text tracking-tighter flex items-baseline gap-1 mb-3">
+              {gamification.xp || 0} <span className="text-sm font-bold text-brand-muted tracking-normal">xp</span>
             </h3>
-            <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
-              <div className="h-full bg-gradient-to-r from-purple-400 to-indigo-500 rounded-full" style={{ width: `${Math.min(gamification.nextLevelProgress || 0, 100)}%` }}></div>
+            <div className="w-full h-2 bg-brand-surface-2 rounded-full overflow-hidden shadow-inner border border-brand-border">
+              <div className="h-full bg-gradient-to-r from-purple-400 to-brand-accent rounded-full" style={{ width: `${Math.min(gamification.nextLevelProgress || 0, 100)}%` }}></div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white/70 backdrop-blur-xl dark:bg-slate-900/80 p-6 rounded-[2rem] border border-white dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
+        <div className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:-translate-y-1 transition-transform flex flex-col justify-between h-44 group relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-b from-blue-400/20 to-transparent rounded-full blur-3xl group-hover:from-blue-400/30 transition-colors"></div>
           <div className="flex justify-between items-start z-10">
-            <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-500/20 dark:to-blue-500/5 text-blue-600 rounded-2xl shadow-sm border border-blue-100 dark:border-blue-500/20">
+            <div className="p-3 bg-blue-400/10 text-blue-500 rounded-2xl shadow-sm border border-blue-400/20">
               <Award size={24} className="fill-current" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Evolução</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Evolução</span>
           </div>
           <div className="z-10 mt-4">
-            <h3 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter flex items-baseline gap-2">
-              <span className="text-sm font-bold text-slate-400 tracking-normal">NÍVEL</span> {gamification.level || 1}
+            <h3 className="text-4xl font-extrabold text-brand-text tracking-tighter flex items-baseline gap-2">
+              <span className="text-sm font-bold text-brand-muted tracking-normal">NÍVEL</span> {gamification.level || 1}
             </h3>
-            <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-1 uppercase tracking-wider">Módulo Atual {profile?.module || 'A1'}</p>
+            <p className="text-xs font-bold text-blue-500 mt-1 uppercase tracking-wider">Módulo Atual {profile?.module || 'A1'}</p>
           </div>
         </div>
       </div>
 
       {/* 3. SMART ACTION: Next Class */}
       {isUrgentClass && nextClass ? (
-        <div className="bg-indigo-600 text-white rounded-[3rem] p-8 md:p-10 shadow-[0_20px_40px_-15px_rgba(79,70,229,0.5)] relative overflow-hidden animate-in zoom-in-95 duration-500">
+        <div className="bg-brand-accent text-white rounded-[3rem] p-8 md:p-10 shadow-2xl relative overflow-hidden animate-fade-in-up">
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-indigo-400/40 rounded-full blur-[80px] opacity-80 pointer-events-none translate-x-1/3 -translate-y-1/3 text-blend-screen"></div>
+          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-white/20 rounded-full blur-[80px] opacity-80 pointer-events-none translate-x-1/3 -translate-y-1/3 text-blend-screen"></div>
 
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
               <div className="relative">
                 <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-[2rem] flex items-center justify-center border border-white/20 shadow-inner">
-                  <div className="w-16 h-16 bg-white shrink-0 rounded-2xl flex items-center justify-center animate-pulse shadow-lg text-indigo-600">
-                    <Video size={36} className="fill-indigo-600/20" />
+                  <div className="w-16 h-16 bg-white shrink-0 rounded-2xl flex items-center justify-center animate-pulse shadow-lg text-brand-accent">
+                    <Video size={36} className="fill-brand-accent/20" />
                   </div>
                 </div>
-                <div className="absolute -bottom-3 -right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full border-4 border-indigo-600 shadow-xl">
+                <div className="absolute -bottom-3 -right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full border-4 border-brand-accent shadow-xl">
                   AO VIVO
                 </div>
               </div>
               <div className="pt-2">
-                <p className="text-indigo-200 font-bold uppercase tracking-[0.2em] text-[10px] md:text-xs mb-2">Preparado para Falar?</p>
-                <h2 className="text-3xl md:text-5xl font-black tracking-tighter mb-2 text-white drop-shadow-sm leading-tight">Sua aula vai começar!</h2>
-                <p className="text-indigo-100 font-medium text-sm md:text-lg">Professor(a) <b>{nextClass.teacher}</b> te espera na sala.</p>
+                <p className="text-white/80 font-bold uppercase tracking-[0.2em] text-[10px] md:text-xs mb-2">Preparado para Falar?</p>
+                <h2 className="text-3xl md:text-5xl font-[family-name:var(--font-display)] font-extrabold tracking-tighter mb-2 text-white drop-shadow-sm leading-tight">Sua aula vai começar!</h2>
+                <p className="text-white/90 font-medium text-sm md:text-lg">Professor(a) <b>{nextClass.teacher}</b> te espera na sala.</p>
               </div>
             </div>
             <div className="flex flex-col items-stretch md:items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-white text-indigo-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
+              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-white text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
                 <Video size={18} className="group-hover:scale-110 transition-transform" />
                 Entrar na Sala
               </a>
-              <p className="text-[11px] font-black text-indigo-200 uppercase tracking-widest text-center">
+              <p className="text-[11px] font-black text-white/80 uppercase tracking-widest text-center">
                 {minutesToClass && minutesToClass > 0 ? `Começa em ${minutesToClass} minutos` : 'A sala já está aberta!'}
               </p>
             </div>
@@ -262,49 +262,49 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       ) : (
         /* Regular Next Class Card */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl dark:bg-slate-900 p-8 rounded-[3rem] border border-white dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-none flex flex-col justify-center relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-1/2 h-full bg-gradient-to-l from-indigo-50/50 to-transparent dark:from-indigo-900/10 opacity-50 transition-opacity"></div>
+          <div className="lg:col-span-2 bg-brand-surface p-8 rounded-[3rem] border border-brand-border shadow-sm flex flex-col justify-center relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-1/2 h-full bg-gradient-to-l from-brand-accent/10 to-transparent opacity-50 transition-opacity"></div>
 
-            <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
-              <Clock size={16} className="text-indigo-400" /> Próximo Encontro
+            <h3 className="font-bold text-brand-text text-sm uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
+              <Clock size={16} className="text-brand-accent" /> Próximo Encontro
             </h3>
 
             {nextClass ? (
               <div className="flex flex-col md:flex-row items-center gap-8 relative z-10 w-full justify-between pr-4">
                 <div className="text-center md:text-left flex-1">
-                  <h2 className="text-5xl font-black text-slate-800 dark:text-white tracking-tighter drop-shadow-sm">{nextClass.time}</h2>
-                  <p className="text-slate-500 font-medium mt-2 text-lg">com Professor(a) <span className="font-bold text-slate-700 dark:text-slate-300">{nextClass.teacher}</span></p>
+                  <h2 className="text-5xl font-extrabold text-brand-text tracking-tighter drop-shadow-sm">{nextClass.time}</h2>
+                  <p className="text-brand-muted font-medium mt-2 text-lg">com Professor(a) <span className="font-bold text-brand-text">{nextClass.teacher}</span></p>
                 </div>
-                <div className="h-16 w-px bg-slate-200 dark:bg-slate-800 hidden md:block"></div>
-                <a href={nextClass.meet} target="_blank" className="w-full md:w-auto md:min-w-[180px] bg-slate-900 dark:bg-slate-800 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-600 transition-colors flex items-center justify-center gap-3 shadow-lg shadow-slate-900/10">
+                <div className="h-16 w-px bg-brand-border hidden md:block"></div>
+                <a href={nextClass.meet} target="_blank" className="w-full md:w-auto md:min-w-[180px] bg-brand-accent text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-brand-accent-hover transition-colors flex items-center justify-center gap-3 shadow-lg">
                   Ver Link <ChevronRight size={16} />
                 </a>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 py-8 text-center relative z-10">
-                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-3xl rotate-3 flex items-center justify-center text-slate-300 shadow-inner border border-slate-100">
+                <div className="w-20 h-20 bg-brand-surface-2 rounded-3xl rotate-3 flex items-center justify-center text-brand-muted shadow-inner border border-brand-border">
                   <Clock size={32} />
                 </div>
                 <div>
-                  <p className="text-slate-800 dark:text-white font-black text-xl mb-1">Agenda Livre!</p>
-                  <p className="text-sm font-medium text-slate-500">Volte depois para checar o seu horário.</p>
+                  <p className="text-brand-text font-extrabold text-xl mb-1">Agenda Livre!</p>
+                  <p className="text-sm font-medium text-brand-muted">Volte depois para checar o seu horário.</p>
                 </div>
               </div>
             )}
           </div>
 
           {/* Support Card */}
-          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-[3rem] border border-emerald-100 dark:border-emerald-900/30 flex flex-col justify-between items-center text-center shadow-lg shadow-emerald-100/30 relative overflow-hidden">
-            <div className="absolute -top-10 -left-10 w-32 h-32 bg-emerald-400/20 rounded-full blur-2xl"></div>
-            <div className="p-4 bg-white/80 backdrop-blur border border-white dark:bg-emerald-900/50 text-emerald-600 rounded-[2rem] mb-4 shadow-sm relative z-10 rotate-[-5deg]">
+          <div className="bg-brand-surface p-8 rounded-[3rem] border border-brand-border flex flex-col justify-between items-center text-center shadow-sm relative overflow-hidden">
+            <div className="absolute -top-10 -left-10 w-32 h-32 bg-emerald-400/10 rounded-full blur-2xl"></div>
+            <div className="p-4 bg-emerald-400/10 text-emerald-500 border border-emerald-400/20 rounded-[2rem] mb-4 shadow-sm relative z-10 rotate-[-5deg]">
               <MessageSquareText size={32} />
             </div>
             <div className="relative z-10 mb-6">
-              <h4 className="font-black text-emerald-900 dark:text-emerald-100 text-xl tracking-tight mb-2">Precisa de Ajuda?</h4>
-              <p className="text-sm text-emerald-700/80 dark:text-emerald-300/80 font-medium">Converse direto com o suporte pedagógico no WhatsApp.</p>
+              <h4 className="font-extrabold text-brand-text text-xl tracking-tight mb-2">Precisa de Ajuda?</h4>
+              <p className="text-sm text-brand-muted font-medium">Converse direto com o suporte pedagógico no WhatsApp.</p>
             </div>
             {assignedTeacher && (
-              <a href={`https://wa.me/${assignedTeacher.phone}`} target="_blank" className="w-full relative z-10 py-4 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-[0_10px_20px_-10px_rgba(16,185,129,0.5)] flex items-center justify-center gap-2">
+              <a href={`https://wa.me/${assignedTeacher.phone}`} target="_blank" className="w-full relative z-10 py-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 rounded-2xl text-[11px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-2">
                 <MessageSquareText size={16} /> Falar no WhatsApp
               </a>
             )}
@@ -314,48 +314,48 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {/* 4. CONTENT & HISTORY */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-widest">Histórico Recente</h3>
-            <button className="text-xs font-bold text-slate-400 hover:text-tenant-primary transition-colors">Ver tudo</button>
+            <h3 className="font-bold text-brand-text text-sm uppercase tracking-widest">Histórico Recente</h3>
+            <button className="text-xs font-bold text-brand-muted hover:text-brand-accent transition-colors">Ver tudo</button>
           </div>
           <div className="space-y-4">
             {recentLogs.slice(0, 3).map(log => (
-              <div key={log.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div key={log.id} className="flex items-center justify-between p-4 bg-brand-surface-2 rounded-2xl border border-brand-border hover:border-brand-accent/30 transition-colors">
                 <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.presence === 'Presença' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.presence === 'Presença' ? 'bg-emerald-400/10 text-emerald-500 border border-emerald-400/20' : 'bg-red-400/10 text-red-500 border border-red-400/20'}`}>
                     {log.presence === 'Presença' ? <CheckCircle size={16} /> : <X size={16} />}
                   </div>
                   <div>
-                    <p className="font-bold text-slate-700 dark:text-slate-200 text-xs">{new Date(log.created_at).toLocaleDateString('pt-BR')}</p>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{log.teacher?.full_name}</p>
+                    <p className="font-bold text-brand-text text-xs">{new Date(log.created_at).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider">{log.teacher?.full_name}</p>
                   </div>
                 </div>
                 {!log.student_confirmed && (
-                  <button onClick={() => handleConfirmLog(log.id)} className="px-4 py-2 bg-tenant-primary text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-purple-700">Conferir</button>
+                  <button onClick={() => handleConfirmLog(log.id)} className="px-4 py-2 bg-brand-accent text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-accent-hover transition-colors">Conferir</button>
                 )}
               </div>
             ))}
-            {recentLogs.length === 0 && <p className="text-center text-slate-400 text-xs py-8">Nenhuma aula registrada ainda.</p>}
+            {recentLogs.length === 0 && <p className="text-center text-brand-muted text-xs py-8">Nenhuma aula registrada ainda.</p>}
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-slate-900 dark:to-slate-900 p-8 rounded-[2.5rem] border border-orange-100 dark:border-slate-800 flex flex-col justify-center text-center md:text-left relative overflow-hidden">
+        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border flex flex-col justify-center text-center md:text-left relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400 rounded-full blur-3xl opacity-10"></div>
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white dark:bg-slate-800 rounded-full shadow-sm text-amber-500 text-[10px] font-black uppercase tracking-widest mb-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-400/10 border border-orange-400/20 rounded-full text-orange-500 text-[10px] font-bold uppercase tracking-widest mb-4">
               <Sparkles size={12} />
               <span>Dica do Coach IA</span>
             </div>
-            <p className="text-lg font-bold text-slate-800 dark:text-slate-200 italic mb-6">"{suggestion}"</p>
+            <p className="text-lg font-bold text-brand-text italic mb-6">"{suggestion}"</p>
 
-            <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl flex items-center gap-4 shadow-sm border border-orange-100 dark:border-slate-700">
-              <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-400">
+            <div className="p-4 bg-brand-surface-2 rounded-2xl flex items-center gap-4 shadow-sm border border-brand-border">
+              <div className="w-10 h-10 rounded-full bg-brand-surface border border-brand-border flex items-center justify-center text-brand-muted">
                 <Target size={18} />
               </div>
               <div className="text-left">
-                <p className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Próxima Missão</p>
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Revisar vocabulário da Unidade {profile?.module || 1}</p>
+                <p className="text-[10px] uppercase font-bold text-brand-muted tracking-wider">Próxima Missão</p>
+                <p className="text-xs font-bold text-brand-text">Revisar vocabulário da Unidade {profile?.module || 1}</p>
               </div>
             </div>
           </div>
