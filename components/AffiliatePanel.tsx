@@ -107,14 +107,14 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             {/* ── Hero / CTA Banner ── */}
             <div className="relative rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-2xl shadow-emerald-500/30">
                 {/* Background decorations */}
-                <div className="absolute top-0 right-0 w-72 h-72 bg-white/10 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4 pointer-events-none" />
+                <div className="absolute top-0 right-0 w-72 h-72 bg-brand-surface/10 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4 pointer-events-none" />
                 <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/4 pointer-events-none" />
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23ffffff%22 fill-opacity=%220.03%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-50" />
 
                 <div className="relative z-10 p-8 md:p-10">
                     <div className="flex items-start justify-between mb-6">
                         <div>
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/15 backdrop-blur-sm border border-white/20 rounded-full text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-surface/15 backdrop-blur-sm border border-white/20 rounded-full text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-4">
                                 <Gift size={12} />
                                 <span>Programa de Indicação</span>
                             </div>
@@ -126,7 +126,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                 <span className="font-black text-white">R$ {BONUS_PER_REFERRAL},00</span> pra você!
                             </p>
                         </div>
-                        <div className="hidden md:flex w-20 h-20 bg-white/15 backdrop-blur rounded-3xl items-center justify-center border border-white/20 shrink-0">
+                        <div className="hidden md:flex w-20 h-20 bg-brand-surface/15 backdrop-blur rounded-3xl items-center justify-center border border-white/20 shrink-0">
                             <Gift size={36} className="text-emerald-100" />
                         </div>
                     </div>
@@ -138,8 +138,8 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                             { step: '2', label: 'Compartilhe com amigos' },
                             { step: '3', label: 'Ganhe R$45 por matrícula' },
                         ].map(({ step, label }) => (
-                            <div key={step} className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl p-3 text-center">
-                                <div className="w-7 h-7 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <div key={step} className="bg-brand-surface/10 backdrop-blur-sm border border-white/15 rounded-2xl p-3 text-center">
+                                <div className="w-7 h-7 bg-brand-surface/20 rounded-full flex items-center justify-center mx-auto mb-2">
                                     <span className="text-xs font-black text-white">{step}</span>
                                 </div>
                                 <p className="text-[10px] font-bold text-emerald-100 leading-tight">{label}</p>
@@ -169,7 +169,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all hover:scale-105 active:scale-95 ${
                                     copied
                                         ? 'bg-emerald-400 text-white shadow-lg shadow-emerald-400/30'
-                                        : 'bg-white text-emerald-700 hover:bg-emerald-50 shadow-lg shadow-black/10'
+                                        : 'bg-brand-surface text-emerald-700 hover:bg-emerald-50 shadow-lg shadow-black/10'
                                 }`}
                             >
                                 {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -183,15 +183,15 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             {/* ── Stats Cards ── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Total Indicações */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
                     <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-teal-400/15 to-transparent rounded-full blur-2xl group-hover:from-teal-400/25 transition-colors" />
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2.5 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-xl">
                             <Users size={22} />
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Total</span>
                     </div>
-                    <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">
+                    <p className="text-4xl font-black text-brand-text tracking-tighter">
                         {loading ? '—' : stats.referrals}
                     </p>
                     <p className="text-sm font-bold text-teal-600 dark:text-teal-400 mt-1">
@@ -200,15 +200,15 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 </div>
 
                 {/* Total Ganho */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-800 shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
                     <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-emerald-400/15 to-transparent rounded-full blur-2xl group-hover:from-emerald-400/25 transition-colors" />
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-xl">
                             <TrendingUp size={22} />
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bônus</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Bônus</span>
                     </div>
-                    <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">
+                    <p className="text-4xl font-black text-brand-text tracking-tighter">
                         {loading ? '—' : `R$ ${stats.totalEarnings.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
                     </p>
                     <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
@@ -218,11 +218,11 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             </div>
 
             {/* ── Histórico de Indicados ── */}
-            <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="bg-brand-surface rounded-[2rem] border border-brand-border shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b border-brand-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <Award size={18} className="text-emerald-500" />
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-wider">
+                        <h3 className="font-black text-brand-text text-sm uppercase tracking-wider">
                             Indicados Recentes
                         </h3>
                     </div>
@@ -240,17 +240,17 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                         </div>
                     ) : stats.recentReferrals.length > 0 ? (
                         stats.recentReferrals.map((ref) => (
-                            <div key={ref.id} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <div key={ref.id} className="flex items-center gap-4 px-6 py-4 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-colors">
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-black text-sm shrink-0 shadow-sm">
                                     {ref.full_name?.charAt(0)?.toUpperCase() || '?'}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-slate-800 dark:text-white text-sm truncate">
+                                    <p className="font-bold text-brand-text text-sm truncate">
                                         {ref.full_name || 'Aluno'}
                                     </p>
                                     <div className="flex items-center gap-1.5 mt-0.5">
-                                        <Clock size={10} className="text-slate-400" />
-                                        <p className="text-[10px] font-medium text-slate-400">
+                                        <Clock size={10} className="text-brand-muted" />
+                                        <p className="text-[10px] font-medium text-brand-muted">
                                             {formatDate(ref.created_at)}
                                         </p>
                                     </div>
@@ -259,19 +259,19 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                     <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">
                                         +R$ 45,00
                                     </p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">bônus</p>
+                                    <p className="text-[10px] font-bold text-brand-muted uppercase tracking-wide">bônus</p>
                                 </div>
                             </div>
                         ))
                     ) : (
                         <div className="p-10 text-center">
-                            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-700">
-                                <Share2 size={24} className="text-slate-300 dark:text-slate-600" />
+                            <div className="w-16 h-16 bg-brand-surface-2 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-brand-border dark:border-brand-border">
+                                <Share2 size={24} className="text-slate-300 dark:text-brand-muted" />
                             </div>
-                            <h4 className="font-black text-slate-700 dark:text-slate-300 mb-1">
+                            <h4 className="font-black text-brand-text dark:text-slate-300 mb-1">
                                 Nenhuma indicação ainda
                             </h4>
-                            <p className="text-sm text-slate-400 dark:text-slate-500 font-medium max-w-xs mx-auto">
+                            <p className="text-sm text-brand-muted font-medium max-w-xs mx-auto">
                                 Compartilhe seu link e comece a ganhar R$ 45,00 por cada amigo matriculado!
                             </p>
                         </div>
@@ -283,7 +283,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             <div className="bg-gradient-to-br from-slate-50 to-emerald-50/30 dark:from-slate-900 dark:to-emerald-900/5 rounded-[2rem] p-6 border border-emerald-100 dark:border-emerald-900/20">
                 <div className="flex items-center gap-2 mb-4">
                     <Sparkles size={16} className="text-emerald-500" />
-                    <h4 className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wider">
+                    <h4 className="font-black text-brand-text dark:text-slate-300 text-sm uppercase tracking-wider">
                         Dicas para vender mais
                     </h4>
                 </div>
@@ -296,7 +296,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                     ].map(({ tip, icon }) => (
                         <li key={tip} className="flex items-start gap-3">
                             <span className="text-base shrink-0 mt-0.5">{icon}</span>
-                            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{tip}</p>
+                            <p className="text-sm font-medium text-brand-muted dark:text-brand-muted">{tip}</p>
                         </li>
                     ))}
                 </ul>

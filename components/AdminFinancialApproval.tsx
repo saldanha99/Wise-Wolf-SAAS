@@ -92,9 +92,9 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
           <h2 className="text-2xl md:text-3xl font-black text-gray-800 dark:text-slate-100 tracking-tight flex items-center gap-3">
             <CheckCircle className="text-tenant-primary" size={28} /> Aprovação Financeira
           </h2>
-          <p className="text-gray-500 dark:text-slate-400 text-sm">Valide os fechamentos mensais enviados pelos professores.</p>
+          <p className="text-gray-500 dark:text-brand-muted text-sm">Valide os fechamentos mensais enviados pelos professores.</p>
         </div>
-        <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-3xl border border-gray-100 dark:border-slate-800 flex items-center gap-4 shadow-sm w-full md:w-auto overflow-hidden">
+        <div className="bg-brand-surface px-6 py-4 rounded-3xl border border-gray-100 dark:border-brand-border flex items-center gap-4 shadow-sm w-full md:w-auto overflow-hidden">
           <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-2xl">
             <DollarSign size={24} />
           </div>
@@ -107,12 +107,12 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
         </div>
       </header>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-gray-100 dark:border-slate-800 overflow-hidden shadow-sm">
-        <div className="p-6 border-b dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div className="bg-brand-surface rounded-[2.5rem] border border-gray-100 dark:border-brand-border overflow-hidden shadow-sm">
+        <div className="p-6 border-b dark:border-brand-border flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex gap-4">
             <button
               onClick={() => fetchRequests()}
-              className="p-2 text-slate-400 hover:text-tenant-primary transition-all"
+              className="p-2 text-brand-muted hover:text-tenant-primary transition-all"
             >
               <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -126,14 +126,14 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
               placeholder="Buscar professor ou mês..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-slate-800 border border-transparent focus:border-tenant-primary rounded-xl text-xs outline-none transition-all uppercase font-black"
+              className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-xs outline-none transition-all uppercase font-black"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[900px]">
-            <thead className="bg-gray-50/50 dark:bg-slate-800/50 text-[10px] text-gray-500 dark:text-slate-400 uppercase font-black border-b dark:border-slate-700">
+            <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] text-gray-500 dark:text-brand-muted uppercase font-black border-b dark:border-brand-border">
               <tr>
                 <th className="px-8 py-6">Professor / Ciclo</th>
                 <th className="px-8 py-6">Valor Transposto</th>
@@ -143,19 +143,19 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
               {filteredRequests.map((req) => (
-                <tr key={req.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors group">
+                <tr key={req.id} className="hover:bg-gray-50/50 dark:hover:bg-brand-surface-2/30 transition-colors group">
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-4">
                       <img src={req.teacher?.avatar_url || `https://ui-avatars.com/api/?name=${req.teacher?.full_name}`} className="w-10 h-10 rounded-xl" />
                       <div>
                         <span className="font-bold text-gray-800 dark:text-slate-200 block">{req.teacher?.full_name}</span>
-                        <span className="text-[10px] font-black text-slate-400 uppercase">Mês Ref: {req.month_year}</span>
+                        <span className="text-[10px] font-black text-brand-muted uppercase">Mês Ref: {req.month_year}</span>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-6">
                     <span className="font-black text-gray-800 dark:text-slate-100 text-lg uppercase tracking-tighter">R$ {req.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                    <p className="text-[9px] text-slate-400 font-bold">{req.total_lessons} aulas computadas</p>
+                    <p className="text-[9px] text-brand-muted font-bold">{req.total_lessons} aulas computadas</p>
                   </td>
                   <td className="px-8 py-6">
                     <span className={`text-[9px] px-3 py-1.5 rounded-full font-black uppercase tracking-widest border shadow-sm ${req.status === 'PAGO' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
@@ -178,7 +178,7 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
                         <button
                           onClick={() => handleAction(req.id, true)}
                           disabled={isProcessing === req.id}
-                          className="flex items-center gap-2 bg-slate-900 text-white dark:bg-sky-600 px-6 py-3 rounded-2xl text-[10px] font-black hover:scale-105 transition-all uppercase tracking-widest shadow-xl shadow-slate-900/10"
+                          className="flex items-center gap-2 bg-brand-surface text-white dark:bg-sky-600 px-6 py-3 rounded-2xl text-[10px] font-black hover:scale-105 transition-all uppercase tracking-widest shadow-xl shadow-slate-900/10"
                         >
                           {isProcessing === req.id ? <RefreshCw className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                           Liberar Pagamento
@@ -199,10 +199,10 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
           </table>
           {filteredRequests.length === 0 && !loading && (
             <div className="py-24 text-center">
-              <div className="w-20 h-20 bg-gray-50 dark:bg-slate-800 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
+              <div className="w-20 h-20 bg-gray-50 dark:bg-brand-surface-2 rounded-[2rem] flex items-center justify-center mx-auto mb-6 text-gray-200">
                 <FileText size={40} />
               </div>
-              <p className="text-gray-400 dark:text-slate-500 font-bold uppercase tracking-widest text-[10px]">Sem solicitações neste período</p>
+              <p className="text-gray-400 dark:text-brand-muted font-bold uppercase tracking-widest text-[10px]">Sem solicitações neste período</p>
             </div>
           )}
         </div>

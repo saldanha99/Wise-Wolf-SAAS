@@ -114,26 +114,26 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
             case 'REJECTED':
                 return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-red-200">Nota Rejeitada</span>;
             default:
-                return <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200">Pendente</span>;
+                return <span className="bg-brand-surface-2 text-brand-text px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-brand-border">Pendente</span>;
         }
     };
 
     return (
-        <div className="p-8 max-w-[1200px] mx-auto min-h-screen bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="p-8 max-w-[1200px] mx-auto min-h-screen bg-brand-surface-2/50 dark:bg-brand-surface/50">
             <div className="mb-8">
                 <div className="flex items-center gap-3 mb-2">
                     <div className="p-3 bg-tenant-primary/10 rounded-xl">
                         <FileText className="text-tenant-primary" size={24} />
                     </div>
-                    <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Minhas Notas Fiscais</h1>
+                    <h1 className="text-3xl font-black text-brand-text tracking-tight">Minhas Notas Fiscais</h1>
                 </div>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">Envie suas notas fiscais após o receber o pagamento para regularizar sua situação.</p>
+                <p className="text-brand-muted font-medium">Envie suas notas fiscais após o receber o pagamento para regularizar sua situação.</p>
             </div>
 
             {/* History Table */}
-            <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden">
-                <div className="p-8 border-b dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between items-center">
-                    <h3 className="font-black text-slate-700 dark:text-slate-200 text-xs uppercase tracking-widest flex items-center gap-2">
+            <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl overflow-hidden">
+                <div className="p-8 border-b dark:border-brand-border bg-brand-surface-2/50 dark:bg-brand-surface-2/30 flex justify-between items-center">
+                    <h3 className="font-black text-brand-text dark:text-slate-200 text-xs uppercase tracking-widest flex items-center gap-2">
 
                         <FileUp size={16} className="text-tenant-primary" /> Envios Pendentes e Histórico
                     </h3>
@@ -142,7 +142,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-[10px] text-slate-400 dark:text-slate-500 uppercase font-black border-b dark:border-slate-800">
+                            <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/50 text-[10px] text-brand-muted uppercase font-black border-b dark:border-brand-border">
                                 <th className="px-8 py-5">Mês Referência</th>
                                 <th className="px-8 py-5">Aulas</th>
                                 <th className="px-8 py-5 text-right">Valor Total</th>
@@ -154,22 +154,22 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                             {loading ? (
                                 Array(3).fill(0).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td colSpan={5} className="px-8 py-6"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-full"></div></td>
+                                        <td colSpan={5} className="px-8 py-6"><div className="h-4 bg-brand-surface-2 dark:bg-brand-surface-2 rounded w-full"></div></td>
                                     </tr>
                                 ))
                             ) : closings.length > 0 ? (
                                 closings.map((inv) => (
-                                    <tr key={inv.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group">
+                                    <tr key={inv.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/30 transition-all group">
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-3">
-                                                <div className="p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl text-slate-400 group-hover:text-tenant-primary group-hover:border-tenant-primary/30 transition-all shadow-sm">
+                                                <div className="p-2.5 bg-brand-surface dark:bg-slate-950 border border-brand-border rounded-xl text-brand-muted group-hover:text-tenant-primary group-hover:border-tenant-primary/30 transition-all shadow-sm">
                                                     <Calendar size={18} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-black text-slate-700 dark:text-slate-200 text-sm">
+                                                    <p className="font-black text-brand-text dark:text-slate-200 text-sm">
                                                         {new Date(inv.month_year + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                                                     </p>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                                    <p className="text-[10px] text-brand-muted font-bold uppercase tracking-wider">
                                                         Ref: {inv.month_year}
                                                     </p>
                                                 </div>
@@ -178,13 +178,13 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                                         <td className="px-8 py-6">
                                             <div className="flex items-center gap-2">
                                                 <Hash size={14} className="text-slate-300" />
-                                                <span className="text-sm font-bold text-slate-600 dark:text-slate-400">
+                                                <span className="text-sm font-bold text-brand-muted dark:text-brand-muted">
                                                     {inv.total_lessons} aulas
                                                 </span>
                                             </div>
                                         </td>
                                         <td className="px-8 py-6 text-right">
-                                            <span className="font-black text-slate-800 dark:text-white text-lg tracking-tight">
+                                            <span className="font-black text-brand-text text-lg tracking-tight">
                                                 R$ {Number(inv.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </span>
                                         </td>
@@ -244,7 +244,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                                                                 href={inv.nf_link}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="w-full justify-center px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tenant-primary hover:text-white transition-all flex items-center gap-2 group/btn"
+                                                                className="w-full justify-center px-4 py-2 bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tenant-primary hover:text-white transition-all flex items-center gap-2 group/btn"
                                                             >
                                                                 <FileText size={14} />
                                                                 <span>Ver Nota Fiscal</span>
@@ -255,7 +255,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
 
                                                     // 4. Fallback (Aguardando Aprovação do Fechamento)
                                                     return (
-                                                        <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">
+                                                        <span className="text-[10px] font-bold text-slate-300 dark:text-brand-muted uppercase tracking-widest">
                                                             Aguardando Aprovação
                                                         </span>
                                                     );
@@ -267,7 +267,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                             ) : (
                                 <tr>
                                     <td colSpan={5} className="px-8 py-20 text-center">
-                                        <div className="flex flex-col items-center justify-center text-slate-300 dark:text-slate-700">
+                                        <div className="flex flex-col items-center justify-center text-slate-300 dark:text-brand-text">
                                             <FileText size={48} className="mb-4 opacity-20" />
                                             <p className="text-sm font-black uppercase tracking-widest">Nenhum fechamento disponível</p>
                                         </div>

@@ -10,12 +10,12 @@ const LandingPageBuilder: React.FC<LandingPageBuilderProps> = ({ tenantId }) => 
     return (
         <div className="space-y-6 animate-in fade-in duration-500 font-sans">
             {/* Header Section */}
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-slate-900 p-6 rounded-[32px] shadow-[0px_4px_24px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-brand-surface p-6 rounded-[32px] shadow-[0px_4px_24px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-brand-border">
                 <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
+                    <h2 className="text-2xl md:text-3xl font-bold text-brand-text flex items-center gap-3">
                         Páginas & Marketing
                     </h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+                    <p className="text-brand-muted text-sm mt-1">
                         Crie landing pages de alta conversão para sua escola.
                     </p>
                 </div>
@@ -25,7 +25,7 @@ const LandingPageBuilder: React.FC<LandingPageBuilderProps> = ({ tenantId }) => 
             </header>
 
             {/* Main Content Area */}
-            <div className="min-h-[600px] bg-white dark:bg-slate-900 rounded-[32px] border border-slate-50 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden animate-in fade-in slide-in-from-right-4 duration-500">
+            <div className="min-h-[600px] bg-brand-surface rounded-[32px] border border-slate-50 dark:border-brand-border shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden animate-in fade-in slide-in-from-right-4 duration-500">
                 <LandingPageEditor tenantId={tenantId} />
             </div>
         </div>

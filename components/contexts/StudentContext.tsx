@@ -52,12 +52,12 @@ export const StudentProvider = ({ children, userId }: { children: ReactNode, use
     // --- GLOBAL BLOCKING VIEW (SUSPENDED) ---
     if (!loading && data?.billing?.status === 'SUSPENDED') {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-950 text-center p-8 animate-in fade-in">
+            <div className="flex flex-col items-center justify-center min-h-screen bg-brand-surface-2 dark:bg-slate-950 text-center p-8 animate-in fade-in">
                 <div className="p-6 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full mb-6">
                     <CreditCard size={64} />
                 </div>
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white mb-4">Acesso Temporariamente Suspenso</h1>
-                <p className="max-w-md text-slate-500 dark:text-slate-400 font-medium leading-relaxed mb-8">
+                <h1 className="text-3xl font-black text-brand-text mb-4">Acesso Temporariamente Suspenso</h1>
+                <p className="max-w-md text-brand-muted font-medium leading-relaxed mb-8">
                     Identificamos uma pendência financeira superior a 7 dias.
                     Para retomar seu acesso às aulas e ao tutor Wolfie, por favor regularize sua situação.
                 </p>
@@ -71,7 +71,7 @@ export const StudentProvider = ({ children, userId }: { children: ReactNode, use
                     <a
                         href="https://wa.me/5511999999999"
                         target="_blank"
-                        className="px-8 py-4 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                        className="px-8 py-4 border border-brand-border dark:border-brand-border rounded-2xl font-bold uppercase tracking-widest hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 transition-colors"
                     >
                         Suporte
                     </a>

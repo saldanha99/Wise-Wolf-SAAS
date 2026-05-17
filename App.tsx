@@ -647,7 +647,7 @@ const App: React.FC = () => {
           </header>
 
           <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-x-hidden">
-            <div className="mx-auto w-full max-w-7xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 w-full">
                   <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>

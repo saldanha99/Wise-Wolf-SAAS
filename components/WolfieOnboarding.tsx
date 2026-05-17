@@ -66,11 +66,11 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-120px)] w-full rounded-3xl overflow-hidden bg-slate-950 font-sans border border-slate-800 shadow-2xl relative">
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-120px)] w-full rounded-3xl overflow-hidden bg-slate-950 font-sans border border-brand-border shadow-2xl relative">
 
             {/* Background Effects */}
             <div className="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950 pointer-events-none"></div>
-            <div className="absolute top-0 w-full h-1 bg-slate-800">
+            <div className="absolute top-0 w-full h-1 bg-brand-surface-2">
                 <div className="h-full bg-indigo-500 transition-all duration-500 ease-out" style={{ width: `${(step / 4) * 100}%` }}></div>
             </div>
 
@@ -86,25 +86,25 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                     {step === 1 && (
                         <>
                             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">Why are you learning English?</h1>
-                            <p className="text-slate-400 text-lg">Choose your main goal to personalize your AI Coach.</p>
+                            <p className="text-brand-muted text-lg">Choose your main goal to personalize your AI Coach.</p>
                         </>
                     )}
                     {step === 2 && (
                         <>
                             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">What's your current level?</h1>
-                            <p className="text-slate-400 text-lg">Be honest. Wolfie will adapt to your vocabulary.</p>
+                            <p className="text-brand-muted text-lg">Be honest. Wolfie will adapt to your vocabulary.</p>
                         </>
                     )}
                     {step === 3 && (
                         <>
                             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">Choose your practice style</h1>
-                            <p className="text-slate-400 text-lg">How do you want Wolfie to correct your mistakes?</p>
+                            <p className="text-brand-muted text-lg">How do you want Wolfie to correct your mistakes?</p>
                         </>
                     )}
                     {step === 4 && (
                         <>
                             <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-3">Preparation complete</h1>
-                            <p className="text-slate-400 text-lg">Wolfie is calibrating your personal curriculum.</p>
+                            <p className="text-brand-muted text-lg">Wolfie is calibrating your personal curriculum.</p>
                         </>
                     )}
                 </div>
@@ -120,13 +120,13 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                                     <button
                                         key={g.id}
                                         onClick={() => setGoal(g.id)}
-                                        className={`flex flex-col items-start p-6 rounded-2xl border text-left transition-all duration-200 ${isSelected ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.2)]' : 'bg-slate-900 border-white/5 hover:bg-slate-800'}`}
+                                        className={`flex flex-col items-start p-6 rounded-2xl border text-left transition-all duration-200 ${isSelected ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.2)]' : 'bg-brand-surface border-white/5 hover:bg-brand-surface-2'}`}
                                     >
                                         <div className={`p-3 rounded-xl ${g.color} bg-opacity-20 mb-4`}>
                                             <Icon className={`${g.color.replace('bg-', 'text-')} w-6 h-6`} />
                                         </div>
                                         <h3 className="text-white font-bold text-lg mb-1">{g.title}</h3>
-                                        <p className="text-slate-400 text-sm font-medium">{g.desc}</p>
+                                        <p className="text-brand-muted text-sm font-medium">{g.desc}</p>
                                     </button>
                                 );
                             })}
@@ -139,13 +139,13 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                                 <button
                                     key={l.id}
                                     onClick={() => setLevel(l.id)}
-                                    className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-200 ${level === l.id ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 'bg-slate-900 border-white/5 hover:bg-slate-800'}`}
+                                    className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-200 ${level === l.id ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 'bg-brand-surface border-white/5 hover:bg-brand-surface-2'}`}
                                 >
                                     <div>
                                         <h3 className="text-white font-bold text-base">{l.label}</h3>
-                                        <p className="text-slate-400 text-sm mt-0.5">{l.desc}</p>
+                                        <p className="text-brand-muted text-sm mt-0.5">{l.desc}</p>
                                     </div>
-                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${level === l.id ? 'border-indigo-500' : 'border-slate-700'}`}>
+                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${level === l.id ? 'border-indigo-500' : 'border-brand-border'}`}>
                                         {level === l.id && <div className="w-3 h-3 bg-indigo-500 rounded-full" />}
                                     </div>
                                 </button>
@@ -162,14 +162,14 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                                     <button
                                         key={s.id}
                                         onClick={() => setStrictness(s.strictness as 1 | 2 | 3)}
-                                        className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all duration-200 ${isSelected ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 'bg-slate-900 border-white/5 hover:bg-slate-800'}`}
+                                        className={`flex items-center gap-4 p-5 rounded-2xl border text-left transition-all duration-200 ${isSelected ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 'bg-brand-surface border-white/5 hover:bg-brand-surface-2'}`}
                                     >
-                                        <div className={`p-4 rounded-xl ${isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-800 text-slate-400'}`}>
+                                        <div className={`p-4 rounded-xl ${isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-brand-surface-2 text-brand-muted'}`}>
                                             <Icon className="w-6 h-6" />
                                         </div>
                                         <div>
                                             <h3 className="text-white font-bold text-lg">{s.label}</h3>
-                                            <p className="text-slate-400 text-sm mt-1">{s.desc}</p>
+                                            <p className="text-brand-muted text-sm mt-1">{s.desc}</p>
                                         </div>
                                     </button>
                                 );
@@ -181,7 +181,7 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                 {/* Footer Controls */}
                 <div className="w-full mt-12 flex items-center justify-between border-t border-white/5 pt-6">
                     {step > 1 && step < 4 ? (
-                        <button onClick={() => setStep(step - 1)} className="px-6 py-3 text-slate-400 font-bold hover:text-white transition-colors">
+                        <button onClick={() => setStep(step - 1)} className="px-6 py-3 text-brand-muted font-bold hover:text-white transition-colors">
                             Back
                         </button>
                     ) : <div></div>}
@@ -190,7 +190,7 @@ export const WolfieOnboarding: React.FC<WolfieOnboardingProps> = ({ user, onComp
                         <button
                             onClick={() => setStep(step + 1)}
                             disabled={step === 1 && !goal}
-                            className="flex items-center gap-2 px-8 py-4 bg-white text-slate-900 rounded-xl font-black uppercase tracking-wider hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 px-8 py-4 bg-brand-surface text-brand-text rounded-xl font-black uppercase tracking-wider hover:bg-indigo-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Continue <ArrowRight className="w-5 h-5" />
                         </button>

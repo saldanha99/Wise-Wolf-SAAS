@@ -89,7 +89,7 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
 
             <div className="relative z-10 w-full">
                 <div className="flex items-center gap-2 mb-6">
-                    <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
+                    <div className="p-2 bg-brand-surface/20 rounded-xl backdrop-blur-md">
                         <Sparkles size={20} className="text-yellow-300" />
                     </div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-100">Relatório Inteligente (IA)</span>
@@ -104,8 +104,8 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
                                 <RefreshCw size={16} className="animate-spin" />
                                 <span className="text-sm font-medium">O Lobo está analisando seus últimos feedbacks...</span>
                             </div>
-                            <div className="h-2 bg-white/10 rounded w-3/4"></div>
-                            <div className="h-2 bg-white/10 rounded w-1/2"></div>
+                            <div className="h-2 bg-brand-surface/10 rounded w-3/4"></div>
+                            <div className="h-2 bg-brand-surface/10 rounded w-1/2"></div>
                         </div>
                     ) : error ? (
                         <div className="flex flex-col gap-2 text-red-300 bg-red-900/20 p-4 rounded-xl border border-red-500/30">
@@ -135,7 +135,7 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
                 <button
                     onClick={generateNewInsight}
                     disabled={loading}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-brand-surface/10 hover:bg-brand-surface/20 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Recalcular
                 </button>

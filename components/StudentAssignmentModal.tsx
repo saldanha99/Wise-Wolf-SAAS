@@ -222,13 +222,13 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-lg border border-slate-100 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+        <div className="bg-brand-surface rounded-[2.5rem] shadow-2xl w-full max-w-lg border border-brand-border overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-8 py-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/20">
                 <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Atribuir Aluno</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">Configure a agenda semanal</p>
+                    <h3 className="text-xl font-black text-brand-text uppercase tracking-tight">Atribuir Aluno</h3>
+                    <p className="text-xs text-brand-muted font-bold uppercase tracking-widest mt-1">Configure a agenda semanal</p>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
+                <button onClick={onClose} className="p-2 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-full transition-colors text-brand-muted">
                     <X size={20} />
                 </button>
             </div>
@@ -242,16 +242,16 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                 )}
 
                 {/* Mode Selector */}
-                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+                <div className="flex gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-2xl">
                     <button
                         onClick={() => setIsNewStudent(false)}
-                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isNewStudent ? 'bg-white dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-slate-400'}`}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-brand-muted'}`}
                     >
                         Aluno Existente
                     </button>
                     <button
                         onClick={() => setIsNewStudent(true)}
-                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isNewStudent ? 'bg-white dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-slate-400'}`}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isNewStudent ? 'bg-brand-surface dark:bg-slate-700 text-tenant-primary shadow-sm' : 'text-brand-muted'}`}
                     >
                         Novo Aluno
                     </button>
@@ -259,7 +259,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
 
                 {!isNewStudent ? (
                     <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                             <User size={12} /> Selecionar Aluno
                         </label>
                         <select
@@ -270,7 +270,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                 const std = students.find(s => s.id === stdId);
                                 if (std?.module) setModule(std.module);
                             }}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                         >
                             <option value="">Escolha um aluno...</option>
                             {students.map(s => (
@@ -283,31 +283,31 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                         {/* Compact New Student Name/Email */}
                         <div className="grid grid-cols-1 gap-4">
                             <div>
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</label>
-                                <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="Nome Completo" />
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Nome</label>
+                                <input value={newName} onChange={e => setNewName(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Nome Completo" />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email (Login)</label>
-                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="email@exemplo.com" />
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Email (Login)</label>
+                                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="email@exemplo.com" />
                             </div>
                         </div>
 
                         {/* Optional Asaas Fields */}
-                        <details className="text-xs text-slate-400 cursor-pointer">
+                        <details className="text-xs text-brand-muted cursor-pointer">
                             <summary className="font-bold hover:text-tenant-primary transition-colors">Mais Detalhes (CPF, Endereço...)</summary>
-                            <div className="pt-3 space-y-3 pl-2 border-l-2 border-slate-100 dark:border-slate-800 mt-2">
-                                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="Telefone" />
-                                <input value={newCpf} onChange={e => setNewCpf(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="CPF" />
-                                <input value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold outline-none" placeholder="Endereço" />
+                            <div className="pt-3 space-y-3 pl-2 border-l-2 border-brand-border mt-2">
+                                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Telefone" />
+                                <input value={newCpf} onChange={e => setNewCpf(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="CPF" />
+                                <input value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full px-3 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold outline-none" placeholder="Endereço" />
                             </div>
                         </details>
 
                         {/* Contract Upload */}
-                        <div className="pt-2 border-t border-dashed border-slate-200 dark:border-slate-800">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5 mb-1">
+                        <div className="pt-2 border-t border-dashed border-brand-border dark:border-brand-border">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5 mb-1">
                                 <FileText size={10} /> Contrato (PDF)
                             </label>
-                            <input type="file" accept="application/pdf" onChange={(e) => { if (e.target.files?.[0]) setContractFile(e.target.files[0]) }} className="block w-full text-xs text-slate-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-tenant-primary/10 file:text-tenant-primary hover:file:bg-tenant-primary/20" />
+                            <input type="file" accept="application/pdf" onChange={(e) => { if (e.target.files?.[0]) setContractFile(e.target.files[0]) }} className="block w-full text-xs text-brand-muted file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-tenant-primary/10 file:text-tenant-primary hover:file:bg-tenant-primary/20" />
                         </div>
                     </div>
                 )}
@@ -315,19 +315,19 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                 {/* Level & Start Date Row */}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Nível</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-1 block">Nível</label>
                         <input value={module} onChange={e => setModule(e.target.value.toUpperCase())} className="w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-black text-blue-700 dark:text-blue-300 outline-none uppercase text-center" />
                     </div>
                     <div>
                         <label className="text-[10px] font-black uppercase tracking-widest text-tenant-primary mb-1 block">Início</label>
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-tenant-primary/20 rounded-xl text-xs font-bold outline-none" />
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-brand-surface dark:bg-slate-950 border border-tenant-primary/20 rounded-xl text-xs font-bold outline-none" />
                     </div>
                 </div>
 
                 {/* Schedule & Pricing Section */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                <div className="p-4 bg-brand-surface-2/50 rounded-2xl border border-brand-border space-y-4">
                     <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 gap-2 flex items-center">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted gap-2 flex items-center">
                             <Calendar size={12} /> Agenda Semanal Flexível
                         </label>
                         <span className="text-[9px] font-bold text-tenant-primary bg-tenant-primary/10 px-2 py-1 rounded-md">
@@ -343,7 +343,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                 onClick={() => toggleDay(day)}
                                 className={`py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${schedule[day]
                                     ? 'bg-tenant-primary border-tenant-primary text-white shadow-md'
-                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-700 text-slate-400 hover:border-tenant-primary/50'
+                                    : 'bg-brand-surface border-brand-border dark:border-brand-border text-brand-muted hover:border-tenant-primary/50'
                                     }`}
                             >
                                 {day}
@@ -354,16 +354,16 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                     {/* Time Selection for Active Days */}
                     {Object.keys(schedule).length > 0 && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-1">Horários por dia:</p>
+                            <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider pl-1">Horários por dia:</p>
                             <div className="grid grid-cols-2 gap-2">
                                 {Object.keys(schedule).map(day => (
-                                    <div key={day} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-700">
-                                        <span className="text-[9px] font-black uppercase text-slate-500 w-12">{day}</span>
+                                    <div key={day} className="flex items-center gap-2 bg-brand-surface p-2 rounded-xl border border-brand-border dark:border-brand-border">
+                                        <span className="text-[9px] font-black uppercase text-brand-muted w-12">{day}</span>
                                         <Clock size={10} className="text-slate-300" />
                                         <select
                                             value={schedule[day]}
                                             onChange={(e) => updateTimeForDay(day, e.target.value)}
-                                            className="flex-1 text-[10px] font-bold bg-transparent outline-none text-slate-700 dark:text-slate-200"
+                                            className="flex-1 text-[10px] font-bold bg-transparent outline-none text-brand-text dark:text-slate-200"
                                         >
                                             {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
@@ -375,14 +375,14 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                 </div>
 
                 {/* Financial / Pricing Section */}
-                <div className={`p-4 rounded-2xl border space-y-3 transition-colors ${updateFinancials ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800' : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 grayscale'}`}>
+                <div className={`p-4 rounded-2xl border space-y-3 transition-colors ${updateFinancials ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800' : 'bg-gray-50 dark:bg-brand-surface-2 border-gray-200 dark:border-brand-border grayscale'}`}>
                     <div className="flex justify-between items-center">
                         <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 gap-2 flex items-center">
                             <DollarSign size={12} /> Proposta Comercial
                         </label>
                         {existingTuition !== null && existingTuition > 0 && (
                             <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-bold text-slate-500">
+                                <span className="text-[9px] font-bold text-brand-muted">
                                     Atual: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(existingTuition)}
                                 </span>
                                 <label className="text-[9px] font-bold flex items-center gap-1 cursor-pointer">
@@ -402,11 +402,11 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                         <div className="space-y-4 animate-in fade-in">
                             <div className="flex gap-3 items-end">
                                 <div className="flex-1 space-y-1">
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Fidelidade</label>
+                                    <label className="text-[9px] font-bold text-brand-muted uppercase">Fidelidade</label>
                                     <select
                                         value={fidelityMonths}
                                         onChange={(e) => setFidelityMonths(Number(e.target.value))}
-                                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300 outline-none"
+                                        className="w-full px-3 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold text-emerald-800 dark:text-emerald-300 outline-none"
                                         disabled={isManualPrice} // Disable duration logic if manual overrides price? Or allow duration selection but price is manual.
                                     >
                                         <option value={6}>6 Meses</option>
@@ -415,7 +415,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                     </select>
                                 </div>
                                 <div className="flex-1 space-y-1 text-right">
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase">Mensalidade {isManualPrice ? 'Definida' : 'Estimada'}</label>
+                                    <label className="text-[9px] font-bold text-brand-muted uppercase">Mensalidade {isManualPrice ? 'Definida' : 'Estimada'}</label>
                                     <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
                                         {calculatedPrice > 0
                                             ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(calculatedPrice)
@@ -444,7 +444,7 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                                             type="number"
                                             value={manualPriceValue}
                                             onChange={(e) => setManualPriceValue(Number(e.target.value))}
-                                            className="w-full pl-8 pr-4 py-2 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 rounded-xl font-black text-emerald-700 dark:text-emerald-300 outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                                            className="w-full pl-8 pr-4 py-2 bg-brand-surface border border-emerald-200 dark:border-emerald-800 rounded-xl font-black text-emerald-700 dark:text-emerald-300 outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -453,17 +453,17 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
                         </div>
                     ) : (
                         <div className="text-center py-2">
-                            <p className="text-[10px] font-bold text-slate-400">Mantendo valor atual contratado.</p>
+                            <p className="text-[10px] font-bold text-brand-muted">Mantendo valor atual contratado.</p>
                         </div>
                     )}
                 </div>
 
             </div>
 
-            <div className="p-8 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 flex justify-end gap-3">
+            <div className="p-8 border-t border-brand-border bg-brand-surface-2/50 dark:bg-brand-surface flex justify-end gap-3">
                 <button
                     onClick={onClose}
-                    className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 transition-colors"
                 >
                     Cancelar
                 </button>

@@ -108,12 +108,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   };
 
   if (contextLoading) return (
-    <div className="flex flex-col items-center justify-center h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex flex-col items-center justify-center h-screen bg-brand-surface-2 dark:bg-slate-950">
       <div className="relative">
         <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-20 animate-pulse rounded-full"></div>
         <RefreshCw className="animate-spin relative z-10 text-indigo-600 dark:text-indigo-400" size={48} />
       </div>
-      <p className="text-sm font-black uppercase tracking-widest mt-4 text-slate-400 animate-pulse">Carregando sua experiência...</p>
+      <p className="text-sm font-black uppercase tracking-widest mt-4 text-brand-muted animate-pulse">Carregando sua experiência...</p>
     </div>
   );
 
@@ -130,12 +130,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       {/* 1. HERO SECTION: Premium Welcome Header */}
       <div className="relative rounded-[3rem] overflow-hidden bg-brand-accent shadow-2xl shadow-brand-accent/20 text-white p-8 md:p-12">
         {/* Dynamic Background Gradients */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-white/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3"></div>
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-surface/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3"></div>
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-black/10 rounded-full blur-[60px] translate-y-1/3 -translate-x-1/3"></div>
 
         <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-[10px] font-black uppercase tracking-widest mb-6 text-white shadow-inner">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-surface/10 backdrop-blur-xl border border-white/20 text-[10px] font-black uppercase tracking-widest mb-6 text-white shadow-inner">
               <Sparkles size={12} className="text-white" />
               <span>Portal Premium</span>
             </div>
@@ -158,8 +158,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               <ChevronRight size={18} className="ml-2 text-red-300" />
             </div>
           ) : (
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-white/20 cursor-pointer" onClick={() => setShowContract(true)}>
-              <div className="p-3 bg-white/20 text-white rounded-2xl shadow-lg">
+            <div className="bg-brand-surface/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-brand-surface/20 cursor-pointer" onClick={() => setShowContract(true)}>
+              <div className="p-3 bg-brand-surface/20 text-white rounded-2xl shadow-lg">
                 <FileText size={24} />
               </div>
               <div>
@@ -229,13 +229,13 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       {isUrgentClass && nextClass ? (
         <div className="bg-brand-accent text-white rounded-[3rem] p-8 md:p-10 shadow-2xl relative overflow-hidden animate-fade-in-up">
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-white/20 rounded-full blur-[80px] opacity-80 pointer-events-none translate-x-1/3 -translate-y-1/3 text-blend-screen"></div>
+          <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-brand-surface/20 rounded-full blur-[80px] opacity-80 pointer-events-none translate-x-1/3 -translate-y-1/3 text-blend-screen"></div>
 
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
               <div className="relative">
-                <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-[2rem] flex items-center justify-center border border-white/20 shadow-inner">
-                  <div className="w-16 h-16 bg-white shrink-0 rounded-2xl flex items-center justify-center animate-pulse shadow-lg text-brand-accent">
+                <div className="w-24 h-24 bg-brand-surface/10 backdrop-blur-md rounded-[2rem] flex items-center justify-center border border-white/20 shadow-inner">
+                  <div className="w-16 h-16 bg-brand-surface shrink-0 rounded-2xl flex items-center justify-center animate-pulse shadow-lg text-brand-accent">
                     <Video size={36} className="fill-brand-accent/20" />
                   </div>
                 </div>
@@ -250,7 +250,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               </div>
             </div>
             <div className="flex flex-col items-stretch md:items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-white text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
+              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-brand-surface text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
                 <Video size={18} className="group-hover:scale-110 transition-transform" />
                 Entrar na Sala
               </a>
@@ -368,12 +368,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {showContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-[2rem] w-full max-w-4xl max-h-[90vh] overflow-y-auto relative shadow-2xl">
+          <div className="bg-brand-surface rounded-[2rem] w-full max-w-4xl max-h-[90vh] overflow-y-auto relative shadow-2xl">
             <button
               onClick={() => setShowContract(false)}
-              className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors z-50"
+              className="absolute top-6 right-6 p-2 bg-brand-surface-2 rounded-full hover:bg-slate-200 transition-colors z-50"
             >
-              <X size={20} className="text-slate-600" />
+              <X size={20} className="text-brand-muted" />
             </button>
             <div className="p-8">
               <ContractView userId={user.id} classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)} />

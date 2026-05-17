@@ -63,7 +63,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
     };
 
     return (
-        <div className="w-full h-full relative overflow-y-auto bg-white font-sans text-slate-900 scrollbar-hide">
+        <div className="w-full h-full relative overflow-y-auto bg-brand-surface font-sans text-brand-text scrollbar-hide">
 
             {/* HERO SECTION */}
             <section className="relative min-h-[600px] lg:min-h-[700px] bg-gradient-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
@@ -84,7 +84,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                         transition={{ duration: 0.8 }}
                         className="text-white space-y-8"
                     >
-                        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
+                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
                             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                             <span className="text-xs font-bold tracking-wider uppercase">Matrículas Abertas</span>
                         </div>
@@ -107,7 +107,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             </button>
                             <button
                                 onClick={() => handleOpenModal('Falar com Consultor (Hero)')}
-                                className="bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-xl backdrop-blur-sm border border-white/20 transition-all flex items-center justify-center text-lg"
+                                className="bg-brand-surface/10 hover:bg-brand-surface/20 text-white font-bold py-4 px-8 rounded-xl backdrop-blur-sm border border-white/20 transition-all flex items-center justify-center text-lg"
                             >
                                 Falar com Consultor
                             </button>
@@ -137,7 +137,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             <img src={bgImage} alt="Hero" className="w-full h-[500px] object-cover hover:scale-105 transition-transform duration-700" />
 
                             {/* Floating Badge */}
-                            <div className="absolute bottom-8 left-8 bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl max-w-[200px] animate-bounce-slow">
+                            <div className="absolute bottom-8 left-8 bg-brand-surface/90 backdrop-blur-md p-4 rounded-2xl shadow-xl max-w-[200px] animate-bounce-slow">
                                 <div className="flex items-center gap-1 text-yellow-500 mb-1">
                                     <Star size={16} fill="currentColor" />
                                     <Star size={16} fill="currentColor" />
@@ -145,7 +145,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                     <Star size={16} fill="currentColor" />
                                     <Star size={16} fill="currentColor" />
                                 </div>
-                                <p className="text-slate-900 font-bold text-sm">"Método incrível e professores excelentes!"</p>
+                                <p className="text-brand-text font-bold text-sm">"Método incrível e professores excelentes!"</p>
                             </div>
                         </div>
                     </motion.div>
@@ -153,7 +153,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
             </section>
 
             {/* SOCIAL PROOF */}
-            <section className="py-10 bg-white border-b border-gray-100">
+            <section className="py-10 bg-brand-surface border-b border-gray-100">
                 <div className="container mx-auto px-6 flex flex-wrap justify-center gap-8 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
                     {/* Fake Logos */}
                     {['Google', 'Forbes', 'TechCrunch', 'Bloomberg'].map((logo, i) => (
@@ -171,7 +171,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70">
                             <h3 className="text-xl font-bold text-gray-500 mb-6 flex items-center gap-2">
                                 <XCircle className="text-red-300" /> Cursos Tradicionais
                             </h3>
@@ -185,7 +185,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                             </ul>
                         </div>
 
-                        <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-[#002366] relative transform md:-translate-y-4">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-xl border-2 border-[#002366] relative transform md:-translate-y-4">
                             <div className="absolute top-0 right-0 bg-[#002366] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-lg">
                                 PREFERRED
                             </div>
@@ -206,7 +206,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
             </section>
 
             {/* PRICING SECTION */}
-            <section id="plans-section" className="py-24 bg-white relative">
+            <section id="plans-section" className="py-24 bg-brand-surface relative">
                 <div className="absolute top-0 left-0 w-full h-[500px] bg-gray-50 skew-y-3 transform origin-top-left -z-10" />
 
                 <div className="container mx-auto px-6">
@@ -224,7 +224,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                                     whileInView={{ opacity: 1, y: 0 }}
                                     viewport={{ once: true }}
                                     transition={{ delay: index * 0.1 }}
-                                    className={`relative bg-white rounded-3xl p-8 border ${index === 1 ? 'border-[#D32F2F] shadow-2xl scale-105 z-10' : 'border-gray-100 shadow-lg'}`}
+                                    className={`relative bg-brand-surface rounded-3xl p-8 border ${index === 1 ? 'border-[#D32F2F] shadow-2xl scale-105 z-10' : 'border-gray-100 shadow-lg'}`}
                                 >
                                     {index === 1 && (
                                         <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#D32F2F] text-white px-4 py-1 rounded-full text-xs font-black uppercase tracking-wide shadow-lg">
@@ -273,7 +273,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
                     <h2 className="text-3xl lg:text-4xl font-black mb-16">Histórias Reais</h2>
                     <div className="grid md:grid-cols-3 gap-6">
                         {[1, 2, 3].map((i) => (
-                            <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl text-left hover:bg-white/10 transition-colors">
+                            <div key={i} className="bg-brand-surface/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl text-left hover:bg-brand-surface/10 transition-colors">
                                 <div className="flex gap-1 mb-4">
                                     {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} className="fill-yellow-400 text-yellow-400" />)}
                                 </div>
@@ -294,7 +294,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
             </section>
 
             {/* FAQ */}
-            <section className="py-24 bg-white">
+            <section className="py-24 bg-brand-surface">
                 <div className="container mx-auto px-6 max-w-3xl">
                     <h2 className="text-3xl font-black text-[#002366] mb-12 text-center">Dúvidas Comuns</h2>
                     <div className="space-y-4">
@@ -337,7 +337,7 @@ const PremiumLandingPreview: React.FC<PremiumLandingPreviewProps> = ({
             {
                 isModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative">
+                        <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full shadow-2xl relative">
                             <button
                                 onClick={() => setIsModalOpen(false)}
                                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"

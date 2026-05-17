@@ -166,7 +166,7 @@ const AutomacaoSmart: React.FC = () => {
     };
 
     return (
-        <div className="w-full max-w-md mx-auto bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-lg border border-slate-100 dark:border-slate-800 space-y-8">
+        <div className="w-full max-w-md mx-auto bg-brand-surface p-8 rounded-[32px] shadow-lg border border-brand-border space-y-8">
 
             {/* Header */}
             <div className="flex items-center gap-3">
@@ -174,24 +174,24 @@ const AutomacaoSmart: React.FC = () => {
                     {status === 'SUCCESS' ? <CheckCircle size={24} /> : <UserCheck size={24} />}
                 </div>
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Conexão Pessoal</h2>
-                    <p className="text-sm text-slate-500">{status === 'SUCCESS' ? 'Vinculado com sucesso' : 'Vincular meu WhatsApp'}</p>
+                    <h2 className="text-xl font-bold text-brand-text">Conexão Pessoal</h2>
+                    <p className="text-sm text-brand-muted">{status === 'SUCCESS' ? 'Vinculado com sucesso' : 'Vincular meu WhatsApp'}</p>
                 </div>
             </div>
 
             {/* Automation Toggle */}
-            <div className={`p-4 rounded-2xl border flex justify-between items-center group cursor-pointer transition-all ${automationEnabled ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800'}`} onClick={toggleAutomation}>
+            <div className={`p-4 rounded-2xl border flex justify-between items-center group cursor-pointer transition-all ${automationEnabled ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-brand-surface-2/50 border-brand-border dark:border-brand-border'}`} onClick={toggleAutomation}>
                 <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${automationEnabled ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'} transition-colors`}>
+                    <div className={`p-2 rounded-full ${automationEnabled ? 'bg-brand-surface/20 text-white' : 'bg-slate-200 text-brand-muted'} transition-colors`}>
                         <Zap size={18} fill={automationEnabled ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <p className={`text-sm font-bold ${automationEnabled ? 'text-white' : 'text-slate-900 dark:text-white'}`}>Automação Matinal (6h)</p>
-                        <p className={`text-xs ${automationEnabled ? 'text-emerald-100' : 'text-slate-500'}`}>Enviar link da aula automaticamente?</p>
+                        <p className={`text-sm font-bold ${automationEnabled ? 'text-white' : 'text-brand-text'}`}>Automação Matinal (6h)</p>
+                        <p className={`text-xs ${automationEnabled ? 'text-emerald-100' : 'text-brand-muted'}`}>Enviar link da aula automaticamente?</p>
                     </div>
                 </div>
-                <div className={`w-12 h-6 rounded-full p-1 transition-all ${automationEnabled ? 'bg-white/30' : 'bg-slate-300'}`}>
-                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all transform ${automationEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                <div className={`w-12 h-6 rounded-full p-1 transition-all ${automationEnabled ? 'bg-brand-surface/30' : 'bg-slate-300'}`}>
+                    <div className={`w-4 h-4 rounded-full bg-brand-surface shadow-sm transition-all transform ${automationEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                 </div>
             </div>
 
@@ -203,8 +203,8 @@ const AutomacaoSmart: React.FC = () => {
                         <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mb-3">
                             <Smartphone size={32} />
                         </div>
-                        <h3 className="font-bold text-slate-800 dark:text-white text-lg">WhatsApp Conectado</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+                        <h3 className="font-bold text-brand-text text-lg">WhatsApp Conectado</h3>
+                        <p className="text-sm text-brand-muted mt-1 mb-4">
                             Instância ativa: <span className="font-mono bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 rounded text-emerald-700 dark:text-emerald-400">{instanceId}</span>
                         </p>
                         <button
@@ -216,9 +216,9 @@ const AutomacaoSmart: React.FC = () => {
                     </div>
                 ) : (
                     <>
-                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                                <strong className="text-slate-700 dark:text-slate-300">Como funciona:</strong> Ao clicar no botão abaixo, criaremos uma conexão exclusiva para o seu usuário. Isso permitirá que você lance vagas e envie lembretes usando seu próprio número de WhatsApp.
+                        <div className="p-4 bg-brand-surface-2/50 rounded-xl border border-brand-border">
+                            <p className="text-xs text-brand-muted leading-relaxed">
+                                <strong className="text-brand-text dark:text-slate-300">Como funciona:</strong> Ao clicar no botão abaixo, criaremos uma conexão exclusiva para o seu usuário. Isso permitirá que você lance vagas e envie lembretes usando seu próprio número de WhatsApp.
                             </p>
                         </div>
 
@@ -233,11 +233,11 @@ const AutomacaoSmart: React.FC = () => {
                         )}
 
                         {qrCode && (
-                            <div className="flex flex-col items-center p-6 bg-white border-2 border-slate-900 rounded-2xl animate-in zoom-in duration-300 shadow-xl">
-                                <div className="mb-4 p-2 bg-white rounded-lg">
+                            <div className="flex flex-col items-center p-6 bg-brand-surface border-2 border-slate-900 rounded-2xl animate-in zoom-in duration-300 shadow-xl">
+                                <div className="mb-4 p-2 bg-brand-surface rounded-lg">
                                     <img src={qrCode} alt="QR Code" className="w-48 h-48 mix-blend-multiply" />
                                 </div>
-                                <p className="text-xs font-bold text-slate-900 uppercase animate-pulse flex items-center gap-2">
+                                <p className="text-xs font-bold text-brand-text uppercase animate-pulse flex items-center gap-2">
                                     <Smartphone size={14} />
                                     Escaneie com seu WhatsApp
                                 </p>
@@ -247,7 +247,7 @@ const AutomacaoSmart: React.FC = () => {
                         <button
                             onClick={handleCreate}
                             disabled={loading}
-                            className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg transform transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2 ${loading ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
+                            className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg transform transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2 ${loading ? 'bg-brand-surface-2 text-brand-muted' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
                                 }`}
                         >
                             {loading ? (

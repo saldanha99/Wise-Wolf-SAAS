@@ -251,7 +251,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     ];
 
     if (loading) return (
-        <div className="flex items-center justify-center min-h-[400px] text-slate-400 gap-2">
+        <div className="flex items-center justify-center min-h-[400px] text-brand-muted gap-2">
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.1s]" />
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
@@ -264,24 +264,24 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                 {columns.map(col => (
                     <div key={col.id} className="min-w-[320px] flex-1 flex flex-col">
                         {/* Column Header */}
-                        <div className="bg-white dark:bg-slate-900 p-4 rounded-t-[24px] border-b border-slate-50 dark:border-slate-800 shadow-sm flex justify-between items-center sticky top-0 z-10">
+                        <div className="bg-brand-surface p-4 rounded-t-[24px] border-b border-slate-50 dark:border-brand-border shadow-sm flex justify-between items-center sticky top-0 z-10">
                             <div className="flex items-center gap-3">
                                 <div className={`w-3 h-3 rounded-full ${col.color} shadow-[0_0_8px_currentColor] opacity-80`} />
-                                <h3 className="font-black text-xs uppercase tracking-widest text-slate-700 dark:text-slate-200">
+                                <h3 className="font-black text-xs uppercase tracking-widest text-brand-text dark:text-slate-200">
                                     {col.label}
                                 </h3>
                             </div>
-                            <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2.5 py-1 rounded-lg text-xs font-bold">
+                            <span className="bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted dark:text-brand-muted px-2.5 py-1 rounded-lg text-xs font-bold">
                                 {col.count}
                             </span>
                         </div>
 
                         {/* Column Body */}
-                        <div className="bg-slate-50/50 dark:bg-slate-900/50 flex-1 p-3 rounded-b-[24px] space-y-3">
+                        <div className="bg-brand-surface-2/50 dark:bg-brand-surface/50 flex-1 p-3 rounded-b-[24px] space-y-3">
                             {leads.filter(l => l.status === col.id).map((lead, index) => (
                                 <div
                                     key={lead.id}
-                                    className="group bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-[0px_2px_8px_rgba(0,0,0,0.02)] border border-slate-100 dark:border-slate-700/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-grab active:cursor-grabbing relative overflow-hidden"
+                                    className="group bg-brand-surface dark:bg-brand-surface-2 p-5 rounded-2xl shadow-[0px_2px_8px_rgba(0,0,0,0.02)] border border-brand-border dark:border-brand-border/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-grab active:cursor-grabbing relative overflow-hidden"
                                 >
                                     {/* Drag Handle / Decorative Top */}
                                     <div className={`absolute top-0 left-0 w-full h-1 ${col.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
@@ -296,24 +296,24 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                                     </div>
                                                 );
                                             })()}
-                                            <h4 className="font-bold text-base text-slate-800 dark:text-slate-100 leading-tight">
+                                            <h4 className="font-bold text-base text-brand-text dark:text-slate-100 leading-tight">
                                                 {lead.name}
                                             </h4>
                                         </div>
-                                        <button className="text-slate-300 hover:text-slate-500 transition-colors">
+                                        <button className="text-slate-300 hover:text-brand-muted transition-colors">
                                             <MoreHorizontal size={16} />
                                         </button>
                                     </div>
 
                                     <div className="space-y-2 mb-4">
                                         {lead.email && (
-                                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                            <div className="flex items-center gap-2 text-xs text-brand-muted">
                                                 <Mail size={12} className="shrink-0" />
                                                 <span className="truncate">{lead.email}</span>
                                             </div>
                                         )}
                                         {lead.phone && (
-                                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                            <div className="flex items-center gap-2 text-xs text-brand-muted">
                                                 <Phone size={12} className="shrink-0" />
                                                 <span className="truncate">{lead.phone}</span>
                                             </div>
@@ -324,14 +324,14 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                                 {new Date(lead.scheduled_at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                             </div>
                                         )}
-                                        <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-400 mt-2">
+                                        <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-brand-muted mt-2">
                                             <Calendar size={10} />
                                             {new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                                         </div>
                                     </div>
 
                                     {/* Quick Actions */}
-                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-slate-700/50">
+                                    <div className="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-brand-border/50">
                                         {col.id === 'NEW' ? (
                                             <button
                                                 onClick={() => updateStatus(lead.id, 'CONTACTED')}
@@ -391,7 +391,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                                 {col.id === 'LOST' && (
                                                     <button
                                                         onClick={() => updateStatus(lead.id, 'NEW')}
-                                                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-xs font-bold hover:bg-slate-100 transition-colors"
+                                                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-brand-surface-2 text-brand-muted dark:text-brand-muted rounded-lg text-xs font-bold hover:bg-brand-surface-2 transition-colors"
                                                     >
                                                         <RefreshCw size={12} /> Reativar
                                                     </button>
@@ -404,8 +404,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
                             {/* Empty State / Add Placeholder */}
                             {col.id === 'NEW' && (
-                                <button className="w-full py-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-slate-600 hover:border-slate-300 dark:hover:text-slate-300 transition-all flex items-center justify-center gap-2 text-xs font-bold group">
-                                    <span className="bg-slate-100 dark:bg-slate-800 p-1 rounded-full group-hover:scale-110 transition-transform">
+                                <button className="w-full py-3 border-2 border-dashed border-brand-border rounded-xl text-brand-muted hover:text-brand-muted hover:border-brand-border dark:hover:text-slate-300 transition-all flex items-center justify-center gap-2 text-xs font-bold group">
+                                    <span className="bg-brand-surface-2 dark:bg-brand-surface-2 p-1 rounded-full group-hover:scale-110 transition-transform">
                                         <Plus size={14} />
                                     </span>
                                     Adicionar Manualmente
@@ -419,45 +419,45 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             {/* Schedule Modal */}
             {schedulingLead && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
                         <button
                             onClick={() => setSchedulingLead(null)}
-                            className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"
+                            className="absolute top-6 right-6 text-brand-muted hover:text-brand-muted"
                         >
                             <X size={24} />
                         </button>
 
                         <div className="mb-6">
-                            <h3 className="text-2xl font-black text-slate-800 dark:text-white">Agendar Aula Experimental</h3>
-                            <p className="text-slate-500 mt-1">Defina o horário para {schedulingLead.name}.</p>
+                            <h3 className="text-2xl font-black text-brand-text">Agendar Aula Experimental</h3>
+                            <p className="text-brand-muted mt-1">Defina o horário para {schedulingLead.name}.</p>
                         </div>
 
                         <form onSubmit={handleConfirmSchedule} className="space-y-4">
                             <div>
-                                <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Data</label>
+                                <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Data</label>
                                 <input
                                     type="date"
                                     required
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                    className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
                                     value={scheduleData.date}
                                     onChange={e => setScheduleData({ ...scheduleData, date: e.target.value })}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Horário</label>
+                                <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Horário</label>
                                 <input
                                     type="time"
                                     required
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                    className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
                                     value={scheduleData.time}
                                     onChange={e => setScheduleData({ ...scheduleData, time: e.target.value })}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Professor</label>
+                                <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Professor</label>
                                 <select
                                     required
-                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"
+                                    className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
                                     value={scheduleData.teacherId}
                                     onChange={e => setScheduleData({ ...scheduleData, teacherId: e.target.value })}
                                 >
@@ -483,22 +483,22 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             {/* Conversion Modal */}
             {convertingLead && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
                         <button
                             onClick={() => setConvertingLead(null)}
-                            className="absolute top-6 right-6 text-slate-400 hover:text-slate-600"
+                            className="absolute top-6 right-6 text-brand-muted hover:text-brand-muted"
                         >
                             <X size={24} />
                         </button>
 
                         <div className="mb-6">
-                            <h3 className="text-2xl font-black text-slate-800 dark:text-white">Efetivar Matrícula</h3>
-                            <p className="text-slate-500 mt-1">Transforme {convertingLead.name} em aluno.</p>
+                            <h3 className="text-2xl font-black text-brand-text">Efetivar Matrícula</h3>
+                            <p className="text-brand-muted mt-1">Transforme {convertingLead.name} em aluno.</p>
                         </div>
 
                         <form onSubmit={handleConfirmConversion} className="space-y-4">
                             <div>
-                                <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Plano Selecionado</label>
+                                <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Plano Selecionado</label>
                                 <div className="grid grid-cols-2 gap-3">
                                     {plans.map(plan => (
                                         <button
@@ -507,7 +507,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                             onClick={() => setConversionData({ ...conversionData, planId: plan.id })}
                                             className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${conversionData.planId === plan.id
                                                 ? 'border-purple-500 bg-purple-50 text-purple-700'
-                                                : 'border-slate-100 text-slate-500 hover:border-slate-200'
+                                                : 'border-brand-border text-brand-muted hover:border-brand-border'
                                                 }`}
                                         >
                                             {plan.name}
@@ -517,14 +517,14 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                         </button>
                                     ))}
                                     {plans.length === 0 && (
-                                        <div className="col-span-2 text-center text-xs text-slate-400 py-4 border border-dashed rounded-xl">
+                                        <div className="col-span-2 text-center text-xs text-brand-muted py-4 border border-dashed rounded-xl">
                                             Nenhum plano ativo encontrado.
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-500">
+                            <div className="bg-brand-surface-2 p-4 rounded-xl border border-brand-border text-xs text-brand-muted">
                                 <p className="font-bold mb-1">Ações Automáticas:</p>
                                 <ul className="list-disc pl-4 space-y-1">
                                     <li>Cobrança Asaas gerada</li>

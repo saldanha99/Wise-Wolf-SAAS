@@ -63,10 +63,10 @@ export default function SaasLandingPage() {
                         <a href="#pricing" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Preços</a>
                     </div>
                     <div className="flex gap-4">
-                        <Button variant="ghost" className="text-zinc-300 hover:text-white hover:bg-white/10">Login</Button>
+                        <Button variant="ghost" className="text-zinc-300 hover:text-white hover:bg-brand-surface/10">Login</Button>
                         <Button
                             onClick={() => handleOpenModal('nav_button')}
-                            className="bg-white text-black hover:bg-blue-50 font-bold rounded-full px-6 transition-all hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                            className="bg-brand-surface text-black hover:bg-blue-50 font-bold rounded-full px-6 transition-all hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                             Começar Agora
                         </Button>
                     </div>
@@ -207,7 +207,7 @@ export default function SaasLandingPage() {
                     <div className="flex flex-col items-center gap-4">
                         <Button
                             onClick={() => handleOpenModal('footer_cta')}
-                            size="lg" className="h-20 px-16 rounded-full text-2xl bg-white text-black hover:bg-zinc-200 font-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.5)] hover:scale-105 transition-transform">
+                            size="lg" className="h-20 px-16 rounded-full text-2xl bg-brand-surface text-black hover:bg-zinc-200 font-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.5)] hover:scale-105 transition-transform">
                             Acessar Plataforma <ArrowRight className="ml-3 w-8 h-8" />
                         </Button>
                         <p className="text-sm text-zinc-500 mt-4">

@@ -194,30 +194,30 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
         <div>
-          <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Gestão Pedagógica</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Biblioteca Master e Currículo.</p>
+          <h2 className="text-3xl font-black text-brand-text tracking-tight">Gestão Pedagógica</h2>
+          <p className="text-brand-muted text-sm">Biblioteca Master e Currículo.</p>
         </div>
-        <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-          <button onClick={() => setActiveTab('allocation')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-white dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-slate-400'}`}>Atribuições</button>
-          <button onClick={() => setActiveTab('materials')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-white dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-slate-400'}`}>Biblioteca</button>
+        <div className="flex gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
+          <button onClick={() => setActiveTab('allocation')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
+          <button onClick={() => setActiveTab('materials')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
         </div>
       </div>
 
       {activeTab === 'allocation' && (
         <div className="flex-1 flex gap-6 overflow-hidden">
           {/* Allocation Table */}
-          <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] flex flex-col overflow-hidden shadow-sm p-4">
+          <div className="flex-1 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col overflow-hidden shadow-sm p-4">
             <div className="mb-4 flex gap-4">
               <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar aluno..." className="p-2 border rounded-lg flex-1 bg-transparent" />
             </div>
             <div className="overflow-y-auto flex-1">
               <table className="w-full text-left">
-                <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] uppercase font-black text-slate-400">
+                <thead className="bg-brand-surface-2 text-[10px] uppercase font-black text-brand-muted">
                   <tr><th className="p-3">Aluno</th><th className="p-3">Módulo</th><th className="p-3">Progresso</th><th className="p-3 text-right">Ações</th></tr>
                 </thead>
                 <tbody>
                   {filteredStudents.map(s => (
-                    <tr key={s.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                    <tr key={s.id} className="border-b border-brand-border hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-colors group">
                       <td className="p-3 font-bold text-xs">{s.name}</td>
                       <td className="p-3 text-xs">{s.currentModule}</td>
                       <td className="p-3 text-xs">{s.currentBookPart}</td>
@@ -248,20 +248,20 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       {activeTab === 'materials' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-full min-h-0">
           {showSidebar && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8 h-fit">
+            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 h-fit">
               <h3 className="text-xl font-black mb-6 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
               <div className="space-y-4">
-                <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none" placeholder="Título" />
+                <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none" placeholder="Título" />
                 <div className="flex gap-2">
-                  <select value={newMaterial.type} onChange={e => setNewMaterial({ ...newMaterial, type: e.target.value as any })} className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold">
+                  <select value={newMaterial.type} onChange={e => setNewMaterial({ ...newMaterial, type: e.target.value as any })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     <option value="PDF">PDF</option>
                     <option value="VIDEO">Vídeo (URL)</option>
                     <option value="LINK">Link</option>
                   </select>
-                  <select value={newMaterial.level} onChange={e => setNewMaterial({ ...newMaterial, level: e.target.value })} className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold">
+                  <select value={newMaterial.level} onChange={e => setNewMaterial({ ...newMaterial, level: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold">
+                  <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     <option value="GENERAL">🌎 Geral</option>
                     <option value="MEDICINE">🏥 Medicina</option>
                     <option value="TECH">💻 Tech</option>
@@ -270,26 +270,26 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                   </select>
                 </div>
                 {newMaterial.type === 'PDF' ? (
-                  <div className="p-4 border-2 border-dashed rounded-xl text-center"><input type="file" accept=".pdf" onChange={e => setNewMaterial({ ...newMaterial, file: e.target.files?.[0] || null })} className="hidden" id="file-up" /><label htmlFor="file-up" className="cursor-pointer text-xs font-bold text-slate-500">{newMaterial.file ? newMaterial.file.name : 'Selecionar PDF'}</label></div>
+                  <div className="p-4 border-2 border-dashed rounded-xl text-center"><input type="file" accept=".pdf" onChange={e => setNewMaterial({ ...newMaterial, file: e.target.files?.[0] || null })} className="hidden" id="file-up" /><label htmlFor="file-up" className="cursor-pointer text-xs font-bold text-brand-muted">{newMaterial.file ? newMaterial.file.name : 'Selecionar PDF'}</label></div>
                 ) : (
-                  <input value={newMaterial.url} onChange={e => setNewMaterial({ ...newMaterial, url: e.target.value })} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm" placeholder="https://..." />
+                  <input value={newMaterial.url} onChange={e => setNewMaterial({ ...newMaterial, url: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm" placeholder="https://..." />
                 )}
                 <button onClick={handleUploadMaterial} disabled={uploading} className="w-full py-3 bg-tenant-primary text-white rounded-xl font-black uppercase tracking-widest hover:scale-105 transition-all">{uploading ? 'Enviando...' : 'Salvar Material'}</button>
               </div>
             </div>
           )}
 
-          <div className={`${showSidebar ? 'md:col-span-2' : 'md:col-span-3'} bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8 flex flex-col`}>
+          <div className={`${showSidebar ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black">Biblioteca Master</h3>
-              <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              <div className="flex gap-1 bg-brand-surface-2 dark:bg-brand-surface-2 p-1 rounded-lg">
                 {['ALL', 'GENERAL', 'MEDICINE', 'TECH', 'BUSINESS', 'TRAVEL'].map(niche => (
                   <button
                     key={niche}
                     onClick={() => setSelectedNiche(niche)}
                     className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${selectedNiche === niche
-                        ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white'
-                        : 'text-slate-400 hover:text-slate-600'
+                        ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white'
+                        : 'text-brand-muted hover:text-brand-muted'
                       }`}
                   >
                     {niche === 'ALL' ? 'Todos' : niche}
@@ -299,22 +299,22 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             </div>
             <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
               {filteredMaterials.map(m => (
-                <div key={m.id} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 group">
+                <div key={m.id} className="p-4 rounded-xl border border-brand-border flex items-center justify-between hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 group">
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs ${m.type === 'PDF' ? 'bg-red-500' : m.type === 'VIDEO' ? 'bg-blue-500' : 'bg-green-500'}`}>{m.type}</div>
                     <div>
-                      <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                      <h4 className="font-bold text-sm text-brand-text flex items-center gap-2">
                         {m.title}
                         {m.scope === 'PRIVATE' && <span className="text-[9px] bg-indigo-100 text-indigo-500 px-1.5 rounded uppercase">Privado</span>}
                       </h4>
                       <div className="flex gap-2 mt-1">
-                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 rounded uppercase font-black text-slate-500">{m.level_tag}</span>
+                        <span className="text-[10px] bg-brand-surface-2 dark:bg-brand-surface-2 px-1.5 rounded uppercase font-black text-brand-muted">{m.level_tag}</span>
                         {m.niche && m.niche !== 'GENERAL' && (
                           <span className={`text-[10px] px-1.5 rounded uppercase font-black ${m.niche === 'MEDICINE' ? 'bg-green-100 text-green-600' :
                             m.niche === 'TECH' ? 'bg-blue-100 text-blue-600' :
                               m.niche === 'BUSINESS' ? 'bg-purple-100 text-purple-600' :
                                 m.niche === 'TRAVEL' ? 'bg-orange-100 text-orange-600' :
-                                  'bg-slate-100 text-slate-500'
+                                  'bg-brand-surface-2 text-brand-muted'
                             }`}>
                             {m.niche}
                           </span>
@@ -325,7 +325,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                   <div className="flex items-center gap-3">
                     <a href={m.file_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-500 hover:underline">Acessar</a>
                     {showSidebar && (
-                      <button onClick={() => handleDeleteMaterial(m.id)} className="p-2 text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                      <button onClick={() => handleDeleteMaterial(m.id)} className="p-2 text-brand-muted hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                     )}
                   </div>
                 </div>

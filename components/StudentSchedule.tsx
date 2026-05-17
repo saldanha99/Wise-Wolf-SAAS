@@ -94,51 +94,51 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
     };
 
     if (loading) return (
-        <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-            <RefreshCw className="animate-spin mb-4" size={32} />
-            <p className="text-sm font-bold uppercase tracking-widest">Carregando sua agenda...</p>
+        <div className="flex flex-col items-center justify-center h-96 text-brand-muted">
+            <RefreshCw className="animate-spin mb-4 text-brand-accent" size={32} />
+            <p className="text-sm font-bold uppercase tracking-widest text-brand-text">Carregando sua agenda...</p>
         </div>
     );
 
     return (
         <div className="space-y-12 animate-in fade-in duration-700 pb-20">
             <header>
-                <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Minha Agenda</h2>
-                <p className="text-slate-500 dark:text-slate-400 mt-1">Confira sua grade fixa semanal e aulas extras.</p>
+                <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight">Minha Agenda</h2>
+                <p className="text-brand-muted mt-1 font-medium">Confira sua grade fixa semanal e aulas extras.</p>
             </header>
 
             {/* SECTION 1: Fixed Schedule */}
             <section>
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-lg">
+                    <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg border border-blue-500/20">
                         <Calendar size={20} />
                     </div>
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Grade Fixa Semanal</h3>
+                    <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Grade Fixa Semanal</h3>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     {regularLessons.length > 0 ? regularLessons.map((lesson, i) => (
-                        <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+                        <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-blue-500/20 transition-colors" />
 
                             <div className="flex flex-col gap-4 relative z-10">
                                 <div className="flex justify-between items-start">
-                                    <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                    <span className="px-3 py-1 bg-brand-surface-2 text-brand-text rounded-lg text-[10px] font-black uppercase tracking-widest border border-brand-border">
                                         {lesson.day}
                                     </span>
-                                    <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-md">
+                                    <div className="flex items-center gap-1.5 text-blue-500 bg-blue-500/10 px-2 py-1 rounded-md border border-blue-500/20 shadow-sm">
                                         <Clock size={12} />
                                         <span className="text-xs font-bold">{lesson.time}</span>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-3 mt-2">
-                                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
+                                    <div className="w-10 h-10 rounded-xl overflow-hidden bg-brand-surface-2 shrink-0 border border-brand-border shadow-sm">
                                         <img src={lesson.teacherAvatar || `https://ui-avatars.com/api/?name=${lesson.teacher}`} alt={lesson.teacher} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest truncate">Professor(a)</p>
-                                        <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{lesson.teacher}</p>
+                                        <p className="text-[10px] text-brand-muted font-black uppercase tracking-widest truncate">Professor(a)</p>
+                                        <p className="text-sm font-bold text-brand-text truncate">{lesson.teacher}</p>
                                     </div>
                                 </div>
 
@@ -146,7 +146,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     <a
                                         href={profile.meeting_link}
                                         target="_blank"
-                                        className="mt-2 w-full py-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-tenant-primary hover:text-white dark:hover:bg-tenant-primary dark:hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                        className="mt-2 w-full py-3 bg-brand-surface-2 text-brand-text hover:bg-brand-accent hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-brand-border hover:border-brand-accent shadow-sm"
                                     >
                                         <Video size={14} /> Entrar
                                     </a>
@@ -154,7 +154,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                             </div>
                         </div>
                     )) : (
-                        <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+                        <div className="col-span-full py-12 text-center text-brand-muted bg-brand-surface-2/50 rounded-3xl border-2 border-dashed border-brand-border">
                             <p className="text-sm font-medium">Nenhuma aula fixa configurada.</p>
                         </div>
                     )}
@@ -165,34 +165,34 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
             {reschedules.length > 0 && (
                 <section>
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-lg">
+                        <div className="p-2 bg-purple-500/10 text-purple-500 rounded-lg border border-purple-500/20">
                             <RefreshCw size={20} />
                         </div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Reposições e Extras</h3>
+                        <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Reposições e Extras</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {reschedules.map((lesson, i) => (
-                            <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border-2 border-dashed border-purple-100 dark:border-purple-900/30 shadow-none hover:border-purple-300 transition-all relative group">
+                            <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border-2 border-dashed border-purple-500/30 shadow-none hover:border-purple-500/60 transition-all relative group hover:bg-brand-surface-2">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex flex-col">
-                                        <span className="text-lg font-black text-slate-800 dark:text-white capitalize">
+                                        <span className="text-lg font-[family-name:var(--font-display)] font-extrabold text-brand-text capitalize">
                                             {lesson.dateFormatted}
                                         </span>
-                                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-1">
-                                            <Clock size={12} /> {lesson.time}
+                                        <span className="text-xs font-bold text-brand-muted flex items-center gap-1 mt-1">
+                                            <Clock size={12} className="text-purple-500" /> {lesson.time}
                                         </span>
                                     </div>
-                                    <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 rounded-full text-[10px] font-black uppercase tracking-widest">
+                                    <span className="px-3 py-1 bg-purple-500/10 text-purple-500 rounded-full text-[10px] font-black uppercase tracking-widest border border-purple-500/20">
                                         Extra
                                     </span>
                                 </div>
 
-                                <div className="flex items-center gap-3 pt-4 border-t border-slate-50 dark:border-slate-800">
-                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
+                                <div className="flex items-center gap-3 pt-4 border-t border-brand-border">
+                                    <div className="w-8 h-8 rounded-full overflow-hidden bg-brand-surface-2 shrink-0 border border-brand-border">
                                         <img src={lesson.teacherAvatar || `https://ui-avatars.com/api/?name=${lesson.teacher}`} alt={lesson.teacher} className="w-full h-full object-cover" />
                                     </div>
-                                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300 truncate">
+                                    <p className="text-xs font-bold text-brand-text truncate">
                                         Com {lesson.teacher}
                                     </p>
                                 </div>

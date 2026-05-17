@@ -59,7 +59,7 @@ export function ContractDocument({
             {/* Folha A4 do Contrato */}
             <div
                 ref={componentRef}
-                className="w-[210mm] min-h-[297mm] bg-white p-[25mm] shadow-2xl text-slate-900 text-sm leading-relaxed"
+                className="w-[210mm] min-h-[297mm] bg-brand-surface p-[25mm] shadow-2xl text-brand-text text-sm leading-relaxed"
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
                 <style>{`
@@ -156,7 +156,7 @@ export function ContractDocument({
                             <div className="mb-2 text-center h-16 flex items-end justify-center relative w-full">
                                 {acceptedAt ? (
                                     <>
-                                        <span className="text-3xl text-slate-800 transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
+                                        <span className="text-3xl text-brand-text transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
                                             {studentName}
                                         </span>
                                         {/* Carimbo de Segurança ao lado */}
@@ -173,7 +173,7 @@ export function ContractDocument({
                             </div>
                             <div className="border-t border-black pt-2 w-full text-center">
                                 <p className="font-bold uppercase text-xs">{studentName}</p>
-                                <p className="text-[10px] text-slate-500 uppercase">CONTRATANTE</p>
+                                <p className="text-[10px] text-brand-muted uppercase">CONTRATANTE</p>
                             </div>
                         </div>
                     </div>
@@ -181,18 +181,18 @@ export function ContractDocument({
 
                 {/* Selo de Autenticação Digital */}
                 {acceptedAt && (
-                    <div className="mt-12 p-6 bg-slate-50 border border-slate-200 rounded-xl relative overflow-hidden">
+                    <div className="mt-12 p-6 bg-brand-surface-2 border border-brand-border rounded-xl relative overflow-hidden">
                         <div className="flex items-center gap-6 relative z-10">
                             <div className="p-4 bg-emerald-100 text-emerald-600 rounded-full">
                                 <ShieldCheck size={48} />
                             </div>
                             <div className="flex-1">
                                 <h4 className="text-lg font-black text-[#002366] uppercase tracking-tighter mb-2">Autenticado Digitalmente</h4>
-                                <div className="space-y-1 text-xs text-slate-600 font-mono">
+                                <div className="space-y-1 text-xs text-brand-muted font-mono">
                                     <p><strong>Assinado em:</strong> {new Date(acceptedAt).toLocaleString('pt-BR')}</p>
                                     <p><strong>IP de Registro:</strong> {userIp || 'Não registrado'}</p>
                                     <p><strong>Protocolo de Segurança:</strong> {subscriptionId || 'PENDING'}</p>
-                                    <p className="text-[10px] text-slate-400 mt-2 italic">Este documento possui validade jurídica conforme MP 2.200-2/2001.</p>
+                                    <p className="text-[10px] text-brand-muted mt-2 italic">Este documento possui validade jurídica conforme MP 2.200-2/2001.</p>
                                 </div>
                             </div>
                         </div>

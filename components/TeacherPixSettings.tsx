@@ -72,14 +72,14 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm p-8">
+        <div className="bg-brand-surface rounded-[2rem] border border-brand-border shadow-sm p-8">
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-teal-50 dark:bg-teal-900/20 rounded-xl">
                     <CreditCard className="text-teal-600 dark:text-teal-400" size={24} />
                 </div>
                 <div>
-                    <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Dados de Recebimento (Pix)</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Cadastre sua chave Pix para receber automaticamente.</p>
+                    <h2 className="text-xl font-black text-brand-text tracking-tight">Dados de Recebimento (Pix)</h2>
+                    <p className="text-sm text-brand-muted font-medium">Cadastre sua chave Pix para receber automaticamente.</p>
                 </div>
             </div>
 
@@ -91,11 +91,11 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                 <form onSubmit={handleSave} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Tipo de Chave</label>
+                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">Tipo de Chave</label>
                             <select
                                 value={pixKeyType}
                                 onChange={(e) => setPixKeyType(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20"
                             >
                                 {PIX_TYPES.map(t => (
                                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -103,13 +103,13 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                             </select>
                         </div>
                         <div className="md:col-span-2">
-                            <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">Chave Pix</label>
+                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">Chave Pix</label>
                             <input
                                 type="text"
                                 value={pixKey}
                                 onChange={(e) => setPixKey(e.target.value)}
                                 placeholder="Digite sua chave pix..."
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                                 required
                             />
                         </div>

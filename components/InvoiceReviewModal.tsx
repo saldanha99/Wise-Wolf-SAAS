@@ -70,16 +70,16 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-brand-surface w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-brand-border dark:border-brand-border">
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/50">
                     <div>
-                        <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
+                        <h2 className="text-xl font-black text-brand-text tracking-tight flex items-center gap-2">
                             <FileText className="text-tenant-primary" size={24} />
                             Revisão de Nota Fiscal
                         </h2>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                        <p className="text-sm text-brand-muted font-medium">
                             {invoice.teacher.full_name} • {new Date(invoice.month_year + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                         </p>
                     </div>
@@ -87,14 +87,14 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                         onClick={onClose}
                         className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
                     >
-                        <X size={24} className="text-slate-400" />
+                        <X size={24} className="text-brand-muted" />
                     </button>
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                     {/* PDF Preview */}
-                    <div className="flex-1 bg-slate-100 dark:bg-slate-950 relative">
+                    <div className="flex-1 bg-brand-surface-2 dark:bg-slate-950 relative">
                         {invoice.invoice_url ? (
                             <iframe
                                 src={invoice.invoice_url}
@@ -102,7 +102,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                 title="PDF Preview"
                             />
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                            <div className="flex flex-col items-center justify-center h-full text-brand-muted">
                                 <AlertTriangle size={48} className="mb-4 opacity-50" />
                                 <p className="font-bold">Arquivo não disponível</p>
                             </div>
@@ -110,13 +110,13 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                     </div>
 
                     {/* Sidebar / Controls */}
-                    <div className="w-full md:w-80 p-6 border-l border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto">
+                    <div className="w-full md:w-80 p-6 border-l border-brand-border bg-brand-surface overflow-y-auto">
                         <div className="mb-8">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Detalhes</p>
+                            <p className="text-xs font-black text-brand-muted uppercase tracking-widest mb-2">Detalhes</p>
                             <div className="space-y-4">
-                                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Valor Total</p>
-                                    <p className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">
+                                <div className="p-4 bg-brand-surface-2/50 rounded-2xl border border-brand-border">
+                                    <p className="text-xs text-brand-muted mb-1">Valor Total</p>
+                                    <p className="text-2xl font-black text-brand-text tracking-tight">
                                         R$ {invoice.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
@@ -124,7 +124,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                     href={invoice.invoice_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-2 w-full py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+                                    className="flex items-center justify-center gap-2 w-full py-3 bg-brand-surface-2 dark:bg-brand-surface-2 hover:bg-slate-200 dark:hover:bg-slate-700 text-brand-muted rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
                                 >
                                     <Download size={16} /> Baixar PDF
                                 </a>
@@ -132,7 +132,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                         </div>
 
                         <div>
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Decisão</p>
+                            <p className="text-xs font-black text-brand-muted uppercase tracking-widest mb-4">Decisão</p>
 
                             {!isRejecting ? (
                                 <div className="space-y-3">
@@ -147,7 +147,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                     <button
                                         onClick={() => setIsRejecting(true)}
                                         disabled={processing}
-                                        className="w-full py-4 bg-white dark:bg-slate-800 text-red-500 border-2 border-red-100 dark:border-red-900/30 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors flex items-center justify-center gap-2"
+                                        className="w-full py-4 bg-brand-surface dark:bg-brand-surface-2 text-red-500 border-2 border-red-100 dark:border-red-900/30 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors flex items-center justify-center gap-2"
                                     >
                                         <XCircle size={18} /> Rejeitar
                                     </button>
@@ -165,7 +165,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => setIsRejecting(false)}
-                                            className="flex-1 py-3 text-slate-400 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                                            className="flex-1 py-3 text-brand-muted font-bold text-xs uppercase tracking-wider hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-xl transition-colors"
                                         >
                                             Cancelar
                                         </button>

@@ -25,7 +25,7 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
         <div className="space-y-6">
             {/* KPI Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
                             <DollarSign size={20} />
@@ -34,13 +34,13 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
                             +12% <ArrowUpRight size={12} />
                         </span>
                     </div>
-                    <p className="text-slate-500 text-sm font-medium">MRR (Recorrência)</p>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                    <p className="text-brand-muted text-sm font-medium">MRR (Recorrência)</p>
+                    <h3 className="text-2xl font-black text-brand-text">
                         R$ {stats.monthlyRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
                             <Globe size={20} />
@@ -49,49 +49,49 @@ const SaasGlobalDashboard: React.FC<{ stats: GlobalStats }> = ({ stats }) => {
                             Ativos
                         </span>
                     </div>
-                    <p className="text-slate-500 text-sm font-medium">Escolas Ativas</p>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                    <p className="text-brand-muted text-sm font-medium">Escolas Ativas</p>
+                    <h3 className="text-2xl font-black text-brand-text">
                         {stats.activeTenantsCount}
                     </h3>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
                             <Users size={20} />
                         </div>
                     </div>
-                    <p className="text-slate-500 text-sm font-medium">Total de Alunos (Rede)</p>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                    <p className="text-brand-muted text-sm font-medium">Total de Alunos (Rede)</p>
+                    <h3 className="text-2xl font-black text-brand-text">
                         {stats.totalStudents}
                     </h3>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="bg-brand-surface p-6 rounded-2xl shadow-sm border border-brand-border">
                     <div className="flex justify-between items-start mb-4">
                         <div className="p-3 bg-red-100 text-red-600 rounded-xl">
                             <AlertTriangle size={20} />
                         </div>
-                        <span className="flex items-center text-slate-400 text-xs font-bold gap-1 bg-slate-50 px-2 py-1 rounded">
+                        <span className="flex items-center text-brand-muted text-xs font-bold gap-1 bg-brand-surface-2 px-2 py-1 rounded">
                             Alvo: &lt; 2%
                         </span>
                     </div>
-                    <p className="text-slate-500 text-sm font-medium">Churn Rate (Cancelamentos)</p>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white">
+                    <p className="text-brand-muted text-sm font-medium">Churn Rate (Cancelamentos)</p>
+                    <h3 className="text-2xl font-black text-brand-text">
                         {stats.churnRate}%
                     </h3>
                 </div>
             </div>
 
             {/* Main Chart */}
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+            <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-brand-border">
                 <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Crescimento de Receita (MRR)</h3>
-                        <p className="text-sm text-slate-500">Desempenho financeiro dos últimos 6 meses</p>
+                        <h3 className="text-lg font-bold text-brand-text">Crescimento de Receita (MRR)</h3>
+                        <p className="text-sm text-brand-muted">Desempenho financeiro dos últimos 6 meses</p>
                     </div>
                     <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200 transition">Download Relatório</button>
+                        <button className="px-4 py-2 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-lg text-xs font-bold text-brand-muted hover:bg-slate-200 transition">Download Relatório</button>
                     </div>
                 </div>
 

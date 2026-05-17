@@ -137,7 +137,7 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-[300px] w-full bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
+            <div className="flex items-center justify-center h-[300px] w-full bg-brand-surface-2/50 rounded-2xl">
                 <Loader2 className="animate-spin text-purple-600" size={32} />
             </div>
         );

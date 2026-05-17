@@ -82,10 +82,10 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-lg w-full shadow-2xl relative">
+            <div className="bg-brand-surface rounded-3xl p-8 max-w-lg w-full shadow-2xl relative">
                 <button
                     onClick={onClose}
-                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+                    className="absolute top-4 right-4 text-brand-muted hover:text-brand-muted transition-colors"
                 >
                     <X size={20} />
                 </button>
@@ -95,8 +95,8 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                         <Beaker size={20} className="text-purple-600" />
                     </div>
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white">Agendar Experimental</h3>
-                        <p className="text-xs text-slate-500">Agendar aula experimental manual para qualquer professor</p>
+                        <h3 className="text-xl font-black text-brand-text">Agendar Experimental</h3>
+                        <p className="text-xs text-brand-muted">Agendar aula experimental manual para qualquer professor</p>
                     </div>
                 </div>
 
@@ -109,35 +109,35 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {/* Lead Name */}
                     <div>
-                        <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Nome do Lead / Aluno</label>
+                        <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Nome do Lead / Aluno</label>
                         <input
                             required
                             value={leadName}
                             onChange={e => setLeadName(e.target.value)}
                             placeholder="Nome completo"
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
                     {/* Lead Phone */}
                     <div>
-                        <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">WhatsApp</label>
+                        <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">WhatsApp</label>
                         <input
                             value={leadPhone}
                             onChange={e => setLeadPhone(e.target.value)}
                             placeholder="(XX) XXXXX-XXXX"
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
                         />
                     </div>
 
                     {/* Teacher Select */}
                     <div>
-                        <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Professor</label>
+                        <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Professor</label>
                         <select
                             required
                             value={selectedTeacher}
                             onChange={e => setSelectedTeacher(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
                         >
                             <option value="">Selecione o professor</option>
                             {teachers.map(t => (
@@ -149,22 +149,22 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                     {/* Date and Time */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Data</label>
+                            <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Data</label>
                             <input
                                 type="date"
                                 required
                                 value={date}
                                 onChange={e => setDate(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
                             />
                         </div>
                         <div>
-                            <label className="text-xs font-bold uppercase text-slate-500 mb-1 block">Horário</label>
+                            <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Horário</label>
                             <select
                                 required
                                 value={time}
                                 onChange={e => setTime(e.target.value)}
-                                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-purple-500"
                             >
                                 <option value="">Selecione</option>
                                 {timeSlots.map(slot => (
@@ -179,7 +179,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                            className="flex-1 py-3 bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted font-bold rounded-xl hover:bg-slate-200 transition-colors"
                         >
                             Cancelar
                         </button>

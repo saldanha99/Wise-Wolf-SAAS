@@ -133,27 +133,27 @@ const ContractManagement: React.FC = () => {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-2xl shadow-sm border border-brand-border">
+                <h3 className="text-lg font-bold text-brand-text flex items-center gap-2">
                     <FileText className="text-[#002366]" /> Auditoria de Matrículas
                 </h3>
                 <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={20} />
                     <input
                         type="text"
                         placeholder="Buscar aluno..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#002366] transition-all"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border border-brand-border focus:outline-none focus:ring-2 focus:ring-[#002366] transition-all"
                     />
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-3xl shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 overflow-hidden">
+            <div className="bg-brand-surface rounded-3xl shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
+                        <thead className="bg-brand-surface-2 text-brand-muted font-semibold border-b border-brand-border">
                             <tr>
                                 <th className="px-6 py-4">Aluno</th>
                                 <th className="px-6 py-4">Data Matrícula</th>
@@ -166,19 +166,19 @@ const ContractManagement: React.FC = () => {
                             {loading ? (
                                 <tr><td colSpan={5} className="text-center py-10"><Loader2 className="animate-spin mx-auto" /></td></tr>
                             ) : filteredStudents.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-10 text-slate-400">Nenhum registro.</td></tr>
+                                <tr><td colSpan={5} className="text-center py-10 text-brand-muted">Nenhum registro.</td></tr>
                             ) : (
                                 filteredStudents.map((student) => {
                                     const isUploadSig = !!student.student_signature_url;
                                     const isUploadDoc = !!student.signed_document_url;
 
                                     return (
-                                        <tr key={student.user_id} className="hover:bg-slate-50/50">
+                                        <tr key={student.user_id} className="hover:bg-brand-surface-2/50">
                                             <td className="px-6 py-4">
-                                                <p className="font-bold text-slate-800">{student.student_name}</p>
-                                                <p className="text-xs text-slate-500">{student.student_email}</p>
+                                                <p className="font-bold text-brand-text">{student.student_name}</p>
+                                                <p className="text-xs text-brand-muted">{student.student_email}</p>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-600">
+                                            <td className="px-6 py-4 text-brand-muted">
                                                 {new Date(student.accepted_at).toLocaleDateString()}
                                             </td>
                                             <td className="px-6 py-4">
@@ -197,7 +197,7 @@ const ContractManagement: React.FC = () => {
                                             <td className="px-6 py-4 text-right">
                                                 <button
                                                     onClick={() => setSelectedStudent(student)}
-                                                    className="bg-slate-100 p-2 rounded-lg hover:bg-slate-200 transition-colors text-slate-600"
+                                                    className="bg-brand-surface-2 p-2 rounded-lg hover:bg-slate-200 transition-colors text-brand-muted"
                                                 >
                                                     <Eye size={18} />
                                                 </button>
@@ -214,7 +214,7 @@ const ContractManagement: React.FC = () => {
             {/* --- AUDIT MODAL --- */}
             {selectedStudent && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+                    <div className="bg-brand-surface rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
 
                         {/* Modal Header */}
                         <div className="flex justify-between items-center p-6 border-b border-gray-100">
@@ -240,7 +240,7 @@ const ContractManagement: React.FC = () => {
                             <div className="flex flex-col lg:flex-row gap-8">
 
                                 {/* Left: Contract Preview */}
-                                <div className="flex-1 bg-white p-4 shadow-sm rounded-xl border border-gray-200 min-h-[500px] overflow-auto origin-top contract-management-zoom">
+                                <div className="flex-1 bg-brand-surface p-4 shadow-sm rounded-xl border border-gray-200 min-h-[500px] overflow-auto origin-top contract-management-zoom">
                                     <style>{`
                                         @media (max-width: 639px) { .contract-management-zoom { zoom: 0.43; } }
                                         @media (min-width: 640px) and (max-width: 1023px) { .contract-management-zoom { zoom: 0.55; } }
@@ -296,13 +296,13 @@ const ContractManagement: React.FC = () => {
                                 <div className="w-full lg:w-96 flex flex-col gap-6">
 
                                     {/* Evidence Card */}
-                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm">
                                         <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                                             <Image size={18} className="text-blue-600" /> Evidências
                                         </h4>
                                         {selectedStudent.student_signature_url ? (
-                                            <div className="border rounded-lg p-2 bg-slate-50">
-                                                <p className="text-xs text-slate-500 mb-2">Assinatura Enviada:</p>
+                                            <div className="border rounded-lg p-2 bg-brand-surface-2">
+                                                <p className="text-xs text-brand-muted mb-2">Assinatura Enviada:</p>
                                                 <img src={selectedStudent.student_signature_url} className="w-full h-auto rounded border" alt="Assinatura" />
                                                 <a href={selectedStudent.student_signature_url} target="_blank" className="text-xs text-blue-600 mt-2 block underline">Abrir Original</a>
                                             </div>
@@ -322,7 +322,7 @@ const ContractManagement: React.FC = () => {
                                     </div>
 
                                     {/* Actions Card */}
-                                    <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm mt-auto">
+                                    <div className="bg-brand-surface p-6 rounded-xl border border-gray-200 shadow-sm mt-auto">
                                         {!isRejecting ? (
                                             <div className="space-y-3">
                                                 <button
@@ -337,7 +337,7 @@ const ContractManagement: React.FC = () => {
                                                 <button
                                                     onClick={() => setIsRejecting(true)}
                                                     disabled={!!processing || selectedStudent.documentation_status === 'REJECTED'}
-                                                    className="w-full py-3 bg-white border-2 border-red-100 text-red-600 rounded-xl font-bold hover:bg-red-50 transition flex justify-center gap-2"
+                                                    className="w-full py-3 bg-brand-surface border-2 border-red-100 text-red-600 rounded-xl font-bold hover:bg-red-50 transition flex justify-center gap-2"
                                                 >
                                                     <XCircle /> Rejeitar
                                                 </button>

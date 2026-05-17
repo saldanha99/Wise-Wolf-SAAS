@@ -111,12 +111,12 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
     if (!instanceName) return null;
 
     return (
-        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-700 mt-6 relative">
-            <h3 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest mb-2 flex items-center gap-2">
+        <div className="bg-brand-surface-2/50 rounded-xl p-6 border border-brand-border mt-6 relative">
+            <h3 className="text-sm font-black text-brand-text dark:text-slate-200 uppercase tracking-widest mb-2 flex items-center gap-2">
                 <Users size={16} /> {label}
             </h3>
 
-            <p className="text-xs text-slate-500 mb-4 h-4">
+            <p className="text-xs text-brand-muted mb-4 h-4">
                 {description}
             </p>
 
@@ -126,7 +126,7 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
                         value={selectedGroup}
                         onChange={(e) => setSelectedGroup(e.target.value)}
                         disabled={loading}
-                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none truncate pr-8"
+                        className="w-full bg-brand-surface border border-brand-border dark:border-slate-600 rounded-lg px-4 py-3 text-sm font-medium appearance-none focus:ring-2 focus:ring-indigo-500/20 outline-none truncate pr-8"
                     >
                         <option value="">{loading ? "Carregando..." : "Selecione..."}</option>
                         {groups.map((g) => (

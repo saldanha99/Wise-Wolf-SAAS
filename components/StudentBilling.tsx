@@ -92,7 +92,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
   if (contextLoading || loadingHistory) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+      <div className="flex flex-col items-center justify-center py-20 text-brand-muted">
         <RefreshCw className="animate-spin mb-4" size={32} />
         <p className="text-xs font-black uppercase tracking-widest">Carregando dados financeiros...</p>
       </div>
@@ -150,11 +150,11 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
       {/* 1. BLOCKED STATUS (> 7 days late) */}
       {alertStatus === 'BLOCKED' && (
-        <div className="bg-slate-900 text-white rounded-2xl p-8 flex items-start gap-6 shadow-2xl relative overflow-hidden">
+        <div className="bg-brand-surface text-white rounded-2xl p-8 flex items-start gap-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 p-12 opacity-10">
             <ShieldCheck size={180} />
           </div>
-          <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm">
+          <div className="p-4 bg-brand-surface/10 rounded-2xl backdrop-blur-sm">
             <AlertCircle size={32} className="text-red-400" />
           </div>
           <div className="flex-1 relative z-10">
@@ -174,7 +174,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                     href={oldestOverduePayment.invoice_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-white text-slate-900 px-6 py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-colors"
+                    className="bg-brand-surface text-brand-text px-6 py-2 rounded-lg font-black text-xs uppercase tracking-widest hover:bg-red-50 transition-colors"
                   >
                     Regularizar Agora
                   </a>
@@ -199,12 +199,12 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
             <div className="mt-4 flex flex-col gap-3">
               {overduePayments.map(payment => (
-                <div key={payment.id} className="flex flex-col sm:flex-row items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm gap-4">
+                <div key={payment.id} className="flex flex-col sm:flex-row items-center justify-between bg-brand-surface p-4 rounded-xl border border-red-100 dark:border-red-900/50 shadow-sm gap-4">
                   <div>
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    <p className="text-xs font-black text-brand-muted uppercase tracking-widest">
                       Vencimento {formatDate(payment.due_date)}
                     </p>
-                    <p className="text-lg font-black text-slate-800 dark:text-white">
+                    <p className="text-lg font-black text-brand-text">
                       R$ {Number(payment.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -238,12 +238,12 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
             </p>
             <div className="mt-4 flex flex-col gap-3">
               {payments.filter(p => p.status === 'PENDING').map(payment => (
-                <div key={payment.id} className="flex flex-col sm:flex-row items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-sm gap-4">
+                <div key={payment.id} className="flex flex-col sm:flex-row items-center justify-between bg-brand-surface p-4 rounded-xl border border-amber-100 dark:border-amber-900/50 shadow-sm gap-4">
                   <div>
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    <p className="text-xs font-black text-brand-muted uppercase tracking-widest">
                       Vencimento {formatDate(payment.due_date)}
                     </p>
-                    <p className="text-lg font-black text-slate-800 dark:text-white">
+                    <p className="text-lg font-black text-brand-text">
                       R$ {Number(payment.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -267,7 +267,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Main Card: Current Plan */}
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-8 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
+        <div className="lg:col-span-2 bg-brand-surface rounded-[2.5rem] border border-brand-border p-8 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform duration-500">
             <ShieldCheck size={120} className="text-tenant-primary" />
           </div>
@@ -278,7 +278,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                 <CreditCard size={24} />
               </div>
               <div>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Status da Assinatura</span>
+                <span className="text-[10px] font-black text-brand-muted uppercase tracking-widest block">Status da Assinatura</span>
                 <span className={`flex items-center gap-2 font-black text-sm uppercase tracking-wide ${derivedStatus === 'ACTIVE' ? 'text-emerald-500' : 'text-amber-500'}`}>
                   <CheckCircle size={14} /> {derivedStatus === 'ACTIVE' ? 'Ativo & Regular' : derivedStatus || 'Sem Plano'}
                 </span>
@@ -287,21 +287,21 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
               <div>
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Mensal</h4>
+                <h4 className="text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2">Valor Mensal</h4>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold text-slate-400">R$</span>
-                  <span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">
+                  <span className="text-lg font-bold text-brand-muted">R$</span>
+                  <span className="text-4xl font-black text-brand-text tracking-tighter">
                     {derivedMonthlyFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
               <div>
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Dia de Vencimento</h4>
+                <h4 className="text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2">Dia de Vencimento</h4>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-500">
+                  <div className="p-2 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-lg text-brand-muted">
                     <Calendar size={18} />
                   </div>
-                  <span className="text-xl font-black text-slate-700 dark:text-slate-200 tracking-tight">Dia {derivedDueDay || '??'}</span>
+                  <span className="text-xl font-black text-brand-text dark:text-slate-200 tracking-tight">Dia {derivedDueDay || '??'}</span>
                 </div>
               </div>
             </div>
@@ -314,7 +314,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         </div>
 
         {/* Support/Info Card */}
-        <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+        <div className="bg-brand-surface rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:rotate-12 transition-transform duration-500">
             <DollarSign size={100} />
           </div>
@@ -327,7 +327,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
               </p>
             </div>
 
-            <button className="w-full py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all">
+            <button className="w-full py-4 bg-brand-surface text-brand-text rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all">
               Falar com Suporte
             </button>
           </div>
@@ -336,13 +336,13 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
       </div>
 
       {/* History Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
-        <div className="p-8 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30">
-          <h3 className="font-black text-slate-700 dark:text-slate-200 text-sm uppercase tracking-widest">Histórico de Mensalidades (Todos)</h3>
+      <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
+        <div className="p-8 border-b dark:border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/30">
+          <h3 className="font-black text-brand-text dark:text-slate-200 text-sm uppercase tracking-widest">Histórico de Mensalidades (Todos)</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] text-slate-400 uppercase font-black border-b dark:border-slate-700">
+            <thead className="bg-brand-surface-2/50 text-[10px] text-brand-muted uppercase font-black border-b dark:border-brand-border">
               <tr>
                 <th className="px-8 py-5">Vencimento</th>
                 <th className="px-8 py-5">Valor</th>
@@ -353,14 +353,14 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
               {payments.length > 0 ? payments.map(payment => (
-                <tr key={payment.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="px-8 py-6 text-slate-500 dark:text-slate-400 font-bold text-xs">
+                <tr key={payment.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/30 transition-colors">
+                  <td className="px-8 py-6 text-brand-muted font-bold text-xs">
                     {formatDate(payment.due_date)}
                   </td>
-                  <td className="px-8 py-6 font-black text-slate-800 dark:text-white">
+                  <td className="px-8 py-6 font-black text-brand-text">
                     R$ {Number(payment.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="px-8 py-6 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase">
+                  <td className="px-8 py-6 text-brand-muted text-xs font-bold uppercase">
                     {payment.billing_type || '-'}
                   </td>
                   <td className="px-8 py-6">
@@ -393,7 +393,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-10 py-8 text-center text-slate-400 text-sm font-bold">Nenhum pagamento registrado no histórico.</td>
+                  <td colSpan={5} className="px-10 py-8 text-center text-brand-muted text-sm font-bold">Nenhum pagamento registrado no histórico.</td>
                 </tr>
               )}
             </tbody>

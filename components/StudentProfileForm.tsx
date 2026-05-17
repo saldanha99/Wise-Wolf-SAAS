@@ -180,13 +180,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-2xl border border-slate-100 dark:border-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="bg-brand-surface rounded-[2rem] shadow-2xl w-full max-w-2xl border border-brand-border overflow-hidden animate-in zoom-in-95 duration-200">
 
             {/* Header */}
-            <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+            <div className="px-8 py-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 dark:bg-brand-surface-2/20">
                 <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">{initialData ? 'Editar Perfil' : 'Novo Aluno'}</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">Preencha os detalhes do aluno</p>
+                    <h3 className="text-xl font-black text-brand-text uppercase tracking-tight">{initialData ? 'Editar Perfil' : 'Novo Aluno'}</h3>
+                    <p className="text-xs text-brand-muted font-bold uppercase tracking-widest mt-1">Preencha os detalhes do aluno</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {onDelete && (
@@ -198,17 +198,17 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             <Trash2 size={20} />
                         </button>
                     )}
-                    <button onClick={onCancel} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
+                    <button onClick={onCancel} className="p-2 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-full transition-colors text-brand-muted">
                         <X size={20} />
                     </button>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-100 dark:border-slate-800">
+            <div className="flex border-b border-brand-border">
                 <button
                     onClick={() => setActiveTab('DETAILS')}
-                    className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'DETAILS' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'DETAILS' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-brand-surface-2/50' : 'text-brand-muted hover:text-brand-muted'}`}
                 >
                     Detalhes
                 </button>
@@ -217,13 +217,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                     <>
                         <button
                             onClick={() => setActiveTab('FINANCIAL')}
-                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'FINANCIAL' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:text-slate-600'}`}
+                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'FINANCIAL' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-brand-surface-2/50' : 'text-brand-muted hover:text-brand-muted'}`}
                         >
                             Financeiro
                         </button>
                         <button
                             onClick={() => setActiveTab('AGENDA')}
-                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'AGENDA' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-slate-50 dark:bg-slate-800/50' : 'text-slate-400 hover:text-slate-600'}`}
+                            className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'AGENDA' ? 'text-tenant-primary border-b-2 border-tenant-primary bg-brand-surface-2/50' : 'text-brand-muted hover:text-brand-muted'}`}
                         >
                             Agenda & Aulas
                         </button>
@@ -238,41 +238,41 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         {/* Basic Info */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <User size={12} /> Nome Completo
                                 </label>
                                 <input
                                     disabled={!isDirector}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="Ex: Ana Silva"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     Email (Obrigatório)
                                 </label>
                                 <input
                                     disabled={!isDirector || !!initialData?.id} // Only editable on creation logic ideally, or let them edit but warn it doesn't change auth? Let's disable if ID exists.
                                     value={formData.email}
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || !!initialData?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || !!initialData?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="exemplo@email.com"
                                 />
                             </div>
 
                             {/* Professor Selector */}
                             <div className="space-y-2 relative">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Briefcase size={12} /> Professor Responsável
                                 </label>
                                 <select
                                     disabled={!isDirector}
                                     value={formData.professor_id || ''}
                                     onChange={e => setFormData({ ...formData, professor_id: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     <option value="">-- Sem Professor --</option>
                                     {teachers?.map(t => (
@@ -282,7 +282,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     Nível (Badge)
                                 </label>
                                 <select
@@ -301,7 +301,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                         }
                                         setFormData({ ...formData, levelBadge: newBadge, currentModuleStatus: newStatus });
                                     }}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
                                 >
                                     <option>A1</option>
                                     <option>A2</option>
@@ -318,24 +318,24 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                             CPF (Obrigatório para Asaas)
                                         </label>
                                         <input
                                             value={formData.cpf}
                                             onChange={e => setFormData({ ...formData, cpf: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                                             placeholder="000.000.000-00"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                             CEP
                                         </label>
                                         <input
                                             value={formData.postalCode}
                                             onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                                             placeholder="00000-000"
                                         />
                                     </div>
@@ -343,24 +343,24 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="md:col-span-2 space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                             Endereço
                                         </label>
                                         <input
                                             value={formData.address}
                                             onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                                             placeholder="Rua, Av..."
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                             Número
                                         </label>
                                         <input
                                             value={formData.addressNumber}
                                             onChange={e => setFormData({ ...formData, addressNumber: e.target.value })}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                                             placeholder="123"
                                         />
                                     </div>
@@ -370,7 +370,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                         {/* Current Module */}
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                 <BookOpen size={12} /> Módulo Atual
                             </label>
                             <input
@@ -392,7 +392,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                         {/* Interests */}
                         <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                 Interesses
                             </label>
                             <div className="flex flex-wrap gap-2 mb-2">
@@ -409,12 +409,12 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     value={newInterest}
                                     onChange={e => setNewInterest(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddInterest()}
-                                    className="flex-1 px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-none uppercase"
+                                    className="flex-1 px-4 py-2 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xs font-bold focus:ring-2 focus:ring-orange-500 outline-none uppercase"
                                     placeholder="Adicionar interesse..."
                                 />
                                 <button
                                     onClick={handleAddInterest}
-                                    className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-orange-100 hover:text-orange-600 transition-colors"
+                                    className="px-4 py-2 bg-slate-200 dark:bg-brand-surface-2 text-brand-muted rounded-xl hover:bg-orange-100 hover:text-orange-600 transition-colors"
                                 >
                                     <Plus size={16} />
                                 </button>
@@ -424,7 +424,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         {/* Correction & Occupation */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <MessageCircle size={12} /> Preferência de Correção
                                 </label>
                                 <select
@@ -441,14 +441,14 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Briefcase size={12} /> Ocupação
                                 </label>
                                 <input
                                     disabled={!isDirector}
                                     value={formData.occupation}
                                     onChange={e => setFormData({ ...formData, occupation: e.target.value.toUpperCase() })}
-                                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-pink-200 dark:border-pink-900 rounded-xl text-xs font-black text-pink-500 dark:text-pink-400 focus:ring-2 focus:ring-pink-500 outline-none uppercase"
+                                    className="w-full px-4 py-3 bg-brand-surface border border-pink-200 dark:border-pink-900 rounded-xl text-xs font-black text-pink-500 dark:text-pink-400 focus:ring-2 focus:ring-pink-500 outline-none uppercase"
                                     placeholder="Ex: ARQUITETA"
                                 />
                             </div>
@@ -457,20 +457,20 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         {/* Phone & Meet Link */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Phone size={12} /> Telefone (WhatsApp)
                                 </label>
                                 <input
                                     disabled={!isDirector}
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="5511999999999"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Plus size={12} /> Link da Aula (Meet)
                                 </label>
                                 <input
@@ -484,28 +484,28 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         </div>
 
                         {/* Fixed Schedule & Private Notes */}
-                        <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <div className="space-y-6 pt-4 border-t border-brand-border">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Calendar size={12} /> Horário Fixo (Texto Livre)
                                 </label>
                                 <input
                                     disabled={!isDirector}
                                     value={formData.fixed_schedule}
                                     onChange={e => setFormData({ ...formData, fixed_schedule: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="Ex: Seg e Qua às 14h"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <FileText size={12} /> Anotações Pedagógicas (Privado)
                                 </label>
                                 <textarea
                                     value={formData.private_notes}
                                     onChange={e => setFormData({ ...formData, private_notes: e.target.value })}
-                                    className="w-full h-32 px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none resize-none"
+                                    className="w-full h-32 px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none resize-none"
                                     placeholder="Observações sobre o aprendizado, dificuldades ou metas do aluno (visível apenas para professores)..."
                                 />
                             </div>
@@ -527,33 +527,33 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                                <p className="text-slate-500 text-sm font-bold">Nenhuma assinatura ativa encontrada.</p>
+                            <div className="p-6 bg-brand-surface-2 rounded-2xl border border-dashed border-brand-border text-center">
+                                <p className="text-brand-muted text-sm font-bold">Nenhuma assinatura ativa encontrada.</p>
                             </div>
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <DollarSign size={12} /> Valor Mensal (R$)
                                 </label>
                                 <input
                                     type="number"
                                     value={formData.monthly_fee}
                                     onChange={e => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xl font-black text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xl font-black text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
                                     placeholder="0.00"
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Calendar size={12} /> Dia de Vencimento
                                 </label>
                                 <select
                                     value={formData.due_day}
                                     onChange={e => setFormData({ ...formData, due_day: Number(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
                                 >
                                     {[5, 10, 15, 20, 25].map(day => (
                                         <option key={day} value={day}>Dia {day}</option>
@@ -562,13 +562,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Clock size={12} /> Duração do Contrato
                                 </label>
                                 <select
                                     value={formData.planDuration}
                                     onChange={e => setFormData({ ...formData, planDuration: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
                                 >
                                     <option value="RECURRENT">Mensal (Sem Fidelidade)</option>
                                     <option value="SEMESTER">Semestral (6 Meses)</option>
@@ -577,13 +577,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <CreditCard size={12} /> Forma de Pagamento
                                 </label>
                                 <select
                                     value={formData.billingType}
                                     onChange={e => setFormData({ ...formData, billingType: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
                                 >
                                     <option value="PIX">PIX</option>
                                     <option value="BOLETO">BOLETO</option>
@@ -591,8 +591,8 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
                         </div>
 
-                        <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-4">
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Opções de Cobrança</h4>
+                        <div className="pt-6 border-t border-brand-border space-y-4">
+                            <h4 className="text-xs font-black text-brand-muted uppercase tracking-widest">Opções de Cobrança</h4>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <button
@@ -607,7 +607,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <button
                                     onClick={handleGenerateManualPayments}
                                     disabled={generatingBooklet}
-                                    className="w-full py-4 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-slate-800/20 flex flex-col items-center justify-center gap-1 border border-slate-700"
+                                    className="w-full py-4 bg-brand-surface-2 hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-slate-800/20 flex flex-col items-center justify-center gap-1 border border-brand-border"
                                 >
                                     <span className="flex items-center gap-2"><FileText size={14} /> Gerar Carnê Interno (12x)</span>
                                     <span className="opacity-75 text-[9px] text-center">Apenas lança no sistema (Para alunos manuais)</span>
@@ -651,13 +651,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
             </div>
 
             {/* Footer */}
-            <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 flex justify-between gap-3 custom-shadow-top items-center">
+            <div className="p-6 border-t border-brand-border bg-brand-surface-2/50 dark:bg-brand-surface flex justify-between gap-3 custom-shadow-top items-center">
                 {/* Empty div to spacing if update layout, or just justify-end in original */}
                 <div className="flex-1"></div>
                 <div className="flex gap-3">
                     <button
                         onClick={onCancel}
-                        className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 transition-colors"
                     >
                         Cancelar
                     </button>

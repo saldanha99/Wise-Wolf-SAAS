@@ -82,35 +82,35 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100">
+    <div className="flex min-h-screen bg-brand-surface-2 dark:bg-slate-950 font-sans text-brand-text dark:text-slate-100">
       {/* Sidebar (Simplified for Super Admin Context) */}
-      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col fixed inset-y-0 z-50">
+      <aside className="w-64 bg-brand-surface border-r border-brand-border dark:border-brand-border flex flex-col fixed inset-y-0 z-50">
         <div className="p-6">
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
             <Server size={28} />
             <span className="font-black text-lg tracking-tight">WiseWolf SaaS</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-bold">Admin Console</p>
+          <p className="text-xs text-brand-muted mt-1 uppercase tracking-widest font-bold">Admin Console</p>
         </div>
 
         <nav className="flex-1 px-4 space-y-1">
           <button
             onClick={() => setActiveTab('global')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'global' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'global' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
           >
             <LayoutDashboard size={20} />
             Dashboard Global
           </button>
           <button
             onClick={() => setActiveTab('crm')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'crm' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'crm' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
           >
             <Briefcase size={20} />
             CRM & Vendas
           </button>
           <button
             onClick={() => setActiveTab('tenants')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'tenants' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'tenants' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
           >
             <Building2 size={20} />
             Gestão de Tenants
@@ -118,26 +118,26 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
 
           <button
             onClick={() => setActiveTab('infra')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'infra' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'infra' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
           >
             <Database size={20} />
             Infra & Planos
           </button>
           <button
             onClick={() => setActiveTab('billing')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'billing' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'billing' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
           >
             <CreditCard size={20} />
             Faturamento SaaS
           </button>
         </nav>
 
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
-          <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4">
-            <p className="text-xs font-bold text-slate-500 mb-1">Status do Sistema</p>
+        <div className="p-4 border-t border-brand-border dark:border-brand-border space-y-4">
+          <div className="bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl p-4">
+            <p className="text-xs font-bold text-brand-muted mb-1">Status do Sistema</p>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Operacional</span>
+              <span className="text-xs font-bold text-brand-text dark:text-slate-300">Operacional</span>
             </div>
           </div>
 
@@ -155,17 +155,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
       <main className="ml-64 flex-1 p-8">
         <header className="mb-8 flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-black text-slate-800 dark:text-white">
+            <h1 className="text-2xl font-black text-brand-text">
               {activeTab === 'global' && 'Visão Geral'}
               {activeTab === 'tenants' && 'Escolas Parceiras'}
               {activeTab === 'infra' && 'Infraestrutura'}
               {activeTab === 'billing' && 'Financeiro'}
               {activeTab === 'crm' && 'Funil de Vendas'}
             </h1>
-            <p className="text-slate-500">Bem-vindo ao painel de controle mestre.</p>
+            <p className="text-brand-muted">Bem-vindo ao painel de controle mestre.</p>
           </div>
           <div className="flex gap-4">
-            <div className="bg-white dark:bg-slate-900 px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+            <div className="bg-brand-surface px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-brand-border flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 font-black">
                 SA
               </div>

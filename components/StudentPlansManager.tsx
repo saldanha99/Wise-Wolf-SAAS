@@ -178,11 +178,11 @@ const StudentPlansManager: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight flex items-center gap-2">
+                    <h3 className="text-xl font-black text-brand-text tracking-tight flex items-center gap-2">
                         <Users className="text-blue-500" size={24} />
                         Planos de Alunos
                     </h3>
-                    <p className="text-slate-500 text-xs mt-1">
+                    <p className="text-brand-muted text-xs mt-1">
                         {userRole === 'super_admin' ? 'Gerencie os Templates Globais' : 'Gerencie os planos da sua escola'}
                     </p>
                 </div>
@@ -196,13 +196,13 @@ const StudentPlansManager: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {loading ? (
-                    <p className="text-slate-400 text-xs">Carregando planos...</p>
+                    <p className="text-brand-muted text-xs">Carregando planos...</p>
                 ) : plans.map((plan) => {
                     const isGlobal = !plan.tenant_id;
                     const canEdit = isGlobal ? userRole === 'super_admin' : true; // Tenant can edit their own
 
                     return (
-                        <div key={plan.id} className={`group bg-white dark:bg-slate-900 border ${isGlobal ? 'border-purple-200 dark:border-purple-900/30' : 'border-slate-100 dark:border-slate-800'} rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-blue-500/20`}>
+                        <div key={plan.id} className={`group bg-brand-surface border ${isGlobal ? 'border-purple-200 dark:border-purple-900/30' : 'border-brand-border'} rounded-[2.5rem] p-6 relative overflow-hidden transition-all hover:shadow-xl hover:border-blue-500/20`}>
                             <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${plan.is_active ? 'from-blue-500/10 to-indigo-500/10' : 'from-slate-500/10 to-gray-500/10'} rounded-bl-[2.5rem] transition-colors`} />
 
                             <div className="flex justify-between items-start mb-4 relative z-10">
@@ -212,8 +212,8 @@ const StudentPlansManager: React.FC = () => {
                                             Template Global
                                         </div>
                                     )}
-                                    <h4 className="font-black text-slate-800 dark:text-white text-lg break-words">{plan.name}</h4>
-                                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider mt-1 ${plan.is_active ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
+                                    <h4 className="font-black text-brand-text text-lg break-words">{plan.name}</h4>
+                                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider mt-1 ${plan.is_active ? 'bg-blue-100 text-blue-600' : 'bg-brand-surface-2 text-brand-muted'}`}>
                                         {plan.is_active ? 'Ativo' : 'Inativo'}
                                     </div>
                                 </div>
@@ -221,10 +221,10 @@ const StudentPlansManager: React.FC = () => {
                                     {/* Edit Button - Only if can Edit */}
                                     {canEdit && (
                                         <>
-                                            <button onClick={() => handleEdit(plan)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-blue-500 transition-colors">
+                                            <button onClick={() => handleEdit(plan)} className="p-2 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-lg text-brand-muted hover:text-blue-500 transition-colors">
                                                 <Edit3 size={16} />
                                             </button>
-                                            <button onClick={() => handleDelete(plan.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
+                                            <button onClick={() => handleDelete(plan.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-brand-muted hover:text-red-500 transition-colors">
                                                 <Trash2 size={16} />
                                             </button>
                                         </>
@@ -240,26 +240,26 @@ const StudentPlansManager: React.FC = () => {
                             </div>
 
                             <div className="space-y-3 mb-6 relative z-10">
-                                <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
+                                <div className="flex items-center gap-3 text-brand-muted dark:text-brand-muted text-xs font-medium">
                                     <BookOpen size={14} className="text-blue-500" />
                                     <span>{plan.lessons_per_week} Aulas / Semana</span>
                                 </div>
-                                <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
+                                <div className="flex items-center gap-3 text-brand-muted dark:text-brand-muted text-xs font-medium">
                                     <Calendar size={14} className="text-purple-500" />
                                     <span>Fidelidade: {plan.contract_duration} Meses</span>
                                 </div>
                                 {plan.landing_page_slug && (
-                                    <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 text-xs font-medium">
+                                    <div className="flex items-center gap-3 text-brand-muted dark:text-brand-muted text-xs font-medium">
                                         <Link size={14} className="text-emerald-500" />
                                         <span className="truncate max-w-[150px]">{plan.landing_page_slug}</span>
                                     </div>
                                 )}
                             </div>
 
-                            <div className="pt-4 border-t border-slate-50 dark:border-slate-800 relative z-10">
+                            <div className="pt-4 border-t border-slate-50 dark:border-brand-border relative z-10">
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl font-black text-slate-800 dark:text-white text-blue-600">R$ {plan.monthly_price}</span>
-                                    <span className="text-xs font-bold text-slate-400">/mês</span>
+                                    <span className="text-2xl font-black text-brand-text text-blue-600">R$ {plan.monthly_price}</span>
+                                    <span className="text-xs font-bold text-brand-muted">/mês</span>
                                 </div>
                             </div>
                         </div>
@@ -269,69 +269,69 @@ const StudentPlansManager: React.FC = () => {
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-8 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-y-auto max-h-[90vh]">
-                        <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-6">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-brand-surface w-full max-w-2xl rounded-[2.5rem] p-8 border border-brand-border dark:border-brand-border shadow-2xl overflow-y-auto max-h-[90vh]">
+                        <h3 className="text-2xl font-black text-brand-text mb-6">
                             {editingPlan ? 'Editar Modelo de Plano' : 'Novo Modelo de Plano'}
                         </h3>
                         {/* Form Inputs (Same as before but wrapped in logic to display correctly) */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                             <div className="col-span-1 md:col-span-2 space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Nome do Plano</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Nome do Plano</label>
                                 <input
                                     type="text"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                     placeholder="Ex: Start 2x Semanal"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Aulas por Semana</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Aulas por Semana</label>
                                 <input
                                     type="number"
                                     value={formData.lessons_per_week}
                                     onChange={e => setFormData({ ...formData, lessons_per_week: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Fidelidade (Meses)</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Fidelidade (Meses)</label>
                                 <input
                                     type="number"
                                     value={formData.contract_duration}
                                     onChange={e => setFormData({ ...formData, contract_duration: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Preço Mensal (R$)</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Preço Mensal (R$)</label>
                                 <input
                                     type="number"
                                     value={formData.monthly_price}
                                     onChange={e => setFormData({ ...formData, monthly_price: Number(e.target.value) })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Slug da Landing Page (URL)</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Slug da Landing Page (URL)</label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-slate-400 text-xs font-bold">.../checkout/</span>
+                                    <span className="text-brand-muted text-xs font-bold">.../checkout/</span>
                                     <input
                                         type="text"
                                         value={formData.landing_page_slug}
                                         onChange={e => setFormData({ ...formData, landing_page_slug: e.target.value })}
-                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
+                                        className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600"
                                         placeholder="(Auto-gerado se vazio)"
                                     />
                                 </div>
                             </div>
                             <div className="col-span-1 md:col-span-2 space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Descrição</label>
+                                <label className="text-xs font-black text-brand-muted uppercase tracking-widest">Descrição</label>
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="w-full h-24 bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600 resize-none"
+                                    className="w-full h-24 bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-blue-600 resize-none"
                                 />
                             </div>
                             <div className="col-span-1 md:col-span-2 flex items-center gap-3">
@@ -339,16 +339,16 @@ const StudentPlansManager: React.FC = () => {
                                     onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
                                     className={`w-12 h-6 rounded-full transition-colors relative ${formData.is_active ? 'bg-blue-600' : 'bg-slate-300'}`}
                                 >
-                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${formData.is_active ? 'left-7' : 'left-1'}`} />
+                                    <div className={`absolute top-1 w-4 h-4 bg-brand-surface rounded-full transition-transform ${formData.is_active ? 'left-7' : 'left-1'}`} />
                                 </button>
-                                <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Modelo Ativo?</span>
+                                <span className="text-sm font-bold text-brand-muted dark:text-brand-muted">Modelo Ativo?</span>
                             </div>
                         </div>
 
                         <div className="flex gap-4">
                             <button
                                 onClick={() => setIsModalOpen(false)}
-                                className="flex-1 py-4 text-slate-500 font-black text-xs uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                                className="flex-1 py-4 text-brand-muted font-black text-xs uppercase tracking-widest hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-xl transition-colors"
                             >
                                 Cancelar
                             </button>

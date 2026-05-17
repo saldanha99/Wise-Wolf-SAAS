@@ -127,7 +127,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
       <header className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-slate-100 tracking-tight">Customização da Marca</h2>
-          <p className="text-sm text-gray-500 dark:text-slate-400">Gerencie a identidade visual da sua escola (White Label).</p>
+          <p className="text-sm text-gray-500 dark:text-brand-muted">Gerencie a identidade visual da sua escola (White Label).</p>
         </div>
         <span className="text-[10px] font-black uppercase tracking-widest bg-blue-100/50 text-blue-600 px-3 py-1 rounded-full animate-pulse">
           Live Preview Ativo
@@ -136,10 +136,10 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-8 relative overflow-hidden">
+          <div className="bg-brand-surface p-8 rounded-3xl border border-gray-100 dark:border-brand-border shadow-sm space-y-8 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-900 rounded-bl-full -mr-10 -mt-10 pointer-events-none" />
 
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-slate-800 relative">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-brand-border relative">
               <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg">
                 <Palette size={20} />
               </div>
@@ -163,7 +163,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                       type="text"
                       value={branding.primaryColor}
                       onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })}
-                      className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl font-mono text-xs uppercase text-gray-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-tenant-primary transition-all"
+                      className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl font-mono text-xs uppercase text-gray-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-tenant-primary transition-all"
                     />
                     <p className="text-[9px] text-gray-400 mt-1">Botões, Links, Destaques</p>
                   </div>
@@ -186,7 +186,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                       type="text"
                       value={branding.secondaryColor}
                       onChange={(e) => setBranding({ ...branding, secondaryColor: e.target.value })}
-                      className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl font-mono text-xs uppercase text-gray-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-tenant-primary transition-all"
+                      className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl font-mono text-xs uppercase text-gray-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-tenant-primary transition-all"
                     />
                     <p className="text-[9px] text-gray-400 mt-1">Notificações, Badges, Status</p>
                   </div>
@@ -202,8 +202,8 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
             </button>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-8">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-slate-800">
+          <div className="bg-brand-surface p-8 rounded-3xl border border-gray-100 dark:border-brand-border shadow-sm space-y-8">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-brand-border">
               <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
                 <ImageIcon size={20} />
               </div>
@@ -216,7 +216,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                 <button
                   onClick={() => triggerFileInput('logo')}
                   disabled={!!isUploading}
-                  className="w-full border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 hover:border-tenant-primary hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-all cursor-pointer group disabled:opacity-50 relative overflow-hidden"
+                  className="w-full border-2 border-dashed border-gray-100 dark:border-brand-border rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 hover:border-tenant-primary hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-all cursor-pointer group disabled:opacity-50 relative overflow-hidden"
                 >
                   {isUploading === 'logo' ? <Loader2 className="animate-spin text-tenant-primary" /> : (
                     <>
@@ -233,11 +233,11 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                 <button
                   onClick={() => triggerFileInput('favicon')}
                   disabled={!!isUploading}
-                  className="w-full border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 hover:border-tenant-primary hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-all cursor-pointer group disabled:opacity-50 relative overflow-hidden"
+                  className="w-full border-2 border-dashed border-gray-100 dark:border-brand-border rounded-2xl p-6 flex flex-col items-center justify-center text-center space-y-3 hover:border-tenant-primary hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-all cursor-pointer group disabled:opacity-50 relative overflow-hidden"
                 >
                   {isUploading === 'favicon' ? <Loader2 className="animate-spin text-tenant-primary" /> : (
                     <>
-                      <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-slate-800 p-2 shadow-sm">
+                      <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-2 shadow-sm">
                         <img src={branding.faviconUrl} className="w-full h-full object-contain" alt="Favicon" />
                       </div>
                       <div className="absolute inset-x-0 bottom-0 bg-black/50 p-2 transform translate-y-full group-hover:translate-y-0 transition-transform">
@@ -250,15 +250,15 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-slate-800">
+          <div className="bg-brand-surface p-8 rounded-3xl border border-gray-100 dark:border-brand-border shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-brand-border">
               <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg">
                 <Zap size={20} />
               </div>
               <h3 className="font-bold text-gray-800 dark:text-slate-100">Automação WhatsApp</h3>
             </div>
             <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl">
+              <div className="flex items-center justify-between p-4 bg-brand-surface-2 rounded-2xl">
                 <div>
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ativar Notificações</label>
                   <p className="text-xs text-gray-500">Enviar lembretes e confirmações automaticamente.</p>
@@ -270,7 +270,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                     checked={whatsappConfig.enabled}
                     onChange={(e) => setWhatsappConfig({ ...whatsappConfig, enabled: e.target.checked })}
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-tenant-primary"></div>
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-brand-surface after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-tenant-primary"></div>
                 </label>
               </div>
 
@@ -282,7 +282,7 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                     value={whatsappConfig.url}
                     onChange={(e) => setWhatsappConfig({ ...whatsappConfig, url: e.target.value })}
                     placeholder="https://sua-api.com"
-                    className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-xs"
+                    className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl outline-none text-xs"
                   />
                 </div>
                 <div className="space-y-2">
@@ -292,12 +292,12 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                     value={whatsappConfig.key}
                     onChange={(e) => setWhatsappConfig({ ...whatsappConfig, key: e.target.value })}
                     placeholder="••••••••••••"
-                    className="w-full p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-xs"
+                    className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl outline-none text-xs"
                   />
                 </div>
               </div>
 
-              <div className="mt-6 pt-6 border-t border-gray-100 dark:border-slate-800">
+              <div className="mt-6 pt-6 border-t border-gray-100 dark:border-brand-border">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Dia de Fechamento Financeiro</label>
                 <p className="text-xs text-gray-500 mb-3">Dia do mês em que o sistema bloqueia lançamentos retroativos (Hard Limit).</p>
                 <input
@@ -306,14 +306,14 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                   max="28"
                   value={tenant.financial_cutoff_day || 5}
                   onChange={(e) => onUpdate({ ...tenant, financial_cutoff_day: parseInt(e.target.value) })}
-                  className="w-full md:w-32 p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl outline-none text-xs font-bold"
+                  className="w-full md:w-32 p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl outline-none text-xs font-bold"
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-slate-800">
+          <div className="bg-brand-surface p-8 rounded-3xl border border-gray-100 dark:border-brand-border shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-50 dark:border-brand-border">
               <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg">
                 <Globe size={20} />
               </div>
@@ -326,42 +326,42 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                   type="text"
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
-                  className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl focus:ring-1 focus:ring-tenant-primary outline-none font-medium text-gray-700 dark:text-slate-300"
+                  className="flex-1 p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl focus:ring-1 focus:ring-tenant-primary outline-none font-medium text-gray-700 dark:text-slate-300"
                 />
                 <button
                   onClick={handleValidateDNS}
                   disabled={isValidating}
-                  className="px-6 py-3 bg-gray-900 dark:bg-slate-100 dark:text-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="px-6 py-3 bg-gray-900 dark:bg-brand-surface-2 dark:text-brand-text text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isValidating ? <RefreshCw className="animate-spin" size={14} /> : null}
                   {isValidating ? 'Validando...' : 'Validar CNAME'}
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-slate-500 italic font-medium">Configure o registro CNAME no seu provedor de DNS para apontar para <b>core.educore.io</b></p>
+              <p className="text-[10px] text-gray-400 dark:text-brand-muted italic font-medium">Configure o registro CNAME no seu provedor de DNS para apontar para <b>core.educore.io</b></p>
             </div>
           </div>
         </div>
 
         <div className="space-y-6">
           <div className="sticky top-8">
-            <div className="bg-gray-900 dark:bg-slate-800 text-white p-6 rounded-3xl shadow-xl overflow-hidden relative border dark:border-slate-700">
+            <div className="bg-gray-900 dark:bg-brand-surface-2 text-white p-6 rounded-3xl shadow-xl overflow-hidden relative border dark:border-brand-border">
               <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-600/20 blur-3xl rounded-full" />
               <h4 className="font-bold text-lg mb-1 relative z-10">Preview em Tempo Real</h4>
               <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-6 relative z-10">Interface Mobile/Tablet</p>
 
-              <div className="aspect-[9/16] bg-[#F4F7F9] dark:bg-slate-900 rounded-2xl border-4 border-gray-800 dark:border-slate-950 relative overflow-hidden text-gray-800 dark:text-slate-100">
-                <div className="h-10 bg-white dark:bg-slate-800 border-b dark:border-slate-700 flex items-center px-3 justify-between">
+              <div className="aspect-[9/16] bg-[#F4F7F9] dark:bg-brand-surface rounded-2xl border-4 border-gray-800 dark:border-slate-950 relative overflow-hidden text-gray-800 dark:text-slate-100">
+                <div className="h-10 bg-brand-surface dark:bg-brand-surface-2 border-b dark:border-brand-border flex items-center px-3 justify-between">
                   <div className="h-3 w-12 bg-gray-100 dark:bg-slate-700 rounded-full" />
                   <div className="w-5 h-5 rounded bg-gray-100 dark:bg-slate-700" />
                 </div>
                 <div className="p-4 space-y-3">
                   <div className="h-4 w-24 rounded-full" style={{ backgroundColor: branding.primaryColor }} />
-                  <div className="h-20 w-full bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 shadow-sm p-3 space-y-2">
+                  <div className="h-20 w-full bg-brand-surface dark:bg-brand-surface-2 rounded-xl border border-gray-100 dark:border-brand-border shadow-sm p-3 space-y-2">
                     <div className="h-2 w-full bg-gray-100 dark:bg-slate-700 rounded" />
                     <div className="h-2 w-2/3 bg-gray-100 dark:bg-slate-700 rounded" />
                     <div className="h-8 w-full rounded-lg" style={{ backgroundColor: branding.primaryColor }} />
                   </div>
-                  <div className="h-8 w-8 rounded-full border-2 border-white dark:border-slate-800 shadow-sm absolute bottom-4 right-4" style={{ backgroundColor: branding.secondaryColor }} />
+                  <div className="h-8 w-8 rounded-full border-2 border-white dark:border-brand-border shadow-sm absolute bottom-4 right-4" style={{ backgroundColor: branding.secondaryColor }} />
                 </div>
               </div>
 

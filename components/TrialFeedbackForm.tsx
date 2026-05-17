@@ -114,12 +114,12 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     if (saved) {
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center animate-in zoom-in-95">
+                <div className="bg-brand-surface rounded-3xl p-8 max-w-md w-full text-center animate-in zoom-in-95">
                     <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <Check size={40} className="text-emerald-600" />
                     </div>
-                    <h2 className="text-2xl font-black text-slate-900 mb-1">Feedback Salvo!</h2>
-                    <p className="text-slate-500 text-sm">A direção pode agora gerar o contrato.</p>
+                    <h2 className="text-2xl font-black text-brand-text mb-1">Feedback Salvo!</h2>
+                    <p className="text-brand-muted text-sm">A direção pode agora gerar o contrato.</p>
                 </div>
             </div>
         );
@@ -127,14 +127,14 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-t-3xl p-6 text-white relative">
-                    <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                    <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-xl bg-brand-surface/10 hover:bg-brand-surface/20 transition-colors">
                         <X size={18} />
                     </button>
                     <div className="flex items-center gap-3 mb-3">
-                        <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                        <div className="w-12 h-12 rounded-2xl bg-brand-surface/20 flex items-center justify-center backdrop-blur-sm">
                             <BookOpen size={24} />
                         </div>
                         <div>
@@ -158,7 +158,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
 
                         {/* Level Selector */}
                         <div>
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 block">
+                            <label className="text-xs font-black uppercase tracking-wider text-brand-muted mb-2 block">
                                 Nível Recomendado
                             </label>
                             <div className="grid grid-cols-6 gap-2">
@@ -168,7 +168,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                                         onClick={() => setLevel(l)}
                                         className={`py-3 rounded-xl text-sm font-bold transition-all ${level === l
                                                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                : 'bg-brand-surface-2 text-brand-muted hover:bg-slate-200'
                                             }`}
                                     >
                                         {l}
@@ -179,7 +179,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
 
                         {/* Plan Selector */}
                         <div>
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 block">
+                            <label className="text-xs font-black uppercase tracking-wider text-brand-muted mb-2 block">
                                 Plano Recomendado
                             </label>
                             <div className="grid grid-cols-2 gap-2">
@@ -189,7 +189,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                                         onClick={() => setPlan(p.value)}
                                         className={`py-3 px-4 rounded-xl text-sm font-semibold transition-all text-left ${plan === p.value
                                                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                : 'bg-brand-surface-2 text-brand-muted hover:bg-slate-200'
                                             }`}
                                     >
                                         {p.label}
@@ -200,7 +200,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
 
                         {/* Interest Score */}
                         <div>
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-2">
+                            <label className="text-xs font-black uppercase tracking-wider text-brand-muted mb-2 flex items-center gap-2">
                                 <ThermometerSun size={14} />
                                 Interesse do Lead (1–5)
                             </label>
@@ -213,21 +213,21 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                                                 ? score <= 2 ? 'bg-red-100 text-red-500'
                                                     : score === 3 ? 'bg-amber-100 text-amber-500'
                                                         : 'bg-emerald-100 text-emerald-500'
-                                                : 'bg-slate-100 text-slate-300'
+                                                : 'bg-brand-surface-2 text-slate-300'
                                             }`}
                                     >
                                         <Star size={20} fill={interest >= score ? 'currentColor' : 'none'} />
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-xs text-slate-400 mt-1 text-center">
+                            <p className="text-xs text-brand-muted mt-1 text-center">
                                 {interest <= 2 ? '🥶 Frio' : interest === 3 ? '🤔 Morno' : '🔥 Quente!'}
                             </p>
                         </div>
 
                         {/* Notes */}
                         <div>
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-2">
+                            <label className="text-xs font-black uppercase tracking-wider text-brand-muted mb-2 flex items-center gap-2">
                                 <FileText size={14} />
                                 Observações
                             </label>
@@ -236,7 +236,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                                 onChange={(e) => setNotes(e.target.value)}
                                 rows={3}
                                 placeholder="Comportamento do aluno, pontos fortes/fracos, impressão geral..."
-                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all"
+                                className="w-full rounded-2xl border border-brand-border px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all"
                             />
                         </div>
 

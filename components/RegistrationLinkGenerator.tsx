@@ -179,7 +179,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const isFormValid = monthlyFee > 0;
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden font-sans">
+        <div className="bg-brand-surface rounded-[2.5rem] shadow-xl border border-brand-border overflow-hidden font-sans">
 
             {/* Header */}
             <div className="bg-gradient-to-r from-[#002366] to-blue-900 p-8 text-white relative overflow-hidden">
@@ -194,7 +194,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                         </p>
                     </div>
                     {/* Decorative Price Badge */}
-                    <div className="hidden md:flex flex-col items-end bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+                    <div className="hidden md:flex flex-col items-end bg-brand-surface/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
                         <span className="text-[10px] uppercase font-bold tracking-widest text-blue-200 mb-1">Valor Final</span>
                         <div className="text-3xl font-black tracking-tighter">
                             R$ {monthlyFee.toFixed(2)}
@@ -211,7 +211,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
                 {/* SECTION 1: O PLANO */}
                 <div>
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2 mb-4">
                         <Wallet size={14} /> Selecione o Plano e Frequência
                     </h3>
 
@@ -229,7 +229,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     onClick={() => setDuration(plan.val)}
                                     className={`relative p-4 rounded-2xl border-2 text-left transition-all duration-300 hover:scale-[1.02] ${duration === plan.val
                                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-600 ring-offset-2 dark:ring-offset-slate-900'
-                                        : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:border-slate-200'
+                                        : 'border-brand-border bg-brand-surface-2 text-brand-muted hover:border-brand-border'
                                         }`}
                                 >
                                     {duration === plan.val && (
@@ -237,7 +237,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             <Check size={12} strokeWidth={4} />
                                         </div>
                                     )}
-                                    <span className={`block text-lg font-black ${duration === plan.val ? 'text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                                    <span className={`block text-lg font-black ${duration === plan.val ? 'text-blue-700 dark:text-blue-400' : 'text-brand-muted dark:text-brand-muted'}`}>
                                         {plan.label}
                                     </span>
                                     <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
@@ -251,52 +251,52 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                         <div className="space-y-4">
                             <div className="flex gap-4">
                                 <div className="flex-1">
-                                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Frequência Semanal</label>
+                                    <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Frequência Semanal</label>
                                     <div className="relative">
                                         <select
                                             value={frequency}
                                             onChange={(e) => setFrequency(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold text-slate-700 dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                         >
                                             {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
                                         </select>
-                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                     </div>
                                 </div>
                                 <div className="flex-1">
-                                    <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Vencimento</label>
+                                    <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Vencimento</label>
                                     <div className="relative">
                                         <select
                                             value={dueDay}
                                             onChange={(e) => setDueDay(Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold text-slate-700 dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                         >
                                             {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
                                                 <option key={d} value={d}>Dia {d}</option>
                                             ))}
                                         </select>
-                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                        <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                     </div>
                                 </div>
                             </div>
 
                             {/* Start Date Control */}
                             <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Início das Aulas</label>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Início das Aulas</label>
                                 <div className="relative">
                                     <input
                                         type="date"
                                         value={startDate}
                                         onChange={(e) => setStartDate(e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-none rounded-xl font-bold text-slate-700 dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                     />
-                                    <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
                             </div>
 
                             {/* Manual Price Override */}
-                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                                <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400 mb-2 cursor-pointer hover:text-blue-500 transition-colors">
+                            <div className="pt-2 border-t border-brand-border">
+                                <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted mb-2 cursor-pointer hover:text-blue-500 transition-colors">
                                     <input
                                         type="checkbox"
                                         checked={isManualPrice}
@@ -308,7 +308,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
                                 {isManualPrice && (
                                     <div className="relative animate-in fade-in slide-in-from-top-2">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">R$</span>
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted font-bold text-sm">R$</span>
                                         <input
                                             type="number"
                                             value={monthlyFee}
@@ -327,9 +327,9 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             </div>
 
                             {/* Enrollment Fee Control */}
-                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                            <div className="pt-4 border-t border-brand-border">
                                 <div className="flex items-center justify-between mb-2">
-                                    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400 cursor-pointer hover:text-blue-500 transition-colors">
+                                    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted cursor-pointer hover:text-blue-500 transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={chargeEnrollmentFee}
@@ -350,7 +350,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         </div>
                                     )}
                                 </div>
-                                <p className="text-[9px] text-slate-400 font-medium">
+                                <p className="text-[9px] text-brand-muted font-medium">
                                     {chargeEnrollmentFee 
                                         ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga.`
                                         : 'A taxa de matrícula não será cobrada neste link.'}
@@ -402,12 +402,12 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                 </div>
 
                 {/* SECTION 2: ALOCAÇÃO ACADÊMICA */}
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/50">
+                <div className="bg-brand-surface-2/50 rounded-2xl p-6 border border-brand-border/50">
                     <div className="flex items-center gap-2 mb-6">
-                        <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm">
+                        <div className="p-2 bg-brand-surface dark:bg-slate-700 rounded-lg shadow-sm">
                             <GraduationCap size={18} className="text-purple-600 dark:text-purple-400" />
                         </div>
-                        <h3 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-wide">
+                        <h3 className="text-sm font-black text-brand-text dark:text-slate-200 uppercase tracking-wide">
                             Alocação Acadêmica
                         </h3>
                     </div>
@@ -416,10 +416,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                         {/* Professor Select (Searchable) */}
                         <div className="lg:col-span-1 relative z-50 flex flex-col gap-4">
                             <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block">Selecionar Professor</label>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-2 block">Selecionar Professor</label>
 
                                 <div className="relative group">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-purple-500 transition-colors" size={16} />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted group-focus-within:text-purple-500 transition-colors" size={16} />
                                     <input
                                         type="text"
                                         placeholder="Buscar Professor..."
@@ -437,9 +437,9 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch('');
                                             setShowProfessorList(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
                                     />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
 
                                 {/* Dropdown List */}
@@ -449,7 +449,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-brand-surface border border-brand-border dark:border-brand-border rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
                                             {professors.filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch || p.name.toLowerCase().includes(professorSearch.toLowerCase()))
@@ -461,14 +461,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                                 setShowProfessorList(false);
                                                                 setProfessorSearch('');
                                                             }}
-                                                            className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors flex items-center justify-between"
+                                                            className="w-full text-left px-4 py-3 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 text-brand-text dark:text-slate-300 text-sm font-medium transition-colors flex items-center justify-between"
                                                         >
                                                             {p.name}
                                                             {selectedProfessor === p.id && <Check size={14} className="text-purple-500" />}
                                                         </button>
                                                     ))
                                             ) : (
-                                                <div className="p-4 text-center text-slate-400 text-xs">
+                                                <div className="p-4 text-center text-brand-muted text-xs">
                                                     Nenhum professor encontrado.
                                                 </div>
                                             )}
@@ -478,10 +478,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             </div>
 
                             <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block">Professor Secundário (Opcional)</label>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-2 block">Professor Secundário (Opcional)</label>
 
                                 <div className="relative group">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-purple-500 transition-colors" size={16} />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted group-focus-within:text-purple-500 transition-colors" size={16} />
                                     <input
                                         type="text"
                                         placeholder="Buscar Professor 2..."
@@ -499,9 +499,9 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             setProfessorSearch2('');
                                             setShowProfessorList2(true);
                                         }}
-                                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-dashed border-brand-border dark:border-slate-600 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
                                     />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
                                 </div>
 
                                 {/* Dropdown List 2 */}
@@ -511,7 +511,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             className="fixed inset-0 z-40"
                                             onClick={() => setShowProfessorList2(false)}
                                         />
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-brand-surface border border-brand-border dark:border-brand-border rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
                                             {professors.filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase())).length > 0 ? (
                                                 professors
                                                     .filter(p => !professorSearch2 || p.name.toLowerCase().includes(professorSearch2.toLowerCase()))
@@ -523,14 +523,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                                 setShowProfessorList2(false);
                                                                 setProfessorSearch2('');
                                                             }}
-                                                            className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors flex items-center justify-between"
+                                                            className="w-full text-left px-4 py-3 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 text-brand-text dark:text-slate-300 text-sm font-medium transition-colors flex items-center justify-between"
                                                         >
                                                             {p.name}
                                                             {selectedProfessor2 === p.id && <Check size={14} className="text-purple-500" />}
                                                         </button>
                                                     ))
                                             ) : (
-                                                <div className="p-4 text-center text-slate-400 text-xs">
+                                                <div className="p-4 text-center text-brand-muted text-xs">
                                                     Nenhum professor encontrado.
                                                 </div>
                                             )}
@@ -542,19 +542,19 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
                         {/* Schedule Grid */}
                         <div className="lg:col-span-3">
-                            <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block">
+                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-2 block">
                                 Grade Horária ({frequency}x na Semana)
                             </label>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                 {scheduleSlots.map((slot, index) => (
-                                    <div key={index} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm group hover:border-purple-300 transition-colors">
+                                    <div key={index} className="flex items-center gap-2 bg-brand-surface p-2 rounded-xl border border-brand-border shadow-sm group hover:border-purple-300 transition-colors">
                                         <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-xs shrink-0">
                                             {index + 1}
                                         </div>
                                         <select
                                             value={slot.day}
                                             onChange={e => updateSlot(index, 'day', e.target.value)}
-                                            className="w-28 bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                                            className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
                                         >
                                             <option value="">Dia</option>
                                             <option value="Monday">Segunda</option>
@@ -569,7 +569,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             type="time"
                                             value={slot.time}
                                             onChange={e => updateSlot(index, 'time', e.target.value)}
-                                            className="w-full bg-transparent text-xs font-mono font-medium text-slate-700 dark:text-slate-200 outline-none"
+                                            className="w-full bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-none"
                                         />
                                     </div>
                                 ))}
@@ -591,10 +591,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
                     {generatedLink && (
                         <div className="mt-6 animate-in fade-in slide-in-from-top-4">
-                            <div className="bg-slate-900 rounded-2xl p-4 flex items-center gap-4 border border-slate-800 shadow-2xl">
+                            <div className="bg-brand-surface rounded-2xl p-4 flex items-center gap-4 border border-brand-border shadow-2xl">
                                 <LinkIcon size={20} className="text-emerald-400 shrink-0" />
                                 <div className="flex-1 overflow-hidden">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                    <p className="text-[10px] font-bold text-brand-muted uppercase tracking-wider mb-1">
                                         Link Gerado com Sucesso
                                     </p>
                                     <input
@@ -607,14 +607,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     onClick={copyToClipboard}
                                     className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${copied
                                         ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                        : 'bg-brand-surface-2 text-slate-300 hover:bg-slate-700'
                                         }`}
                                 >
                                     {copied ? <Check size={14} /> : <Copy size={14} />}
                                     {copied ? 'Copiado!' : 'Copiar'}
                                 </button>
                             </div>
-                            <p className="text-center text-[10px] text-slate-400 mt-3 font-medium">
+                            <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
                                 * Este link expira automaticamente se as regras de negócio forem alteradas.
                             </p>
                         </div>

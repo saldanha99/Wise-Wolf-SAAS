@@ -67,16 +67,16 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             case 'PENDING':
                 return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-600"><Clock size={12} /> Pendente</span>;
             default:
-                return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500">{status}</span>;
+                return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-brand-surface-2 text-brand-muted">{status}</span>;
         }
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden">
-            <div className="p-8 border-b dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-xl overflow-hidden">
+            <div className="p-8 border-b dark:border-brand-border flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-lg tracking-tight">Fluxo de Caixa Detalhado</h3>
-                    <p className="text-sm text-slate-500 font-medium">Todas as transações do mês</p>
+                    <h3 className="font-black text-brand-text text-lg tracking-tight">Fluxo de Caixa Detalhado</h3>
+                    <p className="text-sm text-brand-muted font-medium">Todas as transações do mês</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -84,19 +84,19 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         type="month"
                         value={month}
                         onChange={e => setMonth(e.target.value)}
-                        className="px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200"
+                        className="px-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200"
                     />
                     <select
                         value={statusFilter}
                         onChange={e => setStatusFilter(e.target.value)}
-                        className="px-4 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-200"
+                        className="px-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200"
                     >
                         <option value="ALL">Todos os Status</option>
                         <option value="RECEIVED">Pagos</option>
                         <option value="PENDING">Pendentes</option>
                         <option value="OVERDUE">Atrasados</option>
                     </select>
-                    <button onClick={fetchPayments} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors">
+                    <button onClick={fetchPayments} className="p-2 bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted rounded-xl hover:bg-slate-200 transition-colors">
                         <RefreshCw size={18} />
                     </button>
                 </div>
@@ -104,7 +104,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-[10px] uppercase font-black text-slate-400">
+                    <thead className="bg-brand-surface-2/50 text-[10px] uppercase font-black text-brand-muted">
                         <tr>
                             <th className="px-8 py-4">Aluno</th>
                             <th className="px-8 py-4">Vencimento</th>
@@ -117,36 +117,36 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                         {loading ? (
-                            <tr><td colSpan={7} className="text-center py-10 text-slate-400 font-bold">Carregando...</td></tr>
+                            <tr><td colSpan={7} className="text-center py-10 text-brand-muted font-bold">Carregando...</td></tr>
                         ) : payments.length === 0 ? (
-                            <tr><td colSpan={7} className="text-center py-10 text-slate-400 font-bold">Nenhum registro encontrado neste período.</td></tr>
+                            <tr><td colSpan={7} className="text-center py-10 text-brand-muted font-bold">Nenhum registro encontrado neste período.</td></tr>
                         ) : (
                             payments.map((p) => (
-                                <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                <tr key={p.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/30 transition-colors">
                                     <td className="px-8 py-4">
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{p.profiles?.full_name}</span>
-                                            <span className="text-[10px] text-slate-400 font-medium">{p.profiles?.email}</span>
+                                            <span className="text-sm font-bold text-brand-text dark:text-slate-200">{p.profiles?.full_name}</span>
+                                            <span className="text-[10px] text-brand-muted font-medium">{p.profiles?.email}</span>
                                         </div>
                                     </td>
-                                    <td className="px-8 py-4 text-xs font-bold text-slate-500">
+                                    <td className="px-8 py-4 text-xs font-bold text-brand-muted">
                                         {new Date(p.due_date).toLocaleDateString('pt-BR')}
                                     </td>
-                                    <td className="px-8 py-4 text-xs font-bold text-slate-500">
+                                    <td className="px-8 py-4 text-xs font-bold text-brand-muted">
                                         {p.payment_date ? new Date(p.payment_date).toLocaleDateString('pt-BR') : '-'}
                                     </td>
-                                    <td className="px-8 py-4 text-xs font-bold text-slate-500">
+                                    <td className="px-8 py-4 text-xs font-bold text-brand-muted">
                                         {p.billing_type || 'UNDEFINED'}
                                     </td>
                                     <td className="px-8 py-4">
                                         {getStatusBadge(p.status)}
                                     </td>
-                                    <td className="px-8 py-4 text-right font-black text-slate-800 dark:text-white">
+                                    <td className="px-8 py-4 text-right font-black text-brand-text">
                                         R$ {Number(p.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </td>
                                     <td className="px-8 py-4 text-center flex items-center justify-center gap-2">
                                         {p.invoice_url && (
-                                            <a href={p.invoice_url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-tenant-primary transition-colors inline-block" title="Ver Recibo/Boleto">
+                                            <a href={p.invoice_url} target="_blank" rel="noopener noreferrer" className="p-2 text-brand-muted hover:text-tenant-primary transition-colors inline-block" title="Ver Recibo/Boleto">
                                                 <Download size={16} />
                                             </a>
                                         )}

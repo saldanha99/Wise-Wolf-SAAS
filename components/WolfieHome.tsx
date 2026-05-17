@@ -108,11 +108,11 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                 <div className="mb-10 text-center md:text-left flex flex-col md:flex-row md:items-end justify-between gap-6">
                     <div>
                         <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-2">Wolfie Tutor</h1>
-                        <p className="text-slate-400 text-lg font-medium">Practice real conversations with your AI coach.</p>
+                        <p className="text-brand-muted text-lg font-medium">Practice real conversations with your AI coach.</p>
                     </div>
 
                     {/* User Stats/Config Badge */}
-                    <div className="inline-flex items-center gap-4 px-5 py-2.5 rounded-full bg-slate-900 border border-white/10 shadow-lg">
+                    <div className="inline-flex items-center gap-4 px-5 py-2.5 rounded-full bg-brand-surface border border-white/10 shadow-lg">
                         <div className="flex items-center gap-2">
                             <Target className="w-4 h-4 text-indigo-400" />
                             <span className="text-sm font-bold text-slate-200 uppercase tracking-widest">{wolfieSettings?.goal || 'Fluency'}</span>
@@ -132,7 +132,7 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                         <div>
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-xl font-bold text-white">Choose a Partner</h2>
-                                <span className="text-sm font-medium text-slate-500 uppercase tracking-wider">{AVATARS.length} Available</span>
+                                <span className="text-sm font-medium text-brand-muted uppercase tracking-wider">{AVATARS.length} Available</span>
                             </div>
 
                             {/* Horizontal Scroll / Grid */}
@@ -142,21 +142,21 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                                         key={avatar.id}
                                         onClick={() => setSelectedAvatar(avatar.id)}
                                         className={`relative flex flex-col items-center p-4 rounded-3xl border transition-all duration-300 ${selectedAvatar === avatar.id
-                                                ? 'bg-slate-900 border-indigo-500 shadow-[0_10px_30px_rgba(99,102,241,0.2)] scale-105 z-10'
-                                                : 'bg-slate-900/50 border-white/5 hover:bg-slate-800 scale-100 hover:scale-[1.02]'
+                                                ? 'bg-brand-surface border-indigo-500 shadow-[0_10px_30px_rgba(99,102,241,0.2)] scale-105 z-10'
+                                                : 'bg-brand-surface/50 border-white/5 hover:bg-brand-surface-2 scale-100 hover:scale-[1.02]'
                                             }`}
                                     >
                                         <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${avatar.color} p-[2px] mb-3`}>
-                                            <div className="w-full h-full bg-slate-900 rounded-full overflow-hidden">
+                                            <div className="w-full h-full bg-brand-surface rounded-full overflow-hidden">
                                                 <img src={avatar.image} alt={avatar.name} className="w-full h-full object-cover" />
                                             </div>
                                         </div>
                                         <h3 className="text-white font-bold text-base">{avatar.name}</h3>
-                                        <div className="bg-slate-800 px-2 py-0.5 rounded text-[10px] font-bold text-slate-300 uppercase tracking-wider mt-1">{avatar.accent}</div>
+                                        <div className="bg-brand-surface-2 px-2 py-0.5 rounded text-[10px] font-bold text-slate-300 uppercase tracking-wider mt-1">{avatar.accent}</div>
 
                                         {selectedAvatar === avatar.id && (
                                             <div className="absolute -top-2 -right-2 w-6 h-6 bg-indigo-500 rounded-full border-4 border-slate-950 flex items-center justify-center">
-                                                <div className="w-2 h-2 bg-white rounded-full"></div>
+                                                <div className="w-2 h-2 bg-brand-surface rounded-full"></div>
                                             </div>
                                         )}
                                     </button>
@@ -179,7 +179,7 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                                             onClick={() => setSelectedMission(mission.id)}
                                             className={`flex items-start gap-4 p-5 rounded-3xl border transition-all duration-300 text-left ${isSelected
                                                     ? 'bg-indigo-500/10 border-indigo-500 shadow-[0_10px_30px_rgba(99,102,241,0.15)] ring-1 ring-indigo-500/50'
-                                                    : 'bg-slate-900 border-white/5 hover:bg-slate-800 hover:border-white/10'
+                                                    : 'bg-brand-surface border-white/5 hover:bg-brand-surface-2 hover:border-white/10'
                                                 }`}
                                         >
                                             <div className={`p-3 rounded-2xl ${mission.color} shrink-0`}>
@@ -187,8 +187,8 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                                             </div>
                                             <div>
                                                 <h3 className="text-white font-bold text-lg">{mission.title}</h3>
-                                                <p className="text-slate-400 text-sm mt-1 mb-3 line-clamp-2">{mission.desc}</p>
-                                                <span className="inline-flex px-2 py-1 bg-slate-800 rounded border border-slate-700 text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+                                                <p className="text-brand-muted text-sm mt-1 mb-3 line-clamp-2">{mission.desc}</p>
+                                                <span className="inline-flex px-2 py-1 bg-brand-surface-2 rounded border border-brand-border text-[10px] font-bold text-slate-300 uppercase tracking-wider">
                                                     {mission.level}
                                                 </span>
                                             </div>
@@ -201,11 +201,11 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
 
                     {/* RIGHT SIDEBAR: ACTION PANEL */}
                     <div className="lg:col-span-4">
-                        <div className="sticky top-24 bg-slate-900/60 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
+                        <div className="sticky top-24 bg-brand-surface/60 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
                             {/* Selected Avatar Info */}
                             <div className="flex items-center gap-4 mb-6 pb-6 border-b border-white/5">
                                 <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${currentAvatar.color} p-[2px] shrink-0`}>
-                                    <div className="w-full h-full bg-slate-900 rounded-full overflow-hidden">
+                                    <div className="w-full h-full bg-brand-surface rounded-full overflow-hidden">
                                         <img src={currentAvatar.image} alt={currentAvatar.name} className="w-full h-full object-cover" />
                                     </div>
                                 </div>
@@ -215,23 +215,23 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                                 </div>
                             </div>
 
-                            <p className="text-slate-400 leading-relaxed mb-8">
+                            <p className="text-brand-muted leading-relaxed mb-8">
                                 "Hi there! I'm {currentAvatar.name}. {currentAvatar.desc} Let's practice!"
                             </p>
 
                             <div className="space-y-4 mb-8">
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500 font-medium">Mission</span>
+                                    <span className="text-brand-muted font-medium">Mission</span>
                                     <span className="text-slate-200 font-bold">{MISSIONS.find(m => m.id === selectedMission)?.title}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500 font-medium">Correction Mode</span>
+                                    <span className="text-brand-muted font-medium">Correction Mode</span>
                                     <span className="text-slate-200 font-bold">
                                         {wolfieSettings?.correctionStrictness === 1 ? 'Chill (Few)' : wolfieSettings?.correctionStrictness === 3 ? 'Tough (Many)' : 'Balanced'}
                                     </span>
                                 </div>
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="text-slate-500 font-medium">Est. Time</span>
+                                    <span className="text-brand-muted font-medium">Est. Time</span>
                                     <span className="text-slate-200 font-bold">~10 min</span>
                                 </div>
                             </div>
@@ -245,7 +245,7 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
                                 Start Call
                             </button>
 
-                            <p className="text-center text-[10px] text-slate-500 mt-4 uppercase tracking-widest font-mono">
+                            <p className="text-center text-[10px] text-brand-muted mt-4 uppercase tracking-widest font-mono">
                                 Powered by Wolfie AI
                             </p>
                         </div>

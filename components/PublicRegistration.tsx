@@ -532,24 +532,24 @@ const PublicRegistration: React.FC = () => {
     // ========== PAYMENT SELECTION STEP ==========
     if (step === 'PAYMENT_SELECTION') {
         if (!contractData && !error) {
-            return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
+            return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
         }
 
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
                     {/* Header */}
                     <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
                         <div className="relative z-10">
                             <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Matrícula Online</h1>
                             {contractData && (
                                 <div className="flex flex-col gap-2 items-center">
-                                    <div className="inline-block bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
+                                    <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
                                         <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
                                             Plano {contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
                                         </p>
                                     </div>
-                                    <div className="inline-block bg-white px-4 py-1 rounded-full shadow-lg">
+                                    <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
                                         <p className="text-sm font-black text-blue-900">
                                             {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}/mês
                                         </p>
@@ -571,8 +571,8 @@ const PublicRegistration: React.FC = () => {
                         )}
 
                         <div className="text-center mb-8">
-                            <h2 className="text-xl font-black text-slate-800 mb-2">Como você prefere pagar?</h2>
-                            <p className="text-slate-500 text-sm">Selecione sua forma de pagamento para prosseguir com a matrícula.</p>
+                            <h2 className="text-xl font-black text-brand-text mb-2">Como você prefere pagar?</h2>
+                            <p className="text-brand-muted text-sm">Selecione sua forma de pagamento para prosseguir com a matrícula.</p>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4">
@@ -582,13 +582,13 @@ const PublicRegistration: React.FC = () => {
                                     setBillingType('PIX');
                                     setStep('FORM');
                                 }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-slate-100 bg-white hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all group text-left"
+                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all group text-left"
                             >
                                 <div className="w-16 h-16 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                     <QrCode size={32} />
                                 </div>
                                 <div className="ml-5">
-                                    <h3 className="text-lg font-black text-slate-800 group-hover:text-emerald-700">Pix</h3>
+                                    <h3 className="text-lg font-black text-brand-text group-hover:text-emerald-700">Pix</h3>
                                 </div>
                             </button>
 
@@ -598,13 +598,13 @@ const PublicRegistration: React.FC = () => {
                                     setBillingType('CREDIT_CARD');
                                     setStep('FORM');
                                 }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-slate-100 bg-white hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-500/10 transition-all group text-left"
+                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-500/10 transition-all group text-left"
                             >
                                 <div className="w-16 h-16 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                     <CreditCard size={32} />
                                 </div>
                                 <div className="ml-5">
-                                    <h3 className="text-lg font-black text-slate-800 group-hover:text-blue-700">Cartão</h3>
+                                    <h3 className="text-lg font-black text-brand-text group-hover:text-blue-700">Cartão</h3>
                                 </div>
                             </button>
 
@@ -614,13 +614,13 @@ const PublicRegistration: React.FC = () => {
                                     setBillingType('BOLETO');
                                     setStep('FORM');
                                 }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-slate-100 bg-white hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:shadow-amber-500/10 transition-all group text-left"
+                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:shadow-amber-500/10 transition-all group text-left"
                             >
                                 <div className="w-16 h-16 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                                     <Barcode size={32} />
                                 </div>
                                 <div className="ml-5">
-                                    <h3 className="text-lg font-black text-slate-800 group-hover:text-amber-700">Boleto</h3>
+                                    <h3 className="text-lg font-black text-brand-text group-hover:text-amber-700">Boleto</h3>
                                 </div>
                             </button>
                         </div>
@@ -635,7 +635,7 @@ const PublicRegistration: React.FC = () => {
     if (step === 'ENROLLMENT_PAYMENT') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
                     <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
                         <div className="relative z-10 text-white">
                             <QrCode className="mx-auto mb-4" size={48} />
@@ -652,7 +652,7 @@ const PublicRegistration: React.FC = () => {
                         </div>
 
                         {enrollmentPix?.qrCode ? (
-                            <div className="bg-white p-4 rounded-3xl border-4 border-slate-50 inline-block shadow-inner">
+                            <div className="bg-brand-surface p-4 rounded-3xl border-4 border-slate-50 inline-block shadow-inner">
                                 <img 
                                     src={`data:image/png;base64,${enrollmentPix.qrCode}`} 
                                     alt="Asaas Pix QR Code" 
@@ -666,12 +666,12 @@ const PublicRegistration: React.FC = () => {
                         )}
 
                         <div className="space-y-3">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Código Pix (Copia e Cola)</p>
+                            <p className="text-xs font-bold text-brand-muted uppercase tracking-widest">Código Pix (Copia e Cola)</p>
                             <div className="flex gap-2">
                                 <input 
                                     readOnly
                                     value={enrollmentPix?.code || ''}
-                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono text-slate-500 overflow-hidden text-ellipsis"
+                                    className="flex-1 bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-xs font-mono text-brand-muted overflow-hidden text-ellipsis"
                                 />
                                 <button 
                                     onClick={() => {
@@ -687,7 +687,7 @@ const PublicRegistration: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="pt-6 border-t border-slate-100 flex flex-col gap-3">
+                        <div className="pt-6 border-t border-brand-border flex flex-col gap-3">
                             <button
                                 onClick={handleCheckEnrollmentPayment}
                                 disabled={checkingPayment}
@@ -696,12 +696,12 @@ const PublicRegistration: React.FC = () => {
                                 {checkingPayment ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
                                 Já realizei o pagamento
                             </button>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                            <p className="text-[10px] text-brand-muted font-bold uppercase tracking-tight">
                                 A confirmação pode levar até 30 segundos após o pagamento.
                             </p>
                             <button 
                                 onClick={() => setStep('ENROLLMENT')}
-                                className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase"
+                                className="text-xs font-bold text-brand-muted hover:text-brand-muted transition-colors uppercase"
                             >
                                 Corrigir dados da matrícula
                             </button>
@@ -715,7 +715,7 @@ const PublicRegistration: React.FC = () => {
     if (step === 'ENROLLMENT') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
                     {/* Header */}
                     <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
                         <div className="relative z-10">
@@ -731,11 +731,11 @@ const PublicRegistration: React.FC = () => {
 
                     <form onSubmit={handleEnrollmentSubmit} className="p-8 space-y-6">
                         {/* Dados do Aluno (já preenchido) */}
-                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <div className="bg-brand-surface-2 p-4 rounded-2xl border border-brand-border">
+                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest mb-3 flex items-center gap-2">
                                 <User size={14} /> Dados do Aluno
                             </h3>
-                            <div className="space-y-2 text-sm text-slate-600">
+                            <div className="space-y-2 text-sm text-brand-muted">
                                 <p><strong>Nome:</strong> {name}</p>
                                 <p><strong>CPF:</strong> {cpf}</p>
                                 <p><strong>Email:</strong> {email}</p>
@@ -749,7 +749,7 @@ const PublicRegistration: React.FC = () => {
                             <button
                                 type="button"
                                 onClick={() => setStep('FORM')}
-                                className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                                className="flex-1 py-4 bg-brand-surface-2 text-brand-muted rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                             >
                                 <ArrowLeft size={16} /> Voltar
                             </button>
@@ -768,13 +768,13 @@ const PublicRegistration: React.FC = () => {
 
     if (step === 'SUCCESS') {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
-                <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+            <div className="min-h-screen bg-brand-surface-2 flex items-center justify-center p-4 font-sans">
+                <div className="bg-brand-surface p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
                     <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <CheckCircle size={40} className="text-emerald-600" />
                     </div>
-                    <h2 className="text-2xl font-black text-slate-800 mb-2">Matrícula Confirmada!</h2>
-                    <p className="text-slate-600 mb-6">
+                    <h2 className="text-2xl font-black text-brand-text mb-2">Matrícula Confirmada!</h2>
+                    <p className="text-brand-muted mb-6">
                         Seu acesso ao portal já foi criado. Verifique seu e-mail para confirmar a conta e acessar suas cobranças.
                     </p>
                     <div className="space-y-3">
@@ -790,7 +790,7 @@ const PublicRegistration: React.FC = () => {
                                     handlePrintContract();
                                 }
                             }}
-                            className="block w-full px-8 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                            className="block w-full px-8 py-3 bg-brand-surface border border-brand-border text-brand-muted rounded-xl font-bold uppercase tracking-widest hover:bg-brand-surface-2 transition-colors flex items-center justify-center gap-2"
                         >
                             <Download size={18} /> Baixar Contrato Assinado
                         </button>
@@ -827,24 +827,24 @@ const PublicRegistration: React.FC = () => {
     }
 
     if (!contractData && !error) {
-        return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>;
+        return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
     }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-            <div className="max-w-lg mx-auto bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+            <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
                 {/* Header */}
                 <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
                     <div className="relative z-10">
                         <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Matrícula Online</h1>
                         {contractData && (
                             <div className="flex flex-col gap-2 items-center">
-                                <div className="inline-block bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
+                                <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
                                     <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
                                         Plano {contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
                                     </p>
                                 </div>
-                                <div className="inline-block bg-white px-4 py-1 rounded-full shadow-lg">
+                                <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
                                     <p className="text-sm font-black text-blue-900">
                                         {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}/mês
                                     </p>
@@ -869,7 +869,7 @@ const PublicRegistration: React.FC = () => {
                         {/* 1. Payment Method Overview */}
                         <div className="space-y-3 relative">
                             <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                     <CreditCard size={14} /> Forma de Pagamento
                                 </h3>
                                 <button
@@ -902,7 +902,7 @@ const PublicRegistration: React.FC = () => {
                             )}
 
                             {billingType === 'CREDIT_CARD' && (
-                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-4 animate-in fade-in duration-300">
+                                <div className="bg-brand-surface-2 p-4 rounded-2xl border border-brand-border space-y-4 animate-in fade-in duration-300">
                                     <div className="flex items-center justify-center gap-2 text-emerald-600 mb-2">
                                         <Lock size={12} />
                                         <span className="text-[10px] uppercase font-black tracking-widest">Ambiente Seguro (SSL)</span>
@@ -917,7 +917,7 @@ const PublicRegistration: React.FC = () => {
                                             placeholder="Número do Cartão"
                                             value={ccNumber}
                                             onChange={e => setCcNumber(e.target.value)}
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                                            className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                         />
                                         <input
                                             required
@@ -926,7 +926,7 @@ const PublicRegistration: React.FC = () => {
                                             placeholder="Nome Impresso no Cartão"
                                             value={ccName}
                                             onChange={e => setCcName(e.target.value)}
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                                            className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                         />
                                         <div className="grid grid-cols-2 gap-4">
                                             <input
@@ -943,7 +943,7 @@ const PublicRegistration: React.FC = () => {
                                                     }
                                                     setCcExpiry(v);
                                                 }}
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                             <input
                                                 required
@@ -954,7 +954,7 @@ const PublicRegistration: React.FC = () => {
                                                 value={ccCcv}
                                                 onChange={e => setCcCcv(e.target.value)}
                                                 maxLength={4}
-                                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400"
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
                                         </div>
                                     </div>
@@ -969,7 +969,7 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 2. Personal Data */}
                         <div className="space-y-4">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                 <User size={14} /> Dados Pessoais
                             </h3>
 
@@ -978,7 +978,7 @@ const PublicRegistration: React.FC = () => {
                                 placeholder="Nome Completo"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
 
                             <div className="grid grid-cols-2 gap-4">
@@ -987,7 +987,7 @@ const PublicRegistration: React.FC = () => {
                                     placeholder="CPF"
                                     value={cpf}
                                     onChange={e => setCpf(e.target.value)}
-                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                                 />
                                 <input
                                     required
@@ -1001,14 +1001,14 @@ const PublicRegistration: React.FC = () => {
                                         if (v.length > 10) v = `${v.substring(0, 10)}-${v.substring(10)}`;
                                         setPhone(v);
                                     }}
-                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                                 />
                             </div>
                         </div>
 
                         {/* 3. Address */}
                         <div className="space-y-4 pt-2">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                 <MapPin size={14} /> Endereço
                             </h3>
                             <div className="grid grid-cols-3 gap-4">
@@ -1017,14 +1017,14 @@ const PublicRegistration: React.FC = () => {
                                     placeholder="CEP"
                                     value={postalCode}
                                     onChange={e => setPostalCode(e.target.value)}
-                                    className="col-span-1 w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                    className="col-span-1 w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                                 />
                                 <input
                                     required
                                     placeholder="Número"
                                     value={addressNumber}
                                     onChange={e => setAddressNumber(e.target.value)}
-                                    className="col-span-2 w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                    className="col-span-2 w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                                 />
                             </div>
                             <input
@@ -1032,13 +1032,13 @@ const PublicRegistration: React.FC = () => {
                                 placeholder="Endereço Completo (Rua, Bairro...)"
                                 value={address}
                                 onChange={e => setAddress(e.target.value)}
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
                         </div>
 
                         {/* 4. Credentials */}
                         <div className="space-y-4 pt-2">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                 <Lock size={14} /> Acesso ao Portal
                             </h3>
                             <input
@@ -1047,7 +1047,7 @@ const PublicRegistration: React.FC = () => {
                                 placeholder="Seu melhor e-mail"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
                             <input
                                 type="password"
@@ -1055,7 +1055,7 @@ const PublicRegistration: React.FC = () => {
                                 placeholder="Crie uma senha"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
-                                className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-slate-400"
+                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
                         </div>
 
@@ -1067,7 +1067,7 @@ const PublicRegistration: React.FC = () => {
                             {loading ? <Loader2 className="animate-spin" /> : <>Confirmar Matrícula <ArrowRight size={18} /></>}
                         </button>
 
-                        <p className="text-center text-[10px] text-slate-400 font-medium">
+                        <p className="text-center text-[10px] text-brand-muted font-medium">
                             Ao clicar em Confirmar, você aceita os termos de serviço e a política de privacidade da escola.
                         </p>
                     </form>

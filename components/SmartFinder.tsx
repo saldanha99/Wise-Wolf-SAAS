@@ -156,16 +156,16 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             {/* Modal Drawer */}
             {isOpen && (
                 <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
+                    <div className="w-full max-w-md bg-brand-surface h-full shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300 flex flex-col">
 
                         {/* Header */}
                         <div className="flex justify-between items-center mb-8">
-                            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-tight">
+                            <h2 className="text-2xl font-black text-brand-text flex items-center gap-2 uppercase tracking-tight">
                                 <Zap className="text-orange-500" size={28} />
                                 Lançador
                             </h2>
-                            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                                <X size={24} className="text-slate-400" />
+                            <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-full transition-colors">
+                                <X size={24} className="text-brand-muted" />
                             </button>
                         </div>
 
@@ -173,35 +173,35 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
 
                             {/* Student Info */}
                             <div className="space-y-4">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
                                     <User size={14} /> Dados do Lead
                                 </p>
                                 <input
                                     value={studentName}
                                     onChange={(e) => setStudentName(e.target.value)}
                                     placeholder="Nome do Aluno (Ex: João)"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-white focus:border-orange-500 focus:ring-0 transition-colors"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl font-medium text-brand-text focus:border-orange-500 focus:ring-0 transition-colors"
                                 />
                                 <div className="relative">
                                     <input
                                         value={studentPhone}
                                         onChange={(e) => setStudentPhone(e.target.value)}
                                         placeholder="WhatsApp (Ex: 5511999999999)"
-                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-white focus:border-orange-500 focus:ring-0 transition-colors"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl font-medium text-brand-text focus:border-orange-500 focus:ring-0 transition-colors"
                                     />
-                                    <Phone className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                                    <Phone className="absolute left-3 top-3.5 text-brand-muted" size={18} />
                                 </div>
                                 <textarea
                                     value={studentInterests}
                                     onChange={(e) => setStudentInterests(e.target.value)}
                                     placeholder="Interesse / Objetivo (Ex: Inglês para viagem, Reforço escolar...)"
-                                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl font-medium text-slate-900 dark:text-white focus:border-orange-500 focus:ring-0 transition-colors resize-none h-24"
+                                    className="w-full px-4 py-3 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl font-medium text-brand-text focus:border-orange-500 focus:ring-0 transition-colors resize-none h-24"
                                 />
                             </div>
 
                             {/* Date & Time Slot */}
                             <div className="space-y-4">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
                                     <Clock size={14} /> Data e Horário da Experimental
                                 </p>
 
@@ -212,9 +212,9 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                             type="date"
                                             value={targetDate}
                                             onChange={(e) => setTargetDate(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl font-bold text-slate-900 dark:text-white focus:border-orange-500 focus:ring-0 transition-colors"
+                                            className="w-full pl-10 pr-4 py-4 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-2xl font-bold text-brand-text focus:border-orange-500 focus:ring-0 transition-colors"
                                         />
-                                        <Calendar className="absolute left-3 top-4.5 text-slate-400" size={20} />
+                                        <Calendar className="absolute left-3 top-4.5 text-brand-muted" size={20} />
                                     </div>
 
                                     {/* Time Input */}
@@ -234,7 +234,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                             {/* PREFERRED WEEKLY SLOTS (NEW) */}
                             {/* ============================================= */}
                             <div className="space-y-3">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
                                     <Calendar size={14} /> Preferência de horários na semana
                                     <span className="text-[10px] font-normal text-slate-300 ml-1">(opcional)</span>
                                 </p>
@@ -245,7 +245,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                         <select
                                             value={slot.weekday}
                                             onChange={(e) => updateSlot(idx, 'weekday', e.target.value)}
-                                            className="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-900 dark:text-white focus:border-orange-500 focus:ring-0 transition-colors"
+                                            className="flex-1 px-3 py-2.5 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl text-sm font-medium text-brand-text focus:border-orange-500 focus:ring-0 transition-colors"
                                         >
                                             {WEEKDAYS.map(day => (
                                                 <option key={day.value} value={day.value}>{day.label}</option>
@@ -284,7 +284,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                         </div>
 
                         {/* Action Button */}
-                        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                        <div className="mt-8 pt-6 border-t border-brand-border">
                             <button
                                 onClick={handleBroadcast}
                                 disabled={loading}
@@ -299,7 +299,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                     </>
                                 )}
                             </button>
-                            <p className="text-center text-[10px] text-slate-400 mt-3 font-medium">
+                            <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
                                 Envia para todos os professores conectados a '{localStorage.getItem('whatsapp_instance') || "wise wolf"}'.
                             </p>
                         </div>

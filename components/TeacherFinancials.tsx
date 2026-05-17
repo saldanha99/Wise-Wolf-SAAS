@@ -195,29 +195,29 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* Month Selector code ... */}
-            <div className="flex justify-between items-center bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="flex justify-between items-center bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Financeiro</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Gerencie seus ganhos e fechamentos.</p>
+                    <h2 className="text-2xl font-black text-brand-text tracking-tight">Financeiro</h2>
+                    <p className="text-brand-muted text-sm font-medium">Gerencie seus ganhos e fechamentos.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Calendar size={18} className="text-slate-400" />
+                    <Calendar size={18} className="text-brand-muted" />
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="bg-slate-50 dark:bg-slate-800 border-none rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-tenant-primary outline-none py-2 px-4"
+                        className="bg-brand-surface-2 border-none rounded-xl text-sm font-bold text-brand-text dark:text-slate-300 focus:ring-2 focus:ring-tenant-primary outline-none py-2 px-4"
                     />
                 </div>
             </div>
 
             {/* Forecast Card */}
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
                 <div className="relative z-10">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="p-2 bg-white/20 rounded-xl">
+                        <div className="p-2 bg-brand-surface/20 rounded-xl">
                             <TrendingUp size={24} className="text-white" />
                         </div>
                         <span className="text-xs font-bold uppercase tracking-widest opacity-80">Previsão de Ganhos ({new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long' })})</span>
@@ -246,7 +246,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {/* Action Bar */}
             {
                 (!closing || closing.status === 'PENDING_TEACHER' || closing.status === 'PENDENTE') && !viewOnly && (
-                    <div className={`${canCloseMonth() ? 'flex' : 'hidden'} bg-slate-900 p-8 rounded-[2.5rem] text-white flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden`}>
+                    <div className={`${canCloseMonth() ? 'flex' : 'hidden'} bg-brand-surface p-8 rounded-[2.5rem] text-white flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden`}>
                         {/* Background Effect */}
                         <div className="absolute top-0 right-0 w-64 h-64 bg-tenant-primary/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
@@ -254,14 +254,14 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             <h3 className="text-xl font-black tracking-tight relative z-10">
                                 Finalizar Fechamento: R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (user.hourlyRate || LESSON_RATE), 0).toFixed(2).replace('.', ',')}
                             </h3>
-                            <p className="text-slate-400 text-xs mt-1 relative z-10">
+                            <p className="text-brand-muted text-xs mt-1 relative z-10">
                                 Referente a {new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}. Confirme se os valores estão corretos.
                             </p>
                         </div>
                         <div className="flex gap-4 relative z-10">
                             <button
                                 onClick={() => setIsContesting(true)}
-                                className="px-6 py-3 border border-slate-700 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors"
+                                className="px-6 py-3 border border-brand-border rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-surface-2 transition-colors"
                             >
                                 Contestar Valor
                             </button>
@@ -289,19 +289,19 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                 </div>
                                 <span className="text-xs font-black text-red-500 uppercase tracking-widest">Fechamento Rejeitado</span>
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Atenção: Seu fechamento foi recusado.</h3>
+                            <h3 className="text-xl font-black text-brand-text tracking-tight">Atenção: Seu fechamento foi recusado.</h3>
                             {closing.admin_notes && (
-                                <p className="text-slate-600 dark:text-slate-300 text-sm mt-2 max-w-xl bg-white dark:bg-slate-900 p-4 rounded-xl border border-red-100 dark:border-red-900/20 italic">
+                                <p className="text-brand-muted text-sm mt-2 max-w-xl bg-brand-surface p-4 rounded-xl border border-red-100 dark:border-red-900/20 italic">
                                     " {closing.admin_notes} "
                                 </p>
                             )}
-                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2 font-medium">Verifique as observações e conteste novamente ou fale com o suporte.</p>
+                            <p className="text-brand-muted text-xs mt-2 font-medium">Verifique as observações e conteste novamente ou fale com o suporte.</p>
                         </div>
 
                         <div className="flex gap-4 relative z-10">
                             <button
                                 onClick={() => window.open(`https://wa.me/5511999999999?text=Ol%C3%A1%2C%20gostaria%20de%20falar%20sobre%20meu%20fechamento%20de%20${selectedMonth}`, '_blank')}
-                                className="px-6 py-3 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                className="px-6 py-3 bg-brand-surface dark:bg-brand-surface-2 text-brand-text dark:text-slate-200 border border-brand-border rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-surface-2 dark:hover:bg-slate-700 transition-colors"
                             >
                                 Falar com Suporte
                             </button>
@@ -319,27 +319,27 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {/* Contest Modal */}
             {
                 isContesting && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-md border border-slate-200 dark:border-slate-800 shadow-2xl">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm">
+                        <div className="bg-brand-surface p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl">
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="p-2 bg-orange-100 dark:bg-orange-900/20 text-orange-600 rounded-xl">
                                     <MessageSquare size={20} />
                                 </div>
-                                <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Contestar Fechamento</h3>
+                                <h3 className="text-xl font-black text-brand-text uppercase tracking-tight">Contestar Fechamento</h3>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mb-2">Motivo da Contestação</p>
+                            <p className="text-xs text-brand-muted font-bold uppercase tracking-widest mb-2">Motivo da Contestação</p>
                             <textarea
                                 value={contestReason}
                                 onChange={(e) => setContestReason(e.target.value)}
-                                className="w-full h-32 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 mb-6"
+                                className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 mb-6"
                                 placeholder="Descreva aqui quais aulas estão faltando ou qual valor está incorreto..."
                             />
 
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setIsContesting(false)}
-                                    className="flex-1 py-3 text-slate-500 font-bold text-xs uppercase tracking-widest"
+                                    className="flex-1 py-3 text-brand-muted font-bold text-xs uppercase tracking-widest"
                                 >
                                     Cancelar
                                 </button>
@@ -356,10 +356,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             }
 
             {/* Lesson List */}
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
-                <div className="p-8 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
-                    <h3 className="font-black text-slate-800 dark:text-white text-xs uppercase tracking-widest">Extrato de Aulas</h3>
-                    <button className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-slate-400 hover:text-tenant-primary transition-colors">
+            <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm">
+                <div className="p-8 border-b border-slate-50 dark:border-brand-border flex justify-between items-center">
+                    <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Extrato de Aulas</h3>
+                    <button className="p-2 bg-brand-surface-2 rounded-lg text-brand-muted hover:text-tenant-primary transition-colors">
                         <Download size={18} />
                     </button>
                 </div>
@@ -367,22 +367,22 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="bg-slate-50/50 dark:bg-slate-800/30">
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Data</th>
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Aluno</th>
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor</th>
+                            <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/30">
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Data</th>
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Aluno</th>
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Status</th>
+                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                             {lessons.map((log) => (
-                                <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                                    <td className="px-8 py-6 text-sm font-bold text-slate-800 dark:text-slate-300">
+                                <tr key={log.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/50 transition-colors">
+                                    <td className="px-8 py-6 text-sm font-bold text-brand-text dark:text-slate-300">
                                         {/* Use class_date if available, fallback to created_at */}
                                         {new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                                     </td>
                                     <td className="px-8 py-6">
-                                        <span className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase">{log.student?.full_name}</span>
+                                        <span className="text-sm font-black text-brand-text dark:text-slate-100 uppercase">{log.student?.full_name}</span>
                                     </td>
                                     <td className="px-8 py-6">
                                         <div className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${(log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'EXPIRED') ? 'bg-red-50 dark:bg-red-900/20 text-red-600' :
@@ -401,7 +401,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     </td>
                                     <td className="px-8 py-6">
                                         <span className={`text-sm font-black ${!isLessonPaid(log)
-                                            ? 'text-slate-300 dark:text-slate-600 line-through'
+                                            ? 'text-slate-300 dark:text-brand-muted line-through'
                                             : 'text-emerald-600 dark:text-emerald-400'
                                             }`}>
                                             R$ {!isLessonPaid(log) ? '0,00' : (user.hourlyRate || LESSON_RATE).toFixed(2)}
@@ -412,7 +412,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             {lessons.length === 0 && (
                                 <tr>
                                     <td colSpan={4} className="px-8 py-20 text-center">
-                                        <div className="flex flex-col items-center gap-3 text-slate-400">
+                                        <div className="flex flex-col items-center gap-3 text-brand-muted">
                                             <FileText size={48} className="opacity-20" />
                                             <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula registrada neste mês.</p>
                                         </div>

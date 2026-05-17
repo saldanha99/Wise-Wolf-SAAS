@@ -66,7 +66,7 @@ export const TestimonialsDemo = () => {
                     <h2 className="text-3xl md:text-5xl font-bold tracking-tighter mt-5 text-white">
                         O que dizem nossos parceiros
                     </h2>
-                    <p className="text-center mt-5 text-slate-400">
+                    <p className="text-center mt-5 text-brand-muted">
                         Escolas de todo o Brasil confiam no Wise Wolf.
                     </p>
                 </motion.div>

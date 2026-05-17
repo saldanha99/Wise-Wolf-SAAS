@@ -99,7 +99,7 @@ const SupabaseSeeder = () => {
     };
 
     return (
-        <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50">
+        <div className="mt-4 p-4 bg-brand-surface-2/50 rounded-xl border border-brand-border/50">
             <div className="flex items-center justify-between mb-2">
                 <h4 className="text-white text-[10px] font-black uppercase flex items-center gap-2 tracking-widest">
                     <Database size={14} className="text-blue-400" /> Setup Banco de Dados

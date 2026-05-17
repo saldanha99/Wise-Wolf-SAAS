@@ -205,17 +205,17 @@ const WolfTutorChat: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-[600px] bg-slate-50 dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl relative">
+        <div className="flex flex-col h-[600px] bg-brand-surface-2 dark:bg-brand-surface rounded-3xl overflow-hidden border border-brand-border dark:border-brand-border shadow-2xl relative">
 
             {/* Header */}
-            <div className="bg-white dark:bg-slate-950 p-4 flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 z-10">
+            <div className="bg-brand-surface dark:bg-slate-950 p-4 flex items-center gap-4 border-b border-brand-border z-10">
                 <div className="w-12 h-12 rounded-full bg-indigo-500 overflow-hidden border-2 border-indigo-300 p-0.5 relative">
                     {/* Wolf Avatar Placeholder or Image */}
-                    <div className="w-full h-full bg-slate-900 rounded-full flex items-center justify-center text-xl">🐺</div>
+                    <div className="w-full h-full bg-brand-surface rounded-full flex items-center justify-center text-xl">🐺</div>
                     <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></div>
                 </div>
                 <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-lg">Wolfie Tutor</h3>
+                    <h3 className="font-black text-brand-text text-lg">Wolfie Tutor</h3>
                     <p className="text-xs text-indigo-500 font-bold uppercase tracking-wider">Always Online</p>
                 </div>
             </div>
@@ -231,7 +231,7 @@ const WolfTutorChat: React.FC = () => {
 
                             <div className={`p-4 rounded-2xl relative shadow-sm ${msg.role === 'user'
                                     ? 'bg-emerald-500 text-white rounded-tr-none'
-                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-none border border-slate-100 dark:border-slate-700'
+                                    : 'bg-brand-surface dark:bg-brand-surface-2 text-brand-text dark:text-slate-200 rounded-tl-none border border-brand-border dark:border-brand-border'
                                 }`}>
                                 <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
 
@@ -245,7 +245,7 @@ const WolfTutorChat: React.FC = () => {
                                     </button>
                                 )}
                             </div>
-                            <span className="text-[10px] text-slate-400 mt-1 font-medium px-1">
+                            <span className="text-[10px] text-brand-muted mt-1 font-medium px-1">
                                 {msg.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                         </div>
@@ -254,13 +254,13 @@ const WolfTutorChat: React.FC = () => {
 
                 {isLoading && (
                     <div className="flex justify-start">
-                        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none border border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                        <div className="bg-brand-surface dark:bg-brand-surface-2 p-4 rounded-2xl rounded-tl-none border border-brand-border dark:border-brand-border flex items-center gap-2">
                             <div className="flex gap-1">
                                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                                 <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                             </div>
-                            <span className="text-xs font-bold text-slate-500">Wolfie is thinking...</span>
+                            <span className="text-xs font-bold text-brand-muted">Wolfie is thinking...</span>
                         </div>
                     </div>
                 )}
@@ -269,14 +269,14 @@ const WolfTutorChat: React.FC = () => {
             </div>
 
             {/* Input Area */}
-            <div className="bg-white dark:bg-slate-950 p-4 border-t border-slate-200 dark:border-slate-800 relative z-20">
+            <div className="bg-brand-surface dark:bg-slate-950 p-4 border-t border-brand-border dark:border-brand-border relative z-20">
 
                 {/* Text Inout Mode */}
                 {showTextInput && (
                     <div className="flex items-center gap-2 animate-in slide-in-from-bottom-5 fade-in duration-300">
                         <button
                             onClick={() => setShowTextInput(false)}
-                            className="p-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                            className="p-3 rounded-full hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 text-brand-muted transition-colors"
                         >
                             <X size={20} />
                         </button>
@@ -286,7 +286,7 @@ const WolfTutorChat: React.FC = () => {
                             onChange={(e) => setInputText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleTextSend()}
                             placeholder="Type a message to Wolfie..."
-                            className="flex-1 bg-slate-100 dark:bg-slate-900 border-none rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-white"
+                            className="flex-1 bg-brand-surface-2 dark:bg-brand-surface border-none rounded-2xl px-5 py-3.5 focus:ring-2 focus:ring-indigo-500 outline-none text-brand-text"
                             autoFocus
                         />
                         <button
@@ -313,14 +313,14 @@ const WolfTutorChat: React.FC = () => {
                             {isRecording ? (
                                 <p className="text-red-500 font-bold animate-pulse">Recording... Click to stop</p>
                             ) : (
-                                <p className="text-slate-400 text-sm font-medium">Click microphone to speak</p>
+                                <p className="text-brand-muted text-sm font-medium">Click microphone to speak</p>
                             )}
                         </div>
 
                         <div className="flex items-center justify-between w-full max-w-xs mx-auto gap-6 z-10 px-4">
                             <button
                                 onClick={() => setShowTextInput(true)}
-                                className="p-3 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-full transition-all"
+                                className="p-3 text-brand-muted hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-full transition-all"
                                 title="Type instead"
                             >
                                 <Keyboard size={24} />
@@ -339,7 +339,7 @@ const WolfTutorChat: React.FC = () => {
                                 `}
                             >
                                 {isRecording ? (
-                                    <div className="w-8 h-8 bg-white rounded-md animate-none" />
+                                    <div className="w-8 h-8 bg-brand-surface rounded-md animate-none" />
                                 ) : (
                                     <Mic size={36} className="text-white" />
                                 )}

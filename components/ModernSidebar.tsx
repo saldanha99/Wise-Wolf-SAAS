@@ -161,17 +161,17 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
             <nav
                 className={`
           fixed lg:sticky top-0 left-0 z-[100] h-screen shrink-0 
-          transition-all duration-300 ease-in-out bg-white dark:bg-gray-900 border-r border-transparent
+          transition-all duration-300 ease-in-out bg-brand-surface border-r border-brand-border
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${open ? 'w-64' : 'w-20'} 
-          p-3 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)]
+          p-3 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.2)]
         `}
             >
                 <div className="mb-6 pb-4">
-                    <div className={`flex items-center ${open ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 transition-colors hover:bg-slate-50 dark:hover:bg-gray-800`}>
+                    <div className={`flex items-center ${open ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 transition-colors hover:bg-brand-surface-2`}>
                         <div className="flex items-center gap-3 w-full">
                             {user.role === UserRole.SUPER_ADMIN ? (
-                                <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 text-white">
+                                <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-brand-accent to-brand-accent-hover shadow-lg text-white">
                                     <Shield size={20} />
                                 </div>
                             ) : tenant.branding?.logoUrl ? (
@@ -181,18 +181,18 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                     className={`object-contain transition-all duration-300 ${open ? 'h-14 max-w-[180px]' : 'h-8 w-8'} rounded-md`}
                                 />
                             ) : (
-                                <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 shadow-lg shadow-purple-500/20 text-white">
+                                <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-brand-accent to-brand-accent-hover shadow-lg text-white">
                                     <School size={20} />
                                 </div>
                             )}
 
                             {open && (
                                 <div className={`overflow-hidden flex-1 ${tenant.branding?.logoUrl && user.role !== UserRole.SUPER_ADMIN ? 'hidden' : ''}`}>
-                                    <h3 className="block text-sm font-bold text-gray-900 dark:text-gray-100 truncate max-w-[120px]">
+                                    <h3 className="block text-sm font-bold text-brand-text truncate max-w-[120px]">
                                         {user.role === UserRole.SUPER_ADMIN ? 'EduCore SaaS' : tenant.name}
                                     </h3>
-                                    <span className="block text-xs text-gray-500 dark:text-gray-400 truncate font-medium">
-                                        {user.role.replace('_', ' ').toLowerCase()}
+                                    <span className="block text-[10px] uppercase font-black tracking-widest text-brand-muted truncate">
+                                        {user.role.replace('_', ' ')}
                                     </span>
                                 </div>
                             )}
@@ -218,9 +218,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     ))}
                 </div>
 
-                <div className="border-t border-slate-100 dark:border-gray-800 pt-4 space-y-1 mb-12">
+                <div className="border-t border-brand-border pt-4 space-y-1 mb-12">
                     {open && (
-                        <div className="px-3 py-2 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                        <div className="px-3 py-2 text-[10px] font-black text-brand-muted uppercase tracking-widest">
                             Conta
                         </div>
                     )}
@@ -234,7 +234,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     />
                     <button
                         onClick={onLogout}
-                        className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10`}
+                        className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 hover:bg-red-500/10`}
                     >
                         <div className="grid h-full w-12 place-content-center">
                             <LogOut className="h-5 w-5" />
@@ -245,16 +245,16 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
                 <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="hidden lg:flex absolute bottom-0 left-0 right-0 border-t border-slate-100 dark:border-gray-800 transition-colors hover:bg-slate-50 dark:hover:bg-gray-800 items-center p-4"
+                    className="hidden lg:flex absolute bottom-0 left-0 right-0 border-t border-brand-border transition-colors hover:bg-brand-surface-2 items-center p-4"
                 >
                     <div className="grid size-10 place-content-center">
                         <ChevronsRight
-                            className={`h-5 w-5 transition-transform duration-300 text-slate-400 dark:text-gray-500 ${!open ? "rotate-180" : ""
+                            className={`h-5 w-5 transition-transform duration-300 text-brand-muted ${!open ? "rotate-180" : ""
                                 }`}
                         />
                     </div>
                     {open && (
-                        <span className="text-sm font-bold text-slate-500 dark:text-gray-400 ml-2">
+                        <span className="text-sm font-bold text-brand-muted ml-2">
                             Recolher
                         </span>
                     )}
@@ -270,16 +270,16 @@ const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: an
     return (
         <button
             onClick={() => setSelected(itemId)}
-            className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 group mb-1 ${isSelected
-                ? "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 shadow-sm"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200"
+            className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 group mb-1 border border-transparent ${isSelected
+                ? "bg-brand-surface-2 border-brand-accent/30 text-brand-accent shadow-[inset_0_0_12px_rgba(var(--brand-accent),0.1)]"
+                : "text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text hover:border-brand-border"
                 }`}
             title={!open ? title : ''}
         >
             <div className="grid h-full w-12 place-content-center relative">
                 <Icon className={`h-5 w-5 transition-transform ${isSelected ? 'scale-110' : 'group-hover:scale-110'}`} strokeWidth={isSelected ? 2.5 : 2} />
                 {!open && isSelected && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-purple-600 rounded-full" />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-accent rounded-full shadow-[0_0_8px_rgba(var(--brand-accent),1)]" />
                 )}
             </div>
 
@@ -293,7 +293,7 @@ const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: an
             )}
 
             {notifs && notifs > 0 && (
-                <span className={`${open ? 'absolute right-3' : 'absolute top-1 right-2'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white font-bold shadow-md ring-2 ring-white dark:ring-slate-900`}>
+                <span className={`${open ? 'absolute right-3' : 'absolute top-1 right-2'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white font-bold shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400`}>
                     {notifs}
                 </span>
             )}

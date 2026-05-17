@@ -88,7 +88,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
             {/* Quizzes Section (If any unlocked) */}
             {unlockedTests.length > 0 && (
                 <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 dark:from-indigo-600 dark:to-indigo-900 rounded-[2.5rem] p-8 text-white shadow-lg relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                     <h3 className="text-xl font-black mb-6 flex items-center gap-2 relative z-10">
                         <CheckCircle className="text-white" /> Avaliações Liberadas
@@ -96,14 +96,14 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 relative z-10">
                         {unlockedTests.map(test => (
-                            <div key={test} className="bg-white/20 backdrop-blur-sm border border-white/20 p-5 rounded-2xl flex items-center justify-between hover:bg-white/30 transition-all cursor-pointer">
+                            <div key={test} className="bg-brand-surface/20 backdrop-blur-sm border border-white/20 p-5 rounded-2xl flex items-center justify-between hover:bg-brand-surface/30 transition-all cursor-pointer">
                                 <div>
                                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Prova Final</p>
                                     <h4 className="text-2xl font-black">{test}</h4>
                                 </div>
                                 <button
                                     onClick={() => setActiveQuiz(test)}
-                                    className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase shadow-sm hover:scale-105 transition-transform"
+                                    className="px-4 py-2 bg-brand-surface text-indigo-600 rounded-xl text-xs font-black uppercase shadow-sm hover:scale-105 transition-transform"
                                 >
                                     INICIAR
                                 </button>
@@ -114,7 +114,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
             )}
 
             {/* Wolfie History Section */}
-            <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 relative overflow-hidden">
+            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500" />
 
                 <h3 className="text-xl font-black text-white mb-6 flex items-center gap-2">
@@ -127,62 +127,62 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                 {/* Session List */}
                 <div className="grid gap-4">
                     {/* Placeholder for now, simplified fetch logic below */}
-                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700/50 flex items-center justify-between">
+                    <div className="p-4 bg-brand-surface-2/50 rounded-2xl border border-brand-border/50 flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">
                                 18/02
                             </div>
                             <div>
                                 <h4 className="text-white font-bold text-sm">Conversation Practice</h4>
-                                <p className="text-xs text-slate-400">Duração: 5 min • 3 Correções</p>
+                                <p className="text-xs text-brand-muted">Duração: 5 min • 3 Correções</p>
                             </div>
                         </div>
                         <button className="text-xs font-bold text-indigo-400 hover:text-indigo-300 uppercase">
                             Ver Detalhes
                         </button>
                     </div>
-                    <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl">
-                        <p className="text-slate-500 text-xs">Histórico completo em desenvolvimento (Backend conectado em breve).</p>
+                    <div className="p-8 text-center border border-dashed border-brand-border rounded-2xl">
+                        <p className="text-brand-muted text-xs">Histórico completo em desenvolvimento (Backend conectado em breve).</p>
                     </div>
                 </div>
             </div>
 
             {/* My Assignments Library */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-8">
-                <h3 className="text-xl font-black text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8">
+                <h3 className="text-xl font-black text-brand-text mb-6 flex items-center gap-2">
                     <BookOpen className="text-indigo-500" /> Meus Materiais
                 </h3>
 
                 {assignedMaterials.length === 0 ? (
-                    <div className="text-center py-12 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
+                    <div className="text-center py-12 border-2 border-dashed border-brand-border rounded-2xl">
                         <BookOpen className="mx-auto text-slate-300 mb-2" size={32} />
-                        <p className="text-slate-400 text-xs font-bold">Nenhum material atribuído pelo professor ainda.</p>
+                        <p className="text-brand-muted text-xs font-bold">Nenhum material atribuído pelo professor ainda.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {assignedMaterials.map(m => (
-                            <a href={m.file_url} target="_blank" rel="noreferrer" key={m.id || m.assignment_id} className="p-4 border border-slate-100 dark:border-slate-800 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-md transition-all flex items-center gap-4 group">
+                            <a href={m.file_url} target="_blank" rel="noreferrer" key={m.id || m.assignment_id} className="p-4 border border-brand-border rounded-2xl hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 hover:shadow-md transition-all flex items-center gap-4 group">
                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${m.type === 'PDF' ? 'bg-red-100 text-red-600' :
                                     m.type === 'VIDEO' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
                                     }`}>
                                     {m.type}
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-sm text-slate-800 dark:text-white group-hover:text-indigo-600 transition-colors line-clamp-1">{m.title}</h4>
+                                    <h4 className="font-bold text-sm text-brand-text group-hover:text-indigo-600 transition-colors line-clamp-1">{m.title}</h4>
                                     <div className="flex gap-2 mt-1">
-                                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 rounded uppercase font-bold text-slate-500">{m.level_tag || 'Geral'}</span>
+                                        <span className="text-[10px] bg-brand-surface-2 dark:bg-brand-surface-2 px-1.5 rounded uppercase font-bold text-brand-muted">{m.level_tag || 'Geral'}</span>
                                         {m.niche && m.niche !== 'GENERAL' && (
                                             <span className={`text-[10px] px-1.5 rounded uppercase font-bold ${m.niche === 'MEDICINE' ? 'bg-green-100 text-green-600' :
                                                 m.niche === 'TECH' ? 'bg-blue-100 text-blue-600' :
                                                     m.niche === 'BUSINESS' ? 'bg-purple-100 text-purple-600' :
                                                         m.niche === 'TRAVEL' ? 'bg-orange-100 text-orange-600' :
-                                                            'bg-slate-100 text-slate-500'
+                                                            'bg-brand-surface-2 text-brand-muted'
                                                 }`}>
                                                 {m.niche}
                                             </span>
                                         )}
                                     </div>
-                                    <span className="text-[10px] text-slate-400 uppercase font-bold mt-1 block">{new Date(m.assigned_at).toLocaleDateString()}</span>
+                                    <span className="text-[10px] text-brand-muted uppercase font-bold mt-1 block">{new Date(m.assigned_at).toLocaleDateString()}</span>
                                 </div>
                             </a>
                         ))}

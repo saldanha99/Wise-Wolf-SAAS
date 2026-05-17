@@ -339,7 +339,7 @@ export default function WolfieLiveCallV2({
             {/* CORRECTION POP-UP MODAL */}
             {activeCorrectionPopUp && (
                 <div className="absolute inset-0 z-[300] flex flex-col items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-slate-900 border-2 border-indigo-500 rounded-3xl w-full max-w-md shadow-2xl shadow-indigo-500/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-10 touch-none">
+                    <div className="bg-brand-surface border-2 border-indigo-500 rounded-3xl w-full max-w-md shadow-2xl shadow-indigo-500/20 overflow-hidden flex flex-col animate-in slide-in-from-bottom-10 touch-none">
                         {/* Header */}
                         <div className="bg-indigo-500/10 p-5 border-b border-indigo-500/20 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -348,7 +348,7 @@ export default function WolfieLiveCallV2({
                             </div>
                             <button
                                 onClick={() => setActiveCorrectionPopUp(null)}
-                                className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white"
+                                className="p-2 bg-brand-surface/5 hover:bg-brand-surface/10 rounded-full transition-colors text-white"
                             >
                                 <X size={20} />
                             </button>
@@ -365,7 +365,7 @@ export default function WolfieLiveCallV2({
                             <div className="space-y-4 bg-slate-950/50 p-4 rounded-2xl border border-white/5">
                                 <div>
                                     <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest block mb-1">Como você disse:</span>
-                                    <p className="text-slate-400 font-medium line-through decoration-red-500/50">{activeCorrectionPopUp.wrongSentence}</p>
+                                    <p className="text-brand-muted font-medium line-through decoration-red-500/50">{activeCorrectionPopUp.wrongSentence}</p>
                                 </div>
 
                                 <div>
@@ -386,7 +386,7 @@ export default function WolfieLiveCallV2({
                             </button>
                             <button
                                 onClick={() => setActiveCorrectionPopUp(null)}
-                                className="w-full py-3 text-slate-400 hover:text-white font-bold text-sm transition-colors"
+                                className="w-full py-3 text-brand-muted hover:text-white font-bold text-sm transition-colors"
                             >
                                 Fechar e Continuar
                             </button>
@@ -405,7 +405,7 @@ export default function WolfieLiveCallV2({
                 {/* TOP BAR */}
                 <header className="flex items-center justify-between p-6 border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-full border border-white/10">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-surface rounded-full border border-white/10">
                             <span className="relative flex h-2.5 w-2.5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -420,12 +420,12 @@ export default function WolfieLiveCallV2({
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-full border border-white/10">
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{wolfieConfig.level}</span>
+                        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-surface rounded-full border border-white/10">
+                            <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">{wolfieConfig.level}</span>
                             <div className="w-px h-3 bg-slate-700"></div>
                             <span className="text-xs font-bold text-slate-200 capitalize">{avatarId}</span>
                         </div>
-                        <button onClick={onClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
+                        <button onClick={onClose} className="p-2 bg-brand-surface/5 hover:bg-brand-surface/10 rounded-full text-brand-muted hover:text-white transition-colors">
                             <X size={20} />
                         </button>
                     </div>
@@ -461,7 +461,7 @@ export default function WolfieLiveCallV2({
                                     {error}
                                 </div>
                             )}
-                            <div className={`p-6 rounded-3xl backdrop-blur-md transition-all duration-300 ${state === 'SPEAKING' ? 'bg-slate-900/80 border border-white/10 shadow-2xl scale-100' : 'bg-transparent scale-95 opacity-50'}`}>
+                            <div className={`p-6 rounded-3xl backdrop-blur-md transition-all duration-300 ${state === 'SPEAKING' ? 'bg-brand-surface/80 border border-white/10 shadow-2xl scale-100' : 'bg-transparent scale-95 opacity-50'}`}>
                                 <p className="text-2xl md:text-3xl font-medium text-white leading-relaxed">
                                     {subtitle}
                                 </p>
@@ -475,13 +475,13 @@ export default function WolfieLiveCallV2({
                         <div className="flex px-4 pt-4 border-b border-white/5 gap-2">
                             <button
                                 onClick={() => setActiveTab('TRANSCRIPT')}
-                                className={`flex-1 pb-3 text-sm font-bold tracking-wider uppercase transition-colors border-b-2 ${activeTab === 'TRANSCRIPT' ? 'text-white border-indigo-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                                className={`flex-1 pb-3 text-sm font-bold tracking-wider uppercase transition-colors border-b-2 ${activeTab === 'TRANSCRIPT' ? 'text-white border-indigo-500' : 'text-brand-muted border-transparent hover:text-slate-300'}`}
                             >
                                 Transcript
                             </button>
                             <button
                                 onClick={() => setActiveTab('CORRECTIONS')}
-                                className={`flex-1 pb-3 text-sm font-bold tracking-wider uppercase transition-colors border-b-2 relative ${activeTab === 'CORRECTIONS' ? 'text-white border-indigo-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                                className={`flex-1 pb-3 text-sm font-bold tracking-wider uppercase transition-colors border-b-2 relative ${activeTab === 'CORRECTIONS' ? 'text-white border-indigo-500' : 'text-brand-muted border-transparent hover:text-slate-300'}`}
                             >
                                 Corrections
                                 {corrections.length > 0 && (
@@ -495,17 +495,17 @@ export default function WolfieLiveCallV2({
                             {activeTab === 'TRANSCRIPT' && (
                                 <div className="space-y-6">
                                     {transcript.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-slate-500">
+                                        <div className="h-full flex flex-col items-center justify-center text-brand-muted">
                                             <MessageSquare size={48} className="opacity-20 mb-4" />
                                             <p className="text-center font-medium">A conversa aparecerá aqui.</p>
                                         </div>
                                     ) : (
                                         transcript.map((msg, i) => (
                                             <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-2 mr-2">
+                                                <span className="text-[10px] font-bold text-brand-muted uppercase tracking-widest mb-1.5 ml-2 mr-2">
                                                     {msg.role === 'user' ? 'You' : avatarId}
                                                 </span>
-                                                <div className={`p-4 rounded-2xl max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm'}`}>
+                                                <div className={`p-4 rounded-2xl max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-brand-surface-2 text-slate-200 rounded-tl-sm'}`}>
                                                     {msg.content}
                                                 </div>
                                             </div>
@@ -517,22 +517,22 @@ export default function WolfieLiveCallV2({
                             {activeTab === 'CORRECTIONS' && (
                                 <div className="space-y-4">
                                     {corrections.length === 0 ? (
-                                        <div className="h-full flex flex-col items-center justify-center text-slate-500 mt-10">
+                                        <div className="h-full flex flex-col items-center justify-center text-brand-muted mt-10">
                                             <Sparkles size={48} className="opacity-20 mb-4" />
                                             <p className="text-center font-medium">Você está indo super bem!<br />Ainda não há correções estruturais.</p>
                                         </div>
                                     ) : (
                                         corrections.map((corr) => (
-                                            <div key={corr.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg animate-in fade-in slide-in-from-right-4">
+                                            <div key={corr.id} className="bg-brand-surface border border-brand-border rounded-2xl p-5 shadow-lg animate-in fade-in slide-in-from-right-4">
                                                 <div className="flex items-start gap-3 mb-3">
                                                     <div className="p-1.5 bg-red-500/10 text-red-400 rounded-lg shrink-0 mt-0.5"><X size={16} /></div>
-                                                    <p className="text-slate-400 line-through decoration-red-500/50">{corr.wrongSentence}</p>
+                                                    <p className="text-brand-muted line-through decoration-red-500/50">{corr.wrongSentence}</p>
                                                 </div>
                                                 <div className="flex items-start gap-3 mb-4">
                                                     <div className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg shrink-0 mt-0.5"><CheckCircle2 size={16} /></div>
                                                     <p className="text-white font-medium">{corr.correctSentence}</p>
                                                 </div>
-                                                <div className="mt-4 pt-4 border-t border-slate-800">
+                                                <div className="mt-4 pt-4 border-t border-brand-border">
                                                     <div className="flex items-center gap-2 mb-2">
                                                         <AlertCircle size={14} className="text-indigo-400" />
                                                         <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">Explicação</span>
@@ -557,7 +557,7 @@ export default function WolfieLiveCallV2({
                         onTouchEnd={stopRecordingAndSend}
                         disabled={state === 'SPEAKING' || state === 'THINKING' || !!activeCorrectionPopUp}
                         className={`relative group overflow-hidden flex items-center justify-center gap-4 px-10 py-5 rounded-full font-black uppercase tracking-widest transition-all duration-300 select-none
-                            ${(state === 'SPEAKING' || state === 'THINKING' || !!activeCorrectionPopUp) ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5' :
+                            ${(state === 'SPEAKING' || state === 'THINKING' || !!activeCorrectionPopUp) ? 'bg-brand-surface-2 text-brand-muted cursor-not-allowed border border-white/5' :
                                 state === 'LISTENING' ? 'bg-indigo-500 scale-105 shadow-[0_0_40px_rgba(99,102,241,0.5)] text-white' :
                                     'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl hover:shadow-2xl hover:-translate-y-1'}
                         `}
@@ -568,7 +568,7 @@ export default function WolfieLiveCallV2({
 
                         {state === 'IDLE' && <Mic size={24} />}
                         {state === 'LISTENING' && <StopCircle size={24} className="animate-pulse" />}
-                        {state === 'THINKING' && <RefreshCw size={24} className="animate-spin text-slate-400" />}
+                        {state === 'THINKING' && <RefreshCw size={24} className="animate-spin text-brand-muted" />}
                         {state === 'SPEAKING' && <Zap size={24} className="opacity-50" />}
 
                         <span>
@@ -579,7 +579,7 @@ export default function WolfieLiveCallV2({
                     {/* Instructions hint */}
                     {state === 'IDLE' && (
                         <div className="absolute bottom-2 text-center w-full pointer-events-none">
-                            <span className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Push and hold to speak</span>
+                            <span className="text-[10px] text-brand-muted font-medium uppercase tracking-widest">Push and hold to speak</span>
                         </div>
                     )}
                 </footer>

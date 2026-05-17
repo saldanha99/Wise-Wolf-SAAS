@@ -112,20 +112,20 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
     return (
         <div className="space-y-6">
             {/* Progress Header */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div className="bg-brand-surface rounded-2xl p-6 border border-brand-border shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
                             <Award size={20} className="text-purple-600" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black text-slate-800 dark:text-white">Meus Treinamentos</h2>
-                            <p className="text-xs text-slate-500">{completedCount} de {modules.length} concluídos</p>
+                            <h2 className="text-lg font-black text-brand-text">Meus Treinamentos</h2>
+                            <p className="text-xs text-brand-muted">{completedCount} de {modules.length} concluídos</p>
                         </div>
                     </div>
                     <span className="text-2xl font-black text-purple-600">{progressPercent}%</span>
                 </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full h-3 overflow-hidden">
                     <div
                         className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-1000"
                         style={{ width: `${progressPercent}%` }}
@@ -158,24 +158,24 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
                     return (
                         <div
                             key={module.id}
-                            className={`bg-white dark:bg-slate-900 border rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md ${isCompleted
+                            className={`bg-brand-surface border rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md ${isCompleted
                                     ? 'border-emerald-200 dark:border-emerald-800'
                                     : assignment?.status === 'PENDING'
                                         ? 'border-amber-300 dark:border-amber-700 ring-2 ring-amber-300/50'
-                                        : 'border-slate-100 dark:border-slate-800'
+                                        : 'border-brand-border'
                                 }`}
                         >
                             {/* Preview */}
-                            <div className="aspect-video bg-slate-100 dark:bg-slate-800 relative flex items-center justify-center">
+                            <div className="aspect-video bg-brand-surface-2 dark:bg-brand-surface-2 relative flex items-center justify-center">
                                 {isPdf ? (
                                     <div className="flex flex-col items-center gap-2">
                                         <FileText size={40} className="text-red-400" />
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">PDF</span>
+                                        <span className="text-[10px] font-bold text-brand-muted uppercase">PDF</span>
                                     </div>
                                 ) : module.resource_type === 'meet' ? (
                                     <div className="flex flex-col items-center gap-2">
                                         <Mic size={40} className="text-emerald-500" />
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ao Vivo (Meet)</span>
+                                        <span className="text-[10px] font-bold text-brand-muted uppercase tracking-widest">Ao Vivo (Meet)</span>
                                     </div>
                                 ) : module.video_url?.includes('youtube') ? (
                                     <img
@@ -209,13 +209,13 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
 
                             {/* Content */}
                             <div className="p-5">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded mb-2 inline-block">
+                                <span className="text-[10px] uppercase font-bold text-brand-muted tracking-wider bg-brand-surface-2 px-2 py-0.5 rounded mb-2 inline-block">
                                     {module.category}
                                 </span>
-                                <h3 className="font-bold text-slate-800 dark:text-white mb-1 line-clamp-1">{module.title}</h3>
-                                <p className="text-xs text-slate-500 line-clamp-2 min-h-[2.5em]">{module.description || 'Sem descrição.'}</p>
+                                <h3 className="font-bold text-brand-text mb-1 line-clamp-1">{module.title}</h3>
+                                <p className="text-xs text-brand-muted line-clamp-2 min-h-[2.5em]">{module.description || 'Sem descrição.'}</p>
 
-                                <div className="mt-4 pt-4 border-t border-slate-50 dark:border-slate-800 space-y-2">
+                                <div className="mt-4 pt-4 border-t border-slate-50 dark:border-brand-border space-y-2">
                                     {/* Action Button */}
                                     <a
                                         href={isPdf ? module.pdf_url : module.video_url}
@@ -254,10 +254,10 @@ const TeacherTrainingView: React.FC<TeacherTrainingViewProps> = ({ tenantId, tea
 
             {/* Empty State */}
             {modules.length === 0 && (
-                <div className="text-center py-20 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+                <div className="text-center py-20 bg-brand-surface-2 dark:bg-brand-surface/50 rounded-3xl border-2 border-dashed border-brand-border dark:border-brand-border">
                     <Award size={48} className="mx-auto text-slate-300 mb-4" />
-                    <h3 className="text-lg font-bold text-slate-600 dark:text-slate-300">Nenhum treinamento disponível</h3>
-                    <p className="text-slate-400 text-sm mt-2">Os treinamentos serão exibidos aqui quando forem adicionados pela escola.</p>
+                    <h3 className="text-lg font-bold text-brand-muted">Nenhum treinamento disponível</h3>
+                    <p className="text-brand-muted text-sm mt-2">Os treinamentos serão exibidos aqui quando forem adicionados pela escola.</p>
                 </div>
             )}
         </div>

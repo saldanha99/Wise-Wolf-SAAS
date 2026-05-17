@@ -79,14 +79,14 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-brand-surface w-full max-w-lg rounded-3xl p-8 border border-brand-border dark:border-brand-border shadow-2xl">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                    <h3 className="text-2xl font-black text-brand-text flex items-center gap-2">
                         {step === 1 ? <Building2 className="text-indigo-600" /> : <CheckCircle className="text-emerald-500" />}
                         {step === 1 ? 'Provisionar Nova Escola' : 'Escola Criada!'}
                     </h3>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500">
+                    <button onClick={onClose} className="p-2 hover:bg-brand-surface-2 rounded-full text-brand-muted">
                         <X size={20} />
                     </button>
                 </div>
@@ -94,18 +94,18 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                 {step === 1 ? (
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Nome da Escola</label>
+                            <label className="text-xs font-bold text-brand-muted uppercase">Nome da Escola</label>
                             <input
                                 value={formData.schoolName}
                                 onChange={e => setFormData({ ...formData, schoolName: e.target.value, slug: generateSlug(e.target.value) })}
-                                className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Subdomínio (Slug)</label>
-                            <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700">
-                                <Globe size={16} className="text-slate-400 mr-2" />
-                                <span className="text-slate-400 font-medium">wisewolf.com/</span>
+                            <label className="text-xs font-bold text-brand-muted uppercase">Subdomínio (Slug)</label>
+                            <div className="flex items-center bg-brand-surface-2 rounded-xl px-4 py-3 border border-brand-border">
+                                <Globe size={16} className="text-brand-muted mr-2" />
+                                <span className="text-brand-muted font-medium">wisewolf.com/</span>
                                 <input
                                     value={formData.slug}
                                     onChange={e => setFormData({ ...formData, slug: e.target.value })}
@@ -115,19 +115,19 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Nome Admin</label>
+                                <label className="text-xs font-bold text-brand-muted uppercase">Nome Admin</label>
                                 <input
                                     value={formData.adminName}
                                     onChange={e => setFormData({ ...formData, adminName: e.target.value })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Email Admin</label>
+                                <label className="text-xs font-bold text-brand-muted uppercase">Email Admin</label>
                                 <input
                                     value={formData.adminEmail}
                                     onChange={e => setFormData({ ...formData, adminEmail: e.target.value })}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-3 font-bold outline-none"
+                                    className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
                                 />
                             </div>
                         </div>
@@ -147,13 +147,13 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                     </div>
                 ) : (
                     <div className="text-center py-6">
-                        <p className="text-slate-500 mb-6">Ambiente criado com sucesso! Envie este link para o dono da escola completar o cadastro.</p>
+                        <p className="text-brand-muted mb-6">Ambiente criado com sucesso! Envie este link para o dono da escola completar o cadastro.</p>
 
-                        <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-xl flex items-center justify-between gap-2 mb-6 break-all">
+                        <div className="bg-brand-surface-2 dark:bg-brand-surface-2 p-4 rounded-xl flex items-center justify-between gap-2 mb-6 break-all">
                             <code className="text-xs font-mono text-indigo-600">{generatedLink}</code>
                             <button
                                 onClick={() => navigator.clipboard.writeText(generatedLink)}
-                                className="text-xs font-bold bg-white shadow-sm px-3 py-1 rounded-lg text-slate-600 hover:text-indigo-600"
+                                className="text-xs font-bold bg-brand-surface shadow-sm px-3 py-1 rounded-lg text-brand-muted hover:text-indigo-600"
                             >
                                 Copiar
                             </button>
@@ -161,7 +161,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
 
                         <button
                             onClick={() => { onSuccess(); onClose(); }}
-                            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-colors"
+                            className="w-full py-3 bg-brand-surface-2 hover:bg-slate-200 text-brand-muted font-bold rounded-xl transition-colors"
                         >
                             Fechar
                         </button>

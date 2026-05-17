@@ -50,20 +50,20 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
 
     if (loading) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-brand-surface-2 gap-4">
                 <Loader2 className="animate-spin text-tenant-primary" size={48} />
-                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Autenticando Contrato...</p>
+                <p className="text-brand-muted font-bold uppercase tracking-widest text-xs">Autenticando Contrato...</p>
             </div>
         );
     }
 
     if (error || !profile) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-                <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
+            <div className="min-h-screen bg-brand-surface-2 flex items-center justify-center p-4">
+                <div className="bg-brand-surface p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
                     <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold text-slate-800 mb-2">Erro na Visualização</h2>
-                    <p className="text-slate-500 mb-6">{error}</p>
+                    <h2 className="text-xl font-bold text-brand-text mb-2">Erro na Visualização</h2>
+                    <p className="text-brand-muted mb-6">{error}</p>
                     <a href="/" className="text-tenant-primary font-bold hover:underline">Ir para o Portal</a>
                 </div>
             </div>
@@ -73,7 +73,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     return (
         <div className="min-h-screen bg-gray-100 py-10">
             {/* Security Header */}
-            <div className="max-w-[210mm] mx-auto mb-6 px-4 flex items-center justify-between text-slate-400">
+            <div className="max-w-[210mm] mx-auto mb-6 px-4 flex items-center justify-between text-brand-muted">
                 <div className="flex items-center gap-2">
                     <FileText size={16} />
                     <span className="text-[10px] font-black uppercase tracking-widest">Documento Digital Autêntico</span>

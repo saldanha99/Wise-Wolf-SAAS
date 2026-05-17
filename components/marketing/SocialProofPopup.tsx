@@ -57,22 +57,22 @@ export const SocialProofPopup: React.FC<SocialProofPopupProps> = ({ sales = MOCK
 
     return (
         <div className={`fixed bottom-4 left-4 z-50 transition-all duration-700 transform ${visible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
-            <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-emerald-100 flex items-center gap-4 max-w-xs ring-1 ring-black/5">
+            <div className="bg-brand-surface/95 backdrop-blur-md p-4 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-emerald-100 flex items-center gap-4 max-w-xs ring-1 ring-black/5">
                 <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 relative">
                     <CheckCircle size={24} strokeWidth={3} />
                     <span className="absolute inset-0 rounded-full bg-emerald-400 opacity-20 animate-ping" />
                 </div>
                 <div>
-                    <p className="text-xs font-bold text-slate-800 leading-tight mb-0.5">
+                    <p className="text-xs font-bold text-brand-text leading-tight mb-0.5">
                         <span className="text-emerald-600">{sales[currentSale].name}</span> de {sales[currentSale].location}
                     </p>
-                    <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                        Agendou uma aula experimental <span className="text-slate-400">{sales[currentSale].time}</span>
+                    <p className="text-[10px] text-brand-muted font-medium leading-tight">
+                        Agendou uma aula experimental <span className="text-brand-muted">{sales[currentSale].time}</span>
                     </p>
                 </div>
                 <button
                     onClick={(e) => { e.stopPropagation(); setVisible(false); }}
-                    className="absolute top-2 right-2 text-slate-300 hover:text-slate-500 transition-colors"
+                    className="absolute top-2 right-2 text-slate-300 hover:text-brand-muted transition-colors"
                 >
                     <X size={12} />
                 </button>

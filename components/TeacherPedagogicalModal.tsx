@@ -155,30 +155,30 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
 
     return (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-full max-w-2xl bg-brand-surface rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                     <div>
-                        <h2 className="text-xl font-black text-slate-800 dark:text-white">Gestão Pedagógica</h2>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Aluno: <span className="text-indigo-500">{student.name}</span></p>
+                        <h2 className="text-xl font-black text-brand-text">Gestão Pedagógica</h2>
+                        <p className="text-sm text-brand-muted font-medium">Aluno: <span className="text-indigo-500">{student.name}</span></p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
-                        <X size={20} className="text-slate-500" />
+                        <X size={20} className="text-brand-muted" />
                     </button>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex p-2 bg-slate-100 dark:bg-slate-950 mx-6 mt-6 rounded-xl shrink-0">
+                <div className="flex p-2 bg-brand-surface-2 dark:bg-slate-950 mx-6 mt-6 rounded-xl shrink-0">
                     <button
                         onClick={() => setActiveTab('materials')}
-                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-400'}`}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-sm text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
                     >
                         Atribuir Materiais
                     </button>
                     <button
                         onClick={() => setActiveTab('evaluation')}
-                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'evaluation' ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 dark:text-white' : 'text-slate-400'}`}
+                        className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'evaluation' ? 'bg-brand-surface dark:bg-brand-surface-2 shadow-sm text-indigo-600 dark:text-white' : 'text-brand-muted'}`}
                     >
                         Avaliações
                     </button>
@@ -191,19 +191,19 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                         <div className="space-y-6">
                             {/* Search */}
                             <div className="relative">
-                                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" />
                                 <input
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
                                     placeholder="Buscar material na biblioteca..."
-                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 />
                             </div>
 
                             {/* Materials List */}
                             <div className="space-y-3">
-                                <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Biblioteca Disponível</h3>
-                                {loading && <p className="text-xs text-slate-400">Carregando materiais...</p>}
+                                <h3 className="text-[10px] font-black uppercase text-brand-muted tracking-widest">Biblioteca Disponível</h3>
+                                {loading && <p className="text-xs text-brand-muted">Carregando materiais...</p>}
                                 {!loading && filteredMaterials.length === 0 && (
                                     <div className="p-4 rounded-xl bg-orange-50 text-orange-600 text-xs font-bold text-center border border-orange-100">
                                         Nenhum material encontrado. <br />
@@ -213,14 +213,14 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                 {!loading && filteredMaterials.map(m => {
                                     const isAssigned = assignments.some(a => a.material_id === m.id);
                                     return (
-                                        <div key={m.id} className="flex justify-between items-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                                        <div key={m.id} className="flex justify-between items-center p-4 rounded-xl border border-brand-border hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-colors group">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-lg ${m.type === 'PDF' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                                                     <Book size={16} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-sm text-slate-700 dark:text-slate-200">{m.title}</p>
-                                                    <p className="text-[10px] text-slate-400 uppercase font-bold">{m.level_tag} • {m.category || 'Geral'}</p>
+                                                    <p className="font-bold text-sm text-brand-text dark:text-slate-200">{m.title}</p>
+                                                    <p className="text-[10px] text-brand-muted uppercase font-bold">{m.level_tag} • {m.category || 'Geral'}</p>
                                                 </div>
                                             </div>
 
@@ -231,7 +231,7 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                                     </span>
                                                     <button
                                                         onClick={() => handleUnassign(m.id)}
-                                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                                        className="p-1.5 text-brand-muted hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                                                         title="Desatribuir / Remover Material"
                                                     >
                                                         <Trash2 size={14} />
@@ -255,8 +255,8 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                     {activeTab === 'evaluation' && (
                         <div className="p-4 space-y-6">
                             <div className="text-center">
-                                <h3 className="text-xl font-black text-slate-800 dark:text-white">Liberar Provas</h3>
-                                <p className="text-sm text-slate-500">Selecione quais provas o aluno pode realizar.</p>
+                                <h3 className="text-xl font-black text-brand-text">Liberar Provas</h3>
+                                <p className="text-sm text-brand-muted">Selecione quais provas o aluno pode realizar.</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -269,28 +269,28 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                                     return (
                                         <div key={mod} className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-between ${isUnlocked
                                             ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                            : 'border-slate-100 dark:border-slate-800 grayscale opacity-60 hover:opacity-100 hover:border-indigo-200'
+                                            : 'border-brand-border grayscale opacity-60 hover:opacity-100 hover:border-indigo-200'
                                             }`}
                                             onClick={() => handleToggleEvaluation(mod)}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm ${isUnlocked ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm ${isUnlocked ? 'bg-green-500 text-white' : 'bg-slate-200 text-brand-muted'}`}>
                                                     {mod}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-sm text-slate-800 dark:text-white">Prova {mod}</p>
-                                                    <p className="text-[10px] uppercase font-bold text-slate-400">{isUnlocked ? 'Liberada' : 'Bloqueada'}</p>
+                                                    <p className="font-bold text-sm text-brand-text">Prova {mod}</p>
+                                                    <p className="text-[10px] uppercase font-bold text-brand-muted">{isUnlocked ? 'Liberada' : 'Bloqueada'}</p>
                                                 </div>
                                             </div>
-                                            {isUnlocked ? <Unlock size={18} className="text-green-500" /> : <Lock size={18} className="text-slate-400" />}
+                                            {isUnlocked ? <Unlock size={18} className="text-green-500" /> : <Lock size={18} className="text-brand-muted" />}
                                         </div>
                                     );
                                 })}
                             </div>
 
-                            <div className="pt-6 border-t border-slate-100 dark:border-slate-800 w-full">
-                                <h4 className="text-[10px] uppercase font-black text-slate-400 mb-4">Nota:</h4>
-                                <p className="text-xs text-slate-500">
+                            <div className="pt-6 border-t border-brand-border w-full">
+                                <h4 className="text-[10px] uppercase font-black text-brand-muted mb-4">Nota:</h4>
+                                <p className="text-xs text-brand-muted">
                                     Ao liberar uma prova, ela aparecerá imediatamente no painel do aluno.
                                     O aluno só pode fazer a prova uma vez por liberação.
                                 </p>

@@ -49,7 +49,7 @@ const Sidebar = () => {
     return (
         <nav
             className={`sticky top-0 h-screen shrink-0 border-r transition-all duration-300 ease-in-out ${open ? 'w-64' : 'w-16'
-                } border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 shadow-sm`}
+                } border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-2 shadow-sm`}
         >
             <TitleSection open={open} />
 
@@ -254,13 +254,13 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-gray-600 dark:text-gray-400 mt-1">Welcome back to your dashboard</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button className="relative p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                    <button className="relative p-2 rounded-lg bg-brand-surface dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                         <Bell className="h-5 w-5" />
                         <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full"></span>
                     </button>
                     <button
                         onClick={() => setIsDark(!isDark)}
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
                     >
                         {isDark ? (
                             <Sun className="h-4 w-4" />
@@ -268,7 +268,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                             <Moon className="h-4 w-4" />
                         )}
                     </button>
-                    <button className="p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
+                    <button className="p-2 rounded-lg bg-brand-surface dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                         <User className="h-5 w-5" />
                     </button>
                 </div>
@@ -276,7 +276,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                             <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -288,7 +288,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+12% from last month</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
                             <Users className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -300,7 +300,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+5% from last week</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
                             <ShoppingCart className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -312,7 +312,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                     <p className="text-sm text-green-600 dark:text-green-400 mt-1">+8% from yesterday</p>
                 </div>
 
-                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
+                <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                         <div className="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
                             <Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -329,7 +329,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Recent Activity */}
                 <div className="lg:col-span-2">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Activity</h3>
                             <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium">
@@ -377,7 +377,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
 
                 {/* Quick Stats */}
                 <div className="space-y-6">
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Quick Stats</h3>
                         <div className="space-y-4">
                             <div className="flex justify-between items-center">
@@ -406,7 +406,7 @@ const ExampleContent = ({ isDark, setIsDark }: { isDark: boolean, setIsDark: any
                         </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-brand-surface dark:bg-gray-900 p-6 shadow-sm">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Top Products</h3>
                         <div className="space-y-3">
                             {['iPhone 15 Pro', 'MacBook Air M2', 'AirPods Pro', 'iPad Air'].map((product, i) => (

@@ -63,11 +63,11 @@ export default function StudentLandingTemplate() {
         }
     };
 
-    if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-blue-600" /></div>;
+    if (loading) return <div className="h-screen flex items-center justify-center bg-brand-surface-2"><Loader2 className="animate-spin text-blue-600" /></div>;
 
     if (submitted) {
         return (
-            <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center animate-in fade-in zoom-in duration-500">
+            <div className="h-screen flex flex-col items-center justify-center bg-brand-surface text-white p-6 text-center animate-in fade-in zoom-in duration-500">
                 <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(34,197,94,0.6)]">
                     <CheckCircle size={40} className="text-white" />
                 </div>
@@ -77,7 +77,7 @@ export default function StudentLandingTemplate() {
                 </p>
                 <button
                     onClick={() => window.location.reload()}
-                    className="mt-8 text-sm font-bold text-slate-500 hover:text-white transition-colors"
+                    className="mt-8 text-sm font-bold text-brand-muted hover:text-white transition-colors"
                 >
                     Voltar para o início
                 </button>

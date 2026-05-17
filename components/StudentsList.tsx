@@ -445,9 +445,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
       {/* Sidebar: Teacher Filter (Admins Only) */}
       {showSidebar && (
-        <div className="w-full xl:w-72 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] flex flex-col shadow-sm shrink-0">
-          <div className="p-5 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="font-black text-slate-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
+        <div className="w-full xl:w-72 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
+          <div className="p-5 border-b border-brand-border">
+            <h3 className="font-black text-brand-text dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
               <Users size={14} className="text-tenant-primary" /> Filtrar por Professor
             </h3>
             {/* Optional Search inside sidebar could go here */}
@@ -457,14 +457,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             <button
               onClick={() => setSelectedTeacherId('ALL')}
               className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === 'ALL'
-                ? 'bg-slate-800 border-slate-800 text-white shadow-lg'
-                : 'bg-white dark:bg-slate-900 border-slate-50 dark:border-slate-800 hover:border-slate-300'
+                ? 'bg-brand-surface-2 border-brand-border text-white shadow-lg'
+                : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-brand-border'
                 }`}
             >
-              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                <Users size={14} className={selectedTeacherId === 'ALL' ? 'text-slate-800' : 'text-slate-400'} />
+              <div className="w-8 h-8 rounded-lg bg-brand-surface-2 dark:bg-brand-surface-2 flex items-center justify-center">
+                <Users size={14} className={selectedTeacherId === 'ALL' ? 'text-brand-text' : 'text-brand-muted'} />
               </div>
-              <span className={`text-[10px] font-black uppercase tracking-wide flex-1 ${selectedTeacherId === 'ALL' ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>
+              <span className={`text-[10px] font-black uppercase tracking-wide flex-1 ${selectedTeacherId === 'ALL' ? 'text-white' : 'text-brand-muted dark:text-brand-muted'}`}>
                 Todos os Alunos
               </span>
               {selectedTeacherId === 'ALL' && <ChevronRight size={12} />}
@@ -476,12 +476,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                 onClick={() => setSelectedTeacherId(teacher.id)}
                 className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === teacher.id
                   ? 'bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
-                  : 'bg-white dark:bg-slate-900 border-slate-50 dark:border-slate-800 hover:border-tenant-primary/30'
+                  : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-tenant-primary/30'
                   }`}
               >
                 <img src={teacher.avatar} className="w-8 h-8 rounded-lg border-2 border-white/20" alt="" />
                 <div className="flex-1 overflow-hidden">
-                  <p className={`text-[10px] font-black truncate leading-tight ${selectedTeacherId === teacher.id ? 'text-white' : 'text-slate-700 dark:text-slate-300'}`}>
+                  <p className={`text-[10px] font-black truncate leading-tight ${selectedTeacherId === teacher.id ? 'text-white' : 'text-brand-text dark:text-slate-300'}`}>
                     {teacher.name}
                   </p>
                 </div>
@@ -495,21 +495,21 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       {/* Main Content */}
       <div className="flex-1 flex flex-col gap-6 overflow-hidden">
         {/* Header Search */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-[2rem] border border-slate-100 dark:border-slate-800 shrink-0">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-[2rem] border border-brand-border shrink-0">
           <div className="flex items-center gap-4 w-full">
-            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-full">
-              <Search size={20} className="text-slate-400" />
+            <div className="p-3 bg-brand-surface-2 rounded-full">
+              <Search size={20} className="text-brand-muted" />
             </div>
             <input
-              className="flex-1 bg-transparent outline-none text-sm font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400"
+              className="flex-1 bg-transparent outline-none text-sm font-bold text-brand-text dark:text-slate-200 placeholder:text-brand-muted"
               placeholder="Buscar aluno por nome, profissão..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2 px-4 py-1 bg-slate-50 dark:bg-slate-800 rounded-full">
+          <div className="flex items-center gap-2 px-4 py-1 bg-brand-surface-2 rounded-full">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{filteredStudents.length} Alunos</span>
+            <span className="text-[10px] font-black uppercase text-brand-muted tracking-widest">{filteredStudents.length} Alunos</span>
           </div>
 
           {/* ADD BUTTON */}
@@ -526,17 +526,17 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
             {loading ? (
-              <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-400">
+              <div className="col-span-full py-20 flex flex-col items-center justify-center text-brand-muted">
                 <RefreshCw className="animate-spin mb-4" size={32} />
                 <p className="text-xs font-black uppercase tracking-widest">Carregando Alunos...</p>
               </div>
             ) : filteredStudents.map((student, i) => (
-              <div key={i} className="group bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit">
+              <div key={i} className="group bg-brand-surface rounded-[2rem] border border-brand-border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit">
 
                 {/* Header: Name & Edit */}
                 <div className="flex justify-between items-start mb-6">
                   <div className="flex-1 pr-4">
-                    <h3 className="font-black text-slate-800 dark:text-white text-lg leading-tight tracking-tight mb-1">{student.name}</h3>
+                    <h3 className="font-black text-brand-text text-lg leading-tight tracking-tight mb-1">{student.name}</h3>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-black text-xs">
@@ -558,26 +558,26 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   {/* Module & Progress */}
                   <div>
                     <div className="flex justify-between items-end mb-1.5">
-                      <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-widest">Progresso do Módulo</h4>
-                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">{student.currentModuleStatus}</span>
+                      <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest">Progresso do Módulo</h4>
+                      <span className="text-[10px] font-bold text-brand-muted dark:text-brand-muted">{student.currentModuleStatus}</span>
                     </div>
                     {/* Fake Progress Bar - Visual Only for now */}
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 w-[45%]" />
                     </div>
                   </div>
 
                   {/* Fixed Schedule */}
                   <div>
-                    <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-1.5 flex items-center gap-1.5">
                       <Calendar size={12} /> Horário Fixo
                     </h4>
                     {student.fixed_schedule ? (
-                      <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl text-xs font-black text-slate-700 dark:text-slate-300">
+                      <div className="px-3 py-2 bg-brand-surface-2 border border-brand-border dark:border-brand-border rounded-xl text-xs font-black text-brand-text dark:text-slate-300">
                         {student.fixed_schedule}
                       </div>
                     ) : (
-                      <div className="px-3 py-2 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      <div className="px-3 py-2 border border-dashed border-brand-border dark:border-brand-border rounded-xl text-[10px] font-bold text-brand-muted uppercase tracking-widest">
                         -- Não definido --
                       </div>
                     )}
@@ -585,7 +585,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
                   {/* Interests */}
                   <div>
-                    <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-2 flex items-center gap-1.5">
+                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-2 flex items-center gap-1.5">
                       <BookOpen size={12} /> Interesses
                     </h4>
                     <div className="flex flex-wrap gap-2">
@@ -599,10 +599,10 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
                   {/* Occupation */}
                   <div>
-                    <h4 className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <h4 className="text-[10px] uppercase font-black text-brand-muted tracking-widest mb-1.5 flex items-center gap-1.5">
                       <Briefcase size={12} /> Ocupação
                     </h4>
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">{student.occupation}</p>
+                    <p className="text-xs font-bold text-brand-text dark:text-slate-300 uppercase">{student.occupation}</p>
                   </div>
 
                   {/* Action Buttons */}
@@ -655,9 +655,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
+                <div className="mt-8 pt-6 border-t border-brand-border">
                   <button
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black uppercase hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 transition-colors"
                     onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
                   >
                     <Info size={14} /> Editar Perfil Completo
@@ -669,11 +669,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           </div>
 
           {!loading && filteredStudents.length === 0 && (
-            <div className="py-24 text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-dashed border-slate-200 dark:border-slate-800">
-              <div className="inline-block p-4 rounded-full bg-slate-50 dark:bg-slate-800 mb-4">
+            <div className="py-24 text-center bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
+              <div className="inline-block p-4 rounded-full bg-brand-surface-2 mb-4">
                 <Search size={24} className="text-slate-300" />
               </div>
-              <p className="text-slate-400 dark:text-slate-600 font-black uppercase text-xs tracking-widest">Nenhum aluno encontrado para "{searchTerm}"</p>
+              <p className="text-brand-muted dark:text-brand-muted font-black uppercase text-xs tracking-widest">Nenhum aluno encontrado para "{searchTerm}"</p>
             </div>
           )}
         </div>
@@ -708,34 +708,34 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       {/* Delete Confirmation Modal with Fine Calculation */}
       {studentToDelete && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md p-8 shadow-2xl border border-red-100 dark:border-red-900/30">
+          <div className="bg-brand-surface rounded-3xl w-full max-w-md p-8 shadow-2xl border border-red-100 dark:border-red-900/30">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mb-6 mx-auto">
               <AlertCircle size={32} />
             </div>
 
-            <h3 className="text-2xl font-black text-center text-slate-800 dark:text-white mb-2 tracking-tight">
+            <h3 className="text-2xl font-black text-center text-brand-text mb-2 tracking-tight">
               Excluir Aluno?
             </h3>
-            <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-6">
+            <p className="text-center text-brand-muted text-sm mb-6">
               Você está prestes a excluir <strong>{studentToDelete.name}</strong>. Esta ação removerá o acesso, histórico de aulas e cancelará a assinatura no Asaas.
             </p>
 
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl mb-6 border border-slate-100 dark:border-slate-800">
+            <div className="bg-brand-surface-2/50 p-5 rounded-2xl mb-6 border border-brand-border">
               <label className="flex items-start gap-3 cursor-pointer group mb-4">
                 <div className="relative flex items-center justify-center w-5 h-5 mt-0.5">
                   <input
                     type="checkbox"
                     checked={applyDeletePenalty}
                     onChange={(e) => setApplyDeletePenalty(e.target.checked)}
-                    className="appearance-none w-5 h-5 border-2 border-slate-300 dark:border-slate-600 rounded checked:border-red-500 checked:bg-red-500 transition-colors"
+                    className="appearance-none w-5 h-5 border-2 border-brand-border dark:border-slate-600 rounded checked:border-red-500 checked:bg-red-500 transition-colors"
                   />
                   {applyDeletePenalty && <CheckCircle size={14} className="absolute text-white pointer-events-none" />}
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-red-600 transition-colors">
+                  <p className="text-sm font-bold text-brand-text dark:text-slate-200 group-hover:text-red-600 transition-colors">
                     Aplicar Multa Rescisória de Cancelamento
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  <p className="text-xs text-brand-muted mt-0.5">
                     Gera uma cobrança avulsa no Asaas e mantém o cliente ativo faturado.
                   </p>
                 </div>
@@ -743,7 +743,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
               {applyDeletePenalty && (
                 <div className="pl-8 animate-in slide-in-from-top-2">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-2 block">
+                  <label className="text-xs font-bold text-brand-muted dark:text-brand-muted uppercase tracking-widest mb-2 block">
                     Valor da Multa (R$) - Sugerido 30%
                   </label>
                   <input
@@ -751,7 +751,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                     step="0.01"
                     value={deletePenaltyValue || ''}
                     onChange={(e) => setDeletePenaltyValue(Number(e.target.value))}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-800 dark:text-white font-bold text-lg focus:ring-2 focus:ring-red-500 outline-none transition-all"
+                    className="w-full bg-brand-surface border border-brand-border rounded-xl px-4 py-3 text-brand-text font-bold text-lg focus:ring-2 focus:ring-red-500 outline-none transition-all"
                   />
                 </div>
               )}
@@ -761,7 +761,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               <button
                 onClick={() => setStudentToDelete(null)}
                 disabled={isDeleting}
-                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl transition-colors disabled:opacity-50"
+                className="flex-1 py-3 bg-brand-surface-2 hover:bg-slate-200 dark:bg-brand-surface-2 dark:hover:bg-slate-700 text-brand-muted font-bold rounded-xl transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>

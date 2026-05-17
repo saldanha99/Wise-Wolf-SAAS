@@ -453,7 +453,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             case 'SCHEDULED': return { label: '📅 Agendada', color: 'bg-blue-50 text-blue-600 border border-blue-200' };
             case 'NO_SHOW_STUDENT': return { label: '🔴 Aluno Faltou', color: 'bg-red-50 text-red-600 border border-red-200' };
             case 'NO_SHOW_TEACHER': return { label: '🟠 Prof. Faltou', color: 'bg-orange-50 text-orange-600 border border-orange-200' };
-            default: return { label: '⏳ Pendente', color: 'bg-slate-50 text-slate-500 border border-slate-200' };
+            default: return { label: '⏳ Pendente', color: 'bg-brand-surface-2 text-brand-muted border border-brand-border' };
         }
     };
 
@@ -495,7 +495,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* KPI BAR */}
             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                 {[
-                    { label: 'Total', value: kpis.total, icon: Users, color: 'text-slate-600', bg: 'bg-slate-50' },
+                    { label: 'Total', value: kpis.total, icon: Users, color: 'text-brand-muted', bg: 'bg-brand-surface-2' },
                     { label: 'Aula Feita', value: kpis.done, icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50' },
                     { label: 'Links Enviados', value: kpis.linksSent, icon: LinkIcon, color: 'text-indigo-600', bg: 'bg-indigo-50' },
                     { label: 'Convertidos', value: kpis.won, icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -505,7 +505,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                     <div key={i} className={`${kpi.bg} rounded-2xl p-4 border border-white/50`}>
                         <div className="flex items-center gap-2 mb-1">
                             <kpi.icon size={16} className={kpi.color} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{kpi.label}</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">{kpi.label}</span>
                         </div>
                         <p className={`text-2xl font-black ${kpi.color}`}>{kpi.value}</p>
                     </div>
@@ -520,7 +520,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         onClick={() => setFilter(f)}
                         className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === f
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                            : 'bg-brand-surface text-brand-muted border border-brand-border hover:bg-brand-surface-2'
                             }`}
                     >
                         {f === 'all' ? 'Todos' : f === 'OPEN' ? '⏳ Abertos' : f === 'WON' ? '✅ Ganhos' : '❌ Perdidos'}
@@ -530,9 +530,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
             {/* PIPELINE LIST */}
             {filtered.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-slate-100">
+                <div className="text-center py-16 bg-brand-surface rounded-2xl border border-brand-border">
                     <Zap className="mx-auto text-slate-300 mb-3" size={48} />
-                    <p className="text-slate-400 font-medium">Nenhuma experimental encontrada.</p>
+                    <p className="text-brand-muted font-medium">Nenhuma experimental encontrada.</p>
                 </div>
             ) : (
                 <div className="space-y-3">
@@ -544,16 +544,16 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         const interest = fb ? getInterestBadge(fb.interest_score) : null;
 
                         return (
-                            <div key={opp.id} className="bg-white rounded-2xl border border-slate-100 p-5 hover:shadow-lg transition-shadow">
+                            <div key={opp.id} className="bg-brand-surface rounded-2xl border border-brand-border p-5 hover:shadow-lg transition-shadow">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                            <h3 className="text-lg font-bold text-slate-900 truncate">{opp.student_name}</h3>
+                                            <h3 className="text-lg font-bold text-brand-text truncate">{opp.student_name}</h3>
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sBadge.color}`}>{sBadge.label}</span>
                                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tBadge.color}`}>{tBadge.label}</span>
                                         </div>
 
-                                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-muted">
                                             <span className="flex items-center gap-1">
                                                 <Users size={12} /> {getTeacherName(opp.winner_teacher_id)}
                                             </span>
@@ -583,7 +583,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">
                                                     🎓 {fb.recommended_level}
                                                 </span>
-                                                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                                                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-brand-surface-2 text-brand-muted">
                                                     📋 {fb.recommended_plan}
                                                 </span>
                                                 {interest && (
@@ -597,13 +597,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         {/* Enrollment Link Status */}
                                         {link && opp.conversion_status === 'OPEN' && (
                                             <div className="mt-3 flex items-center gap-2">
-                                                <div className="flex-1 bg-slate-900 rounded-xl px-3 py-2 flex items-center gap-2 overflow-hidden">
+                                                <div className="flex-1 bg-brand-surface rounded-xl px-3 py-2 flex items-center gap-2 overflow-hidden">
                                                     <LinkIcon size={12} className="text-emerald-400 shrink-0" />
                                                     <span className="text-[10px] font-mono text-emerald-400 truncate">{link.link_url}</span>
                                                 </div>
                                                 <button
                                                     onClick={() => { navigator.clipboard.writeText(link.link_url); }}
-                                                    className="px-3 py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all flex items-center gap-1"
+                                                    className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-bold text-brand-muted hover:bg-slate-200 transition-all flex items-center gap-1"
                                                 >
                                                     <Copy size={12} /> Copiar
                                                 </button>
@@ -685,10 +685,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* ============================================= */}
             {wizardOpp && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                         {/* Header */}
                         <div className="bg-gradient-to-r from-[#002366] to-blue-900 rounded-t-3xl p-6 text-white relative overflow-hidden">
-                            <button onClick={() => setWizardOpp(null)} className="absolute top-4 right-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                            <button onClick={() => setWizardOpp(null)} className="absolute top-4 right-4 p-2 rounded-xl bg-brand-surface/10 hover:bg-brand-surface/20 transition-colors">
                                 <X size={18} />
                             </button>
                             <div className="relative z-10">
@@ -701,7 +701,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                 </div>
 
                                 {/* Origin indicator */}
-                                <div className="mt-3 bg-white/10 backdrop-blur-md rounded-xl px-4 py-2 inline-flex items-center gap-2">
+                                <div className="mt-3 bg-brand-surface/10 backdrop-blur-md rounded-xl px-4 py-2 inline-flex items-center gap-2">
                                     <Zap size={14} className="text-yellow-300" />
                                     <span className="text-xs font-medium text-blue-100">
                                         Origem: Aula Experimental com {getTeacherName(wizardOpp.winner_teacher_id)} em {new Date(wizardOpp.created_at).toLocaleDateString('pt-BR')}
@@ -711,10 +711,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                 {/* Feedback pre-fill indicator */}
                                 {feedbacks[wizardOpp.id] && (
                                     <div className="mt-2 flex gap-2 flex-wrap">
-                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-blue-200">
+                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-brand-surface/10 text-blue-200">
                                             🎓 Nível: {feedbacks[wizardOpp.id].recommended_level}
                                         </span>
-                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-white/10 text-blue-200">
+                                        <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-brand-surface/10 text-blue-200">
                                             📋 Plano: {feedbacks[wizardOpp.id].recommended_plan}
                                         </span>
                                     </div>
@@ -726,7 +726,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         <div className="p-6 space-y-6">
                             {/* SECTION 1: PLAN SELECTION */}
                             <div>
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                                <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2 mb-4">
                                     <Wallet size={14} /> Selecione o Plano e Frequência
                                 </h3>
 
@@ -743,7 +743,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 onClick={() => setDuration(plan.val)}
                                                 className={`relative p-3 rounded-2xl border-2 text-left transition-all hover:scale-[1.02] ${duration === plan.val
                                                     ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-600 ring-offset-2'
-                                                    : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-200'
+                                                    : 'border-brand-border bg-brand-surface-2 text-brand-muted hover:border-brand-border'
                                                     }`}
                                             >
                                                 {duration === plan.val && (
@@ -751,7 +751,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                         <Check size={10} strokeWidth={4} />
                                                     </div>
                                                 )}
-                                                <span className={`block text-sm font-black ${duration === plan.val ? 'text-blue-700' : 'text-slate-600'}`}>
+                                                <span className={`block text-sm font-black ${duration === plan.val ? 'text-blue-700' : 'text-brand-muted'}`}>
                                                     {plan.label}
                                                 </span>
                                                 <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">{plan.sub}</span>
@@ -762,21 +762,21 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                     {/* Frequency & Due Day */}
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Frequência</label>
+                                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Frequência</label>
                                             <select
                                                 value={frequency}
                                                 onChange={(e) => setFrequency(Number(e.target.value))}
-                                                className="w-full px-3 py-2.5 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-700 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                             >
                                                 {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Vencimento</label>
+                                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Vencimento</label>
                                             <select
                                                 value={dueDay}
                                                 onChange={(e) => setDueDay(Number(e.target.value))}
-                                                className="w-full px-3 py-2.5 bg-slate-50 border-none rounded-xl font-bold text-sm text-slate-700 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                             >
                                                 {[5, 10, 15, 20, 25, 30].map(d => <option key={d} value={d}>Dia {d}</option>)}
                                             </select>
@@ -792,7 +792,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             R$ {monthlyFee.toFixed(2)}/mês
                                         </span>
                                     </div>
-                                    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400 cursor-pointer hover:text-blue-500 transition-colors">
+                                    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-brand-muted cursor-pointer hover:text-blue-500 transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={isManualPrice}
@@ -805,7 +805,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
                                 {isManualPrice && (
                                     <div className="mt-2 relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">R$</span>
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted font-bold text-sm">R$</span>
                                         <input
                                             type="number"
                                             value={monthlyFee}
@@ -818,18 +818,18 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             </div>
 
                             {/* SECTION: CLASS SCHEDULE */}
-                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                            <div className="bg-brand-surface-2 rounded-2xl p-4 border border-brand-border">
+                                <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2 mb-3">
                                     <Calendar size={14} /> Dias e Horários das Aulas ({frequency}x/semana)
                                 </h3>
                                 <div className="space-y-2">
                                     {classSchedule.map((slot, idx) => (
                                         <div key={idx} className="flex items-center gap-2">
-                                            <span className="text-[10px] font-bold text-slate-400 w-5 text-center">{idx + 1}.</span>
+                                            <span className="text-[10px] font-bold text-brand-muted w-5 text-center">{idx + 1}.</span>
                                             <select
                                                 value={slot.weekday}
                                                 onChange={(e) => updateScheduleSlot(idx, 'weekday', e.target.value)}
-                                                className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 appearance-none outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                                                className="flex-1 px-3 py-2.5 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text appearance-none outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                                             >
                                                 {WEEKDAY_OPTIONS.map(d => (
                                                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -847,13 +847,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                             </div>
 
                             {/* SECTION 2: PROFESSOR */}
-                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                            <div className="bg-brand-surface-2 rounded-2xl p-4 border border-brand-border">
+                                <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2 mb-3">
                                     <Award size={14} /> Professor Responsável
                                 </h3>
 
                                 <div className="relative z-50">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={16} />
                                     <input
                                         type="text"
                                         placeholder="Buscar Professor..."
@@ -864,14 +864,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             setShowProfessorList(true);
                                         }}
                                         onFocus={() => { setProfessorSearch(''); setShowProfessorList(true); }}
-                                        className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
+                                        className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-medium text-brand-text outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all shadow-sm cursor-pointer"
                                     />
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
 
                                     {showProfessorList && (
                                         <>
                                             <div className="fixed inset-0 z-40" onClick={() => setShowProfessorList(false)} />
-                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-brand-surface border border-brand-border rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
                                                 {teachers.filter(p => !professorSearch || p.full_name.toLowerCase().includes(professorSearch.toLowerCase())).length > 0 ? (
                                                     teachers
                                                         .filter(p => !professorSearch || p.full_name.toLowerCase().includes(professorSearch.toLowerCase()))
@@ -883,14 +883,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                                     setShowProfessorList(false);
                                                                     setProfessorSearch('');
                                                                 }}
-                                                                className="w-full text-left px-4 py-3 hover:bg-slate-50 text-slate-700 text-sm font-medium transition-colors flex items-center justify-between"
+                                                                className="w-full text-left px-4 py-3 hover:bg-brand-surface-2 text-brand-text text-sm font-medium transition-colors flex items-center justify-between"
                                                             >
                                                                 {p.full_name}
                                                                 {selectedProfessor === p.id && <Check size={14} className="text-purple-500" />}
                                                             </button>
                                                         ))
                                                 ) : (
-                                                    <div className="p-4 text-center text-slate-400 text-xs">Nenhum professor encontrado.</div>
+                                                    <div className="p-4 text-center text-brand-muted text-xs">Nenhum professor encontrado.</div>
                                                 )}
                                             </div>
                                         </>
@@ -965,10 +965,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                     </button>
                                 ) : (
                                     <div className="space-y-3">
-                                        <div className="bg-slate-900 rounded-2xl p-4 flex items-center gap-4 border border-slate-800 shadow-2xl">
+                                        <div className="bg-brand-surface rounded-2xl p-4 flex items-center gap-4 border border-brand-border shadow-2xl">
                                             <LinkIcon size={20} className="text-emerald-400 shrink-0" />
                                             <div className="flex-1 overflow-hidden">
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                                <p className="text-[10px] font-bold text-brand-muted uppercase tracking-wider mb-1">
                                                     Link Gerado com Sucesso ✨
                                                 </p>
                                                 <input
@@ -981,7 +981,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                 onClick={copyToClipboard}
                                                 className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${copied
                                                     ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                                    : 'bg-brand-surface-2 text-slate-300 hover:bg-slate-700'
                                                     }`}
                                             >
                                                 {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -989,13 +989,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             </button>
                                         </div>
 
-                                        <p className="text-center text-[10px] text-slate-400 font-medium">
+                                        <p className="text-center text-[10px] text-brand-muted font-medium">
                                             Envie esse link para o aluno via WhatsApp. Ao completar a matrícula, a experimental será marcada como convertida.
                                         </p>
 
                                         <button
                                             onClick={() => setWizardOpp(null)}
-                                            className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                                            className="w-full py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold hover:bg-slate-200 transition-all"
                                         >
                                             Fechar
                                         </button>
@@ -1012,19 +1012,19 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             {/* ============================================= */}
             {lostOpp && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-md w-full p-6">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">
                                 <XCircle size={24} className="text-red-500" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-slate-900">Marcar como Perdido</h3>
-                                <p className="text-xs text-slate-500">{lostOpp.student_name}</p>
+                                <h3 className="text-lg font-bold text-brand-text">Marcar como Perdido</h3>
+                                <p className="text-xs text-brand-muted">{lostOpp.student_name}</p>
                             </div>
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Motivo</label>
+                            <label className="text-xs font-bold text-brand-muted uppercase tracking-wider block">Motivo</label>
                             <div className="grid grid-cols-2 gap-2">
                                 {['Preço', 'Horário', 'Desinteresse', 'Concorrência', 'Outro'].map(reason => (
                                     <button
@@ -1032,7 +1032,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         onClick={() => setLostReason(reason)}
                                         className={`py-2.5 px-3 rounded-xl text-sm font-semibold transition-all ${lostReason === reason
                                             ? 'bg-red-500 text-white shadow-lg shadow-red-200'
-                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            : 'bg-brand-surface-2 text-brand-muted hover:bg-slate-200'
                                             }`}
                                     >
                                         {reason}
@@ -1045,14 +1045,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                     value={lostReason}
                                     onChange={e => setLostReason(e.target.value)}
                                     placeholder="Descreva o motivo..."
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                                    className="w-full px-4 py-3 rounded-xl border border-brand-border text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                 />
                             )}
                         </div>
 
                         <div className="flex gap-2 mt-6">
                             <button onClick={() => setLostOpp(null)}
-                                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all">
+                                className="flex-1 py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold hover:bg-slate-200 transition-all">
                                 Cancelar
                             </button>
                             <button

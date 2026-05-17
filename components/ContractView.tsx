@@ -44,7 +44,7 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-64 text-slate-500 gap-2">
+            <div className="flex justify-center items-center h-64 text-brand-muted gap-2">
                 <RefreshCw className="animate-spin" /> Carregando Contrato...
             </div>
         );
@@ -59,7 +59,7 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <FileText size={20} className="text-tenant-primary" />
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-widest">Seu Contrato</h3>
+                        <h3 className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</h3>
                     </div>
                     <a
                         href={profile.contract_url}
@@ -72,7 +72,7 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
                 </div>
                 <iframe
                     src={profile.contract_url}
-                    className="w-full h-[70vh] rounded-2xl border border-slate-200 dark:border-slate-700"
+                    className="w-full h-[70vh] rounded-2xl border border-brand-border"
                     title="Contrato do Aluno"
                 />
             </div>
@@ -114,7 +114,7 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <FileText size={20} className="text-tenant-primary" />
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-widest">Seu Contrato</h3>
+                        <h3 className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</h3>
                     </div>
                     <button
                         onClick={() => handlePrint()}
@@ -125,7 +125,7 @@ const ContractView: React.FC<ContractViewProps> = ({ userId, classFrequency = 2,
                 </div>
             )}
             <div className="flex flex-col items-center overflow-x-hidden pt-4">
-                <div ref={contractPrintRef} className="bg-white shadow-xl transition-all origin-top contract-view-zoom">
+                <div ref={contractPrintRef} className="bg-brand-surface shadow-xl transition-all origin-top contract-view-zoom">
                     <style>{`
                         @media (max-width: 639px) { .contract-view-zoom { zoom: 0.43; } }
                         @media (min-width: 640px) and (max-width: 1023px) { .contract-view-zoom { zoom: 0.55; } }

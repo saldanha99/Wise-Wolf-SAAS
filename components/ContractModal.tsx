@@ -80,13 +80,13 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-            <div className="bg-white rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] lg:h-[90vh] animate-in slide-in-from-bottom-5 duration-500 relative">
+            <div className="bg-brand-surface rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] lg:h-[90vh] animate-in slide-in-from-bottom-5 duration-500 relative">
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0 rounded-t-3xl z-20">
-                    <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                <div className="p-6 border-b border-brand-border bg-brand-surface-2 flex justify-between items-center shrink-0 rounded-t-3xl z-20">
+                    <h3 className="font-black text-brand-text text-lg flex items-center gap-2">
                         <ShieldCheck className="text-emerald-600" /> Assinatura Digital
                     </h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={onClose} className="text-brand-muted hover:text-brand-muted">
                         <ArrowRight size={20} className="rotate-180" /> Voltar
                     </button>
                 </div>
@@ -94,12 +94,12 @@ const ContractModal: React.FC<ContractModalProps> = ({
                 <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
 
                     {/* Left: Contract Viewer (Takes most width on lg) */}
-                    <div className="flex-1 bg-slate-100/50 p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6 relative w-full flex flex-col items-center">
+                    <div className="flex-1 bg-brand-surface-2/50 p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6 relative w-full flex flex-col items-center">
                         {/* 
                             For mobile/tablet layout footprint reduction we use zoom. 
                             CSS style object is used because Tailwind standard arbitrarily strips zoom depending on the compiler setup
                         */}
-                        <div className="bg-white shadow-xl transition-all origin-top contract-zoom">
+                        <div className="bg-brand-surface shadow-xl transition-all origin-top contract-zoom">
                             <style>{`
                                 @media (max-width: 639px) { .contract-zoom { zoom: 0.43; } }
                                 @media (min-width: 640px) and (max-width: 1023px) { .contract-zoom { zoom: 0.55; } }
@@ -131,7 +131,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                     </div>
 
                     {/* Right: Signature Actions */}
-                    <div ref={signatureRef} className="w-full bg-white border-t border-slate-100 p-6 flex flex-col gap-6 shrink-0 z-10 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-visible">
+                    <div ref={signatureRef} className="w-full bg-brand-surface border-t border-brand-border p-6 flex flex-col gap-6 shrink-0 z-10 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-visible">
 
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-xs leading-relaxed max-w-3xl mx-auto w-full">
                             <p className="font-bold flex items-center gap-1 mb-1"><Lock size={12} /> Validade Jurídica</p>
@@ -140,7 +140,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
                         <div className="space-y-4 max-w-3xl mx-auto w-full">
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                                <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">
                                     Digite seu nome completo (exatamente como no cadastro)
                                 </label>
                                 <input
@@ -148,9 +148,9 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     value={typedName}
                                     onChange={(e) => setTypedName(e.target.value)}
                                     placeholder={contractProps.studentName}
-                                    className={`w-full p-4 border rounded-xl font-bold bg-slate-50 outline-none transition-all text-slate-800 placeholder:text-slate-400 ${isValidSignature
+                                    className={`w-full p-4 border rounded-xl font-bold bg-brand-surface-2 outline-none transition-all text-brand-text placeholder:text-brand-muted ${isValidSignature
                                         ? 'border-emerald-500 ring-2 ring-emerald-100'
-                                        : 'border-slate-200 focus:border-blue-500'
+                                        : 'border-brand-border focus:border-blue-500'
                                         }`}
                                 />
                                 {typedName && !isValidSignature && (
@@ -162,12 +162,12 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
                             {/* Live Preview */}
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                                <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">
                                     Preview da Assinatura
                                 </label>
-                                <div className="h-24 border border-slate-200 rounded-xl flex items-center justify-center bg-white relative overflow-hidden">
+                                <div className="h-24 border border-brand-border rounded-xl flex items-center justify-center bg-brand-surface relative overflow-hidden">
                                     {typedName ? (
-                                        <span className="text-3xl text-slate-800 transform -rotate-2" style={{ fontFamily: '"Dancing Script", cursive' }}>
+                                        <span className="text-3xl text-brand-text transform -rotate-2" style={{ fontFamily: '"Dancing Script", cursive' }}>
                                             {typedName}
                                         </span>
                                     ) : (
@@ -180,7 +180,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                             </div>
                         </div>
 
-                        <div className="mt-auto space-y-4 pt-4 border-t border-slate-100">
+                        <div className="mt-auto space-y-4 pt-4 border-t border-brand-border">
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                                 <input
                                     type="checkbox"
@@ -188,7 +188,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     checked={accepted}
                                     onChange={(e) => setAccepted(e.target.checked)}
                                 />
-                                <span className="text-xs text-slate-600 font-medium leading-relaxed">
+                                <span className="text-xs text-brand-muted font-medium leading-relaxed">
                                     Li e concordo com os termos do contrato e com a assinatura digital.
                                 </span>
                             </label>

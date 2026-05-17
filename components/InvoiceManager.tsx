@@ -97,7 +97,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             case 'EM ANÁLISE':
                 return 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 border-purple-200';
             default:
-                return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-slate-200';
+                return 'bg-brand-surface-2 text-brand-text dark:bg-brand-surface-2 dark:text-brand-muted border-brand-border';
         }
     };
 
@@ -112,27 +112,27 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
         <div className="space-y-8 animate-in fade-in duration-700 pb-20 relative">
             {/* Rejection Modal */}
             {isRejecting && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] w-full max-w-md border border-slate-200 dark:border-slate-800 shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm">
+                    <div className="bg-brand-surface p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl animate-in zoom-in-95 duration-200">
                         <div className="flex items-center gap-3 mb-6">
                             <div className="p-2 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-xl">
                                 <XCircle size={20} />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Rejeitar Nota Fiscal</h3>
+                            <h3 className="text-xl font-black text-brand-text uppercase tracking-tight">Rejeitar Nota Fiscal</h3>
                         </div>
 
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mb-2">Motivo da Rejeição</p>
+                        <p className="text-xs text-brand-muted font-bold uppercase tracking-widest mb-2">Motivo da Rejeição</p>
                         <textarea
                             value={rejectionNote}
                             onChange={(e) => setRejectionNote(e.target.value)}
-                            className="w-full h-32 p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-red-500 mb-6"
+                            className="w-full h-32 p-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-red-500 mb-6"
                             placeholder="Descreva o motivo (ex: Valor divergente, PDF ilegível)..."
                         />
 
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setIsRejecting(null)}
-                                className="flex-1 py-3 text-slate-500 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                                className="flex-1 py-3 text-brand-muted font-bold text-xs uppercase tracking-widest hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-xl transition-colors"
                             >
                                 Cancelar
                             </button>
@@ -154,22 +154,22 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                         <div className="p-3 bg-tenant-primary/10 rounded-2xl text-tenant-primary">
                             <FileText size={24} />
                         </div>
-                        <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Gestão de NFs</h2>
+                        <h2 className="text-3xl font-black text-brand-text tracking-tight">Gestão de NFs</h2>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1 ml-1">Central de recebimento e conferência de Notas Fiscais dos professores.</p>
+                    <p className="text-brand-muted mt-1 ml-1">Central de recebimento e conferência de Notas Fiscais dos professores.</p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-white dark:bg-slate-900 p-2 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-4 bg-brand-surface p-2 rounded-2xl border border-brand-border shadow-sm">
                     <input
                         type="month"
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="bg-slate-50 dark:bg-slate-800 border-none rounded-xl px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-tenant-primary"
+                        className="bg-brand-surface-2 border-none rounded-xl px-4 py-2 text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-tenant-primary"
                     />
                     <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700" />
                     <div className="flex items-center gap-2 px-3">
-                        <Users size={16} className="text-slate-400" />
-                        <span className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-wider">{filteredInvoices.length} Professores</span>
+                        <Users size={16} className="text-brand-muted" />
+                        <span className="text-xs font-black text-brand-muted dark:text-brand-muted uppercase tracking-wider">{filteredInvoices.length} Professores</span>
                     </div>
                 </div>
             </header>
@@ -178,12 +178,12 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                 {/* Filters */}
                 <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1 relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-muted" size={20} />
                         <input
                             placeholder="Buscar professor..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 pl-12 pr-4 py-4 rounded-2xl border border-slate-100 dark:border-slate-800 outline-none focus:ring-2 focus:ring-tenant-primary font-bold text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 shadow-sm"
+                            className="w-full bg-brand-surface pl-12 pr-4 py-4 rounded-2xl border border-brand-border outline-none focus:ring-2 focus:ring-tenant-primary font-bold text-sm text-brand-text dark:text-slate-200 placeholder:text-brand-muted shadow-sm"
                         />
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
@@ -194,7 +194,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                 onClick={() => setFilterStatus(status as any)}
                                 className={`px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap border ${filterStatus === status
                                     ? 'bg-tenant-primary text-white border-tenant-primary shadow-lg shadow-tenant-primary/20'
-                                    : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                    : 'bg-brand-surface text-brand-muted border-brand-border hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'
                                     }`}
                             >
                                 {status === 'ALL' ? 'Todos' : status.replace('_', ' ')}
@@ -204,41 +204,41 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                 </div>
 
                 {/* Invoices List */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden min-h-[400px]">
+                <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-xl overflow-hidden min-h-[400px]">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
-                                <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky left-0 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-sm z-10">Professor</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Aulas</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Valor Total</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Nota Fiscal</th>
-                                    <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ações</th>
+                                <tr className="bg-brand-surface-2/80 dark:bg-brand-surface-2/50 border-b border-brand-border">
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest sticky left-0 bg-brand-surface-2/80 dark:bg-brand-surface-2/50 backdrop-blur-sm z-10">Professor</th>
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest text-center">Aulas</th>
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest text-right">Valor Total</th>
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest text-center">Status</th>
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest text-center">Nota Fiscal</th>
+                                    <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest text-center">Ações</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                                 {loading ? (
-                                    <tr><td colSpan={6} className="p-10 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">Carregando...</td></tr>
+                                    <tr><td colSpan={6} className="p-10 text-center text-brand-muted text-xs font-bold uppercase tracking-widest">Carregando...</td></tr>
                                 ) : filteredInvoices.length > 0 ? (
                                     filteredInvoices.map((inv) => (
-                                        <tr key={inv.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors group">
-                                            <td className="px-8 py-6 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50/50 dark:group-hover:bg-slate-800/30 transition-colors z-10">
+                                        <tr key={inv.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/30 transition-colors group">
+                                            <td className="px-8 py-6 sticky left-0 bg-brand-surface group-hover:bg-brand-surface-2/50 dark:group-hover:bg-brand-surface-2/30 transition-colors z-10">
                                                 <div className="flex items-center gap-4">
                                                     <img src={inv.teacher?.avatar_url || `https://ui-avatars.com/api/?name=${inv.teacher?.full_name}&background=random`} className="w-10 h-10 rounded-xl" alt="" />
                                                     <div>
-                                                        <p className="font-black text-slate-800 dark:text-white text-sm">{inv.teacher?.full_name}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400">{inv.teacher?.email}</p>
+                                                        <p className="font-black text-brand-text text-sm">{inv.teacher?.full_name}</p>
+                                                        <p className="text-[10px] font-bold text-brand-muted">{inv.teacher?.email}</p>
                                                     </div>
                                                 </div>
                                             </td>
                                             <td className="px-8 py-6 text-center">
-                                                <span className="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 font-bold text-xs">
+                                                <span className="inline-block px-3 py-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-lg text-brand-muted dark:text-brand-muted font-bold text-xs">
                                                     {inv.total_lessons}
                                                 </span>
                                             </td>
                                             <td className="px-8 py-6 text-right">
-                                                <p className="font-black text-slate-800 dark:text-white text-base tracking-tight">R$ {Number(inv.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                <p className="font-black text-brand-text text-base tracking-tight">R$ {Number(inv.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                             </td>
                                             <td className="px-8 py-6 text-center">
                                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusStyles(inv.status)}`}>
@@ -256,7 +256,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                                         <FileText size={14} /> PDF
                                                     </a>
                                                 ) : (
-                                                    <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase">Pendente</span>
+                                                    <span className="text-[10px] font-bold text-slate-300 dark:text-brand-muted uppercase">Pendente</span>
                                                 )}
                                             </td>
                                             <td className="px-8 py-6 text-center">
@@ -290,7 +290,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                 ) : (
                                     <tr>
                                         <td colSpan={6} className="py-20 text-center">
-                                            <div className="flex flex-col items-center gap-4 text-slate-300 dark:text-slate-600">
+                                            <div className="flex flex-col items-center gap-4 text-slate-300 dark:text-brand-muted">
                                                 <Filter size={48} className="opacity-20" />
                                                 <p className="text-sm font-black uppercase tracking-widest">Nenhum registro encontrado</p>
                                             </div>

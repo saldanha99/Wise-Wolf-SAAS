@@ -129,20 +129,20 @@ const DirectorConnectionSmart: React.FC = () => {
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-slate-800">
+        <div className="bg-brand-surface p-8 rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-brand-border">
             <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-2xl">
                     <Building2 size={24} />
                 </div>
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Conexão da Escola</h2>
-                    <p className="text-sm text-slate-500">WhatsApp Institucional (Diretor/Secretaria)</p>
+                    <h2 className="text-xl font-bold text-brand-text">Conexão da Escola</h2>
+                    <p className="text-sm text-brand-muted">WhatsApp Institucional (Diretor/Secretaria)</p>
                 </div>
             </div>
 
             <div className="space-y-4">
                 <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                    <label className="block text-xs font-bold text-brand-muted uppercase mb-2">
                         Nome do Admin/Escola
                     </label>
                     <div className="relative">
@@ -151,11 +151,11 @@ const DirectorConnectionSmart: React.FC = () => {
                             value={nameInput}
                             onChange={(e) => setNameInput(e.target.value)}
                             placeholder="Ex: Wise Wolf"
-                            className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 focus:border-purple-500 outline-none transition-all pl-10"
+                            className="w-full px-4 py-3 rounded-xl bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border focus:border-purple-500 outline-none transition-all pl-10"
                         />
-                        <Search className="absolute left-3 top-3.5 text-slate-400" size={18} />
+                        <Search className="absolute left-3 top-3.5 text-brand-muted" size={18} />
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-2 ml-1">
+                    <p className="text-[10px] text-brand-muted mt-2 ml-1">
                         * O ID será gerado como: <strong>escola-nome-xxxx</strong>
                     </p>
                 </div>
@@ -171,9 +171,9 @@ const DirectorConnectionSmart: React.FC = () => {
                 )}
 
                 {qrCode && (
-                    <div className="flex flex-col items-center p-4 bg-white border-2 border-slate-900 rounded-2xl animate-in zoom-in duration-300">
+                    <div className="flex flex-col items-center p-4 bg-brand-surface border-2 border-slate-900 rounded-2xl animate-in zoom-in duration-300">
                         <img src={qrCode} alt="QR Code" className="w-48 h-48 mb-2" />
-                        <p className="text-xs font-bold text-slate-900 uppercase animate-pulse">
+                        <p className="text-xs font-bold text-brand-text uppercase animate-pulse">
                             Escaneie com o WhatsApp da Escola
                         </p>
                     </div>
@@ -182,7 +182,7 @@ const DirectorConnectionSmart: React.FC = () => {
                 <button
                     onClick={handleCreate}
                     disabled={loading || status === 'SUCCESS'}
-                    className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg transform transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2 ${loading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200'
+                    className={`w-full py-4 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg transform transition-all hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-2 ${loading ? 'bg-brand-surface-2 text-brand-muted' : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200'
                         }`}
                 >
                     {loading ? (

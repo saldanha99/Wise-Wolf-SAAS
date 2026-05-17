@@ -61,7 +61,7 @@ export function TeacherContractDocument({
             {/* Folha A4 do Contrato */}
             <div
                 ref={componentRef}
-                className="w-[210mm] min-h-[297mm] bg-white p-[25mm] shadow-2xl text-slate-900 text-[11px] leading-relaxed"
+                className="w-[210mm] min-h-[297mm] bg-brand-surface p-[25mm] shadow-2xl text-brand-text text-[11px] leading-relaxed"
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
                 <style>{`
@@ -77,7 +77,7 @@ export function TeacherContractDocument({
                     </div>
                 </div>
 
-                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-slate-100 py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
+                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-brand-border py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
 
                 {/* Identificação das Partes */}
                 <div className="mb-4 space-y-2 text-justify">
@@ -224,7 +224,7 @@ export function TeacherContractDocument({
                             <div className="mb-2 text-center h-12 flex items-end justify-center relative w-full">
                                 {acceptedAt ? (
                                     <>
-                                        <span className="text-2xl text-slate-800 transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
+                                        <span className="text-2xl text-brand-text transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
                                             {teacherName}
                                         </span>
                                         <div className="absolute -right-2 top-0 border border-emerald-200 bg-emerald-50/80 p-1 rounded text-[7px] text-emerald-800 leading-tight w-20 opacity-80 rotate-3">
@@ -238,7 +238,7 @@ export function TeacherContractDocument({
                             </div>
                             <div className="border-t border-black pt-1 w-full text-center">
                                 <p className="font-bold uppercase text-[10px]">{teacherName || 'Professor'}</p>
-                                <p className="text-[8px] text-slate-500 uppercase">CONTRATADO</p>
+                                <p className="text-[8px] text-brand-muted uppercase">CONTRATADO</p>
                             </div>
                         </div>
                     </div>
@@ -246,13 +246,13 @@ export function TeacherContractDocument({
 
                 {/* Selo de Autenticação Digital */}
                 {acceptedAt && (
-                    <div className="mt-8 p-4 bg-slate-50 border border-slate-200 rounded-xl relative overflow-hidden flex items-center gap-4">
+                    <div className="mt-8 p-4 bg-brand-surface-2 border border-brand-border rounded-xl relative overflow-hidden flex items-center gap-4">
                         <div className="p-2 bg-emerald-100 text-emerald-600 rounded-full">
                             <ShieldCheck size={32} />
                         </div>
                         <div className="flex-1">
                             <h4 className="text-sm font-black text-[#002366] uppercase tracking-tighter mb-1">Contrato Autenticado</h4>
-                            <div className="space-y-0.5 text-[9px] text-slate-500 font-mono">
+                            <div className="space-y-0.5 text-[9px] text-brand-muted font-mono">
                                 <p><strong>Data:</strong> {new Date(acceptedAt).toLocaleString('pt-BR')}</p>
                                 <p><strong>IP:</strong> {userIp || 'Não registrado'}</p>
                                 <p><strong>ID:</strong> {subscriptionId || 'PENDING'}</p>

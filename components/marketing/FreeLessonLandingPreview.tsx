@@ -60,7 +60,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
     };
 
     return (
-        <div className="w-full h-full relative overflow-y-auto bg-white font-sans text-slate-900 scrollbar-hide">
+        <div className="w-full h-full relative overflow-y-auto bg-brand-surface font-sans text-brand-text scrollbar-hide">
 
             {/* HERO SECTION */}
             <section className="relative min-h-[600px] lg:min-h-[700px] bg-gradient-to-br from-[#002366] via-[#003399] to-[#001a4d] overflow-hidden flex items-center">
@@ -82,7 +82,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                         transition={{ duration: 0.8 }}
                         className="text-white space-y-6"
                     >
-                        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
+                        <div className="inline-flex items-center gap-2 bg-brand-surface/10 backdrop-blur-sm px-4 py-1.5 rounded-full border border-white/20">
                             <span className="w-2 h-2 rounded-full bg-[#D32F2F] animate-pulse" />
                             <span className="text-xs font-bold tracking-wider uppercase">Vagas Limitadas para este mês</span>
                         </div>
@@ -121,7 +121,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.8, delay: 0.2 }}
-                        className="bg-white rounded-3xl p-8 shadow-2xl relative overflow-hidden"
+                        className="bg-brand-surface rounded-3xl p-8 shadow-2xl relative overflow-hidden"
                     >
                         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#002366] to-[#D32F2F]" />
 
@@ -249,7 +249,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
             </section>
 
             {/* SOCIAL PROOF */}
-            <section className="py-12 bg-white border-b border-gray-100">
+            <section className="py-12 bg-brand-surface border-b border-gray-100">
                 <div className="container mx-auto px-6">
                     <p className="text-center text-gray-400 font-bold text-sm uppercase tracking-widest mb-8">
                         Já ajudamos mais de 7.000 alunos a conquistarem a fluência
@@ -273,7 +273,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-                        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70 scale-95">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-sm border border-gray-100 opacity-70 scale-95">
                             <h3 className="text-xl font-bold text-gray-500 mb-6 flex items-center gap-2">
                                 <XCircle className="text-red-300" /> Escola Tradicional
                             </h3>
@@ -287,7 +287,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                             </ul>
                         </div>
 
-                        <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-[#002366] relative scale-100 transform md:-translate-y-4">
+                        <div className="bg-brand-surface p-8 rounded-3xl shadow-xl border-2 border-[#002366] relative scale-100 transform md:-translate-y-4">
                             <div className="absolute top-0 right-0 bg-[#002366] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-lg">
                                 RECOMENDADO
                             </div>
@@ -308,7 +308,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
             </section>
 
             {/* STEPS METHODOLOGY */}
-            <section className="py-24 bg-white">
+            <section className="py-24 bg-brand-surface">
                 <div className="container mx-auto px-6">
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
                         <div className="order-2 lg:order-1">
@@ -351,7 +351,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
 
                     <div className="grid md:grid-cols-3 gap-8">
                         {[1, 2, 3].map((i) => (
-                            <div key={i} className="bg-white/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl text-left hover:bg-white/10 transition-colors">
+                            <div key={i} className="bg-brand-surface/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl text-left hover:bg-brand-surface/10 transition-colors">
                                 <div className="flex gap-1 mb-4">
                                     {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} className="fill-yellow-400 text-yellow-400" />)}
                                 </div>
@@ -381,7 +381,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
                             { q: 'Preciso ter conhecimento prévio?', a: 'Não, atendemos desde o nível básico até o avançado.' },
                             { q: 'Como são as aulas?', a: 'As aulas são online e ao vivo, com foco total em conversação.' }
                         ].map((faq, i) => (
-                            <details key={i} className="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                            <details key={i} className="group bg-brand-surface rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                                 <summary className="flex justify-between items-center p-6 cursor-pointer font-bold text-gray-800">
                                     {faq.q}
                                     <span className="transition-transform group-open:rotate-180 text-blue-500">
@@ -398,7 +398,7 @@ const FreeLessonLandingPreview: React.FC<FreeLessonLandingPreviewProps> = ({
             </section>
 
             {/* FOOTER */}
-            <footer className="bg-white border-t border-gray-100 py-12">
+            <footer className="bg-brand-surface border-t border-gray-100 py-12">
                 <div className="container mx-auto px-6 text-center">
                     <p className="text-gray-400 text-sm">© 2026 Wise Wolf. Todos os direitos reservados.</p>
                 </div>

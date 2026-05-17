@@ -366,7 +366,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
     // RENDER: REDIRECTING TO LOGIN
     if (redirecting) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-brand-surface text-white">
                 <div className="animate-spin mb-4">
                     <Lock size={48} className="text-indigo-500" />
                 </div>
@@ -378,7 +378,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
     // RENDER: LOADING
     if (isLoading) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-brand-surface text-white">
                 <div className="animate-spin mb-4">
                     <Lock size={48} className="text-indigo-500" />
                 </div>
@@ -390,14 +390,14 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
     // RENDER: ERROR
     if (error) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+            <div className="min-h-screen flex flex-col items-center justify-center bg-brand-surface-2 p-6 text-center">
                 <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6">
                     <AlertCircle size={40} className="text-red-500" />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-800 mb-2">{error}</h1>
+                <h1 className="text-2xl font-bold text-brand-text mb-2">{error}</h1>
                 <button
                     onClick={() => window.location.href = '/'}
-                    className="mt-6 px-8 py-3 bg-slate-200 text-slate-700 rounded-lg font-bold hover:bg-slate-300 transition-colors"
+                    className="mt-6 px-8 py-3 bg-slate-200 text-brand-text rounded-lg font-bold hover:bg-slate-300 transition-colors"
                 >
                     Voltar
                 </button>
@@ -422,8 +422,8 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                 <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-emerald-200">
                     <Check size={48} className="text-emerald-600" />
                 </div>
-                <h1 className="text-3xl font-black text-slate-900 mb-2">🎉 Aula Confirmada!</h1>
-                <p className="text-slate-600 mb-8 max-w-md mx-auto leading-relaxed">
+                <h1 className="text-3xl font-black text-brand-text mb-2">🎉 Aula Confirmada!</h1>
+                <p className="text-brand-muted mb-8 max-w-md mx-auto leading-relaxed">
                     O agendamento foi realizado para <strong>{formattedDateStr} às {timeStr}</strong>.
                 </p>
 
@@ -441,7 +441,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                     )}
                     <button
                         onClick={() => window.location.href = '/'}
-                        className="w-full py-4 bg-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-300 transition-colors"
+                        className="w-full py-4 bg-slate-200 text-brand-text rounded-xl font-bold hover:bg-slate-300 transition-colors"
                     >
                         Voltar ao Dashboard
                     </button>
@@ -452,8 +452,8 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
 
     // RENDER: CLAIM VIEW (Confirm Page)
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-            <div className="bg-slate-900 text-white pt-12 pb-24 px-6 rounded-b-[3rem] shadow-2xl relative overflow-hidden">
+        <div className="min-h-screen bg-brand-surface-2 flex flex-col font-sans">
+            <div className="bg-brand-surface text-white pt-12 pb-24 px-6 rounded-b-[3rem] shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-400 via-slate-900 to-slate-900"></div>
                 <div className="relative z-10 text-center">
                     <span className="inline-block py-1 px-3 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[10px] font-black tracking-widest uppercase mb-4 backdrop-blur-md">
@@ -464,30 +464,30 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
             </div>
 
             <div className="flex-1 px-6 -mt-16 pb-8 max-w-lg mx-auto w-full relative z-20">
-                <div className="bg-white rounded-3xl shadow-xl p-1 border-4 border-white/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-[1.3rem] p-6 border border-slate-100">
+                <div className="bg-brand-surface rounded-3xl shadow-xl p-1 border-4 border-white/50 backdrop-blur-sm">
+                    <div className="bg-brand-surface rounded-[1.3rem] p-6 border border-brand-border">
                         <div className="grid gap-4 mb-8">
                             {/* DATA CARD */}
-                            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-indigo-600 border border-indigo-50">
+                            <div className="flex items-center gap-4 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border">
+                                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-sm flex items-center justify-center text-indigo-600 border border-indigo-50">
                                     <Calendar size={24} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">DATA CONFIRMADA</p>
-                                    <p className="text-lg font-bold text-slate-800 leading-tight">
+                                    <p className="text-[10px] text-brand-muted font-black uppercase tracking-wider">DATA CONFIRMADA</p>
+                                    <p className="text-lg font-bold text-brand-text leading-tight">
                                         {formattedDateStr || 'Data não especificada'}
                                     </p>
                                 </div>
                             </div>
 
                             {/* HORARIO CARD */}
-                            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-orange-600 border border-orange-50">
+                            <div className="flex items-center gap-4 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border">
+                                <div className="w-12 h-12 rounded-xl bg-brand-surface shadow-sm flex items-center justify-center text-orange-600 border border-orange-50">
                                     <Clock size={24} />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-wider">HORÁRIO</p>
-                                    <p className="text-xl font-bold text-slate-800">
+                                    <p className="text-[10px] text-brand-muted font-black uppercase tracking-wider">HORÁRIO</p>
+                                    <p className="text-xl font-bold text-brand-text">
                                         {timeStr || '--:--'}
                                     </p>
                                 </div>

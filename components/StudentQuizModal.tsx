@@ -83,16 +83,16 @@ const StudentQuizModal: React.FC<StudentQuizModalProps> = ({ quizTag, studentId,
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-full max-w-2xl bg-brand-surface rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
                 {/* Header */}
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                <div className="p-6 border-b border-brand-border flex justify-between items-center">
                     <div>
-                        <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">Prova Final: {quizTag}</h2>
-                        <p className="text-xs text-slate-500 font-bold">Wise Wolf School Assessment</p>
+                        <h2 className="text-xl font-black text-brand-text uppercase tracking-tighter">Prova Final: {quizTag}</h2>
+                        <p className="text-xs text-brand-muted font-bold">Wise Wolf School Assessment</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                        <X size={20} className="text-slate-500" />
+                    <button onClick={onClose} className="p-2 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-full transition-colors">
+                        <X size={20} className="text-brand-muted" />
                     </button>
                 </div>
 
@@ -105,7 +105,7 @@ const StudentQuizModal: React.FC<StudentQuizModalProps> = ({ quizTag, studentId,
                                 <AlertCircle size={40} />
                             </div>
                             <h3 className="text-2xl font-black mb-4 dark:text-white">Instruções</h3>
-                            <p className="text-slate-500 mb-8 max-w-md mx-auto">
+                            <p className="text-brand-muted mb-8 max-w-md mx-auto">
                                 Esta prova contém {questions.length} questões. Você precisa de 70% de acerto para ser aprovado e avançar de nível.
                                 <br /><br />
                                 <b>Importante:</b> Ao iniciar, não feche a janela.
@@ -118,17 +118,17 @@ const StudentQuizModal: React.FC<StudentQuizModalProps> = ({ quizTag, studentId,
 
                     {step === 'questions' && questions.length > 0 && (
                         <div className="max-w-xl mx-auto">
-                            <div className="mb-6 flex justify-between items-center text-xs font-black uppercase text-slate-400 tracking-widest">
+                            <div className="mb-6 flex justify-between items-center text-xs font-black uppercase text-brand-muted tracking-widest">
                                 <span>Questão {currentQuestionIndex + 1} de {questions.length}</span>
                                 <span>Progresso: {Math.round(((currentQuestionIndex) / questions.length) * 100)}%</span>
                             </div>
 
                             {/* Progress Bar */}
-                            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full mb-8 overflow-hidden">
+                            <div className="h-2 w-full bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full mb-8 overflow-hidden">
                                 <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${((currentQuestionIndex) / questions.length) * 100}%` }} />
                             </div>
 
-                            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 leading-relaxed">
+                            <h3 className="text-xl font-bold text-brand-text mb-6 leading-relaxed">
                                 {questions[currentQuestionIndex].question_text}
                             </h3>
 
@@ -141,7 +141,7 @@ const StudentQuizModal: React.FC<StudentQuizModalProps> = ({ quizTag, studentId,
                                             onClick={() => handleOptionSelect(questions[currentQuestionIndex].id, idx)}
                                             className={`w-full p-4 rounded-xl text-left font-medium text-sm transition-all border-2 ${isSelected
                                                     ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
-                                                    : 'border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-slate-700 text-slate-600 dark:text-slate-400'
+                                                    : 'border-brand-border hover:border-indigo-200 dark:hover:border-brand-border text-brand-muted dark:text-brand-muted'
                                                 }`}
                                         >
                                             <span className="mr-3 font-black opacity-30">{String.fromCharCode(65 + idx)}.</span> {opt}
@@ -168,11 +168,11 @@ const StudentQuizModal: React.FC<StudentQuizModalProps> = ({ quizTag, studentId,
                                 {score >= 70 ? <CheckCircle size={48} /> : <X size={48} />}
                             </div>
                             <h3 className="text-4xl font-black mb-2 dark:text-white">{score}%</h3>
-                            <p className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-8">
+                            <p className="text-lg font-bold text-brand-text dark:text-slate-300 mb-8">
                                 {score >= 70 ? 'Parabéns! Você foi aprovado.' : 'Não foi dessa vez. Continue estudando!'}
                             </p>
 
-                            <button onClick={onClose} className="px-8 py-3 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl font-black uppercase tracking-widest hover:bg-slate-300 transition-colors">
+                            <button onClick={onClose} className="px-8 py-3 bg-slate-200 dark:bg-brand-surface-2 text-brand-muted rounded-xl font-black uppercase tracking-widest hover:bg-slate-300 transition-colors">
                                 FECHAR
                             </button>
                         </div>

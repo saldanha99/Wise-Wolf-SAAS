@@ -117,17 +117,17 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
     }, [qrCode]); // Re-run poll if QR changes
 
     return (
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
+        <div className="bg-brand-surface p-6 rounded-[2rem] shadow-sm border border-brand-border flex flex-col items-center text-center">
 
-            <div className={`p-4 rounded-full mb-4 ${status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-500'}`}>
+            <div className={`p-4 rounded-full mb-4 ${status === 'CONNECTED' ? 'bg-emerald-50 text-emerald-500' : 'bg-brand-surface-2 text-brand-muted'}`}>
                 <Smartphone size={32} />
             </div>
 
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
+            <h3 className="text-lg font-bold text-brand-text mb-1">
                 Conexão WhatsApp
             </h3>
-            <p className="text-xs text-slate-400 mb-6 font-medium">
-                Instância: <span className="font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">{instanceName}</span>
+            <p className="text-xs text-brand-muted mb-6 font-medium">
+                Instância: <span className="font-mono text-brand-muted bg-brand-surface-2 dark:bg-brand-surface-2 px-1 rounded">{instanceName}</span>
             </p>
 
             {/* STATUS INDICATOR */}
@@ -154,13 +154,13 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
 
             {qrCode && status !== 'CONNECTED' && (
                 <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                    <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm mb-4">
+                    <div className="p-2 bg-brand-surface rounded-xl border border-brand-border shadow-sm mb-4">
                         <img src={qrCode} alt="QR Code WhatsApp" className="w-48 h-48" />
                     </div>
-                    <p className="text-xs text-slate-500 mb-4 animate-pulse">Aguardando leitura...</p>
+                    <p className="text-xs text-brand-muted mb-4 animate-pulse">Aguardando leitura...</p>
                     <button
                         onClick={() => setQrCode(null)}
-                        className="text-xs text-slate-400 underline hover:text-slate-600"
+                        className="text-xs text-brand-muted underline hover:text-brand-muted"
                     >
                         Cancelar
                     </button>

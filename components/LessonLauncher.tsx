@@ -177,24 +177,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // 1. Validar Fechamento Automático (Bloqueio para meses passados)
-      const now = new Date();
-      const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-
-      const closedMonths = Object.keys(formData).map(id => {
-        const item = todayLessons.find(l => String(l.id) === id);
-        const lessonMonthYear = item?.dateObj ? item.dateObj.substring(0, 7) : null;
-        
-        if (lessonMonthYear && lessonMonthYear < currentMonthYear) {
-          return lessonMonthYear;
-        }
-        return null;
-      }).filter(Boolean);
-
-      if (closedMonths.length > 0) {
-        throw new Error(`O mês ${closedMonths[0]} já está encerrado. Não é possível lançar aulas de meses anteriores.`);
-      }
-
+      // Validação de Fechamento Automático removida para permitir lançamento retroativo flexível
       const entries = Object.keys(formData).map(bookingId => {
         const item = todayLessons.find(l => String(l.id) === bookingId);
         const data = formData[bookingId];
@@ -319,12 +302,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 relative h-[calc(100vh-140px)] flex flex-col">
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-4 border-b border-brand-border shrink-0">
         <div>
-          <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">Lançamento Rápido</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Registre a presença e conteúdo das aulas de hoje.</p>
+          <h2 className="text-4xl font-black text-brand-text tracking-tighter">Lançamento Rápido</h2>
+          <p className="text-brand-muted text-sm mt-1">Registre a presença e conteúdo das aulas de hoje.</p>
         </div>
-        <div className="hidden md:flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-50 dark:bg-slate-900 px-4 py-2 rounded-full border border-slate-100 dark:border-slate-800">
+        <div className="hidden md:flex items-center gap-2 text-xs font-bold text-brand-muted bg-brand-surface-2 dark:bg-brand-surface px-4 py-2 rounded-full border border-brand-border">
           <Calendar size={14} />
           {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </div>
@@ -333,7 +316,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       {/* Success Toast */}
       {showSuccess && (
         <div className="fixed top-10 right-10 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-500">
-          <div className="bg-white/20 p-2 rounded-full"><CheckCircle size={20} /></div>
+          <div className="bg-brand-surface/20 p-2 rounded-full"><CheckCircle size={20} /></div>
           <div>
             <p className="font-black uppercase text-xs tracking-widest">Sucesso!</p>
             <p className="text-sm font-medium">Aulas registradas com perfeição.</p>
@@ -344,7 +327,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       {/* Bulk Form */}
       <div className="flex-1 min-h-0">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+          <div className="flex flex-col items-center justify-center h-64 text-brand-muted">
             <RefreshCw className="animate-spin mb-4" size={32} />
             <p className="text-sm font-bold uppercase tracking-widest">Sincronizando Agenda...</p>
           </div>
@@ -356,12 +339,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             loading={isSubmitting}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center p-20 bg-white dark:bg-slate-900 rounded-[3rem] border border-dashed border-slate-200 dark:border-slate-800">
-            <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-300 mb-6">
+          <div className="flex flex-col items-center justify-center p-20 bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
+            <div className="w-20 h-20 bg-brand-surface-2 rounded-3xl flex items-center justify-center text-slate-300 mb-6">
               <Calendar size={40} />
             </div>
-            <h4 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Sem aulas hoje</h4>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 font-medium">Você não possui aulas agendadas para esta {new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}.</p>
+            <h4 className="text-2xl font-black text-brand-text tracking-tight">Sem aulas hoje</h4>
+            <p className="text-sm text-brand-muted mt-2 font-medium">Você não possui aulas agendadas para esta {new Date().toLocaleDateString('pt-BR', { weekday: 'long' })}.</p>
           </div>
         )}
       </div>

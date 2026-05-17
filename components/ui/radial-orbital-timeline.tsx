@@ -144,7 +144,7 @@ export default function RadialOrbitalTimeline({
             case "completed":
                 return "text-white bg-black border-white";
             case "in-progress":
-                return "text-black bg-white border-black";
+                return "text-black bg-brand-surface border-black";
             case "pending":
                 return "text-white bg-black/40 border-white/50";
             default:
@@ -173,7 +173,7 @@ export default function RadialOrbitalTimeline({
                             className="absolute w-24 h-24 rounded-full border border-white/10 animate-ping opacity-50"
                             style={{ animationDelay: "0.5s" }}
                         ></div>
-                        <div className="w-8 h-8 rounded-full bg-white/80 backdrop-blur-md"></div>
+                        <div className="w-8 h-8 rounded-full bg-brand-surface/80 backdrop-blur-md"></div>
                     </div>
 
                     <div className="absolute w-96 h-96 rounded-full border border-white/10"></div>
@@ -218,9 +218,9 @@ export default function RadialOrbitalTimeline({
                                     className={`
                   w-10 h-10 rounded-full flex items-center justify-center
                   ${isExpanded
-                                            ? "bg-white text-black"
+                                            ? "bg-brand-surface text-black"
                                             : isRelated
-                                                ? "bg-white/50 text-black"
+                                                ? "bg-brand-surface/50 text-black"
                                                 : "bg-black text-white"
                                         }
                   border-2 
@@ -250,7 +250,7 @@ export default function RadialOrbitalTimeline({
 
                                 {isExpanded && (
                                     <Card className="absolute top-20 left-1/2 -translate-x-1/2 w-64 bg-black/90 backdrop-blur-lg border-white/30 shadow-xl shadow-white/10 overflow-visible z-[999]">
-                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-px h-3 bg-white/50"></div>
+                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-px h-3 bg-brand-surface/50"></div>
                                         <CardHeader className="pb-2">
                                             <div className="flex justify-between items-center">
                                                 <Badge
@@ -283,7 +283,7 @@ export default function RadialOrbitalTimeline({
                                                     </span>
                                                     <span className="font-mono">{item.energy}%</span>
                                                 </div>
-                                                <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                                                <div className="w-full h-1 bg-brand-surface/10 rounded-full overflow-hidden">
                                                     <div
                                                         className="h-full bg-gradient-to-r from-blue-500 to-purple-500"
                                                         style={{ width: `${item.energy}%` }}
@@ -309,7 +309,7 @@ export default function RadialOrbitalTimeline({
                                                                     key={relatedId}
                                                                     variant="outline"
                                                                     size="sm"
-                                                                    className="flex items-center h-6 px-2 py-0 text-xs rounded-none border-white/20 bg-transparent hover:bg-white/10 text-white/80 hover:text-white transition-all"
+                                                                    className="flex items-center h-6 px-2 py-0 text-xs rounded-none border-white/20 bg-transparent hover:bg-brand-surface/10 text-white/80 hover:text-white transition-all"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         toggleItem(relatedId);

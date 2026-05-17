@@ -534,8 +534,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   return (
     <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
-      <div className="w-full xl:w-72 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-[2rem] flex flex-col shadow-sm">
-        <div className="p-5 border-b dark:border-slate-800">
+      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm">
+        <div className="p-5 border-b dark:border-brand-border">
           <h3 className="font-black text-gray-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
             <Users size={14} className="text-tenant-primary" /> Corpo Docente
           </h3>
@@ -544,7 +544,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             <input
               type="text"
               placeholder="Buscar por nome..."
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-none font-medium"
+              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] focus:ring-2 focus:ring-tenant-primary outline-none font-medium"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
@@ -552,7 +552,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           <select
             value={specFilter}
             onChange={e => setSpecFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-50 dark:bg-slate-800 border dark:border-slate-700 rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-none"
+            className="w-full px-3 py-2 bg-gray-50 dark:bg-brand-surface-2 border dark:border-brand-border rounded-xl text-[10px] font-bold focus:ring-2 focus:ring-tenant-primary outline-none"
           >
             <option value="">Todas as especialidades</option>
             {TEACHER_SPECIALIZATIONS.map(s => (
@@ -568,7 +568,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               onClick={() => setSelectedTeacher(teacher)}
               className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacher?.id === teacher.id
                 ? 'bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
-                : 'bg-white dark:bg-slate-900 border-gray-50 dark:border-slate-800 hover:border-tenant-primary/30'
+                : 'bg-brand-surface border-gray-50 dark:border-brand-border hover:border-tenant-primary/30'
                 }`}
             >
               <img src={teacher.avatar} className="w-8 h-8 rounded-lg border-2 border-white/20" alt="" />
@@ -589,16 +589,16 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       </div>
 
       {/* Main Area: Detailed Schedule Explorer */}
-      <div className="flex-1 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-[2rem] flex flex-col shadow-sm overflow-hidden">
+      <div className="flex-1 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm overflow-hidden">
         {selectedTeacher ? (
           <>
             {/* Detail Header - Compact */}
-            <div className="px-6 py-4 border-b dark:border-slate-800 flex justify-between items-center bg-gray-50/30 dark:bg-slate-800/20">
+            <div className="px-6 py-4 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/30 dark:bg-brand-surface-2/20">
               <div className="flex items-center gap-4">
-                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-slate-700" alt="" />
+                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-brand-border" alt="" />
                 <div>
                   <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-none">{selectedTeacher.name}</h2>
-                  <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 font-bold">
+                  <p className="text-[10px] text-gray-500 dark:text-brand-muted mt-1 font-bold">
                     {selectedTeacher.module}
                   </p>
                   {(selectedTeacher.specializations || []).length > 0 && (
@@ -635,7 +635,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                     <tr>
                       <th className="w-14"></th>
                       {DAYS.map(day => (
-                        <th key={day} className="p-2 text-[9px] text-gray-400 dark:text-slate-500 font-black uppercase tracking-[0.1em]">{day}</th>
+                        <th key={day} className="p-2 text-[9px] text-gray-400 dark:text-brand-muted font-black uppercase tracking-[0.1em]">{day}</th>
                       ))}
                     </tr>
                   </thead>
@@ -677,7 +677,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                   </div>
                                 </div>
                               ) : isAvailable ? (
-                                <div className="w-full h-full bg-white dark:bg-slate-900 border border-dashed border-emerald-500/50 rounded-md flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors cursor-default">
+                                <div className="w-full h-full bg-brand-surface border border-dashed border-emerald-500/50 rounded-md flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors cursor-default">
                                   <span className="text-[7px] font-bold text-emerald-500/70 uppercase tracking-wider">LIVRE</span>
                                 </div>
                               ) : (
@@ -696,7 +696,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-slate-600">
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-brand-muted">
             <Users size={32} className="mb-3 opacity-50" />
             <p className="text-xs font-bold">Selecione um professor</p>
           </div>
@@ -705,7 +705,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       {/* Assignment Modal */}
       {isAssignmentModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentAssignmentModal
             students={studentsList || []}
             availableSlots={availableSlots}
@@ -718,7 +718,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       {/* Edit Student Modal */}
       {editingBooking && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={{
               name: editingBooking.student,

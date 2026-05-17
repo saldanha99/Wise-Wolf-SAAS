@@ -100,8 +100,8 @@ const HeroSection = ({ title, subtitle, actions, stats, images, className }: Her
                     </motion.div>
                     <motion.div className="mt-12 flex flex-wrap justify-center gap-8 lg:justify-start" variants={itemVariants}>
                         {stats.map((stat, index) => (
-                            <div key={index} className="flex items-center gap-3 backdrop-blur-sm bg-white/10 p-3 rounded-xl border border-white/20">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white">{stat.icon}</div>
+                            <div key={index} className="flex items-center gap-3 backdrop-blur-sm bg-brand-surface/10 p-3 rounded-xl border border-white/20">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-surface/20 text-white">{stat.icon}</div>
                                 <div>
                                     <p className="text-xl font-bold text-white">{stat.value}</p>
                                     <p className="text-sm text-blue-200">{stat.label}</p>
@@ -133,21 +133,21 @@ const HeroSection = ({ title, subtitle, actions, stats, images, className }: Her
 
                     {/* Images */}
                     <motion.div
-                        className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-2xl bg-white/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-64 sm:w-64 rotate-[-6deg] hover:rotate-0 transition-transform duration-500 z-10"
+                        className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-2xl bg-brand-surface/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-64 sm:w-64 rotate-[-6deg] hover:rotate-0 transition-transform duration-500 z-10"
                         style={{ transformOrigin: 'bottom center' }}
                         variants={imageVariants}
                     >
                         <img src={images[0]} alt="Student learning" className="h-full w-full rounded-xl object-cover" />
                     </motion.div>
                     <motion.div
-                        className="absolute right-0 top-1/3 h-40 w-40 rounded-2xl bg-white/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-56 sm:w-56 rotate-[12deg] hover:rotate-0 transition-transform duration-500 z-20"
+                        className="absolute right-0 top-1/3 h-40 w-40 rounded-2xl bg-brand-surface/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-56 sm:w-56 rotate-[12deg] hover:rotate-0 transition-transform duration-500 z-20"
                         style={{ transformOrigin: 'left center' }}
                         variants={imageVariants}
                     >
                         <img src={images[1]} alt="Tutor assisting" className="h-full w-full rounded-xl object-cover" />
                     </motion.div>
                     <motion.div
-                        className="absolute bottom-10 left-0 h-32 w-32 rounded-2xl bg-white/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-48 sm:w-48 rotate-[-15deg] hover:rotate-0 transition-transform duration-500 z-30"
+                        className="absolute bottom-10 left-0 h-32 w-32 rounded-2xl bg-brand-surface/10 p-2 shadow-2xl backdrop-blur-sm border border-white/20 sm:h-48 sm:w-48 rotate-[-15deg] hover:rotate-0 transition-transform duration-500 z-30"
                         style={{ transformOrigin: 'top right' }}
                         variants={imageVariants}
                     >

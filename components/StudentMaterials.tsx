@@ -126,9 +126,9 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                         <div className="p-2 bg-tenant-primary text-white rounded-lg">
                             <Layers size={20} />
                         </div>
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tighter">Estante Virtual</h2>
+                        <h2 className="text-3xl font-black text-brand-text tracking-tighter">Estante Virtual</h2>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">Explore sua coleção de materiais do nível <span className="text-indigo-600 font-black">{currentModule}</span>.</p>
+                    <p className="text-brand-muted font-medium">Explore sua coleção de materiais do nível <span className="text-indigo-600 font-black">{currentModule}</span>.</p>
                 </div>
                 <div className="hidden md:block">
                     <span className="text-xs font-black text-slate-300 uppercase tracking-widest">{parts.length} Títulos Disponíveis</span>
@@ -156,14 +156,14 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                         >
                             {/* Cover Art Background */}
                             <div className={`absolute inset-0 bg-gradient-to-br ${gradient} p-6 flex flex-col justify-between`}>
-                                <div className="absolute top-0 right-0 p-24 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 group-hover:bg-white/20 transition-all"></div>
+                                <div className="absolute top-0 right-0 p-24 bg-brand-surface/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 group-hover:bg-brand-surface/20 transition-all"></div>
 
                                 <div className="relative z-10 w-full">
                                     <div className="flex justify-between items-start">
                                         <span className="px-3 py-1 bg-black/20 backdrop-blur-sm rounded-lg text-[10px] font-black text-white uppercase tracking-widest border border-white/10">
                                             {currentModule}
                                         </span>
-                                        {isCurrent && <span className="w-2 h-2 rounded-full bg-white animate-pulse shadow-[0_0_10px_white]"></span>}
+                                        {isCurrent && <span className="w-2 h-2 rounded-full bg-brand-surface animate-pulse shadow-[0_0_10px_white]"></span>}
                                     </div>
                                 </div>
 
@@ -171,11 +171,11 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                     <h3 className="text-4xl md:text-5xl font-black text-white tracking-tighter drop-shadow-md opacity-90">
                                         Part<br />{part.part}
                                     </h3>
-                                    <div className="w-8 h-1 bg-white/30 mx-auto mt-4 rounded-full"></div>
+                                    <div className="w-8 h-1 bg-brand-surface/30 mx-auto mt-4 rounded-full"></div>
                                 </div>
 
                                 <div className="relative z-10 mt-auto flex justify-center opacity-0 group-hover:opacity-100 transition-all transform translate-y-4 group-hover:translate-y-0">
-                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-slate-900 shadow-xl">
+                                    <div className="w-12 h-12 bg-brand-surface rounded-full flex items-center justify-center text-brand-text shadow-xl">
                                         <Play size={20} className="ml-1" fill="currentColor" />
                                     </div>
                                 </div>
@@ -183,7 +183,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
                             {/* Overlay for Locked */}
                             {isLocked && (
-                                <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center z-20">
+                                <div className="absolute inset-0 bg-brand-surface/50 backdrop-blur-[2px] flex items-center justify-center z-20">
                                     <Lock className="text-white/50" size={48} />
                                 </div>
                             )}
@@ -194,25 +194,25 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                 {/* Evaluation Logic as a Card if unlocked or as the next step */}
                 <div className={`aspect-[3/4] rounded-[2rem] p-1 flex flex-col relative overflow-hidden group transition-all duration-300 ${profile?.evaluation_unlocked
                     ? 'bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-xl cursor-pointer hover:-translate-y-2 hover:shadow-2xl'
-                    : 'bg-slate-100 dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800'
+                    : 'bg-brand-surface-2 dark:bg-brand-surface border-2 border-dashed border-brand-border dark:border-brand-border'
                     }`}
                     onClick={() => profile?.evaluation_unlocked && setShowEval(true)}
                 >
-                    <div className="h-full w-full bg-white/5 backdrop-blur-sm rounded-[1.8rem] flex flex-col items-center justify-center text-center p-6">
+                    <div className="h-full w-full bg-brand-surface/5 backdrop-blur-sm rounded-[1.8rem] flex flex-col items-center justify-center text-center p-6">
                         {profile?.evaluation_unlocked ? (
                             <>
-                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-purple-600 mb-6 shadow-lg animate-bounce">
+                                <div className="w-16 h-16 bg-brand-surface rounded-full flex items-center justify-center text-purple-600 mb-6 shadow-lg animate-bounce">
                                     <CheckCircle size={32} />
                                 </div>
                                 <h3 className="text-2xl font-black text-white uppercase leading-none mb-2">Final<br />Test</h3>
                                 <p className="text-white/80 text-xs font-medium">Você desbloqueou a prova final!</p>
-                                <div className="mt-8 px-6 py-3 bg-white text-purple-600 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl">Start Exam</div>
+                                <div className="mt-8 px-6 py-3 bg-brand-surface text-purple-600 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl">Start Exam</div>
                             </>
                         ) : (
                             <>
-                                <Lock size={32} className="text-slate-300 dark:text-slate-600 mb-4" />
-                                <h3 className="text-lg font-black text-slate-400 dark:text-slate-600 uppercase">Avaliação<br />Bloqueada</h3>
-                                <p className="text-[10px] text-slate-400 mt-2 px-4">Complete os módulos anteriores para liberar.</p>
+                                <Lock size={32} className="text-slate-300 dark:text-brand-muted mb-4" />
+                                <h3 className="text-lg font-black text-brand-muted dark:text-brand-muted uppercase">Avaliação<br />Bloqueada</h3>
+                                <p className="text-[10px] text-brand-muted mt-2 px-4">Complete os módulos anteriores para liberar.</p>
                             </>
                         )}
                     </div>
@@ -223,17 +223,17 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             {showEval && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => !isFinished && setShowEval(false)} />
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[3rem] overflow-hidden relative z-10 shadow-2xl animate-in zoom-in duration-300">
+                    <div className="bg-brand-surface w-full max-w-2xl rounded-[3rem] overflow-hidden relative z-10 shadow-2xl animate-in zoom-in duration-300">
                         <div className="p-8 md:p-12">
                             {!isFinished ? (
                                 <>
                                     <div className="flex justify-between items-center mb-8">
-                                        <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Avaliação Progressiva</h2>
+                                        <h2 className="text-2xl font-black text-brand-text tracking-tight">Avaliação Progressiva</h2>
                                         <span className="px-4 py-1.5 bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-black uppercase">Questão {currentQuestionIndex + 1}/{questions.length}</span>
                                     </div>
 
                                     <div className="mb-10">
-                                        <p className="text-lg font-bold text-slate-800 dark:text-white mb-6">
+                                        <p className="text-lg font-bold text-brand-text mb-6">
                                             {questions[currentQuestionIndex]?.question}
                                         </p>
 
@@ -244,7 +244,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                                     onClick={() => setSelectedOption(idx)}
                                                     className={`w-full p-4 rounded-xl text-left text-sm font-bold transition-all border-2 ${selectedOption === idx
                                                         ? 'border-indigo-500 bg-indigo-500/5 text-indigo-600'
-                                                        : 'border-slate-100 dark:border-slate-800 hover:border-slate-200'}`}
+                                                        : 'border-brand-border hover:border-brand-border'}`}
                                                 >
                                                     {opt}
                                                 </button>
@@ -265,8 +265,8 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                     <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
                                         <CheckCircle size={48} />
                                     </div>
-                                    <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{evalScore}/{questions.length}</h2>
-                                    <p className="text-slate-500 mb-8 uppercase text-xs font-black tracking-widest">Resultado do Exame {currentPartKey}</p>
+                                    <h2 className="text-4xl font-black text-brand-text mb-2">{evalScore}/{questions.length}</h2>
+                                    <p className="text-brand-muted mb-8 uppercase text-xs font-black tracking-widest">Resultado do Exame {currentPartKey}</p>
 
                                     <div className="bg-emerald-50 dark:bg-emerald-900/10 p-6 rounded-2xl text-emerald-600 font-bold text-sm mb-8 leading-relaxed">
                                         Exame concluído com sucesso! Você ganhou {(evalScore || 0) * 20} XP extras.

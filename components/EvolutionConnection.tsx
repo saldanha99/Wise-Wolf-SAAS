@@ -216,7 +216,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
 
     if (loading && !instance) {
         return (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+            <div className="flex flex-col items-center justify-center h-64 text-brand-muted">
                 <Loader className="animate-spin mb-4" size={32} />
                 <p className="text-sm font-bold uppercase tracking-widest">Carregando Conexão...</p>
             </div>
@@ -224,14 +224,14 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
     }
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-8">
+        <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-sm overflow-hidden p-8">
             <div className="flex items-center gap-4 mb-8">
                 <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-2xl flex items-center justify-center">
                     <Smartphone size={24} />
                 </div>
                 <div>
-                    <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Sua Conexão WhatsApp</h3>
-                    <p className="text-sm text-slate-500 font-medium">Gerencie a instância conectada ao sistema.</p>
+                    <h3 className="text-xl font-black text-brand-text tracking-tight">Sua Conexão WhatsApp</h3>
+                    <p className="text-sm text-brand-muted font-medium">Gerencie a instância conectada ao sistema.</p>
                 </div>
                 <div className="ml-auto">
                     {connectionStatus === 'connected' ? (
@@ -239,7 +239,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             <Wifi size={14} /> Conectado
                         </span>
                     ) : (
-                        <span className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-full text-xs font-black uppercase tracking-widest">
+                        <span className="flex items-center gap-1.5 px-4 py-2 bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted rounded-full text-xs font-black uppercase tracking-widest">
                             <WifiOff size={14} /> Desconectado
                         </span>
                     )}
@@ -250,10 +250,10 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                 <div className="max-w-md mx-auto text-center py-8">
                     <div className="mb-6">
                         <QrCode size={48} className="mx-auto text-slate-300 mb-4" />
-                        <h4 className="text-lg font-bold text-slate-700 dark:text-slate-300">
+                        <h4 className="text-lg font-bold text-brand-text dark:text-slate-300">
                             {isRecoveryMode ? 'Importar Conexão Existente' : 'Nenhuma conexão ativa'}
                         </h4>
-                        <p className="text-sm text-slate-400 mt-2">
+                        <p className="text-sm text-brand-muted mt-2">
                             {isRecoveryMode
                                 ? 'Digite o nome exato da instância criada no Evolution API.'
                                 : 'Crie uma nova instância para conectar seu WhatsApp pessoal ou comercial.'}
@@ -266,7 +266,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             placeholder={isRecoveryMode ? "Nome exato (ex: prof-daniel-x9z2)" : "Nome da Instância (ex: Prof Daniel)"}
                             value={newInstanceName}
                             onChange={(e) => setNewInstanceName(e.target.value)}
-                            className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/20"
+                            className="flex-1 bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/20"
                         />
                         <button
                             onClick={isRecoveryMode ? handleImportInstance : handleCreateInstance}
@@ -286,7 +286,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             setIsRecoveryMode(!isRecoveryMode);
                             setNewInstanceName('');
                         }}
-                        className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline"
+                        className="text-xs font-bold text-brand-muted hover:text-brand-muted dark:hover:text-slate-200 underline"
                     >
                         {isRecoveryMode ? 'Voltar para Criação' : 'Já possui uma conexão? Importar existente'}
                     </button>
@@ -295,27 +295,27 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
 
                     {/* Status / QR Side */}
-                    <div className="flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-800 pr-12">
+                    <div className="flex flex-col items-center justify-center border-r border-brand-border pr-12">
                         {connectionStatus === 'connected' ? (
                             <div className="text-center">
                                 <div className="w-48 h-48 bg-emerald-50 dark:bg-emerald-900/10 rounded-3xl flex items-center justify-center mx-auto mb-6 text-emerald-500 animate-in zoom-in duration-500">
                                     <CheckCircle size={64} />
                                 </div>
                                 <h4 className="text-xl font-black text-emerald-600 dark:text-emerald-400">Tudo Pronto!</h4>
-                                <p className="text-slate-400 text-sm mt-2 max-w-xs mx-auto">
+                                <p className="text-brand-muted text-sm mt-2 max-w-xs mx-auto">
                                     Seu WhatsApp <strong>{instance.instance_name}</strong> está sincronizado e enviando mensagens.
                                 </p>
 
                                 <button
                                     onClick={() => checkStatus()}
-                                    className="mt-6 text-xs font-bold text-slate-400 hover:text-emerald-500 flex items-center justify-center gap-2 uppercase tracking-widest"
+                                    className="mt-6 text-xs font-bold text-brand-muted hover:text-emerald-500 flex items-center justify-center gap-2 uppercase tracking-widest"
                                 >
                                     <RefreshCw size={12} /> Atualizar Status
                                 </button>
 
                                 {/* GROUP SELECTORS - DIRECTORS ONLY */}
                                 {['DIRECTOR', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN', 'FRANCHISEE'].includes(user.role) && (
-                                    <div className="mt-8 w-full border-t border-slate-100 dark:border-slate-800 pt-8 text-left grid grid-cols-1 gap-6">
+                                    <div className="mt-8 w-full border-t border-brand-border pt-8 text-left grid grid-cols-1 gap-6">
                                         <GroupSelector
                                             user={user}
                                             instanceName={instance.instance_name}
@@ -335,10 +335,10 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             </div>
                         ) : qrCode ? (
                             <div className="text-center">
-                                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 inline-block mb-4">
+                                <div className="bg-brand-surface p-4 rounded-2xl shadow-sm border border-brand-border inline-block mb-4">
                                     <img src={qrCode} alt="QR Code" className="w-64 h-64 mix-blend-multiply opacity-90" />
                                 </div>
-                                <p className="text-sm font-bold text-slate-600 dark:text-slate-300 animate-pulse">Aguardando leitura do QR Code...</p>
+                                <p className="text-sm font-bold text-brand-muted animate-pulse">Aguardando leitura do QR Code...</p>
                                 <button
                                     onClick={() => setQrCode(null)}
                                     className="mt-4 text-xs text-red-400 hover:text-red-500 font-bold"
@@ -348,7 +348,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                             </div>
                         ) : (
                             <div className="text-center">
-                                <div className="w-32 h-32 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                <div className="w-32 h-32 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-full flex items-center justify-center mx-auto mb-6 text-brand-muted">
                                     <Smartphone size={40} />
                                 </div>
                                 <button
@@ -370,25 +370,25 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
 
                     {/* Testing Side */}
                     <div className="pl-4">
-                        <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2">
+                        <h4 className="text-lg font-bold text-brand-text mb-6 flex items-center gap-2">
                             <MessageCircle size={20} /> Teste de Envio
                         </h4>
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Número de Destino</label>
+                                <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">Número de Destino</label>
                                 <input
                                     type="text"
                                     placeholder="5511999999999"
                                     value={testNumber}
                                     onChange={(e) => setTestNumber(e.target.value)}
-                                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                    className="w-full bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
                                 />
-                                <p className="text-[10px] text-slate-400 mt-1">Inclua o código do país (55 para Brasil).</p>
+                                <p className="text-[10px] text-brand-muted mt-1">Inclua o código do país (55 para Brasil).</p>
                             </div>
 
-                            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                                <p className="text-xs text-slate-500 italic">
+                            <div className="p-4 bg-brand-surface-2 rounded-xl border border-dashed border-brand-border">
+                                <p className="text-xs text-brand-muted italic">
                                     "Olá! Teste de conexão Wise Wolf 🐺 foi um sucesso!"
                                 </p>
                             </div>

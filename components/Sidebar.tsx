@@ -124,32 +124,32 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div className={`
-      fixed inset-y-0 left-0 z-[100] w-64 bg-white dark:bg-slate-900 border-r dark:border-slate-800 flex flex-col shadow-2xl lg:shadow-none
+      fixed inset-y-0 left-0 z-[100] w-64 bg-brand-surface border-r dark:border-brand-border flex flex-col shadow-2xl lg:shadow-none
       transition-transform duration-300 ease-in-out
       ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       lg:translate-x-0
     `}>
-      <div className="p-6 border-b dark:border-slate-800 flex items-center justify-between">
+      <div className="p-6 border-b dark:border-brand-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           {user.role === UserRole.SUPER_ADMIN ? (
             <div className="w-10 h-10 bg-tenant-primary text-white rounded-lg flex items-center justify-center">
               <Shield size={20} />
             </div>
           ) : (
-            <img src={tenant.branding.logoUrl} alt="Logo" className="w-10 h-10 rounded-lg object-cover bg-white p-0.5 shadow-inner" />
+            <img src={tenant.branding.logoUrl} alt="Logo" className="w-10 h-10 rounded-lg object-cover bg-brand-surface p-0.5 shadow-inner" />
           )}
           <div className="overflow-hidden">
             <h1 className="font-black text-[11px] leading-tight text-gray-800 dark:text-slate-100 truncate uppercase tracking-tight">
               {user.role === UserRole.SUPER_ADMIN ? 'EduCore Admin' : tenant.name}
             </h1>
-            <span className="text-[9px] text-gray-400 dark:text-slate-500 uppercase tracking-[0.2em] font-black truncate block mt-0.5">
+            <span className="text-[9px] text-gray-400 dark:text-brand-muted uppercase tracking-[0.2em] font-black truncate block mt-0.5">
               {user.role === UserRole.SCHOOL_ADMIN ? 'Gestor Unidade' :
                 user.role === UserRole.STUDENT ? 'Área do Aluno' :
                   user.role.replace('_', ' ')}
             </span>
           </div>
         </div>
-        <button onClick={onClose} className="lg:hidden p-2 text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg">
+        <button onClick={onClose} className="lg:hidden p-2 text-gray-400 dark:text-brand-muted hover:bg-gray-100 dark:hover:bg-brand-surface-2 rounded-lg">
           <X size={20} />
         </button>
       </div>
@@ -163,8 +163,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               if (onClose) onClose();
             }}
             className={`w-full flex items-center gap-3 px-6 py-4 text-[11px] font-black uppercase tracking-widest transition-all relative ${activeTab === item.id
-              ? 'text-tenant-primary dark:text-slate-100 bg-blue-50/30 dark:bg-slate-800/50'
-              : 'text-gray-400 dark:text-slate-500 hover:bg-gray-50 dark:hover:bg-slate-800/30'
+              ? 'text-tenant-primary dark:text-slate-100 bg-blue-50/30 dark:bg-brand-surface-2/50'
+              : 'text-gray-400 dark:text-brand-muted hover:bg-gray-50 dark:hover:bg-brand-surface-2/30'
               }`}
           >
             {activeTab === item.id && (
@@ -181,27 +181,27 @@ const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </nav>
 
-      <div className="p-4 border-t dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/50">
+      <div className="p-4 border-t dark:border-brand-border bg-gray-50/30 dark:bg-brand-surface/50">
         <button
           onClick={() => {
             setActiveTab('profile');
             if (onClose) onClose();
           }}
-          className="flex items-center justify-between mb-6 px-2 w-full text-left group cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all"
+          className="flex items-center justify-between mb-6 px-2 w-full text-left group cursor-pointer hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 rounded-xl transition-all"
         >
           <div className="flex items-center gap-3 overflow-hidden p-2">
             <div className="relative">
-              <img src={user.avatar} className="w-10 h-10 rounded-2xl border-2 border-white dark:border-slate-700 shadow-md group-hover:scale-110 transition-transform" alt="Avatar" />
+              <img src={user.avatar} className="w-10 h-10 rounded-2xl border-2 border-white dark:border-brand-border shadow-md group-hover:scale-110 transition-transform" alt="Avatar" />
               <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white dark:border-slate-900 rounded-full" />
             </div>
             <div className="overflow-hidden flex-1">
               <p className="text-xs font-black text-gray-800 dark:text-slate-200 truncate uppercase tracking-tight group-hover:text-tenant-primary dark:group-hover:text-white transition-colors">{user.name}</p>
-              <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate font-medium">Editar Perfil</p>
+              <p className="text-[10px] text-gray-400 dark:text-brand-muted truncate font-medium">Editar Perfil</p>
             </div>
           </div>
 
-          <div className="bg-slate-200 dark:bg-slate-800 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-            <Settings size={14} className="text-slate-500 dark:text-slate-300" />
+          <div className="bg-slate-200 dark:bg-brand-surface-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+            <Settings size={14} className="text-brand-muted dark:text-slate-300" />
           </div>
         </button>
         <button

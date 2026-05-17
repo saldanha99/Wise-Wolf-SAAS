@@ -15,7 +15,7 @@ interface SaasLead {
 }
 
 const COLUMNS = [
-    { id: 'LEAD', label: 'Leads (Interessados)', color: 'bg-slate-100 text-slate-600' },
+    { id: 'LEAD', label: 'Leads (Interessados)', color: 'bg-brand-surface-2 text-brand-muted' },
     { id: 'DEMO_SCHEDULED', label: 'Demonstração Agendada', color: 'bg-blue-100 text-blue-600' },
     { id: 'TRIAL', label: 'Trial (7/14 Dias)', color: 'bg-purple-100 text-purple-600' },
     { id: 'CLOSED_WON', label: 'Fechado (Ativo)', color: 'bg-emerald-100 text-emerald-600' }
@@ -95,8 +95,8 @@ const SaasCrmBoard: React.FC = () => {
         <div className="h-full flex flex-col">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Pipeline de Vendas SaaS</h2>
-                    <p className="text-sm text-slate-500">Gestão de prospecção B2B (Escolas)</p>
+                    <h2 className="text-2xl font-bold text-brand-text">Pipeline de Vendas SaaS</h2>
+                    <p className="text-sm text-brand-muted">Gestão de prospecção B2B (Escolas)</p>
                 </div>
                 <button
                     onClick={() => setShowNewLeadModal(true)}
@@ -109,24 +109,24 @@ const SaasCrmBoard: React.FC = () => {
             <div className="flex-1 overflow-x-auto">
                 <div className="flex gap-4 h-full min-w-[1000px] pb-4">
                     {COLUMNS.map(col => (
-                        <div key={col.id} className="flex-1 min-w-[280px] bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col border border-slate-100 dark:border-slate-800">
+                        <div key={col.id} className="flex-1 min-w-[280px] bg-brand-surface-2 dark:bg-brand-surface/50 rounded-xl p-4 flex flex-col border border-brand-border">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className={`font-bold text-sm px-3 py-1 rounded-full ${col.color}`}>{col.label}</h3>
-                                <span className="text-xs font-bold text-slate-400">
+                                <span className="text-xs font-bold text-brand-muted">
                                     {leads.filter(l => l.status === col.id).length}
                                 </span>
                             </div>
 
                             <div className="space-y-3 overflow-y-auto flex-1 pr-2">
                                 {leads.filter(l => l.status === col.id).map(lead => (
-                                    <div key={lead.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all group">
+                                    <div key={lead.id} className="bg-brand-surface dark:bg-brand-surface-2 p-4 rounded-xl shadow-sm border border-brand-border dark:border-brand-border hover:shadow-md transition-all group">
                                         <div className="flex justify-between items-start mb-2">
-                                            <span className="font-bold text-slate-800 dark:text-white block">{lead.school_name}</span>
-                                            <button className="text-slate-300 hover:text-slate-500"><MoreHorizontal size={14} /></button>
+                                            <span className="font-bold text-brand-text block">{lead.school_name}</span>
+                                            <button className="text-slate-300 hover:text-brand-muted"><MoreHorizontal size={14} /></button>
                                         </div>
-                                        <p className="text-xs text-slate-500 mb-3">{lead.name}</p>
+                                        <p className="text-xs text-brand-muted mb-3">{lead.name}</p>
 
-                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium border-t border-slate-50 dark:border-slate-700 pt-3">
+                                        <div className="flex items-center gap-2 text-[10px] text-brand-muted font-medium border-t border-slate-50 dark:border-brand-border pt-3">
                                             {col.id === 'LEAD' && (
                                                 <button onClick={() => handleMoveLead(lead.id, 'DEMO_SCHEDULED')} className="flex items-center gap-1 hover:text-blue-500">
                                                     Agendar Demo <Calendar size={12} />
@@ -162,28 +162,28 @@ const SaasCrmBoard: React.FC = () => {
             {/* Modal Logic */}
             {showNewLeadModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md p-6 rounded-2xl shadow-xl">
+                    <div className="bg-brand-surface w-full max-w-md p-6 rounded-2xl shadow-xl">
                         <h3 className="text-xl font-bold mb-4">Novo Lead SaaS</h3>
                         <form onSubmit={handleCreateLead} className="space-y-4">
                             <input
                                 placeholder="Nome da Escola"
-                                className="w-full p-3 bg-slate-50 rounded-xl"
+                                className="w-full p-3 bg-brand-surface-2 rounded-xl"
                                 value={newLead.school_name} onChange={e => setNewLead({ ...newLead, school_name: e.target.value })}
                                 required
                             />
                             <input
                                 placeholder="Contato Principal"
-                                className="w-full p-3 bg-slate-50 rounded-xl"
+                                className="w-full p-3 bg-brand-surface-2 rounded-xl"
                                 value={newLead.name} onChange={e => setNewLead({ ...newLead, name: e.target.value })}
                                 required
                             />
                             <input
                                 placeholder="Email"
-                                className="w-full p-3 bg-slate-50 rounded-xl"
+                                className="w-full p-3 bg-brand-surface-2 rounded-xl"
                                 value={newLead.email} onChange={e => setNewLead({ ...newLead, email: e.target.value })}
                             />
                             <div className="flex justify-end gap-2 pt-4">
-                                <button type="button" onClick={() => setShowNewLeadModal(false)} className="px-4 py-2 text-slate-500">Cancelar</button>
+                                <button type="button" onClick={() => setShowNewLeadModal(false)} className="px-4 py-2 text-brand-muted">Cancelar</button>
                                 <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold">Salvar Lead</button>
                             </div>
                         </form>

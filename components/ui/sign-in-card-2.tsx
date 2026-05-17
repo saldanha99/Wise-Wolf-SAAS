@@ -160,7 +160,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     <h1 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60 tracking-tight">
                                         Acesso Restrito
                                     </h1>
-                                    <p className="text-slate-400 text-xs font-medium mt-1">
+                                    <p className="text-brand-muted text-xs font-medium mt-1">
                                         Insira suas credenciais para continuar.
                                     </p>
                                 </div>
@@ -186,7 +186,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     >
                                         <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/email:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
-                                            <Mail className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'email' ? 'text-blue-400' : 'text-slate-500'}`} />
+                                            <Mail className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'email' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
                                                 type="email"
                                                 placeholder="E-mail corporativo"
@@ -194,7 +194,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                                 onChange={(e) => setEmail(e.target.value)}
                                                 onFocus={() => setFocusedInput('email')}
                                                 onBlur={() => setFocusedInput(null)}
-                                                className="pl-11 h-12 bg-slate-900/50 border-white/5 text-slate-200 placeholder:text-slate-600 rounded-xl focus:bg-slate-900 focus:border-blue-500/50 transition-all font-medium text-sm"
+                                                className="pl-11 h-12 bg-brand-surface/50 border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
                                             />
                                         </div>
                                     </motion.div>
@@ -206,7 +206,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     >
                                         <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl opacity-0 group-hover/password:opacity-100 transition-opacity" />
                                         <div className="relative flex items-center">
-                                            <Lock className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'password' ? 'text-blue-400' : 'text-slate-500'}`} />
+                                            <Lock className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'password' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
                                                 type={showPassword ? "text" : "password"}
                                                 placeholder="Senha de acesso"
@@ -214,12 +214,12 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                                 onChange={(e) => setPassword(e.target.value)}
                                                 onFocus={() => setFocusedInput('password')}
                                                 onBlur={() => setFocusedInput(null)}
-                                                className="pl-11 pr-11 h-12 bg-slate-900/50 border-white/5 text-slate-200 placeholder:text-slate-600 rounded-xl focus:bg-slate-900 focus:border-blue-500/50 transition-all font-medium text-sm"
+                                                className="pl-11 pr-11 h-12 bg-brand-surface/50 border-white/5 text-slate-200 placeholder:text-brand-muted rounded-xl focus:bg-brand-surface focus:border-blue-500/50 transition-all font-medium text-sm"
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute right-3 p-1 hover:text-white text-slate-500 transition-colors"
+                                                className="absolute right-3 p-1 hover:text-white text-brand-muted transition-colors"
                                             >
                                                 {showPassword ? <Eye size={16} /> : <EyeClosed size={16} />}
                                             </button>
@@ -229,12 +229,12 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
 
                                 {/* Actions */}
                                 <div className="flex items-center justify-between text-xs">
-                                    <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-white transition-colors">
+                                    <label className="flex items-center gap-2 cursor-pointer text-brand-muted hover:text-white transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={rememberMe}
                                             onChange={() => setRememberMe(!rememberMe)}
-                                            className="w-3.5 h-3.5 rounded border-white/10 bg-white/5 checked:bg-blue-600 transition-all cursor-pointer"
+                                            className="w-3.5 h-3.5 rounded border-white/10 bg-brand-surface/5 checked:bg-blue-600 transition-all cursor-pointer"
                                         />
                                         Manter conectado
                                     </label>
@@ -265,7 +265,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                             {/* Demo Quick Access - REMOVED FOR PRODUCTION
 267:                             {onDemoLogin && (
 268:                                 <div className="mt-8 pt-6 border-t border-white/5 space-y-4">
-269:                                     <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest text-center">Acesso Rápido (Demo)</p>
+269:                                     <p className="text-[10px] uppercase font-black text-brand-muted tracking-widest text-center">Acesso Rápido (Demo)</p>
 270:                                     <div className="grid grid-cols-2 gap-2">
 271:                                         {[
 272:                                             { label: 'Diretor', email: 'diretor@wisewolf.com', pass: '123456' },
@@ -281,7 +281,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
 282:                                                     setPassword(demo.pass);
 283:                                                     // Optional: Auto submit or just fill
 284:                                                 }}
-285:                                                 className="p-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] font-bold text-slate-300 hover:text-white transition-all text-center uppercase tracking-wide"
+285:                                                 className="p-2 rounded-lg bg-brand-surface/5 hover:bg-brand-surface/10 border border-white/5 text-[10px] font-bold text-slate-300 hover:text-white transition-all text-center uppercase tracking-wide"
 286:                                             >
 287:                                                 {demo.label}
 288:                                             </button>
@@ -297,7 +297,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
             </motion.div>
 
             <div className="absolute bottom-6 text-center w-full pointer-events-none">
-                <p className="text-[10px] text-slate-600 font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50">
+                <p className="text-[10px] text-brand-muted font-bold uppercase tracking-[0.2em] mix-blend-screen opacity-50">
                     Wise Wolf System • v1.0
                 </p>
             </div>

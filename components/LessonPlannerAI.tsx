@@ -136,25 +136,25 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                         <div className="p-3 bg-tenant-primary/10 rounded-2xl text-tenant-primary">
                             <Bot size={28} />
                         </div>
-                        <h2 className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter">Plano de Aula IA</h2>
+                        <h2 className="text-4xl font-black text-brand-text tracking-tighter">Plano de Aula IA</h2>
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Crie aulas personalizadas baseadas no perfil e histórico de cada aluno.</p>
+                    <p className="text-brand-muted text-sm">Crie aulas personalizadas baseadas no perfil e histórico de cada aluno.</p>
                 </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Configuration Panel */}
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/50 dark:shadow-none">
-                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                    <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-xl shadow-slate-200/50 dark:shadow-none">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-brand-muted mb-6 flex items-center gap-2">
                             <User size={14} /> Configuração
                         </h3>
 
                         <div className="space-y-6">
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Selecionar Aluno</label>
+                                <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2 ml-1">Selecionar Aluno</label>
                                 <select
-                                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all"
                                     value={selectedStudent}
                                     onChange={(e) => setSelectedStudent(e.target.value)}
                                 >
@@ -169,17 +169,17 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                 <div className="space-y-3">
                                     <div className="p-4 bg-tenant-primary/5 rounded-2xl border border-tenant-primary/10">
                                         <p className="text-[9px] font-black text-tenant-primary uppercase tracking-widest mb-2">Perfil do Aluno</p>
-                                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400 space-y-1">
-                                            <span className="block">Nível: <span className="text-slate-800 dark:text-slate-200">{studentProfile.module || 'N/A'}</span></span>
-                                            <span className="block">Cargo: <span className="text-slate-800 dark:text-slate-200">{studentProfile.occupation || 'N/A'}</span></span>
+                                        <p className="text-xs font-bold text-brand-muted dark:text-brand-muted space-y-1">
+                                            <span className="block">Nível: <span className="text-brand-text dark:text-slate-200">{studentProfile.module || 'N/A'}</span></span>
+                                            <span className="block">Cargo: <span className="text-brand-text dark:text-slate-200">{studentProfile.occupation || 'N/A'}</span></span>
                                             {studentProfile.english_for && (
-                                                <span className="block">Objetivo: <span className="text-slate-800 dark:text-slate-200">{studentProfile.english_for}</span></span>
+                                                <span className="block">Objetivo: <span className="text-brand-text dark:text-slate-200">{studentProfile.english_for}</span></span>
                                             )}
                                             {studentProfile.personality && (
-                                                <span className="block">Perfil: <span className="text-slate-800 dark:text-slate-200">{studentProfile.personality}</span></span>
+                                                <span className="block">Perfil: <span className="text-brand-text dark:text-slate-200">{studentProfile.personality}</span></span>
                                             )}
                                             {studentProfile.preferred_topics?.length > 0 && (
-                                                <span className="block">Tópicos: <span className="text-slate-800 dark:text-slate-200">{studentProfile.preferred_topics.join(', ')}</span></span>
+                                                <span className="block">Tópicos: <span className="text-brand-text dark:text-slate-200">{studentProfile.preferred_topics.join(', ')}</span></span>
                                             )}
                                         </p>
                                     </div>
@@ -190,13 +190,13 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                                 <Brain size={10} /> Wolf Intelligence
                                             </p>
                                             {wolfIntelligence.accumulated_context && (
-                                                <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed mb-2">{wolfIntelligence.accumulated_context}</p>
+                                                <p className="text-[10px] text-brand-muted dark:text-brand-muted leading-relaxed mb-2">{wolfIntelligence.accumulated_context}</p>
                                             )}
                                             {wolfIntelligence.strong_points?.length > 0 && (
                                                 <div className="mb-1">
                                                     <p className="text-[9px] font-black text-emerald-600 uppercase">Pontos Fortes</p>
                                                     {wolfIntelligence.strong_points.slice(0, 2).map((p: string, i: number) => (
-                                                        <p key={i} className="text-[9px] text-slate-500 dark:text-slate-400">• {p}</p>
+                                                        <p key={i} className="text-[9px] text-brand-muted">• {p}</p>
                                                     ))}
                                                 </div>
                                             )}
@@ -204,24 +204,24 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                                 <div className="mb-1">
                                                     <p className="text-[9px] font-black text-red-500 uppercase">A Melhorar</p>
                                                     {wolfIntelligence.weak_points.slice(0, 2).map((p: string, i: number) => (
-                                                        <p key={i} className="text-[9px] text-slate-500 dark:text-slate-400">• {p}</p>
+                                                        <p key={i} className="text-[9px] text-brand-muted">• {p}</p>
                                                     ))}
                                                 </div>
                                             )}
                                             {wolfIntelligence.recommended_approach && (
                                                 <p className="text-[9px] text-violet-600 dark:text-violet-400 italic mt-1">{wolfIntelligence.recommended_approach}</p>
                                             )}
-                                            <p className="text-[8px] text-slate-400 mt-2">{wolfIntelligence.total_classes_analyzed} aulas analisadas</p>
+                                            <p className="text-[8px] text-brand-muted mt-2">{wolfIntelligence.total_classes_analyzed} aulas analisadas</p>
                                         </div>
                                     )}
                                 </div>
                             )}
 
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Prompt Personalizado (Opcional)</label>
+                                <label className="block text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2 ml-1">Prompt Personalizado (Opcional)</label>
                                 <textarea
                                     placeholder="Ex: Foque em termos de tecnologia e prepare-o para uma entrevista..."
-                                    className="w-full px-5 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl text-xs font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all min-h-[100px]"
+                                    className="w-full px-5 py-4 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-2xl text-xs font-medium text-brand-muted outline-none focus:ring-4 focus:ring-tenant-primary/10 transition-all min-h-[100px]"
                                     value={customPrompt}
                                     onChange={(e) => setCustomPrompt(e.target.value)}
                                 />
@@ -239,18 +239,18 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                     </div>
 
                     {/* History Memory */}
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                    <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm overflow-hidden">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-brand-muted mb-6 flex items-center gap-2">
                             <History size={14} /> Memória Recente
                         </h3>
                         <div className="space-y-4">
                             {history.length > 0 ? history.map((plan, i) => (
-                                <div key={i} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-transparent hover:border-slate-200 transition-all cursor-pointer">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase">{new Date(plan.created_at).toLocaleDateString('pt-BR')}</p>
-                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-2 mt-1">{plan.objectives}</p>
+                                <div key={i} className="p-4 bg-brand-surface-2/50 rounded-xl border border-transparent hover:border-brand-border transition-all cursor-pointer">
+                                    <p className="text-[10px] font-black text-brand-muted uppercase">{new Date(plan.created_at).toLocaleDateString('pt-BR')}</p>
+                                    <p className="text-xs font-bold text-brand-text dark:text-slate-200 line-clamp-2 mt-1">{plan.objectives}</p>
                                 </div>
                             )) : (
-                                <p className="text-xs text-slate-400 italic text-center py-4">Nenhuma memória salva para este aluno.</p>
+                                <p className="text-xs text-brand-muted italic text-center py-4">Nenhuma memória salva para este aluno.</p>
                             )}
                         </div>
                     </div>
@@ -259,7 +259,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                 {/* AI Output Result */}
                 <div className="lg:col-span-2">
                     {generatedPlan ? (
-                        <div className="bg-white dark:bg-slate-900 rounded-[3rem] border-2 border-tenant-primary/20 shadow-2xl relative overflow-hidden animate-in slide-in-from-right-10 duration-500">
+                        <div className="bg-brand-surface rounded-[3rem] border-2 border-tenant-primary/20 shadow-2xl relative overflow-hidden animate-in slide-in-from-right-10 duration-500">
                             <div className="absolute top-0 right-0 p-10 opacity-5">
                                 <Zap size={150} className="text-tenant-primary" />
                             </div>
@@ -278,34 +278,34 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                 </div>
 
                                 <section>
-                                    <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4">
+                                    <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-brand-muted mb-4">
                                         <Target className="text-tenant-primary" size={16} /> Objetivos da Aula
                                     </h4>
-                                    <p className="text-xl font-black text-slate-800 dark:text-white leading-tight">
+                                    <p className="text-xl font-black text-brand-text leading-tight">
                                         {generatedPlan.objectives}
                                     </p>
                                 </section>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                     <section>
-                                        <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4">
+                                        <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-brand-muted mb-4">
                                             <BookOpen className="text-blue-500" size={16} /> Conteúdo Proposto
                                         </h4>
-                                        <div className="text-sm font-bold text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                                        <div className="text-sm font-bold text-brand-muted dark:text-brand-muted leading-relaxed whitespace-pre-line bg-brand-surface-2/50 p-6 rounded-3xl border border-brand-border">
                                             {generatedPlan.content}
                                         </div>
                                     </section>
                                     <section>
-                                        <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-4">
+                                        <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-brand-muted mb-4">
                                             <Zap className="text-amber-500" size={16} /> Materiais Sugeridos
                                         </h4>
-                                        <div className="text-sm font-bold text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                                        <div className="text-sm font-bold text-brand-muted dark:text-brand-muted leading-relaxed whitespace-pre-line bg-brand-surface-2/50 p-6 rounded-3xl border border-brand-border">
                                             {generatedPlan.materials}
                                         </div>
                                     </section>
                                 </div>
 
-                                <section className="p-6 bg-slate-900 rounded-[2rem] text-white">
+                                <section className="p-6 bg-brand-surface rounded-[2rem] text-white">
                                     <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-tenant-primary mb-3">
                                         <Brain size={16} /> Reflexão da Memória IA
                                     </h4>
@@ -316,22 +316,22 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                             </div>
                         </div>
                     ) : (
-                        <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900/30 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 text-center p-10 group overflow-hidden relative">
+                        <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-brand-surface-2 dark:bg-brand-surface/30 rounded-[3rem] border-2 border-dashed border-brand-border dark:border-brand-border text-center p-10 group overflow-hidden relative">
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-tenant-primary/5 rounded-full blur-[100px] group-hover:bg-tenant-primary/10 transition-all duration-1000" />
-                            <Bot size={80} className="text-slate-200 dark:text-slate-800 mb-6 group-hover:scale-110 transition-transform duration-500" />
-                            <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300">Assistente de Planejamento de Aula</h3>
-                            <p className="text-sm text-slate-400 max-w-xs mt-2 relative z-10">
+                            <Bot size={80} className="text-slate-200 dark:text-brand-text mb-6 group-hover:scale-110 transition-transform duration-500" />
+                            <h3 className="text-xl font-bold text-brand-text dark:text-slate-300">Assistente de Planejamento de Aula</h3>
+                            <p className="text-sm text-brand-muted max-w-xs mt-2 relative z-10">
                                 Selecione um aluno à esquerda para que a Inteligência Artificial possa cruzar as metas, interesses e histórico de aulas anteriores.
                             </p>
 
                             <div className="mt-10 grid grid-cols-2 gap-3 max-w-sm w-full relative z-10">
-                                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm">
                                     <p className="text-[10px] font-black text-tenant-primary uppercase">Hiper-Personalização</p>
-                                    <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Mix de Interesses</p>
+                                    <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Mix de Interesses</p>
                                 </div>
-                                <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                                <div className="p-4 bg-brand-surface rounded-2xl border border-brand-border shadow-sm">
                                     <p className="text-[10px] font-black text-blue-500 uppercase">Análise de GAP</p>
-                                    <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Memória de Dificuldades</p>
+                                    <p className="text-[8px] font-bold text-brand-muted mt-1 uppercase">Memória de Dificuldades</p>
                                 </div>
                             </div>
                         </div>

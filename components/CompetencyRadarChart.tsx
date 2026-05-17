@@ -32,13 +32,13 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
             const diff = previous !== undefined ? current - previous : 0;
 
             return (
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl shadow-xl border border-slate-100 dark:border-slate-800 text-xs">
-                    <p className="font-black text-slate-800 dark:text-white mb-2">{label}</p>
+                <div className="bg-brand-surface p-3 rounded-xl shadow-xl border border-brand-border text-xs">
+                    <p className="font-black text-brand-text mb-2">{label}</p>
                     <div className="flex flex-col gap-1">
                         <p className="text-tenant-primary font-bold">Atual: {current}%</p>
                         {showComparison && previous !== undefined && (
                             <>
-                                <p className="text-slate-400 font-bold">Anterior: {previous}%</p>
+                                <p className="text-brand-muted font-bold">Anterior: {previous}%</p>
                                 <p className={`font-black ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                                     {diff >= 0 ? '+' : ''}{diff}%
                                 </p>
@@ -52,7 +52,7 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
     };
 
     return (
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-gray-100 dark:border-slate-800 shadow-sm flex flex-col h-full">
+        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col h-full">
 
             <div className="flex justify-between items-start mb-8">
                 <h3 className="text-xs font-black text-gray-800 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2">
@@ -62,7 +62,7 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
                 {previousData && (
                     <button
                         onClick={() => setShowComparison(!showComparison)}
-                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-tenant-primary transition-colors"
+                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-muted hover:text-tenant-primary transition-colors"
                     >
                         {showComparison ? <ToggleRight size={24} className="text-tenant-primary" /> : <ToggleLeft size={24} />}
                         Comparar Mês Anterior

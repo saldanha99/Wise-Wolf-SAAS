@@ -98,7 +98,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                 </div>
             </div>
 
-            <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm overflow-hidden relative">
+            <div className="bg-brand-surface/80 dark:bg-brand-surface/80 backdrop-blur-xl border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm overflow-hidden relative">
                 <div className="flex flex-col md:flex-row justify-between mb-6 gap-4 relative z-10">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -107,7 +107,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                             placeholder="Buscar candidato por nome ou whatsapp..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-gray-200 shadow-sm"
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2/80 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-gray-200 shadow-sm"
                         />
                     </div>
                 </div>
@@ -118,7 +118,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                         <p className="mt-4 text-sm text-gray-500 font-medium animate-pulse">Carregando currículos...</p>
                     </div>
                 ) : filteredApps.length === 0 ? (
-                    <div className="text-center p-16 bg-gray-50/50 dark:bg-slate-800/20 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 relative z-10">
+                    <div className="text-center p-16 bg-gray-50/50 dark:bg-brand-surface-2/20 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 relative z-10">
                         <Briefcase className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
                         <h3 className="text-base font-bold text-gray-700 dark:text-gray-300">Nenhum candidato encontrado</h3>
                         <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto">
@@ -141,7 +141,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                             </thead>
                             <tbody>
                                 {filteredApps.map((app) => (
-                                    <tr key={app.id} className="bg-gray-50 dark:bg-slate-800/40 hover:bg-gray-100 dark:hover:bg-slate-800/80 transition-colors group shadow-sm rounded-xl">
+                                    <tr key={app.id} className="bg-gray-50 dark:bg-brand-surface-2/40 hover:bg-gray-100 dark:hover:bg-brand-surface-2/80 transition-colors group shadow-sm rounded-xl">
                                         <td className="px-6 py-4 font-bold text-gray-900 dark:text-gray-100 rounded-l-xl">
                                             {app.name}
                                         </td>
@@ -171,7 +171,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                                                 <select
                                                     value={app.status}
                                                     onChange={(e) => updateStatus(app.id, e.target.value as JobStatus)}
-                                                    className="text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-700 rounded-lg pl-3 pr-8 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239CA3AF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat"
+                                                    className="text-xs bg-brand-surface border border-gray-200 dark:border-gray-700 rounded-lg pl-3 pr-8 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239CA3AF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat"
                                                 >
                                                     <option value="Novo">Novo</option>
                                                     <option value="Em Análise">Em Análise</option>
