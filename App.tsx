@@ -20,6 +20,7 @@ const InvoiceManager = lazy(() => import('./components/InvoiceManager'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
 const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
 const ClassSkillsDashboard = lazy(() => import('./components/ClassSkillsDashboard'));
+const TeacherMessageSettings = lazy(() => import('./components/TeacherMessageSettings'));
 const TenantSettings = lazy(() => import('./components/TenantSettings'));
 const StudentBilling = lazy(() => import('./components/StudentBilling'));
 const TeacherInvoices = lazy(() => import('./components/TeacherInvoices'));
@@ -42,6 +43,7 @@ const SaasLandingPage = lazy(() => import('./components/landing/SaasLandingPage'
 const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLandingTemplate'));
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
+const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
@@ -55,6 +57,7 @@ const TeacherTrainingView = lazy(() => import('./components/training/TeacherTrai
 const ManualTrialScheduler = lazy(() => import('./components/ManualTrialScheduler'));
 const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
 const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGenerator'));
+const VendorInviteGenerator = lazy(() => import('./components/VendorInviteGenerator'));
 const PublicContractView = lazy(() => import('./components/PublicContractView'));
 const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
 const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
@@ -333,6 +336,11 @@ const App: React.FC = () => {
   if (path === '/teacher-onboarding' || path.startsWith('/teacher-onboarding')) {
     return <TeacherOnboarding />;
   }
+  if (path === '/vendor-onboarding' || path.startsWith('/vendor-onboarding')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <VendorOnboarding />
+    </Suspense>;
+  }
   // --------------------------------------------------
 
   if (!user) {
@@ -404,6 +412,7 @@ const App: React.FC = () => {
       'pedagogical': <PedagogicalConfig user={user} tenantId={currentTenant?.id} />,
       'learning_paths_builder': <LearningPathsBuilder user={user} tenantId={currentTenant?.id} />,
       'class_skills': <ClassSkillsDashboard user={user} tenantId={currentTenant?.id} />,
+      'msg_settings': <TeacherMessageSettings user={user} />,
       'student_billing': <StudentBilling user={user} />,
 
       'settings_school': <TenantSettings tenant={currentTenant!} onUpdate={handleUpdateTenant} />,
@@ -493,7 +502,10 @@ const App: React.FC = () => {
         ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
         : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
       'referral': <AffiliatePanel user={user} />,
-      'recruiting': <div className="max-w-md mx-auto py-10"><TeacherInviteGenerator tenantId={currentTenant?.id || ''} /></div>,
+      'recruiting': <div className="max-w-2xl mx-auto py-6 space-y-4">
+        <TeacherInviteGenerator tenantId={currentTenant?.id || ''} />
+        <VendorInviteGenerator tenantId={currentTenant?.id || ''} />
+      </div>,
       'contract_teacher': <PublicContractView id={user.id} />,
 
       // VENDEDOR tabs

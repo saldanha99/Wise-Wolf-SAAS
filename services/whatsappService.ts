@@ -5,6 +5,23 @@ import { supabase } from '../lib/supabase';
 const EVOLUTION_API_URL = "https://api.2b.app.br";
 const EVOLUTION_API_KEY = "d037768b3d06382756a0d9edecf3e40e";
 
+// Template default global de lembrete de aula (usado quando professor nao customiza)
+export const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
+
+Lembrando que nossa aula começa em 1 hora, às *{class_time}*.
+
+{class_link}
+
+Te espero! 🐺`;
+
+export const REMINDER_TEMPLATE_VARIABLES = [
+    { key: '{student_name}', label: 'Nome do aluno' },
+    { key: '{class_time}', label: 'Horário da aula (HH:MM)' },
+    { key: '{teacher_name}', label: 'Nome do professor' },
+    { key: '{class_link}', label: 'Link da aula (Meet/Zoom)' },
+    { key: '{tenant_name}', label: 'Nome da escola' },
+];
+
 export const whatsappService = {
     // 1. Create Instance
     async createInstance(tenantId: string, instanceName: string) {
@@ -168,9 +185,35 @@ export const whatsappService = {
     },
 
     // Helpers for automated messages
-    async sendLessonReminder(tenantId: string, teacherId: string, instanceName: string, studentName: string, studentPhone: string, time: string) {
-        const text = `Oi ${studentName}, tudo bem? 👋\n\nPassando para lembrar que nossa aula começa em 1 hora, às *${time}*.\n\nTe espero no link! 📽️`;
+    async sendLessonReminder(tenantId: string, teacherId: string, instanceName: string, studentName: string, studentPhone: string, time: string, options?: { classLink?: string; teacherName?: string; tenantName?: string }) {
+        const text = await this.renderLessonReminder(teacherId, {
+            studentName,
+            classTime: time,
+            classLink: options?.classLink || '',
+            teacherName: options?.teacherName || '',
+            tenantName: options?.tenantName || '',
+        });
         return this.sendText(tenantId, instanceName, studentPhone, text, teacherId);
+    },
+
+    /**
+     * Renderiza o template de lembrete do professor (com fallback para o default).
+     * Variaveis suportadas: {student_name}, {class_time}, {class_link}, {teacher_name}, {tenant_name}
+     */
+    async renderLessonReminder(teacherId: string, vars: { studentName: string; classTime: string; classLink?: string; teacherName?: string; tenantName?: string }): Promise<string> {
+        const { data: prof } = await supabase
+            .from('profiles')
+            .select('lesson_reminder_template')
+            .eq('id', teacherId)
+            .single();
+
+        const template = prof?.lesson_reminder_template?.trim() || DEFAULT_REMINDER_TEMPLATE;
+        return template
+            .replace(/\{student_name\}/g, vars.studentName || '')
+            .replace(/\{class_time\}/g, vars.classTime || '')
+            .replace(/\{class_link\}/g, vars.classLink || '')
+            .replace(/\{teacher_name\}/g, vars.teacherName || '')
+            .replace(/\{tenant_name\}/g, vars.tenantName || '');
     },
 
     async sendRescheduleConfirmation(tenantId: string, teacherId: string, instanceName: string, studentName: string, studentPhone: string, date: string, time: string) {

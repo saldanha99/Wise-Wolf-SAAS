@@ -84,6 +84,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles },
         { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
         { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
+        { id: 'msg_settings', label: 'Mensagens', icon: Bell },
         { id: 'schedule', label: 'Agenda', icon: Calendar },
         { id: 'invoices', label: 'Notas Fiscais', icon: FileText },
         { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign },
