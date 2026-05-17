@@ -116,6 +116,17 @@ const PublicRegistration: React.FC = () => {
         setError(null);
 
         try {
+            // BLOQUEANTE: consome a oferta ANTES de criar qualquer estado persistente.
+            // Se o link ja foi usado/expirou, abortamos antes de criar conta/cobrança.
+            if (contractData._offerId) {
+                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: contractData._offerId });
+                if (consumeErr) {
+                    console.error('❌ consume_offer failed:', consumeErr);
+                    throw new Error('Este link de matrícula já foi utilizado ou expirou. Solicite um novo link à escola.');
+                }
+                console.log('✅ Offer consumed:', contractData._offerId);
+            }
+
             // Map numeric duration to Enum
             const durationEnum = contractData.planDuration === 12 ? 'ANNUAL' : contractData.planDuration === 6 ? 'SEMESTER' : 'RECURRENT';
 
@@ -409,7 +420,7 @@ const PublicRegistration: React.FC = () => {
                 }
             }
 
-            if (contractData.enrollmentFee > 0) {
+            if (contractData.requiresEnrollment !== false && contractData.enrollmentFee > 0) {
                 try {
                     console.log("🚀 Gerando Pix de Matrícula Pós-Contrato...");
                     const res = await asaasService.createEnrollmentPix(contractData.enrollmentFee, {

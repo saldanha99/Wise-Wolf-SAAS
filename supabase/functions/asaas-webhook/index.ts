@@ -127,6 +127,12 @@ serve(async (req) => {
 
             // A. Update Payment Record
             // We use upsert to ensure we create it if it was missed during creation
+            const desc = (payment.description || '').toLowerCase();
+            let paymentType = 'SUBSCRIPTION';
+            if (desc.includes('matrícula') || desc.includes('matricula')) paymentType = 'ENROLLMENT';
+            else if (desc.includes('pro-rata') || desc.includes('proporcional')) paymentType = 'PRO_RATA';
+            else if (desc.includes('reembolso') || desc.includes('refund')) paymentType = 'REFUND';
+
             const paymentData: any = {
                 asaas_payment_id: payment.id,
                 value: payment.value,
@@ -136,6 +142,7 @@ serve(async (req) => {
                 billing_type: payment.billingType,
                 invoice_url: payment.bankSlipUrl || payment.invoiceUrl,
                 description: payment.description || 'Mensalidade Wise Wolf',
+                payment_type: paymentType,
                 updated_at: new Date().toISOString()
             };
 

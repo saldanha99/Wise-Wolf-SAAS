@@ -98,7 +98,18 @@ const TeacherOnboarding: React.FC = () => {
 
             const registeredUserId = data.userId;
 
-            // AUTOMATION: Send Welcome WhatsApp with Contract Link
+            // CONSUME OFFER (BLOQUEANTE): impede reuso do link de convite.
+            // Se falhar, aborta o cadastro antes de qualquer comunicação externa.
+            if (offerData._offerId) {
+                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: offerData._offerId });
+                if (consumeErr) {
+                    console.error('❌ consume_offer failed:', consumeErr);
+                    throw new Error('Este link de convite já foi utilizado ou expirou. Solicite um novo link à escola.');
+                }
+                console.log('✅ Offer consumed:', offerData._offerId);
+            }
+
+            // AUTOMATION: Send Welcome WhatsApp with Contract Link (non-blocking)
             try {
                 if (offerData?.tenantId && registeredUserId) {
                     console.log(`🚀 Iniciando disparo de boas-vindas para: ${phone}`);
@@ -109,7 +120,7 @@ const TeacherOnboarding: React.FC = () => {
 
                     if (instanceName && !rpcError) {
                         const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${registeredUserId}`;
-                        
+
                         const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
                             `*Seus dados de acesso:*\n` +
                             `📧 Login: ${email}\n` +

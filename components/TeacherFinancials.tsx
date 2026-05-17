@@ -84,8 +84,16 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     };
 
     const isLessonPaid = (log: any) => {
-        // Shared logic with Modal: Paid if not Teacher Absence and not Replacement (usually)
-        return log.presence !== 'Falta do Professor' && log.subtype !== 'REPOSIÇÃO';
+        // Regra de pagamento ao professor:
+        // - TEACHER_ABSENCE: professor faltou → não recebe
+        // - REPOSIÇÃO: aluno faltou em aula anterior justificada (que já foi paga ao professor);
+        //   a reposição é entrega da aula devida, não gera nova hora-aula
+        // - Teste Oral: avaliação periódica, fora do cômputo de hora-aula regular
+        // - FALTA do aluno (não-justificada): conta como aula paga (professor estava disponível)
+        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
+        const isReplacement = log.subtype === 'REPOSIÇÃO';
+        const isOralTestOnly = log.subtype === 'Teste Oral';
+        return !isTeacherAbsence && !isReplacement && !isOralTestOnly;
     };
 
     const canCloseMonth = () => {

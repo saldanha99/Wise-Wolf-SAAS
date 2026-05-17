@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
+import { pricingService, PricingMatrix } from '../services/pricingService';
 
 const WEEKDAY_OPTIONS = [
     { value: 'monday', label: 'Segunda' },
@@ -70,14 +71,8 @@ interface TrialsToContractsProps {
     user: any;
 }
 
-// =============================================================
-// PRICING TABLE (same as RegistrationLinkGenerator)
-// =============================================================
-const PRICING_TABLE: Record<number, Record<number, number>> = {
-    12: { 2: 139.90, 3: 187.00, 4: 271.00, 5: 297.00 },
-    6: { 2: 188.00, 3: 251.00, 4: 345.00, 5: 366.00 },
-    1: { 2: 220.00, 3: 290.00, 4: 390.00, 5: 450.00 },
-};
+// Pricing matrix now loaded from DB (student_pricing_plans) via pricingService.
+// Hardcoded values live in services/pricingService.ts as fallback.
 
 // Map trial_feedback recommended_plan to frequency
 const planToFrequency = (plan: string): number => {
@@ -142,12 +137,20 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // Filter
     const [filter, setFilter] = useState<'all' | 'OPEN' | 'WON' | 'LOST'>('all');
 
+    // Pricing carregado do banco (com fallback hardcoded)
+    const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        pricingService.loadPricing(tenantId).then(setPricingMatrix);
+    }, [tenantId]);
+
     // Auto-calculate price when duration/frequency change
     useEffect(() => {
         if (isManualPrice) return;
-        const price = PRICING_TABLE[duration]?.[frequency] || 0;
+        const price = pricingMatrix[duration]?.[frequency] || 0;
         setMonthlyFee(price);
-    }, [duration, frequency, isManualPrice]);
+    }, [duration, frequency, isManualPrice, pricingMatrix]);
 
     // Auto-resize schedule slots based on frequency
     useEffect(() => {
@@ -330,10 +333,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 classesPerWeek: frequency,
                 dueDay: dueDay,
                 professorId: selectedProfessor || null,
-                professorId2: selectedProfessor2 || null,
-                startDate: startDate,
                 requiresEnrollment: duration !== 0,
-                enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
                 // Pro-rata & billing start month (Módulo 3)
                 enableProRata,
                 proRataValue: enableProRata ? proRataValue : undefined,

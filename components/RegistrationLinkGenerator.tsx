@@ -5,37 +5,13 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
+import { pricingService, PricingMatrix } from '../services/pricingService';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
     teachers?: any[];
     vendorId?: string; // ID do vendedor para rastreamento de comissão
 }
-
-// Business Rules Configuration
-const PRICING_TABLE: Record<number, Record<number, number>> = {
-    // Fidelidade 12 Meses (Anual)
-    12: {
-        2: 139.90, // 2 aulas/semana
-        3: 187.00, // 3 aulas/semana
-        4: 271.00, // 4 aulas/semana
-        5: 297.00  // 5 aulas/semana
-    },
-    // Fidelidade 6 Meses (Semestral)
-    6: {
-        2: 188.00,
-        3: 251.00,
-        4: 345.00,
-        5: 366.00
-    },
-    // Mensal (Exemplo - Adicionado para completar a UI)
-    1: {
-        2: 220.00,
-        3: 290.00,
-        4: 390.00,
-        5: 450.00
-    }
-};
 
 const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ tenantId, teachers = [], vendorId }) => {
     // Form State
@@ -80,12 +56,20 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
 
+    // Pricing carregado do banco (com fallback hardcoded)
+    const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        pricingService.loadPricing(tenantId).then(setPricingMatrix);
+    }, [tenantId]);
+
     // Auto-calculate price
     useEffect(() => {
         if (isManualPrice) return;
-        const price = PRICING_TABLE[duration]?.[frequency] || 0;
+        const price = pricingMatrix[duration]?.[frequency] || 0;
         setMonthlyFee(price);
-    }, [duration, frequency, isManualPrice]);
+    }, [duration, frequency, isManualPrice, pricingMatrix]);
 
     // Update slots when frequency changes
     useEffect(() => {
@@ -143,56 +127,46 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         });
     };
 
-    const generateLink = async () => {
+    const generateLink = () => {
         if (!tenantId) return alert("Erro: ID da unidade não encontrado.");
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
 
         // Filter valid schedule slots
         const validSchedule = scheduleSlots.filter(s => s.day && s.time);
 
-        setGenerating(true);
-        try {
-            // Calculate pro-rata value
-            const todayPR = new Date();
-            const proRataValue = enableProRata ? (() => {
-                const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
-                const remainingDays = daysInMonth - todayPR.getDate() + 1;
-                return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
-            })() : 0;
+        // Calculate pro-rata value
+        const todayPR = new Date();
+        const proRataValue = enableProRata ? (() => {
+            const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
+            const remainingDays = daysInMonth - todayPR.getDate() + 1;
+            return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
+        })() : 0;
 
-            const payload = {
-                unitId: tenantId,
-                value: monthlyFee,
-                planDuration: duration,
-                classesPerWeek: frequency,
-                dueDay: dueDay,
-                professorId: selectedProfessor || null,
-                professorId2: selectedProfessor2 || null,
-                schedule: validSchedule.length > 0 ? validSchedule : null,
-                startDate: startDate,
-                requiresEnrollment: duration !== 0,
-                enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
-                enableProRata,
-                proRataValue: enableProRata ? proRataValue : undefined,
-                billingStartMonth,
-                vendorId: vendorId || null
-            };
+        const data = {
+            unitId: tenantId,
+            value: monthlyFee,
+            planDuration: duration,
+            classesPerWeek: frequency,
+            dueDay: dueDay,
+            professorId: selectedProfessor || null,
+            professorId2: selectedProfessor2 || null,
+            schedule: validSchedule.length > 0 ? validSchedule : null,
+            startDate: startDate,
+            requiresEnrollment: duration !== 0,
+            enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
+            // Módulo 3 - Pro-rata + billing start month
+            enableProRata,
+            proRataValue: enableProRata ? proRataValue : undefined,
+            billingStartMonth,
+            // Módulo 1 - Vendor commission tracking
+            vendorId: vendorId || null
+        };
 
-            const result = await createSignedOffer({
-                kind: 'ENROLLMENT',
-                payload,
-                tenantId,
-                expiresIn: '30d',
-            });
-
-            setGeneratedLink(result.url);
-            setCopied(false);
-        } catch (err) {
-            console.error('Failed to generate signed link:', err);
-            alert('Erro ao gerar link. Tente novamente.');
-        } finally {
-            setGenerating(false);
-        }
+        const jsonStr = JSON.stringify(data);
+        const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+        const url = `${APP_BASE_URL}/matricula?data=${base64}`;
+        setGeneratedLink(url);
+        setCopied(false);
     };
 
     const copyToClipboard = () => {

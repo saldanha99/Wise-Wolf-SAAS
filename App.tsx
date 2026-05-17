@@ -54,10 +54,6 @@ const ManualTrialScheduler = lazy(() => import('./components/ManualTrialSchedule
 const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
 const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGenerator'));
 const PublicContractView = lazy(() => import('./components/PublicContractView'));
-const CommercialDashboard = lazy(() => import('./components/CommercialDashboard'));
-const CommercialOnboarding = lazy(() => import('./components/CommercialOnboarding'));
-const CommercialManagement = lazy(() => import('./components/CommercialManagement'));
-const CommercialInviteGenerator = lazy(() => import('./components/CommercialInviteGenerator'));
 const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
 const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
 const RegistrationLinkGenerator = lazy(() => import('./components/RegistrationLinkGenerator'));
@@ -228,6 +224,7 @@ const App: React.FC = () => {
           .from('class_logs')
           .select('booking_id, reschedule_id, student_id, created_at')
           .eq('teacher_id', user.id)
+          .eq('tenant_id', user.tenantId)
           .gte('created_at', threeDaysAgo.toISOString());
 
         const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
