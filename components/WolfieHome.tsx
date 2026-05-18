@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Target, Play, Mic, Coffee, Briefcase, Plane, Zap } from 'lucide-react';
-import WolfieLiveCallV2 from './WolfieLiveCallV2';
+import WolfieLiveCallV3 from './WolfieLiveCallV3';
 
 interface WolfieHomeProps {
     user: any;
@@ -88,7 +88,7 @@ export const WolfieHome: React.FC<WolfieHomeProps> = ({ user, wolfieSettings }) 
 
     if (isLive) {
         return (
-            <WolfieLiveCallV2
+            <WolfieLiveCallV3
                 user={user}
                 wolfieConfig={wolfieSettings}
                 avatarId={selectedAvatar}

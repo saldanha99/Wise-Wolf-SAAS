@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 
-const WolfieLiveCallV2 = lazy(() => import('./WolfieLiveCallV2'));
+const WolfieLiveCallV3 = lazy(() => import('./WolfieLiveCallV3'));
 
 interface ActivityPlayerProps {
     activity: {
@@ -378,7 +378,7 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
 
     if (launched) {
         return (
-            <WolfieLiveCallV2
+            <WolfieLiveCallV3
                 user={{ id: userId }}
                 wolfieConfig={wolfieConfig || { level: 'B1', goal: 'Fluency', correctionStrictness: 2 }}
                 avatarId="wolf"
