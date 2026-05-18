@@ -383,7 +383,7 @@ const App: React.FC = () => {
 
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
-      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral'];
+      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
       if (!allowedStudentTabs.includes(activeTab)) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-red-100 dark:border-red-900/30 shadow-xl overflow-hidden relative">
