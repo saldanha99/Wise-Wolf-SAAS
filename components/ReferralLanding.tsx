@@ -93,6 +93,15 @@ const ReferralLanding: React.FC = () => {
                 if (insertErr) throw new Error(insertErr.message);
             }
 
+            // Disparo automático de WhatsApp de boas-vindas (não-bloqueante)
+            supabase.functions.invoke('referral-welcome', {
+                body: {
+                    invitee_name: name.trim(),
+                    invitee_phone: phone.replace(/\D/g, ''),
+                    referrer_id: referrerId,
+                }
+            }).catch(e => console.warn('referral-welcome disparo:', e));
+
             setSuccess(true);
         } catch (err: any) {
             setError('Ocorreu um erro. Tente novamente.');

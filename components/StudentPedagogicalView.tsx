@@ -60,7 +60,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                 .from('wolfie_sessions')
                 .select('*')
                 .eq('student_id', user.id)
-                .order('started_at', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(5);
 
             if (!sessionError && sessions) {
