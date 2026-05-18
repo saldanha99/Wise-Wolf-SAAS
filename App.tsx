@@ -47,6 +47,8 @@ const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
 const TenantAdvancedSettings = lazy(() => import('./components/TenantAdvancedSettings'));
+const TeacherWorkflows = lazy(() => import('./components/TeacherWorkflows'));
+const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
@@ -422,6 +424,8 @@ const App: React.FC = () => {
       'class_skills': <ClassSkillsDashboard user={user} tenantId={currentTenant?.id} />,
       'msg_settings': <TeacherMessageSettings user={user} />,
       'tenant_advanced': <TenantAdvancedSettings user={user} tenantId={currentTenant?.id} />,
+      'teacher_workflows': <TeacherWorkflows user={user} />,
+      'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,
 
       'settings_school': <TenantSettings tenant={currentTenant!} onUpdate={handleUpdateTenant} />,

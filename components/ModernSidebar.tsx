@@ -85,6 +85,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
         { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
         { id: 'msg_settings', label: 'Mensagens', icon: Bell },
+        { id: 'teacher_workflows', label: 'Saída / Ausência', icon: AlertCircle },
         { id: 'schedule', label: 'Agenda', icon: Calendar },
         { id: 'invoices', label: 'Notas Fiscais', icon: FileText },
         { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign },
@@ -128,6 +129,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'hr', label: 'Recursos Humanos', icon: Briefcase },
         { id: 'recruiting', label: 'Recrutamento', icon: UserPlus },
         { id: 'tenant_advanced', label: 'Avançado', icon: Settings },
+        { id: 'admin_workflows', label: 'Workflows', icon: Repeat },
     ];
 
     const superAdminMenu: MenuItem[] = [
