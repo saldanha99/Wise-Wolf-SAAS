@@ -57,8 +57,8 @@ const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TrialsToContracts = lazy(() => import('./components/TrialsToContracts'));
 const StudentAITutor = lazy(() => import('./src/pages/student/StudentAITutor'));
 const HRModule = lazy(() => import('./components/HRModule'));
-const TeacherTrainingAdmin = lazy(() => import('./components/training/TeacherTrainingAdmin'));
-const TeacherTrainingView = lazy(() => import('./components/training/TeacherTrainingView'));
+const TrainingAdmin = lazy(() => import('./components/training/TrainingAdmin'));
+const TrainingView = lazy(() => import('./components/training/TrainingView'));
 const ManualTrialScheduler = lazy(() => import('./components/ManualTrialScheduler'));
 const AffiliatePanel = lazy(() => import('./components/AffiliatePanel'));
 const TeacherInviteGenerator = lazy(() => import('./components/TeacherInviteGenerator'));
@@ -511,9 +511,9 @@ const App: React.FC = () => {
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,
       'trials': <TrialsToContracts tenantId={currentTenant?.id} user={user} />,
       'hr': <HRModule user={user} tenantId={currentTenant?.id} />,
-      'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || user.is_trainer
-        ? <TeacherTrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
-        : <TeacherTrainingView tenantId={currentTenant?.id || ''} teacherId={user.id} />,
+      'training': user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN || (user as any).is_trainer
+        ? <TrainingAdmin tenantId={currentTenant?.id || ''} currentUser={user} />
+        : <TrainingView user={user} />,
       'referral': <AffiliatePanel user={user} />,
       'recruiting': <div className="max-w-2xl mx-auto py-6 space-y-4">
         <TeacherInviteGenerator tenantId={currentTenant?.id || ''} />

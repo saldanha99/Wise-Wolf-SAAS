@@ -105,6 +105,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'materials', label: 'Materiais', icon: Book },
         { id: 'financial', label: 'Financeiro', icon: CreditCard },
         { id: 'evolution', label: 'Evolução', icon: Sparkles },
+        { id: 'training', label: 'Treinamentos', icon: GraduationCap },
         { id: 'referral', label: 'Indicações', icon: Gift },
     ];
 
