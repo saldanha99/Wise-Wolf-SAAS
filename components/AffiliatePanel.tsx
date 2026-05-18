@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
     Gift, Copy, Check, Users, TrendingUp, Link2,
-    Share2, ChevronRight, Sparkles, Clock, Award,
-    MessageCircle, ExternalLink
+    Share2, Sparkles, Clock, Award,
+    MessageCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
@@ -39,17 +39,17 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
         recentReferrals: []
     });
     const [loading, setLoading] = useState(true);
+    const [pendingInvites, setPendingInvites] = useState(0);
 
     const isTeacher = user.role === UserRole.TEACHER;
     const isStudent = user.role === UserRole.STUDENT;
     const isAdmin = user.role === UserRole.SCHOOL_ADMIN;
 
-    // Gerar link único por role
-    const affiliateLink = isTeacher || isAdmin
-        ? `${APP_BASE_URL}/matricula?ref=${user.id}`
-        : `${APP_BASE_URL}/matricula?ref_student=${user.id}`;
+    // Link de indicação: abre landing pública onde o indicado preenche dados
+    const affiliateLink = `${APP_BASE_URL}/indicacao?ref=${user.id}`;
 
     const referrerColumn = isTeacher || isAdmin ? 'referrer_teacher_id' : 'referrer_student_id';
+
 
     useEffect(() => {
         fetchStats();
@@ -58,18 +58,36 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
     const fetchStats = async () => {
         setLoading(true);
         try {
-            const { data, count } = await supabase
-                .from('profiles')
-                .select('id, full_name, created_at, role', { count: 'exact' })
-                .eq(referrerColumn, user.id)
-                .order('created_at', { ascending: false })
+            // Conversões confirmadas (indicados que fecharam plano)
+            const { data: convertedInvites, count: convertedCount } = await supabase
+                .from('referral_invites')
+                .select('id, invitee_name, converted_at', { count: 'exact' })
+                .eq('referrer_id', user.id)
+                .eq('status', 'CONVERTED')
+                .order('converted_at', { ascending: false })
                 .limit(5);
 
+            // Indicados pendentes (registraram interesse mas ainda não fecharam)
+            const { count: pendingCount } = await supabase
+                .from('referral_invites')
+                .select('id', { count: 'exact' })
+                .eq('referrer_id', user.id)
+                .eq('status', 'PENDING');
+
+            const converted = convertedCount || 0;
+            const recentConverted: ReferredUser[] = (convertedInvites || []).map((inv: any) => ({
+                id: inv.id,
+                full_name: inv.invitee_name,
+                created_at: inv.converted_at || '',
+                role: 'student',
+            }));
+
             setStats({
-                referrals: count || 0,
-                totalEarnings: (count || 0) * BONUS_PER_REFERRAL,
-                recentReferrals: data || []
+                referrals: converted,
+                totalEarnings: converted * BONUS_PER_REFERRAL,
+                recentReferrals: recentConverted,
             });
+            setPendingInvites(pendingCount || 0);
         } catch (err) {
             console.error('Error fetching affiliate stats:', err);
         } finally {
@@ -134,9 +152,9 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                     {/* How it works */}
                     <div className="grid grid-cols-3 gap-3 mb-6">
                         {[
-                            { step: '1', label: 'Copie seu link único' },
-                            { step: '2', label: 'Compartilhe com amigos' },
-                            { step: '3', label: 'Ganhe R$45 por matrícula' },
+                            { step: '1', label: 'Compartilhe seu link' },
+                            { step: '2', label: 'Amigo preenche os dados' },
+                            { step: '3', label: 'Fecha plano → você ganha!' },
                         ].map(({ step, label }) => (
                             <div key={step} className="bg-brand-surface/10 backdrop-blur-sm border border-white/15 rounded-2xl p-3 text-center">
                                 <div className="w-7 h-7 bg-brand-surface/20 rounded-full flex items-center justify-center mx-auto mb-2">
@@ -181,7 +199,24 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
             </div>
 
             {/* ── Stats Cards ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* Aguardando Matrícula */}
+                <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
+                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-amber-400/15 to-transparent rounded-full blur-2xl group-hover:from-amber-400/25 transition-colors" />
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="p-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-xl">
+                            <Clock size={22} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Pendentes</span>
+                    </div>
+                    <p className="text-4xl font-black text-brand-text tracking-tighter">
+                        {loading ? '—' : pendingInvites}
+                    </p>
+                    <p className="text-sm font-bold text-amber-600 dark:text-amber-400 mt-1">
+                        {pendingInvites === 1 ? 'Aguardando matrícula' : 'Aguardando matrícula'}
+                    </p>
+                </div>
+
                 {/* Total Indicações */}
                 <div className="bg-brand-surface rounded-[2rem] p-6 border border-brand-border shadow-sm hover:-translate-y-1 transition-transform group relative overflow-hidden">
                     <div className="absolute -top-8 -right-8 w-32 h-32 bg-gradient-to-b from-teal-400/15 to-transparent rounded-full blur-2xl group-hover:from-teal-400/25 transition-colors" />

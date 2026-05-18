@@ -388,6 +388,39 @@ const PublicRegistration: React.FC = () => {
                 }
             }
 
+            // ===== REFERRAL INVITE CONVERSION =====
+            // Se o email bate com um referral_invite PENDING → marca como CONVERTED
+            try {
+                const { data: invite } = await supabase
+                    .from('referral_invites')
+                    .select('id, referrer_id')
+                    .eq('invitee_email', email.toLowerCase().trim())
+                    .eq('status', 'PENDING')
+                    .gt('expires_at', new Date().toISOString())
+                    .maybeSingle();
+
+                if (invite) {
+                    await supabase
+                        .from('referral_invites')
+                        .update({
+                            status: 'CONVERTED',
+                            converted_at: new Date().toISOString(),
+                            converted_student_id: userId,
+                        })
+                        .eq('id', invite.id);
+
+                    // Atualiza o perfil do aluno com o referrer_student_id
+                    await supabase
+                        .from('profiles')
+                        .update({ referrer_student_id: invite.referrer_id })
+                        .eq('id', userId);
+
+                    console.log('✅ Indicação convertida! Referrer:', invite.referrer_id);
+                }
+            } catch (refErr) {
+                console.error('⚠️ Erro ao converter indicação (não-bloqueante):', refErr);
+            }
+
             // ===== OPPORTUNITY CONVERSION TRACKING =====
             // If this link came from an experimental trial, mark the opportunity as WON
             if (contractData.opportunityId && userId) {

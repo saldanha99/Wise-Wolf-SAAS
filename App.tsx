@@ -68,6 +68,7 @@ const PublicContractView = lazy(() => import('./components/PublicContractView'))
 const VendorDashboard = lazy(() => import('./components/VendorDashboard'));
 const VendorTrialLinkGenerator = lazy(() => import('./components/VendorTrialLinkGenerator'));
 const RegistrationLinkGenerator = lazy(() => import('./components/RegistrationLinkGenerator'));
+const ReferralLanding = lazy(() => import('./components/ReferralLanding'));
 
 // Static Components (Core UI)
 import ModernSidebar from './components/ModernSidebar';
@@ -333,6 +334,14 @@ const App: React.FC = () => {
 
   if (path === '/matricula') {
     return <PublicRegistration />;
+  }
+
+  if (path === '/indicacao') {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
+        <ReferralLanding />
+      </Suspense>
+    );
   }
 
   if (path === '/view-contract') {
