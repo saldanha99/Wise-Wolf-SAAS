@@ -57,7 +57,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
 
             // 3. Fetch Wolfie History (Safe Fetch - table might not exist in dev yet)
             const { data: sessions, error: sessionError } = await supabase
-                .from('wolfie_conversations')
+                .from('wolfie_sessions')
                 .select('*')
                 .eq('student_id', user.id)
                 .order('started_at', { ascending: false })
