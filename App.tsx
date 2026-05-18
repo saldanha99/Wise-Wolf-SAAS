@@ -41,6 +41,7 @@ const WhatsappConfig = lazy(() => import('./components/WhatsappConfig'));
 const CRMPage = lazy(() => import('./components/CRMPage'));
 const LandingPageBuilder = lazy(() => import('./components/LandingPageBuilder'));
 const SaasLandingPage = lazy(() => import('./components/landing/SaasLandingPage'));
+const WiseWolfLanding = lazy(() => import('./components/landing/WiseWolfLanding'));
 const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLandingTemplate'));
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
@@ -321,6 +322,9 @@ const App: React.FC = () => {
 
   if (path === '/new-saas') {
     return <SaasLandingPage />;
+  }
+  if (path === '/lp' || path === '/wisewolf' || path === '/assine') {
+    return <WiseWolfLanding />;
   }
 
   if (path === '/new-student') {
