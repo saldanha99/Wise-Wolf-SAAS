@@ -365,7 +365,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className="w-full min-w-[500px]">
                         <thead>
                             <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/30">
                                 <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Data</th>

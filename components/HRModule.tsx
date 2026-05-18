@@ -129,7 +129,7 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                     </div>
                 ) : (
                     <div className="overflow-x-auto relative z-10 -mx-6 px-6 pb-4">
-                        <table className="w-full text-sm text-left border-separate border-spacing-y-2">
+                        <table className="w-full text-sm text-left border-separate border-spacing-y-2 min-w-[500px]">
                             <thead className="text-xs text-gray-500 uppercase font-semibold">
                                 <tr>
                                     <th className="px-6 py-3 px-8">Candidato</th>

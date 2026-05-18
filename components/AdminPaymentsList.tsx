@@ -103,7 +103,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             </div>
 
             <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-brand-surface-2/50 text-[10px] uppercase font-black text-brand-muted">
                         <tr>
                             <th className="px-8 py-4">Aluno</th>

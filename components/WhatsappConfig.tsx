@@ -23,16 +23,16 @@ const WhatsappConfig: React.FC<WhatsappConfigProps> = ({ user, tenantId }) => {
             </div>
 
             {/* Tabs */}
-            <div className="flex items-center gap-1 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl w-fit">
+            <div className="flex items-center gap-1 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl overflow-x-auto max-w-full">
                 <button
                     onClick={() => setActiveTab('connection')}
-                    className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'connection' ? 'bg-brand-surface dark:bg-slate-700 text-brand-text shadow-sm' : 'text-brand-muted hover:text-brand-muted dark:hover:text-slate-300'}`}
+                    className={`shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'connection' ? 'bg-brand-surface dark:bg-slate-700 text-brand-text shadow-sm' : 'text-brand-muted hover:text-brand-muted dark:hover:text-slate-300'}`}
                 >
                     <span className="flex items-center gap-2"><SettingsIcon size={14} /> Conexão</span>
                 </button>
                 <button
                     onClick={() => setActiveTab('templates')}
-                    className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'templates' ? 'bg-brand-surface dark:bg-slate-700 text-brand-text shadow-sm' : 'text-brand-muted hover:text-brand-muted dark:hover:text-slate-300'}`}
+                    className={`shrink-0 whitespace-nowrap px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'templates' ? 'bg-brand-surface dark:bg-slate-700 text-brand-text shadow-sm' : 'text-brand-muted hover:text-brand-muted dark:hover:text-slate-300'}`}
                 >
                     <span className="flex items-center gap-2"><MessageSquare size={14} /> Templates</span>
                 </button>

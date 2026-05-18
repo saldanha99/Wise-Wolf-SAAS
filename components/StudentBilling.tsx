@@ -341,7 +341,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
           <h3 className="font-black text-brand-text dark:text-slate-200 text-sm uppercase tracking-widest">Histórico de Mensalidades (Todos)</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left min-w-[500px]">
             <thead className="bg-brand-surface-2/50 text-[10px] text-brand-muted uppercase font-black border-b dark:border-brand-border">
               <tr>
                 <th className="px-8 py-5">Vencimento</th>

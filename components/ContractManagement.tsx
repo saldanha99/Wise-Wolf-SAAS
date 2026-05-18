@@ -152,7 +152,7 @@ const ContractManagement: React.FC = () => {
             {/* Table */}
             <div className="bg-brand-surface rounded-3xl shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-left text-sm min-w-[600px]">
                         <thead className="bg-brand-surface-2 text-brand-muted font-semibold border-b border-brand-border">
                             <tr>
                                 <th className="px-6 py-4">Aluno</th>

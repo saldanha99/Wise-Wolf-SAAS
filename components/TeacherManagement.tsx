@@ -282,7 +282,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left min-w-[600px]">
                         <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] uppercase font-black text-gray-500 dark:text-brand-muted">
                             <tr>
                                 <th className="px-6 py-4">Professor</th>
@@ -296,7 +296,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                             {filteredTeachers.map(teacher => (
                                 <tr key={teacher.id} className="hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-colors group">
-                                    <td className="px-6 py-4">
+                                    <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
                                             <img src={teacher.avatar} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border" />
                                             <div>

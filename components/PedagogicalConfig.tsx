@@ -197,9 +197,9 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
           <h2 className="text-3xl font-black text-brand-text tracking-tight">Gestão Pedagógica</h2>
           <p className="text-brand-muted text-sm">Biblioteca Master e Currículo.</p>
         </div>
-        <div className="flex gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
-          <button onClick={() => setActiveTab('allocation')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
-          <button onClick={() => setActiveTab('materials')} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
+        <div className="flex overflow-x-auto gap-2 p-1 bg-brand-surface-2 dark:bg-brand-surface-2 rounded-xl">
+          <button onClick={() => setActiveTab('allocation')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'allocation' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Atribuições</button>
+          <button onClick={() => setActiveTab('materials')} className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-tenant-primary dark:text-white' : 'text-brand-muted'}`}>Biblioteca</button>
         </div>
       </div>
 
@@ -210,8 +210,8 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             <div className="mb-4 flex gap-4">
               <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar aluno..." className="p-2 border rounded-lg flex-1 bg-transparent" />
             </div>
-            <div className="overflow-y-auto flex-1">
-              <table className="w-full text-left">
+            <div className="overflow-y-auto overflow-x-auto flex-1">
+              <table className="w-full text-left min-w-[400px]">
                 <thead className="bg-brand-surface-2 text-[10px] uppercase font-black text-brand-muted">
                   <tr><th className="p-3">Aluno</th><th className="p-3">Módulo</th><th className="p-3">Progresso</th><th className="p-3 text-right">Ações</th></tr>
                 </thead>
@@ -282,12 +282,12 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
           <div className={`${showSidebar ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black">Biblioteca Master</h3>
-              <div className="flex gap-1 bg-brand-surface-2 dark:bg-brand-surface-2 p-1 rounded-lg">
+              <div className="flex overflow-x-auto gap-1 bg-brand-surface-2 dark:bg-brand-surface-2 p-1 rounded-lg">
                 {['ALL', 'GENERAL', 'MEDICINE', 'TECH', 'BUSINESS', 'TRAVEL'].map(niche => (
                   <button
                     key={niche}
                     onClick={() => setSelectedNiche(niche)}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${selectedNiche === niche
+                    className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${selectedNiche === niche
                         ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white'
                         : 'text-brand-muted hover:text-brand-muted'
                       }`}

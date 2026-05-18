@@ -222,41 +222,41 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
             {activeTab === 'analytics' ? 'Monitoramento de hierarquias: Professores e Alunos.' : 'Gestão de treinamentos e padronização.'}
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex bg-brand-surface border border-brand-border p-1 rounded-2xl">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex overflow-x-auto max-w-full bg-brand-surface border border-brand-border p-1 rounded-2xl">
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'analytics' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Analytics
             </button>
             <button
               onClick={() => setActiveTab('training')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'training' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Treinamento
             </button>
             <button
               onClick={() => setActiveTab('registration')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'registration' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Link Matrícula
             </button>
             <button
               onClick={() => setActiveTab('payments')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Fluxo de Caixa
             </button>
             <button
               onClick={() => setActiveTab('contracts')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'contracts' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'contracts' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Contratos
             </button>
             <button
               onClick={() => setActiveTab('recruiting')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Recrutamento (Link)
             </button>
@@ -407,7 +407,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-left text-sm min-w-[500px]">
                     <thead className="text-xs text-brand-muted font-semibold border-b border-brand-border">
                       <tr>
                         <th className="px-6 py-4 font-medium">Aluno</th>

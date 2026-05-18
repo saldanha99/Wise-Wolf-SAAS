@@ -206,7 +206,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                 {/* Invoices List */}
                 <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border shadow-xl overflow-hidden min-h-[400px]">
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                        <table className="w-full text-left min-w-[600px]">
                             <thead>
                                 <tr className="bg-brand-surface-2/80 dark:bg-brand-surface-2/50 border-b border-brand-border">
                                     <th className="px-8 py-6 text-[10px] font-black text-brand-muted uppercase tracking-widest sticky left-0 bg-brand-surface-2/80 dark:bg-brand-surface-2/50 backdrop-blur-sm z-10">Professor</th>

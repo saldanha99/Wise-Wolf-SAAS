@@ -192,7 +192,7 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, tenantId, teach
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                        <table className="w-full text-left min-w-[500px]">
                             <thead className="bg-gray-50/50 dark:bg-slate-800/50 text-[10px] uppercase font-black text-gray-400">
                                 <tr>
                                     <th className="px-6 py-3">Aluno</th>

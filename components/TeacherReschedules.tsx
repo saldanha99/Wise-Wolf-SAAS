@@ -164,7 +164,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
 
                             {/* Table */}
                             <div className="overflow-x-auto rounded-xl border border-brand-border custom-scrollbar">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse min-w-[500px]">
                                     <thead>
                                         <tr className="bg-brand-surface-2 border-b border-brand-border">
                                             <th className="p-4 text-[10px] uppercase font-black text-brand-muted tracking-wider w-24 text-center">
