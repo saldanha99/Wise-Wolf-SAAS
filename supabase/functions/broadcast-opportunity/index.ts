@@ -212,11 +212,30 @@ ${claimLink}`;
         const instanceEncoded = encodeURIComponent(INSTANCE);
         const endpoint = `${API_URL}/message/sendText/${instanceEncoded}`;
 
-        const response = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": API_KEY },
-            body: JSON.stringify(payload)
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        let response: Response;
+        try {
+            response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "apikey": API_KEY },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+        } catch (fetchErr: any) {
+            clearTimeout(timeoutId);
+            const isTimeout = fetchErr?.name === 'AbortError';
+            console.error(isTimeout ? "Evolution API timeout after 15s" : "Evolution fetch error:", fetchErr?.message);
+            return new Response(JSON.stringify({
+                success: true,
+                warning: isTimeout ? "WhatsApp API timeout — oportunidade criada mas mensagem pode não ter sido enviada." : fetchErr?.message,
+                id: oppData.id,
+                instance_used: INSTANCE,
+                destination_group: destinationGroup
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        clearTimeout(timeoutId);
 
         const apiData = await response.json();
 
