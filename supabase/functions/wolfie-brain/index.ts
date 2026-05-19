@@ -200,15 +200,23 @@ PRONUNCIATION RULES (when audio is provided — MANDATORY analysis):
 }
 
 // ============================================================
-// OPENROUTER CALL HELPER — Fallback chain entre modelos free
+// OPENROUTER CALL HELPER — Fallback chain entre 10 modelos free
 // ============================================================
-// Quando um modelo está com rate-limit, automaticamente cai pro próximo
+// Ordem testada em 2026-05: diversificamos PROVEDORES para que rate-limits
+// upstream (Google AI Studio, Crucible, etc.) não derrubem TODOS ao mesmo tempo.
+// Importante: NUNCA usar response_format: json_object — ele agrava o rate-limit
+// no DeepSeek free. Confiamos na instrução no prompt + sanitização + JSON.parse validation.
 const FREE_MODELS_FALLBACK = [
-    'deepseek/deepseek-v4-flash:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'google/gemma-4-31b-it:free',
-    'google/gemma-4-26b-a4b-it:free',
-    'nousresearch/hermes-3-llama-3.1-405b:free',
+    'openai/gpt-oss-120b:free',                  // OpenAI open-source 120B (top quality)
+    'nvidia/nemotron-3-super-120b-a12b:free',    // NVIDIA — provedor distinto
+    'z-ai/glm-4.5-air:free',                     // Z.AI — provedor distinto
+    'minimax/minimax-m2.5:free',                 // MiniMax — provedor distinto
+    'openai/gpt-oss-20b:free',                   // OpenAI 20B (mais leve, mais cota)
+    'google/gemma-4-31b-it:free',                // Google AI Studio
+    'google/gemma-4-26b-a4b-it:free',            // Google AI Studio (variante)
+    'deepseek/deepseek-v4-flash:free',           // Crucible (geralmente em 429)
+    'meta-llama/llama-3.3-70b-instruct:free',    // fallback
+    'nousresearch/hermes-3-llama-3.1-405b:free', // last resort
 ];
 
 async function callOpenRouter(
@@ -229,17 +237,15 @@ async function callOpenRouter(
         ? `[O aluno enviou um áudio — transcreva como se fosse texto]\n${textParts}`
         : textParts;
 
+    // Reforça JSON output sempre no system prompt — não usamos response_format
+    // porque ele triplica a chance de 429 no DeepSeek free.
+    const finalSystemPrompt = jsonMode
+        ? systemPrompt + '\n\nCRITICAL: Return ONLY a valid JSON object starting with { and ending with }. NOTHING before or after. NO markdown wrappers (```json), NO explanations. Just the raw JSON.'
+        : systemPrompt;
+
     let lastError: any = null;
 
     for (const model of FREE_MODELS_FALLBACK) {
-        // JSON mode só é suportado nativamente por alguns modelos.
-        // Para os demais, reforçamos no system prompt.
-        const modelSupportsJson = model.startsWith('deepseek/') || model.startsWith('openai/');
-
-        const finalSystemPrompt = (jsonMode && !modelSupportsJson)
-            ? systemPrompt + '\n\nIMPORTANTE: Retorne APENAS um objeto JSON válido começando com { e terminando com }. NADA antes ou depois. Sem markdown, sem ```json.'
-            : systemPrompt;
-
         const payload: any = {
             model,
             messages: [
@@ -249,10 +255,6 @@ async function callOpenRouter(
             max_tokens: 1024,
             temperature: 0.7,
         };
-
-        if (jsonMode && modelSupportsJson) {
-            payload.response_format = { type: 'json_object' };
-        }
 
         try {
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -270,15 +272,15 @@ async function callOpenRouter(
                 const errorText = await response.text();
                 console.warn(`[OpenRouter] ${model} falhou (${response.status}): ${errorText.slice(0, 200)}`);
                 lastError = new Error(`${model} → ${response.status}: ${errorText.slice(0, 200)}`);
-                // Rate limit / erro temporário → tenta próximo modelo
-                if (response.status === 429 || response.status === 503 || response.status >= 500) continue;
+                // 429 / 503 / 5xx → tenta próximo modelo
+                if (response.status === 429 || response.status === 503 || response.status >= 500 || response.status === 404) continue;
                 // Erro permanente (auth, etc) → aborta
                 throw lastError;
             }
 
             const data = await response.json();
             const text = data.choices?.[0]?.message?.content;
-            if (!text) {
+            if (!text || !text.trim()) {
                 console.warn(`[OpenRouter] ${model} retornou resposta vazia, tentando próximo...`);
                 lastError = new Error(`${model} returned empty response`);
                 continue;
@@ -294,6 +296,14 @@ async function callOpenRouter(
                 const lastBrace = cleaned.lastIndexOf('}');
                 if (firstBrace >= 0 && lastBrace > firstBrace) {
                     cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+                }
+                // Valida o JSON antes de retornar — se inválido, tenta próximo modelo
+                try {
+                    JSON.parse(cleaned);
+                } catch (parseErr) {
+                    console.warn(`[OpenRouter] ${model} retornou JSON inválido, tentando próximo. Raw: ${cleaned.slice(0, 200)}`);
+                    lastError = new Error(`${model} returned invalid JSON`);
+                    continue;
                 }
             }
 
