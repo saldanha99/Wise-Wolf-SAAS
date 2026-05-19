@@ -156,7 +156,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // --- Session Timer ---
     const [sessionStart] = useState<Date>(new Date());
     const [elapsed, setElapsed] = useState(0);
-    const MAX_SESSION_MINUTES = 30;
+    const MAX_SESSION_MINUTES = 120; // 2h — antes era 30, encerrava antes da hora
+
+    // --- History from past sessions ---
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
     // --- Refs ---
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -246,6 +249,62 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         }, 1000);
         return () => clearInterval(timer);
     }, [sessionStart]);
+
+    // Carrega histórico da última sessão do aluno (persiste entre logins)
+    useEffect(() => {
+        const loadLastSession = async () => {
+            if (!user?.id) {
+                setIsLoadingHistory(false);
+                return;
+            }
+            try {
+                // 1. Pega a sessão mais recente do aluno
+                const { data: lastSession } = await supabase
+                    .from('wolfie_sessions')
+                    .select('id, topic, started_at')
+                    .eq('student_id', user.id)
+                    .order('started_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!lastSession) {
+                    setIsLoadingHistory(false);
+                    return;
+                }
+
+                // 2. Pega os últimos 20 turnos dessa sessão
+                const { data: turns } = await supabase
+                    .from('wolfie_turns')
+                    .select('id, speaker, content, turn_index, created_at')
+                    .eq('session_id', lastSession.id)
+                    .order('turn_index', { ascending: true })
+                    .limit(20);
+
+                if (turns && turns.length > 0) {
+                    const restored: Message[] = turns.map((t: any) => ({
+                        id: t.id,
+                        role: t.speaker === 'student' ? 'user' : 'assistant',
+                        content: t.content || '',
+                        timestamp: new Date(t.created_at),
+                    }));
+                    setMessages(restored);
+                    setConversationId(lastSession.id);
+                    setTurnCount(Math.floor(turns.length / 2));
+                    if (lastSession.topic && !initialTopic) {
+                        setTopic(lastSession.topic);
+                        setHasSelectedTopic(true);
+                    }
+                    console.log(`[WolfieTutor] Histórico restaurado: ${turns.length} turnos da sessão ${lastSession.id}`);
+                }
+            } catch (err) {
+                console.error('[WolfieTutor] Erro ao carregar histórico:', err);
+            } finally {
+                setIsLoadingHistory(false);
+            }
+        };
+        loadLastSession();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.id]);
 
     // Auto-scroll messages
     useEffect(() => {
@@ -600,6 +659,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         title="Repetir devagar (0.7x)"
                     >
                         <RotateCcw size={12} />
+                    </button>
+                    {/* Nova Conversa — reseta sessão (cria nova session_id no banco no próximo turno) */}
+                    <button
+                        onClick={() => {
+                            if (!confirm('Iniciar uma nova conversa? O histórico atual ficará salvo, mas será iniciado um novo papo do zero.')) return;
+                            stopSpeaking();
+                            setMessages([]);
+                            setConversationId(null);
+                            setTurnCount(0);
+                            setCorrection(null);
+                            setTranslation(null);
+                            setVocabulary(null);
+                            setQuiz(null);
+                            setError(null);
+                            setSubtitle('');
+                        }}
+                        className="px-2.5 py-1.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-bold uppercase tracking-wider hover:bg-fuchsia-500/25 transition-all"
+                        title="Iniciar uma nova conversa do zero"
+                    >
+                        Nova
                     </button>
                 </div>
 
