@@ -6,7 +6,7 @@ import { ArrowRight, Loader2, CheckCircle, User, Mail, Phone, ChevronRight } fro
 // Número de WhatsApp da escola para redirecionamento final
 // Formato: apenas dígitos com código do país (ex: 5511999998888)
 // ============================================================
-const SCHOOL_WHATSAPP = '5511999998888'; // ← substituir pelo número real
+const SCHOOL_WHATSAPP = '5512996405414';
 
 type Step = 'intro' | 'nome' | 'email' | 'whatsapp' | 'success';
 
