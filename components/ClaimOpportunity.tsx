@@ -194,12 +194,11 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
             const dayEnd = new Date(trialStart);
             dayEnd.setHours(23, 59, 59, 999);
 
-            // CLEANUP: Cancel orphaned experimental appointments before conflict check
+            // CLEANUP: Cancel orphaned experimental trial bookings before conflict check
             const { data: expAppts } = await supabase
-                .from('appointments')
+                .from('trial_bookings')
                 .select('id')
-                .eq('professor_id', user.id)
-                .eq('type', 'experimental')
+                .eq('teacher_id', user.id)
                 .eq('status', 'scheduled')
                 .gte('start_time', dayStart.toISOString())
                 .lte('start_time', dayEnd.toISOString());
@@ -215,18 +214,18 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
 
                     if (!linkedOpp) {
                         await supabase
-                            .from('appointments')
+                            .from('trial_bookings')
                             .update({ status: 'cancelled' })
                             .eq('id', ea.id);
-                        console.log('[ClaimOpp] ♻️ Cancelled orphaned appointment:', ea.id);
+                        console.log('[ClaimOpp] ♻️ Cancelled orphaned trial booking:', ea.id);
                     }
                 }
             }
 
             const { data: dayAppointments } = await supabase
-                .from('appointments')
+                .from('trial_bookings')
                 .select('id, start_time, status')
-                .eq('professor_id', user.id)
+                .eq('teacher_id', user.id)
                 .neq('status', 'cancelled')
                 .gte('start_time', dayStart.toISOString())
                 .lte('start_time', dayEnd.toISOString());
@@ -284,16 +283,15 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
 
             console.log('[ClaimOpp] ✅ No conflicts found, proceeding with claim');
 
-            // A. Insert Appointment & capture its ID
+            // A. Insert Trial Booking & capture its ID
             const { data: appointmentData, error: insertError } = await supabase
-                .from('appointments')
+                .from('trial_bookings')
                 .insert({
                     start_time: isoDate,
-                    type: 'experimental',
                     status: 'scheduled',
-                    professor_id: user.id,
-                    student_name: studentName,
-                    student_phone: studentPhone
+                    teacher_id: user.id,
+                    lead_name: studentName,
+                    lead_phone: studentPhone
                 })
                 .select('id')
                 .single();

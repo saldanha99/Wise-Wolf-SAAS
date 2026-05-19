@@ -193,38 +193,59 @@ PRONUNCIATION RULES (when audio is provided):
 // ============================================================
 // GEMINI CALL HELPER
 // ============================================================
-async function callGemini(
-    geminiKey: string,
+// ── OpenRouter (DeepSeek V4 Flash — free tier) ──
+async function callOpenRouter(
+    apiKey: string,
     systemPrompt: string,
     userContent: any[],
     jsonMode: boolean = true
 ): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+    // Extrai texto e info de áudio dos parts Gemini-style
+    const textParts = userContent
+        .filter(p => p.text)
+        .map(p => p.text)
+        .join('\n');
+
+    const hasAudio = userContent.some(p => p.inline_data);
+
+    const userMessage = hasAudio
+        ? `[O aluno enviou um áudio — transcreva como se fosse texto]\n${textParts}`
+        : textParts;
 
     const payload: any = {
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: userContent }],
+        model: 'deepseek/deepseek-v4-flash:free',
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+        ],
+        max_tokens: 1024,
+        temperature: 0.7,
     };
 
     if (jsonMode) {
-        payload.generationConfig = { response_mime_type: "application/json" };
+        payload.response_format = { type: 'json_object' };
     }
 
-    const response = await fetch(url, {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'HTTP-Referer': 'https://app.wisewolf.com.br',
+            'X-Title': 'WiseCore Wolfie',
+        },
         body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Gemini Error: ${errorText}`);
-        throw new Error(`Gemini Error: ${errorText}`);
+        console.error(`OpenRouter Error ${response.status}: ${errorText}`);
+        throw new Error(`OpenRouter Error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("Gemini returned empty response");
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenRouter returned empty response');
     return text;
 }
 
@@ -268,8 +289,8 @@ serve(async (req) => {
         const authHeader = req.headers.get('Authorization');
         const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader! } } });
 
-        const geminiKey = (Deno.env.get('GEMINI_API_KEY') ?? '').trim();
-        if (!geminiKey) throw new Error("GEMINI_API_KEY is not set.");
+        const openRouterKey = (Deno.env.get('OPENROUTER_API_KEY') ?? '').trim();
+        if (!openRouterKey) throw new Error("OPENROUTER_API_KEY is not set.");
 
         // ── Billing Check ──
         const jwt = authHeader?.replace('Bearer ', '');
@@ -413,8 +434,8 @@ serve(async (req) => {
 
         const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory);
 
-        const aiRawResult = await callGemini(
-            geminiKey,
+        const aiRawResult = await callOpenRouter(
+            openRouterKey,
             systemPrompt,
             userContentParts,
             true // Enable JSON mode
