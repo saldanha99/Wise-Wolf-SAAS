@@ -191,9 +191,17 @@ PRONUNCIATION RULES (when audio is provided):
 }
 
 // ============================================================
-// GEMINI CALL HELPER
+// OPENROUTER CALL HELPER — Fallback chain entre modelos free
 // ============================================================
-// ── OpenRouter (DeepSeek V4 Flash — free tier) ──
+// Quando um modelo está com rate-limit, automaticamente cai pro próximo
+const FREE_MODELS_FALLBACK = [
+    'deepseek/deepseek-v4-flash:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemma-4-31b-it:free',
+    'google/gemma-4-26b-a4b-it:free',
+    'nousresearch/hermes-3-llama-3.1-405b:free',
+];
+
 async function callOpenRouter(
     apiKey: string,
     systemPrompt: string,
@@ -212,41 +220,84 @@ async function callOpenRouter(
         ? `[O aluno enviou um áudio — transcreva como se fosse texto]\n${textParts}`
         : textParts;
 
-    const payload: any = {
-        model: 'deepseek/deepseek-v4-flash:free',
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-    };
+    let lastError: any = null;
 
-    if (jsonMode) {
-        payload.response_format = { type: 'json_object' };
+    for (const model of FREE_MODELS_FALLBACK) {
+        // JSON mode só é suportado nativamente por alguns modelos.
+        // Para os demais, reforçamos no system prompt.
+        const modelSupportsJson = model.startsWith('deepseek/') || model.startsWith('openai/');
+
+        const finalSystemPrompt = (jsonMode && !modelSupportsJson)
+            ? systemPrompt + '\n\nIMPORTANTE: Retorne APENAS um objeto JSON válido começando com { e terminando com }. NADA antes ou depois. Sem markdown, sem ```json.'
+            : systemPrompt;
+
+        const payload: any = {
+            model,
+            messages: [
+                { role: 'system', content: finalSystemPrompt },
+                { role: 'user', content: userMessage },
+            ],
+            max_tokens: 1024,
+            temperature: 0.7,
+        };
+
+        if (jsonMode && modelSupportsJson) {
+            payload.response_format = { type: 'json_object' };
+        }
+
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': 'https://app.wisewolf.com.br',
+                    'X-Title': 'WiseCore Wolfie',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.warn(`[OpenRouter] ${model} falhou (${response.status}): ${errorText.slice(0, 200)}`);
+                lastError = new Error(`${model} → ${response.status}: ${errorText.slice(0, 200)}`);
+                // Rate limit / erro temporário → tenta próximo modelo
+                if (response.status === 429 || response.status === 503 || response.status >= 500) continue;
+                // Erro permanente (auth, etc) → aborta
+                throw lastError;
+            }
+
+            const data = await response.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (!text) {
+                console.warn(`[OpenRouter] ${model} retornou resposta vazia, tentando próximo...`);
+                lastError = new Error(`${model} returned empty response`);
+                continue;
+            }
+
+            // Sanitiza: remove markdown wrappers e captura só o JSON quando aplicável
+            let cleaned = text.trim();
+            if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+            }
+            if (jsonMode) {
+                const firstBrace = cleaned.indexOf('{');
+                const lastBrace = cleaned.lastIndexOf('}');
+                if (firstBrace >= 0 && lastBrace > firstBrace) {
+                    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+                }
+            }
+
+            console.log(`[OpenRouter] ✅ ${model} respondeu (${cleaned.length} chars)`);
+            return cleaned;
+        } catch (err: any) {
+            console.warn(`[OpenRouter] ${model} exception: ${err.message}`);
+            lastError = err;
+            continue;
+        }
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-            'HTTP-Referer': 'https://app.wisewolf.com.br',
-            'X-Title': 'WiseCore Wolfie',
-        },
-        body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`OpenRouter Error ${response.status}: ${errorText}`);
-        throw new Error(`OpenRouter Error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenRouter returned empty response');
-    return text;
+    throw new Error(`Todos os modelos free falharam. Último erro: ${lastError?.message || 'desconhecido'}`);
 }
 
 
