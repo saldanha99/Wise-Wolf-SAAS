@@ -1128,7 +1128,7 @@ const PublicRegistration: React.FC = () => {
                     planName={contractData.planDuration === 12 ? 'Plano Anual' : contractData.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
                     planValue={Number(contractData.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     totalValue={(Number(contractData.value || 0) * (contractData.planDuration || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    planDuration={contractData.planDuration || 12}
+                    planDuration={contractData.planDuration ?? 12}
                     startDate={getContractDates().startDate}
                     endDate={getContractDates().endDate}
                     dueDay={contractData.dueDay || 10}
@@ -1147,8 +1147,8 @@ const PublicRegistration: React.FC = () => {
                         studentPhone={phone}
                         planName={contractData?.planDuration === 12 ? 'Plano Anual' : contractData?.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
                         planValue={Number(contractData?.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        totalValue={(Number(contractData?.value || 0) * (contractData?.planDuration || 12)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        planDuration={contractData?.planDuration || 12}
+                        totalValue={(Number(contractData?.value || 0) * (contractData?.planDuration || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        planDuration={contractData?.planDuration ?? 12}
                         startDate={getContractDates().startDate}
                         endDate={getContractDates().endDate}
                         dueDay={contractData?.dueDay || 10}
