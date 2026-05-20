@@ -200,24 +200,82 @@ PRONUNCIATION RULES (when audio is provided — MANDATORY analysis):
 }
 
 // ============================================================
-// OPENROUTER CALL HELPER — Fallback chain entre 10 modelos free
+// OPENROUTER CALL HELPER — Dynamic model discovery + fallback
 // ============================================================
-// Ordem testada em 2026-05: diversificamos PROVEDORES para que rate-limits
-// upstream (Google AI Studio, Crucible, etc.) não derrubem TODOS ao mesmo tempo.
+// Em vez de lista fixa, buscamos TODOS os modelos gratuitos (:free) em tempo
+// real via /api/v1/models. Se o endpoint falhar, caímos na lista estática abaixo.
 // Importante: NUNCA usar response_format: json_object — ele agrava o rate-limit
 // no DeepSeek free. Confiamos na instrução no prompt + sanitização + JSON.parse validation.
+
+// Lista estática usada apenas se a API de modelos do OpenRouter estiver indisponível
 const FREE_MODELS_FALLBACK = [
-    'openai/gpt-oss-120b:free',                  // OpenAI open-source 120B (top quality)
-    'nvidia/nemotron-3-super-120b-a12b:free',    // NVIDIA — provedor distinto
-    'z-ai/glm-4.5-air:free',                     // Z.AI — provedor distinto
-    'minimax/minimax-m2.5:free',                 // MiniMax — provedor distinto
-    'openai/gpt-oss-20b:free',                   // OpenAI 20B (mais leve, mais cota)
-    'google/gemma-4-31b-it:free',                // Google AI Studio
-    'google/gemma-4-26b-a4b-it:free',            // Google AI Studio (variante)
-    'deepseek/deepseek-v4-flash:free',           // Crucible (geralmente em 429)
-    'meta-llama/llama-3.3-70b-instruct:free',    // fallback
-    'nousresearch/hermes-3-llama-3.1-405b:free', // last resort
+    'openai/gpt-oss-120b:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'z-ai/glm-4.5-air:free',
+    'minimax/minimax-m2.5:free',
+    'openai/gpt-oss-20b:free',
+    'google/gemma-4-31b-it:free',
+    'google/gemma-4-26b-a4b-it:free',
+    'deepseek/deepseek-v4-flash:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'nousresearch/hermes-3-llama-3.1-405b:free',
 ];
+
+// Modelos que tendem a ter problemas persistentes — excluídos da lista dinâmica
+const BLOCKLIST_PATTERNS = [
+    'vision',  // modelos de visão consomem mais cota
+];
+
+/**
+ * Busca os modelos :free disponíveis no OpenRouter em tempo real.
+ * Se a chamada falhar por qualquer motivo, retorna a lista estática.
+ * Isso garante que quando um modelo gratuito é removido/desativado,
+ * o sistema automaticamente descobre os novos sem precisar de redeploy.
+ */
+async function getAvailableFreeModels(apiKey: string): Promise<string[]> {
+    try {
+        const res = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(5000), // máx 5s para não atrasar a resposta
+        });
+
+        if (!res.ok) {
+            console.warn(`[OpenRouter] Falha ao buscar modelos (${res.status}), usando lista estática`);
+            return FREE_MODELS_FALLBACK;
+        }
+
+        const data = await res.json();
+        const models: string[] = (data?.data || [])
+            .filter((m: any) => {
+                const id: string = m.id || '';
+                if (!id.endsWith(':free')) return false;
+                // Exclui modelos problemáticos por padrão
+                if (BLOCKLIST_PATTERNS.some(p => id.includes(p))) return false;
+                return true;
+            })
+            .map((m: any) => m.id as string);
+
+        if (models.length === 0) {
+            console.warn('[OpenRouter] Nenhum modelo :free encontrado na API, usando lista estática');
+            return FREE_MODELS_FALLBACK;
+        }
+
+        // Prioriza modelos da lista estática (sabemos que funcionam bem) e depois
+        // acrescenta os dinâmicos que não estão na lista. Isso dá preferência a modelos
+        // testados enquanto garante que novos modelos sejam tentados se os conhecidos falharem.
+        const knownGood = FREE_MODELS_FALLBACK.filter(m => models.includes(m));
+        const newModels = models.filter(m => !FREE_MODELS_FALLBACK.includes(m));
+        const unknownFallback = FREE_MODELS_FALLBACK.filter(m => !models.includes(m)); // mantém mesmo que sumidos
+
+        const merged = [...knownGood, ...newModels, ...unknownFallback];
+        console.log(`[OpenRouter] Modelos disponíveis: ${merged.length} (${knownGood.length} conhecidos + ${newModels.length} novos)`);
+        return merged;
+
+    } catch (err: any) {
+        console.warn(`[OpenRouter] Erro ao buscar modelos: ${err.message}. Usando lista estática.`);
+        return FREE_MODELS_FALLBACK;
+    }
+}
 
 async function callOpenRouter(
     apiKey: string,
@@ -243,9 +301,12 @@ async function callOpenRouter(
         ? systemPrompt + '\n\nCRITICAL: Return ONLY a valid JSON object starting with { and ending with }. NOTHING before or after. NO markdown wrappers (```json), NO explanations. Just the raw JSON.'
         : systemPrompt;
 
+    // Busca dinamicamente os modelos :free disponíveis no momento
+    const modelsToTry = await getAvailableFreeModels(apiKey);
+
     let lastError: any = null;
 
-    for (const model of FREE_MODELS_FALLBACK) {
+    for (const model of modelsToTry) {
         const payload: any = {
             model,
             messages: [

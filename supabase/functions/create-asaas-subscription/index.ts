@@ -60,9 +60,46 @@ serve(async (req) => {
             throw new Error('Aluno não possui ID do Asaas. Sincronize o aluno primeiro.');
         }
 
+        // FIX: Idempotência local — se o aluno já tem subscription_id no perfil, retorna sucesso
         if (profile.subscription_id) {
-            console.warn(`Student already has subscription: ${profile.subscription_id}`);
-            throw new Error(`Aluno já possui uma assinatura ativa (ID: ${profile.subscription_id})`);
+            console.warn(`[Subscription] Aluno já tem assinatura local: ${profile.subscription_id} — retornando idempotente`);
+            return new Response(
+                JSON.stringify({ success: true, subscription_id: profile.subscription_id, id: profile.subscription_id }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            );
+        }
+
+        // FIX: Pré-verificação no Asaas — o cliente pode já ter subscription no Asaas mesmo sem
+        // registro local (falha parcial anterior, migração de sistema antigo, etc.).
+        // Se encontrar, recupera o ID e atualiza o perfil em vez de tentar criar duplicata.
+        try {
+            let pathPrefixCheck = '/api/v3';
+            if (ASAAS_URL.includes('api-sandbox') || ASAAS_URL.includes('api.asaas.com')) {
+                pathPrefixCheck = '/v3';
+            }
+            const existingSubRes = await fetch(
+                `${ASAAS_URL}${pathPrefixCheck}/subscriptions?customer=${asaasCustomerId}&status=ACTIVE&limit=1`,
+                { headers: { 'access_token': ASAAS_API_KEY! } }
+            );
+            if (existingSubRes.ok) {
+                const existingSubData = await existingSubRes.json();
+                if (existingSubData.data && existingSubData.data.length > 0) {
+                    const recoveredSubId = existingSubData.data[0].id;
+                    console.log(`[Subscription] Assinatura ativa encontrada no Asaas: ${recoveredSubId} — recuperando para o perfil`);
+                    await supabase.from('profiles').update({
+                        subscription_id: recoveredSubId,
+                        status_financial: 'ACTIVE',
+                        monthly_fee: value,
+                        due_day: dueDay,
+                    }).eq('id', user_id);
+                    return new Response(
+                        JSON.stringify({ success: true, subscription_id: recoveredSubId, id: recoveredSubId, recovered: true }),
+                        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                    );
+                }
+            }
+        } catch (preCheckErr: any) {
+            console.warn('[Subscription] Pré-verificação no Asaas falhou (não-bloqueante):', preCheckErr.message);
         }
 
         // 2. Calculate nextDueDate
@@ -112,7 +149,7 @@ serve(async (req) => {
         // 3.1 Asaas Split: se o tenant tiver wallet, configurar split
         // (a maior parte vai para a escola; plataforma fica com o complemento)
         try {
-            const { data: tenant } = await supabaseAdmin
+            const { data: tenant } = await supabase  // FIX: era supabaseAdmin (variável não definida)
                 .from('tenants')
                 .select('asaas_wallet_id, asaas_split_percentage')
                 .eq('id', profile.tenant_id)
@@ -235,22 +272,17 @@ serve(async (req) => {
             console.error("Erro Asaas:", asaasData);
             const errorMessage = asaasData.errors?.[0]?.description || "Erro ao processar pagamento.";
 
-            // ROLLBACK: Delete auth user so they can try again
-            if (user_id) {
-                console.log(`[Rollback] Deleting user ${user_id} due to payment failure...`);
-                const { error: deleteError } = await supabase.auth.admin.deleteUser(user_id);
-                if (deleteError) {
-                    console.error("[Rollback] Failed to delete user:", deleteError);
-                } else {
-                    console.log("[Rollback] User deleted successfully.");
-                }
-            }
+            // FIX: Removido rollback automático que deletava usuários pré-existentes.
+            // Antes, qualquer falha no Asaas deletava o usuário da auth — se o aluno já tinha
+            // conta (fluxo de recuperação por login), sua conta era deletada. Catastrófico.
+            // O erro é exibido ao aluno que pode corrigir os dados e tentar novamente.
+            console.warn(`[Subscription] Falha Asaas para user ${user_id}: ${errorMessage} — sem rollback para preservar conta`);
 
             return new Response(
-                JSON.stringify({ 
-                    success: false, 
+                JSON.stringify({
+                    success: false,
                     error: errorMessage,
-                    debug: { payload, asaasData } // TEMPORARY DEBUG
+                    asaasErrors: asaasData.errors || []
                 }),
                 {
                     status: 200,
@@ -263,16 +295,22 @@ serve(async (req) => {
         console.log("Subscription created:", subscriptionId);
 
         // 6. Update Supabase
-        await supabase
+        // FIX: Removido 'modality' — coluna não existe na tabela profiles e causava falha
+        // silenciosa no UPDATE inteiro, deixando subscription_id sem ser persistido.
+        const { error: profileUpdateErr } = await supabase
             .from('profiles')
             .update({
                 subscription_id: subscriptionId,
                 monthly_fee: value,
                 due_day: dueDay,
                 status_financial: 'ACTIVE',
-                modality: planDuration
             })
             .eq('id', user_id);
+        if (profileUpdateErr) {
+            console.error('[Subscription] ATENÇÃO: Falha ao salvar subscription_id no perfil:', profileUpdateErr.message);
+        } else {
+            console.log('[Subscription] ✅ Perfil atualizado com subscription_id:', subscriptionId);
+        }
 
         // 7. Enable WhatsApp notifications for customer
         try {

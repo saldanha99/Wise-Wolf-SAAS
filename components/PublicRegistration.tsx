@@ -275,6 +275,11 @@ const PublicRegistration: React.FC = () => {
                 dueDay: contractData.dueDay,
                 billingType: billingType,
                 planDuration: durationEnum,
+                // Passa o mês de início da cobrança (billingStartMonth) e pro-rata
+                // para que o Asaas calcule o nextDueDate correto
+                startDate: contractData.billingStartMonth || undefined,
+                proRata: contractData.enableProRata || false,
+                proRataValue: contractData.proRataValue || undefined,
                 creditCard: creditCardData,
                 creditCardHolderInfo: billingType === 'CREDIT_CARD' ? {
                     name,
@@ -546,11 +551,12 @@ const PublicRegistration: React.FC = () => {
         if (!enrollmentPix) return;
         setCheckingPayment(true);
         try {
-            // In a real scenario, we'd poll or wait for webhook. 
-            // For now, let's allow manual check or just simulate success if sandbox
             const res = await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
             if (res.success || res.status === 'RECEIVED' || res.status === 'CONFIRMED') {
-                setStep('CONTRACT');
+                // FIX: era setStep('CONTRACT') — isso reabria o modal de contrato já assinado,
+                // causando loop infinito (contrato → handleRegister → enrollment pix → contrato...).
+                // O contrato já foi assinado antes de chegar aqui; ir direto para SUCCESS.
+                setStep('SUCCESS');
             } else {
                 alert("Pagamento ainda não identificado. Se você já pagou, aguarde alguns instantes.");
             }
