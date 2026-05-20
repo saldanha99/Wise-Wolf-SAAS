@@ -109,6 +109,16 @@ serve(async (req) => {
             // Use explicit billing start date (pro-rata or deferred billing)
             const [startYear, startMonth] = startDate.split('-').map(Number);
             const dueDateObj = new Date(startYear, startMonth - 1, dueDay);
+
+            // FIX: Asaas rejeita datas no passado — se o vencimento calculado já passou,
+            // avança para o mesmo dia do mês seguinte.
+            const todayCheck = new Date();
+            todayCheck.setHours(0, 0, 0, 0);
+            if (dueDateObj < todayCheck) {
+                dueDateObj.setMonth(dueDateObj.getMonth() + 1);
+                console.warn(`[Subscription] nextDueDate estava no passado, avançado para: ${dueDateObj.toISOString().split('T')[0]}`);
+            }
+
             nextDueDate = dueDateObj.toISOString().split('T')[0];
         } else {
             const today = new Date();
