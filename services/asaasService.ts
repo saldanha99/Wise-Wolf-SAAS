@@ -56,6 +56,11 @@ export const asaasService = {
         dueDay: number;
         billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
         planDuration?: 'RECURRENT' | 'SEMESTER' | 'ANNUAL';
+        // startDate: YYYY-MM — mês de início da cobrança (billingStartMonth)
+        // Se fornecido, o nextDueDate da assinatura será calculado a partir deste mês
+        startDate?: string;
+        proRata?: boolean;
+        proRataValue?: number;
         creditCard?: {
             holderName: string;
             number: string;

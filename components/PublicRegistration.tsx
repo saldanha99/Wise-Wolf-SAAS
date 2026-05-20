@@ -275,6 +275,11 @@ const PublicRegistration: React.FC = () => {
                 dueDay: contractData.dueDay,
                 billingType: billingType,
                 planDuration: durationEnum,
+                // Passa o mês de início da cobrança (billingStartMonth) e pro-rata
+                // para que o Asaas calcule o nextDueDate correto
+                startDate: contractData.billingStartMonth || undefined,
+                proRata: contractData.enableProRata || false,
+                proRataValue: contractData.proRataValue || undefined,
                 creditCard: creditCardData,
                 creditCardHolderInfo: billingType === 'CREDIT_CARD' ? {
                     name,
