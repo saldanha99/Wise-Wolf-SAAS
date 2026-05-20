@@ -18,7 +18,32 @@ serve(async (req) => {
 
     try {
         const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
-        const { amount, customerData } = await req.json();
+        const body = await req.json();
+        const { action, paymentId, amount, customerData } = body;
+
+        // FIX: Suporte a verificação de status de pagamento (botão "Já realizei o pagamento")
+        // Antes, este endpoint não tratava action='check' e sempre falhava com erro de validação.
+        if (action === 'check' && paymentId) {
+            let pathPrefix = '/api/v3';
+            if (ASAAS_URL.includes('api-sandbox') || ASAAS_URL.includes('api.asaas.com')) {
+                pathPrefix = '/v3';
+            }
+            const checkRes = await fetch(`${ASAAS_URL}${pathPrefix}/payments/${paymentId}`, {
+                headers: { 'access_token': ASAAS_API_KEY! }
+            });
+            if (!checkRes.ok) {
+                return new Response(
+                    JSON.stringify({ success: false, status: 'PENDING', error: `Asaas retornou ${checkRes.status}` }),
+                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+                );
+            }
+            const paymentStatus = await checkRes.json();
+            console.log(`[EnrollmentPix] Check payment ${paymentId}: ${paymentStatus.status}`);
+            return new Response(
+                JSON.stringify({ success: true, status: paymentStatus.status, payment: paymentStatus }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            );
+        }
 
         if (!amount || !customerData) {
             throw new Error('Campos obrigatórios: amount, customerData');

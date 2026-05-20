@@ -127,16 +127,17 @@ export const asaasService = {
     },
 
     checkPaymentStatus: async (paymentId: string) => {
+        // FIX: Antes havia duas invocações (asaas-webhook + create-enrollment-pix) e apenas
+        // a segunda era retornada — e ela sempre falhava porque create-enrollment-pix não
+        // tratava action='check'. Agora usa apenas create-enrollment-pix com o handler correto.
         try {
-            const { data, error } = await supabase.functions.invoke('asaas-webhook', {
-                body: { action: 'check-payment', paymentId } // Assuming webhook handler or a dedicated checker
-            });
-            // Alternatively, direct check if Edge Function allows
-            const { data: res, error: err } = await supabase.functions.invoke('create-enrollment-pix', {
+            const { data, error } = await supabase.functions.invoke('create-enrollment-pix', {
                 body: { action: 'check', paymentId }
             });
-            return res;
+            if (error) throw error;
+            return data;
         } catch (error) {
+            console.error('Error checking payment status:', error);
             return { success: false };
         }
     }
