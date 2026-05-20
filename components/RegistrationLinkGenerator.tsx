@@ -134,12 +134,39 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // Filter valid schedule slots
         const validSchedule = scheduleSlots.filter(s => s.day && s.time);
 
-        // Calculate pro-rata value
+        // Calcular pro-rata baseado em aulas avulsas
+        // Fórmula: (mensalidade / frequência×4) × aulas restantes no mês
         const todayPR = new Date();
         const proRataValue = enableProRata ? (() => {
-            const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
-            const remainingDays = daysInMonth - todayPR.getDate() + 1;
-            return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
+            const totalClassesPerMonth = frequency * 4;
+            const pricePerClass = monthlyFee / totalClassesPerMonth;
+
+            // Mapear dias do horário para getDay() (0=Dom, 1=Seg, ..., 6=Sáb)
+            const DAY_MAP: Record<string, number> = {
+                'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+                'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 0
+            };
+            const classDayNums = new Set(
+                validSchedule.map(s => DAY_MAP[s.day]).filter(d => d !== undefined)
+            );
+
+            let remainingClasses = 0;
+            if (classDayNums.size > 0) {
+                // Contar dias reais do horário de hoje até o fim do mês
+                const endOfMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0);
+                const cursor = new Date(todayPR);
+                while (cursor <= endOfMonth) {
+                    if (classDayNums.has(cursor.getDay())) remainingClasses++;
+                    cursor.setDate(cursor.getDate() + 1);
+                }
+            } else {
+                // Sem horário definido: estimar proporcionalmente
+                const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
+                const remainingDays = daysInMonth - todayPR.getDate() + 1;
+                remainingClasses = Math.round((frequency / 7) * remainingDays);
+            }
+
+            return Math.round(pricePerClass * remainingClasses * 100) / 100;
         })() : 0;
 
         const data = {
@@ -385,15 +412,36 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                 </div>
                                 <div>
                                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Cobrar Pro-Rata</p>
-                                    <p className="text-[9px] text-slate-400">Cobrança proporcional pelos dias do mês atual</p>
+                                    <p className="text-[9px] text-slate-400">Cobrança por aulas avulsas (mensalidade ÷ {frequency * 4} aulas)</p>
                                 </div>
                             </label>
                             {enableProRata && monthlyFee > 0 && (
                                 <div className="ml-13 pl-14 text-xs font-black text-amber-600 dark:text-amber-400">
-                                    Valor proporcional: R$ {(() => {
-                                        const d = new Date();
-                                        const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-                                        return ((monthlyFee / dim) * (dim - d.getDate() + 1)).toFixed(2);
+                                    {(() => {
+                                        const totalAulas = frequency * 4;
+                                        const valorAula = monthlyFee / totalAulas;
+                                        const DAY_MAP: Record<string, number> = {
+                                            'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+                                            'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 0
+                                        };
+                                        const validDays = new Set(
+                                            scheduleSlots.filter(s => s.day).map(s => DAY_MAP[s.day]).filter(d => d !== undefined)
+                                        );
+                                        const today = new Date();
+                                        let aulasRestantes = 0;
+                                        if (validDays.size > 0) {
+                                            const fim = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                                            const c = new Date(today);
+                                            while (c <= fim) {
+                                                if (validDays.has(c.getDay())) aulasRestantes++;
+                                                c.setDate(c.getDate() + 1);
+                                            }
+                                        } else {
+                                            const dim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                                            aulasRestantes = Math.round((frequency / 7) * (dim - today.getDate() + 1));
+                                        }
+                                        const total = (valorAula * aulasRestantes).toFixed(2);
+                                        return `R$ ${valorAula.toFixed(2)}/aula × ${aulasRestantes} aulas = R$ ${total}`;
                                     })()}
                                 </div>
                             )}
