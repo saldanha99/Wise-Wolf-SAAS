@@ -38,6 +38,28 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const allLessons: any[] = [];
       const currentDate = new Date();
 
+      // FIX: appointments.teacher_id é null — o vínculo com o professor está em
+      // opportunities.winner_teacher_id. Buscar os IDs de appointments via opportunities.
+      // Também corrigi: appointments usa start_time (timestamp), não date/time.
+      const { data: teacherOpps } = await supabase
+        .from('opportunities')
+        .select('trial_appointment_id')
+        .eq('winner_teacher_id', user.id)
+        .eq('tenant_id', tenantId)
+        .not('trial_appointment_id', 'is', null);
+
+      const trialApptIds = teacherOpps?.map((o: any) => o.trial_appointment_id).filter(Boolean) || [];
+
+      let allTrialAppointments: any[] = [];
+      if (trialApptIds.length > 0) {
+        const { data: trialAppts } = await supabase
+          .from('appointments')
+          .select('id, start_time, student_name, student_phone, type, status')
+          .in('id', trialApptIds)
+          .eq('type', 'experimental');
+        allTrialAppointments = trialAppts || [];
+      }
+
       for (let i = 0; i < 8; i++) {
         const checkDate = new Date();
         checkDate.setDate(today.getDate() - i);
@@ -58,12 +80,11 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .eq('teacher_id', user.id)
           .eq('date', dateStr);
 
-        const { data: appointments } = await supabase
-          .from('appointments')
-          .select('id, time, student_name, student_phone, type, status, date')
-          .eq('teacher_id', user.id)
-          .eq('date', dateStr)
-          .eq('type', 'experimental');
+        // Filtrar os trials deste professor para este dia específico
+        const appointments = allTrialAppointments.filter(t => {
+          const apptDate = new Date(t.start_time);
+          return apptDate.toISOString().split('T')[0] === dateStr;
+        });
 
         const { data: logs } = await supabase
           .from('class_logs')
@@ -133,30 +154,32 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           }
         }
 
-        // Trials (from appointments)
-        if (appointments) {
-          for (const t of appointments) {
-            if (i === 0) {
-              const [h, m] = t.time.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
-            if (!logs?.some(l => l.appointment_id === t.id)) {
-              allLessons.push({
-                id: `trial-${t.id}`,
-                studentId: null, // Lead doesn't have a profile yet usually
-                leadName: t.student_name,
-                leadPhone: t.student_phone,
-                name: t.student_name || 'Aula Experimental',
-                date: i === 0 ? `Hoje às ${t.time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${t.time}`,
-                dateObj: dateStr,
-                avatar: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
-                level: 'TRIAL',
-                type: 'AULA EXPERIMENTAL',
-                isLate: i > 0,
-                suggestedTopic: 'Avaliação de Nível',
-                suggestedMaterial: null
-              });
-            }
+        // Trials (from appointments via opportunities)
+        for (const t of appointments) {
+          // Extrair hora/minuto do start_time (timestamp UTC)
+          const apptDate = new Date(t.start_time);
+          const timeStr = `${String(apptDate.getUTCHours()).padStart(2, '0')}:${String(apptDate.getUTCMinutes()).padStart(2, '0')}`;
+
+          if (i === 0) {
+            const [h, m] = timeStr.split(':').map(Number);
+            if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
+          }
+          if (!logs?.some(l => l.appointment_id === t.id)) {
+            allLessons.push({
+              id: `trial-${t.id}`,
+              studentId: null,
+              leadName: t.student_name,
+              leadPhone: t.student_phone,
+              name: t.student_name || 'Aula Experimental',
+              date: i === 0 ? `Hoje às ${timeStr}` : `${checkDate.toLocaleDateString('pt-BR')} às ${timeStr}`,
+              dateObj: dateStr,
+              avatar: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
+              level: 'TRIAL',
+              type: 'AULA EXPERIMENTAL',
+              isLate: i > 0,
+              suggestedTopic: 'Avaliação de Nível',
+              suggestedMaterial: null
+            });
           }
         }
       }

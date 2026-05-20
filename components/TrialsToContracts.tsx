@@ -352,7 +352,20 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 return Math.round(pricePerClass * remainingClasses * 100) / 100;
             })() : 0;
 
-            // Build magic link data (same schema as RegistrationLinkGenerator)
+            // FIX: Normalizar schedule para o mesmo formato do RegistrationLinkGenerator
+            // RegistrationLinkGenerator usa { day: 'Monday', time: '14:00' } (capitalizado)
+            // TrialsToContracts usava { weekday: 'monday', time: '14:00' } (minúsculo)
+            // PublicRegistration lê contractData.classSchedule || contractData.schedule
+            // mas o formato dos campos internos precisa ser igual para o backend
+            const WEEKDAY_TO_DAY: Record<string, string> = {
+                'monday': 'Monday', 'tuesday': 'Tuesday', 'wednesday': 'Wednesday',
+                'thursday': 'Thursday', 'friday': 'Friday', 'saturday': 'Saturday', 'sunday': 'Sunday'
+            };
+            const normalizedSchedule = classSchedule
+                .filter(s => s.weekday)
+                .map(s => ({ day: WEEKDAY_TO_DAY[s.weekday] || s.weekday, time: s.time }));
+
+            // Build magic link data (mesma schema do RegistrationLinkGenerator)
             const data = {
                 unitId: tenantId,
                 value: monthlyFee,
@@ -361,6 +374,8 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 dueDay: dueDay,
                 professorId: selectedProfessor || null,
                 requiresEnrollment: duration !== 0,
+                enrollmentFee: 0, // Matrícula via trial não cobra taxa adicional (já foi paga ou dispensada)
+                startDate: new Date().toISOString().split('T')[0], // Data de hoje como início
                 // Pro-rata & billing start month (Módulo 3)
                 enableProRata,
                 proRataValue: enableProRata ? proRataValue : undefined,
@@ -369,8 +384,8 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 opportunityId: wizardOpp.id,
                 studentName: wizardOpp.student_name,
                 studentPhone: wizardOpp.student_phone,
-                // Class schedule
-                classSchedule: classSchedule.length > 0 ? classSchedule : undefined,
+                // Schedule normalizado (compatível com RegistrationLinkGenerator)
+                schedule: normalizedSchedule.length > 0 ? normalizedSchedule : null,
             };
 
             const jsonStr = JSON.stringify(data);
