@@ -317,12 +317,39 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setWizardSaving(true);
 
         try {
-            // Calculate pro-rata value if enabled
+            // Calcular pro-rata baseado em aulas avulsas
+            // Fórmula: (mensalidade / frequência×4) × aulas restantes no mês
             const today = new Date();
             const proRataValue = enableProRata ? (() => {
-                const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                const remainingDays = daysInMonth - today.getDate() + 1;
-                return Math.round((monthlyFee / daysInMonth) * remainingDays * 100) / 100;
+                const totalClassesPerMonth = frequency * 4;
+                const pricePerClass = monthlyFee / totalClassesPerMonth;
+
+                // Mapear dias do horário para getDay() (0=Dom, 1=Seg, ..., 6=Sáb)
+                const DAY_MAP: Record<string, number> = {
+                    'monday': 1, 'tuesday': 2, 'wednesday': 3,
+                    'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+                };
+                const classDayNums = new Set(
+                    classSchedule.filter(s => s.weekday).map(s => DAY_MAP[s.weekday]).filter(d => d !== undefined)
+                );
+
+                let remainingClasses = 0;
+                if (classDayNums.size > 0) {
+                    // Contar dias reais do horário de hoje até o fim do mês
+                    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    const cursor = new Date(today);
+                    while (cursor <= endOfMonth) {
+                        if (classDayNums.has(cursor.getDay())) remainingClasses++;
+                        cursor.setDate(cursor.getDate() + 1);
+                    }
+                } else {
+                    // Sem horário definido: estimar proporcionalmente
+                    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                    const remainingDays = daysInMonth - today.getDate() + 1;
+                    remainingClasses = Math.round((frequency / 7) * remainingDays);
+                }
+
+                return Math.round(pricePerClass * remainingClasses * 100) / 100;
             })() : 0;
 
             // Build magic link data (same schema as RegistrationLinkGenerator)
@@ -934,13 +961,34 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         </div>
                                         <div>
                                             <p className="text-sm font-bold text-slate-700">Cobrar Pro-Rata do mês atual</p>
+                                            <p className="text-xs text-slate-400">Cobrança por aulas avulsas (mensalidade ÷ {frequency * 4} aulas)</p>
                                             {enableProRata && monthlyFee > 0 && (
                                                 <p className="text-xs text-amber-600 font-bold">
-                                                    Cobrança proporcional: R$ {(() => {
+                                                    {(() => {
+                                                        const totalAulas = frequency * 4;
+                                                        const valorAula = monthlyFee / totalAulas;
+                                                        const DAY_MAP: Record<string, number> = {
+                                                            'monday': 1, 'tuesday': 2, 'wednesday': 3,
+                                                            'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+                                                        };
+                                                        const validDays = new Set(
+                                                            classSchedule.filter(s => s.weekday).map(s => DAY_MAP[s.weekday]).filter(d => d !== undefined)
+                                                        );
                                                         const today = new Date();
-                                                        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                                                        const remainingDays = daysInMonth - today.getDate() + 1;
-                                                        return ((monthlyFee / daysInMonth) * remainingDays).toFixed(2);
+                                                        let aulasRestantes = 0;
+                                                        if (validDays.size > 0) {
+                                                            const fim = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                                                            const c = new Date(today);
+                                                            while (c <= fim) {
+                                                                if (validDays.has(c.getDay())) aulasRestantes++;
+                                                                c.setDate(c.getDate() + 1);
+                                                            }
+                                                        } else {
+                                                            const dim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                                                            aulasRestantes = Math.round((frequency / 7) * (dim - today.getDate() + 1));
+                                                        }
+                                                        const total = (valorAula * aulasRestantes).toFixed(2);
+                                                        return `R$ ${valorAula.toFixed(2)}/aula × ${aulasRestantes} aulas = R$ ${total}`;
                                                     })()}
                                                 </p>
                                             )}
