@@ -47,6 +47,7 @@ const PublicRegistration = lazy(() => import('./components/PublicRegistration'))
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
+const TeacherEntrepreneurSignup = lazy(() => import('./components/TeacherEntrepreneurSignup'));
 const TenantAdvancedSettings = lazy(() => import('./components/TenantAdvancedSettings'));
 const TeacherWorkflows = lazy(() => import('./components/TeacherWorkflows'));
 const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'));
@@ -371,6 +372,14 @@ const App: React.FC = () => {
   if (path === '/comece' || path === '/signup' || path.startsWith('/comece')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
       <SchoolSignupPage />
+    </Suspense>;
+  }
+  // Signup do Professor Empreendedor — Wise Wolf For Teachers
+  // Aceita ?ref=<tenantId> para rastrear escola mãe
+  if (path === '/seja-professor' || path === '/teacher-signup') {
+    const parentTenantId = new URLSearchParams(window.location.search).get('ref') || undefined;
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <TeacherEntrepreneurSignup parentTenantId={parentTenantId} />
     </Suspense>;
   }
   // --------------------------------------------------
