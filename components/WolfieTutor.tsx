@@ -169,6 +169,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);  // Áudio neural via edge function
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
@@ -345,8 +346,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return ptWords.filter(w => lower.includes(w)).length >= 2;
     };
 
-    /** Para a voz e limpa o estado */
+    /** Para a voz (neural + Web Speech) e limpa o estado */
     const stopSpeaking = useCallback(() => {
+        // Para áudio neural (edge function)
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = '';
+            audioRef.current = null;
+        }
+        // Para Web Speech API (fallback)
         window.speechSynthesis.cancel();
         setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
         setSubtitle('');
@@ -367,20 +375,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         .trim();
 
     /**
-     * Fala usando Web Speech API com a melhor voz disponível.
-     * Chrome/Windows: Microsoft Jenny/Aria Online (Natural) — soa humano.
-     * macOS: Samantha Enhanced — boa qualidade.
-     * Android: Google US English — decente.
+     * Fallback: Web Speech API (local, sem qualidade neural)
+     * Usado quando o edge function wolfie-tts falha.
      */
-    const speak = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
-        setState('SPEAKING');
-        setSubtitle(text);
-        lastSpokenTextRef.current = text;
-
+    const speakWebSpeech = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
         const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
         const clean = prepareForTTS(text);
-
-        // Web Speech API tem bug em textos longos — divide em sentenças
         const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
 
         let idx = 0;
@@ -421,10 +421,75 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         speakNext();
     }, [studentLevel]);
 
+    /**
+     * Fala usando Microsoft Neural TTS via edge function wolfie-tts.
+     * Vozes: en-US-JennyNeural (inglês) | pt-BR-FranciscaNeural (português)
+     * Qualidade humana, sem API key, sem custo.
+     * Fallback automático para Web Speech API em caso de falha.
+     */
+    const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+        setState('SPEAKING');
+        setSubtitle(text);
+        lastSpokenTextRef.current = text;
+
+        const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
+        const voice = lang === 'pt' ? 'pt-BR-FranciscaNeural' : 'en-US-JennyNeural';
+        const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
+
+        // Para qualquer áudio anterior
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = '';
+            audioRef.current = null;
+        }
+        window.speechSynthesis.cancel();
+
+        try {
+            const { data, error: fnError } = await supabase.functions.invoke('wolfie-tts', {
+                body: { text, voice, speed: rate }
+            });
+
+            if (fnError || !data?.audio) {
+                throw new Error(fnError?.message || 'wolfie-tts sem áudio');
+            }
+
+            // Decodifica base64 → Blob → ObjectURL → Audio
+            const binary = atob(data.audio);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
+
+            const audio = new Audio(url);
+            audioRef.current = audio;
+
+            audio.onended = () => {
+                URL.revokeObjectURL(url);
+                audioRef.current = null;
+                setState('IDLE');
+                setSubtitle('');
+            };
+
+            audio.onerror = () => {
+                URL.revokeObjectURL(url);
+                audioRef.current = null;
+                console.warn('[WolfieTutor] Erro ao reproduzir áudio neural — usando Web Speech API');
+                speakWebSpeech(text, rate, lang);
+            };
+
+            await audio.play();
+            console.log(`🎙️ Neural TTS: ${voice} | speed: ${rate}`);
+
+        } catch (err) {
+            console.warn('[WolfieTutor] wolfie-tts indisponível — usando Web Speech API:', err);
+            speakWebSpeech(text, speed, lang);
+        }
+    }, [studentLevel, speakWebSpeech]);
+
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
             stopSpeaking();
-            speak(lastSpokenTextRef.current, 0.75);
+            void speak(lastSpokenTextRef.current, 0.75);
         }
     };
 
@@ -437,7 +502,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // Evita duplo clique enquanto já está processando
         if (isProcessingRef.current) return;
 
-        // ── CRÍTICO: para a voz do Wolfie e aguarda o speaker silenciar ──
+        // ── CRÍTICO: para a voz do Wolfie (neural + Web Speech) e aguarda o speaker silenciar ──
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = '';
+            audioRef.current = null;
+        }
         window.speechSynthesis.cancel();
         setState('IDLE');
         setSubtitle('');
@@ -616,9 +686,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             if (data.vocabulary?.keyTerms?.length > 0) setVocabulary(data.vocabulary);
             if (data.quiz) setQuiz(data.quiz);
 
-            // Auto-speak
+            // Auto-speak via neural TTS (wolfie-tts edge function)
             if (autoSpeakEnabled && chatText) {
-                speak(chatText);
+                void speak(chatText);
             } else {
                 setState('IDLE');
             }
@@ -985,7 +1055,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             <div className="flex items-center gap-1">
                                 {/* Botão: ouvir tradução em voz PT-BR */}
                                 <button
-                                    onClick={() => speak(translation, 1.0, 'pt')}
+                                    onClick={() => void speak(translation, 1.0, 'pt')}
                                     title="Ouvir em português BR"
                                     className="p-1 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-400/10 transition-colors"
                                 >
