@@ -436,7 +436,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // Wolfie fala SEMPRE em inglês — PT-BR só quando forceLang='pt' é passado explicitamente
         // (ex: botão "ouvir tradução"). isPortugueseText() causava sotaque BR no EN.
         const lang = forceLang ?? 'en';
-        const voice = lang === 'pt' ? 'pt-BR-FranciscaNeural' : 'en-US-JennyNeural';
+        // ThalitaNeural = voz PT-BR mais natural e expressiva do Edge TTS (lançada 2023)
+        // JennyNeural = melhor voz EN-US neural, natural e clara
+        const voice = lang === 'pt' ? 'pt-BR-ThalitaNeural' : 'en-US-JennyNeural';
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
         // Para qualquer áudio anterior

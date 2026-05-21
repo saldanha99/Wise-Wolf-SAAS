@@ -68,8 +68,13 @@ serve(async (req) => {
     const ratePct = Math.round((speed - 1.0) * 100);
     const rateStr = ratePct >= 0 ? `+${ratePct}%` : `${ratePct}%`;
 
-    // SSML para o Microsoft TTS
-    const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+    // CRÍTICO: xml:lang DEVE corresponder ao idioma da voz
+    // xml:lang errado = motor usa fonética errada = sotaque estrangeiro
+    // pt-BR-ThalitaNeural → pt-BR | en-US-JennyNeural → en-US
+    const langCode = voice.match(/^([a-z]{2}-[A-Z]{2})/)?.[1] ?? "en-US";
+
+    // SSML para o Microsoft Neural TTS
+    const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${langCode}'>
       <voice name='${voice}'>
         <prosody rate='${rateStr}' pitch='+0Hz'>${cleaned}</prosody>
       </voice>
