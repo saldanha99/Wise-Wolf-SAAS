@@ -162,11 +162,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
     // --- Refs ---
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
+    const recognitionRef = useRef<any>(null);          // Web Speech API recognition
     const englishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+    const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
-    const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const studentLevel = user.levelBadge || 'A1';
@@ -175,65 +174,53 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // EFFECTS
     // ============================================================
 
-    // Pre-load English TTS voice on mount
+    // Pre-load TTS voices (EN + PT-BR) on mount
     useEffect(() => {
-        const findEnglishVoice = () => {
+        const findVoices = () => {
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return;
 
-            const preferredNames = [
+            // ── Inglês ──
+            const preferredEn = [
                 'Samantha', 'Serena', 'Karen', 'Daniel',
                 'Google US English', 'Google UK English Female',
                 'Google UK English Male', 'Microsoft Zira', 'Microsoft David'
             ];
-
-            let found: SpeechSynthesisVoice | null = null;
-            for (const name of preferredNames) {
-                found = voices.find(v => v.name.includes(name)) || null;
-                if (found) break;
+            let enVoice: SpeechSynthesisVoice | null = null;
+            for (const name of preferredEn) {
+                enVoice = voices.find(v => v.name.includes(name)) || null;
+                if (enVoice) break;
             }
-            if (!found) {
-                found = voices.find(v => v.lang.startsWith('en-')) || null;
+            if (!enVoice) enVoice = voices.find(v => v.lang.startsWith('en-')) || null;
+            if (enVoice) {
+                englishVoiceRef.current = enVoice;
+                console.log('🎙️ EN voice:', enVoice.name, enVoice.lang);
             }
 
-            if (found) {
-                englishVoiceRef.current = found;
-                console.log('🎙️ TTS Voice Selected:', found.name, found.lang);
+            // ── Português BR ──
+            const preferredPt = ['Luciana', 'Felipe', 'Google português do Brasil', 'Google português', 'pt-BR'];
+            let ptVoice: SpeechSynthesisVoice | null = null;
+            for (const name of preferredPt) {
+                ptVoice = voices.find(v => v.name.includes(name) || v.lang === name) || null;
+                if (ptVoice) break;
+            }
+            if (!ptVoice) ptVoice = voices.find(v => v.lang.startsWith('pt')) || null;
+            if (ptVoice) {
+                ptBrVoiceRef.current = ptVoice;
+                console.log('🎙️ PT voice:', ptVoice.name, ptVoice.lang);
             }
         };
 
-        findEnglishVoice();
-        window.speechSynthesis.onvoiceschanged = findEnglishVoice;
+        findVoices();
+        window.speechSynthesis.onvoiceschanged = findVoices;
         return () => { window.speechSynthesis.onvoiceschanged = null; };
     }, []);
 
-    // Initialize audio (microphone + recorder)
+    // Cleanup on unmount
     useEffect(() => {
-        const initAudio = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                setAudioStream(stream);
-
-                const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                    ? { mimeType: 'audio/webm;codecs=opus' }
-                    : { mimeType: 'audio/webm' };
-
-                const mediaRecorder = new MediaRecorder(stream, options);
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) audioChunksRef.current.push(event.data);
-                };
-                mediaRecorderRef.current = mediaRecorder;
-            } catch (err) {
-                console.error("Microphone access denied:", err);
-                // Don't block — user can still type
-            }
-        };
-
-        initAudio();
-
         return () => {
             stopSpeaking();
-            audioStream?.getTracks().forEach(t => t.stop());
+            recognitionRef.current?.abort();
         };
     }, []);
 
@@ -314,19 +301,37 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // ============================================================
     // TTS FUNCTIONS
     // ============================================================
-    const speak = useCallback((text: string, speed?: number) => {
+
+    // Detecção heurística de texto em português
+    const isPortugueseText = (text: string): boolean => {
+        const ptWords = ['você', 'não', 'para', 'com', 'está', 'são', 'mas', 'uma', 'esse',
+            'isso', 'então', 'porque', 'agora', 'olá', 'oi ', 'sou ', 'meu ', 'sua ',
+            'nosso', 'tudo', 'aqui', 'ainda', 'tentar', 'arquivo', 'recebido', 'aluno',
+            'escola', 'inglês', 'parece', 'quer ', 'novo?', 'de novo'];
+        const lower = text.toLowerCase();
+        return ptWords.filter(w => lower.includes(w)).length >= 2;
+    };
+
+    const speak = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
+        // Auto-detecta idioma se não forçado
+        const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = speed ?? getTTSSpeed(studentLevel);
 
-        if (englishVoiceRef.current) {
+        if (lang === 'pt' && ptBrVoiceRef.current) {
+            utterance.voice = ptBrVoiceRef.current;
+            utterance.lang = 'pt-BR';
+            utterance.rate = speed ?? 1.0; // PT não precisa de slow-down por nível
+        } else if (englishVoiceRef.current) {
             utterance.voice = englishVoiceRef.current;
             utterance.lang = englishVoiceRef.current.lang;
         } else {
-            utterance.lang = 'en-US';
+            utterance.lang = lang === 'pt' ? 'pt-BR' : 'en-US';
         }
 
         utterance.onend = () => { setState('IDLE'); setSubtitle(''); };
@@ -349,43 +354,74 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     // ============================================================
-    // AUDIO RECORDING (Voice mode)
+    // VOICE INPUT — Web Speech API (hold to speak)
     // ============================================================
     const startRecording = () => {
-        if (state !== 'IDLE' || !mediaRecorderRef.current) return;
+        if (state !== 'IDLE') return;
         stopSpeaking();
-        setCorrection(null);
-        setTranslation(null);
-        setVocabulary(null);
-        setQuiz(null);
-        setError(null);
+        setCorrection(null); setTranslation(null); setVocabulary(null); setQuiz(null); setError(null);
 
-        audioChunksRef.current = [];
-        mediaRecorderRef.current.start(100);
+        const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+        if (!SpeechRec) {
+            setError('Reconhecimento de voz não suportado neste browser. Use o campo de texto.');
+            setTimeout(() => setError(null), 5000);
+            setShowTextInput(true);
+            return;
+        }
+
+        const recognition = new SpeechRec();
+        recognition.lang = 'en-US';          // aluno fala em inglês
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognitionRef.current = recognition;
+
+        recognition.onresult = (event: any) => {
+            const transcript: string = event.results[0][0].transcript.trim();
+            console.log('🎤 Transcrito:', transcript);
+            if (!transcript) {
+                setError('Não ouvi nada — tente novamente');
+                setState('IDLE');
+                setTimeout(() => setError(null), 3000);
+                return;
+            }
+            // Adiciona mensagem do aluno e envia
+            const newUserMsg: Message = { id: crypto.randomUUID(), role: 'user', content: transcript, timestamp: new Date() };
+            setMessages(prev => [...prev, newUserMsg]);
+            setState('THINKING');
+            sendToWolfieBrain({ message: transcript });
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error:', event.error);
+            const msgs: Record<string, string> = {
+                'no-speech':          'Não ouvi nada — segure e fale mais perto',
+                'audio-capture':      'Microfone não encontrado',
+                'not-allowed':        'Permissão do microfone negada',
+                'network':            'Erro de rede no reconhecimento de voz',
+                'aborted':            '',  // usuário soltou antes — silencioso
+            };
+            const msg = msgs[event.error] ?? `Erro: ${event.error}`;
+            if (msg) {
+                setError(msg);
+                setTimeout(() => setError(null), 4000);
+            }
+            setState('IDLE');
+        };
+
+        recognition.onend = () => {
+            // Se ainda estiver LISTENING aqui é porque não veio resultado (ex: timeout silencioso)
+            setState(prev => prev === 'LISTENING' ? 'IDLE' : prev);
+        };
+
+        recognition.start();
         setState('LISTENING');
     };
 
     const stopRecordingAndSend = () => {
-        if (state !== 'LISTENING' || !mediaRecorderRef.current) return;
-        mediaRecorderRef.current.stop();
-        setState('THINKING');
-
-        setTimeout(() => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            processAudio(audioBlob);
-        }, 200);
-    };
-
-    // ============================================================
-    // PROCESS AUDIO / TEXT → wolfie-brain
-    // ============================================================
-    const processAudio = async (audioBlob: Blob) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-            const base64String = reader.result as string;
-            await sendToWolfieBrain({ audioBase64: base64String });
-        };
+        if (state !== 'LISTENING') return;
+        // stop() aciona onresult se houver fala, ou onerror('no-speech') se vazio
+        recognitionRef.current?.stop();
     };
 
     const sendMessage = async (text: string) => {
@@ -715,7 +751,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 >
                     <VoicePoweredOrb
                         hue={getOrbHue()}
-                        audioStream={audioStream}
+                        audioStream={null}
                         voiceSensitivity={2.0}
                         maxRotationSpeed={1.5}
                         maxHoverIntensity={1.0}
@@ -817,10 +853,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {translation && (
                 <div className="absolute top-[130px] left-4 md:left-8 z-40 max-w-[280px] md:max-w-sm animate-in fade-in slide-in-from-left-8 duration-500">
                     <div className="bg-sky-950/40 backdrop-blur-xl border border-sky-500/20 p-3 rounded-2xl shadow-lg relative group hover:bg-sky-950/60 transition-colors">
-                        <button onClick={() => setTranslation(null)} className="absolute top-2 right-2 text-sky-400/50 hover:text-sky-300"><X size={12} /></button>
-                        <div className="flex items-center gap-2 mb-2 text-sky-400">
-                            <Languages size={12} />
-                            <span className="text-[9px] uppercase font-bold tracking-wider">Tradução</span>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 text-sky-400">
+                                <Languages size={12} />
+                                <span className="text-[9px] uppercase font-bold tracking-wider">Tradução 🇧🇷</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                {/* Botão: ouvir tradução em voz PT-BR */}
+                                <button
+                                    onClick={() => speak(translation, 1.0, 'pt')}
+                                    title="Ouvir em português BR"
+                                    className="p-1 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-400/10 transition-colors"
+                                >
+                                    <Volume2 size={12} />
+                                </button>
+                                <button onClick={() => setTranslation(null)} className="text-sky-400/50 hover:text-sky-300 p-1"><X size={12} /></button>
+                            </div>
                         </div>
                         <p className="text-sm text-sky-100 font-medium leading-relaxed">{translation}</p>
                     </div>
