@@ -166,12 +166,12 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 )}
             </div>
 
-            {/* Aviso quando usa padrão */}
+            {/* Aviso quando nenhum dado configurado */}
             {!isCustom && (
                 <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-4 flex gap-3 items-start">
                     <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                        <strong>Seus contratos usam os dados da Wise Wolf Language.</strong> Preencha os campos abaixo com as informações da sua escola para que o contrato reflita a sua marca. Deixe em branco qualquer campo que queira manter como padrão.
+                        <strong>Nenhum dado da escola configurado.</strong> Os contratos gerados mostrarão campos em branco até você preencher as informações abaixo. Preencha uma vez e todos os contratos futuros serão gerados automaticamente com os seus dados.
                     </p>
                 </div>
             )}
@@ -183,60 +183,60 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                     hint="Como aparece no cabeçalho do contrato"
                     value={form.name}
                     onChange={v => set('name', v)}
-                    placeholder={WISE_WOLF_PREVIEW.name}
+                    placeholder="Ex: Escola Futuro Idiomas"
                 />
                 <SchoolField
                     label="CNPJ"
-                    hint="Número de registro da sua empresa"
+                    hint="Número de registro da sua empresa (só números, a máscara é automática)"
                     value={form.cnpj}
                     onChange={v => set('cnpj', maskCNPJ(v))}
-                    placeholder={WISE_WOLF_PREVIEW.cnpj}
+                    placeholder="Ex: 00.000.000/0001-00"
                 />
                 <div className="md:col-span-2">
                     <SchoolField
                         label="Endereço completo"
-                        hint="Ex: Rua das Flores, 100 - Centro - São Paulo/SP - CEP 01234-567"
+                        hint="Rua, número, complemento, bairro, cidade e estado — aparece no cabeçalho do contrato"
                         value={form.address}
                         onChange={v => set('address', v)}
-                        placeholder={WISE_WOLF_PREVIEW.address}
+                        placeholder="Ex: Rua das Flores, 100 - Centro - São Paulo/SP - CEP 01234-567"
                     />
                 </div>
                 <SchoolField
                     label="E-mail institucional"
-                    hint="E-mail de contato da escola"
+                    hint="E-mail de contato da escola (aparece no contrato)"
                     value={form.email}
                     onChange={v => set('email', v)}
-                    placeholder={WISE_WOLF_PREVIEW.email}
+                    placeholder="Ex: contato@minhaescola.com.br"
                     type="email"
                 />
                 <SchoolField
                     label="Telefone / WhatsApp"
-                    hint="Número com DDD"
+                    hint="Número com DDD (a máscara é automática)"
                     value={form.phone}
                     onChange={v => set('phone', maskPhone(v))}
-                    placeholder={WISE_WOLF_PREVIEW.phone}
+                    placeholder="Ex: (11) 99999-9999"
                 />
                 <SchoolField
                     label="Cidade"
-                    hint="Para o rodapé e foro do contrato"
+                    hint="Usada no rodapé do contrato como foro de eleição"
                     value={form.city}
                     onChange={v => set('city', v)}
-                    placeholder={WISE_WOLF_PREVIEW.city}
+                    placeholder="Ex: São Paulo"
                 />
                 <SchoolField
                     label="Estado (UF)"
-                    hint="Sigla do estado, ex: SP"
+                    hint="Sigla com 2 letras"
                     value={form.state}
                     onChange={v => set('state', v.toUpperCase().slice(0, 2))}
-                    placeholder={WISE_WOLF_PREVIEW.state}
+                    placeholder="Ex: SP"
                 />
                 <div className="md:col-span-2">
                     <SchoolField
                         label="Nome do diretor / responsável legal"
-                        hint="Assina o contrato como representante da escola"
+                        hint="Pessoa que assina o contrato pela escola — nome completo"
                         value={form.directorName}
                         onChange={v => set('directorName', v)}
-                        placeholder={WISE_WOLF_PREVIEW.directorName}
+                        placeholder="Ex: João Silva"
                     />
                 </div>
             </div>
@@ -247,11 +247,17 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                     Pré-visualização — como vai aparecer no contrato
                 </p>
                 <div className="space-y-0.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    <p className="font-black text-slate-800 dark:text-white text-sm">{preview.name || WISE_WOLF_PREVIEW.name}</p>
-                    <p>CNPJ: {preview.cnpj || WISE_WOLF_PREVIEW.cnpj}</p>
-                    <p>{preview.address || WISE_WOLF_PREVIEW.address}</p>
-                    <p>✉ {preview.email || WISE_WOLF_PREVIEW.email} &nbsp;·&nbsp; ☎ {preview.phone || WISE_WOLF_PREVIEW.phone}</p>
-                    <p className="text-slate-400 text-[11px] pt-1">Responsável: {preview.directorName || WISE_WOLF_PREVIEW.directorName} &nbsp;·&nbsp; Foro: {preview.city || WISE_WOLF_PREVIEW.city}/{preview.state || WISE_WOLF_PREVIEW.state}</p>
+                    <PreviewField value={preview.name} fallback="Nome da escola não preenchido" bold />
+                    <PreviewField label="CNPJ:" value={preview.cnpj} fallback="CNPJ não preenchido" />
+                    <PreviewField value={preview.address} fallback="Endereço não preenchido" />
+                    <div className="flex flex-wrap gap-x-3">
+                        <PreviewField label="✉" value={preview.email} fallback="E-mail não preenchido" inline />
+                        <PreviewField label="☎" value={preview.phone} fallback="Telefone não preenchido" inline />
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 text-[11px] pt-1 text-slate-400">
+                        <PreviewField label="Responsável:" value={preview.directorName} fallback="Nome não preenchido" inline muted />
+                        <PreviewField label="Foro:" value={preview.city && preview.state ? `${preview.city}/${preview.state}` : ''} fallback="Cidade/UF não preenchida" inline muted />
+                    </div>
                 </div>
             </div>
 
@@ -279,6 +285,29 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 </button>
             </div>
         </div>
+    );
+};
+
+/** Linha do preview do contrato — mostra valor preenchido ou aviso vermelho */
+const PreviewField: React.FC<{
+    label?: string;
+    value: string;
+    fallback: string;
+    bold?: boolean;
+    inline?: boolean;
+    muted?: boolean;
+}> = ({ label, value, fallback, bold, inline, muted }) => {
+    const hasValue = value.trim() !== '';
+    const base = inline ? 'inline' : 'block';
+    if (bold) return (
+        <p className={`${base} font-black text-slate-800 dark:text-white text-sm ${!hasValue ? 'text-rose-400 dark:text-rose-400 font-normal italic' : ''}`}>
+            {hasValue ? value : `⚠ ${fallback}`}
+        </p>
+    );
+    return (
+        <span className={`${base} ${muted ? 'text-[11px] text-slate-400' : ''} ${!hasValue ? 'text-rose-400 italic' : ''}`}>
+            {label && hasValue ? `${label} ` : label && !hasValue ? '' : ''}{hasValue ? value : `⚠ ${fallback}`}
+        </span>
     );
 };
 

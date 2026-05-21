@@ -73,13 +73,13 @@ interface ContractDocumentProps {
 // ─────────────────────────────────────────────────────────────────────────────
 const WISE_WOLF_DEFAULTS: Required<SchoolInfo> = {
     name:         'WISE WOLF LANGUAGE',
-    cnpj:         '[CNPJ não configurado]',
-    address:      '[Endereço não configurado]',
-    email:        '[E-mail não configurado]',
-    phone:        '[Telefone não configurado]',
-    city:         '[Cidade]',
-    state:        'SP',
-    directorName: '[Responsável não configurado]',
+    cnpj:         '[ Configure o CNPJ em Configurações → Dados da Escola ]',
+    address:      '[ Configure o endereço em Configurações → Dados da Escola ]',
+    email:        '[ Configure o e-mail em Configurações → Dados da Escola ]',
+    phone:        '[ Configure o telefone em Configurações → Dados da Escola ]',
+    city:         '[ Cidade ]',
+    state:        'UF',
+    directorName: '[ Configure o responsável em Configurações → Dados da Escola ]',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
