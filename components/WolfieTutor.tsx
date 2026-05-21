@@ -170,7 +170,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);  // Áudio neural via edge function
+    const audioRef = useRef<HTMLAudioElement | null>(null);      // fallback HTMLAudioElement (desktop)
+    const audioCtxRef = useRef<AudioContext | null>(null);       // AudioContext — funciona em iOS após unlock
+    const audioSourceRef = useRef<AudioBufferSourceNode | null>(null); // source node ativo (parar mid-play)
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
@@ -347,15 +349,34 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return ptWords.filter(w => lower.includes(w)).length >= 2;
     };
 
-    /** Para a voz (neural + Web Speech) e limpa o estado */
+    /**
+     * Desbloqueia o AudioContext para iOS.
+     * DEVE ser chamado dentro de um handler de toque/clique do usuário.
+     * iOS bloqueia WebAudio até a primeira interação — sem isso não sai som.
+     */
+    const unlockAudio = useCallback(() => {
+        if (!audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (audioCtxRef.current.state === 'suspended') {
+            audioCtxRef.current.resume().catch(() => {});
+        }
+    }, []);
+
+    /** Para a voz (AudioContext + HTMLAudio + Web Speech) e limpa o estado */
     const stopSpeaking = useCallback(() => {
-        // Para áudio neural (edge function)
+        // Para AudioContext source (iOS + desktop)
+        if (audioSourceRef.current) {
+            try { audioSourceRef.current.stop(); } catch (_) {}
+            audioSourceRef.current = null;
+        }
+        // Para HTMLAudioElement (fallback desktop)
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.src = '';
             audioRef.current = null;
         }
-        // Para Web Speech API (fallback)
+        // Para Web Speech API (fallback final)
         window.speechSynthesis.cancel();
         setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
         setSubtitle('');
@@ -442,6 +463,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
         // Para qualquer áudio anterior
+        if (audioSourceRef.current) {
+            try { audioSourceRef.current.stop(); } catch (_) {}
+            audioSourceRef.current = null;
+        }
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.src = '';
@@ -458,32 +483,51 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 throw new Error(fnError?.message || 'wolfie-tts sem áudio');
             }
 
-            // Decodifica base64 → Blob → ObjectURL → Audio
+            // Decodifica base64 → ArrayBuffer
             const binary = atob(data.audio);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+            // ── iOS / Mobile: AudioContext (único método que funciona no iOS) ──
+            // HTMLAudioElement.play() falha no iOS quando chamado em async após fetch
+            // porque perde o "user gesture context". AudioContext desbloqueado no
+            // touchstart persiste na sessão e funciona mesmo em callbacks assíncronos.
+            const ctx = audioCtxRef.current;
+            if (ctx && ctx.state !== 'closed') {
+                if (ctx.state === 'suspended') await ctx.resume();
+                try {
+                    // .slice(0) clona o buffer — decodeAudioData transfere a ownership
+                    const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+                    const source = ctx.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(ctx.destination);
+                    source.onended = () => {
+                        audioSourceRef.current = null;
+                        setState('IDLE');
+                        setSubtitle('');
+                    };
+                    audioSourceRef.current = source;
+                    source.start(0);
+                    console.log(`🎙️ Neural TTS (AudioContext): ${voice} | speed: ${rate}`);
+                    return; // sucesso — saiu aqui
+                } catch (decodeErr) {
+                    console.warn('[WolfieTutor] AudioContext decode falhou, tentando HTMLAudio:', decodeErr);
+                }
+            }
+
+            // ── Desktop fallback: HTMLAudioElement ──
             const blob = new Blob([bytes], { type: 'audio/mpeg' });
             const url = URL.createObjectURL(blob);
-
             const audio = new Audio(url);
             audioRef.current = audio;
-
-            audio.onended = () => {
-                URL.revokeObjectURL(url);
-                audioRef.current = null;
-                setState('IDLE');
-                setSubtitle('');
-            };
-
+            audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
             audio.onerror = () => {
-                URL.revokeObjectURL(url);
-                audioRef.current = null;
-                console.warn('[WolfieTutor] Erro ao reproduzir áudio neural — usando Web Speech API');
+                URL.revokeObjectURL(url); audioRef.current = null;
+                console.warn('[WolfieTutor] HTMLAudio falhou — Web Speech API fallback');
                 speakWebSpeech(text, rate, lang);
             };
-
             await audio.play();
-            console.log(`🎙️ Neural TTS: ${voice} | speed: ${rate}`);
+            console.log(`🎙️ Neural TTS (HTMLAudio): ${voice} | speed: ${rate}`);
 
         } catch (err) {
             console.warn('[WolfieTutor] wolfie-tts indisponível — usando Web Speech API:', err);
@@ -506,7 +550,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         if (state !== 'IDLE' && state !== 'SPEAKING') return;
         if (isProcessingRef.current) return;
 
+        // ── Desbloqueia AudioContext no iOS (DEVE ser no handler de toque) ──
+        unlockAudio();
+
         // ── Para a voz do Wolfie (neural + Web Speech) ──
+        if (audioSourceRef.current) {
+            try { audioSourceRef.current.stop(); } catch (_) {}
+            audioSourceRef.current = null;
+        }
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.src = '';
@@ -623,6 +674,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
     const sendMessage = async (text: string) => {
         if (!text.trim()) return;
+        unlockAudio(); // desbloqueia AudioContext no iOS para o texto também
         setInputText('');
         setState('THINKING');
         stopSpeaking();
@@ -757,11 +809,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     const handleModeSelection = (mode: 'voice' | 'text') => {
+        // Desbloqueia AudioContext no iOS — esse clique é o primeiro gesto do usuário
+        unlockAudio();
+
         setTopic('Conversa Livre');
         setContext('');
         setShowTextInput(mode === 'text');
-        
-        // Ativar de propósito para começar a conversa
         setHasSelectedTopic(true);
 
         // Se escolheu voz, podemos até já acionar o áudio, ou deixar ele apertar. 
@@ -953,12 +1006,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             <div className="relative z-20 flex flex-col items-center justify-center w-full h-full max-w-5xl mx-auto">
                 <div
-                    className="relative w-[320px] h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none flex items-center justify-center group"
+                    className="relative w-[320px] h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none select-none flex items-center justify-center group"
+                    style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
                     onMouseDown={startRecording}
                     onMouseUp={stopRecordingAndSend}
                     onMouseLeave={() => state === 'LISTENING' && stopRecordingAndSend()}
                     onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
                     onTouchEnd={(e) => { e.preventDefault(); stopRecordingAndSend(); }}
+                    onContextMenu={(e) => e.preventDefault()}
                 >
                     <VoicePoweredOrb
                         hue={getOrbHue()}
