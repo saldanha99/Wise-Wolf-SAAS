@@ -69,17 +69,17 @@ interface ContractDocumentProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DEFAULTS — Wise Wolf Language (padrão para todos os tenants)
+// DEFAULTS — placeholders neutros (cada tenant preenche os seus dados)
 // ─────────────────────────────────────────────────────────────────────────────
 const WISE_WOLF_DEFAULTS: Required<SchoolInfo> = {
     name:         'WISE WOLF LANGUAGE',
-    cnpj:         '55.806.029/0001-57',
-    address:      'Rua Um, 256 - Recanto do Céu - Santa Isabel/SP',
-    email:        'wisewolflanguage@gmail.com',
-    phone:        '(11) 97168-1451',
-    city:         'Santa Isabel',
+    cnpj:         '[CNPJ não configurado]',
+    address:      '[Endereço não configurado]',
+    email:        '[E-mail não configurado]',
+    phone:        '[Telefone não configurado]',
+    city:         '[Cidade]',
     state:        'SP',
-    directorName: 'Diretor Wise Wolf',
+    directorName: '[Responsável não configurado]',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

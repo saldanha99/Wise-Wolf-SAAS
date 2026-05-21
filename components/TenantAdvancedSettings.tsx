@@ -49,13 +49,13 @@ const EMPTY_SCHOOL: SchoolInfoForm = {
 
 const WISE_WOLF_PREVIEW: SchoolInfoForm = {
     name: 'WISE WOLF LANGUAGE',
-    cnpj: '55.806.029/0001-57',
-    address: 'Rua Um, 256 - Recanto do Céu - Santa Isabel/SP',
-    email: 'wisewolflanguage@gmail.com',
-    phone: '(11) 97168-1451',
-    city: 'Santa Isabel',
+    cnpj: '[CNPJ não configurado]',
+    address: '[Endereço não configurado]',
+    email: '[E-mail não configurado]',
+    phone: '[Telefone não configurado]',
+    city: '[Cidade]',
     state: 'SP',
-    directorName: 'Diretor Wise Wolf',
+    directorName: '[Responsável não configurado]',
 };
 
 /** Formata CNPJ enquanto o usuário digita: ##.###.###/####-## */
