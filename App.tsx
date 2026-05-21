@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST } from './constants';
 import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
+import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -91,6 +92,9 @@ const App: React.FC = () => {
       (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   });
 
+  // Tenant resolvido pelo hostname (subdomínio ou domínio próprio) — pré-login
+  const [hostnameTenant, setHostnameTenant] = useState<ResolvedTenant | null>(null);
+
   // State for Real Data
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [reschedules, setReschedules] = useState<Reschedule[]>([]);
@@ -99,6 +103,19 @@ const App: React.FC = () => {
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
+
+  // Resolve tenant pelo hostname ao inicializar (antes do login)
+  useEffect(() => {
+    resolveTenantFromHostname().then(tenant => {
+      setHostnameTenant(tenant);
+      if (tenant?.branding) {
+        // Aplica branding do tenant na tela de login
+        document.documentElement.style.setProperty('--primary-color', tenant.branding.primaryColor);
+        document.documentElement.style.setProperty('--secondary-color', tenant.branding.secondaryColor);
+        document.title = `${tenant.name} — Portal do Aluno`;
+      }
+    });
+  }, []);
 
   // Fetch Initial Data on Login
   const loadAppData = async () => {
@@ -118,7 +135,8 @@ const App: React.FC = () => {
             teacherLimit: tenantData.teacher_limit,
             whatsapp_api_url: tenantData.whatsapp_api_url,
             whatsapp_api_key: tenantData.whatsapp_api_key,
-            whatsapp_enabled: tenantData.whatsapp_enabled
+            whatsapp_enabled: tenantData.whatsapp_enabled,
+            school_info: tenantData.school_info ?? null,
           });
           document.documentElement.style.setProperty('--primary-color', tenantData.branding.primaryColor);
           document.documentElement.style.setProperty('--secondary-color', tenantData.branding.secondaryColor);

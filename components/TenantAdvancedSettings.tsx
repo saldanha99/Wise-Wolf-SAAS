@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, FileText, Save, Loader2, Check, AlertCircle, Plus, Trash2, Copy, ExternalLink, Download, Building2 } from 'lucide-react';
+import { Globe, FileText, Save, Loader2, Check, AlertCircle, Plus, Trash2, Copy, ExternalLink, Download, Building2, Link2, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { BASE_DOMAIN, slugify, clearTenantCache } from '../lib/tenant-resolver';
 
 interface Props {
     user: { id: string; tenantId?: string; role: string };
@@ -336,104 +337,286 @@ const SchoolField: React.FC<{
 );
 
 // ─────────────────────────────────────────────────────────────
-// CUSTOM DOMAIN
+// DOMAIN PANEL — subdomínio Wise Wolf + domínio próprio
 // ─────────────────────────────────────────────────────────────
 const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
-    const [tenant, setTenant] = useState<any>(null);
-    const [domain, setDomain] = useState('');
-    const [dnsInfo, setDnsInfo] = useState<any>(null);
+    const [tenantData, setTenantData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [working, setWorking] = useState(false);
+
+    // Subdomínio
+    const [slugEdit, setSlugEdit] = useState('');
+    const [slugSaving, setSlugSaving] = useState(false);
+    const [slugSaved, setSlugSaved] = useState(false);
+    const [slugError, setSlugError] = useState('');
+    const [copied, setCopied] = useState(false);
+
+    // Domínio próprio
+    const [customDomain, setCustomDomain] = useState('');
+    const [dnsInfo, setDnsInfo] = useState<any>(null);
+    const [domainWorking, setDomainWorking] = useState(false);
 
     useEffect(() => { load(); }, [tenantId]);
 
     const load = async () => {
         setLoading(true);
         if (!tenantId) { setLoading(false); return; }
-        const { data } = await supabase.from('tenants').select('custom_domain, custom_domain_verified, custom_domain_dns_token, custom_domain_verified_at').eq('id', tenantId).single();
-        setTenant(data);
-        if (data?.custom_domain) setDomain(data.custom_domain);
+        const { data } = await supabase
+            .from('tenants')
+            .select('slug, custom_domain, custom_domain_verified, custom_domain_dns_token, custom_domain_verified_at, name')
+            .eq('id', tenantId)
+            .single();
+        setTenantData(data);
+        if (data?.slug) setSlugEdit(data.slug);
+        if (data?.custom_domain) setCustomDomain(data.custom_domain);
         setLoading(false);
     };
 
-    const request = async () => {
-        if (!domain.trim()) return;
-        setWorking(true);
+    const subdomainUrl = tenantData?.slug ? `https://${tenantData.slug}.${BASE_DOMAIN}` : null;
+
+    const copyUrl = () => {
+        if (subdomainUrl) {
+            navigator.clipboard.writeText(subdomainUrl);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const saveSlug = async () => {
+        const clean = slugify(slugEdit);
+        if (!clean) { setSlugError('Slug inválido.'); return; }
+        setSlugSaving(true);
+        setSlugError('');
         try {
-            const { data, error } = await supabase.rpc('request_custom_domain', { p_domain: domain.trim().toLowerCase() });
+            // Verifica disponibilidade
+            const { data: existing } = await supabase
+                .from('tenants')
+                .select('id')
+                .eq('slug', clean)
+                .neq('id', tenantId!)
+                .maybeSingle();
+            if (existing) { setSlugError('Este endereço já está em uso. Escolha outro.'); setSlugSaving(false); return; }
+
+            const { error } = await supabase.from('tenants').update({ slug: clean, domain: `${clean}.${BASE_DOMAIN}` }).eq('id', tenantId!);
+            if (error) throw error;
+            clearTenantCache();
+            setSlugEdit(clean);
+            setTenantData((prev: any) => ({ ...prev, slug: clean }));
+            setSlugSaved(true);
+            setTimeout(() => setSlugSaved(false), 3000);
+        } catch (err: any) {
+            setSlugError(err.message);
+        }
+        setSlugSaving(false);
+    };
+
+    const requestCustomDomain = async () => {
+        if (!customDomain.trim()) return;
+        setDomainWorking(true);
+        try {
+            const { data, error } = await supabase.rpc('request_custom_domain', { p_domain: customDomain.trim().toLowerCase() });
             if (error) throw error;
             setDnsInfo(data);
             load();
         } catch (err: any) {
             alert('Erro: ' + err.message);
-        } finally { setWorking(false); }
+        } finally { setDomainWorking(false); }
     };
 
-    const verify = async () => {
-        setWorking(true);
+    const verifyCustomDomain = async () => {
+        setDomainWorking(true);
         try {
             const { error } = await supabase.rpc('verify_custom_domain');
             if (error) throw error;
-            alert('Marcado como verificado (em prod, validamos via DNS real).');
             load();
         } catch (err: any) {
             alert('Erro: ' + err.message);
-        } finally { setWorking(false); }
+        } finally { setDomainWorking(false); }
     };
 
     if (loading) return <Loader />;
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-4">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
-                    <Globe size={20} className="text-blue-600" />
+        <div className="space-y-4">
+            {/* ── Opção A: Subdomínio Wise Wolf (gratuito, imediato) ── */}
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-5">
+                <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center shrink-0">
+                        <Link2 size={20} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-black text-slate-800 dark:text-white text-sm">Endereço Wise Wolf</h3>
+                            <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">Gratuito</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                            Seu portal fica disponível em <strong>{`<seuslug>.${BASE_DOMAIN}`}</strong> — sem nenhuma configuração extra.
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-sm">Domínio próprio</h3>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">White-label completo</p>
-                </div>
-                {tenant?.custom_domain_verified && (
-                    <span className="ml-auto text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-emerald-100 text-emerald-600">
-                        ✓ Verificado
-                    </span>
-                )}
-            </div>
 
-            <div className="space-y-3">
-                <Input label="Seu domínio" value={domain} onChange={setDomain} placeholder="portal.suaescola.com.br" />
-                <div className="flex gap-2">
-                    <button onClick={request} disabled={working || !domain.trim()} className="flex-1 py-2 bg-blue-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50">
-                        Gerar instruções DNS
-                    </button>
-                    {tenant?.custom_domain_dns_token && !tenant?.custom_domain_verified && (
-                        <button onClick={verify} disabled={working} className="py-2 px-4 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50">
-                            Verificar
+                {/* URL atual */}
+                {subdomainUrl && (
+                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700">
+                        <span className="flex-1 font-mono text-sm text-slate-700 dark:text-slate-200 truncate">{subdomainUrl}</span>
+                        <button onClick={copyUrl} className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors">
+                            {copied ? <><CheckCircle2 size={14} className="text-emerald-500" /> Copiado</> : <><Copy size={14} /> Copiar</>}
                         </button>
-                    )}
-                </div>
-
-                {dnsInfo && (
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 space-y-2 text-xs">
-                        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Crie os 2 registros DNS abaixo no painel do seu provedor:</p>
-                        <DnsRecord type="TXT" name={dnsInfo.dns_record_name} value={dnsInfo.dns_record_value} />
-                        <DnsRecord type="CNAME" name={dnsInfo.domain} value={dnsInfo.cname_target} />
-                        <p className="text-[10px] text-slate-500 mt-2">{dnsInfo.instructions}</p>
+                        <a href={subdomainUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-slate-400 hover:text-blue-600 transition-colors">
+                            <ExternalLink size={14} />
+                        </a>
                     </div>
                 )}
+
+                {/* Editar slug */}
+                <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block">
+                        Personalizar o endereço
+                    </label>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Use letras minúsculas, números e hífens. Sem espaços ou caracteres especiais.
+                        <br/>
+                        <span className="text-slate-500">Ex: <em>joao-idiomas</em> → <strong>joao-idiomas.{BASE_DOMAIN}</strong></span>
+                    </p>
+                    <div className="flex gap-2">
+                        <div className="flex-1 flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                            <span className="px-3 py-2.5 text-xs text-slate-400 bg-slate-50 dark:bg-slate-700 border-r border-slate-200 dark:border-slate-600 shrink-0 whitespace-nowrap select-none">
+                                https://
+                            </span>
+                            <input
+                                type="text"
+                                value={slugEdit}
+                                onChange={e => { setSlugEdit(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setSlugError(''); }}
+                                placeholder="minha-escola"
+                                className="flex-1 px-3 py-2.5 text-sm bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none min-w-0"
+                            />
+                            <span className="px-3 py-2.5 text-xs text-slate-400 bg-slate-50 dark:bg-slate-700 border-l border-slate-200 dark:border-slate-600 shrink-0 whitespace-nowrap select-none">
+                                .{BASE_DOMAIN}
+                            </span>
+                        </div>
+                        <button
+                            onClick={saveSlug}
+                            disabled={slugSaving || !slugEdit.trim() || slugEdit === tenantData?.slug}
+                            className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-1.5 ${slugSaved ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:brightness-110 text-white'}`}
+                        >
+                            {slugSaving ? <Loader2 size={12} className="animate-spin" /> : slugSaved ? <Check size={12} /> : <Save size={12} />}
+                            {slugSaved ? 'Salvo!' : 'Salvar'}
+                        </button>
+                    </div>
+                    {slugError && <p className="text-xs text-rose-500 font-medium">{slugError}</p>}
+                </div>
+            </div>
+
+            {/* ── Opção B: Domínio próprio (avançado) ── */}
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-5">
+                <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center shrink-0">
+                        <Globe size={20} className="text-violet-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-black text-slate-800 dark:text-white text-sm">Domínio próprio</h3>
+                            <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">Avançado</span>
+                            {tenantData?.custom_domain_verified && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                                    <CheckCircle2 size={10} /> Verificado
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                            Use um domínio que você comprou (ex: <em>portal.suaescola.com.br</em>). Requer configuração de DNS.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1.5">Seu domínio</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={customDomain}
+                                onChange={e => setCustomDomain(e.target.value.toLowerCase().trim())}
+                                placeholder="portal.suaescola.com.br"
+                                className="flex-1 px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                            />
+                            <button
+                                onClick={requestCustomDomain}
+                                disabled={domainWorking || !customDomain.trim()}
+                                className="shrink-0 px-4 py-2.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                                {domainWorking ? <Loader2 size={12} className="animate-spin" /> : null}
+                                Ver instruções DNS
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Instruções DNS */}
+                    {(dnsInfo || tenantData?.custom_domain_dns_token) && (
+                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3 border border-slate-200 dark:border-slate-700">
+                            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+                                Crie estes 2 registros no painel DNS do seu domínio:
+                            </p>
+                            <DnsRecord
+                                type="CNAME"
+                                name={customDomain || tenantData?.custom_domain || ''}
+                                value="cname.vercel-dns.com"
+                                hint="Aponta seu domínio para o servidor da Wise Wolf"
+                            />
+                            <DnsRecord
+                                type="TXT"
+                                name={`_wisewolf-verify.${customDomain || tenantData?.custom_domain || ''}`}
+                                value={dnsInfo?.dns_record_value || tenantData?.custom_domain_dns_token || ''}
+                                hint="Comprova que você é o dono do domínio"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                                ⏳ A propagação DNS pode levar até 48h. Após configurar, clique em "Verificar".
+                            </p>
+                            {!tenantData?.custom_domain_verified && (
+                                <button
+                                    onClick={verifyCustomDomain}
+                                    disabled={domainWorking}
+                                    className="w-full py-2 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {domainWorking ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                    Verificar domínio
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Status verificado */}
+                    {tenantData?.custom_domain_verified && (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 rounded-xl">
+                            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+                            <div>
+                                <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">Domínio ativo!</p>
+                                <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                    Seu portal está acessível em <strong>https://{tenantData.custom_domain}</strong>
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
-const DnsRecord: React.FC<{ type: string; name: string; value: string }> = ({ type, name, value }) => (
-    <div className="grid grid-cols-12 gap-2 items-center bg-white dark:bg-slate-900 rounded-lg p-2 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
-        <span className="col-span-2 font-bold text-blue-600">{type}</span>
-        <span className="col-span-5 truncate" title={name}>{name}</span>
-        <span className="col-span-4 truncate text-slate-500" title={value}>{value}</span>
-        <button onClick={() => navigator.clipboard.writeText(value)} className="col-span-1 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
-            <Copy size={12} />
-        </button>
+const DnsRecord: React.FC<{ type: string; name: string; value: string; hint?: string }> = ({ type, name, value, hint }) => (
+    <div className="space-y-1">
+        {hint && <p className="text-[10px] text-slate-400 italic">{hint}</p>}
+        <div className="grid grid-cols-12 gap-2 items-center bg-white dark:bg-slate-900 rounded-lg p-2 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
+            <span className={`col-span-2 font-bold ${type === 'CNAME' ? 'text-violet-600' : 'text-amber-600'}`}>{type}</span>
+            <span className="col-span-5 truncate text-slate-600 dark:text-slate-300" title={name}>{name}</span>
+            <span className="col-span-4 truncate text-slate-500" title={value}>{value}</span>
+            <button
+                onClick={() => navigator.clipboard.writeText(value)}
+                title="Copiar valor"
+                className="col-span-1 p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center justify-center"
+            >
+                <Copy size={11} />
+            </button>
+        </div>
     </div>
 );
 

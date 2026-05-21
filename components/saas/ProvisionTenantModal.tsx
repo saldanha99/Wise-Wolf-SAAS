@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Building2, User, Mail, Globe, CheckCircle, AlertTriangle, X } from 'lucide-react';
+import { BASE_DOMAIN, slugify } from '../../lib/tenant-resolver';
 
 interface ProvisionTenantModalProps {
     isOpen: boolean;
@@ -24,31 +25,20 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
 
     if (!isOpen) return null;
 
-    // Helper to slugify name
-    const generateSlug = (name: string) => {
-        return name.toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
-            .replace(/[^a-z0-9]/g, '-') // Replace non-alphanum with -
-            .replace(/-+/g, '-') // Replace multiple - with single -
-            .replace(/^-|-$/g, ''); // Remove leading/trailing -
-    };
-
     const handleCreateTenant = async () => {
         setLoading(true);
         try {
-            // 1. Create Tenant (INSERT directly if RLS allows Super Admin, otherwise RPC might be safer but lets try direct)
-            const slug = formData.slug || generateSlug(formData.schoolName);
+            // 1. Create Tenant
+            const slug = slugify(formData.slug || formData.schoolName);
 
-            // Note: In real app, we need to handle UUID creation or let DB do it. 
-            // We'll let DB generate ID.
             const { data: tenant, error: tenantError } = await supabase
                 .from('tenants')
                 .insert({
                     name: formData.schoolName,
                     slug: slug,
-                    domain: `${slug}.wisewolf.com.br`, // Mock domain logic
-                    plan_id: null, // We need to fetch plan UUID first, or just null for now
-                    owner_email: formData.adminEmail, // Used for recovery/contact
+                    domain: `${slug}.${BASE_DOMAIN}`,
+                    plan_id: null,
+                    owner_email: formData.adminEmail,
                     saas_status: 'active'
                 })
                 .select()
