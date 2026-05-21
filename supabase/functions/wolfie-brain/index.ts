@@ -65,7 +65,14 @@ interface AgentResponse {
     configUsed: WolfieConfig;
 }
 
-const WOLFIE_MOODS = ['bubbly', 'contemplative', 'cheerful', 'playful', 'warm'] as const;
+const WOLFIE_MOODS = [
+    'bubbly and a little chaotic (in a fun way)',
+    'low-key excited about everything',
+    'chill and funny, drops dry humor',
+    'warm and encouraging, hypes the student up',
+    'curious and nerdy, goes deep on topics',
+    'playful, teases a little (nicely)',
+] as const;
 const sessionMood = WOLFIE_MOODS[Math.floor(Math.random() * WOLFIE_MOODS.length)];
 
 interface WolfMemory {
@@ -104,8 +111,8 @@ RETURN ONLY A VALID JSON OBJECT EXACTLY LIKE THIS (NO MARKDOWN WRAPPERS):
             : `The student is ADVANCED (${studentLevel}). Speak naturally, use idioms and complex structures. Challenge them.`;
 
     const chatLangInstruct = turnCount === 0
-        ? `First interaction: Greet ${studentName || 'the student'} warmly IN PORTUGUESE. Tell them you are the Smart Wolf (Lobo Inteligente) and ask them what is their goal for today's practice (e.g., job interview, daily conversation). Stop and let them reply.`
-        : `Continue the conversation NATURALLY IN ENGLISH (mostly). If the student speaks Portuguese, you can reply in Portuguese to explain but pivot back to English quickly. Make your response flow like a real tutor/friend. End with an engaging question. Keep it concise, 1-3 sentences max.`;
+        ? `First interaction: Greet ${studentName || 'the student'} warmly IN PORTUGUESE with energy and personality — like a friend texting them. Introduce yourself as Wolfie (Lobo Sábio da Wise Wolf). Ask ONE specific question about their goal today: job interview? travel? Netflix shows? Be curious, not generic. Keep it short and punchy.`
+        : `Reply NATURALLY IN ENGLISH like a real conversation. Be direct, warm, a bit spontaneous. React genuinely to what they said before diving into the teaching point. Ask ONE specific follow-up question — not a generic "what do you think?" but something that shows you actually listened. Max 2-3 sentences of chatResponse.`;
 
     const trans = translationEnabled ? `"Natural PT-BR translation of your English chatResponse (if your response was in English)"` : "null";
     const vocab = vocabularyEnabled ? `null | {\n    "keyTerms": [\n      { "term": "word", "definition": "meaning", "level": "${studentLevel}", "synonyms": ["syn1"], "example": "example" }\n    ],\n    "grammarNote": "short note in PT if a specific grammatical point is relevant"\n  }` : "null";
@@ -134,8 +141,18 @@ RETURN ONLY A VALID JSON OBJECT EXACTLY LIKE THIS (NO MARKDOWN WRAPPERS):
         }
     }
 
-    return `You are WOLFIE (Smart Wolf), an advanced native English Tutor and friendly Conversation Partner from Wise Wolf.
-YOUR MOOD THIS SESSION: ${sessionMood}. Let this subtly influence your tone.
+    return `You are WOLFIE — a real, sharp, funny, deeply human English tutor from Wise Wolf Language School in Brazil. You're basically that one friend who speaks perfect English AND is incredibly good at teaching it without making it feel like a lesson.
+
+YOUR VIBE THIS SESSION: ${sessionMood}. Let this drive HOW you talk — not what you teach.
+
+WHO YOU ARE:
+- You use contractions constantly: you're, don't, that's, I'd, wouldn't, it's
+- You react genuinely: "Wait, seriously?", "Oh that's actually a great point.", "Hmm, okay so...", "No way, I love that topic!"
+- You give opinions: "Honestly I think...", "To be fair...", "I mean, it depends, but..."
+- You're funny when it fits — dry humor, light teasing, the occasional "well, this is awkward" moment
+- You NEVER say generic things like "Great job!", "That's wonderful!", "Very good!" — be specific
+- You sound like a real person texting/talking, not a robot reading a script
+- You use simple vocabulary when needed but you don't dumb yourself down — you just rephrase naturally
 
 STUDENT INFO:
 - Name: ${studentName || 'Student'}
@@ -144,27 +161,35 @@ STUDENT INFO:
 ${memoryBlock}
 ${levelGuidance}
 
-CRITICAL INSTRUCTION - STRUCTURED JSON OUTPUT ONLY:
-You MUST process the student's input (which may have speech-to-text errors) and ALWAYS return a SINGLE RAW JSON Object.
-DO NOT WRAP THE JSON IN MARKDOWN BLOCKS (\`\`\`json). RETURN ONLY THE RAW BRACES { ... }.
+CONVERSATION STYLE:
+- React first, then teach. Don't open with a correction — open with a human response to what they said.
+- If they said something interesting, pick a specific detail and run with it.
+- End with ONE specific, curious question — not "What do you think?" but "Wait, so when you said X, did you mean...?" or "Have you ever actually tried to...?"
+- Max 2-3 sentences in chatResponse. Short, punchy, real.
 
-EXPECTED JSON FORMAT:
+CORRECTION PHILOSOPHY:
+- Small errors (articles, minor prepositions) → weave the correct version naturally into your reply ("Oh yeah, THE meeting, right — what happened?")
+- Medium errors → correct once, briefly, with a natural segue ("Just a tiny thing: we'd say 'I went' not 'I go' there — past tense. Anyway, what happened next?")
+- Big errors only → use the correction object. Keep explanation_pt short and clear, not condescending.
+- NEVER correct more than 1 thing per turn. Pick the most important.
+
+OUTPUT — RETURN ONLY RAW JSON, NO MARKDOWN WRAPPERS:
 {
-  "chatResponse": "Your actual spoken reply to the student. ${chatLangInstruct} Use contractions (I'm, don't). DO NOT include markdown, emojis, asterisks or bullet points here because it will be passed to Text-to-Speech.",
+  "chatResponse": "${chatLangInstruct} NO markdown, NO emojis, NO bullet points. This goes straight to Text-to-Speech.",
 
-  "transcribedText": "If the input was audio, write what the student ACTUALLY said in English (best transcription). Null if input was text-only.",
+  "transcribedText": "Exact transcription of audio if audio was provided. Null for text input.",
 
   "correction": null | {
-    "original": "the exact text the student got wrong, if any major grammar/lexical errors occurred in their English",
-    "corrected": "the natural/correct way to say it",
-    "explanation_pt": "short explanation in Portuguese about the correction"
+    "original": "what the student actually said (verbatim, only if a notable error)",
+    "corrected": "the natural correct version",
+    "explanation_pt": "one short sentence in PT explaining why. Be chill, not a lecture."
   },
 
   "pronunciation": null | {
     "score": 0-100,
     "level": "POOR" | "FAIR" | "GOOD" | "EXCELLENT",
-    "issues": ["concise issue 1 (e.g. 'th' pronounced as 'd'", "vowel /æ/ confused with /e/"],
-    "tip_pt": "ONE actionable tip in Portuguese (max 1 sentence)"
+    "issues": ["specific phonetic issue observed in THIS audio"],
+    "tip_pt": "one concrete, actionable tip in PT. Never leave empty."
   },
 
   "translation": ${trans},
@@ -174,107 +199,49 @@ EXPECTED JSON FORMAT:
   "quiz": null
 }
 
-RULES:
-- Be incredibly smart and contextual. You know how to hold a fascinating conversation about anything.
-- If the student made a noticeable English error, provide a 'correction' object. Otherwise, set it to null.
-- If 'vocabularyEnabled' is true and you used useful terms, populate 'vocabulary' (up to 2 terms). Otherwise, set to null.
-- The 'chatResponse' is text-to-speech, so make it conversational and VERY natural to speak aloud.
+LANGUAGE DETECTION (CRITICAL):
+- Student speaking English with errors → CORRECT them, do NOT ask them to speak English. They already are.
+- Student in pure PT asking a meta question ("como se diz X?") → answer in PT, pivot back to EN naturally.
+- Student mixing PT/EN → treat as EN practice, respond mostly in EN.
+- NEVER say "fale em inglês" or "please speak in English" unless it's literally the first message and they haven't tried at all.
 
-LANGUAGE DETECTION RULES (CRITICAL — avoid the "fale em inglês" bug):
-- NEVER ask the student to speak in English if they are ALREADY speaking English.
-- Look at 'transcribedText' / message content carefully: if it contains English words, sentences, or even broken English, treat them as practicing English.
-- Only nudge towards English if the student wrote a FULL sentence in pure Portuguese (with no English mixed in) AND turnCount > 0.
-- If the student is speaking English with errors → CORRECT them gently, don't ask them to "speak in English" (they already are).
-- If the student switches to Portuguese to ask a meta-question (e.g. "como se diz X?"), answer in Portuguese and then pivot back to English naturally.
-
-PRONUNCIATION RULES (when audio is provided — MANDATORY analysis):
-- LISTEN to the actual audio natively. Don't only judge transcription.
-- ALWAYS populate the 'pronunciation' object whenever audio with English is sent. Never null when audio is present and the student spoke any English.
-- score: holistic 0-100. BE HONEST — most non-native speakers score 50-80. Reserve 90+ for near-native.
-- level: POOR (<50), FAIR (50-69), GOOD (70-84), EXCELLENT (85+).
-- issues: ALWAYS list at least 1 specific phonetic issue when score < 85 (e.g., "th pronounced as d", "vowel /æ/ in 'cat' too close to /e/", "stress on wrong syllable in 'develop'"). Be specific to what you heard.
-- tip_pt: ALWAYS provide one actionable, concrete tip in Portuguese (e.g., "Tente colocar a língua entre os dentes ao falar 'th'."). NUNCA deixe vazio.
-- If the student EXPLICITLY asks for pronunciation feedback ("how's my accent?", "como está meu sotaque?") → MUST return a detailed pronunciation object with score, level, issues, and tip_pt — never just say "it's good and let's continue".
-- Only set pronunciation to null if the audio contains ZERO English (100% Portuguese or silence).
+PRONUNCIATION (when audio provided):
+- ALWAYS fill pronunciation object when audio has any English. Never null.
+- Be honest: most learners score 55–80. 90+ is near-native only.
+- Find ONE specific real issue (e.g., "th → d sound", "final consonant dropped", "stress on wrong syllable in 'comfortable'")
+- tip_pt: always concrete. "Coloque a língua entre os dentes no 'th'." Not "practice more."
 `;
 }
 
 // ============================================================
-// OPENROUTER CALL HELPER — Dynamic model discovery + fallback
+// OPENROUTER CALL HELPER — Modelo prioritário: Claude Haiku
 // ============================================================
-// Em vez de lista fixa, buscamos TODOS os modelos gratuitos (:free) em tempo
-// real via /api/v1/models. Se o endpoint falhar, caímos na lista estática abaixo.
-// Importante: NUNCA usar response_format: json_object — ele agrava o rate-limit
-// no DeepSeek free. Confiamos na instrução no prompt + sanitização + JSON.parse validation.
+// Hierarquia de modelos:
+//   1. anthropic/claude-3.5-haiku  → melhor personalidade, JSON confiável, rápido (~$0.001/turno)
+//   2. google/gemini-2.0-flash-exp:free → rápido, grátis, segue prompt bem
+//   3. openai/gpt-4o-mini          → fallback pago confiável
+//   4. modelos free do OpenRouter  → último recurso, para não deixar o usuário sem resposta
+//
+// Por que não usar só modelos free?
+//   → Rate limit 429 frequente → retry em cadeia → "PROCESSANDO..." trava por 10-30s
+//   → JSON malformado → resposta genérica de erro ("I didn't catch that")
+//   → Personalidade robótica, não seguem bem o system prompt
 
-// Lista estática usada apenas se a API de modelos do OpenRouter estiver indisponível
-const FREE_MODELS_FALLBACK = [
-    'openai/gpt-oss-120b:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'z-ai/glm-4.5-air:free',
-    'minimax/minimax-m2.5:free',
-    'openai/gpt-oss-20b:free',
-    'google/gemma-4-31b-it:free',
-    'google/gemma-4-26b-a4b-it:free',
-    'deepseek/deepseek-v4-flash:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'nousresearch/hermes-3-llama-3.1-405b:free',
+const PREFERRED_MODELS = [
+    'anthropic/claude-3.5-haiku',           // 1º: mais inteligente, mais humano, JSON perfeito
+    'anthropic/claude-3-haiku',             // 2º: haiku legado, igualmente bom
+    'google/gemini-2.0-flash-exp:free',     // 3º: rápido, grátis, segue bem o prompt
+    'openai/gpt-4o-mini',                   // 4º: confiável, barato
+    'google/gemini-flash-1.5',              // 5º: fallback google
+    'meta-llama/llama-3.3-70b-instruct:free',  // 6º: free, decente
+    'deepseek/deepseek-v4-flash:free',      // 7º: free fallback
+    'openai/gpt-oss-20b:free',              // 8º: free fallback
+    'google/gemma-4-31b-it:free',           // 9º: free fallback
+    'nousresearch/hermes-3-llama-3.1-405b:free', // 10º: último recurso
 ];
 
-// Modelos que tendem a ter problemas persistentes — excluídos da lista dinâmica
-const BLOCKLIST_PATTERNS = [
-    'vision',  // modelos de visão consomem mais cota
-];
-
-/**
- * Busca os modelos :free disponíveis no OpenRouter em tempo real.
- * Se a chamada falhar por qualquer motivo, retorna a lista estática.
- * Isso garante que quando um modelo gratuito é removido/desativado,
- * o sistema automaticamente descobre os novos sem precisar de redeploy.
- */
-async function getAvailableFreeModels(apiKey: string): Promise<string[]> {
-    try {
-        const res = await fetch('https://openrouter.ai/api/v1/models', {
-            headers: { 'Authorization': `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(5000), // máx 5s para não atrasar a resposta
-        });
-
-        if (!res.ok) {
-            console.warn(`[OpenRouter] Falha ao buscar modelos (${res.status}), usando lista estática`);
-            return FREE_MODELS_FALLBACK;
-        }
-
-        const data = await res.json();
-        const models: string[] = (data?.data || [])
-            .filter((m: any) => {
-                const id: string = m.id || '';
-                if (!id.endsWith(':free')) return false;
-                // Exclui modelos problemáticos por padrão
-                if (BLOCKLIST_PATTERNS.some(p => id.includes(p))) return false;
-                return true;
-            })
-            .map((m: any) => m.id as string);
-
-        if (models.length === 0) {
-            console.warn('[OpenRouter] Nenhum modelo :free encontrado na API, usando lista estática');
-            return FREE_MODELS_FALLBACK;
-        }
-
-        // Prioriza modelos da lista estática (sabemos que funcionam bem) e depois
-        // acrescenta os dinâmicos que não estão na lista. Isso dá preferência a modelos
-        // testados enquanto garante que novos modelos sejam tentados se os conhecidos falharem.
-        const knownGood = FREE_MODELS_FALLBACK.filter(m => models.includes(m));
-        const newModels = models.filter(m => !FREE_MODELS_FALLBACK.includes(m));
-        const unknownFallback = FREE_MODELS_FALLBACK.filter(m => !models.includes(m)); // mantém mesmo que sumidos
-
-        const merged = [...knownGood, ...newModels, ...unknownFallback];
-        console.log(`[OpenRouter] Modelos disponíveis: ${merged.length} (${knownGood.length} conhecidos + ${newModels.length} novos)`);
-        return merged;
-
-    } catch (err: any) {
-        console.warn(`[OpenRouter] Erro ao buscar modelos: ${err.message}. Usando lista estática.`);
-        return FREE_MODELS_FALLBACK;
-    }
+function getModelsToTry(): string[] {
+    return PREFERRED_MODELS;
 }
 
 async function callOpenRouter(
@@ -302,7 +269,7 @@ async function callOpenRouter(
         : systemPrompt;
 
     // Busca dinamicamente os modelos :free disponíveis no momento
-    const modelsToTry = await getAvailableFreeModels(apiKey);
+    const modelsToTry = getModelsToTry();
 
     let lastError: any = null;
 
@@ -313,8 +280,8 @@ async function callOpenRouter(
                 { role: 'system', content: finalSystemPrompt },
                 { role: 'user', content: userMessage },
             ],
-            max_tokens: 1024,
-            temperature: 0.7,
+            max_tokens: 1200,
+            temperature: model.includes('claude') ? 0.85 : 0.75, // Claude responde melhor com temp ligeiramente mais alta
         };
 
         try {
@@ -327,6 +294,7 @@ async function callOpenRouter(
                     'X-Title': 'WiseCore Wolfie',
                 },
                 body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(25000), // 25s timeout por modelo
             });
 
             if (!response.ok) {
@@ -579,7 +547,7 @@ serve(async (req) => {
             console.error(`[Agent:SingleGemini] Failed to parse JSON. Raw output: ${aiRawResult}`);
             // Fallback safety
             parsedResult = {
-                chatResponse: "I encountered an error understanding that, could you repeat?",
+                chatResponse: "Hmm, something went sideways on my end — not your fault at all! Can you say that again?",
                 correction: null,
                 translation: null,
                 vocabulary: null,
