@@ -46,6 +46,20 @@ function randomUUID(): string {
   });
 }
 
+/**
+ * Converte Uint8Array para base64 em chunks para evitar stack overflow.
+ * btoa(String.fromCharCode(...largeArray)) causa RangeError em buffers > ~50KB
+ * porque o spread gera um call stack enorme. Chunks de 8192 bytes são seguros.
+ */
+function uint8ToBase64(bytes: Uint8Array): string {
+  const CHUNK = 8192;
+  let str = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    str += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(str);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -155,7 +169,7 @@ serve(async (req) => {
             }
 
             // Converte para base64
-            const base64 = btoa(String.fromCharCode(...merged));
+            const base64 = uint8ToBase64(merged);
             resolved = true;
             resolve(base64);
           }
@@ -198,7 +212,7 @@ serve(async (req) => {
             merged.set(chunk, offset);
             offset += chunk.length;
           }
-          const base64 = btoa(String.fromCharCode(...merged));
+          const base64 = uint8ToBase64(merged);
           resolved = true;
           resolve(base64);
         } else if (!resolved) {

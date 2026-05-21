@@ -350,17 +350,54 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     /**
-     * Desbloqueia o AudioContext para iOS.
-     * DEVE ser chamado dentro de um handler de toque/clique do usuário.
-     * iOS bloqueia WebAudio até a primeira interação — sem isso não sai som.
+     * Desbloqueia áudio para iOS Safari — DEVE ser chamado dentro de um
+     * handler de toque/clique síncrono (onTouchStart, onClick, etc).
+     *
+     * iOS exige que o desbloqueio seja feito em três camadas:
+     * 1. AudioContext.resume() + tocar buffer silencioso (obrigatório para neural TTS)
+     * 2. SpeechSynthesis unlock (obrigatório para o fallback Web Speech API)
+     *
+     * Sem isso, qualquer audio.play() ou speechSynthesis.speak() em callbacks
+     * assíncronos (após fetch/invoke) é silenciosamente bloqueado pelo iOS.
      */
     const unlockAudio = useCallback(() => {
-        if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        try {
+            // ── 1. AudioContext: cria + toca buffer silencioso ──
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+                if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+                    audioCtxRef.current = new AudioCtx();
+                }
+                const ctx = audioCtxRef.current;
+                const playUnlockBuffer = () => {
+                    try {
+                        // 1 sample de silêncio — suficiente para iOS considerar o output "ativo"
+                        const buf = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+                        const src = ctx.createBufferSource();
+                        src.buffer = buf;
+                        src.connect(ctx.destination);
+                        src.start(0);
+                    } catch (_) {}
+                };
+                if (ctx.state === 'suspended') {
+                    ctx.resume().then(playUnlockBuffer).catch(() => {});
+                } else {
+                    playUnlockBuffer();
+                }
+            }
+        } catch (e) {
+            console.warn('[WolfieTutor] AudioContext unlock error:', e);
         }
-        if (audioCtxRef.current.state === 'suspended') {
-            audioCtxRef.current.resume().catch(() => {});
-        }
+        try {
+            // ── 2. Web Speech API unlock (fallback iOS) ──
+            // iOS bloqueia speechSynthesis.speak() em callbacks async se não foi
+            // previamente "iniciado" numa gesture — esse speak vazio desbloqueia.
+            if ('speechSynthesis' in window) {
+                const u = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(u);
+                window.speechSynthesis.cancel();
+            }
+        } catch (_) {}
     }, []);
 
     /** Para a voz (AudioContext + HTMLAudio + Web Speech) e limpa o estado */
