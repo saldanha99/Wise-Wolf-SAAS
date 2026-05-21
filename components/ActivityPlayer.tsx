@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 
-const WolfieLiveCallV3 = lazy(() => import('./WolfieLiveCallV3'));
+// WolfieTutor usa wolfie-brain (edge function estável) — substituindo WolfieLiveCallV3
+// que dependia de Gemini Live API via WebSocket (instável/não configurado)
+const WolfieTutor = lazy(() => import('./WolfieTutor'));
 
 interface ActivityPlayerProps {
     activity: {
@@ -377,18 +379,37 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
     const [launched, setLaunched] = useState(false);
 
     if (launched) {
+        // Monta objeto user compatível com WolfieTutor
+        // levelBadge vem do wolfieConfig da atividade (gerado por IA com base no perfil)
+        const userForWolfie = {
+            id: userId,
+            levelBadge: wolfieConfig?.level || 'B1',
+            full_name: wolfieConfig?.studentName || '',
+            goal: wolfieConfig?.goal || 'practice speaking fluently',
+        };
+
+        // Tópico: usa o scenario da atividade ou as instruções como tópico
+        const topicForWolfie = activity.content?.scenario
+            || activity.content?.topic
+            || activity.title
+            || 'Speaking Practice';
+
         return (
-            <WolfieLiveCallV3
-                user={{ id: userId }}
-                wolfieConfig={wolfieConfig || { level: 'B1', goal: 'Fluency', correctionStrictness: 2 }}
-                avatarId="wolf"
-                scenarioId={activity.content?.scenario || 'general_speaking'}
-                onClose={() => {
-                    setLaunched(false);
-                    // Treat completion as 100 — Wolfie ja avalia via pronunciation score
-                    onFinish(100);
-                }}
-            />
+            <Suspense fallback={
+                <div className="fixed inset-0 z-[200] bg-slate-950 flex items-center justify-center">
+                    <Loader2 className="animate-spin text-violet-400" size={32} />
+                </div>
+            }>
+                <WolfieTutor
+                    user={userForWolfie}
+                    voiceMode={true}
+                    topic={topicForWolfie}
+                    onClose={() => {
+                        setLaunched(false);
+                        onFinish(100);
+                    }}
+                />
+            </Suspense>
         );
     }
 
