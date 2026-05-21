@@ -87,7 +87,7 @@ interface WolfMemory {
     avoided_topics?: string[];
 }
 
-function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string, memory?: WolfMemory): string {
+function buildSystemPrompt(config: WolfieConfig, studentName?: string, studentGoal?: string, previousContext?: string, memory?: WolfMemory, studentLanguage?: 'pt' | 'en'): string {
     const isPedagogicalAdvisor = previousContext?.includes('Pedagogical Advisor');
 
     if (isPedagogicalAdvisor) {
@@ -112,9 +112,14 @@ RETURN ONLY A VALID JSON OBJECT EXACTLY LIKE THIS (NO MARKDOWN WRAPPERS):
 
     const chatLangInstruct = turnCount === 0
         ? `First interaction: Greet ${studentName || 'the student'} warmly IN PORTUGUESE with energy and personality — like a friend texting them. Introduce yourself as Wolfie (Lobo Sábio da Wise Wolf). Ask ONE specific question about their goal today: job interview? travel? Netflix shows? Be curious, not generic. Keep it short and punchy.`
-        : `Reply NATURALLY IN ENGLISH like a real conversation. Be direct, warm, a bit spontaneous. React genuinely to what they said before diving into the teaching point. Ask ONE specific follow-up question — not a generic "what do you think?" but something that shows you actually listened. Max 2-3 sentences of chatResponse.`;
+        : studentLanguage === 'pt'
+            ? `O aluno está falando PORTUGUÊS agora. Responda INTEIRAMENTE EM PORTUGUÊS BRASILEIRO — como um amigo de verdade conversando. Seja natural, divertido, caloroso. Se ele pedir uma palavra ou expressão em inglês, responda normalmente. MAX 2-3 frases curtas. SEM emojis, SEM markdown, SEM bullets. Vai direto para o Text-to-Speech.`
+            : `Reply NATURALLY IN ENGLISH like a real conversation. Be direct, warm, a bit spontaneous. React genuinely to what they said before diving into the teaching point. Ask ONE specific follow-up question — not a generic "what do you think?" but something that shows you actually listened. Max 2-3 sentences of chatResponse.`;
 
-    const trans = translationEnabled ? `"Natural PT-BR translation of your English chatResponse (if your response was in English)"` : "null";
+    // Sem tradução quando aluno fala PT (resposta já será em PT) ou translationEnabled=false
+    const trans = (translationEnabled && studentLanguage !== 'pt')
+        ? `"Natural PT-BR translation of your English chatResponse"`
+        : "null";
     const vocab = vocabularyEnabled ? `null | {\n    "keyTerms": [\n      { "term": "word", "definition": "meaning", "level": "${studentLevel}", "synonyms": ["syn1"], "example": "example" }\n    ],\n    "grammarNote": "short note in PT if a specific grammatical point is relevant"\n  }` : "null";
 
     // Memory block: o que sabemos sobre o aluno entre sessoes
@@ -376,7 +381,7 @@ serve(async (req) => {
             throw new Error("Invalid JSON body");
         }
 
-        const { message, audioBase64, previousContext, conversationId } = body;
+        const { message, audioBase64, previousContext, conversationId, studentLanguage } = body;
 
         const config: WolfieConfig = {
             topic: body.topic || 'General Conversation',
@@ -548,7 +553,7 @@ serve(async (req) => {
 
         _section = 'openrouter_call';
         console.log(`[wolfie] Calling OpenRouter...`);
-        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory);
+        const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory, studentLanguage);
 
         const aiRawResult = await callOpenRouter(
             openRouterKey,

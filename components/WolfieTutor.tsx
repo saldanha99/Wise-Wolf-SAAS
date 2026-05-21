@@ -165,6 +165,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const recognitionRef = useRef<any>(null);          // Web Speech API recognition
     const isProcessingRef = useRef(false);             // Previne chamadas duplicadas ao wolfie-brain
     const recordingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Timeout do delay anti-eco
+    const finalTranscriptRef = useRef<string>('');     // Acumula transcript enquanto segura o orb
     const englishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
@@ -496,15 +497,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     // ============================================================
-    // VOICE INPUT — Web Speech API (hold to speak)
+    // VOICE INPUT — Web Speech API (hold to speak, bilingual PT+EN)
     // ============================================================
     const startRecording = () => {
-        // Permite iniciar gravação em IDLE ou SPEAKING (interrompe o Wolfie)
+        // Permite iniciar em IDLE ou SPEAKING (interrompe o Wolfie)
         if (state !== 'IDLE' && state !== 'SPEAKING') return;
-        // Evita duplo clique enquanto já está processando
         if (isProcessingRef.current) return;
 
-        // ── CRÍTICO: para a voz do Wolfie (neural + Web Speech) e aguarda o speaker silenciar ──
+        // ── Para a voz do Wolfie (neural + Web Speech) ──
         if (audioRef.current) {
             audioRef.current.pause();
             audioRef.current.src = '';
@@ -517,79 +517,91 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
         if (!SpeechRec) {
-            setError('Reconhecimento de voz não suportado neste browser. Use o campo de texto.');
+            setError('Reconhecimento de voz não suportado. Use o campo de texto.');
             setTimeout(() => setError(null), 5000);
             setShowTextInput(true);
             return;
         }
 
-        // Aguarda 400ms para o som do speaker parar fisicamente antes de ligar o mic
+        // Aguarda 400ms para o speaker parar fisicamente antes de ligar o mic
         recordingDelayRef.current = setTimeout(() => {
-            // ── Aborta qualquer recognition anterior que possa ainda estar ativo ──
-            // Sem isso, onresult de uma instância antiga pode disparar após uma nova iniciar
             if (recognitionRef.current) {
-                recognitionRef.current.onresult = null;  // remove callbacks primeiro
+                recognitionRef.current.onresult = null;
                 recognitionRef.current.onerror = null;
                 recognitionRef.current.onend = null;
-                try { recognitionRef.current.abort(); } catch (_) { /* silencioso */ }
+                try { recognitionRef.current.abort(); } catch (_) {}
                 recognitionRef.current = null;
             }
 
+            finalTranscriptRef.current = '';
+
             const recognition = new SpeechRec();
-            recognition.lang = 'en-US';          // aluno fala em inglês
-            recognition.continuous = false;
-            recognition.interimResults = false;   // só resultado final, sem parciais
+            // pt-BR: entende português E inglês falado por brasileiros
+            recognition.lang = 'pt-BR';
+            // continuous = true: NÃO corta enquanto o usuário segura o orb
+            recognition.continuous = true;
+            // interimResults = true: mostra legenda em tempo real enquanto fala
+            recognition.interimResults = true;
             recognition.maxAlternatives = 1;
             recognitionRef.current = recognition;
 
             recognition.onresult = (event: any) => {
-                // Aborta imediatamente para garantir que nenhum outro evento dispare desta instância
-                recognition.onresult = null;
-                recognition.onerror = null;
-                recognition.onend = null;
-                try { recognition.abort(); } catch (_) { /* silencioso */ }
+                // Acumula todo texto final + exibe interim como legenda ao vivo
+                let finalText = '';
+                let interimText = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                        finalText += event.results[i][0].transcript + ' ';
+                    } else {
+                        interimText += event.results[i][0].transcript;
+                    }
+                }
+                finalTranscriptRef.current = finalText.trim();
+                // Mostra o que já reconheceu como legenda (feedback visual ao vivo)
+                setSubtitle(interimText || finalText.trim());
+            };
 
-                // Guard: ignora se já estamos processando (previne race conditions)
+            recognition.onerror = (event: any) => {
+                // 'aborted' é silencioso (usuário soltou antes do delay)
+                if (event.error !== 'aborted') {
+                    const msgs: Record<string, string> = {
+                        'no-speech':     'Não ouvi nada — segure e fale mais perto',
+                        'audio-capture': 'Microfone não encontrado',
+                        'not-allowed':   'Permissão do microfone negada',
+                        'network':       'Erro de rede no reconhecimento de voz',
+                    };
+                    const msg = msgs[event.error] ?? `Erro: ${event.error}`;
+                    if (msg) { setError(msg); setTimeout(() => setError(null), 4000); }
+                }
+                setState('IDLE');
+                setSubtitle('');
+            };
+
+            recognition.onend = () => {
+                // Chamado quando stop() é acionado pelo mouseup/touchend
+                const transcript = finalTranscriptRef.current.trim();
+                setSubtitle('');
+
+                if (!transcript) {
+                    setState('IDLE');
+                    if (!isProcessingRef.current) {
+                        setError('Não ouvi nada — segure o orb e fale');
+                        setTimeout(() => setError(null), 3000);
+                    }
+                    return;
+                }
+
                 if (isProcessingRef.current) {
                     console.warn('🎤 Resultado ignorado — já processando outro');
                     setState('IDLE');
                     return;
                 }
-                const transcript: string = event.results[0][0].transcript.trim();
+
                 console.log('🎤 Transcrito:', transcript);
-                if (!transcript) {
-                    setError('Não ouvi nada — tente novamente');
-                    setState('IDLE');
-                    setTimeout(() => setError(null), 3000);
-                    return;
-                }
-                // Adiciona mensagem do aluno e envia
                 const newUserMsg: Message = { id: crypto.randomUUID(), role: 'user', content: transcript, timestamp: new Date() };
                 setMessages(prev => [...prev, newUserMsg]);
                 setState('THINKING');
                 sendToWolfieBrain({ message: transcript });
-            };
-
-            recognition.onerror = (event: any) => {
-                console.error('Speech recognition error:', event.error);
-                const msgs: Record<string, string> = {
-                    'no-speech':          'Não ouvi nada — segure e fale mais perto',
-                    'audio-capture':      'Microfone não encontrado',
-                    'not-allowed':        'Permissão do microfone negada',
-                    'network':            'Erro de rede no reconhecimento de voz',
-                    'aborted':            '',  // usuário soltou antes — silencioso
-                };
-                const msg = msgs[event.error] ?? `Erro: ${event.error}`;
-                if (msg) {
-                    setError(msg);
-                    setTimeout(() => setError(null), 4000);
-                }
-                setState('IDLE');
-            };
-
-            recognition.onend = () => {
-                // Se ainda estiver LISTENING aqui é porque não veio resultado (ex: timeout silencioso)
-                setState(prev => prev === 'LISTENING' ? 'IDLE' : prev);
             };
 
             recognition.start();
@@ -598,13 +610,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     const stopRecordingAndSend = () => {
-        // Se ainda está no delay anti-eco (usuário largou antes de 400ms), cancela
         if (recordingDelayRef.current) {
             clearTimeout(recordingDelayRef.current);
             recordingDelayRef.current = null;
         }
         if (state !== 'LISTENING') return;
-        // stop() aciona onresult se houver fala, ou onerror('no-speech') se vazio
+        // stop() termina a sessão → dispara onend com o transcript acumulado
         recognitionRef.current?.stop();
     };
 
@@ -623,14 +634,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     };
 
     const sendToWolfieBrain = async (input: { message?: string; audioBase64?: string }) => {
-        // ── Guard contra chamadas duplicadas simultâneas ──
-        // React state updates são assíncronos; sem isso, dois onresult rápidos
-        // mandam duas chamadas ao edge function com o mesmo turn_index → DB crash → 500
         if (isProcessingRef.current) {
             console.warn('[Wolfie] sendToWolfieBrain ignorado — já está processando');
             return;
         }
         isProcessingRef.current = true;
+
+        // ── Detecta idioma do input para resposta bilíngue ──
+        // Se o aluno falou PT → Wolfie responde em PT (FranciscaNeural)
+        // Se falou EN → Wolfie responde em EN (JennyNeural)
+        const studentLang: 'pt' | 'en' = isPortugueseText(input.message || '') ? 'pt' : 'en';
 
         try {
             const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Wolfie'}: ${m.content}`).join('\n');
@@ -650,13 +663,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     studentLevel,
                     topic,
                     previousContext: fullContext,
-                    translationEnabled,
+                    // Quando aluno fala PT, desativa tradução (já está em PT)
+                    translationEnabled: studentLang === 'pt' ? false : translationEnabled,
                     vocabularyEnabled: true,
                     mode,
                     correctionStrictness: mode === 'exam_prep' || mode === 'grammar_focus' ? 3 : 1,
                     allowPortuguese: true,
                     turnCount,
                     conversationId,
+                    studentLanguage: studentLang, // PT ou EN — Wolfie responde no mesmo idioma
                 }
             });
 
@@ -664,7 +679,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 throw new Error(data?.error || supabaseError?.message || 'Unknown error');
             }
 
-            // Process multi-agent response
             const chatText = data.chatResponse || data.aiText || '';
 
             const aiMessage: Message = {
@@ -682,15 +696,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             setTurnCount(prev => prev + 1);
             if (data.conversationId) setConversationId(data.conversationId);
 
-            // Set overlay cards
             if (data.correction) setCorrection(data.correction);
             if (data.translation) setTranslation(data.translation);
             if (data.vocabulary?.keyTerms?.length > 0) setVocabulary(data.vocabulary);
             if (data.quiz) setQuiz(data.quiz);
 
-            // Auto-speak via neural TTS (wolfie-tts edge function)
+            // Auto-speak: usa a voz do idioma que o aluno usou
             if (autoSpeakEnabled && chatText) {
-                void speak(chatText);
+                void speak(chatText, undefined, studentLang);
             } else {
                 setState('IDLE');
             }
