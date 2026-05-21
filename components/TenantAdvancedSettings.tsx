@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, FileText, Save, Loader2, Check, AlertCircle, Plus, Trash2, Copy, ExternalLink, Download } from 'lucide-react';
+import { Globe, FileText, Save, Loader2, Check, AlertCircle, Plus, Trash2, Copy, ExternalLink, Download, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -8,22 +8,303 @@ interface Props {
 }
 
 const TenantAdvancedSettings: React.FC<Props> = ({ user, tenantId }) => {
-    const [tab, setTab] = useState<'domain' | 'contracts' | 'lgpd'>('domain');
+    const [tab, setTab] = useState<'escola' | 'domain' | 'contracts' | 'lgpd'>('escola');
 
     return (
         <div className="space-y-4">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+                <TabButton active={tab === 'escola'} onClick={() => setTab('escola')} icon={Building2} label="Dados da escola" />
                 <TabButton active={tab === 'domain'} onClick={() => setTab('domain')} icon={Globe} label="Domínio próprio" />
                 <TabButton active={tab === 'contracts'} onClick={() => setTab('contracts')} icon={FileText} label="Contratos" />
                 <TabButton active={tab === 'lgpd'} onClick={() => setTab('lgpd')} icon={Download} label="LGPD" />
             </div>
 
+            {tab === 'escola' && <SchoolInfoPanel tenantId={tenantId} />}
             {tab === 'domain' && <CustomDomainPanel tenantId={tenantId} />}
             {tab === 'contracts' && <ContractTemplatesPanel user={user} tenantId={tenantId} />}
             {tab === 'lgpd' && <LgpdPanel tenantId={tenantId} role={user.role} />}
         </div>
     );
 };
+
+// ─────────────────────────────────────────────────────────────
+// SCHOOL INFO — Dados da escola para contratos
+// ─────────────────────────────────────────────────────────────
+
+interface SchoolInfoForm {
+    name: string;
+    cnpj: string;
+    address: string;
+    email: string;
+    phone: string;
+    city: string;
+    state: string;
+    directorName: string;
+}
+
+const EMPTY_SCHOOL: SchoolInfoForm = {
+    name: '', cnpj: '', address: '', email: '',
+    phone: '', city: '', state: '', directorName: '',
+};
+
+const WISE_WOLF_PREVIEW: SchoolInfoForm = {
+    name: 'WISE WOLF LANGUAGE',
+    cnpj: '55.806.029/0001-57',
+    address: 'Rua Um, 256 - Recanto do Céu - Santa Isabel/SP',
+    email: 'wisewolflanguage@gmail.com',
+    phone: '(11) 97168-1451',
+    city: 'Santa Isabel',
+    state: 'SP',
+    directorName: 'Diretor Wise Wolf',
+};
+
+/** Formata CNPJ enquanto o usuário digita: ##.###.###/####-## */
+function maskCNPJ(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 14);
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`;
+    if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`;
+    if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`;
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
+/** Formata telefone: (##) #####-#### */
+function maskPhone(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 2) return d.length ? `(${d}` : '';
+    if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+    if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
+    const [form, setForm] = useState<SchoolInfoForm>(EMPTY_SCHOOL);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [isCustom, setIsCustom] = useState(false); // true = tem dados próprios
+
+    useEffect(() => { loadSchoolInfo(); }, [tenantId]);
+
+    const loadSchoolInfo = async () => {
+        setLoading(true);
+        if (!tenantId) { setLoading(false); return; }
+        try {
+            const { data } = await supabase
+                .from('tenants')
+                .select('school_info')
+                .eq('id', tenantId)
+                .single();
+            if (data?.school_info && Object.keys(data.school_info).length > 0) {
+                setForm({ ...EMPTY_SCHOOL, ...data.school_info });
+                setIsCustom(true);
+            }
+        } catch (_) {
+            // silencioso — usa defaults
+        }
+        setLoading(false);
+    };
+
+    const handleSave = async () => {
+        if (!tenantId) return;
+        setSaving(true);
+        try {
+            // Se todos os campos estiverem vazios, salva null (volta ao padrão Wise Wolf)
+            const hasData = Object.values(form).some(v => v.trim() !== '');
+            const payload = hasData ? form : null;
+            const { error } = await supabase
+                .from('tenants')
+                .update({ school_info: payload })
+                .eq('id', tenantId);
+            if (error) throw error;
+            setIsCustom(hasData);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 3000);
+        } catch (err: any) {
+            alert('Erro ao salvar: ' + err.message);
+        }
+        setSaving(false);
+    };
+
+    const handleClear = () => {
+        setForm(EMPTY_SCHOOL);
+        setIsCustom(false);
+    };
+
+    const set = (field: keyof SchoolInfoForm, value: string) =>
+        setForm(prev => ({ ...prev, [field]: value }));
+
+    if (loading) return <Loader />;
+
+    // Mostra os dados que serão usados no contrato (custom ou Wise Wolf defaults)
+    const preview: SchoolInfoForm = isCustom ? form : WISE_WOLF_PREVIEW;
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-6">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                        <Building2 size={20} className="text-blue-600" />
+                    </div>
+                    <div>
+                        <h3 className="font-black text-slate-800 dark:text-white text-sm">Dados da Escola</h3>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">
+                            Aparecem no cabeçalho e rodapé dos contratos
+                        </p>
+                    </div>
+                </div>
+                {!isCustom && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                        ✦ Usando padrão Wise Wolf
+                    </span>
+                )}
+                {isCustom && (
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                        ✓ Dados personalizados
+                    </span>
+                )}
+            </div>
+
+            {/* Aviso quando usa padrão */}
+            {!isCustom && (
+                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-2xl p-4 flex gap-3 items-start">
+                    <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                        <strong>Seus contratos usam os dados da Wise Wolf Language.</strong> Preencha os campos abaixo com as informações da sua escola para que o contrato reflita a sua marca. Deixe em branco qualquer campo que queira manter como padrão.
+                    </p>
+                </div>
+            )}
+
+            {/* Formulário */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <SchoolField
+                    label="Nome da escola / razão social"
+                    hint="Como aparece no cabeçalho do contrato"
+                    value={form.name}
+                    onChange={v => set('name', v)}
+                    placeholder={WISE_WOLF_PREVIEW.name}
+                />
+                <SchoolField
+                    label="CNPJ"
+                    hint="Número de registro da sua empresa"
+                    value={form.cnpj}
+                    onChange={v => set('cnpj', maskCNPJ(v))}
+                    placeholder={WISE_WOLF_PREVIEW.cnpj}
+                />
+                <div className="md:col-span-2">
+                    <SchoolField
+                        label="Endereço completo"
+                        hint="Ex: Rua das Flores, 100 - Centro - São Paulo/SP - CEP 01234-567"
+                        value={form.address}
+                        onChange={v => set('address', v)}
+                        placeholder={WISE_WOLF_PREVIEW.address}
+                    />
+                </div>
+                <SchoolField
+                    label="E-mail institucional"
+                    hint="E-mail de contato da escola"
+                    value={form.email}
+                    onChange={v => set('email', v)}
+                    placeholder={WISE_WOLF_PREVIEW.email}
+                    type="email"
+                />
+                <SchoolField
+                    label="Telefone / WhatsApp"
+                    hint="Número com DDD"
+                    value={form.phone}
+                    onChange={v => set('phone', maskPhone(v))}
+                    placeholder={WISE_WOLF_PREVIEW.phone}
+                />
+                <SchoolField
+                    label="Cidade"
+                    hint="Para o rodapé e foro do contrato"
+                    value={form.city}
+                    onChange={v => set('city', v)}
+                    placeholder={WISE_WOLF_PREVIEW.city}
+                />
+                <SchoolField
+                    label="Estado (UF)"
+                    hint="Sigla do estado, ex: SP"
+                    value={form.state}
+                    onChange={v => set('state', v.toUpperCase().slice(0, 2))}
+                    placeholder={WISE_WOLF_PREVIEW.state}
+                />
+                <div className="md:col-span-2">
+                    <SchoolField
+                        label="Nome do diretor / responsável legal"
+                        hint="Assina o contrato como representante da escola"
+                        value={form.directorName}
+                        onChange={v => set('directorName', v)}
+                        placeholder={WISE_WOLF_PREVIEW.directorName}
+                    />
+                </div>
+            </div>
+
+            {/* Preview de como vai aparecer no contrato */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700">
+                <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3">
+                    Pré-visualização — como vai aparecer no contrato
+                </p>
+                <div className="space-y-0.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                    <p className="font-black text-slate-800 dark:text-white text-sm">{preview.name || WISE_WOLF_PREVIEW.name}</p>
+                    <p>CNPJ: {preview.cnpj || WISE_WOLF_PREVIEW.cnpj}</p>
+                    <p>{preview.address || WISE_WOLF_PREVIEW.address}</p>
+                    <p>✉ {preview.email || WISE_WOLF_PREVIEW.email} &nbsp;·&nbsp; ☎ {preview.phone || WISE_WOLF_PREVIEW.phone}</p>
+                    <p className="text-slate-400 text-[11px] pt-1">Responsável: {preview.directorName || WISE_WOLF_PREVIEW.directorName} &nbsp;·&nbsp; Foro: {preview.city || WISE_WOLF_PREVIEW.city}/{preview.state || WISE_WOLF_PREVIEW.state}</p>
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2">
+                {isCustom ? (
+                    <button
+                        onClick={handleClear}
+                        className="text-xs text-slate-400 hover:text-rose-500 transition-colors font-bold"
+                    >
+                        Remover personalização (voltar ao padrão)
+                    </button>
+                ) : <span />}
+                <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        saved
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-blue-600 hover:brightness-110 text-white'
+                    } disabled:opacity-50`}
+                >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : <Save size={14} />}
+                    {saving ? 'Salvando...' : saved ? 'Salvo!' : 'Salvar dados da escola'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+/** Campo de formulário com label descritivo e hint */
+const SchoolField: React.FC<{
+    label: string;
+    hint: string;
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    type?: string;
+}> = ({ label, hint, value, onChange, placeholder, type = 'text' }) => (
+    <div className="space-y-1.5">
+        <div>
+            <label className="text-xs font-black text-slate-700 dark:text-slate-200 block">{label}</label>
+            <p className="text-[10px] text-slate-400 leading-tight">{hint}</p>
+        </div>
+        <input
+            type={type}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+        />
+    </div>
+);
 
 // ─────────────────────────────────────────────────────────────
 // CUSTOM DOMAIN

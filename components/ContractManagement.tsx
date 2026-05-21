@@ -24,11 +24,16 @@ interface StudentContract {
     subscription_id?: string;
 }
 
-const ContractManagement: React.FC = () => {
+interface ContractManagementProps {
+    tenantId?: string;
+}
+
+const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => {
     const [students, setStudents] = useState<StudentContract[]>([]);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [schoolInfo, setSchoolInfo] = useState<Record<string, string> | null>(null);
 
     // Modal States
     const [selectedStudent, setSelectedStudent] = useState<StudentContract | null>(null);
@@ -38,12 +43,26 @@ const ContractManagement: React.FC = () => {
 
     const handlePrintContract = useReactToPrint({
         contentRef: directorContractRef,
-        documentTitle: `Contrato_WiseWolf_${selectedStudent?.student_name?.replace(/\s+/g, '_') || 'Aluno'}`,
+        documentTitle: `Contrato_${selectedStudent?.student_name?.replace(/\s+/g, '_') || 'Aluno'}`,
     });
 
     useEffect(() => {
         fetchContracts();
-    }, []);
+        if (tenantId) fetchSchoolInfo(tenantId);
+    }, [tenantId]);
+
+    const fetchSchoolInfo = async (tid: string) => {
+        try {
+            const { data } = await supabase
+                .from('tenants')
+                .select('school_info')
+                .eq('id', tid)
+                .maybeSingle();
+            if (data?.school_info) setSchoolInfo(data.school_info);
+        } catch (_) {
+            // usa padrão Wise Wolf
+        }
+    };
 
     const fetchContracts = async () => {
         setLoading(true);
@@ -286,6 +305,7 @@ const ContractManagement: React.FC = () => {
                                                     acceptedAt={selectedStudent.accepted_at}
                                                     userIp={selectedStudent.signature_ip}
                                                     subscriptionId={selectedStudent.subscription_id}
+                                                    school={schoolInfo ?? undefined}
                                                 />
                                             );
                                         })()}

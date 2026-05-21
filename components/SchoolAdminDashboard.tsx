@@ -621,7 +621,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {activeTab === 'training' && <TeacherTrainingAdmin tenantId={tenantId || ''} />}
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
       {activeTab === 'payments' && <AdminPaymentsList tenantId={tenantId || ''} />}
-      {activeTab === 'contracts' && <ContractManagement />}
+      {activeTab === 'contracts' && <ContractManagement tenantId={tenantId} />}
       {activeTab === 'recruiting' && (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
           <TeacherInviteGenerator tenantId={tenantId || ''} />

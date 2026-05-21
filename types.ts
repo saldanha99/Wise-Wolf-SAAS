@@ -37,6 +37,17 @@ export interface Tenant {
   whatsapp_api_url?: string;
   whatsapp_api_key?: string;
   whatsapp_enabled?: boolean;
+  /** Dados da escola para contratos. Quando null, usa defaults da Wise Wolf. */
+  school_info?: {
+    name?: string;
+    cnpj?: string;
+    address?: string;
+    email?: string;
+    phone?: string;
+    city?: string;
+    state?: string;
+    directorName?: string;
+  } | null;
 }
 
 export interface User {
