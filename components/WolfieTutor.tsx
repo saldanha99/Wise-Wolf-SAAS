@@ -183,21 +183,46 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             const voices = window.speechSynthesis.getVoices();
             if (voices.length === 0) return;
 
-            // ── Inglês ──
-            const preferredEn = [
-                'Samantha', 'Serena', 'Karen', 'Daniel',
-                'Google US English', 'Google UK English Female',
-                'Google UK English Male', 'Microsoft Zira', 'Microsoft David'
-            ];
-            let enVoice: SpeechSynthesisVoice | null = null;
-            for (const name of preferredEn) {
-                enVoice = voices.find(v => v.name.includes(name)) || null;
-                if (enVoice) break;
-            }
-            if (!enVoice) enVoice = voices.find(v => v.lang.startsWith('en-')) || null;
+            // ── Inglês — ordem de preferência por qualidade ──
+            // Prioridade 1: vozes Online/Natural/Neural (Microsoft) — soam humanas no Chrome/Edge
+            // Prioridade 2: vozes Enhanced/Premium (macOS Safari/Chrome)
+            // Prioridade 3: Google US English (servidor Google, boa qualidade)
+            // Prioridade 4: vozes offline decentes
+            const pickBestEnglish = (list: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null => {
+                const en = list.filter(v => v.lang.startsWith('en'));
+
+                // Tier 1 — Microsoft Neural Online (Windows Chrome/Edge)
+                const msNatural = en.find(v =>
+                    v.name.includes('Online') || v.name.includes('Natural') ||
+                    v.name.includes('Neural') || v.name.includes('Aria') ||
+                    v.name.includes('Jenny') || v.name.includes('Ana') ||
+                    v.name.includes('Guy')
+                );
+                if (msNatural) return msNatural;
+
+                // Tier 2 — macOS Enhanced/Premium
+                const macEnhanced = en.find(v =>
+                    v.name.includes('Enhanced') || v.name.includes('Premium') ||
+                    v.name.includes('Samantha') || v.name.includes('Serena') ||
+                    v.name.includes('Karen') || v.name.includes('Daniel') ||
+                    v.name.includes('Moira') || v.name.includes('Tessa')
+                );
+                if (macEnhanced) return macEnhanced;
+
+                // Tier 3 — Google TTS online
+                const google = en.find(v =>
+                    v.name.startsWith('Google') && v.lang.startsWith('en')
+                );
+                if (google) return google;
+
+                // Tier 4 — qualquer en-US
+                return en.find(v => v.lang === 'en-US') || en[0] || null;
+            };
+
+            const enVoice = pickBestEnglish(voices);
             if (enVoice) {
                 englishVoiceRef.current = enVoice;
-                console.log('🎙️ EN voice:', enVoice.name, enVoice.lang);
+                console.log('🎙️ EN voice selecionada:', enVoice.name, '|', enVoice.lang, '| remote:', enVoice.localService === false);
             }
 
             // ── Português BR ──
@@ -320,101 +345,81 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return ptWords.filter(w => lower.includes(w)).length >= 2;
     };
 
-    // Ref para o <audio> element que toca o TTS da OpenAI
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-
-    /** Para qualquer áudio em andamento (OpenAI TTS ou Web Speech fallback) */
+    /** Para a voz e limpa o estado */
     const stopSpeaking = useCallback(() => {
-        // Para OpenAI audio
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.src = '';
-            audioRef.current = null;
-        }
-        // Para Web Speech API (fallback)
         window.speechSynthesis.cancel();
         setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
         setSubtitle('');
     }, []);
 
+    /** Prepara texto para soar natural no TTS — remove markdown e adiciona pausas */
+    const prepareForTTS = (raw: string): string => raw
+        .replace(/\*\*(.*?)\*\*/g, '$1')        // bold → texto puro
+        .replace(/\*(.*?)\*/g, '$1')            // itálico → texto puro
+        .replace(/`(.*?)`/g, '$1')              // code → texto puro
+        .replace(/#{1,6}\s+/g, '')              // headings
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1')     // links → só o label
+        .replace(/---+/g, '.')                  // separadores → ponto
+        .replace(/\n{2,}/g, ', ')               // parágrafos → pausa curta
+        .replace(/\n/g, ' ')                    // linha única → espaço
+        .replace(/([a-z])([A-Z])/g, '$1 $2')   // camelCase → palavras separadas
+        .replace(/\s{2,}/g, ' ')                // espaços duplos
+        .trim();
+
     /**
-     * Fala o texto usando OpenAI TTS (wolfie-tts edge function).
-     * Fallback automático para Web Speech API se a edge function falhar.
+     * Fala usando Web Speech API com a melhor voz disponível.
+     * Chrome/Windows: Microsoft Jenny/Aria Online (Natural) — soa humano.
+     * macOS: Samantha Enhanced — boa qualidade.
+     * Android: Google US English — decente.
      */
-    const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+    const speak = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
         const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
-        // OpenAI não tem vozes PT-BR — para português usa Web Speech API
-        const useOpenAI = lang === 'en';
+        const clean = prepareForTTS(text);
 
-        if (useOpenAI) {
-            try {
-                // Velocidade mapeada para o nível do aluno
-                const ttsSpeed = speed ?? getTTSSpeed(studentLevel);
+        // Web Speech API tem bug em textos longos — divide em sentenças
+        const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
 
-                const { data, error } = await supabase.functions.invoke('wolfie-tts', {
-                    body: {
-                        text,
-                        voice: 'nova',   // nova = feminina natural, clara e amigável
-                        model: 'tts-1',  // tts-1 = mais rápido; tts-1-hd = mais natural
-                        speed: ttsSpeed,
-                    },
-                });
-
-                if (error || !data?.audio) throw new Error(error?.message || 'no audio');
-
-                // Converte base64 → Blob → URL e toca
-                const binary = atob(data.audio);
-                const bytes = new Uint8Array(binary.length);
-                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                const blob = new Blob([bytes], { type: 'audio/mpeg' });
-                const url = URL.createObjectURL(blob);
-
-                const audio = new Audio(url);
-                audioRef.current = audio;
-
-                audio.onended = () => {
-                    URL.revokeObjectURL(url);
-                    audioRef.current = null;
-                    setState('IDLE');
-                    setSubtitle('');
-                };
-                audio.onerror = () => {
-                    URL.revokeObjectURL(url);
-                    audioRef.current = null;
-                    setState('IDLE');
-                    setSubtitle('');
-                };
-
-                await audio.play();
-                return; // sucesso — não cai no fallback
-            } catch (err) {
-                console.warn('[Wolfie TTS] OpenAI falhou, usando Web Speech API:', err);
-                // Continua para o fallback abaixo
+        let idx = 0;
+        const speakNext = () => {
+            if (idx >= sentences.length) {
+                setState('IDLE');
+                setSubtitle('');
+                return;
             }
-        }
+            const sentence = sentences[idx++].trim();
+            if (!sentence) { speakNext(); return; }
 
-        // ── Fallback: Web Speech API (PT-BR ou quando OpenAI falha) ──
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
+            const utterance = new SpeechSynthesisUtterance(sentence);
 
-        if (lang === 'pt' && ptBrVoiceRef.current) {
-            utterance.voice = ptBrVoiceRef.current;
-            utterance.lang = 'pt-BR';
-        } else if (englishVoiceRef.current) {
-            utterance.voice = englishVoiceRef.current;
-            utterance.lang = englishVoiceRef.current.lang;
-        } else {
-            utterance.lang = lang === 'pt' ? 'pt-BR' : 'en-US';
-        }
+            if (lang === 'pt' && ptBrVoiceRef.current) {
+                utterance.voice = ptBrVoiceRef.current;
+                utterance.lang = 'pt-BR';
+                utterance.rate = speed ?? 1.0;
+                utterance.pitch = 1.05;
+            } else {
+                if (englishVoiceRef.current) {
+                    utterance.voice = englishVoiceRef.current;
+                    utterance.lang = englishVoiceRef.current.lang;
+                } else {
+                    utterance.lang = 'en-US';
+                }
+                utterance.rate = speed ?? getTTSSpeed(studentLevel);
+                utterance.pitch = 1.0;
+            }
 
-        utterance.onend = () => { setState('IDLE'); setSubtitle(''); };
-        utterance.onerror = () => { setState('IDLE'); setSubtitle(''); };
-        window.speechSynthesis.speak(utterance);
-    }, [studentLevel, stopSpeaking]);
+            utterance.volume = 1.0;
+            utterance.onend = speakNext;
+            utterance.onerror = () => { setState('IDLE'); setSubtitle(''); };
+            window.speechSynthesis.speak(utterance);
+        };
+
+        window.speechSynthesis.cancel();
+        speakNext();
+    }, [studentLevel]);
 
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
@@ -433,8 +438,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         if (isProcessingRef.current) return;
 
         // ── CRÍTICO: para a voz do Wolfie e aguarda o speaker silenciar ──
-        // Para tanto o audio OpenAI quanto o Web Speech API
-        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null; }
         window.speechSynthesis.cancel();
         setState('IDLE');
         setSubtitle('');
