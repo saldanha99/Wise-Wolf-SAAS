@@ -379,7 +379,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
      * Usado quando o edge function wolfie-tts falha.
      */
     const speakWebSpeech = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
-        const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
+        const lang = forceLang ?? 'en'; // sempre inglês por padrão
         const clean = prepareForTTS(text);
         const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
 
@@ -432,7 +432,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
-        const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
+        // Wolfie fala SEMPRE em inglês — PT-BR só quando forceLang='pt' é passado explicitamente
+        // (ex: botão "ouvir tradução"). isPortugueseText() causava sotaque BR no EN.
+        const lang = forceLang ?? 'en';
         const voice = lang === 'pt' ? 'pt-BR-FranciscaNeural' : 'en-US-JennyNeural';
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
