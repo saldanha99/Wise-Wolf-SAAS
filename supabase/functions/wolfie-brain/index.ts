@@ -301,10 +301,10 @@ async function callOpenRouter(
                 const errorText = await response.text();
                 console.warn(`[OpenRouter] ${model} falhou (${response.status}): ${errorText.slice(0, 200)}`);
                 lastError = new Error(`${model} → ${response.status}: ${errorText.slice(0, 200)}`);
-                // 429 / 503 / 5xx → tenta próximo modelo
-                if (response.status === 429 || response.status === 503 || response.status >= 500 || response.status === 404) continue;
-                // Erro permanente (auth, etc) → aborta
-                throw lastError;
+                // 401 = chave API inválida → aborta (não adianta tentar outros modelos)
+                if (response.status === 401) throw lastError;
+                // Qualquer outro erro (402 sem créditos, 403, 404, 429, 500, etc.) → tenta próximo modelo
+                continue;
             }
 
             const data = await response.json();
