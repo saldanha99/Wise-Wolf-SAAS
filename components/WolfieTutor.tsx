@@ -320,21 +320,90 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return ptWords.filter(w => lower.includes(w)).length >= 2;
     };
 
-    const speak = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+    // Ref para o <audio> element que toca o TTS da OpenAI
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    /** Para qualquer áudio em andamento (OpenAI TTS ou Web Speech fallback) */
+    const stopSpeaking = useCallback(() => {
+        // Para OpenAI audio
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = '';
+            audioRef.current = null;
+        }
+        // Para Web Speech API (fallback)
+        window.speechSynthesis.cancel();
+        setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
+        setSubtitle('');
+    }, []);
+
+    /**
+     * Fala o texto usando OpenAI TTS (wolfie-tts edge function).
+     * Fallback automático para Web Speech API se a edge function falhar.
+     */
+    const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
-        // Auto-detecta idioma se não forçado
         const lang = forceLang ?? (isPortugueseText(text) ? 'pt' : 'en');
+        // OpenAI não tem vozes PT-BR — para português usa Web Speech API
+        const useOpenAI = lang === 'en';
 
+        if (useOpenAI) {
+            try {
+                // Velocidade mapeada para o nível do aluno
+                const ttsSpeed = speed ?? getTTSSpeed(studentLevel);
+
+                const { data, error } = await supabase.functions.invoke('wolfie-tts', {
+                    body: {
+                        text,
+                        voice: 'nova',   // nova = feminina natural, clara e amigável
+                        model: 'tts-1',  // tts-1 = mais rápido; tts-1-hd = mais natural
+                        speed: ttsSpeed,
+                    },
+                });
+
+                if (error || !data?.audio) throw new Error(error?.message || 'no audio');
+
+                // Converte base64 → Blob → URL e toca
+                const binary = atob(data.audio);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], { type: 'audio/mpeg' });
+                const url = URL.createObjectURL(blob);
+
+                const audio = new Audio(url);
+                audioRef.current = audio;
+
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    audioRef.current = null;
+                    setState('IDLE');
+                    setSubtitle('');
+                };
+                audio.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    audioRef.current = null;
+                    setState('IDLE');
+                    setSubtitle('');
+                };
+
+                await audio.play();
+                return; // sucesso — não cai no fallback
+            } catch (err) {
+                console.warn('[Wolfie TTS] OpenAI falhou, usando Web Speech API:', err);
+                // Continua para o fallback abaixo
+            }
+        }
+
+        // ── Fallback: Web Speech API (PT-BR ou quando OpenAI falha) ──
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = speed ?? getTTSSpeed(studentLevel);
+        utterance.rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
         if (lang === 'pt' && ptBrVoiceRef.current) {
             utterance.voice = ptBrVoiceRef.current;
             utterance.lang = 'pt-BR';
-            utterance.rate = speed ?? 1.0; // PT não precisa de slow-down por nível
         } else if (englishVoiceRef.current) {
             utterance.voice = englishVoiceRef.current;
             utterance.lang = englishVoiceRef.current.lang;
@@ -344,20 +413,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         utterance.onend = () => { setState('IDLE'); setSubtitle(''); };
         utterance.onerror = () => { setState('IDLE'); setSubtitle(''); };
-
         window.speechSynthesis.speak(utterance);
-    }, [studentLevel]);
-
-    const stopSpeaking = () => {
-        window.speechSynthesis.cancel();
-        setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
-        setSubtitle('');
-    };
+    }, [studentLevel, stopSpeaking]);
 
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
             stopSpeaking();
-            speak(lastSpokenTextRef.current, 0.7);
+            speak(lastSpokenTextRef.current, 0.75);
         }
     };
 
@@ -371,8 +433,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         if (isProcessingRef.current) return;
 
         // ── CRÍTICO: para a voz do Wolfie e aguarda o speaker silenciar ──
-        // Sem esse delay, o microfone capta a voz TTS e Chrome transcreve ela como
-        // inglês maluco (ex: "heavy metal duck" de um saudação em PT-BR)
+        // Para tanto o audio OpenAI quanto o Web Speech API
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null; }
         window.speechSynthesis.cancel();
         setState('IDLE');
         setSubtitle('');
