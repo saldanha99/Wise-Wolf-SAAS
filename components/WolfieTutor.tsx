@@ -388,6 +388,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         // Aguarda 400ms para o som do speaker parar fisicamente antes de ligar o mic
         recordingDelayRef.current = setTimeout(() => {
+            // ── Aborta qualquer recognition anterior que possa ainda estar ativo ──
+            // Sem isso, onresult de uma instância antiga pode disparar após uma nova iniciar
+            if (recognitionRef.current) {
+                recognitionRef.current.onresult = null;  // remove callbacks primeiro
+                recognitionRef.current.onerror = null;
+                recognitionRef.current.onend = null;
+                try { recognitionRef.current.abort(); } catch (_) { /* silencioso */ }
+                recognitionRef.current = null;
+            }
+
             const recognition = new SpeechRec();
             recognition.lang = 'en-US';          // aluno fala em inglês
             recognition.continuous = false;
@@ -396,9 +406,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             recognitionRef.current = recognition;
 
             recognition.onresult = (event: any) => {
-                // Guard: ignora se já estamos processando (previne double-fire)
+                // Aborta imediatamente para garantir que nenhum outro evento dispare desta instância
+                recognition.onresult = null;
+                recognition.onerror = null;
+                recognition.onend = null;
+                try { recognition.abort(); } catch (_) { /* silencioso */ }
+
+                // Guard: ignora se já estamos processando (previne race conditions)
                 if (isProcessingRef.current) {
                     console.warn('🎤 Resultado ignorado — já processando outro');
+                    setState('IDLE');
                     return;
                 }
                 const transcript: string = event.results[0][0].transcript.trim();

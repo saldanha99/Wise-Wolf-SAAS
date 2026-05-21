@@ -363,12 +363,16 @@ async function callOpenRouter(
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+    // Rastreia qual seção está sendo executada — aparece no log do 500 para diagnóstico exato
+    let _section = 'init';
+
     try {
+        _section = 'body_parse';
         let body;
         try {
             body = await req.json();
         } catch (e) {
-            console.error("JSON Parse Error:", e);
+            console.error("[wolfie] JSON Parse Error:", e);
             throw new Error("Invalid JSON body");
         }
 
@@ -388,9 +392,9 @@ serve(async (req) => {
             turnCount: body.turnCount ?? 0,
         };
 
-        console.log(`[WolfieBrain Single-Agent] Payload: Text=${message?.length || 0}, Audio=${!!audioBase64}, Turn=${config.turnCount}`);
+        console.log(`[WolfieBrain v110] Payload: Text=${message?.length || 0}, Audio=${!!audioBase64}, Turn=${config.turnCount}, ConvId=${conversationId ? conversationId.slice(0,8) : 'null'}`);
 
-        // ── Auth & Supabase Setup ──
+        _section = 'supabase_setup';
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
         const authHeader = req.headers.get('Authorization');
@@ -399,35 +403,38 @@ serve(async (req) => {
         const openRouterKey = (Deno.env.get('OPENROUTER_API_KEY') ?? '').trim();
         if (!openRouterKey) throw new Error("OPENROUTER_API_KEY is not set.");
 
-        // ── Billing Check ──
+        _section = 'auth';
         const jwt = authHeader?.replace('Bearer ', '');
         const { data: { user }, error: authError } = await supabaseClient.auth.getUser(jwt);
         if (authError || !user) {
-            throw new Error(`Auth Error: ${authError?.message || 'No User'}. Header Exists: ${!!authHeader}`);
+            throw new Error(`Auth Error: ${authError?.message || 'No User'}. Header: ${!!authHeader}`);
         }
+        console.log(`[wolfie] Auth OK: ${user.id.slice(0,8)}`);
 
-        const { data: profile } = await supabaseClient
+        _section = 'profile_fetch';
+        const { data: profile, error: profileErr } = await supabaseClient
             .from('profiles')
-            .select('full_name, goal, student_profile_json, english_for, short_term_goal, preferred_topics, avoided_topics, personality')
+            .select('full_name, goal, student_profile_json, english_for, short_term_goal, preferred_topics, avoided_topics, personality, tenant_id')
             .eq('id', user.id)
-            .single();
+            .maybeSingle(); // maybeSingle em vez de single — não joga erro se não achar
+        if (profileErr) console.warn(`[wolfie] profile fetch warn: ${profileErr.message}`);
 
-        // ── Wolf Intelligence: memoria entre sessoes ──
+        _section = 'wolf_intelligence_fetch';
         const [wolfIntelRes, recentCorrectionsRes] = await Promise.all([
             supabaseClient
                 .from('wolf_intelligence')
-                .select('accumulated_context, weak_points, strong_points, recommended_approach')
+                .select('accumulated_context, weak_points, strong_points, recommended_approach, total_classes_analyzed')
                 .eq('student_id', user.id)
                 .maybeSingle(),
             supabaseClient
                 .from('wolfie_corrections')
                 .select('wrong_sentence, correct_sentence, explanation_pt, created_at, session_id')
-                .eq('session_id', conversationId || '00000000-0000-0000-0000-000000000000') // dummy se nao houver
+                .eq('session_id', conversationId || '00000000-0000-0000-0000-000000000000')
                 .order('created_at', { ascending: false })
                 .limit(5)
         ]);
 
-        // Se nao temos correcoes da sessao atual ainda, busca historicas via sessoes do aluno
+        _section = 'historic_corrections_fetch';
         let historicCorrections: any[] = recentCorrectionsRes.data || [];
         if (historicCorrections.length === 0) {
             const { data: sessions } = await supabaseClient
@@ -464,14 +471,16 @@ serve(async (req) => {
             })),
         };
 
+        _section = 'billing_check';
         const now = new Date();
-        const { data: payments } = await supabaseClient
+        const { data: payments, error: paymentsErr } = await supabaseClient
             .from('student_payments')
             .select('due_date')
             .eq('student_id', user.id)
             .neq('status', 'RECEIVED')
             .neq('status', 'CONFIRMED')
             .lt('due_date', now.toISOString());
+        if (paymentsErr) console.warn(`[wolfie] payments fetch warn: ${paymentsErr.message}`);
 
         if (payments && payments.length > 0) {
             const sorted = payments.sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
@@ -482,14 +491,14 @@ serve(async (req) => {
             }
         }
 
-        // ── Session Logging ──
+        _section = 'session_create';
         let sessionId = conversationId;
         if (!sessionId) {
             const { data: newSession, error: sessionError } = await supabaseClient
                 .from('wolfie_sessions')
                 .insert({
                     student_id: user.id,
-                    tenant_id: user.user_metadata?.tenant_id || '00000000-0000-0000-0000-000000000000',
+                    tenant_id: user.user_metadata?.tenant_id || profile?.tenant_id || '00000000-0000-0000-0000-000000000000',
                     topic: config.topic,
                     mode: config.mode,
                     student_level: config.studentLevel,
@@ -499,23 +508,23 @@ serve(async (req) => {
                 .select('id')
                 .single();
 
-            if (sessionError) console.error("Error creating session:", sessionError);
+            if (sessionError) console.error(`[wolfie] session create error: ${sessionError.message}`);
             else if (newSession) sessionId = newSession.id;
         }
+        console.log(`[wolfie] sessionId: ${sessionId ? sessionId.slice(0,8) : 'null'}, turnCount: ${config.turnCount}`);
 
+        _section = 'student_turn_insert';
         if (sessionId && (message || audioBase64)) {
-            await supabaseClient.from('wolfie_turns').insert({
+            const { error: stuTurnErr } = await supabaseClient.from('wolfie_turns').insert({
                 session_id: sessionId,
                 speaker: 'student',
                 content: message || "[Audio Input]",
                 turn_index: config.turnCount * 2
             });
+            if (stuTurnErr) console.error(`[wolfie] student_turn insert error (non-fatal): ${stuTurnErr.message}`);
         }
 
-        // ════════════════════════════════════════════
-        // MULTI-MODAL PROMPT ASSEMBLY
-        // ════════════════════════════════════════════
-
+        _section = 'prompt_assembly';
         const userContentParts: any[] = [];
         if (previousContext) {
             userContentParts.push({ text: `CONVERSATION HISTORY:\n${previousContext}` });
@@ -536,24 +545,24 @@ serve(async (req) => {
         if (userContentParts.length === 0) {
             userContentParts.push({ text: "Hello Wolfie" });
         }
-        
-        console.log(`[Agent:SingleGemini] Starting...`);
 
+        _section = 'openrouter_call';
+        console.log(`[wolfie] Calling OpenRouter...`);
         const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory);
 
         const aiRawResult = await callOpenRouter(
             openRouterKey,
             systemPrompt,
             userContentParts,
-            true // Enable JSON mode
+            true
         );
 
+        _section = 'json_parse';
         let parsedResult: any = {};
         try {
             parsedResult = JSON.parse(aiRawResult.trim());
         } catch (err) {
-            console.error(`[Agent:SingleGemini] Failed to parse JSON. Raw output: ${aiRawResult}`);
-            // Fallback safety
+            console.error(`[wolfie] JSON parse failed. Raw: ${aiRawResult.slice(0, 300)}`);
             parsedResult = {
                 chatResponse: "Hmm, something went sideways on my end — not your fault at all! Can you say that again?",
                 correction: null,
@@ -563,58 +572,60 @@ serve(async (req) => {
             };
         }
 
-        console.log(`[Agent:SingleGemini] Done. Response length: ${parsedResult.chatResponse?.length || 0}`);
+        console.log(`[wolfie] AI response OK. Length: ${parsedResult.chatResponse?.length || 0}`);
 
-        // ── Post-Session Logging ──
+        _section = 'wolfie_turn_insert';
+        let wolfieTurnId: string | null = null;
         if (sessionId && parsedResult.chatResponse) {
-            const { data: wolfieTurn } = await supabaseClient.from('wolfie_turns').insert({
+            const { data: wolfieTurnData, error: wolfTurnErr } = await supabaseClient.from('wolfie_turns').insert({
                 session_id: sessionId,
                 speaker: 'wolfie',
                 content: parsedResult.chatResponse,
                 turn_index: config.turnCount * 2 + 1
-            }).select('id').single();
+            }).select('id').maybeSingle(); // maybeSingle é mais seguro que single
+            if (wolfTurnErr) console.error(`[wolfie] wolfie_turn insert error (non-fatal): ${wolfTurnErr.message}`);
+            else wolfieTurnId = wolfieTurnData?.id ?? null;
 
+            _section = 'correction_insert';
             if (parsedResult.correction) {
-                await supabaseClient.from('wolfie_corrections').insert({
+                const { error: corrErr } = await supabaseClient.from('wolfie_corrections').insert({
                     session_id: sessionId,
-                    turn_id: wolfieTurn?.id,
+                    turn_id: wolfieTurnId,
                     wrong_sentence: parsedResult.correction.original,
                     correct_sentence: parsedResult.correction.corrected,
                     explanation_pt: parsedResult.correction.explanation_pt,
                     error_type: 'general'
-                }).catch((e: any) => console.error("Error saving correction:", e));
+                });
+                if (corrErr) console.error(`[wolfie] correction insert error (non-fatal): ${corrErr.message}`);
 
-                // ── Atualizar wolf_intelligence incrementalmente (non-blocking) ──
-                // Extrai um "weak_point" sucinto da explicacao para o feed entre sessoes.
+                _section = 'wolf_intelligence_upsert';
                 try {
                     const newWeakPoint = (parsedResult.correction.explanation_pt || parsedResult.correction.original || '').slice(0, 140);
                     if (newWeakPoint) {
                         const existingWeaks = wolfMemory.weak_points || [];
-                        // Dedupe simples por substring para evitar lista repetitiva
                         const isDuplicate = existingWeaks.some((w: string) =>
                             w.toLowerCase().includes(newWeakPoint.toLowerCase().slice(0, 30))
                             || newWeakPoint.toLowerCase().includes(w.toLowerCase().slice(0, 30))
                         );
                         if (!isDuplicate) {
                             const updatedWeaks = [newWeakPoint, ...existingWeaks].slice(0, 10);
-                            await supabaseClient.from('wolf_intelligence').upsert({
+                            const { error: wIntelErr } = await supabaseClient.from('wolf_intelligence').upsert({
                                 student_id: user.id,
                                 tenant_id: user.user_metadata?.tenant_id || profile?.tenant_id || null,
                                 weak_points: updatedWeaks,
-                                total_classes_analyzed: (wolfIntelRes.data as any)?.total_classes_analyzed
-                                    ? ((wolfIntelRes.data as any).total_classes_analyzed + 1)
-                                    : 1,
+                                total_classes_analyzed: ((wolfIntelRes.data as any)?.total_classes_analyzed ?? 0) + 1,
                                 last_updated_at: new Date().toISOString(),
                             }, { onConflict: 'student_id' });
+                            if (wIntelErr) console.error(`[wolfie] wolf_intelligence upsert error (non-fatal): ${wIntelErr.message}`);
                         }
                     }
-                } catch (memErr) {
-                    console.error('Error updating wolf_intelligence:', memErr);
+                } catch (memErr: any) {
+                    console.error(`[wolfie] wolf_intelligence block error (non-fatal): ${memErr.message}`);
                 }
             }
         }
 
-        // ── Build Structured Response ──
+        _section = 'build_response';
         const agentResponse: AgentResponse = {
             chatResponse: parsedResult.chatResponse,
             transcribedText: parsedResult.transcribedText ?? null,
@@ -632,8 +643,9 @@ serve(async (req) => {
         });
 
     } catch (error: any) {
-        console.error("Wolfie Brain Fatal Error:", error);
-        return new Response(JSON.stringify({ error: error.stack || error.message }), {
+        // O nome da seção agora aparece no erro → fácil de debugar nos logs
+        console.error(`[wolfie] FATAL at section '${_section}': ${error.message}`, error.stack);
+        return new Response(JSON.stringify({ error: `[${_section}] ${error.stack || error.message}` }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
