@@ -167,6 +167,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
 
@@ -216,11 +217,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return () => { window.speechSynthesis.onvoiceschanged = null; };
     }, []);
 
-    // Cleanup on unmount
+    // Inicializa stream de áudio apenas para visualização do orb (não para transcrição)
     useEffect(() => {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => setAudioStream(stream))
+            .catch(err => console.warn('Orb audio stream denied (orb ficará estático):', err));
+
         return () => {
             stopSpeaking();
             recognitionRef.current?.abort();
+            setAudioStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
         };
     }, []);
 
@@ -751,7 +757,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 >
                     <VoicePoweredOrb
                         hue={getOrbHue()}
-                        audioStream={null}
+                        audioStream={audioStream}
                         voiceSensitivity={2.0}
                         maxRotationSpeed={1.5}
                         maxHoverIntensity={1.0}

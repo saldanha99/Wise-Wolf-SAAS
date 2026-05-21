@@ -345,7 +345,15 @@ async function callOpenRouter(
         }
     }
 
-    throw new Error(`Todos os modelos free falharam. Último erro: ${lastError?.message || 'desconhecido'}`);
+    // Retorna um JSON válido em vez de lançar exceção — evita 500 no cliente
+    console.error(`[OpenRouter] Todos os modelos falharam. Último erro: ${lastError?.message}`);
+    return JSON.stringify({
+        chatResponse: "Hey, I hit a little snag on my end — totally not your fault! Give it another shot in a few seconds?",
+        correction: null,
+        translation: "Ei, tive um probleminha aqui — tenta de novo em alguns segundos?",
+        vocabulary: null,
+        quiz: null,
+    });
 }
 
 
