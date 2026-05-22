@@ -494,29 +494,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
      * Fallback automático para Web Speech API em caso de falha.
      */
     const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
-        // ── iOS Safari / Chrome: Web Speech API nativo (Siri voices) ──
-        // AudioContext + HTMLAudioElement.play() são bloqueados silenciosamente pelo
-        // iOS WebKit em callbacks assíncronos, mesmo com gesture prévia.
-        // A única solução confiável em iOS é o Web Speech API nativo (usa Siri internamente).
-        if (IS_IOS) {
-            const lang = forceLang ?? 'en';
-            const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
-            setState('SPEAKING');
-            setSubtitle(text);
-            lastSpokenTextRef.current = text;
-            speakWebSpeech(text, rate, lang);
-            return;
-        }
-
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
         // Wolfie fala SEMPRE em inglês — PT-BR só quando forceLang='pt' é passado explicitamente
-        // (ex: botão "ouvir tradução"). isPortugueseText() causava sotaque BR no EN.
         const lang = forceLang ?? 'en';
-        // ThalitaNeural = voz PT-BR mais natural e expressiva do Edge TTS (lançada 2023)
-        // JennyNeural = melhor voz EN-US neural, natural e clara
         const voice = lang === 'pt' ? 'pt-BR-ThalitaNeural' : 'en-US-JennyNeural';
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
@@ -546,15 +529,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-            // ── iOS / Mobile: AudioContext (único método que funciona no iOS) ──
-            // HTMLAudioElement.play() falha no iOS quando chamado em async após fetch
-            // porque perde o "user gesture context". AudioContext desbloqueado no
-            // touchstart persiste na sessão e funciona mesmo em callbacks assíncronos.
+            // ── Todos os dispositivos: AudioContext primeiro ──
+            // AudioContext desbloqueado no touchstart PERSISTE na sessão no iOS —
+            // diferente de HTMLAudio.play() e speechSynthesis.speak() que exigem
+            // gesture em CADA chamada. Por isso AudioContext é a única opção segura
+            // no iOS para áudio em callbacks assíncronos.
             const ctx = audioCtxRef.current;
             if (ctx && ctx.state !== 'closed') {
-                if (ctx.state === 'suspended') await ctx.resume();
+                // resume() sem gesture funciona no iOS 13+ quando o contexto já foi
+                // criado anteriormente durante um toque (unlockAudio no touchStart)
+                if (ctx.state === 'suspended') {
+                    try { await ctx.resume(); } catch (_) {}
+                }
                 try {
-                    // .slice(0) clona o buffer — decodeAudioData transfere a ownership
+                    // .slice(0) clona o buffer — decodeAudioData transfere ownership
                     const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
                     const source = ctx.createBufferSource();
                     source.buffer = audioBuffer;
@@ -566,29 +554,43 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     };
                     audioSourceRef.current = source;
                     source.start(0);
-                    console.log(`🎙️ Neural TTS (AudioContext): ${voice} | speed: ${rate}`);
-                    return; // sucesso — saiu aqui
+                    console.log(`🎙️ Neural TTS (AudioContext${IS_IOS ? ' iOS' : ''}): ${voice} | speed: ${rate} | ctx: ${ctx.state}`);
+                    return; // sucesso
                 } catch (decodeErr) {
-                    console.warn('[WolfieTutor] AudioContext decode falhou, tentando HTMLAudio:', decodeErr);
+                    console.warn('[WolfieTutor] AudioContext decode falhou:', decodeErr);
+                }
+            } else {
+                console.warn(`[WolfieTutor] AudioContext indisponível: ctx=${ctx?.state ?? 'null'}`);
+            }
+
+            // ── Fallback desktop: HTMLAudioElement ──
+            // Não funciona no iOS (async play() bloqueado), mas cobre desktop sem AudioContext
+            if (!IS_IOS) {
+                const blob = new Blob([bytes], { type: 'audio/mpeg' });
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audioRef.current = audio;
+                audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                audio.onerror = () => {
+                    URL.revokeObjectURL(url); audioRef.current = null;
+                    speakWebSpeech(text, rate, lang);
+                };
+                try {
+                    await audio.play();
+                    console.log(`🎙️ Neural TTS (HTMLAudio): ${voice} | speed: ${rate}`);
+                    return;
+                } catch (_) {
+                    speakWebSpeech(text, rate, lang);
+                    return;
                 }
             }
 
-            // ── Desktop fallback: HTMLAudioElement ──
-            const blob = new Blob([bytes], { type: 'audio/mpeg' });
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
-            audio.onerror = () => {
-                URL.revokeObjectURL(url); audioRef.current = null;
-                console.warn('[WolfieTutor] HTMLAudio falhou — Web Speech API fallback');
-                speakWebSpeech(text, rate, lang);
-            };
-            await audio.play();
-            console.log(`🎙️ Neural TTS (HTMLAudio): ${voice} | speed: ${rate}`);
+            // iOS sem AudioContext: speakWebSpeech (funciona apenas se chamado de gesture direta)
+            console.warn('[WolfieTutor] iOS sem AudioContext — tentando speakWebSpeech');
+            speakWebSpeech(text, rate, lang);
 
         } catch (err) {
-            console.warn('[WolfieTutor] wolfie-tts indisponível — usando Web Speech API:', err);
+            console.warn('[WolfieTutor] wolfie-tts erro:', err);
             speakWebSpeech(text, speed, lang);
         }
     }, [studentLevel, speakWebSpeech]);
@@ -726,6 +728,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             recordingDelayRef.current = null;
         }
         if (state !== 'LISTENING') return;
+        // iOS: re-bloqueia AudioContext no touchEnd — momento mais próximo do speak()
+        // Isso garante que o AudioContext permanece "running" durante o fetch assíncrono
+        if (IS_IOS) unlockAudio();
         // stop() termina a sessão → dispara onend com o transcript acumulado
         recognitionRef.current?.stop();
     };
