@@ -555,10 +555,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
-        // Wolfie fala SEMPRE em inglês — PT-BR só quando forceLang='pt' é passado explicitamente
         const lang = forceLang ?? 'en';
         const voice = lang === 'pt' ? 'pt-BR-ThalitaNeural' : 'en-US-JennyNeural';
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
+
+        // ── DEBUG iOS: mostra na tela o que está acontecendo ──
+        // (remover após confirmar que funciona)
+        if (IS_IOS) {
+            const preOk = !!preUnlockedAudioRef.current;
+            const ctxState = audioCtxRef.current?.state ?? 'null';
+            setError(`📱 iOS speak() | pre=${preOk} ctx=${ctxState}`);
+            setTimeout(() => setError(null), 8000);
+        }
 
         // Para qualquer áudio anterior
         if (audioSourceRef.current) {
@@ -579,6 +587,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
             if (fnError || !data?.audio) {
                 throw new Error(fnError?.message || 'wolfie-tts sem áudio');
+            }
+
+            if (IS_IOS) {
+                setError(`✅ TTS ok (${Math.round((data.audio.length * 3/4)/1024)}KB) | pre=${!!preUnlockedAudioRef.current}`);
+                setTimeout(() => setError(null), 8000);
             }
 
             // Decodifica base64 → ArrayBuffer
@@ -613,6 +626,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         preAudio.onerror = () => { URL.revokeObjectURL(blobUrl); };
                         await preAudio.play();
                         audioRef.current = preAudio;
+                        setError('▶️ play() OK — ouça!'); setTimeout(() => setError(null), 4000);
                         console.log(`🎙️ iOS HTMLAudio (pré-ativado): ${voice}`);
                         return;
                     } catch (e1: any) {
@@ -706,9 +720,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 }
             }
 
-        } catch (err) {
-            console.warn('[WolfieTutor] wolfie-tts erro:', err);
+        } catch (err: any) {
+            const errMsg = err?.message ?? String(err);
+            console.warn('[WolfieTutor] wolfie-tts erro:', errMsg);
             stopIOSKeepAlive();
+            if (IS_IOS) {
+                setError(`❌ TTS erro: ${errMsg.slice(0, 60)}`);
+                setTimeout(() => setError(null), 8000);
+            }
             speakWebSpeech(text, speed, lang);
         }
     }, [studentLevel, speakWebSpeech, stopIOSKeepAlive]);
