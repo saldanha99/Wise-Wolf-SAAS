@@ -183,6 +183,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // iOS: keepalive toca buffers silenciosos a cada 500ms para impedir que o
     // iOS auto-suspenda o AudioContext durante o fetch assíncrono (~2-4s)
     const iosKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // iOS: elemento HTMLAudio "pré-desbloqueado" durante o toque — pode ser
+    // re-usado com outro src em callbacks async (Apple documenta este padrão)
+    const preUnlockedAudioRef = useRef<HTMLAudioElement | null>(null);
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
@@ -401,14 +404,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         }
         try {
             // ── 2. Web Speech API unlock (fallback iOS) ──
-            // iOS bloqueia speechSynthesis.speak() em callbacks async se não foi
-            // previamente "iniciado" numa gesture — esse speak vazio desbloqueia.
             if ('speechSynthesis' in window) {
                 const u = new SpeechSynthesisUtterance('');
                 window.speechSynthesis.speak(u);
                 window.speechSynthesis.cancel();
             }
         } catch (_) {}
+
+        // ── 3. iOS: pré-desbloqueia HTMLAudioElement ──
+        // O iOS associa a permissão de playback ao ELEMENTO (não ao contexto JS).
+        // Chamando play() durante o gesto, o elemento fica "desbloqueado" e pode
+        // ser reutilizado com qualquer src em callbacks assíncronos.
+        // Referência: https://webkit.org/blog/6784/new-video-policies-for-ios/
+        if (IS_IOS) {
+            try {
+                const audio = new Audio();
+                audio.volume = 0;
+                // play() falha (sem src) mas registra a gesture no elemento
+                audio.play().catch(() => {});
+                preUnlockedAudioRef.current = audio;
+            } catch (_) {}
+        }
     }, []);
 
     /**
@@ -568,7 +584,32 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-            // ── Todos os dispositivos: AudioContext primeiro ──
+            // ── iOS OPÇÃO 1: HTMLAudioElement pré-desbloqueado ──
+            // O iOS associa a permissão de áudio ao ELEMENTO específico que
+            // recebeu play() durante o gesto. Reusamos o mesmo elemento com
+            // um novo src — funciona mesmo em callback assíncrono.
+            if (IS_IOS && preUnlockedAudioRef.current) {
+                const preAudio = preUnlockedAudioRef.current;
+                preUnlockedAudioRef.current = null; // refreshed no próximo toque
+                try {
+                    stopIOSKeepAlive();
+                    const blob = new Blob([bytes], { type: 'audio/mpeg' });
+                    const blobUrl = URL.createObjectURL(blob);
+                    preAudio.volume = 1.0;
+                    preAudio.src = blobUrl;
+                    preAudio.onended = () => { URL.revokeObjectURL(blobUrl); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                    preAudio.onerror = () => { URL.revokeObjectURL(blobUrl); };
+                    await preAudio.load();
+                    await preAudio.play();
+                    audioRef.current = preAudio;
+                    console.log(`🎙️ Neural TTS (iOS HTMLAudio pré-desbloqueado): ${voice} | speed: ${rate}`);
+                    return; // sucesso
+                } catch (e) {
+                    console.warn('[iOS] pré-desbloqueado falhou, tentando AudioContext:', e);
+                }
+            }
+
+            // ── OPÇÃO 2: AudioContext (todos os dispositivos) ──
             // AudioContext desbloqueado no touchStart PERSISTE na sessão no iOS.
             // O keepalive (startIOSKeepAlive) garante que o iOS não suspendeu o
             // contexto durante o fetch assíncrono de ~2-4s.
