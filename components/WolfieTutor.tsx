@@ -180,6 +180,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const audioRef = useRef<HTMLAudioElement | null>(null);      // fallback HTMLAudioElement (desktop)
     const audioCtxRef = useRef<AudioContext | null>(null);       // AudioContext — funciona em iOS após unlock
     const audioSourceRef = useRef<AudioBufferSourceNode | null>(null); // source node ativo (parar mid-play)
+    // iOS: keepalive toca buffers silenciosos a cada 500ms para impedir que o
+    // iOS auto-suspenda o AudioContext durante o fetch assíncrono (~2-4s)
+    const iosKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
@@ -263,6 +266,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         return () => {
             stopSpeaking();
+            stopIOSKeepAlive();
             recognitionRef.current?.abort();
             setAudioStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
         };
@@ -407,6 +411,41 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         } catch (_) {}
     }, []);
 
+    /**
+     * iOS AudioContext Keepalive
+     * O iOS auto-suspende o AudioContext após ~1-2s de inatividade.
+     * Jogamos 1 sample de silêncio a cada 500ms para mantê-lo "running"
+     * durante o fetch assíncrono ao wolfie-brain + wolfie-tts (~2-4s).
+     */
+    const startIOSKeepAlive = useCallback(() => {
+        if (!IS_IOS || iosKeepAliveRef.current) return;
+        iosKeepAliveRef.current = setInterval(() => {
+            const ctx = audioCtxRef.current;
+            if (!ctx || ctx.state === 'closed') {
+                clearInterval(iosKeepAliveRef.current!);
+                iosKeepAliveRef.current = null;
+                return;
+            }
+            if (ctx.state !== 'running') return; // já suspendeu — não tenta tocar
+            try {
+                const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                src.connect(ctx.destination);
+                src.start(0); // 1 sample de silêncio — iOS não suspende contexto ativo
+            } catch (_) {}
+        }, 500);
+        console.log('[iOS] AudioContext keepalive iniciado');
+    }, []);
+
+    const stopIOSKeepAlive = useCallback(() => {
+        if (iosKeepAliveRef.current) {
+            clearInterval(iosKeepAliveRef.current);
+            iosKeepAliveRef.current = null;
+            console.log('[iOS] AudioContext keepalive parado');
+        }
+    }, []);
+
     /** Para a voz (AudioContext + HTMLAudio + Web Speech) e limpa o estado */
     const stopSpeaking = useCallback(() => {
         // Para AudioContext source (iOS + desktop)
@@ -530,20 +569,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
             // ── Todos os dispositivos: AudioContext primeiro ──
-            // AudioContext desbloqueado no touchstart PERSISTE na sessão no iOS —
-            // diferente de HTMLAudio.play() e speechSynthesis.speak() que exigem
-            // gesture em CADA chamada. Por isso AudioContext é a única opção segura
-            // no iOS para áudio em callbacks assíncronos.
+            // AudioContext desbloqueado no touchStart PERSISTE na sessão no iOS.
+            // O keepalive (startIOSKeepAlive) garante que o iOS não suspendeu o
+            // contexto durante o fetch assíncrono de ~2-4s.
             const ctx = audioCtxRef.current;
             if (ctx && ctx.state !== 'closed') {
-                // resume() sem gesture funciona no iOS 13+ quando o contexto já foi
-                // criado anteriormente durante um toque (unlockAudio no touchStart)
                 if (ctx.state === 'suspended') {
                     try { await ctx.resume(); } catch (_) {}
                 }
                 try {
-                    // .slice(0) clona o buffer — decodeAudioData transfere ownership
                     const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+                    // Para keepalive ANTES de iniciar o áudio real
+                    stopIOSKeepAlive();
                     const source = ctx.createBufferSource();
                     source.buffer = audioBuffer;
                     source.connect(ctx.destination);
@@ -558,13 +595,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     return; // sucesso
                 } catch (decodeErr) {
                     console.warn('[WolfieTutor] AudioContext decode falhou:', decodeErr);
+                    stopIOSKeepAlive();
                 }
             } else {
                 console.warn(`[WolfieTutor] AudioContext indisponível: ctx=${ctx?.state ?? 'null'}`);
+                stopIOSKeepAlive();
             }
 
             // ── Fallback desktop: HTMLAudioElement ──
-            // Não funciona no iOS (async play() bloqueado), mas cobre desktop sem AudioContext
             if (!IS_IOS) {
                 const blob = new Blob([bytes], { type: 'audio/mpeg' });
                 const url = URL.createObjectURL(blob);
@@ -585,15 +623,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 }
             }
 
-            // iOS sem AudioContext: speakWebSpeech (funciona apenas se chamado de gesture direta)
+            // iOS sem AudioContext funcional: último recurso
             console.warn('[WolfieTutor] iOS sem AudioContext — tentando speakWebSpeech');
             speakWebSpeech(text, rate, lang);
 
         } catch (err) {
             console.warn('[WolfieTutor] wolfie-tts erro:', err);
+            stopIOSKeepAlive();
             speakWebSpeech(text, speed, lang);
         }
-    }, [studentLevel, speakWebSpeech]);
+    }, [studentLevel, speakWebSpeech, stopIOSKeepAlive]);
 
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
@@ -612,6 +651,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         // ── Desbloqueia AudioContext no iOS (DEVE ser no handler de toque) ──
         unlockAudio();
+        // iOS: inicia keepalive IMEDIATAMENTE após unlock para impedir auto-suspensão
+        // O keepalive fica ativo durante gravação + fetch (~5-10s total)
+        startIOSKeepAlive();
 
         // ── Para a voz do Wolfie (neural + Web Speech) ──
         if (audioSourceRef.current) {
