@@ -52,6 +52,13 @@ interface Message {
 
 type CallState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING';
 
+// iOS Safari e Chrome (ambos usam WebKit) bloqueiam audio.play() assíncrono.
+// Detectamos iOS uma vez na inicialização para usar Web Speech API nativa.
+const IS_IOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+);
+
 declare global {
     interface Window {
         webkitSpeechRecognition: any;
@@ -487,6 +494,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
      * Fallback automático para Web Speech API em caso de falha.
      */
     const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+        // ── iOS Safari / Chrome: Web Speech API nativo (Siri voices) ──
+        // AudioContext + HTMLAudioElement.play() são bloqueados silenciosamente pelo
+        // iOS WebKit em callbacks assíncronos, mesmo com gesture prévia.
+        // A única solução confiável em iOS é o Web Speech API nativo (usa Siri internamente).
+        if (IS_IOS) {
+            const lang = forceLang ?? 'en';
+            const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
+            setState('SPEAKING');
+            setSubtitle(text);
+            lastSpokenTextRef.current = text;
+            speakWebSpeech(text, rate, lang);
+            return;
+        }
+
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
