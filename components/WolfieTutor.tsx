@@ -52,12 +52,15 @@ interface Message {
 
 type CallState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING';
 
-// iOS Safari e Chrome (ambos usam WebKit) bloqueiam audio.play() assíncrono.
-// Detectamos iOS uma vez na inicialização para usar Web Speech API nativa.
 const IS_IOS = typeof navigator !== 'undefined' && (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 );
+
+// WAV mínimo válido (44 bytes, 0 samples, 8000Hz mono 8-bit).
+// Usado para "pré-ativar" HTMLAudioElement no iOS — play() com src válido
+// registra a gesture no elemento; play() com src vazio não funciona.
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 
 declare global {
     interface Window {
@@ -411,18 +414,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             }
         } catch (_) {}
 
-        // ── 3. iOS: pré-desbloqueia HTMLAudioElement ──
-        // O iOS associa a permissão de playback ao ELEMENTO (não ao contexto JS).
-        // Chamando play() durante o gesto, o elemento fica "desbloqueado" e pode
-        // ser reutilizado com qualquer src em callbacks assíncronos.
-        // Referência: https://webkit.org/blog/6784/new-video-policies-for-ios/
+        // ── 3. iOS: pré-ativa HTMLAudioElement com WAV válido ──
+        // CRÍTICO: play() com src VAZIO não ativa o elemento no iOS.
+        // É necessário um src válido para que o iOS registre a gesture.
+        // Usamos um WAV de 0 samples (toca instantaneamente e silenciosamente).
         if (IS_IOS) {
             try {
-                const audio = new Audio();
+                const audio = new Audio(SILENT_WAV);
                 audio.volume = 0;
-                // play() falha (sem src) mas registra a gesture no elemento
-                audio.play().catch(() => {});
                 preUnlockedAudioRef.current = audio;
+                // play() aqui → iOS considera o elemento "ativado" para playback futuro
+                audio.play().then(() => audio.pause()).catch(() => {});
             } catch (_) {}
         }
     }, []);
@@ -580,66 +582,106 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             }
 
             // Decodifica base64 → ArrayBuffer
-            const binary = atob(data.audio);
+            const rawBase64 = data.audio; // guardamos para data URI fallback
+            const binary = atob(rawBase64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
-            // ── iOS OPÇÃO 1: HTMLAudioElement pré-desbloqueado ──
-            // O iOS associa a permissão de áudio ao ELEMENTO específico que
-            // recebeu play() durante o gesto. Reusamos o mesmo elemento com
-            // um novo src — funciona mesmo em callback assíncrono.
-            if (IS_IOS && preUnlockedAudioRef.current) {
-                const preAudio = preUnlockedAudioRef.current;
-                preUnlockedAudioRef.current = null; // refreshed no próximo toque
-                try {
-                    stopIOSKeepAlive();
-                    const blob = new Blob([bytes], { type: 'audio/mpeg' });
-                    const blobUrl = URL.createObjectURL(blob);
-                    preAudio.volume = 1.0;
-                    preAudio.src = blobUrl;
-                    preAudio.onended = () => { URL.revokeObjectURL(blobUrl); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
-                    preAudio.onerror = () => { URL.revokeObjectURL(blobUrl); };
-                    await preAudio.load();
-                    await preAudio.play();
-                    audioRef.current = preAudio;
-                    console.log(`🎙️ Neural TTS (iOS HTMLAudio pré-desbloqueado): ${voice} | speed: ${rate}`);
-                    return; // sucesso
-                } catch (e) {
-                    console.warn('[iOS] pré-desbloqueado falhou, tentando AudioContext:', e);
+            // ── iOS: tenta TODAS as abordagens em sequência ──
+            if (IS_IOS) {
+                stopIOSKeepAlive();
+
+                // Helper: mostra erro visível por 6s (debug no iPhone sem console)
+                const showIOSDebug = (msg: string) => {
+                    console.warn('[iOS audio]', msg);
+                    setError(`🔇 iOS debug: ${msg}`);
+                    setTimeout(() => setError(null), 6000);
+                };
+
+                // ── iOS 1: HTMLAudioElement pré-ativado ──
+                // O iOS vincula permissão de play ao ELEMENTO que recebeu
+                // play() com src VÁLIDO durante o toque (SILENT_WAV).
+                if (preUnlockedAudioRef.current) {
+                    const preAudio = preUnlockedAudioRef.current;
+                    preUnlockedAudioRef.current = null;
+                    try {
+                        const blob = new Blob([bytes], { type: 'audio/mpeg' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        preAudio.volume = 1.0;
+                        preAudio.src = blobUrl;
+                        preAudio.onended = () => { URL.revokeObjectURL(blobUrl); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                        preAudio.onerror = () => { URL.revokeObjectURL(blobUrl); };
+                        await preAudio.play();
+                        audioRef.current = preAudio;
+                        console.log(`🎙️ iOS HTMLAudio (pré-ativado): ${voice}`);
+                        return;
+                    } catch (e1: any) {
+                        showIOSDebug(`HTMLAudio blob: ${e1?.message ?? e1}`);
+                    }
+
+                    // ── iOS 1b: data URI (sem blob URL, direto no src) ──
+                    try {
+                        preAudio.src = `data:audio/mpeg;base64,${rawBase64}`;
+                        preAudio.volume = 1.0;
+                        preAudio.onended = () => { audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                        await preAudio.play();
+                        audioRef.current = preAudio;
+                        console.log(`🎙️ iOS HTMLAudio (data URI): ${voice}`);
+                        return;
+                    } catch (e1b: any) {
+                        showIOSDebug(`HTMLAudio dataURI: ${e1b?.message ?? e1b}`);
+                    }
+                } else {
+                    showIOSDebug('preUnlocked=null (toque no orb primeiro?)');
                 }
+
+                // ── iOS 2: AudioContext com keepalive ──
+                const ctx = audioCtxRef.current;
+                if (ctx && ctx.state !== 'closed') {
+                    if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (_) {} }
+                    try {
+                        const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+                        const source = ctx.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(ctx.destination);
+                        source.onended = () => { audioSourceRef.current = null; setState('IDLE'); setSubtitle(''); };
+                        audioSourceRef.current = source;
+                        source.start(0);
+                        console.log(`🎙️ iOS AudioContext: ${voice} | ctx: ${ctx.state}`);
+                        return;
+                    } catch (e2: any) {
+                        showIOSDebug(`AudioContext: ${e2?.message ?? e2} (ctx=${ctx.state})`);
+                    }
+                } else {
+                    showIOSDebug(`ctx=${ctx?.state ?? 'null'}`);
+                }
+
+                // ── iOS 3: Web Speech API (último recurso) ──
+                showIOSDebug('fallback Web Speech');
+                speakWebSpeech(text, rate, lang);
+                return;
             }
 
-            // ── OPÇÃO 2: AudioContext (todos os dispositivos) ──
-            // AudioContext desbloqueado no touchStart PERSISTE na sessão no iOS.
-            // O keepalive (startIOSKeepAlive) garante que o iOS não suspendeu o
-            // contexto durante o fetch assíncrono de ~2-4s.
+            // ── Desktop: AudioContext primeiro ──
             const ctx = audioCtxRef.current;
             if (ctx && ctx.state !== 'closed') {
-                if (ctx.state === 'suspended') {
-                    try { await ctx.resume(); } catch (_) {}
-                }
+                if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (_) {} }
                 try {
                     const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
-                    // Para keepalive ANTES de iniciar o áudio real
                     stopIOSKeepAlive();
                     const source = ctx.createBufferSource();
                     source.buffer = audioBuffer;
                     source.connect(ctx.destination);
-                    source.onended = () => {
-                        audioSourceRef.current = null;
-                        setState('IDLE');
-                        setSubtitle('');
-                    };
+                    source.onended = () => { audioSourceRef.current = null; setState('IDLE'); setSubtitle(''); };
                     audioSourceRef.current = source;
                     source.start(0);
-                    console.log(`🎙️ Neural TTS (AudioContext${IS_IOS ? ' iOS' : ''}): ${voice} | speed: ${rate} | ctx: ${ctx.state}`);
-                    return; // sucesso
+                    console.log(`🎙️ Neural TTS (AudioContext): ${voice} | speed: ${rate}`);
+                    return;
                 } catch (decodeErr) {
                     console.warn('[WolfieTutor] AudioContext decode falhou:', decodeErr);
                     stopIOSKeepAlive();
                 }
             } else {
-                console.warn(`[WolfieTutor] AudioContext indisponível: ctx=${ctx?.state ?? 'null'}`);
                 stopIOSKeepAlive();
             }
 
@@ -663,10 +705,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     return;
                 }
             }
-
-            // iOS sem AudioContext funcional: último recurso
-            console.warn('[WolfieTutor] iOS sem AudioContext — tentando speakWebSpeech');
-            speakWebSpeech(text, rate, lang);
 
         } catch (err) {
             console.warn('[WolfieTutor] wolfie-tts erro:', err);
