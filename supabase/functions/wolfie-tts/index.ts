@@ -1,13 +1,12 @@
 /**
- * wolfie-tts — Text-to-Speech via Microsoft Edge Neural TTS
- * Vozes neurais de alta qualidade, sem custo, sem API key.
+ * wolfie-tts v9 — Text-to-Speech via Google Translate TTS
  *
- * Vozes disponíveis:
- *   en-US-JennyNeural   — inglês americano, feminina, natural (padrão)
- *   en-US-AriaNeural    — inglês americano, feminina, expressiva
- *   en-US-GuyNeural     — inglês americano, masculino
- *   pt-BR-FranciscaNeural — português brasileiro, feminina
- *   pt-BR-AntonioNeural — português brasileiro, masculino
+ * Usa o endpoint não-oficial do Google Translate TTS.
+ * Sem API key, sem WebSocket, simples HTTPS GET.
+ * Retorna audio/mpeg (MP3). Testado e funcionando via curl.
+ *
+ * Limite: ~200 chars por request — textos maiores são divididos
+ * em sentenças e os chunks concatenados.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -17,11 +16,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Token público do Microsoft Edge TTS (não requer chave de API)
-const EDGE_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
-const EDGE_WSS = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${EDGE_TOKEN}`;
+// User-Agent de browser real — Google bloqueia UA de servidor/bot
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// Remove markdown e prepara texto para TTS natural
+// Remove markdown e prepara texto para TTS
 function cleanText(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, "$1")
@@ -33,23 +31,49 @@ function cleanText(text: string): string {
     .replace(/\n{2,}/g, " ")
     .replace(/\n/g, " ")
     .replace(/\s{2,}/g, " ")
-    .trim()
-    .slice(0, 2000); // Microsoft Edge TTS aceita até ~3000 chars
-}
-
-// Gera UUID simples sem crypto (compatível com Deno)
-function randomUUID(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = Math.floor(Math.random() * 16);
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+    .trim();
 }
 
 /**
- * Converte Uint8Array para base64 em chunks para evitar stack overflow.
- * btoa(String.fromCharCode(...largeArray)) causa RangeError em buffers > ~50KB
- * porque o spread gera um call stack enorme. Chunks de 8192 bytes são seguros.
+ * Divide texto em chunks de até maxLen chars,
+ * quebrando apenas em limites de sentença/vírgula/espaço.
+ */
+function splitText(text: string, maxLen = 180): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text.trim();
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Tenta quebrar na última pontuação dentro do limite
+    let cutAt = -1;
+    const slice = remaining.slice(0, maxLen);
+
+    // Ordem de preferência: . ! ? , ; " ' espaço
+    for (const sep of [".", "!", "?", ",", ";", " "]) {
+      const idx = slice.lastIndexOf(sep);
+      if (idx > 0) {
+        cutAt = idx + 1;
+        break;
+      }
+    }
+
+    if (cutAt <= 0) cutAt = maxLen; // fallback: corta no limite duro
+
+    chunks.push(remaining.slice(0, cutAt).trim());
+    remaining = remaining.slice(cutAt).trim();
+  }
+
+  return chunks.filter(c => c.length > 0);
+}
+
+/**
+ * Converte Uint8Array para base64 em chunks (evita stack overflow em buffers grandes).
  */
 function uint8ToBase64(bytes: Uint8Array): string {
   const CHUNK = 8192;
@@ -60,13 +84,53 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(str);
 }
 
+/**
+ * Extrai o locale (tl) a partir do nome da voz Microsoft Edge.
+ * pt-BR-ThalitaNeural → pt-BR
+ * en-US-JennyNeural  → en-US
+ */
+function voiceToLocale(voice: string): string {
+  const m = voice.match(/^([a-z]{2}-[A-Z]{2})/);
+  return m ? m[1] : "en-US";
+}
+
+/**
+ * Busca TTS para um único chunk de texto.
+ * Retorna Uint8Array com o MP3.
+ */
+async function fetchTTSChunk(text: string, locale: string): Promise<Uint8Array> {
+  const url =
+    `https://translate.google.com/translate_tts` +
+    `?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${locale}&client=gtx&ttsspeed=1`;
+
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      "Accept": "audio/mpeg, audio/*, */*",
+      "Referer": "https://translate.google.com/",
+    },
+  });
+
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Google TTS ${resp.status}: ${body.slice(0, 120)}`);
+  }
+
+  const buf = await resp.arrayBuffer();
+  if (buf.byteLength < 50) {
+    throw new Error(`Google TTS retornou áudio muito pequeno (${buf.byteLength} bytes)`);
+  }
+
+  return new Uint8Array(buf);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { text, voice = "en-US-JennyNeural", speed = 1.0 } = await req.json();
+    const { text, voice = "en-US-JennyNeural" } = await req.json();
 
     if (!text || typeof text !== "string") {
       return new Response(JSON.stringify({ error: "text is required" }), {
@@ -75,167 +139,41 @@ serve(async (req) => {
       });
     }
 
-    const cleaned = cleanText(text);
+    const cleaned = cleanText(text).slice(0, 1000);
+    const locale = voiceToLocale(voice);
+    const chunks = splitText(cleaned, 180);
 
-    // Converte speed (0.25–2.0) para formato SSML da Microsoft (+/-nn%)
-    // 1.0 = normal, 1.2 = +20%, 0.8 = -20%
-    const ratePct = Math.round((speed - 1.0) * 100);
-    const rateStr = ratePct >= 0 ? `+${ratePct}%` : `${ratePct}%`;
+    console.log(`[wolfie-tts] voice=${voice} locale=${locale} chunks=${chunks.length} totalChars=${cleaned.length}`);
 
-    // CRÍTICO: xml:lang DEVE corresponder ao idioma da voz
-    // xml:lang errado = motor usa fonética errada = sotaque estrangeiro
-    // pt-BR-ThalitaNeural → pt-BR | en-US-JennyNeural → en-US
-    const langCode = voice.match(/^([a-z]{2}-[A-Z]{2})/)?.[1] ?? "en-US";
+    // Busca todos os chunks em paralelo (mais rápido que sequencial)
+    const audioArrays = await Promise.all(
+      chunks.map(chunk => fetchTTSChunk(chunk, locale))
+    );
 
-    // SSML para o Microsoft Neural TTS
-    const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${langCode}'>
-      <voice name='${voice}'>
-        <prosody rate='${rateStr}' pitch='+0Hz'>${cleaned}</prosody>
-      </voice>
-    </speak>`;
+    // Concatena os chunks de MP3
+    const totalBytes = audioArrays.reduce((sum, a) => sum + a.length, 0);
+    const merged = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of audioArrays) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
 
-    const requestId = randomUUID().replace(/-/g, "");
-    const timestamp = new Date().toUTCString();
+    console.log(`[wolfie-tts] Áudio final: ${totalBytes} bytes`);
 
-    // Conecta ao WebSocket da Microsoft
-    const ws = new WebSocket(EDGE_WSS, [
-      "chat",
-      `TrustedClientToken=${EDGE_TOKEN}`,
-    ]);
-
-    const audioChunks: Uint8Array[] = [];
-    let resolved = false;
-
-    const result = await new Promise<string>((resolve, reject) => {
-      // Timeout de segurança — 20 segundos
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          ws.close();
-          reject(new Error("Microsoft TTS timeout"));
-        }
-      }, 20_000);
-
-      ws.onopen = () => {
-        // 1. Envia configuração de sintetização
-        const configMsg =
-          `X-Timestamp:${timestamp}\r\n` +
-          `Content-Type:application/json; charset=utf-8\r\n` +
-          `Path:speech.config\r\n\r\n` +
-          JSON.stringify({
-            context: {
-              synthesis: {
-                audio: {
-                  metadataoptions: { sentenceBoundaryEnabled: false, wordBoundaryEnabled: false },
-                  outputFormat: "audio-24khz-48kbitrate-mono-mp3",
-                },
-              },
-            },
-          });
-
-        ws.send(configMsg);
-
-        // 2. Envia o SSML para sintetização
-        const ssmlMsg =
-          `X-RequestId:${requestId}\r\n` +
-          `Content-Type:application/ssml+xml\r\n` +
-          `X-Timestamp:${timestamp}\r\n` +
-          `Path:ssml\r\n\r\n` +
-          ssml;
-
-        ws.send(ssmlMsg);
-      };
-
-      ws.onmessage = (event) => {
-        if (typeof event.data === "string") {
-          // Mensagem de controle — verifica se é turn.end (fim do áudio)
-          if (event.data.includes("Path:turn.end")) {
-            clearTimeout(timeout);
-            ws.close();
-
-            if (audioChunks.length === 0) {
-              resolved = true;
-              reject(new Error("Nenhum áudio recebido do Microsoft TTS"));
-              return;
-            }
-
-            // Concatena todos os chunks de áudio
-            const totalLength = audioChunks.reduce((a, c) => a + c.length, 0);
-            const merged = new Uint8Array(totalLength);
-            let offset = 0;
-            for (const chunk of audioChunks) {
-              merged.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            // Converte para base64
-            const base64 = uint8ToBase64(merged);
-            resolved = true;
-            resolve(base64);
-          }
-        } else if (event.data instanceof ArrayBuffer) {
-          // Mensagem binária — contém o áudio MP3
-          // Formato: cabeçalho de texto + \r\n\r\n + dados binários MP3
-          const buffer = new Uint8Array(event.data);
-
-          // Encontra o separador \r\n\r\n (bytes: 13, 10, 13, 10)
-          let separatorIdx = -1;
-          for (let i = 0; i < buffer.length - 3; i++) {
-            if (buffer[i] === 13 && buffer[i + 1] === 10 && buffer[i + 2] === 13 && buffer[i + 3] === 10) {
-              separatorIdx = i + 4;
-              break;
-            }
-          }
-
-          if (separatorIdx !== -1 && separatorIdx < buffer.length) {
-            audioChunks.push(buffer.slice(separatorIdx));
-          }
-        }
-      };
-
-      ws.onerror = (error) => {
-        clearTimeout(timeout);
-        if (!resolved) {
-          resolved = true;
-          reject(new Error(`WebSocket error: ${error}`));
-        }
-      };
-
-      ws.onclose = (event) => {
-        clearTimeout(timeout);
-        if (!resolved && audioChunks.length > 0) {
-          // Fechou com dados — processa mesmo assim
-          const totalLength = audioChunks.reduce((a, c) => a + c.length, 0);
-          const merged = new Uint8Array(totalLength);
-          let offset = 0;
-          for (const chunk of audioChunks) {
-            merged.set(chunk, offset);
-            offset += chunk.length;
-          }
-          const base64 = uint8ToBase64(merged);
-          resolved = true;
-          resolve(base64);
-        } else if (!resolved) {
-          resolved = true;
-          reject(new Error(`WebSocket fechou sem áudio (code: ${event.code})`));
-        }
-      };
-    });
+    const base64 = uint8ToBase64(merged);
 
     return new Response(
-      JSON.stringify({ audio: result, format: "mp3" }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ audio: base64, format: "mp3" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[wolfie-tts] Error:", message);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
