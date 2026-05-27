@@ -246,7 +246,9 @@ const TeacherProfile: React.FC = () => {
                         </div>
 
                         <h3 className="font-black text-xl text-brand-text mb-1">{formData.name}</h3>
-                        <p className="text-xs font-bold text-brand-muted uppercase tracking-widest">Teacher</p>
+                        <p className="text-xs font-bold text-brand-muted uppercase tracking-widest">
+                            {formData.role === 'TEACHER' ? 'Professor' : formData.role === 'STUDENT' ? 'Aluno' : formData.role === 'SCHOOL_ADMIN' ? 'Diretor' : formData.role || 'Usuário'}
+                        </p>
                     </div>
 
                     <div className="bg-brand-surface-2 dark:bg-brand-surface/50 border border-brand-border dark:border-brand-border rounded-[2rem] p-6">
@@ -264,14 +266,14 @@ const TeacherProfile: React.FC = () => {
                                 <input
                                     type="password"
                                     placeholder="Nova Senha"
-                                    className="w-full p-2 text-xs border rounded-lg dark:bg-brand-surface-2 dark:border-brand-border"
+                                    className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-brand-border dark:text-white"
                                     value={newPassword}
                                     onChange={e => setNewPassword(e.target.value)}
                                 />
                                 <input
                                     type="password"
                                     placeholder="Confirmar Senha"
-                                    className="w-full p-2 text-xs border rounded-lg dark:bg-brand-surface-2 dark:border-brand-border"
+                                    className="w-full p-2 text-xs border rounded-lg dark:bg-slate-800 dark:border-brand-border dark:text-white"
                                     value={confirmPassword}
                                     onChange={e => setConfirmPassword(e.target.value)}
                                 />
@@ -320,7 +322,7 @@ const TeacherProfile: React.FC = () => {
                                 <input
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className="w-full p-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
+                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -330,7 +332,7 @@ const TeacherProfile: React.FC = () => {
                                     <input
                                         value={formData.phone}
                                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                        className="w-full pl-12 pr-4 py-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
+                                        className="w-full pl-12 pr-4 py-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all"
                                     />
                                 </div>
                             </div>
@@ -352,7 +354,7 @@ const TeacherProfile: React.FC = () => {
                                 <textarea
                                     value={formData.bio}
                                     onChange={e => setFormData({ ...formData, bio: e.target.value })}
-                                    className="w-full p-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-medium text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all h-32 resize-none"
+                                    className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-medium text-brand-text dark:text-white focus:ring-4 focus:ring-tenant-primary/10 focus:border-tenant-primary outline-none transition-all h-32 resize-none"
                                     placeholder="Conte um pouco sobre você..."
                                 />
                             </div>
@@ -385,7 +387,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.bankName}
                                         onChange={e => setFormData({ ...formData, bankName: e.target.value })}
                                         placeholder="Ex: Nubank, Itáu..."
-                                        className="w-full p-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
                                     />
                                 </div>
 
@@ -395,7 +397,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.agency}
                                         onChange={e => setFormData({ ...formData, agency: e.target.value })}
                                         placeholder="0000"
-                                        className="w-full p-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
                                     />
                                 </div>
 
@@ -405,7 +407,7 @@ const TeacherProfile: React.FC = () => {
                                         value={formData.accountNumber}
                                         onChange={e => setFormData({ ...formData, accountNumber: e.target.value })}
                                         placeholder="00000-0"
-                                        className="w-full p-4 bg-brand-surface-2/50 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full p-4 bg-brand-surface-2/50 dark:bg-slate-800 border border-brand-border rounded-2xl text-sm font-bold text-brand-text dark:text-white outline-none focus:border-emerald-500 transition-all"
                                     />
                                 </div>
                             </div>
