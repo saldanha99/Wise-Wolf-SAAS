@@ -379,15 +379,26 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       <StudentActivities userId={user.id} tenantId={tenantId || profile?.tenant_id} />
 
       {showContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-brand-surface rounded-[2rem] w-full max-w-4xl max-h-[90vh] overflow-y-auto relative shadow-2xl">
-            <button
-              onClick={() => setShowContract(false)}
-              className="absolute top-6 right-6 p-2 bg-brand-surface-2 rounded-full hover:bg-slate-200 transition-colors z-50"
-            >
-              <X size={20} className="text-brand-muted" />
-            </button>
-            <div className="p-4 sm:p-8">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+          {/* Overlay click to close */}
+          <div className="absolute inset-0" onClick={() => setShowContract(false)} />
+          <div className="relative bg-brand-surface rounded-t-[2rem] sm:rounded-[2rem] w-full sm:max-w-4xl h-[92dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300">
+            {/* Drag handle (mobile) */}
+            <div className="flex justify-center pt-3 sm:hidden shrink-0">
+              <div className="w-10 h-1 bg-brand-border rounded-full" />
+            </div>
+            {/* Sticky header com botão fechar */}
+            <div className="flex items-center justify-between px-5 py-3 sm:px-6 sm:py-4 border-b border-brand-border shrink-0">
+              <span className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</span>
+              <button
+                onClick={() => setShowContract(false)}
+                className="p-2 bg-brand-surface-2 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <X size={20} className="text-brand-muted" />
+              </button>
+            </div>
+            {/* Conteúdo rolável */}
+            <div className="overflow-y-auto overflow-x-hidden flex-1 p-4 sm:p-8">
               <ContractView userId={user.id} classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)} />
             </div>
           </div>

@@ -153,12 +153,12 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
+            <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center shrink-0">
                         <Sparkles size={20} className="text-violet-600 dark:text-violet-400" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-black text-slate-800 dark:text-white text-sm">Atividades Complementares</h3>
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest">
                             {pending.length} pendentes · {completed.length} concluídas
@@ -168,7 +168,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                 <button
                     onClick={generateNew}
                     disabled={generating}
-                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:brightness-110 transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-violet-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap shrink-0"
                 >
                     {generating ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
                     {generating ? 'Gerando...' : 'Gerar Novas'}

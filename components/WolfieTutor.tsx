@@ -1021,45 +1021,45 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     </button>
                 )}
 
-                <div className="relative z-10 max-w-4xl w-full flex flex-col items-center text-center">
-                    <div className="mb-12">
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 mb-6">
-                            <BrainCircuit size={16} />
-                            <span className="text-xs font-bold uppercase tracking-widest">Wolfie AI (Powered by Gemini)</span>
+                <div className="relative z-10 max-w-4xl w-full flex flex-col items-center text-center px-4">
+                    <div className="mb-8 sm:mb-12">
+                        <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 mb-4 sm:mb-6">
+                            <BrainCircuit size={14} />
+                            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Wolfie AI (Powered by Gemini)</span>
                         </div>
-                        <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-6">
+                        <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
                             Olá, {user?.full_name?.split(' ')[0] || 'Aluno'}!
                         </h1>
-                        <p className="text-brand-muted text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
+                        <p className="text-brand-muted text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
                             Como você prefere praticar o seu inglês hoje?
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mx-auto">
+                    <div className="grid grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl mx-auto">
                         {/* Voice Mode */}
                         <button
                             onClick={() => handleModeSelection('voice')}
-                            className="group relative p-8 rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center"
+                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <div className="w-20 h-20 rounded-full bg-indigo-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300">
-                                <Mic size={32} className="text-indigo-400 group-hover:text-white transition-colors" />
+                            <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-indigo-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300">
+                                <Mic size={24} className="sm:w-8 sm:h-8 text-indigo-400 group-hover:text-white transition-colors" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Conversa por Voz</h3>
-                            <p className="text-brand-muted">Pratique com conversas em tempo real usando o microfone.</p>
+                            <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">Por Voz</h3>
+                            <p className="text-brand-muted text-xs sm:text-sm hidden sm:block">Pratique com conversas em tempo real usando o microfone.</p>
                         </button>
 
                         {/* Text Mode */}
                         <button
                             onClick={() => handleModeSelection('text')}
-                            className="group relative p-8 rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 transition-all duration-300 text-left overflow-hidden flex flex-col items-center text-center"
+                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                            <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-emerald-500 transition-all duration-300">
-                                <MessageSquare size={32} className="text-emerald-400 group-hover:text-white transition-colors" />
+                            <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-emerald-500 transition-all duration-300">
+                                <MessageSquare size={24} className="sm:w-8 sm:h-8 text-emerald-400 group-hover:text-white transition-colors" />
                             </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Chat por Texto</h3>
-                            <p className="text-brand-muted">Pratique a escrita através do chat interativo do Wolfie.</p>
+                            <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">Por Texto</h3>
+                            <p className="text-brand-muted text-xs sm:text-sm hidden sm:block">Pratique a escrita através do chat interativo do Wolfie.</p>
                         </button>
                     </div>
                 </div>
@@ -1187,7 +1187,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             <div className="relative z-20 flex flex-col items-center justify-center w-full h-full max-w-5xl mx-auto">
                 <div
-                    className="relative w-[320px] h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none select-none flex items-center justify-center group"
+                    className="relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none select-none flex items-center justify-center group"
                     style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
                     onMouseDown={startRecording}
                     onMouseUp={stopRecordingAndSend}
@@ -1216,9 +1216,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 </div>
 
                 {/* Subtitles */}
-                <div className="absolute bottom-20 md:bottom-28 left-0 right-0 px-8 text-center pointer-events-none z-30 min-h-[80px] flex flex-col items-center justify-end">
+                <div className="absolute bottom-24 sm:bottom-20 md:bottom-28 left-0 right-0 px-4 sm:px-8 text-center pointer-events-none z-30 min-h-[80px] flex flex-col items-center justify-end">
                     {subtitle ? (
-                        <p className="text-xl md:text-2xl lg:text-3xl font-light text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.8)] animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-4xl mx-auto leading-relaxed">
+                        <p className="text-base sm:text-xl md:text-2xl lg:text-3xl font-light text-white drop-shadow-[0_4px_20px_rgba(0,0,0,0.8)] animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-4xl mx-auto leading-relaxed">
                             "{subtitle}"
                         </p>
                     ) : state !== 'IDLE' ? (
@@ -1259,7 +1259,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* CORRECTION FEEDBACK CARD (Bottom Left) */}
             {/* ============================================================ */}
             {correction && (
-                <div className="absolute bottom-6 left-4 md:left-8 md:w-[420px] z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+                <div className="absolute bottom-6 left-4 right-4 md:right-auto md:left-8 md:w-[420px] z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
                     <div className="bg-brand-surface/40 backdrop-blur-3xl border border-white/10 p-5 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-brand-surface/60 transition-colors">
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-80" />
                         <div className="flex flex-col gap-3 relative z-10">
