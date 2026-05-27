@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock } from 'lucide-react';
+import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Lock } from 'lucide-react';
 import { asaasService } from '../services/asaasService';
 import StudentScheduleManager from './StudentScheduleManager';
 
@@ -16,6 +16,9 @@ interface StudentProfileFormProps {
 const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, onSubmit, onCancel, onDelete, title = 'Aluno', teachers = [], currentUserRole }) => {
     // RBAC Logic: Director (School Admin) or Super Admin has full access
     const isDirector = currentUserRole === 'SCHOOL_ADMIN' || currentUserRole === 'SUPER_ADMIN';
+
+    // Contrato assinado — campos contratuais ficam bloqueados
+    const contractSigned = !!(initialData?.accepted_at || initialData?.documentation_status === 'APPROVED');
 
     // If teacher, can't see Financial Tab. Default to Details.
     const [activeTab, setActiveTab] = useState<'DETAILS' | 'FINANCIAL' | 'AGENDA'>('DETAILS');
@@ -233,6 +236,19 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
             <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
 
+                {/* Banner de contrato assinado */}
+                {contractSigned && (
+                    <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl">
+                        <Lock size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                        <div>
+                            <p className="text-xs font-black text-amber-700 dark:text-amber-300 uppercase tracking-wider">Contrato assinado</p>
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                Os dados contratuais (nome, CPF, endereço, valor e prazo) estão bloqueados para edição e só podem ser alterados com um novo contrato.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === 'DETAILS' && (
                     <div className="space-y-6">
                         {/* Basic Info */}
@@ -242,10 +258,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <User size={12} /> Nome Completo
                                 </label>
                                 <input
-                                    disabled={!isDirector}
+                                    disabled={!isDirector || contractSigned}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${(!isDirector || contractSigned) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="Ex: Ana Silva"
                                 />
                             </div>
@@ -322,9 +338,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             CPF (Obrigatório para Asaas)
                                         </label>
                                         <input
+                                            disabled={contractSigned}
                                             value={formData.cpf}
                                             onChange={e => setFormData({ ...formData, cpf: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="000.000.000-00"
                                         />
                                     </div>
@@ -333,9 +350,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             CEP
                                         </label>
                                         <input
+                                            disabled={contractSigned}
                                             value={formData.postalCode}
                                             onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="00000-000"
                                         />
                                     </div>
@@ -347,9 +365,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             Endereço
                                         </label>
                                         <input
+                                            disabled={contractSigned}
                                             value={formData.address}
                                             onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="Rua, Av..."
                                         />
                                     </div>
@@ -358,9 +377,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             Número
                                         </label>
                                         <input
+                                            disabled={contractSigned}
                                             value={formData.addressNumber}
                                             onChange={e => setFormData({ ...formData, addressNumber: e.target.value })}
-                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                            className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             placeholder="123"
                                         />
                                     </div>
@@ -374,7 +394,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 <BookOpen size={12} /> Módulo Atual
                             </label>
                             <input
-                                disabled={!isDirector}
+                                disabled={!isDirector || contractSigned}
                                 value={formData.currentModuleStatus}
                                 onChange={e => {
                                     const val = e.target.value.toUpperCase();
@@ -385,7 +405,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     }
                                     setFormData({ ...formData, currentModuleStatus: val, levelBadge: newBadge });
                                 }}
-                                className="w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-black text-blue-700 dark:text-blue-300 focus:ring-2 focus:ring-blue-500 outline-none uppercase tracking-wide"
+                                className={`w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl text-xs font-black text-blue-700 dark:text-blue-300 focus:ring-2 focus:ring-blue-500 outline-none uppercase tracking-wide ${(!isDirector || contractSigned) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 placeholder="Ex: B1 - PARTE 2 - AULA 26 ATÉ 50"
                             />
                         </div>
@@ -515,6 +535,15 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
                 {activeTab === 'FINANCIAL' && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        {/* Aviso de contrato assinado na aba financeira */}
+                        {contractSigned && (
+                            <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl">
+                                <Lock size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                                    Valor, vencimento e prazo estão bloqueados — o contrato já foi assinado.
+                                </p>
+                            </div>
+                        )}
                         {formData.subscription_id ? (
                             <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-2xl flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -539,9 +568,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 </label>
                                 <input
                                     type="number"
+                                    disabled={contractSigned}
                                     value={formData.monthly_fee}
                                     onChange={e => setFormData({ ...formData, monthly_fee: Number(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xl font-black text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none"
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-xl font-black text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="0.00"
                                 />
                             </div>
@@ -551,9 +581,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <Calendar size={12} /> Dia de Vencimento
                                 </label>
                                 <select
+                                    disabled={contractSigned}
                                     value={formData.due_day}
                                     onChange={e => setFormData({ ...formData, due_day: Number(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     {[5, 10, 15, 20, 25].map(day => (
                                         <option key={day} value={day}>Dia {day}</option>
@@ -566,9 +597,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <Clock size={12} /> Duração do Contrato
                                 </label>
                                 <select
+                                    disabled={contractSigned}
                                     value={formData.planDuration}
                                     onChange={e => setFormData({ ...formData, planDuration: e.target.value })}
-                                    className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none"
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none appearance-none ${contractSigned ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
                                     <option value="RECURRENT">Mensal (Sem Fidelidade)</option>
                                     <option value="SEMESTER">Semestral (6 Meses)</option>

@@ -163,7 +163,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             addressNumber: s.address_number,
             asaasCustomerId: s.asaas_customer_id,
             professor_id: s.professor_id,
-            monthly_fee: s.monthly_fee
+            monthly_fee: s.monthly_fee,
+            due_day: s.due_day,
+            accepted_at: s.accepted_at,
+            documentation_status: s.documentation_status,
+            tenant_id: s.tenant_id,
           };
         });
         setStudents(mappedStudents);
@@ -329,47 +333,59 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     // UPDATE LÓGICA (Para aluno já existente)
     try {
       const studentCpf = formData.cpf?.replace(/\D/g, '') || null;
+      const contractSigned = !!(editingStudent.accepted_at || editingStudent.documentation_status === 'APPROVED');
+
+      // Campos que podem sempre ser alterados
+      const updatePayload: Record<string, any> = {
+        interests: formData.interests,
+        occupation: formData.occupation,
+        phone: formData.phone,
+        meeting_link: formData.meeting_link,
+        avatar_url: formData.img,
+        fixed_schedule: formData.fixed_schedule,
+        private_notes: formData.private_notes,
+        professor_id: formData.professor_id,
+      };
+
+      // Campos contratuais — só editáveis se o contrato ainda não foi assinado
+      if (!contractSigned) {
+        updatePayload.full_name = formData.name;
+        updatePayload.module = formData.currentModuleStatus;
+        updatePayload.cpf = studentCpf;
+        updatePayload.postal_code = formData.postalCode;
+        updatePayload.address = formData.address;
+        updatePayload.address_number = formData.addressNumber;
+        updatePayload.monthly_fee = formData.monthly_fee;
+        updatePayload.due_day = formData.due_day;
+      }
 
       const { error } = await supabase
         .from('profiles')
-        .update({
-          full_name: formData.name,
-          module: formData.currentModuleStatus,
-          interests: formData.interests,
-          occupation: formData.occupation,
-          phone: formData.phone,
-          meeting_link: formData.meeting_link,
-          avatar_url: formData.img,
-          fixed_schedule: formData.fixed_schedule,
-          private_notes: formData.private_notes,
-          cpf: studentCpf,
-          postal_code: formData.postalCode,
-          address: formData.address,
-          address_number: formData.addressNumber,
-          professor_id: formData.professor_id,
-          monthly_fee: formData.monthly_fee,
-          due_day: formData.due_day
-        })
+        .update(updatePayload)
         .eq('id', editingStudent.id);
 
       if (error) throw error;
 
-      alert('Perfil do aluno atualizado com sucesso!');
+      if (contractSigned) {
+        alert('Perfil atualizado! Os dados contratuais (valor, CPF, endereço, etc.) não foram alterados pois o contrato já foi assinado.');
+      } else {
+        alert('Perfil do aluno atualizado com sucesso!');
+      }
       setEditingStudent(null);
 
-      // Atualiza também no Asaas se existir Customer
+      // Sincroniza no Asaas apenas campos não-contratuais se já assinou
       try {
         await asaasService.syncStudent({
           user_id: editingStudent.id,
-          name: formData.name,
-          email: formData.email || 'email@placeholder.com', // fallback
-          cpf: studentCpf || '',
+          name: contractSigned ? editingStudent.name : formData.name,
+          email: formData.email || 'email@placeholder.com',
+          cpf: contractSigned ? (editingStudent.cpf || '') : (studentCpf || ''),
           phone: formData.phone,
-          postalCode: formData.postalCode,
-          address: formData.address,
-          addressNumber: formData.addressNumber,
-          monthly_fee: formData.monthly_fee,
-          due_day: formData.due_day
+          postalCode: contractSigned ? (editingStudent.postalCode || '') : formData.postalCode,
+          address: contractSigned ? (editingStudent.address || '') : formData.address,
+          addressNumber: contractSigned ? (editingStudent.addressNumber || '') : formData.addressNumber,
+          monthly_fee: contractSigned ? editingStudent.monthly_fee : formData.monthly_fee,
+          due_day: contractSigned ? editingStudent.due_day : formData.due_day,
         } as any);
       } catch (asaasError) {
         console.error("Asaas Sync Error", asaasError);
