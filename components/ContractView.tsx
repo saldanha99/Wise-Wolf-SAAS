@@ -133,16 +133,67 @@ const ContractView: React.FC<ContractViewProps> = ({
     const monthlyFee = Number(profile.monthly_fee || 0);
     const totalValue = (monthlyFee * duration).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
+    const contractProps = {
+        innerRef: pdfRef,
+        studentName: profile.full_name || 'Aluno Wise Wolf',
+        studentCPF: profile.cpf || '000.000.000-00',
+        studentAddress: `${profile.address || ''}, ${profile.address_number || ''} - ${profile.postal_code || ''}`,
+        studentEmail: profile.email,
+        studentPhone: profile.phone || '',
+        planName,
+        planValue: monthlyFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+        totalValue,
+        planDuration: duration,
+        startDate,
+        endDate,
+        dueDay: profile.due_day || 10,
+        classFrequency: profile.class_frequency ? parseInt(String(profile.class_frequency)) : classFrequency,
+        acceptedAt: profile.accepted_at,
+        userIp: profile.signature_ip,
+        showPrintButton: false,
+    };
+
     return (
         <div className="space-y-4">
-            {/* Botões de ação — visíveis somente quando não há header externo */}
-            {showDownloadButton && (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
-                        <FileText size={18} className="text-tenant-primary" />
-                        <span className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</span>
-                    </div>
-                    <div className="flex items-center gap-2">
+
+            {/* ── MOBILE: só botão de download (sem preview) ── */}
+            <div className="sm:hidden flex flex-col items-center justify-center py-8 gap-6 px-4">
+                <div className="w-20 h-20 rounded-3xl bg-[#002366]/10 flex items-center justify-center">
+                    <FileText size={36} className="text-[#002366]" />
+                </div>
+                <div className="text-center">
+                    <p className="font-black text-brand-text text-base">Seu Contrato</p>
+                    <p className="text-xs text-brand-muted mt-1">
+                        {profile.full_name} · {planName}
+                    </p>
+                </div>
+                <button
+                    onClick={handleDownloadPdf}
+                    disabled={downloading}
+                    className="flex items-center gap-3 px-8 py-4 bg-[#002366] text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-blue-900 active:scale-95 transition-all shadow-xl disabled:opacity-50 w-full justify-center"
+                >
+                    {downloading
+                        ? <><Loader2 size={18} className="animate-spin" /> Gerando PDF...</>
+                        : <><Download size={18} /> Baixar PDF</>
+                    }
+                </button>
+                <p className="text-[10px] text-brand-muted text-center">
+                    O arquivo será salvo no seu dispositivo
+                </p>
+                {/* Elemento A4 fora da tela — necessário para o html2pdf capturar (display:none bloqueia html2canvas) */}
+                <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '210mm', zIndex: -1, pointerEvents: 'none' }} aria-hidden="true">
+                    <ContractDocument {...contractProps} />
+                </div>
+            </div>
+
+            {/* ── DESKTOP: header de ação + preview completo ── */}
+            <div className="hidden sm:block space-y-4">
+                {showDownloadButton && (
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                            <FileText size={18} className="text-tenant-primary" />
+                            <span className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</span>
+                        </div>
                         <button
                             onClick={handleDownloadPdf}
                             disabled={downloading}
@@ -152,41 +203,20 @@ const ContractView: React.FC<ContractViewProps> = ({
                             {downloading ? 'Gerando...' : 'Baixar PDF'}
                         </button>
                     </div>
-                </div>
-            )}
-
-            {/* Preview responsivo — usa CSS zoom para mostrar o A4 em tela pequena */}
-            <div className="flex flex-col items-center overflow-x-hidden">
-                <style>{`
-                    .contract-preview-wrap { transform-origin: top center; }
-                    @media (max-width: 400px)  { .contract-preview-wrap { zoom: 0.38; } }
-                    @media (min-width: 401px) and (max-width: 639px)  { .contract-preview-wrap { zoom: 0.44; } }
-                    @media (min-width: 640px) and (max-width: 1023px) { .contract-preview-wrap { zoom: 0.58; } }
-                    @media (min-width: 1024px) { .contract-preview-wrap { zoom: 0.82; } }
-                    @media (min-width: 1280px) { .contract-preview-wrap { zoom: 1; } }
-                `}</style>
-                <div className="contract-preview-wrap shadow-2xl">
-                    <ContractDocument
-                        innerRef={pdfRef}
-                        studentName={profile.full_name || 'Aluno Wise Wolf'}
-                        studentCPF={profile.cpf || '000.000.000-00'}
-                        studentAddress={`${profile.address || ''}, ${profile.address_number || ''} - ${profile.postal_code || ''}`}
-                        studentEmail={profile.email}
-                        studentPhone={profile.phone || ''}
-                        planName={planName}
-                        planValue={monthlyFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        totalValue={totalValue}
-                        planDuration={duration}
-                        startDate={startDate}
-                        endDate={endDate}
-                        dueDay={profile.due_day || 10}
-                        classFrequency={profile.class_frequency ? parseInt(String(profile.class_frequency)) : classFrequency}
-                        acceptedAt={profile.accepted_at}
-                        userIp={profile.signature_ip}
-                        showPrintButton={false}
-                    />
+                )}
+                <div className="flex flex-col items-center overflow-x-hidden">
+                    <style>{`
+                        .contract-preview-wrap { transform-origin: top center; }
+                        @media (min-width: 640px) and (max-width: 1023px) { .contract-preview-wrap { zoom: 0.58; } }
+                        @media (min-width: 1024px) { .contract-preview-wrap { zoom: 0.82; } }
+                        @media (min-width: 1280px) { .contract-preview-wrap { zoom: 1; } }
+                    `}</style>
+                    <div className="contract-preview-wrap shadow-2xl">
+                        <ContractDocument {...contractProps} />
+                    </div>
                 </div>
             </div>
+
         </div>
     );
 };
