@@ -29,7 +29,20 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [assignedTeacher, setAssignedTeacher] = useState<any>(null);
   const [showContract, setShowContract] = useState(false);
   const [contractDownloadFn, setContractDownloadFn] = useState<(() => void) | null>(null);
+  const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
+
+  // No mobile baixa direto; no desktop abre modal
+  const handleContractClick = async () => {
+    const isMobile = window.innerWidth < 640;
+    if (isMobile) {
+      if (!contractDownloadFn) return; // ainda carregando
+      setDownloadingContract(true);
+      try { await contractDownloadFn(); } finally { setDownloadingContract(false); }
+    } else {
+      setShowContract(true);
+    }
+  };
 
   // Derived state from Context
   const profile = studentContext?.profile;
@@ -151,24 +164,24 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
           {/* Documentation Alerts (Fixed Logic) */}
           {profile?.documentation_status === 'PENDING' ? (
-            <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-red-500/20 cursor-pointer shadow-[0_0_30px_-10px_rgba(239,68,68,0.3)]" onClick={() => setShowContract(true)}>
+            <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-red-500/20 cursor-pointer shadow-[0_0_30px_-10px_rgba(239,68,68,0.3)]" onClick={handleContractClick}>
               <div className="p-3 bg-red-500 text-white rounded-2xl shadow-lg">
-                <FileText size={24} />
+                {downloadingContract ? <RefreshCw size={24} className="animate-spin" /> : <FileText size={24} />}
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-red-400 tracking-wider">Atenção Necessária</p>
-                <p className="text-sm font-bold text-white tracking-tight">Assinar Contrato</p>
+                <p className="text-sm font-bold text-white tracking-tight">{downloadingContract ? 'Gerando PDF...' : 'Assinar Contrato'}</p>
               </div>
               <ChevronRight size={18} className="ml-2 text-red-300" />
             </div>
           ) : (
-            <div className="bg-brand-surface/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-brand-surface/20 cursor-pointer" onClick={() => setShowContract(true)}>
+            <div className="bg-brand-surface/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-brand-surface/20 cursor-pointer" onClick={handleContractClick}>
               <div className="p-3 bg-brand-surface/20 text-white rounded-2xl shadow-lg">
-                <FileText size={24} />
+                {downloadingContract ? <RefreshCw size={24} className="animate-spin" /> : <FileText size={24} />}
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-slate-300 tracking-wider">Documentos</p>
-                <p className="text-sm font-bold text-white tracking-tight">Meu Contrato</p>
+                <p className="text-sm font-bold text-white tracking-tight">{downloadingContract ? 'Gerando PDF...' : 'Meu Contrato'}</p>
               </div>
               <ChevronRight size={18} className="ml-2 text-slate-300" />
             </div>
@@ -378,6 +391,18 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {/* 6. COMPLEMENTARY ACTIVITIES (geradas por IA) */}
       <StudentActivities userId={user.id} tenantId={tenantId || profile?.tenant_id} />
+
+      {/* ContractView fora da tela para pré-popular contractDownloadFn antes do clique */}
+      {profile && (
+        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }} aria-hidden="true">
+          <ContractView
+            userId={user.id}
+            classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)}
+            showDownloadButton={false}
+            onDownloadReady={(fn) => setContractDownloadFn(() => fn)}
+          />
+        </div>
+      )}
 
       {showContract && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
