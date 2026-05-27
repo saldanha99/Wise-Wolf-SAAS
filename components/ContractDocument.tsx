@@ -61,11 +61,12 @@ interface ContractDocumentProps {
     subscriptionId?: string;
 
     // ── Personalização da escola (multi-tenant) ──
-    // Se não informado, usa os dados da Wise Wolf Language como padrão
     school?: SchoolInfo;
 
     // ── UI ──
     showPrintButton?: boolean;
+    /** Ref externo para captura do PDF (html2pdf.js) — aponta para a folha A4 */
+    innerRef?: React.RefObject<HTMLDivElement>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,8 +108,11 @@ export function ContractDocument({
     subscriptionId,
     school,
     showPrintButton = true,
+    innerRef,
 }: ContractDocumentProps) {
     const componentRef = useRef<HTMLDivElement>(null);
+    // Usa innerRef externo se fornecido, senão usa o interno
+    const a4Ref = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
 
     // Mescla dados da escola com os defaults da Wise Wolf
     const s: Required<SchoolInfo> = {
@@ -119,7 +123,7 @@ export function ContractDocument({
     };
 
     const handlePrint = useReactToPrint({
-        contentRef: componentRef,
+        contentRef: a4Ref,
         documentTitle: `Contrato_${s.name.replace(/\s+/g, '_')}_${studentName.replace(/\s+/g, '_')}`,
     });
 
@@ -130,36 +134,39 @@ export function ContractDocument({
     const isUsingDefaultTemplate = !school || Object.keys(school).length === 0;
 
     return (
-        <div className="flex flex-col items-center gap-4 p-6 bg-gray-100 min-h-screen">
+        <div className="flex flex-col items-center gap-4 p-4 bg-gray-100 contract-doc-outer">
 
-            {/* Barra de ações */}
+            {/* Barra de ações — oculta na impressão */}
             {showPrintButton && (
-                <div className="w-full max-w-[210mm] flex items-center justify-between">
+                <div className="w-full max-w-[210mm] flex items-center justify-between gap-3 flex-wrap contract-no-print">
                     {isUsingDefaultTemplate && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-                            <Building2 size={12} />
-                            <span>Template padrão Wise Wolf Language — personalize em <strong>Configurações → Contrato</strong></span>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex-1 min-w-0">
+                            <Building2 size={12} className="shrink-0" />
+                            <span className="truncate">Template padrão Wise Wolf Language — personalize em <strong>Configurações → Contrato</strong></span>
                         </div>
                     )}
                     <button
                         onClick={handlePrint}
-                        className="ml-auto flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition-colors shrink-0"
                     >
-                        <Printer size={14} /> Imprimir / PDF
+                        <Printer size={14} /> Imprimir
                     </button>
                 </div>
             )}
 
             {/* ─── Folha A4 ─── */}
             <div
-                ref={componentRef}
+                ref={a4Ref}
                 className="w-[210mm] min-h-[297mm] bg-white p-[22mm] shadow-2xl text-gray-800 text-[11px] leading-relaxed"
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
                 <style>{`
                     @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap');
                     @media print {
-                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
+                        .contract-doc-outer { background: none !important; padding: 0 !important; min-height: 0 !important; }
+                        .contract-no-print { display: none !important; }
+                        @page { size: A4; margin: 0mm; }
                     }
                 `}</style>
 

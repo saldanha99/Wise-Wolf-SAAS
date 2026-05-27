@@ -28,6 +28,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [assignedTeacher, setAssignedTeacher] = useState<any>(null);
   const [showContract, setShowContract] = useState(false);
+  const [contractDownloadFn, setContractDownloadFn] = useState<(() => void) | null>(null);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
 
   // Derived state from Context
@@ -380,26 +381,44 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {showContract && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-          {/* Overlay click to close */}
+          {/* Overlay clicável para fechar */}
           <div className="absolute inset-0" onClick={() => setShowContract(false)} />
-          <div className="relative bg-brand-surface rounded-t-[2rem] sm:rounded-[2rem] w-full sm:max-w-4xl h-[92dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300">
+          <div className="relative bg-brand-surface rounded-t-[2rem] sm:rounded-[2rem] w-full sm:max-w-4xl h-[94dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300">
             {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 sm:hidden shrink-0">
               <div className="w-10 h-1 bg-brand-border rounded-full" />
             </div>
-            {/* Sticky header com botão fechar */}
-            <div className="flex items-center justify-between px-5 py-3 sm:px-6 sm:py-4 border-b border-brand-border shrink-0">
-              <span className="font-black text-brand-text text-sm uppercase tracking-widest">Seu Contrato</span>
-              <button
-                onClick={() => setShowContract(false)}
-                className="p-2 bg-brand-surface-2 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              >
-                <X size={20} className="text-brand-muted" />
-              </button>
+            {/* Cabeçalho fixo — título + botão download + fechar */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-border shrink-0 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText size={16} className="text-tenant-primary shrink-0" />
+                <span className="font-black text-brand-text text-sm uppercase tracking-widest truncate">Seu Contrato</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {contractDownloadFn && (
+                  <button
+                    onClick={contractDownloadFn}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-sm"
+                  >
+                    <Download size={12} /> Baixar PDF
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowContract(false)}
+                  className="p-2 bg-brand-surface-2 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X size={18} className="text-brand-muted" />
+                </button>
+              </div>
             </div>
-            {/* Conteúdo rolável */}
-            <div className="overflow-y-auto overflow-x-hidden flex-1 p-4 sm:p-8">
-              <ContractView userId={user.id} classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)} />
+            {/* Conteúdo rolável — sem padding lateral excessivo */}
+            <div className="overflow-y-auto overflow-x-hidden flex-1 p-2 sm:p-6">
+              <ContractView
+                userId={user.id}
+                classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)}
+                showDownloadButton={false}
+                onDownloadReady={(fn) => setContractDownloadFn(() => fn)}
+              />
             </div>
           </div>
         </div>
