@@ -1,4 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { gamificationService } from '../services/gamificationService';
@@ -394,7 +395,11 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
             || activity.title
             || 'Speaking Practice';
 
-        return (
+        // Portal para escapar do overflow:hidden do ActivityPlayer.
+        // No Safari/WebKit, position:fixed dentro de um ancestral com overflow:hidden
+        // fica preso naquele container (não cobre o viewport). Renderizando no body
+        // a Wolfie ocupa a tela inteira corretamente em todos os browsers.
+        return createPortal(
             <Suspense fallback={
                 <div className="fixed inset-0 z-[200] bg-slate-950 flex items-center justify-center">
                     <Loader2 className="animate-spin text-violet-400" size={32} />
@@ -409,7 +414,8 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
                         onFinish(100);
                     }}
                 />
-            </Suspense>
+            </Suspense>,
+            document.body
         );
     }
 

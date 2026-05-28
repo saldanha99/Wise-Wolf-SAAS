@@ -936,9 +936,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             if (data.vocabulary?.keyTerms?.length > 0) setVocabulary(data.vocabulary);
             if (data.quiz) setQuiz(data.quiz);
 
-            // Auto-speak: usa a voz do idioma que o aluno usou
+            // Auto-speak: usa o idioma da RESPOSTA (não do input do aluno)
+            // Isso evita pronuncia americanizada quando Wolfie responde em PT
+            // mas o input do aluno estava em EN (ou vazio no primeiro turno)
+            const responseLang: 'pt' | 'en' = isPortugueseText(chatText) ? 'pt' : 'en';
             if (autoSpeakEnabled && chatText) {
-                void speak(chatText, undefined, studentLang);
+                void speak(chatText, undefined, responseLang);
             } else {
                 setState('IDLE');
             }
