@@ -29,6 +29,7 @@ const TeacherInvoices = lazy(() => import('./components/TeacherInvoices'));
 const TeacherPayments = lazy(() => import('./components/TeacherPayments'));
 const LessonPlannerAI = lazy(() => import('./components/LessonPlannerAI'));
 const StudentDashboard = lazy(() => import('./components/StudentDashboard'));
+const StudentPracticeHub = lazy(() => import('./components/StudentPracticeHub'));
 const StudentSchedule = lazy(() => import('./components/StudentSchedule'));
 const EvolutionView = lazy(() => import('./components/EvolutionView'));
 const TeacherProfile = lazy(() => import('./components/TeacherProfile'));
@@ -428,7 +429,7 @@ const App: React.FC = () => {
 
     // SECURITY GUARD: Strict Student Access Check
     if (user.role === UserRole.STUDENT) {
-      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
+      const allowedStudentTabs = ['dashboard', 'ai-tutor', 'practice', 'schedule', 'meeting_links', 'materials', 'financial', 'evolution', 'profile', 'referral', 'training'];
       if (!allowedStudentTabs.includes(activeTab)) {
         return (
           <div className="flex flex-col items-center justify-center min-h-[500px] text-center bg-white dark:bg-slate-900 rounded-[3rem] border border-red-100 dark:border-red-900/30 shadow-xl overflow-hidden relative">
@@ -557,6 +558,7 @@ const App: React.FC = () => {
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
+      'practice': <StudentPracticeHub userId={user.id} tenantId={currentTenant?.id} wolfieConfig={(user as any).wolfie_settings} />,
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,
       'trials': <TrialsToContracts tenantId={currentTenant?.id} user={user} />,
       'hr': <HRModule user={user} tenantId={currentTenant?.id} />,

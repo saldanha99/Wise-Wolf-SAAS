@@ -99,7 +99,8 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     const studentMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Meu Portal', icon: LayoutDashboard },
-        { id: 'ai-tutor', label: 'Wolfie Tutor', icon: Sparkles, badge: 'NOVO' as any }, // Using badge hack if supported, or just no badge
+        { id: 'ai-tutor', label: 'Wolfie Tutor', icon: Sparkles, badge: 'NOVO' as any },
+        { id: 'practice', label: 'Praticar', icon: Target },
         { id: 'schedule', label: 'Aulas', icon: Calendar },
         { id: 'meeting_links', label: 'Links', icon: Video },
         { id: 'materials', label: 'Materiais', icon: Book },

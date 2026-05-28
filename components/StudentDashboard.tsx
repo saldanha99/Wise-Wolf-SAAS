@@ -5,8 +5,6 @@ import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
 import ContractView from './ContractView';
-import StudentActivities from './StudentActivities';
-import StudentLearningPaths from './StudentLearningPaths';
 import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
 import { gamificationService } from '../services/gamificationService';
@@ -386,11 +384,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       {/* 5. SKILLS RADAR (evolucao por habilidade) */}
       <SkillsRadar userId={user.id} />
 
-      {/* 6. LEARNING PATHS (trilhas didaticas) */}
-      <StudentLearningPaths userId={user.id} tenantId={tenantId || profile?.tenant_id} wolfieConfig={profile?.wolfie_settings} />
-
-      {/* 6. COMPLEMENTARY ACTIVITIES (geradas por IA) */}
-      <StudentActivities userId={user.id} tenantId={tenantId || profile?.tenant_id} />
+      {/* Trilhas e Atividades movidas para a aba "Praticar" no sidebar */}
 
       {/* ContractView fora da tela para pré-popular contractDownloadFn antes do clique */}
       {profile && (
