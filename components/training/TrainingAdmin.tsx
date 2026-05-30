@@ -71,10 +71,15 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
             active: form.active, created_by: currentUser?.id,
             updated_at: new Date().toISOString(),
         };
-        if (form.id) {
-            await supabase.from('training_modules').update(payload).eq('id', form.id);
-        } else {
-            await supabase.from('training_modules').insert(payload);
+        // FIX: captura erro do Supabase (antes era silencioso — falha não aparecia)
+        const { error } = form.id
+            ? await supabase.from('training_modules').update(payload).eq('id', form.id)
+            : await supabase.from('training_modules').insert(payload);
+
+        if (error) {
+            console.error('Erro ao salvar módulo de treinamento:', error);
+            alert(`Erro ao salvar o módulo:\n\n${error.message}`);
+            return; // não fecha o modal — permite corrigir e tentar de novo
         }
         setEditing(null); setCreating(false); load();
     };
@@ -197,7 +202,7 @@ const ModuleForm: React.FC<{ initial: Module | null; onSave: (f: any) => void; o
         setUploadingPdf(true);
         try {
             const filename = `${tenantId}/${Date.now()}-${pdfFile.name.replace(/[^a-z0-9.-]/gi, '_')}`;
-            const { error } = await supabase.storage.from('training_materials').upload(filename, pdfFile);
+            const { error } = await supabase.storage.from('training_materials').upload(filename, pdfFile, { upsert: true });
             if (error) throw error;
             const { data } = supabase.storage.from('training_materials').getPublicUrl(filename);
             return data.publicUrl;
@@ -210,11 +215,21 @@ const ModuleForm: React.FC<{ initial: Module | null; onSave: (f: any) => void; o
         if (!form.target_roles || form.target_roles.length === 0) {
             alert('Selecione pelo menos um público.'); return;
         }
+        // Exige pelo menos um conteúdo: vídeo OU PDF
+        if (!form.video_url && !pdfFile && !form.pdf_url) {
+            alert('Adicione um link de vídeo OU um PDF ao módulo.'); return;
+        }
 
         let pdfUrl = form.pdf_url;
         if (pdfFile) {
-            const url = await uploadPdf();
-            if (url) pdfUrl = url;
+            try {
+                const url = await uploadPdf();
+                if (url) pdfUrl = url;
+            } catch (err: any) {
+                console.error('Erro ao subir PDF:', err);
+                alert(`Erro ao enviar o PDF:\n\n${err.message || err}`);
+                return; // não prossegue se o upload falhou
+            }
         }
 
         onSave({ ...form, pdf_url: pdfUrl });
