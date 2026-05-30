@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Video, FileText, Users, GraduationCap, Briefcase, Loader2, Save, X, Edit2, Eye, Link as LinkIcon } from 'lucide-react';
+import { Plus, Trash2, Video, FileText, Users, GraduationCap, Briefcase, Loader2, Save, X, Edit2, Eye, Link as LinkIcon, Zap } from 'lucide-react';
 
 const AUDIENCE_OPTIONS = [
     { id: 'TEACHER', label: 'Professores', icon: Briefcase, color: 'emerald' },
@@ -37,6 +37,39 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
     const [editing, setEditing] = useState<Module | null>(null);
     const [creating, setCreating] = useState(false);
     const [audienceFilter, setAudienceFilter] = useState<string>('ALL');
+
+    // Broadcast de Treinamento Ao Vivo (link mágico p/ professores aceitarem — remunerado)
+    const [showLive, setShowLive] = useState(false);
+    const [liveTopic, setLiveTopic] = useState('');
+    const [liveFocus, setLiveFocus] = useState('');
+    const [liveDate, setLiveDate] = useState('');
+    const [liveTime, setLiveTime] = useState('');
+    const [liveSending, setLiveSending] = useState(false);
+
+    const broadcastTraining = async () => {
+        if (!liveTopic || !liveDate || !liveTime) { alert('Preencha tema, data e horário.'); return; }
+        setLiveSending(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('broadcast-opportunity', {
+                body: {
+                    kind: 'TRAINING',
+                    student_name: liveTopic,   // reaproveita o campo como "tema do treinamento"
+                    student_phone: '',
+                    date: liveDate,
+                    time: liveTime,
+                    interests: liveFocus || 'Capacitação da equipe',
+                },
+            });
+            if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao disparar.');
+            alert('Treinamento disparado no grupo de professores! O primeiro a aceitar garante a vaga (remunerada como aula).');
+            setShowLive(false);
+            setLiveTopic(''); setLiveFocus(''); setLiveDate(''); setLiveTime('');
+        } catch (err: any) {
+            alert('Erro ao disparar treinamento: ' + err.message);
+        } finally {
+            setLiveSending(false);
+        }
+    };
 
     useEffect(() => { load(); }, [tenantId]);
 
@@ -110,6 +143,9 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                             <option value="ALL">Todos públicos</option>
                             {AUDIENCE_OPTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                         </select>
+                        <button onClick={() => setShowLive(true)} className="flex items-center gap-2 px-3 py-2 bg-amber-500 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110">
+                            <Zap size={12} /> Treinamento Ao Vivo
+                        </button>
                         <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110">
                             <Plus size={12} /> Novo módulo
                         </button>
@@ -171,6 +207,61 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
 
             {(creating || editing) && (
                 <ModuleForm initial={editing} onSave={save} onCancel={() => { setEditing(null); setCreating(false); }} tenantId={tenantId} />
+            )}
+
+            {/* ── Broadcast de Treinamento Ao Vivo (link mágico) ── */}
+            {showLive && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center">
+                                    <Zap size={20} className="text-amber-600" />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-slate-800 dark:text-white text-sm">Treinamento Ao Vivo</h3>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">Link mágico p/ professores aceitarem</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowLive(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"><X size={18} /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Tema do treinamento *</label>
+                                <input value={liveTopic} onChange={e => setLiveTopic(e.target.value)} placeholder="Ex: Metodologia de Conversação Avançada"
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Foco / objetivo</label>
+                                <input value={liveFocus} onChange={e => setLiveFocus(e.target.value)} placeholder="Ex: Técnicas de correção em tempo real"
+                                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Data *</label>
+                                    <input type="date" value={liveDate} onChange={e => setLiveDate(e.target.value)}
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Horário *</label>
+                                    <input type="time" value={liveTime} onChange={e => setLiveTime(e.target.value)}
+                                        className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                                Dispara no grupo de professores. O primeiro a aceitar garante a vaga, que aparece na agenda dele (em âmbar) e é remunerada como aula ao ser lançada.
+                            </p>
+                        </div>
+                        <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+                            <button onClick={() => setShowLive(false)} className="px-4 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                            <button onClick={broadcastTraining} disabled={liveSending}
+                                className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 flex items-center gap-2 disabled:opacity-50">
+                                {liveSending ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                                Disparar treinamento
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

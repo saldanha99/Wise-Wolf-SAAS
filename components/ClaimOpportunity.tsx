@@ -29,6 +29,8 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
     const [isoDate, setIsoDate] = useState('');
     const [studentName, setStudentName] = useState('');
     const [studentPhone, setStudentPhone] = useState('');
+    const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
+    const isTraining = kind === 'TRAINING';
     const [timeStr, setTimeStr] = useState('');
 
     // Auth / Role State
@@ -45,7 +47,9 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
             const timeParam = params.get('time'); // HH:mm
             const sName = params.get('studentName');
             const sPhone = params.get('studentPhone');
+            const kindParam = params.get('kind');
 
+            if (kindParam === 'TRAINING') setKind('TRAINING');
             if (sName) setStudentName(sName);
             if (sPhone) setStudentPhone(sPhone);
             if (timeParam) setTimeStr(timeParam);
@@ -291,7 +295,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                 .insert({
                     start_time: isoDate,
                     status: 'scheduled',
-                    type: 'experimental',
+                    type: isTraining ? 'training' : 'experimental',
                     professor_id: user.id,
                     teacher_id: user.id,
                     tenant_id: opp.tenant_id || null,

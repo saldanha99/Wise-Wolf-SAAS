@@ -56,7 +56,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .from('appointments')
           .select('id, start_time, student_name, student_phone, type, status')
           .in('id', trialApptIds)
-          .eq('type', 'experimental');
+          .in('type', ['experimental', 'training']);
         allTrialAppointments = trialAppts || [];
       }
 
@@ -156,7 +156,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           }
         }
 
-        // Trials (from appointments via opportunities)
+        // Trials e Treinamentos (from appointments via opportunities)
         for (const t of appointments) {
           // Extrair hora/minuto do start_time (timestamp UTC)
           const apptDate = new Date(t.start_time);
@@ -167,19 +167,20 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
           }
           if (!logs?.some(l => l.appointment_id === t.id)) {
+            const isTraining = t.type === 'training';
             allLessons.push({
               id: `trial-${t.id}`,
               studentId: null,
               leadName: t.student_name,
               leadPhone: t.student_phone,
-              name: t.student_name || 'Aula Experimental',
+              name: t.student_name || (isTraining ? 'Treinamento' : 'Aula Experimental'),
               date: i === 0 ? `Hoje às ${timeStr}` : `${checkDate.toLocaleDateString('pt-BR')} às ${timeStr}`,
               dateObj: dateStr,
-              avatar: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
-              level: 'TRIAL',
-              type: 'AULA EXPERIMENTAL',
+              avatar: `https://ui-avatars.com/api/?name=${t.student_name || (isTraining ? 'T' : 'E')}`,
+              level: isTraining ? 'TREINO' : 'TRIAL',
+              type: isTraining ? 'TREINAMENTO' : 'AULA EXPERIMENTAL',
               isLate: i > 0,
-              suggestedTopic: 'Avaliação de Nível',
+              suggestedTopic: isTraining ? 'Treinamento Wise Wolf' : 'Avaliação de Nível',
               suggestedMaterial: null
             });
           }
@@ -223,9 +224,11 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           // Reposição de falta do PROFESSOR é paga (REPOSIÇÃO_PROF); de falta do ALUNO não (REPOSIÇÃO)
           subtype: item.type === 'AULA EXPERIMENTAL'
             ? 'AULA EXPERIMENTAL'
-            : (isReschedule
-                ? (item.faultType === 'TEACHER' ? 'REPOSIÇÃO_PROF' : 'REPOSIÇÃO')
-                : (data.subtype || null)),
+            : item.type === 'TREINAMENTO'
+              ? 'TREINAMENTO'
+              : (isReschedule
+                  ? (item.faultType === 'TEACHER' ? 'REPOSIÇÃO_PROF' : 'REPOSIÇÃO')
+                  : (data.subtype || null)),
           content_covered: data.lastApplied || null, // Book Selection
           observations: data.observation || null, // Free text OBS
 

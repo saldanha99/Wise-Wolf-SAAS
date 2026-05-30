@@ -33,7 +33,8 @@ serve(async (req) => {
         console.log("Broadcast Function Hit");
         // opportunity_id (opcional): quando presente, REAPROVEITA a oportunidade existente
         // (reagendamento de experimental com falta) em vez de criar uma nova.
-        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id } = await req.json();
+        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id, kind } = await req.json();
+        const oppKind = kind === 'TRAINING' ? 'TRAINING' : 'TRIAL';
 
         // VALIDATION: Date is now required (YYYY-MM-DD)
         if (!student_name || !date || !time) {
@@ -178,6 +179,7 @@ serve(async (req) => {
                     interests: interests || null,
                     user_id: user.id,
                     preferred_slots: preferred_slots || null,
+                    kind: oppKind,
                 })
                 .select('id')
                 .single();
@@ -192,7 +194,8 @@ serve(async (req) => {
             date: date,
             time: time,
             studentName: student_name,
-            studentPhone: student_phone || ''
+            studentPhone: student_phone || '',
+            kind: oppKind
         });
 
         const claimLink = `${BASE_URL}?${params.toString()}`;
@@ -218,7 +221,18 @@ serve(async (req) => {
             preferredSlotsText = `\n\n📅 *Preferências do aluno:*\n${slotLines}`;
         }
 
-        const textMessage = `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*
+        const textMessage = oppKind === 'TRAINING'
+            ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*
+
+📚 *Tema:* ${student_name}
+🎯 *Foco:* ${interests || 'Capacitação da equipe'}${preferredSlotsText}
+
+🏆 *Professor(a), quer participar deste treinamento?*
+O primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!
+
+👇 *Aceitar agora:*
+${claimLink}`
+            : `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*
 
 📋 *Aluno:* ${student_name}
 🎯 *Objetivo:* ${interests || 'Não informado'}${preferredSlotsText}
