@@ -22,19 +22,29 @@ export const gamificationService = {
             // Simple leveling logic: Level = floor(XP / 1000) + 1
             const newLevel = Math.floor(newXP / 1000) + 1;
 
+            // XP diário (meta) — reseta por dia de calendário
+            const hoje = new Date();
+            const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+            const { data: dxp } = await supabase
+                .from('profiles').select('daily_xp, daily_xp_date').eq('id', userId).maybeSingle();
+            const mesmoData = dxp?.daily_xp_date && String(dxp.daily_xp_date).slice(0, 10) === hojeStr;
+            const novoDailyXP = (mesmoData ? (dxp?.daily_xp || 0) : 0) + amount;
+
             // 2. Update profile
             const { error: updateError } = await supabase
                 .from('profiles')
                 .update({
                     xp: newXP,
                     level: newLevel,
-                    last_activity: new Date().toISOString()
+                    last_activity: new Date().toISOString(),
+                    daily_xp: novoDailyXP,
+                    daily_xp_date: hojeStr,
                 })
                 .eq('id', userId);
 
             if (updateError) throw updateError;
 
-            return { newXP, newLevel, leveledUp: newLevel > currentLevel };
+            return { newXP, newLevel, leveledUp: newLevel > currentLevel, dailyXP: novoDailyXP };
         } catch (err) {
             console.error('Error adding XP:', err);
             return null;
@@ -91,13 +101,30 @@ export const gamificationService = {
             const atual = await this.getHearts(userId);
             const novo = Math.max(0, atual - 1);
             await supabase.from('profiles')
-                .update({ hearts: novo, hearts_updated_at: new Date().toISOString() })
+                // hearts_full_notified=false: ao perder vida, habilita o aviso de "vidas cheias" quando regenerar
+                .update({ hearts: novo, hearts_updated_at: new Date().toISOString(), hearts_full_notified: false })
                 .eq('id', userId);
             return novo;
         } catch (err) {
             console.error('loseHeart error:', err);
             return 5;
         }
+    },
+
+    /** Divisão da liga a partir do XP total (estilo Duolingo). */
+    leagueDivision(xp: number): { tier: string; emoji: string; cor: string; min: number; next: number | null } {
+        const tiers = [
+            { tier: 'Bronze',   emoji: '🥉', cor: '#cd7f32', min: 0 },
+            { tier: 'Prata',    emoji: '🥈', cor: '#9ca3af', min: 500 },
+            { tier: 'Ouro',     emoji: '🥇', cor: '#f59e0b', min: 1500 },
+            { tier: 'Platina',  emoji: '💎', cor: '#22d3ee', min: 3000 },
+            { tier: 'Diamante', emoji: '👑', cor: '#a78bfa', min: 6000 },
+        ];
+        let atual = tiers[0];
+        for (const t of tiers) if (xp >= t.min) atual = t;
+        const idx = tiers.indexOf(atual);
+        const next = idx < tiers.length - 1 ? tiers[idx + 1].min : null;
+        return { ...atual, next };
     },
 
     /**

@@ -4,6 +4,7 @@ import { BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, S
 import { supabase } from '../lib/supabase';
 import ActivityPlayer from './ActivityPlayer';
 import StreakModal from './StreakModal';
+import { gamificationService } from '../services/gamificationService';
 
 interface Props {
     userId: string;
@@ -65,7 +66,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     const [progress, setProgress] = useState<Record<string, { status: string; score: number | null }>>({});
     const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
     // Gamificação
-    const [gami, setGami] = useState<{ xp: number; streak: number; hearts: number }>({ xp: 0, streak: 0, hearts: 5 });
+    const [gami, setGami] = useState<{ xp: number; streak: number; hearts: number; dailyXp: number; dailyGoal: number }>({ xp: 0, streak: 0, hearts: 5, dailyXp: 0, dailyGoal: 30 });
     const [leaderboard, setLeaderboard] = useState<{ full_name: string; xp: number }[]>([]);
 
     useEffect(() => {
@@ -77,14 +78,18 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             // Stats do aluno
             const { data: prof } = await supabase
                 .from('profiles')
-                .select('xp, streak_count, hearts')
+                .select('xp, streak_count, hearts, daily_xp, daily_xp_date, daily_xp_goal')
                 .eq('id', userId)
                 .maybeSingle();
             if (prof) {
+                const hojeStr = new Date().toISOString().slice(0, 10);
+                const dailyHoje = prof.daily_xp_date && String(prof.daily_xp_date).slice(0, 10) === hojeStr ? (prof.daily_xp ?? 0) : 0;
                 setGami({
                     xp: prof.xp ?? 0,
                     streak: prof.streak_count ?? 0,
                     hearts: prof.hearts ?? 5,
+                    dailyXp: dailyHoje,
+                    dailyGoal: prof.daily_xp_goal ?? 30,
                 });
             }
             // Ranking da liga (top 5 alunos por XP no tenant)
@@ -258,6 +263,26 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                             <Heart key={i} size={17} className={i < gami.hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < gami.hearts ? '#f43f5e' : 'none'} />
                         ))}
                     </div>
+                    <span className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+                    {/* Meta diária (anel de progresso) */}
+                    <div className="flex items-center gap-1.5" title={`Meta diária: ${gami.dailyXp}/${gami.dailyGoal} XP`}>
+                        {(() => {
+                            const pct = Math.min(100, Math.round((gami.dailyXp / Math.max(1, gami.dailyGoal)) * 100));
+                            const done = gami.dailyXp >= gami.dailyGoal;
+                            return (
+                                <div className="relative w-7 h-7">
+                                    <svg viewBox="0 0 36 36" className="w-7 h-7 -rotate-90">
+                                        <circle cx="18" cy="18" r="15" fill="none" strokeWidth="4" className="stroke-slate-200 dark:stroke-slate-700" />
+                                        <circle cx="18" cy="18" r="15" fill="none" strokeWidth="4" strokeLinecap="round"
+                                            stroke={done ? '#22c55e' : '#f59e0b'}
+                                            strokeDasharray={`${(pct / 100) * 94.2} 94.2`} />
+                                    </svg>
+                                    <span className="absolute inset-0 flex items-center justify-center text-[9px]">{done ? '✅' : '🎯'}</span>
+                                </div>
+                            );
+                        })()}
+                        <span className="font-black text-xs text-slate-600 dark:text-slate-300">{gami.dailyXp}/{gami.dailyGoal}</span>
+                    </div>
                 </div>
 
                 {/* Header sticky com progresso */}
@@ -412,10 +437,24 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     {leaderboard.length > 0 && (
                         <div className="mt-10 max-w-md mx-auto">
                             <div className="rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
-                                <div className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white">
-                                    <Medal size={18} />
-                                    <span className="font-black text-sm uppercase tracking-wide">Liga · Top alunos</span>
-                                </div>
+                                {(() => {
+                                    const div = gamificationService.leagueDivision(gami.xp);
+                                    const faltam = div.next != null ? div.next - gami.xp : 0;
+                                    return (
+                                        <div className="px-5 py-3.5 text-white" style={{ background: `linear-gradient(135deg, ${div.cor}, ${div.cor}cc)` }}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xl">{div.emoji}</span>
+                                                <div className="flex-1">
+                                                    <p className="font-black text-sm uppercase tracking-wide">Liga {div.tier}</p>
+                                                    {div.next != null
+                                                        ? <p className="text-[10px] opacity-90">Faltam {faltam} XP para a próxima divisão</p>
+                                                        : <p className="text-[10px] opacity-90">Divisão máxima! 👑</p>}
+                                                </div>
+                                                <Medal size={18} className="opacity-80" />
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                                 <ul className="divide-y divide-slate-50 dark:divide-slate-800">
                                     {leaderboard.map((s, i) => {
                                         const medal = ['🥇', '🥈', '🥉'][i];
