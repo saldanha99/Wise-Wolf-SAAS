@@ -4,6 +4,7 @@ import { getPedagogicalSuggestion } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
+import StudentOnboarding from './StudentOnboarding';
 import ContractView from './ContractView';
 import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
@@ -29,6 +30,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [contractDownloadFn, setContractDownloadFn] = useState<(() => void) | null>(null);
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
+  const [onboardingDone, setOnboardingDone] = useState(false);
 
   // No mobile baixa direto; no desktop abre modal
   const handleContractClick = async () => {
@@ -141,6 +143,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
   return (
     <div className="space-y-8 animate-fade-in-up pb-20 font-sans">
+
+      {/* Tour de boas-vindas no 1º acesso */}
+      {profile && profile.onboarded === false && !onboardingDone && (
+        <StudentOnboarding
+          userId={profile.id}
+          nome={profile.full_name}
+          onComplete={() => setOnboardingDone(true)}
+        />
+      )}
 
       {/* 1. HERO SECTION: Premium Welcome Header */}
       <div className="relative rounded-[3rem] overflow-hidden bg-brand-accent shadow-2xl shadow-brand-accent/20 text-white p-8 md:p-12">
