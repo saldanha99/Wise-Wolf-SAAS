@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
 
-Lembrando que nossa aula começa em 1 hora, às *{class_time}*.
+Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
 
 {class_link}
 
@@ -39,12 +39,14 @@ serve(async (req) => {
         );
 
         const now = new Date();
-        const windowStart = new Date(now.getTime() + 55 * 60_000).toISOString();
-        const windowEnd = new Date(now.getTime() + 65 * 60_000).toISOString();
+        // Janela de 30 min antes da aula (25-35 min). O cron roda a cada 5 min;
+        // a idempotência (source_id+source_type+class_date+kind) impede duplicar no overlap.
+        const windowStart = new Date(now.getTime() + 25 * 60_000).toISOString();
+        const windowEnd = new Date(now.getTime() + 35 * 60_000).toISOString();
 
-        console.log(`[Reminders] Window: ${windowStart} → ${windowEnd}`);
+        console.log(`[Reminders] Window (30min antes): ${windowStart} → ${windowEnd}`);
 
-        // 1. Aulas começando em 55-65 min
+        // 1. Aulas começando em 25-35 min (≈30 min antes)
         const { data: classes, error: classesErr } = await supabaseClient
             .from('upcoming_classes')
             .select('*')

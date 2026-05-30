@@ -5,7 +5,7 @@ const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const API_TOKEN = "2AFB8724075F-40FB-92CF-414EE13EDA54";
 
 interface RequestBody {
-    type: 'CONFIRMATION' | 'RESCHEDULE';
+    type: 'CONFIRMATION' | 'RESCHEDULE' | 'CUSTOM';
     student_name: string;
     student_phone: string;
     teacher_name: string;
@@ -13,6 +13,9 @@ interface RequestBody {
     time: string;
     instanceName?: string;
     meeting_link?: string;
+    // Mensagem personalizada (template do professor já renderizado).
+    // Se preenchida, é enviada verbatim, ignorando os templates fixos abaixo.
+    message?: string;
 }
 
 serve(async (req) => {
@@ -27,7 +30,7 @@ serve(async (req) => {
     }
 
     try {
-        const { type, student_name, student_phone, teacher_name, date, time, instanceName, meeting_link } = await req.json() as RequestBody;
+        const { type, student_name, student_phone, teacher_name, date, time, instanceName, meeting_link, message } = await req.json() as RequestBody;
 
         if (!student_phone || !student_name) {
             throw new Error("Missing 'student_phone' or 'student_name'.");
@@ -46,14 +49,17 @@ serve(async (req) => {
         const link = meeting_link || "https://aluno.wisewolf.com.br";
 
         // Construct Message based on Type
-        let message = "";
+        // Se a mensagem personalizada foi enviada (template do professor), usa verbatim.
+        let finalMessage = (message && message.trim()) ? message.trim() : "";
 
-        if (type === 'CONFIRMATION') {
-            message = `Oi ${student_name}, aqui é o ${teacher_name}! 🐺 Confirmando nossa aula de ${date} às ${time}. Link: ${link}`;
-        } else if (type === 'RESCHEDULE') {
-            message = `Oi ${student_name}, aqui é o ${teacher_name}! 🐺 Reposição agendada: ${date} às ${time}. Link: ${link}`;
-        } else {
-            message = `Olá ${student_name}, lembrete de aula: ${date} às ${time}.`;
+        if (!finalMessage) {
+            if (type === 'CONFIRMATION') {
+                finalMessage = `Oi ${student_name}, aqui é o ${teacher_name}! 🐺 Confirmando nossa aula de ${date} às ${time}. Link: ${link}`;
+            } else if (type === 'RESCHEDULE') {
+                finalMessage = `Oi ${student_name}, aqui é o ${teacher_name}! 🐺 Reposição agendada: ${date} às ${time}. Link: ${link}`;
+            } else {
+                finalMessage = `Olá ${student_name}, lembrete de aula: ${date} às ${time}.`;
+            }
         }
 
         // Prepare payload
@@ -65,7 +71,7 @@ serve(async (req) => {
                 linkPreview: true
             },
             textMessage: {
-                text: message
+                text: finalMessage
             }
         };
 

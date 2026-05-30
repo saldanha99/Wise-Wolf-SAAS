@@ -186,8 +186,8 @@ const AutomacaoSmart: React.FC = () => {
                         <Zap size={18} fill={automationEnabled ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <p className={`text-sm font-bold ${automationEnabled ? 'text-white' : 'text-brand-text'}`}>Automação Matinal (6h)</p>
-                        <p className={`text-xs ${automationEnabled ? 'text-emerald-100' : 'text-brand-muted'}`}>Enviar link da aula automaticamente?</p>
+                        <p className={`text-sm font-bold ${automationEnabled ? 'text-white' : 'text-brand-text'}`}>{automationEnabled ? 'Modo Automático' : 'Modo Manual'}</p>
+                        <p className={`text-xs ${automationEnabled ? 'text-emerald-100' : 'text-brand-muted'}`}>{automationEnabled ? 'Lembrete enviado sozinho 30 min antes de cada aula' : 'Você dispara cada lembrete pelo botão "Disparar"'}</p>
                     </div>
                 </div>
                 <div className={`w-12 h-6 rounded-full p-1 transition-all ${automationEnabled ? 'bg-brand-surface/30' : 'bg-slate-300'}`}>

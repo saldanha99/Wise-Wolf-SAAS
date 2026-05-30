@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle } from 'lucide-react';
+import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase';
@@ -27,8 +27,84 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
   const [loading, setLoading] = useState(true);
   const [sentReminders, setSentReminders] = useState<Set<string>>(new Set());
   const [complianceLocked, setComplianceLocked] = useState({ isLocked: false, reason: '' });
+  // Configuração de disparo manual: instância do professor + template + nome
+  const [teacherWa, setTeacherWa] = useState<{ instance: string | null; template: string | null; name: string; automation: boolean }>({ instance: null, template: null, name: '', automation: false });
+  // Estado por aula: 'sending' | 'sent' | 'error'
+  const [dispatching, setDispatching] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
 
   const effectiveTenantId = tenantId || user.tenantId;
+
+  // Template default usado quando o professor não definiu o seu
+  const DEFAULT_TEMPLATE = `Oi {student_name}, tudo bem? 👋\n\nLembrando que nossa aula começa em 30 minutos, às *{class_time}*.\n\n{class_link}\n\nTe espero! 🐺`;
+
+  // Renderiza o template substituindo as variáveis {chave}
+  const renderTemplate = (tpl: string, vars: Record<string, string>) =>
+    tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
+
+  // Busca instância + template do professor para o disparo manual
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, whatsapp_instance, lesson_reminder_template, date_automation_enabled')
+        .eq('id', user.id)
+        .single();
+      if (data) {
+        setTeacherWa({
+          instance: data.whatsapp_instance || null,
+          template: data.lesson_reminder_template || null,
+          name: data.full_name || user.name || '',
+          automation: !!data.date_automation_enabled,
+        });
+      }
+    })();
+  }, [user?.id]);
+
+  // Dispara a mensagem personalizada pela instância do professor (Evolution API)
+  const handleDispatch = async (aula: any, key: string) => {
+    if (!aula.phone) {
+      alert('Este aluno não tem telefone cadastrado.');
+      return;
+    }
+    if (!teacherWa.instance) {
+      alert('Conecte seu WhatsApp (QR Code) na seção "Conexão Pessoal" para disparar pela sua instância.');
+      return;
+    }
+    setDispatching(prev => ({ ...prev, [key]: 'sending' }));
+    try {
+      const classLink = aula.meet || user.meeting_link || 'https://aluno.wisewolf.com.br';
+      const tpl = (teacherWa.template && teacherWa.template.trim()) ? teacherWa.template : DEFAULT_TEMPLATE;
+      const message = renderTemplate(tpl, {
+        student_name: (aula.name || '').split(' ')[0],
+        class_time: aula.time || '',
+        teacher_name: teacherWa.name,
+        class_link: classLink,
+        tenant_name: '',
+      });
+
+      const { data, error } = await supabase.functions.invoke('send-class-notification', {
+        body: {
+          type: 'CUSTOM',
+          student_name: aula.name,
+          student_phone: aula.phone,
+          teacher_name: teacherWa.name,
+          date: 'hoje',
+          time: aula.time || '',
+          instanceName: teacherWa.instance,
+          meeting_link: classLink,
+          message,
+        },
+      });
+
+      if (error || (data && data.error)) throw new Error(error?.message || data?.error || 'Falha no envio');
+      setDispatching(prev => ({ ...prev, [key]: 'sent' }));
+    } catch (err: any) {
+      console.error('Erro ao disparar:', err);
+      setDispatching(prev => ({ ...prev, [key]: 'error' }));
+      alert(`Erro ao disparar: ${err.message || 'tente novamente'}`);
+    }
+  };
 
   // Client-side watchdog removed in favor of Server-side Automation (Cron 6am-6:30am)
   // See supabase/functions/prepare-daily-reminders
@@ -201,7 +277,6 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
       setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials]
         .sort((a, b) => a.time.localeCompare(b.time))
-        .slice(0, 4)
       );
 
       // 5. Weekly Chart Data (Last 7 days)
@@ -449,16 +524,25 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           {/* Schedule Section */}
           <div className="bg-brand-surface p-6 md:p-8 rounded-2xl border border-brand-border flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center mb-6 relative z-10">
-              <h3 className="text-sm font-bold text-brand-text">Próximas Aulas</h3>
+              <h3 className="text-sm font-bold text-brand-text">Aulas de Hoje</h3>
               <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-[10px] bg-brand-accent/10 text-brand-accent px-3 py-1 rounded-full font-bold border border-brand-accent/20">
-                  <Zap size={10} className="fill-current" /> AUTO
-                </span>
+                {teacherWa.automation ? (
+                  <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-full font-bold border border-emerald-500/20" title="Os lembretes são enviados automaticamente 30 min antes de cada aula">
+                    <Zap size={10} className="fill-current" /> AUTO · 30min
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full font-bold border border-amber-500/20" title="Modo manual: clique em Disparar para enviar o lembrete">
+                    <MessageCircle size={10} className="fill-current" /> MANUAL
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 relative z-10 custom-scrollbar">
-              {upcomingLessons.length > 0 ? upcomingLessons.map((aula, i) => (
+              {upcomingLessons.length > 0 ? upcomingLessons.map((aula, i) => {
+                const dispatchKey = `${aula.type}-${aula.time}-${aula.name}`;
+                const dispatchState = dispatching[dispatchKey];
+                return (
                 <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border transition-all group ${aula.type === 'TRIAL'
                   ? 'border-brand-accent/40 bg-brand-accent/5'
                   : 'border-brand-border bg-brand-surface-2 hover:border-brand-accent/30'}`}>
@@ -481,22 +565,35 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                     </div>
                   </div>
 
-                  {aula.meet && (
-                    <div className="flex gap-2">
-                      {aula.phone && (
-                        <button
-                          onClick={() => {
-                            const message = encodeURIComponent(`Olá *${aula.name.split(' ')[0]}*! 🐺\n\nNossa aula começa em breve! ⏰\n\nSegue o link: ${aula.meet}\n\nTe espero lá! 🚀`);
-                            const phone = aula.phone.replace(/\D/g, '');
-                            const finalPhone = phone.startsWith('55') ? phone : `55${phone}`;
-                            window.open(`https://wa.me/${finalPhone}?text=${message}`, '_blank');
-                          }}
-                          className="w-10 h-10 rounded-xl bg-brand-surface text-brand-muted hover:text-emerald-500 hover:bg-emerald-400/10 flex items-center justify-center transition-all shadow-sm border border-brand-border"
-                          title="Enviar Link via WhatsApp Manualmente"
-                        >
-                          <MessageCircle size={18} />
-                        </button>
-                      )}
+                  <div className="flex gap-2 items-center shrink-0">
+                    {/* Botão Disparar — envia o lembrete personalizado pela INSTÂNCIA do professor */}
+                    {aula.phone && (
+                      <button
+                        onClick={() => handleDispatch(aula, dispatchKey)}
+                        disabled={dispatchState === 'sending' || dispatchState === 'sent'}
+                        className={`px-3 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm border text-xs font-bold ${
+                          dispatchState === 'sent'
+                            ? 'bg-emerald-500 border-emerald-500 text-white cursor-default'
+                            : dispatchState === 'error'
+                              ? 'bg-red-50 border-red-200 text-red-600'
+                              : dispatchState === 'sending'
+                                ? 'bg-brand-surface border-brand-border text-brand-muted cursor-wait'
+                                : 'bg-emerald-500 hover:bg-emerald-600 border-emerald-500 text-white'
+                        }`}
+                        title={teacherWa.instance ? 'Disparar lembrete agora pelo seu WhatsApp' : 'Conecte seu WhatsApp para disparar'}
+                      >
+                        {dispatchState === 'sending' ? (
+                          <><RefreshCw size={14} className="animate-spin" /> Enviando</>
+                        ) : dispatchState === 'sent' ? (
+                          <><CheckCircle size={14} /> Enviado</>
+                        ) : dispatchState === 'error' ? (
+                          <><AlertCircle size={14} /> Tentar</>
+                        ) : (
+                          <><Send size={14} /> Disparar</>
+                        )}
+                      </button>
+                    )}
+                    {aula.meet && (
                       <a
                         href={aula.meet}
                         target="_blank"
@@ -506,10 +603,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                       >
                         <Video size={18} />
                       </a>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              )) : (
+              ); }) : (
                 <div className="flex flex-col items-center justify-center h-48 text-brand-muted opacity-60">
                   <Calendar size={40} strokeWidth={1.5} className="mb-3" />
                   <p className="text-[10px] font-bold uppercase tracking-widest">Sem aulas futuras</p>
