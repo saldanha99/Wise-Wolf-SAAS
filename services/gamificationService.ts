@@ -42,6 +42,65 @@ export const gamificationService = {
     },
 
     /**
+     * Vidas (hearts) estilo Duolingo.
+     * Máx 5. Regenera +1 a cada 30 min a partir de hearts_updated_at.
+     */
+    HEART_MAX: 5,
+    HEART_REGEN_MS: 30 * 60 * 1000, // 30 min por vida
+
+    /** Lê as vidas aplicando regeneração temporal e persiste se mudou */
+    async getHearts(userId: string): Promise<number> {
+        try {
+            const { data: p } = await supabase
+                .from('profiles')
+                .select('hearts, hearts_updated_at')
+                .eq('id', userId)
+                .maybeSingle();
+
+            let hearts = p?.hearts ?? this.HEART_MAX;
+            const updatedAt = p?.hearts_updated_at ? new Date(p.hearts_updated_at) : null;
+
+            if (hearts < this.HEART_MAX && updatedAt) {
+                const elapsed = Date.now() - updatedAt.getTime();
+                const regenerated = Math.floor(elapsed / this.HEART_REGEN_MS);
+                if (regenerated > 0) {
+                    const novo = Math.min(this.HEART_MAX, hearts + regenerated);
+                    if (novo !== hearts) {
+                        // Mantém o "resto" do tempo para não perder progresso de regen
+                        const consumido = (novo - hearts) * this.HEART_REGEN_MS;
+                        const novoTimestamp = novo >= this.HEART_MAX
+                            ? new Date().toISOString()
+                            : new Date(updatedAt.getTime() + consumido).toISOString();
+                        await supabase.from('profiles')
+                            .update({ hearts: novo, hearts_updated_at: novoTimestamp })
+                            .eq('id', userId);
+                        hearts = novo;
+                    }
+                }
+            }
+            return hearts;
+        } catch (err) {
+            console.error('getHearts error:', err);
+            return this.HEART_MAX;
+        }
+    },
+
+    /** Perde 1 vida (ao errar). Retorna o novo total. */
+    async loseHeart(userId: string): Promise<number> {
+        try {
+            const atual = await this.getHearts(userId);
+            const novo = Math.max(0, atual - 1);
+            await supabase.from('profiles')
+                .update({ hearts: novo, hearts_updated_at: new Date().toISOString() })
+                .eq('id', userId);
+            return novo;
+        } catch (err) {
+            console.error('loseHeart error:', err);
+            return 5;
+        }
+    },
+
+    /**
      * Updates the streak count if the user logs in on a new day
      */
     async updateStreak(userId: string) {

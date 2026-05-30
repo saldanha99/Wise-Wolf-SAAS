@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic } from 'lucide-react';
+import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, Heart } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
@@ -23,10 +23,28 @@ interface ActivityPlayerProps {
     wolfieConfig?: any;
     onComplete: (score: number) => void;
     onClose: () => void;
+    hearts?: number;
+    onHeartsChange?: (hearts: number) => void;
 }
 
-const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose }) => {
+const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose, hearts: heartsProp = 5, onHeartsChange }) => {
     const [saving, setSaving] = useState(false);
+    const [hearts, setHearts] = useState(heartsProp);
+
+    // Sincroniza vidas reais (com regeneração) ao abrir
+    useEffect(() => {
+        gamificationService.getHearts(userId).then((h) => {
+            setHearts(h);
+            onHeartsChange?.(h);
+        }).catch(() => {});
+    }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Perde 1 vida ao errar
+    const handleWrongAnswer = async () => {
+        const novo = await gamificationService.loseHeart(userId);
+        setHearts(novo);
+        onHeartsChange?.(novo);
+    };
 
     // Mapeia o tipo de atividade para a skill primaria (alem de unit.skill_focus se houver)
     const skillsForActivityType: Record<string, string[]> = {
@@ -122,20 +140,43 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
             <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col safe-bottom">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
-                    <div>
+                    <div className="min-w-0">
                         <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{activity.type.replace(/_/g, ' ')}</p>
-                        <h2 className="text-lg font-black text-slate-800 dark:text-white">{activity.title}</h2>
+                        <h2 className="text-lg font-black text-slate-800 dark:text-white truncate">{activity.title}</h2>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-3 shrink-0">
+                        {/* Vidas */}
+                        <div className="flex items-center gap-0.5" title={`${hearts} vidas`}>
+                            {[0, 1, 2, 3, 4].map((i) => (
+                                <Heart key={i} size={16} className={i < hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < hearts ? '#f43f5e' : 'none'} />
+                            ))}
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6">
+                    {hearts <= 0 ? (
+                        <div className="text-center py-12">
+                            <div className="w-20 h-20 mx-auto rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center mb-4">
+                                <Heart size={36} className="text-rose-400" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white">Você ficou sem vidas!</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
+                                As vidas regeneram com o tempo (1 a cada 30 min). Volte mais tarde para continuar praticando.
+                            </p>
+                            <button onClick={onClose} className="mt-6 px-6 py-3 rounded-xl bg-violet-500 text-white font-black text-sm hover:bg-violet-600 transition-colors">
+                                Voltar à trilha
+                            </button>
+                        </div>
+                    ) : (
+                    <>
                     {activity.type === 'vocab_cards' && <VocabCardsRunner content={activity.content} activityId={activity.id} userId={userId} onFinish={handleSubmit} saving={saving} />}
-                    {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
-                    {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} />}
+                    {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} />}
+                    {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} />}
                     {activity.type === 'reading' && <ReadingRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
                     {activity.type === 'speaking_wolfie' && (
                         <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="animate-spin text-violet-500" /></div>}>
@@ -146,6 +187,8 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                         <div className="text-center py-12 text-slate-400">
                             <p className="text-sm">Tipo de atividade ainda não suportado: <code>{activity.type}</code></p>
                         </div>
+                    )}
+                    </>
                     )}
                 </div>
             </div>
@@ -244,7 +287,7 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
 // ─────────────────────────────────────────────────────────────
 // QUIZ / GRAMMAR DRILL
 // ─────────────────────────────────────────────────────────────
-const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: number) => void; saving: boolean }> = ({ content, rulePt, onFinish, saving }) => {
+const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: number) => void; saving: boolean; onWrongAnswer?: () => void }> = ({ content, rulePt, onFinish, saving, onWrongAnswer }) => {
     const questions = content.questions || [];
     const [idx, setIdx] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
@@ -261,6 +304,7 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
         if (selected === null) return;
         setShowExp(true);
         if (isCorrect) setCorrectCount(c => c + 1);
+        else onWrongAnswer?.(); // perde uma vida ao errar
     };
 
     const next = () => {

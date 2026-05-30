@@ -441,6 +441,8 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         activity={activeActivity}
                         userId={userId}
                         wolfieConfig={wolfieConfig}
+                        hearts={gami.hearts}
+                        onHeartsChange={(h) => setGami(g => ({ ...g, hearts: h }))}
                         onComplete={handleActivityComplete}
                         onClose={() => setActiveActivity(null)}
                     />
