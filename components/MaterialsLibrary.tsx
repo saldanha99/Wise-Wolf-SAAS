@@ -34,6 +34,7 @@ const NICHE_META: Record<string, { label: string; badge: string }> = {
     TECH: { label: '💻 Tech', badge: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300' },
     BUSINESS: { label: '💼 Business', badge: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300' },
     TRAVEL: { label: '✈️ Viagem', badge: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300' },
+    KIDS: { label: '🧸 Crianças', badge: 'bg-pink-100 text-pink-600 dark:bg-pink-900/40 dark:text-pink-300' },
 };
 
 const typeVisual = (type?: string) => {
