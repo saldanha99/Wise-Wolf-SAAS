@@ -107,6 +107,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [dueDay, setDueDay] = useState(10);
     const [monthlyFee, setMonthlyFee] = useState(0);
     const [isManualPrice, setIsManualPrice] = useState(false);
+    // Taxa de matrícula — paridade com o link de matrícula do dashboard
+    const [chargeEnrollmentFee, setChargeEnrollmentFee] = useState(false);
+    const [enrollmentFee, setEnrollmentFee] = useState(49);
     const [selectedProfessor, setSelectedProfessor] = useState('');
     const [professorSearch, setProfessorSearch] = useState('');
     const [showProfessorList, setShowProfessorList] = useState(false);
@@ -283,6 +286,8 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setCopied(false);
         setIsManualPrice(false);
         setEnableProRata(false);
+        setChargeEnrollmentFee(false);
+        setEnrollmentFee(49);
         const now = new Date();
         if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
         setBillingStartMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
@@ -374,7 +379,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 dueDay: dueDay,
                 professorId: selectedProfessor || null,
                 requiresEnrollment: duration !== 0,
-                enrollmentFee: 0, // Matrícula via trial não cobra taxa adicional (já foi paga ou dispensada)
+                enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
                 startDate: new Date().toISOString().split('T')[0], // Data de hoje como início
                 // Pro-rata & billing start month (Módulo 3)
                 enableProRata,
@@ -1010,6 +1015,41 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         </div>
                                     </label>
                                 </div>
+                            </div>
+
+                            {/* SECTION: TAXA DE MATRÍCULA */}
+                            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={chargeEnrollmentFee}
+                                                onChange={(e) => setChargeEnrollmentFee(e.target.checked)}
+                                                className="sr-only"
+                                            />
+                                            <div className={`w-10 h-6 rounded-full transition-colors ${chargeEnrollmentFee ? 'bg-blue-600' : 'bg-slate-200'}`} />
+                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${chargeEnrollmentFee ? 'translate-x-4' : ''}`} />
+                                        </div>
+                                        <span className="text-sm font-bold text-slate-700">Cobrar Taxa de Matrícula</span>
+                                    </label>
+                                    {chargeEnrollmentFee && (
+                                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-blue-200">
+                                            <span className="text-[10px] font-black text-blue-600">R$</span>
+                                            <input
+                                                type="number"
+                                                value={enrollmentFee}
+                                                onChange={(e) => setEnrollmentFee(Number(e.target.value))}
+                                                className="w-14 bg-transparent border-none p-0 text-sm font-black text-blue-700 outline-none focus:ring-0"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-[9px] text-slate-400 font-medium">
+                                    {chargeEnrollmentFee
+                                        ? `O aluno deverá pagar R$ ${enrollmentFee.toFixed(2)} via Pix para garantir a vaga (cobrado após a assinatura).`
+                                        : 'A taxa de matrícula não será cobrada neste link.'}
+                                </p>
                             </div>
 
                             {/* GENERATE BUTTON & RESULT */}
