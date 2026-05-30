@@ -35,6 +35,8 @@ const NICHE_META: Record<string, { label: string; badge: string }> = {
     BUSINESS: { label: '💼 Business', badge: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300' },
     TRAVEL: { label: '✈️ Viagem', badge: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300' },
     KIDS: { label: '🧸 Crianças', badge: 'bg-pink-100 text-pink-600 dark:bg-pink-900/40 dark:text-pink-300' },
+    TOEFL_IELTS: { label: '🎓 TOEFL/IELTS', badge: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300' },
+    CONVERSATION: { label: '💬 Conversação', badge: 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300' },
 };
 
 const typeVisual = (type?: string) => {

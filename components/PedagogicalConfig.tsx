@@ -269,6 +269,8 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                     <option value="BUSINESS">💼 Business</option>
                     <option value="TRAVEL">✈️ Viagem</option>
                     <option value="KIDS">🧸 Crianças</option>
+                    <option value="TOEFL_IELTS">🎓 TOEFL/IELTS</option>
+                    <option value="CONVERSATION">💬 Conversação</option>
                   </select>
                 </div>
                 {newMaterial.type === 'PDF' ? (
