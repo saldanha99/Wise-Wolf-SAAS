@@ -199,6 +199,8 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             setProgress(prev => ({ ...prev, [activeActivity.id]: { status: 'COMPLETED', score } }));
         }
         setActiveActivity(null);
+        // Recarrega XP, ofensiva, vidas e ranking da liga (barra de status ao vivo)
+        loadGamification();
     };
 
     if (loading) {

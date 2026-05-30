@@ -101,41 +101,52 @@ export const gamificationService = {
     },
 
     /**
-     * Updates the streak count if the user logs in on a new day
+     * Atualiza a ofensiva (streak) por DIA DE CALENDÁRIO.
+     * Usa coluna própria `last_streak_date` (date) para não conflitar com
+     * `last_activity` (que o addXP sobrescreve). Idempotente no mesmo dia.
      */
     async updateStreak(userId: string) {
         try {
             const { data: profile, error: fetchError } = await supabase
                 .from('profiles')
-                .select('streak_count, last_activity')
+                .select('streak_count, last_streak_date')
                 .eq('id', userId)
                 .single();
 
             if (fetchError) throw fetchError;
 
-            const lastActivity = profile.last_activity ? new Date(profile.last_activity) : null;
-            const now = new Date();
+            // Data de hoje em formato YYYY-MM-DD (dia de calendário, fuso local)
+            const hoje = new Date();
+            const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const hojeStr = toDateStr(hoje);
 
-            if (!lastActivity) {
-                // First time
-                await supabase.from('profiles').update({ streak_count: 1, last_activity: now.toISOString() }).eq('id', userId);
-                return 1;
+            const ultimoStr: string | null = profile.last_streak_date
+                ? (typeof profile.last_streak_date === 'string'
+                    ? profile.last_streak_date.slice(0, 10)
+                    : toDateStr(new Date(profile.last_streak_date)))
+                : null;
+
+            // Já praticou hoje → não mexe (idempotente)
+            if (ultimoStr === hojeStr) {
+                return profile.streak_count || 1;
             }
 
-            const diffDays = Math.floor((now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) {
-                // Consecutive day
-                const newStreak = (profile.streak_count || 0) + 1;
-                await supabase.from('profiles').update({ streak_count: newStreak, last_activity: now.toISOString() }).eq('id', userId);
-                return newStreak;
-            } else if (diffDays > 1) {
-                // Broke streak
-                await supabase.from('profiles').update({ streak_count: 1, last_activity: now.toISOString() }).eq('id', userId);
-                return 1;
+            let novoStreak: number;
+            if (!ultimoStr) {
+                novoStreak = 1; // primeira vez
+            } else {
+                const ontem = new Date(hoje);
+                ontem.setDate(ontem.getDate() - 1);
+                novoStreak = ultimoStr === toDateStr(ontem)
+                    ? (profile.streak_count || 0) + 1 // dia consecutivo
+                    : 1;                                // quebrou a ofensiva
             }
 
-            return profile.streak_count;
+            await supabase.from('profiles')
+                .update({ streak_count: novoStreak, last_streak_date: hojeStr })
+                .eq('id', userId);
+
+            return novoStreak;
         } catch (err) {
             console.error('Error updating streak:', err);
             return null;

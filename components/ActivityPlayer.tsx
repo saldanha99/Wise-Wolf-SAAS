@@ -86,6 +86,15 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
         if (saving) return;
         setSaving(true);
         try {
+            // Conta tentativas reais (incrementa em vez de fixar 1)
+            const { data: prev } = await supabase
+                .from('student_activity_progress')
+                .select('attempts')
+                .eq('student_id', userId)
+                .eq('activity_id', activity.id)
+                .maybeSingle();
+            const novasTentativas = (prev?.attempts || 0) + 1;
+
             // Upsert progress
             await supabase.from('student_activity_progress').upsert({
                 student_id: userId,
@@ -93,7 +102,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 unit_id: activity.unit_id,
                 status: 'COMPLETED',
                 score,
-                attempts: 1,
+                attempts: novasTentativas,
                 completed_at: new Date().toISOString(),
                 last_attempt_at: new Date().toISOString(),
             }, { onConflict: 'student_id, activity_id' });
@@ -125,6 +134,9 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 const result = await gamificationService.addXP(userId, xpEarned);
                 if (result?.leveledUp) { leveledUp = true; newLevel = result.newLevel; }
             }
+
+            // Atualiza a ofensiva (streak) — conta o dia de prática
+            await gamificationService.updateStreak(userId).catch(() => {});
 
             // Celebração
             if (leveledUp) {
