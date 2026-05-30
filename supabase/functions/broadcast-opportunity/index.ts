@@ -31,7 +31,9 @@ serve(async (req) => {
 
     try {
         console.log("Broadcast Function Hit");
-        const { student_name, student_phone, date, time, interests, preferred_slots } = await req.json();
+        // opportunity_id (opcional): quando presente, REAPROVEITA a oportunidade existente
+        // (reagendamento de experimental com falta) em vez de criar uma nova.
+        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id } = await req.json();
 
         // VALIDATION: Date is now required (YYYY-MM-DD)
         if (!student_name || !date || !time) {
@@ -142,22 +144,46 @@ serve(async (req) => {
             formatted: `${formattedDate} (${dayString})`
         };
 
-        const { data: oppData, error: oppError } = await supabaseAdmin
-            .from('opportunities')
-            .insert({
-                student_name: student_name,
-                student_phone: student_phone || '',
-                slots_proposed: [createdSlot],
-                status: 'OPEN',
-                tenant_id: profile?.tenant_id || null, // Updated to use fetched tenant_id
-                interests: interests || null,
-                user_id: user.id, // Tracks the Creator (Director)
-                preferred_slots: preferred_slots || null,
-            })
-            .select('id')
-            .single();
+        let oppData: { id: string };
 
-        if (oppError) throw new Error("DB Error: " + oppError.message);
+        if (opportunity_id) {
+            // REAGENDAMENTO: reabre a MESMA oportunidade para ser reaceita
+            const { data: updated, error: updErr } = await supabaseAdmin
+                .from('opportunities')
+                .update({
+                    slots_proposed: [createdSlot],
+                    status: 'OPEN',
+                    winner_teacher_id: null,
+                    trial_appointment_id: null,
+                    trial_status: null,
+                    conversion_status: 'OPEN',
+                    interests: interests || null,
+                    preferred_slots: preferred_slots || null,
+                })
+                .eq('id', opportunity_id)
+                .select('id')
+                .single();
+            if (updErr || !updated) throw new Error("DB Error (reagendamento): " + (updErr?.message || 'oportunidade não encontrada'));
+            oppData = updated;
+            console.log(`[Broadcast] ♻️ Oportunidade ${opportunity_id} reaberta para reagendamento`);
+        } else {
+            const { data: inserted, error: oppError } = await supabaseAdmin
+                .from('opportunities')
+                .insert({
+                    student_name: student_name,
+                    student_phone: student_phone || '',
+                    slots_proposed: [createdSlot],
+                    status: 'OPEN',
+                    tenant_id: profile?.tenant_id || null,
+                    interests: interests || null,
+                    user_id: user.id,
+                    preferred_slots: preferred_slots || null,
+                })
+                .select('id')
+                .single();
+            if (oppError) throw new Error("DB Error: " + oppError.message);
+            oppData = inserted;
+        }
 
         // 4. Construct URL with Params
         // http://localhost:3000/claim-opportunity?id=...&date=...&time=...

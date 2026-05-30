@@ -3,7 +3,7 @@ import {
     Zap, Users, ArrowRight, Check, X, Star, BookOpen, DollarSign,
     UserPlus, Award, TrendingUp, AlertCircle, Loader2, Phone,
     Mail, ChevronRight, Calendar, ThermometerSun, FileText, XCircle,
-    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock
+    Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
@@ -136,6 +136,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [lostOpp, setLostOpp] = useState<Opportunity | null>(null);
     const [lostReason, setLostReason] = useState('');
     const [savingLost, setSavingLost] = useState(false);
+
+    // Reagendamento de experimental (falta de aluno/professor)
+    const [reschedOpp, setReschedOpp] = useState<Opportunity | null>(null);
+    const [reschedDate, setReschedDate] = useState('');
+    const [reschedTime, setReschedTime] = useState('');
+    const [reschedSaving, setReschedSaving] = useState(false);
 
     // Filter
     const [filter, setFilter] = useState<'all' | 'OPEN' | 'WON' | 'LOST'>('all');
@@ -288,6 +294,72 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             }
         }
         fetchData();
+    };
+
+    const openReschedule = (opp: Opportunity) => {
+        setReschedOpp(opp);
+        setReschedDate('');
+        setReschedTime('');
+    };
+
+    // Reagendar reabrindo a oportunidade ao GRUPO (re-dispara o link mágico)
+    const reschedToGroup = async () => {
+        if (!reschedOpp || !reschedDate || !reschedTime) { alert('Escolha data e horário.'); return; }
+        setReschedSaving(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('broadcast-opportunity', {
+                body: {
+                    opportunity_id: reschedOpp.id,
+                    student_name: reschedOpp.student_name,
+                    student_phone: reschedOpp.student_phone,
+                    date: reschedDate,
+                    time: reschedTime,
+                    interests: (reschedOpp as any).interests || '',
+                },
+            });
+            if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao reenviar o link.');
+            alert('Link mágico reenviado ao grupo! Qualquer professor pode reaceitar a experimental.');
+            setReschedOpp(null);
+            fetchData();
+        } catch (err: any) {
+            alert('Erro ao reagendar: ' + err.message);
+        } finally {
+            setReschedSaving(false);
+        }
+    };
+
+    // Reagendar MANTENDO o mesmo professor (sem passar pelo grupo)
+    const reschedSameTeacher = async () => {
+        if (!reschedOpp || !reschedDate || !reschedTime) { alert('Escolha data e horário.'); return; }
+        if (!reschedOpp.winner_teacher_id) { alert('Esta experimental não tem professor definido. Use "Reenviar ao grupo".'); return; }
+        setReschedSaving(true);
+        try {
+            const isoDate = new Date(`${reschedDate}T${reschedTime}:00`).toISOString();
+            const formatted = `${reschedDate.split('-').reverse().join('/')} às ${reschedTime}`;
+
+            // Reabre a experimental como agendada, mantendo o professor
+            const { error: oppErr } = await supabase.from('opportunities').update({
+                trial_status: 'SCHEDULED',
+                conversion_status: 'OPEN',
+                slots_proposed: [{ time: reschedTime, date: reschedDate, formatted }],
+            }).eq('id', reschedOpp.id);
+            if (oppErr) throw oppErr;
+
+            // Remarca o agendamento do trial (trial_bookings) se existir
+            if (reschedOpp.trial_appointment_id) {
+                await supabase.from('trial_bookings')
+                    .update({ start_time: isoDate, status: 'scheduled' })
+                    .eq('id', reschedOpp.trial_appointment_id);
+            }
+
+            alert('Experimental remarcada com o mesmo professor.');
+            setReschedOpp(null);
+            fetchData();
+        } catch (err: any) {
+            alert('Erro ao remarcar: ' + err.message);
+        } finally {
+            setReschedSaving(false);
+        }
     };
 
     // =============================================================
@@ -743,6 +815,16 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                     {enrollmentLinks[opp.id] ? 'Reenviar Link' : 'Gerar Link Matrícula'}
                                                 </button>
                                             )}
+                                            {/* Reagendar: aparece quando houve falta (aluno ou professor) */}
+                                            {(opp.trial_status === 'NO_SHOW_STUDENT' || opp.trial_status === 'NO_SHOW_TEACHER') && (
+                                                <button
+                                                    onClick={() => openReschedule(opp)}
+                                                    className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-200 hover:shadow-amber-300 active:scale-95 transition-all flex items-center gap-2"
+                                                >
+                                                    <RefreshCw size={16} />
+                                                    Reagendar Experimental
+                                                </button>
+                                            )}
                                             {/* Perdido: always visible when OPEN */}
                                             <button
                                                 onClick={() => { setLostOpp(opp); setLostReason(''); }}
@@ -1139,6 +1221,63 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================= */}
+            {/* RESCHEDULE MODAL (experimental com falta) */}
+            {/* ============================================= */}
+            {reschedOpp && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl max-w-md w-full p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center">
+                                <RefreshCw size={24} className="text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-brand-text">Reagendar Experimental</h3>
+                                <p className="text-xs text-brand-muted">{reschedOpp.student_name}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted block mb-1">Nova data</label>
+                                <input type="date" value={reschedDate} onChange={e => setReschedDate(e.target.value)}
+                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-amber-500" />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted block mb-1">Horário</label>
+                                <input type="time" value={reschedTime} onChange={e => setReschedTime(e.target.value)}
+                                    className="w-full px-3 py-2.5 bg-brand-surface-2 dark:bg-slate-800 border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-amber-500" />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={reschedToGroup}
+                                disabled={reschedSaving}
+                                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {reschedSaving ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                                Reenviar ao grupo (link mágico)
+                            </button>
+                            <button
+                                onClick={reschedSameTeacher}
+                                disabled={reschedSaving}
+                                className="w-full py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-100 disabled:opacity-50"
+                            >
+                                <Check size={16} />
+                                Manter o mesmo professor
+                            </button>
+                            <button onClick={() => setReschedOpp(null)} className="w-full py-2 text-brand-muted font-bold text-xs uppercase tracking-widest">
+                                Cancelar
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-brand-muted text-center mt-3">
+                            "Reenviar ao grupo" reabre a vaga para qualquer professor reaceitar. "Manter o mesmo professor" só remarca a data/hora.
+                        </p>
                     </div>
                 </div>
             )}
