@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, Star, Target, Briefcase, Plane, GraduationCap, Cpu, Heart, Globe, Crown, Flame, Gem, Medal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ActivityPlayer from './ActivityPlayer';
+import StreakModal from './StreakModal';
 
 interface Props {
     userId: string;
@@ -236,6 +237,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
         return (
             <div className="bg-gradient-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
+                <StreakModal userId={userId} streak={gami.streak} />
                 {/* Barra de status estilo Duolingo: ofensiva · XP · vidas */}
                 <div className="flex items-center justify-center gap-3 sm:gap-6 px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
                     {/* Ofensiva */}
@@ -458,6 +460,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     // ════════════════════════════════════════════════════════════
     return (
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
+            <StreakModal userId={userId} streak={gami.streak} />
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
                 <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
                     <Target size={20} className="text-violet-600 dark:text-violet-400" />
