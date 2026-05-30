@@ -463,10 +463,10 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
             <div className="bg-brand-surface text-white pt-12 pb-24 px-6 rounded-b-[3rem] shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-400 via-slate-900 to-slate-900"></div>
                 <div className="relative z-10 text-center">
-                    <span className="inline-block py-1 px-3 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-[10px] font-black tracking-widest uppercase mb-4 backdrop-blur-md">
-                        AULA EXPERIMENTAL
+                    <span className={`inline-block py-1 px-3 rounded-full border text-[10px] font-black tracking-widest uppercase mb-4 backdrop-blur-md ${isTraining ? 'bg-amber-500/20 border-amber-500/30 text-amber-300' : 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300'}`}>
+                        {isTraining ? 'TREINAMENTO AO VIVO' : 'AULA EXPERIMENTAL'}
                     </span>
-                    <h1 className="text-4xl font-black mb-2 tracking-tight">{studentName || 'Novo Aluno'}</h1>
+                    <h1 className="text-4xl font-black mb-2 tracking-tight">{studentName || (isTraining ? 'Treinamento Wise Wolf' : 'Novo Aluno')}</h1>
                 </div>
             </div>
 
@@ -505,7 +505,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                         {opp && opp.interests && (
                             <div className="mb-6 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                                 <p className="text-[10px] text-indigo-400 font-black uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    <TrendingUp size={14} /> INTERESSE DO ALUNO
+                                    <TrendingUp size={14} /> {isTraining ? 'FOCO DO TREINAMENTO' : 'INTERESSE DO ALUNO'}
                                 </p>
                                 <p className="text-sm font-medium text-indigo-900 leading-relaxed">
                                     {opp.interests}
@@ -532,7 +532,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                                 </>
                             ) : (
                                 <>
-                                    <span>ACEITAR AULA</span>
+                                    <span>{isTraining ? 'PARTICIPAR DO TREINAMENTO' : 'ACEITAR AULA'}</span>
                                     <ArrowRight className="group-hover:translate-x-1 transition-transform" strokeWidth={3} size={20} />
                                 </>
                             )}
