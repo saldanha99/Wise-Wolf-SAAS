@@ -5,6 +5,7 @@ import { User, UserRole } from '../types';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
+import MaterialsLibrary from './MaterialsLibrary';
 
 interface PedagogicalConfigProps {
   user: User;
@@ -280,56 +281,13 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
           )}
 
           <div className={`${showSidebar ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-black">Biblioteca Master</h3>
-              <div className="flex overflow-x-auto gap-1 bg-brand-surface-2 dark:bg-brand-surface-2 p-1 rounded-lg">
-                {['ALL', 'GENERAL', 'MEDICINE', 'TECH', 'BUSINESS', 'TRAVEL'].map(niche => (
-                  <button
-                    key={niche}
-                    onClick={() => setSelectedNiche(niche)}
-                    className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${selectedNiche === niche
-                        ? 'bg-brand-surface dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-white'
-                        : 'text-brand-muted hover:text-brand-muted'
-                      }`}
-                  >
-                    {niche === 'ALL' ? 'Todos' : niche}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
-              {filteredMaterials.map(m => (
-                <div key={m.id} className="p-4 rounded-xl border border-brand-border flex items-center justify-between hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 group">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-xs ${m.type === 'PDF' ? 'bg-red-500' : m.type === 'VIDEO' ? 'bg-blue-500' : 'bg-green-500'}`}>{m.type}</div>
-                    <div>
-                      <h4 className="font-bold text-sm text-brand-text flex items-center gap-2">
-                        {m.title}
-                        {m.scope === 'PRIVATE' && <span className="text-[9px] bg-indigo-100 text-indigo-500 px-1.5 rounded uppercase">Privado</span>}
-                      </h4>
-                      <div className="flex gap-2 mt-1">
-                        <span className="text-[10px] bg-brand-surface-2 dark:bg-brand-surface-2 px-1.5 rounded uppercase font-black text-brand-muted">{m.level_tag}</span>
-                        {m.niche && m.niche !== 'GENERAL' && (
-                          <span className={`text-[10px] px-1.5 rounded uppercase font-black ${m.niche === 'MEDICINE' ? 'bg-green-100 text-green-600' :
-                            m.niche === 'TECH' ? 'bg-blue-100 text-blue-600' :
-                              m.niche === 'BUSINESS' ? 'bg-purple-100 text-purple-600' :
-                                m.niche === 'TRAVEL' ? 'bg-orange-100 text-orange-600' :
-                                  'bg-brand-surface-2 text-brand-muted'
-                            }`}>
-                            {m.niche}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <a href={m.file_url} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-500 hover:underline">Acessar</a>
-                    {showSidebar && (
-                      <button onClick={() => handleDeleteMaterial(m.id)} className="p-2 text-brand-muted hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-                    )}
-                  </div>
-                </div>
-              ))}
+            <h3 className="text-xl font-black mb-6">Biblioteca Master</h3>
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <MaterialsLibrary
+                materials={materials}
+                onDelete={showSidebar ? handleDeleteMaterial : undefined}
+                emptyText="Nenhum material na biblioteca ainda. Suba o primeiro no painel ao lado."
+              />
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import MaterialsLibrary from './MaterialsLibrary';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 import { BookOpen, CheckCircle, Clock, Zap } from 'lucide-react';
@@ -153,41 +154,10 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                     <BookOpen className="text-indigo-500" /> Meus Materiais
                 </h3>
 
-                {assignedMaterials.length === 0 ? (
-                    <div className="text-center py-12 border-2 border-dashed border-brand-border rounded-2xl">
-                        <BookOpen className="mx-auto text-slate-300 mb-2" size={32} />
-                        <p className="text-brand-muted text-xs font-bold">Nenhum material atribuído pelo professor ainda.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {assignedMaterials.map(m => (
-                            <a href={m.file_url} target="_blank" rel="noreferrer" key={m.id || m.assignment_id} className="p-4 border border-brand-border rounded-2xl hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 hover:shadow-md transition-all flex items-center gap-4 group">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${m.type === 'PDF' ? 'bg-red-100 text-red-600' :
-                                    m.type === 'VIDEO' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
-                                    }`}>
-                                    {m.type}
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-sm text-brand-text group-hover:text-indigo-600 transition-colors line-clamp-1">{m.title}</h4>
-                                    <div className="flex gap-2 mt-1">
-                                        <span className="text-[10px] bg-brand-surface-2 dark:bg-brand-surface-2 px-1.5 rounded uppercase font-bold text-brand-muted">{m.level_tag || 'Geral'}</span>
-                                        {m.niche && m.niche !== 'GENERAL' && (
-                                            <span className={`text-[10px] px-1.5 rounded uppercase font-bold ${m.niche === 'MEDICINE' ? 'bg-green-100 text-green-600' :
-                                                m.niche === 'TECH' ? 'bg-blue-100 text-blue-600' :
-                                                    m.niche === 'BUSINESS' ? 'bg-purple-100 text-purple-600' :
-                                                        m.niche === 'TRAVEL' ? 'bg-orange-100 text-orange-600' :
-                                                            'bg-brand-surface-2 text-brand-muted'
-                                                }`}>
-                                                {m.niche}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className="text-[10px] text-brand-muted uppercase font-bold mt-1 block">{new Date(m.assigned_at).toLocaleDateString()}</span>
-                                </div>
-                            </a>
-                        ))}
-                    </div>
-                )}
+                <MaterialsLibrary
+                    materials={assignedMaterials}
+                    emptyText="Nenhum material atribuído pelo professor ainda."
+                />
             </div>
 
         </div>
