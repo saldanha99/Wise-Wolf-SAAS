@@ -345,6 +345,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         fixed_schedule: formData.fixed_schedule,
         private_notes: formData.private_notes,
         professor_id: formData.professor_id,
+        guardian_name: formData.guardian_name,
+        guardian_phone: formData.guardian_phone,
+        is_kids: formData.is_kids,
       };
 
       // Campos contratuais — só editáveis se o contrato ainda não foi assinado

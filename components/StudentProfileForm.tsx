@@ -35,6 +35,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         occupation: '',
         phone: '',
         meeting_link: '',
+        guardian_name: '',
+        guardian_phone: '',
+        is_kids: false,
         img: 'https://i.pravatar.cc/150?u=new',
         fixed_schedule: '',
         private_notes: '',
@@ -66,6 +69,9 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 occupation: initialData.occupation || '',
                 phone: initialData.phone || '',
                 meeting_link: initialData.meeting_link || '',
+                guardian_name: initialData.guardian_name || '',
+                guardian_phone: initialData.guardian_phone || '',
+                is_kids: initialData.is_kids || false,
                 img: initialData.img || 'https://i.pravatar.cc/150?u=new',
                 fixed_schedule: initialData.fixed_schedule || '',
                 private_notes: initialData.private_notes || '',
@@ -501,6 +507,48 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     placeholder="https://meet.google.com/abc-defg-hij"
                                 />
                             </div>
+                        </div>
+
+                        {/* Aluno KIDS — responsável (relatório semanal aos pais) */}
+                        <div className="pt-4 border-t border-brand-border">
+                            <label className="flex items-center gap-2 cursor-pointer mb-3">
+                                <input
+                                    type="checkbox"
+                                    disabled={!isDirector}
+                                    checked={formData.is_kids}
+                                    onChange={e => setFormData({ ...formData, is_kids: e.target.checked })}
+                                    className="w-4 h-4 rounded accent-pink-500"
+                                />
+                                <span className="text-sm font-bold text-brand-text dark:text-slate-200">🧸 Aluno infantil (KIDS) — enviar relatório semanal aos pais</span>
+                            </label>
+                            {formData.is_kids && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                            <User size={12} /> Nome do responsável
+                                        </label>
+                                        <input
+                                            disabled={!isDirector}
+                                            value={formData.guardian_name}
+                                            onChange={e => setFormData({ ...formData, guardian_name: e.target.value })}
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-none"
+                                            placeholder="Maria Silva"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                            <Phone size={12} /> WhatsApp do responsável
+                                        </label>
+                                        <input
+                                            disabled={!isDirector}
+                                            value={formData.guardian_phone}
+                                            onChange={e => setFormData({ ...formData, guardian_phone: e.target.value })}
+                                            className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-none font-mono"
+                                            placeholder="5511999999999"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Fixed Schedule & Private Notes */}
