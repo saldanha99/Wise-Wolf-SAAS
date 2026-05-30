@@ -76,7 +76,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         const { data: reschedules } = await supabase
           .from('reschedules')
-          .select('id, time, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
+          .select('id, time, fault_type, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
           .eq('date', dateStr);
 
@@ -120,6 +120,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             avatar: student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`,
             level: student.module?.split(' ')[0] || 'N/A',
             type: isTrial ? 'AULA EXPERIMENTAL' : type,
+            // Origem da reposição (só relevante para REPOSIÇÃO): TEACHER paga, STUDENT não
+            faultType: type === 'REPOSIÇÃO' ? (b.fault_type || 'STUDENT') : null,
             isLate: i > 0,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
@@ -218,7 +220,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
           appointment_id: isTrial ? bookingId.replace('trial-', '') : null,
           presence: data.type || 'Presença',
-          subtype: item.type === 'AULA EXPERIMENTAL' ? 'AULA EXPERIMENTAL' : (isReschedule ? 'REPOSIÇÃO' : (data.subtype || null)),
+          // Reposição de falta do PROFESSOR é paga (REPOSIÇÃO_PROF); de falta do ALUNO não (REPOSIÇÃO)
+          subtype: item.type === 'AULA EXPERIMENTAL'
+            ? 'AULA EXPERIMENTAL'
+            : (isReschedule
+                ? (item.faultType === 'TEACHER' ? 'REPOSIÇÃO_PROF' : 'REPOSIÇÃO')
+                : (data.subtype || null)),
           content_covered: data.lastApplied || null, // Book Selection
           observations: data.observation || null, // Free text OBS
 
@@ -280,13 +287,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             // Rule: Teacher Fault = Always Create. Student Fault = Limit 5.
             const isTeacherFault = a.presence === 'TEACHER_ABSENCE';
 
-            // Check existing student-caused reschedules this month
+            // Limite de 5 reposições por falta de ALUNO no mês (falta do professor é ilimitada)
             const { count, error: countError } = await supabase
               .from('reschedules')
               .select('id', { count: 'exact', head: true })
               .eq('student_id', a.student_id)
-              .eq('created_by_fault', 'STUDENT') // Assuming we track this or infer it. If not, we count all. 
-              // Better approach for now: check total created this month.
+              .eq('fault_type', 'STUDENT')
               .gte('created_at', startOfMonth);
 
             const currentCount = count || 0;
@@ -300,9 +306,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                 original_booking_id: a.booking_id,
                 date: 'Pendente',
                 time: 'Pendente',
+                // Marca a origem: TEACHER → reposição paga; STUDENT → não paga
+                fault_type: isTeacherFault ? 'TEACHER' : 'STUDENT',
                 created_at: new Date().toISOString(),
-                // Optional: We could add a 'fault_type' column to DB to distinguishing later, 
-                // but for now we just apply the logic at creation time.
               }]);
             }
           }

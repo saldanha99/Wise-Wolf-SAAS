@@ -71,13 +71,12 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 .from('profiles').select('hourly_rate').eq('id', user.id).single();
             if (tp?.hourly_rate) setRate(Number(tp.hourly_rate));
 
-            // 2. Fetch Closing Status (Using new schema)
+            // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase
                 .from('teacher_closings')
                 .select('*')
                 .eq('teacher_id', user.id)
-                // We check if period_start matches selected month
-                .eq('period_start', start)
+                .eq('month_year', selectedMonth)
                 .maybeSingle();
 
             if (closingError) console.error("Error fetching closing", closingError);
@@ -132,29 +131,23 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         if (isConfirming) return;
         setIsConfirming(true);
         try {
-            // New Logic: Use Cents and Snapshot
             const paidLessons = lessons.filter(isLessonPaid);
-            const hourlyRate = rate;
+            const totalAmount = paidLessons.length * rate;
 
-            if (!user.hourlyRate) {
-                console.warn(`User has no hourlyRate defined. Using default: ${LESSON_RATE}`);
-            }
-
-            const totalCents = Math.round(paidLessons.length * hourlyRate * 100);
-            const logIds = paidLessons.map(l => l.id);
-
+            // Schema unificado (igual ao FinancialClosingModal e ao admin):
+            // month_year / total_lessons / total_amount / teacher_confirmation_status
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
                 tenant_id: tenantId,
-                period_start: `${selectedMonth}-01`,
-                period_end: new Date(new Date(selectedMonth + '-02').setMonth(new Date(selectedMonth + '-02').getMonth() + 1) - 1).toISOString().split('T')[0], // Last day of month
-                total_lessons_count: paidLessons.length,
-                total_amount_cents: totalCents,
-                class_log_ids: logIds,
-                status: 'CONFIRMED_TEACHER',
-                notes_teacher: null, // Clear notes if confirming
+                month_year: selectedMonth,
+                total_lessons: paidLessons.length,
+                total_amount: totalAmount,
+                status: 'PENDENTE',
+                teacher_confirmation_status: 'OK',
+                teacher_confirmation_date: new Date().toISOString(),
+                teacher_notes: null,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'teacher_id, period_start' });
+            }, { onConflict: 'teacher_id, month_year' });
 
             if (error) throw error;
             await fetchFinancials();
@@ -171,21 +164,20 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         setIsConfirming(true);
         try {
             const paidLessons = lessons.filter(isLessonPaid);
-            const totalCents = Math.round(paidLessons.length * (rate) * 100);
-            const logIds = paidLessons.map(l => l.id);
+            const totalAmount = paidLessons.length * rate;
 
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
                 tenant_id: tenantId,
-                period_start: `${selectedMonth}-01`,
-                period_end: new Date(new Date(selectedMonth + '-02').setMonth(new Date(selectedMonth + '-02').getMonth() + 1) - 1).toISOString().split('T')[0],
-                total_lessons_count: paidLessons.length,
-                total_amount_cents: totalCents,
-                class_log_ids: logIds,
-                status: 'DISPUTED',
-                notes_teacher: contestReason,
+                month_year: selectedMonth,
+                total_lessons: paidLessons.length,
+                total_amount: totalAmount,
+                status: 'PENDENTE',
+                teacher_confirmation_status: 'CONTESTADO',
+                teacher_confirmation_date: new Date().toISOString(),
+                teacher_notes: contestReason,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'teacher_id, period_start' });
+            }, { onConflict: 'teacher_id, month_year' });
 
             if (error) throw error;
             setIsContesting(false);

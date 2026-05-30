@@ -254,6 +254,42 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     useEffect(() => { fetchData(); }, [tenantId]);
 
+    // Marca experimental como realizada E lança a aula na folha do professor.
+    // Regra: só contabiliza quando a aula foi realizada (presence COMPLETED).
+    // Se aluno OU professor faltar, NÃO lança class_log (não contabiliza).
+    const markTrialRealized = async (opp: Opportunity) => {
+        // 1. Atualiza status da oportunidade
+        await supabase.from('opportunities').update({ trial_status: 'DONE' }).eq('id', opp.id);
+
+        // 2. Lança a aula experimental na folha do professor vencedor (se houver)
+        if (opp.winner_teacher_id) {
+            // Dedupe: evita lançar duas vezes a mesma experimental
+            const apptId = opp.trial_appointment_id || `trial_${opp.id}`;
+            const { data: jaExiste } = await supabase
+                .from('class_logs')
+                .select('id')
+                .eq('appointment_id', apptId)
+                .maybeSingle();
+
+            if (!jaExiste) {
+                const startAt = opp.trial_appointment_id ? appointments[opp.trial_appointment_id]?.start_at : null;
+                const classDate = (startAt ? new Date(startAt) : new Date()).toISOString().split('T')[0];
+                await supabase.from('class_logs').insert({
+                    tenant_id: tenantId,
+                    teacher_id: opp.winner_teacher_id,
+                    student_id: null, // lead de experimental ainda não é aluno
+                    date: classDate,
+                    class_date: classDate,
+                    presence: 'COMPLETED',
+                    subtype: 'AULA EXPERIMENTAL',
+                    appointment_id: apptId,
+                    content: `Aula experimental — ${opp.student_name || 'Lead'}`,
+                });
+            }
+        }
+        fetchData();
+    };
+
     // =============================================================
     // COMPUTED KPIs
     // =============================================================
@@ -669,10 +705,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             {opp.trial_status !== 'DONE' && (
                                                 <>
                                                     <button
-                                                        onClick={async () => {
-                                                            await supabase.from('opportunities').update({ trial_status: 'DONE' }).eq('id', opp.id);
-                                                            fetchData();
-                                                        }}
+                                                        onClick={() => markTrialRealized(opp)}
                                                         className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-200 hover:shadow-emerald-300 active:scale-95 transition-all flex items-center gap-2"
                                                     >
                                                         <Check size={16} />

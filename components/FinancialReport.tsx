@@ -74,7 +74,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
 
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('teacher_id, presence')
+        .select('teacher_id, presence, subtype')
         .eq('tenant_id', tenantId)
         .gte('created_at', startDateStr)
         .lt('created_at', endDateStr);
@@ -87,18 +87,16 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         const rate = teacherRates.get(log.teacher_id) || 0;
         const current = teacherStats.get(log.teacher_id) || { lessons: 0, owed: 0 };
 
-        // Logic from Dashboard: "Presente" counts as lesson, but "Falta do Professor" doesn't pay
-        // Actually, usually we pay if it's NOT "Falta do Professor" (e.g. Presente, Falta Aluno)
-        // Dashboard logic: 
-        // if (log.presence === 'Presente') attendanceCount++;
-        // if (log.presence !== 'Falta do Professor') payroll += rate;
-
-        let shouldPay = log.presence !== 'Falta do Professor';
+        // Regra canônica de pagamento (idêntica a isLessonPaid / FinancialClosingModal):
+        // não paga falta do professor, reposição (de aluno) nem teste oral.
+        // Enums reais são em inglês (TEACHER_ABSENCE), não 'Falta do Professor'.
+        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
+        const isReplacement = log.subtype === 'REPOSIÇÃO';
+        const isOralTest = log.subtype === 'Teste Oral';
+        const shouldPay = !isTeacherAbsence && !isReplacement && !isOralTest;
         if (shouldPay) {
           estimatedPayroll += rate;
           current.owed += rate;
-        }
-        if (log.presence === 'Presente') {
           current.lessons++;
         }
         teacherStats.set(log.teacher_id, current);
@@ -511,11 +509,11 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                               });
                               if (tErr) throw tErr;
 
-                              // 2. Update Closing
+                              // 2. Update Closing (schema unificado — month_year + status PAGO)
                               const { error: cErr } = await supabase.from('teacher_closings')
-                                .update({ status: 'PAID', paid_at: new Date().toISOString() })
+                                .update({ status: 'PAGO', paid_at: new Date().toISOString() })
                                 .eq('teacher_id', teacher.id)
-                                .eq('period_start', `${selectedMonth}-01`);
+                                .eq('month_year', selectedMonth);
 
                               if (cErr) throw cErr;
 

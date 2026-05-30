@@ -430,7 +430,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                     </h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <Input label="Módulo Principal" placeholder="Ex: Business English" value={formData.module} onChange={e => setFormData({ ...formData, module: e.target.value })} icon={<BookOpen size={16} />} />
-                                        <Input label="Valor Hora/Aula (R$)" placeholder="0.00" value={formData.hourlyRate} onChange={e => setFormData({ ...formData, hourlyRate: e.target.value })} icon={<DollarSign size={16} />} />
+                                        <Input label="Valor por Aula (30 min) (R$)" placeholder="0.00" value={formData.hourlyRate} onChange={e => setFormData({ ...formData, hourlyRate: e.target.value })} icon={<DollarSign size={16} />} />
                                         <Input label="Chave PIX" placeholder="CPF, Email ou Aleatória" value={formData.pixKey} onChange={e => setFormData({ ...formData, pixKey: e.target.value })} icon={<Award size={16} />} />
                                         <Input label="Link do Contrato" placeholder="https://link-do-contrato.pdf" value={(formData as any).contractUrl} onChange={e => setFormData({ ...formData, contractUrl: e.target.value } as any)} icon={<FileText size={16} />} />
 

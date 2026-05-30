@@ -136,7 +136,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('teacher_id, presence')
+        .select('teacher_id, presence, subtype')
         .eq('tenant_id', tenantId)
         .gte('created_at', startOfMonth.toISOString());
 
@@ -146,9 +146,13 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
       logs?.forEach(log => {
         totalLogs++;
-        if (log.presence === 'Presente') attendanceCount++;
+        if (log.presence === 'COMPLETED') attendanceCount++;
         const rate = teacherRates.get(log.teacher_id) || 0;
-        if (log.presence !== 'Falta do Professor') {
+        // Regra canônica: paga exceto falta do professor, reposição (de aluno) e teste oral
+        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
+        const isReplacement = log.subtype === 'REPOSIÇÃO';
+        const isOralTest = log.subtype === 'Teste Oral';
+        if (!isTeacherAbsence && !isReplacement && !isOralTest) {
           payroll += rate;
         }
       });
