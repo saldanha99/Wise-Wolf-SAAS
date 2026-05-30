@@ -25,3 +25,10 @@ dist-ssr
 .env
 .vercel
 .env.supabase
+
+# Ferramentas de agente / cache local (não fazem parte do projeto)
+.claude/
+.agents/
+skills-lock.json
+supabase/.temp/
+.mcp.json
