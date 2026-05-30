@@ -51,11 +51,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             const { data: logs, error: logsError } = await supabase
                 .from('class_logs')
                 .select(`
-                    id, 
-                    created_at, 
-                    class_date, 
-                    presence, 
-                    subtype, 
+                    id,
+                    created_at,
+                    class_date,
+                    presence,
+                    subtype,
+                    payment_hold,
+                    verification_status,
                     student:profiles!class_logs_student_id_fkey(full_name)
                  `)
                 .eq('teacher_id', user.id)
@@ -99,7 +101,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
         const isReplacement = log.subtype === 'REPOSIÇÃO';
         const isOralTestOnly = log.subtype === 'Teste Oral';
-        return !isTeacherAbsence && !isReplacement && !isOralTestOnly;
+        // Aula em conflito de presença (aluno x professor) fica retida até o admin resolver
+        const isOnHold = log.payment_hold === true;
+        return !isTeacherAbsence && !isReplacement && !isOralTestOnly && !isOnHold;
     };
 
     const canCloseMonth = () => {

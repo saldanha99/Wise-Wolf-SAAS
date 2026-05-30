@@ -177,14 +177,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       // 3. Earnings (Sum from logs this month)
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('presence, subtype, class_date, created_at, booking_id, reschedule_id, appointment_id')
+        .select('presence, subtype, class_date, created_at, booking_id, reschedule_id, appointment_id, payment_hold')
         .eq('teacher_id', user.id)
         .gte('class_date', startOfMonth);
 
-      // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
+      // Rule: Pay if (not teacher absence) AND (not repo) AND (not on hold). Trials ARE paid.
       const paidLogs = (logs || []).filter(l =>
         l.presence !== 'Falta do Professor' &&
-        l.subtype !== 'REPOSIÇÃO'
+        l.presence !== 'TEACHER_ABSENCE' &&
+        l.subtype !== 'REPOSIÇÃO' &&
+        l.payment_hold !== true
       );
 
       // Fetch Paid Trainings (Ao Vivo / Meet)

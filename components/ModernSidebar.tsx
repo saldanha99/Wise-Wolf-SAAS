@@ -34,7 +34,8 @@ import {
     Briefcase,
     Gift,
     UserPlus,
-    TrendingUp
+    TrendingUp,
+    ShieldAlert
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
 
@@ -119,6 +120,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'approvals', label: 'Acolhimento', icon: CheckCircle },
         { id: 'trials', label: 'Experimentais', icon: Zap },
         { id: 'payments', label: 'Pagamentos', icon: DollarSign },
+        { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert },
         { id: 'financial', label: 'Caixa', icon: Wallet },
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
         { id: 'learning_paths_builder', label: 'Trilhas', icon: Target },

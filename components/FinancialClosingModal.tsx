@@ -38,8 +38,9 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
           id, 
           created_at,
           class_date,
-          presence, 
-          subtype
+          presence,
+          subtype,
+          payment_hold
         `)
                 .eq('teacher_id', user.id)
                 .gte('class_date', startOfMonth)
@@ -65,7 +66,9 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
                 l.presence !== 'TEACHER_ABSENCE' &&
                 l.presence !== 'Falta do Professor' &&
                 l.subtype !== 'REPOSIÇÃO' &&
-                l.subtype !== 'Teste Oral'
+                l.subtype !== 'Teste Oral' &&
+                // Aula com presença em conflito (aluno x professor) fica retida até o admin resolver
+                l.payment_hold !== true
             );
 
             // Fetch Paid Trainings (Ao Vivo / Meet)
