@@ -147,7 +147,13 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                     {/* Rows */}
                     <div className="p-4 space-y-1">
                         {filteredItems.map((item, index) => (
-                            <div key={item.id} className="border-b border-brand-border last:border-0 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/30 transition-colors bg-brand-surface group">
+                            <div key={item.id} className={`border-b border-brand-border last:border-0 hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/30 transition-colors group ${
+                                item.type === 'AULA EXPERIMENTAL'
+                                    ? 'bg-purple-50 dark:bg-purple-900/15 border-l-4 border-l-purple-500'
+                                    : item.type === 'TREINAMENTO'
+                                        ? 'bg-amber-50 dark:bg-amber-900/15 border-l-4 border-l-amber-500'
+                                        : 'bg-brand-surface'
+                            }`}>
                                 {/* Main Row */}
                                 <div className="grid grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_minmax(120px,1fr)_minmax(100px,1fr)_minmax(200px,2fr)] gap-4 py-4 items-center">
                                     {/* Student Info */}

@@ -95,7 +95,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [feedbacks, setFeedbacks] = useState<Record<string, Feedback>>({});
     const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [enrollmentLinks, setEnrollmentLinks] = useState<Record<string, EnrollmentLink>>({});
-    const [appointments, setAppointments] = useState<Record<string, { start_at: string }>>({});
+    const [appointments, setAppointments] = useState<Record<string, { start_time: string }>>({});
 
     // Wizard State (Enrollment Link Modal)
     const [wizardOpp, setWizardOpp] = useState<Opportunity | null>(null);
@@ -230,18 +230,18 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             });
             setEnrollmentLinks(linkMap);
 
-            // 4. Fetch appointment start_at for exact trial time
+            // 4. Fetch appointment start_time for exact trial time
             const appointmentIds = (opps || []).map(o => o.trial_appointment_id).filter(Boolean);
             if (appointmentIds.length > 0) {
                 const { data: appts } = await supabase
                     .from('appointments')
-                    .select('id, start_at')
+                    .select('id, start_time')
                     .in('id', appointmentIds);
 
-                const apptMap: Record<string, { start_at: string }> = {};
+                const apptMap: Record<string, { start_time: string }> = {};
                 (appts || []).forEach(a => {
                     // Map by opportunity's trial_appointment_id
-                    apptMap[a.id] = { start_at: a.start_at };
+                    apptMap[a.id] = { start_time: a.start_time };
                 });
                 setAppointments(apptMap);
             }
@@ -278,7 +278,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 .maybeSingle();
 
             if (!jaExiste) {
-                const startAt = opp.trial_appointment_id ? appointments[opp.trial_appointment_id]?.start_at : null;
+                const startAt = opp.trial_appointment_id ? appointments[opp.trial_appointment_id]?.start_time : null;
                 const classDate = (startAt ? new Date(startAt) : new Date()).toISOString().split('T')[0];
                 await supabase.from('class_logs').insert({
                     tenant_id: tenantId,
@@ -345,9 +345,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             }).eq('id', reschedOpp.id);
             if (oppErr) throw oppErr;
 
-            // Remarca o agendamento do trial (trial_bookings) se existir
+            // Remarca o agendamento do trial (appointments) se existir
             if (reschedOpp.trial_appointment_id) {
-                await supabase.from('trial_bookings')
+                await supabase.from('appointments')
                     .update({ start_time: isoDate, status: 'scheduled' })
                     .eq('id', reschedOpp.trial_appointment_id);
             }
@@ -614,9 +614,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     /** Extract exact trial date/time for display */
     const getTrialDateTime = (opp: Opportunity): string | null => {
-        // Priority 1: Actual appointment start_at
-        if (opp.trial_appointment_id && appointments[opp.trial_appointment_id]?.start_at) {
-            const dt = new Date(appointments[opp.trial_appointment_id].start_at);
+        // Priority 1: Actual appointment start_time
+        if (opp.trial_appointment_id && appointments[opp.trial_appointment_id]?.start_time) {
+            const dt = new Date(appointments[opp.trial_appointment_id].start_time);
             return dt.toLocaleDateString('pt-BR') + ' às ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         }
         // Priority 2: slots_proposed data (from broadcast-opportunity)

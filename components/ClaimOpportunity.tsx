@@ -283,20 +283,25 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
 
             console.log('[ClaimOpp] ✅ No conflicts found, proceeding with claim');
 
-            // A. Insert Trial Booking & capture its ID
+            // A. Cria o agendamento em 'appointments' (tabela canônica que a agenda
+            // do professor lê) com type='experimental'. Antes gravava em 'trial_bookings',
+            // que a agenda NÃO lia → a experimental aceita não aparecia para o professor lançar.
             const { data: appointmentData, error: insertError } = await supabase
-                .from('trial_bookings')
+                .from('appointments')
                 .insert({
                     start_time: isoDate,
                     status: 'scheduled',
+                    type: 'experimental',
+                    professor_id: user.id,
                     teacher_id: user.id,
-                    lead_name: studentName,
-                    lead_phone: studentPhone
+                    tenant_id: opp.tenant_id || null,
+                    student_name: studentName,
+                    student_phone: studentPhone
                 })
                 .select('id')
                 .single();
 
-            if (insertError || !appointmentData) throw new Error("Erro ao criar agendamento no banco.");
+            if (insertError || !appointmentData) throw new Error("Erro ao criar agendamento no banco." + (insertError ? ` (${insertError.message})` : ''));
 
             // B. Update Opportunity with trial data
             const { error: updateError } = await supabase
