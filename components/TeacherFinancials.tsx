@@ -31,6 +31,8 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [isContesting, setIsContesting] = useState(false);
     const [contestReason, setContestReason] = useState('');
     const [isConfirming, setIsConfirming] = useState(false);
+    // Rate real do professor (fonte da verdade = banco), evita cair no default R$8
+    const [rate, setRate] = useState<number>(user.hourlyRate || LESSON_RATE);
 
     useEffect(() => {
         fetchFinancials();
@@ -63,6 +65,11 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
             if (logsError) throw logsError;
             setLessons(logs || []);
+
+            // Busca o hourly_rate real do banco (fonte da verdade)
+            const { data: tp } = await supabase
+                .from('profiles').select('hourly_rate').eq('id', user.id).single();
+            if (tp?.hourly_rate) setRate(Number(tp.hourly_rate));
 
             // 2. Fetch Closing Status (Using new schema)
             const { data: closingData, error: closingError } = await supabase
@@ -127,7 +134,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         try {
             // New Logic: Use Cents and Snapshot
             const paidLessons = lessons.filter(isLessonPaid);
-            const hourlyRate = user.hourlyRate || LESSON_RATE;
+            const hourlyRate = rate;
 
             if (!user.hourlyRate) {
                 console.warn(`User has no hourlyRate defined. Using default: ${LESSON_RATE}`);
@@ -164,7 +171,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         setIsConfirming(true);
         try {
             const paidLessons = lessons.filter(isLessonPaid);
-            const totalCents = Math.round(paidLessons.length * (user.hourlyRate || LESSON_RATE) * 100);
+            const totalCents = Math.round(paidLessons.length * (rate) * 100);
             const logIds = paidLessons.map(l => l.id);
 
             const { error } = await supabase.from('teacher_closings').upsert({
@@ -225,7 +232,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
                     <div className="flex items-baseline gap-2">
                         <span className="text-4xl font-black tracking-tight">
-                            R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (user.hourlyRate || LESSON_RATE), 0).toFixed(2).replace('.', ',')}
+                            R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (rate), 0).toFixed(2).replace('.', ',')}
                         </span>
                         <span className="text-sm font-medium opacity-70">acumulado</span>
                     </div>
@@ -252,7 +259,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
                         <div>
                             <h3 className="text-xl font-black tracking-tight relative z-10">
-                                Finalizar Fechamento: R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (user.hourlyRate || LESSON_RATE), 0).toFixed(2).replace('.', ',')}
+                                Finalizar Fechamento: R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (rate), 0).toFixed(2).replace('.', ',')}
                             </h3>
                             <p className="text-brand-muted text-xs mt-1 relative z-10">
                                 Referente a {new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}. Confirme se os valores estão corretos.
@@ -404,7 +411,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                             ? 'text-slate-300 dark:text-brand-muted line-through'
                                             : 'text-emerald-600 dark:text-emerald-400'
                                             }`}>
-                                            R$ {!isLessonPaid(log) ? '0,00' : (user.hourlyRate || LESSON_RATE).toFixed(2)}
+                                            R$ {!isLessonPaid(log) ? '0,00' : (rate).toFixed(2)}
                                         </span>
                                     </td>
                                 </tr>

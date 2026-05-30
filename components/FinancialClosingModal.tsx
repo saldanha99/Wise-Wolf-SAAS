@@ -47,10 +47,25 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
             if (error) throw error;
 
-            // Rule: Pay if (not teacher absence) AND (not repo). Trials ARE paid.
+            // FIX: busca o hourly_rate real do banco (fonte da verdade).
+            // Antes usava user.hourlyRate || 8.00 — se o objeto user não tivesse o
+            // rate carregado, professores de R$16 eram pagos a R$8 (metade).
+            const { data: teacherProfile } = await supabase
+                .from('profiles')
+                .select('hourly_rate')
+                .eq('id', user.id)
+                .single();
+            const rate = Number(teacherProfile?.hourly_rate) || user.hourlyRate || 8.00;
+
+            // FIX: regra de pagamento idêntica à visão diária (isLessonPaid em TeacherFinancials).
+            // Os enums reais são em INGLÊS (TEACHER_ABSENCE), não 'Falta do Professor' —
+            // o filtro antigo nunca casava, então faltas do professor eram pagas indevidamente
+            // e o fechamento divergia do que o professor via no dia a dia.
             const paidLessons = (logs || []).filter(l =>
+                l.presence !== 'TEACHER_ABSENCE' &&
                 l.presence !== 'Falta do Professor' &&
-                l.subtype !== 'REPOSIÇÃO'
+                l.subtype !== 'REPOSIÇÃO' &&
+                l.subtype !== 'Teste Oral'
             );
 
             // Fetch Paid Trainings (Ao Vivo / Meet)
@@ -73,7 +88,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
             const combinedItems = [...paidLessons, ...paidTrainings];
 
             setLessons(combinedItems);
-            setTotalEarned(combinedItems.length * (user.hourlyRate || 8.00));
+            setTotalEarned(combinedItems.length * rate);
 
         } catch (err) {
             console.error('Error fetching modal data:', err);
