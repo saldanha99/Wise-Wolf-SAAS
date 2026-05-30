@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, Star, Target, Briefcase, Plane, GraduationCap, Cpu, Heart, Globe, Crown } from 'lucide-react';
+import { BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, Star, Target, Briefcase, Plane, GraduationCap, Cpu, Heart, Globe, Crown, Flame, Gem, Medal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ActivityPlayer from './ActivityPlayer';
 
@@ -63,10 +63,44 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     const [activitiesByUnit, setActivitiesByUnit] = useState<Record<string, Activity[]>>({});
     const [progress, setProgress] = useState<Record<string, { status: string; score: number | null }>>({});
     const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
+    // Gamificação
+    const [gami, setGami] = useState<{ xp: number; streak: number; hearts: number }>({ xp: 0, streak: 0, hearts: 5 });
+    const [leaderboard, setLeaderboard] = useState<{ full_name: string; xp: number }[]>([]);
 
     useEffect(() => {
-        if (userId) loadPaths();
+        if (userId) { loadPaths(); loadGamification(); }
     }, [userId]);
+
+    const loadGamification = async () => {
+        try {
+            // Stats do aluno
+            const { data: prof } = await supabase
+                .from('profiles')
+                .select('xp, streak_count, hearts')
+                .eq('id', userId)
+                .maybeSingle();
+            if (prof) {
+                setGami({
+                    xp: prof.xp ?? 0,
+                    streak: prof.streak_count ?? 0,
+                    hearts: prof.hearts ?? 5,
+                });
+            }
+            // Ranking da liga (top 5 alunos por XP no tenant)
+            if (tenantId) {
+                const { data: lb } = await supabase
+                    .from('profiles')
+                    .select('full_name, xp')
+                    .eq('role', 'STUDENT')
+                    .eq('tenant_id', tenantId)
+                    .order('xp', { ascending: false })
+                    .limit(5);
+                setLeaderboard(lb || []);
+            }
+        } catch (err) {
+            console.error('loadGamification error:', err);
+        }
+    };
 
     const loadPaths = async () => {
         setLoading(true);
@@ -200,6 +234,28 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
         return (
             <div className="bg-gradient-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
+                {/* Barra de status estilo Duolingo: ofensiva · XP · vidas */}
+                <div className="flex items-center justify-center gap-3 sm:gap-6 px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
+                    {/* Ofensiva */}
+                    <div className="flex items-center gap-1.5" title="Ofensiva (dias seguidos)">
+                        <Flame size={20} className={gami.streak > 0 ? 'text-orange-500' : 'text-slate-300'} fill={gami.streak > 0 ? '#f97316' : 'none'} />
+                        <span className="font-black text-base text-slate-700 dark:text-slate-200">{gami.streak}</span>
+                    </div>
+                    <span className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+                    {/* XP / gemas */}
+                    <div className="flex items-center gap-1.5" title="XP total">
+                        <Gem size={19} className="text-sky-500" fill="#0ea5e9" />
+                        <span className="font-black text-base text-slate-700 dark:text-slate-200">{gami.xp}</span>
+                    </div>
+                    <span className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+                    {/* Vidas */}
+                    <div className="flex items-center gap-1" title="Vidas">
+                        {[0, 1, 2, 3, 4].map((i) => (
+                            <Heart key={i} size={17} className={i < gami.hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < gami.hearts ? '#f43f5e' : 'none'} />
+                        ))}
+                    </div>
+                </div>
+
                 {/* Header sticky com progresso */}
                 <div className={`bg-gradient-to-br ${meta.color} p-6 text-white relative overflow-hidden`}>
                     <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
@@ -347,6 +403,37 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                             {overallProgress === 100 ? 'Trilha concluída! 🎉' : 'Complete a trilha'}
                         </p>
                     </div>
+
+                    {/* ── Liga / Ranking ── */}
+                    {leaderboard.length > 0 && (
+                        <div className="mt-10 max-w-md mx-auto">
+                            <div className="rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+                                <div className="flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white">
+                                    <Medal size={18} />
+                                    <span className="font-black text-sm uppercase tracking-wide">Liga · Top alunos</span>
+                                </div>
+                                <ul className="divide-y divide-slate-50 dark:divide-slate-800">
+                                    {leaderboard.map((s, i) => {
+                                        const medal = ['🥇', '🥈', '🥉'][i];
+                                        return (
+                                            <li key={i} className="flex items-center gap-3 px-5 py-2.5">
+                                                <span className="w-7 text-center font-black text-sm shrink-0">
+                                                    {medal || <span className="text-slate-400">{i + 1}</span>}
+                                                </span>
+                                                <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-300 font-black text-xs shrink-0">
+                                                    {(s.full_name || '?').charAt(0).toUpperCase()}
+                                                </div>
+                                                <span className="flex-1 min-w-0 text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{s.full_name || 'Aluno'}</span>
+                                                <span className="flex items-center gap-1 text-sm font-black text-sky-500 shrink-0">
+                                                    <Gem size={13} fill="#0ea5e9" /> {s.xp ?? 0}
+                                                </span>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {activeActivity && (
