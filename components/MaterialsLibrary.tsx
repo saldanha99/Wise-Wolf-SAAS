@@ -162,6 +162,9 @@ const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, emptyText = 'N
                                     <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                                         {g.items.map(m => {
                                             const { Icon, color } = typeVisual(m.type);
+                                            // "Novo": atribuído nos últimos 7 dias (só aplica a materiais com assigned_at)
+                                            const isNew = m.assigned_at
+                                                && (Date.now() - new Date(m.assigned_at).getTime()) < 7 * 24 * 60 * 60 * 1000;
                                             return (
                                                 <div key={m.id || m.assignment_id} className="p-3 rounded-xl border border-brand-border flex items-center justify-between hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-all group">
                                                     <a href={m.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 min-w-0 flex-1">
@@ -171,6 +174,7 @@ const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, emptyText = 'N
                                                         <div className="min-w-0">
                                                             <h4 className="font-bold text-sm text-brand-text truncate group-hover:text-tenant-primary transition-colors flex items-center gap-1.5">
                                                                 {m.title}
+                                                                {isNew && <span className="text-[8px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase font-black tracking-wider shrink-0 animate-pulse">Novo</span>}
                                                                 {m.scope === 'PRIVATE' && <span className="text-[8px] bg-indigo-100 text-indigo-500 px-1 rounded uppercase shrink-0">Privado</span>}
                                                             </h4>
                                                             <div className="flex gap-1.5 mt-1 flex-wrap">

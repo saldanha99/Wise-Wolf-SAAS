@@ -114,39 +114,50 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                 </div>
             )}
 
-            {/* Wolfie History Section */}
-            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500" />
+            {/* Wolfie History Section — só aparece se houver sessões reais */}
+            {wolfieSessions.length > 0 && (
+                <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500" />
 
-                <h3 className="text-xl font-black text-white mb-6 flex items-center gap-2">
-                    <span className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
-                        <Zap size={20} />
-                    </span>
-                    Histórico do Tutor IA
-                </h3>
+                    <h3 className="text-xl font-black text-brand-text mb-6 flex items-center gap-2">
+                        <span className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
+                            <Zap size={20} />
+                        </span>
+                        Histórico do Tutor IA
+                    </h3>
 
-                {/* Session List */}
-                <div className="grid gap-4">
-                    {/* Placeholder for now, simplified fetch logic below */}
-                    <div className="p-4 bg-brand-surface-2/50 rounded-2xl border border-brand-border/50 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs">
-                                18/02
-                            </div>
-                            <div>
-                                <h4 className="text-white font-bold text-sm">Conversation Practice</h4>
-                                <p className="text-xs text-brand-muted">Duração: 5 min • 3 Correções</p>
-                            </div>
-                        </div>
-                        <button className="text-xs font-bold text-indigo-400 hover:text-indigo-300 uppercase">
-                            Ver Detalhes
-                        </button>
-                    </div>
-                    <div className="p-8 text-center border border-dashed border-brand-border rounded-2xl">
-                        <p className="text-brand-muted text-xs">Histórico completo em desenvolvimento (Backend conectado em breve).</p>
+                    <div className="grid gap-3">
+                        {wolfieSessions.map(s => {
+                            const d = new Date(s.created_at || s.started_at);
+                            const dia = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+                            const mins = s.duration_seconds ? Math.max(1, Math.round(s.duration_seconds / 60)) : null;
+                            return (
+                                <div key={s.id} className="p-4 bg-brand-surface-2/50 rounded-2xl border border-brand-border/50 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        <div className="w-11 h-11 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs shrink-0">
+                                            {dia}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h4 className="text-brand-text font-bold text-sm truncate">{s.topic || s.subtopic || 'Prática de Conversação'}</h4>
+                                            <p className="text-xs text-brand-muted">
+                                                {mins ? `${mins} min` : '—'}
+                                                {s.turn_count ? ` • ${s.turn_count} interações` : ''}
+                                                {s.student_level ? ` • ${s.student_level}` : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {typeof s.overall_score === 'number' && (
+                                        <div className="shrink-0 text-center">
+                                            <p className="text-lg font-black text-indigo-500 leading-none">{s.overall_score}</p>
+                                            <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider">score</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* My Assignments Library */}
             <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8">
