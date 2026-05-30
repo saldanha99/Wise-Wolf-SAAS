@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, Heart } from 'lucide-react';
+import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, Heart, Zap } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
@@ -30,6 +31,7 @@ interface ActivityPlayerProps {
 const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose, hearts: heartsProp = 5, onHeartsChange }) => {
     const [saving, setSaving] = useState(false);
     const [hearts, setHearts] = useState(heartsProp);
+    const [result, setResult] = useState<{ score: number; xpEarned: number; leveledUp: boolean; newLevel: number } | null>(null);
 
     // Sincroniza vidas reais (com regeneração) ao abrir
     useEffect(() => {
@@ -117,17 +119,22 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 
             // Award XP proporcional ao score
             const xpEarned = Math.round((activity.xp_reward || 30) * (score / 100));
+            let leveledUp = false;
+            let newLevel = 0;
             if (xpEarned > 0) {
                 const result = await gamificationService.addXP(userId, xpEarned);
-                if (result?.leveledUp) {
-                    confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } });
-                }
-            }
-            if (score >= 80) {
-                confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6'] });
+                if (result?.leveledUp) { leveledUp = true; newLevel = result.newLevel; }
             }
 
-            onComplete(score);
+            // Celebração
+            if (leveledUp) {
+                confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
+            } else if (score >= 80) {
+                confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+            }
+
+            // Mostra a tela de vitória (onComplete só ao clicar Continuar)
+            setResult({ score, xpEarned, leveledUp, newLevel });
         } catch (err) {
             console.error('handleSubmit error:', err);
         } finally {
@@ -159,7 +166,9 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6">
-                    {hearts <= 0 ? (
+                    {result ? (
+                        <VictoryScreen result={result} onContinue={() => onComplete(result.score)} />
+                    ) : hearts <= 0 ? (
                         <div className="text-center py-12">
                             <div className="w-20 h-20 mx-auto rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center mb-4">
                                 <Heart size={36} className="text-rose-400" />
@@ -193,6 +202,82 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 </div>
             </div>
         </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// TELA DE VITÓRIA (celebração ao concluir lição)
+// ─────────────────────────────────────────────────────────────
+const VictoryScreen: React.FC<{
+    result: { score: number; xpEarned: number; leveledUp: boolean; newLevel: number };
+    onContinue: () => void;
+}> = ({ result, onContinue }) => {
+    const { score, xpEarned, leveledUp, newLevel } = result;
+    const aprovado = score >= 60;
+    const perfeito = score >= 95;
+
+    const titulo = leveledUp ? 'Subiu de nível!' : perfeito ? 'Perfeito!' : aprovado ? 'Muito bem!' : 'Concluído!';
+    const emoji = leveledUp ? '👑' : perfeito ? '🌟' : aprovado ? '🎉' : '💪';
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 220, damping: 18 }}
+            className="text-center py-8"
+        >
+            {/* Selo principal */}
+            <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 14, delay: 0.1 }}
+                className="relative mx-auto w-28 h-28 rounded-full flex items-center justify-center mb-5"
+                style={{
+                    background: leveledUp
+                        ? 'linear-gradient(135deg,#fbbf24,#f59e0b)'
+                        : 'linear-gradient(135deg,#8b5cf6,#6366f1)',
+                    boxShadow: leveledUp ? '0 8px 0 #d97706' : '0 8px 0 #4f46e5',
+                }}
+            >
+                <span className="text-5xl">{emoji}</span>
+                {leveledUp && (
+                    <motion.span
+                        className="absolute inset-[-8px] rounded-full border-4 border-amber-300/60"
+                        animate={{ scale: [1, 1.15, 1], opacity: [0.8, 0, 0.8] }}
+                        transition={{ repeat: Infinity, duration: 1.8 }}
+                    />
+                )}
+            </motion.div>
+
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white">{titulo}</h2>
+            {leveledUp && (
+                <p className="text-sm font-bold text-amber-500 mt-1 uppercase tracking-widest">Nível {newLevel}</p>
+            )}
+
+            {/* Cartões de recompensa */}
+            <div className="flex items-center justify-center gap-3 mt-6">
+                {/* Score */}
+                <div className="rounded-2xl border-2 border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10 px-5 py-3 min-w-[96px]">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Acertos</p>
+                    <p className="text-2xl font-black text-emerald-600">{score}%</p>
+                </div>
+                {/* XP */}
+                <div className="rounded-2xl border-2 border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-5 py-3 min-w-[96px]">
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1">
+                        <Zap size={11} /> XP
+                    </p>
+                    <p className="text-2xl font-black text-amber-600">+{xpEarned}</p>
+                </div>
+            </div>
+
+            <button
+                onClick={onContinue}
+                className="mt-8 w-full max-w-xs mx-auto block px-6 py-3.5 rounded-2xl bg-violet-500 text-white font-black text-sm uppercase tracking-wider hover:bg-violet-600 transition-colors"
+                style={{ boxShadow: '0 5px 0 #6d28d9' }}
+            >
+                Continuar
+            </button>
+        </motion.div>
     );
 };
 
