@@ -48,6 +48,51 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
         onHeartsChange?.(novo);
     };
 
+    // Anti-burla: envia só as respostas; o SERVIDOR recalcula score + XP (RPC grade_quiz)
+    const handleQuizSubmit = async (answers: number[]) => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            const { data, error } = await supabase.rpc('grade_quiz', {
+                p_activity_id: activity.id,
+                p_answers: answers,
+            });
+            if (error) throw error;
+
+            const score = Number(data?.score ?? 0);
+
+            // Skills scores (não afetam XP, podem ficar no cliente)
+            try {
+                const { data: unitData } = await supabase
+                    .from('learning_units').select('skill_focus').eq('id', activity.unit_id).maybeSingle();
+                const skillsToUpdate = new Set<string>([
+                    ...(unitData?.skill_focus || []),
+                    ...(skillsForActivityType[activity.type] || []),
+                ]);
+                for (const skill of skillsToUpdate) await updateSkillScore(skill, score);
+            } catch (e) { console.error('skill score (non-blocking):', e); }
+
+            await gamificationService.updateStreak(userId).catch(() => {});
+
+            if (data?.leveledUp) {
+                confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
+            } else if (score >= 80) {
+                confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+            }
+
+            setResult({
+                score,
+                xpEarned: Number(data?.xpEarned ?? 0),
+                leveledUp: !!data?.leveledUp,
+                newLevel: Number(data?.newLevel ?? 0),
+            });
+        } catch (err) {
+            console.error('handleQuizSubmit error:', err);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // Mapeia o tipo de atividade para a skill primaria (alem de unit.skill_focus se houver)
     const skillsForActivityType: Record<string, string[]> = {
         vocab_cards: ['vocabulary'],
@@ -196,8 +241,8 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                     ) : (
                     <>
                     {activity.type === 'vocab_cards' && <VocabCardsRunner content={activity.content} activityId={activity.id} userId={userId} onFinish={handleSubmit} saving={saving} />}
-                    {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} />}
-                    {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} />}
+                    {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} onSubmitAnswers={handleQuizSubmit} />}
+                    {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} onSubmitAnswers={handleQuizSubmit} />}
                     {activity.type === 'reading' && <ReadingRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
                     {activity.type === 'speaking_wolfie' && (
                         <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="animate-spin text-violet-500" /></div>}>
@@ -384,12 +429,13 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
 // ─────────────────────────────────────────────────────────────
 // QUIZ / GRAMMAR DRILL
 // ─────────────────────────────────────────────────────────────
-const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: number) => void; saving: boolean; onWrongAnswer?: () => void }> = ({ content, rulePt, onFinish, saving, onWrongAnswer }) => {
+const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: number) => void; saving: boolean; onWrongAnswer?: () => void; onSubmitAnswers?: (answers: number[]) => void }> = ({ content, rulePt, onFinish, saving, onWrongAnswer, onSubmitAnswers }) => {
     const questions = content.questions || [];
     const [idx, setIdx] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
     const [correctCount, setCorrectCount] = useState(0);
     const [showExp, setShowExp] = useState(false);
+    const [answers, setAnswers] = useState<number[]>([]); // respostas para validação no servidor
 
     if (questions.length === 0) return <p className="text-slate-400">Sem questões configuradas.</p>;
 
@@ -400,15 +446,22 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
     const submit = () => {
         if (selected === null) return;
         setShowExp(true);
+        setAnswers(prev => { const cp = [...prev]; cp[idx] = selected; return cp; });
         if (isCorrect) setCorrectCount(c => c + 1);
         else onWrongAnswer?.(); // perde uma vida ao errar
     };
 
     const next = () => {
         if (isLast) {
-            const finalCorrect = correctCount + (isCorrect ? (showExp ? 0 : 1) : 0);
-            const score = Math.round((finalCorrect / questions.length) * 100);
-            onFinish(score);
+            const finais = [...answers]; finais[idx] = selected ?? -1;
+            if (onSubmitAnswers) {
+                // Anti-burla: servidor recalcula o score a partir do gabarito
+                onSubmitAnswers(finais);
+            } else {
+                const finalCorrect = correctCount + (isCorrect ? (showExp ? 0 : 1) : 0);
+                const score = Math.round((finalCorrect / questions.length) * 100);
+                onFinish(score);
+            }
         } else {
             setIdx(i => i + 1);
             setSelected(null);
