@@ -13,7 +13,8 @@ const corsHeaders = {
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 // Chave global do servidor Evolution (funciona para qualquer instância)
 const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
-const FUNCTIONS_BASE = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1`;
+// Página de confirmação servida pelo SPA (edge functions do Supabase não renderizam HTML — CSP sandbox)
+const APP_URL = Deno.env.get("APP_PUBLIC_URL") || "https://system.wisewolflanguage.com.br";
 
 // Resolve a instância CENTRAL da escola (WhatsApp do admin do tenant).
 // Importante para integridade: a verificação NÃO sai pela instância do professor checado.
@@ -88,7 +89,7 @@ serve(async (req) => {
 
         const aluno = (c.student_name || "").split(" ")[0] || "";
         const prof = c.teacher_name || "seu professor";
-        const link = `${FUNCTIONS_BASE}/confirm-attendance?token=${c.token}`;
+        const link = `${APP_URL}/confirmar-presenca?token=${c.token}`;
         const text = `Oi ${aluno}! 🐺 Aqui é a Wise Wolf.\n\nVimos que você teve aula com *${prof}* hoje. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado! 💜`;
 
         const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
