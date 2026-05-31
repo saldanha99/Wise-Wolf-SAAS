@@ -411,9 +411,11 @@ const App: React.FC = () => {
   // Signup do Professor Empreendedor — Wise Wolf For Teachers
   // Aceita ?ref=<tenantId> para rastrear escola mãe
   if (path === '/seja-professor' || path === '/teacher-signup') {
-    const parentTenantId = new URLSearchParams(window.location.search).get('ref') || undefined;
+    const _tsParams = new URLSearchParams(window.location.search);
+    const parentTenantId = _tsParams.get('ref') || undefined;
+    const referrerTeacherId = _tsParams.get('ref_teacher') || undefined;
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
-      <TeacherEntrepreneurSignup parentTenantId={parentTenantId} />
+      <TeacherEntrepreneurSignup parentTenantId={parentTenantId} referrerTeacherId={referrerTeacherId} />
     </Suspense>;
   }
   // --------------------------------------------------

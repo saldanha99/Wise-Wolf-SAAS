@@ -20,6 +20,8 @@ interface Plan {
 interface TeacherEntrepreneurSignupProps {
     /** ID do tenant da escola mãe que está indicando o professor */
     parentTenantId?: string;
+    /** ID do professor que indicou este novo professor (programa de indicação) */
+    referrerTeacherId?: string;
 }
 
 // ─── Planos (fallback local caso Supabase não retorne) ────────────────────────
@@ -76,7 +78,7 @@ const getPlanKey = (name: string) => {
 
 // ─── Componente Principal ─────────────────────────────────────────────────────
 
-const TeacherEntrepreneurSignup: React.FC<TeacherEntrepreneurSignupProps> = ({ parentTenantId }) => {
+const TeacherEntrepreneurSignup: React.FC<TeacherEntrepreneurSignupProps> = ({ parentTenantId, referrerTeacherId }) => {
     const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS);
     const [selectedPlan, setSelectedPlan] = useState<Plan>(FALLBACK_PLANS[1]); // Growth por padrão
     const [step, setStep] = useState<'plans' | 'form' | 'success'>('plans');
@@ -138,7 +140,8 @@ const TeacherEntrepreneurSignup: React.FC<TeacherEntrepreneurSignupProps> = ({ p
                 owner_cpf_cnpj: form.cpf.replace(/\D/g, '') || null,
                 estimated_students: selectedPlan.max_students < 9999 ? selectedPlan.max_students : null,
                 estimated_teachers: 1,
-                source: parentTenantId ? 'teacher_referral' : 'teacher_signup',
+                source: referrerTeacherId ? 'teacher_to_teacher_referral' : (parentTenantId ? 'teacher_referral' : 'teacher_signup'),
+                referrer_teacher_id: referrerTeacherId || null,
                 plan_interest: selectedPlan.name,
                 lead_type: 'teacher',
                 parent_tenant_id: parentTenantId || null,

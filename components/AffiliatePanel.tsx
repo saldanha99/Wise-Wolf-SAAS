@@ -217,6 +217,28 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 </div>
             </div>
 
+            {/* ── Indicar outro PROFESSOR (mesmo valor) ── */}
+            {isTeacher && programEnabled && (
+              <div className="bg-gradient-to-r from-indigo-500 to-violet-600 rounded-[2rem] p-5 text-white flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-black">👩‍🏫 Indique outro professor e ganhe o mesmo valor!</p>
+                  <p className="text-[11px] text-indigo-100 mt-0.5">Compartilhe seu link de indicação de professores:</p>
+                  <input readOnly value={`${APP_BASE_URL}/seja-professor?ref_teacher=${user.id}`}
+                    onClick={e => (e.target as HTMLInputElement).select()}
+                    className="mt-2 w-full bg-black/20 border border-white/15 rounded-xl px-3 py-2 text-[11px] font-mono text-indigo-100 outline-none truncate" />
+                </div>
+                <button
+                  onClick={() => {
+                    const link = `${APP_BASE_URL}/seja-professor?ref_teacher=${user.id}`;
+                    const msg = encodeURIComponent(`Vem ser professor na Wise Wolf! 🐺 Cadastre-se pelo meu link: ${link}`);
+                    window.open(`https://wa.me/?text=${msg}`, '_blank');
+                  }}
+                  className="px-4 py-2.5 bg-white text-indigo-700 rounded-xl text-xs font-black uppercase tracking-wider shrink-0">
+                  Compartilhar
+                </button>
+              </div>
+            )}
+
             {/* ── Stats Cards ── */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {/* Aguardando Matrícula */}
