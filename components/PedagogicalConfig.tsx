@@ -96,12 +96,16 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         return;
       }
 
-      // Filter: Global OR (Tenant AND Correct ID) OR (Private AND Owner)
-      const visibleMaterials = data?.filter(m =>
-        m.scope === 'GLOBAL' ||
-        String(m.tenant_id) === String(targetTenant) ||
-        (m.scope === 'PRIVATE' && m.uploaded_by === user.id)
-      ) || [];
+      // Visível: escopo correto E (aprovado OU é do próprio usuário, p/ ele acompanhar o status).
+      // Pendentes/reprovados de OUTROS não aparecem no banco.
+      const visibleMaterials = data?.filter(m => {
+        const mine = m.uploaded_by === user.id;
+        const approved = (m.approval_status || 'APPROVED') === 'APPROVED';
+        const scopeOk = m.scope === 'GLOBAL' ||
+          String(m.tenant_id) === String(targetTenant) ||
+          (m.scope === 'PRIVATE' && mine);
+        return scopeOk && (approved || mine);
+      }) || [];
 
       setMaterials(visibleMaterials);
     } catch (err) {
@@ -129,6 +133,8 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       const userRole = user.role;
       const isTeacher = userRole === 'TEACHER';
       const scope = isTeacher ? 'PRIVATE' : 'TENANT';
+      // Material do professor entra como PENDENTE de aprovação do diretor; admin já entra aprovado
+      const approvalStatus = isTeacher ? 'PENDING' : 'APPROVED';
 
       const targetTenantId = tenantId || user.tenantId;
       if (!targetTenantId) {
@@ -146,6 +152,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         category: newMaterial.category,
         uploaded_by: user.id,
         scope: scope,
+        approval_status: approvalStatus,
         niche: newMaterial.niche // Add niche to payload
       }).select().single();
 
@@ -155,7 +162,9 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       }
 
       setMaterials(prev => [data, ...prev]);
-      alert('Material salvo com sucesso!');
+      alert(approvalStatus === 'PENDING'
+        ? '✅ Material enviado para aprovação do diretor. Assim que for aprovado, entra no banco de materiais.'
+        : 'Material salvo com sucesso!');
       setNewMaterial({ title: '', level: 'A1', type: 'PDF', file: null, url: '', category: 'General', niche: 'GENERAL' });
     } catch (err: any) {
       console.error('Upload Error Details:', err);

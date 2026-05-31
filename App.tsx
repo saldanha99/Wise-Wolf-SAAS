@@ -43,6 +43,7 @@ const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoar
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
+const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
 const StudentMaterials = lazy(() => import('./components/StudentMaterials'));
 const StudentPedagogicalView = lazy(() => import('./components/StudentPedagogicalView'));
 const WhatsappConfig = lazy(() => import('./components/WhatsappConfig'));
@@ -577,6 +578,7 @@ const App: React.FC = () => {
       'vendors-mgmt': <VendorManagement user={user} tenantId={currentTenant?.id} />,
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
+      'material-approvals': <MaterialApprovals user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
       'practice': <StudentPracticeHub userId={user.id} tenantId={currentTenant?.id} wolfieConfig={(user as any).wolfie_settings} />,
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,

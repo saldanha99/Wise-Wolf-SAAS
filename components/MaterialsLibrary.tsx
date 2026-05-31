@@ -179,6 +179,8 @@ const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, emptyText = 'N
                                                                 {m.title}
                                                                 {isNew && <span className="text-[8px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase font-black tracking-wider shrink-0 animate-pulse">Novo</span>}
                                                                 {m.scope === 'PRIVATE' && <span className="text-[8px] bg-indigo-100 text-indigo-500 px-1 rounded uppercase shrink-0">Privado</span>}
+                                                                {(m as any).approval_status === 'PENDING' && <span className="text-[8px] bg-amber-100 text-amber-600 px-1 rounded uppercase shrink-0">⏳ Em aprovação</span>}
+                                                                {(m as any).approval_status === 'REJECTED' && <span className="text-[8px] bg-red-100 text-red-600 px-1 rounded uppercase shrink-0" title={(m as any).rejection_reason || ''}>Reprovado</span>}
                                                             </h4>
                                                             <div className="flex gap-1.5 mt-1 flex-wrap">
                                                                 {m.level_tag && <span className="text-[9px] bg-brand-surface-2 dark:bg-slate-700 px-1.5 rounded uppercase font-black text-brand-muted">{m.level_tag}</span>}

@@ -42,11 +42,13 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                 .order('created_at', { ascending: false });
 
             if (materialsData) {
-                // STRICT FILTERING: Only show my tenant's materials or truly Global ones.
+                // Só materiais APROVADOS podem ser atribuídos (pendentes/reprovados ficam de fora).
                 const filtered = materialsData.filter(m =>
-                    m.scope === 'GLOBAL' ||
-                    String(m.tenant_id) === String(myTenantId) ||
-                    (m.scope === 'PRIVATE' && m.uploaded_by === user.id)
+                    ((m.approval_status || 'APPROVED') === 'APPROVED') && (
+                      m.scope === 'GLOBAL' ||
+                      String(m.tenant_id) === String(myTenantId) ||
+                      (m.scope === 'PRIVATE' && m.uploaded_by === user.id)
+                    )
                 );
                 setMaterials(filtered);
             }

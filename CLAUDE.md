@@ -255,6 +255,15 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 ---
 
+## Aprovação de Material Pedagógico ✅
+
+- `pedagogical_materials.approval_status` (APPROVED default p/ existentes; PENDING/REJECTED) + reviewed_by/at + rejection_reason.
+- **Professor** envia material em `PedagogicalConfig` (upload bucket `materials`) → nasce **PENDING** (scope PRIVATE). Vê badge "Em aprovação" e alerta.
+- **Banco assinalável** (`TeacherPedagogicalModal`, `MaterialsLibrary`) só mostra **APPROVED** — pendentes/reprovados de outros não vazam.
+- **Diretor** aprova/reprova em `MaterialApprovals` (aba "Aprovar Materiais"). Aprovar → `approval_status=APPROVED` + `scope=TENANT` (entra no banco). RPCs: `review_material(id,approve,reason)`, `list_material_approvals()`.
+
+---
+
 ## Convenções do Projeto
 
 - TypeScript estrito (sem `any`)
