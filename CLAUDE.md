@@ -224,6 +224,17 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## ⚠️ Gotchas de RPC `RETURNS TABLE` (aprendido na marra)
+
+Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação). Erros que deixam o painel "vazio" silenciosamente (frontend engole o erro):
+1. **`count(*)` é bigint** — colunas de contagem declaradas `int` quebram ("structure of query does not match"). **Solução:** `::int` no SELECT final (ou declarar `bigint`).
+2. **Nomes ambíguos** — se um OUT param tem o mesmo nome de coluna usada sem qualificar (`teacher_id`, `tenant_id`, `status`), dá "column reference is ambiguous". **Solução:** `#variable_conflict use_column` no topo do corpo + aliasar CTEs.
+3. **`commission_rate` é integer** (centavos); declarado `numeric` quebra → `::numeric`. `hourly_rate`/`monthly_fee` são numeric; `xp`/`streak_count` são integer.
+- **Validar SEMPRE chamando a função** (`SELECT count(*) FROM minha_rpc()` com `set_config('request.jwt.claims', '{"sub":"<uid>"}', true)`), NÃO só o SELECT interno.
+- Fichas `get_*_overview` retornam **jsonb** → imunes a esse problema.
+
+---
+
 ## Convenções do Projeto
 
 - TypeScript estrito (sem `any`)
