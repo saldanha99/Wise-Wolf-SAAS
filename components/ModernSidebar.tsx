@@ -116,6 +116,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
         { id: 'teachers', label: 'Professores', icon: Users },
         { id: 'students', label: 'Alunos', icon: GraduationCap },
+        { id: 'student-insights', label: 'Painel de Alunos', icon: TrendingUp },
         { id: 'schedule_explorer', label: 'Mapa Aulas', icon: CalendarClock },
         { id: 'approvals', label: 'Acolhimento', icon: CheckCircle },
         { id: 'trials', label: 'Experimentais', icon: Zap },

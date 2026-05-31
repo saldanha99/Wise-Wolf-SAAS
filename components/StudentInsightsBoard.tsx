@@ -1,0 +1,140 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { supabase } from '../lib/supabase';
+import { ShieldAlert, Users, AlertTriangle, TrendingUp, RefreshCw, Eye, CreditCard, CalendarClock } from 'lucide-react';
+import { User as UserType } from '../types';
+import StudentProfileView from './StudentProfileView';
+
+interface Props { user: UserType; tenantId?: string; }
+
+const StudentInsightsBoard: React.FC<Props> = ({ user }) => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewId, setViewId] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.rpc('list_students_overview');
+    setRows(Array.isArray(data) ? data : []);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const atRisk = useMemo(() => rows.filter(r => r.risk_level !== 'LOW')
+    .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0)), [rows]);
+
+  // Distribuição por professor
+  const byTeacher = useMemo(() => {
+    const map: Record<string, { name: string; count: number; risk: number; overdue: number; rateSum: number; rateN: number }> = {};
+    rows.forEach(r => {
+      const key = r.professor_id || 'sem';
+      if (!map[key]) map[key] = { name: r.professor_name || 'Sem professor', count: 0, risk: 0, overdue: 0, rateSum: 0, rateN: 0 };
+      map[key].count++;
+      if (r.risk_level !== 'LOW') map[key].risk++;
+      if ((r.overdue_count || 0) > 0) map[key].overdue++;
+      if (r.attendance_rate != null) { map[key].rateSum += r.attendance_rate; map[key].rateN++; }
+    });
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [rows]);
+
+  const maxCount = Math.max(1, ...byTeacher.map(t => t.count));
+  const totals = useMemo(() => ({
+    total: rows.length,
+    risk: atRisk.length,
+    overdue: rows.filter(r => (r.overdue_count || 0) > 0).length,
+    avgRate: (() => { const v = rows.filter(r => r.attendance_rate != null); return v.length ? Math.round(v.reduce((s, r) => s + r.attendance_rate, 0) / v.length) : null; })(),
+  }), [rows, atRisk]);
+
+  const fmtMoney = (v: any) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600"><Users size={24} /></div>
+        <div>
+          <h2 className="text-xl font-bold text-brand-text">Painel de Alunos</h2>
+          <p className="text-sm text-brand-muted">Risco de evasão, frequência e distribuição por professor</p>
+        </div>
+        <button onClick={load} className="ml-auto p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi icon={<Users size={16} />} label="Alunos" value={`${totals.total}`} />
+        <Kpi icon={<AlertTriangle size={16} className="text-red-500" />} label="Em risco" value={`${totals.risk}`} accent="text-red-600" />
+        <Kpi icon={<CreditCard size={16} className="text-amber-500" />} label="Inadimplentes" value={`${totals.overdue}`} accent="text-amber-600" />
+        <Kpi icon={<TrendingUp size={16} className="text-emerald-500" />} label="Freq. média" value={totals.avgRate != null ? `${totals.avgRate}%` : '—'} />
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Alunos em risco */}
+        <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+          <h3 className="text-sm font-bold text-brand-text mb-4 flex items-center gap-2">
+            <ShieldAlert size={16} className="text-red-600" /> Alunos em risco
+            {atRisk.length > 0 && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">{atRisk.length}</span>}
+          </h3>
+          {loading ? <Loading /> : atRisk.length === 0 ? <Empty txt="Nenhum aluno em risco 🎉" /> : (
+            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+              {atRisk.map(r => (
+                <button key={r.student_id} onClick={() => setViewId(r.student_id)}
+                  className="w-full text-left border border-brand-border rounded-xl p-3 hover:border-brand-accent/40 transition-all">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-brand-text truncate">{r.full_name}</span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${r.risk_level === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}>
+                      {r.risk_level === 'HIGH' ? 'ALTO' : 'ATENÇÃO'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(r.risk_reasons || []).map((reason: string, i: number) => (
+                      <span key={i} className="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600 px-2 py-0.5 rounded">{reason}</span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-brand-muted mt-1.5">{r.professor_name || 'Sem professor'} · {r.module || 's/ nível'}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Distribuição por professor */}
+        <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+          <h3 className="text-sm font-bold text-brand-text mb-4 flex items-center gap-2">
+            <CalendarClock size={16} className="text-indigo-600" /> Carga por professor
+          </h3>
+          {loading ? <Loading /> : (
+            <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+              {byTeacher.map((t, i) => (
+                <div key={i}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-brand-text truncate">{t.name}</span>
+                    <span className="text-brand-muted shrink-0">{t.count} aluno{t.count !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-brand-surface-2 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500" style={{ width: `${Math.round(100 * t.count / maxCount)}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1 text-[10px] text-brand-muted">
+                    {t.risk > 0 && <span className="text-red-500 font-bold">{t.risk} em risco</span>}
+                    {t.overdue > 0 && <span className="text-amber-600 font-bold">{t.overdue} inadimplente{t.overdue !== 1 ? 's' : ''}</span>}
+                    {t.rateN > 0 && <span>freq. {Math.round(t.rateSum / t.rateN)}%</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {viewId && <StudentProfileView studentId={viewId} user={user} onClose={() => setViewId(null)} />}
+    </div>
+  );
+};
+
+const Kpi: React.FC<{ icon: React.ReactNode; label: string; value: string; accent?: string }> = ({ icon, label, value, accent }) => (
+  <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
+    <div className="flex items-center gap-2 text-brand-muted text-[10px] font-bold uppercase mb-1">{icon}{label}</div>
+    <p className={`text-2xl font-black ${accent || 'text-brand-text'}`}>{value}</p>
+  </div>
+);
+const Loading = () => <div className="py-10 text-center text-brand-muted"><RefreshCw size={20} className="animate-spin mx-auto" /></div>;
+const Empty: React.FC<{ txt: string }> = ({ txt }) => <div className="py-10 text-center text-brand-muted text-sm opacity-70">{txt}</div>;
+
+export default StudentInsightsBoard;

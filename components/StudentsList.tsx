@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain } from 'lucide-react';
+import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain, Eye, AlertTriangle, CalendarCheck } from 'lucide-react';
+import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
@@ -16,6 +17,10 @@ interface StudentsListProps {
 const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | 'ALL'>('ALL');
+  const [levelFilter, setLevelFilter] = useState<string>('ALL');
+  const [financialFilter, setFinancialFilter] = useState<string>('ALL'); // ALL | RISK | OVERDUE
+  const [overviewMap, setOverviewMap] = useState<Record<string, any>>({});
+  const [viewStudentId, setViewStudentId] = useState<string | null>(null);
 
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,6 +173,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             accepted_at: s.accepted_at,
             documentation_status: s.documentation_status,
             tenant_id: s.tenant_id,
+            status_financial: s.status_financial,
+            module: s.module,
           };
         });
         setStudents(mappedStudents);
@@ -447,14 +454,32 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     }
   };
 
+  // Busca métricas consolidadas (risco/frequência/atraso) — RPC com escopo por papel
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.rpc('list_students_overview');
+      if (Array.isArray(data)) {
+        const map: Record<string, any> = {};
+        data.forEach((r: any) => { map[r.student_id] = r; });
+        setOverviewMap(map);
+      }
+    })();
+  }, [tenantId, students.length]);
+
+  // Níveis disponíveis para o filtro
+  const availableLevels = Array.from(new Set(students.map(s => s.levelBadge).filter((x: string) => x && x !== 'N/A'))).sort();
+
   // Filter Logic
   const filteredStudents = students.filter(s => {
+    const ov = overviewMap[s.id];
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.occupation.toLowerCase().includes(searchTerm.toLowerCase());
-
     const matchesTeacher = selectedTeacherId === 'ALL' || s.assignedTeacherIds.includes(selectedTeacherId);
-
-    return matchesSearch && matchesTeacher;
+    const matchesLevel = levelFilter === 'ALL' || s.levelBadge === levelFilter;
+    const matchesFinancial = financialFilter === 'ALL'
+      || (financialFilter === 'RISK' && ov && ov.risk_level !== 'LOW')
+      || (financialFilter === 'OVERDUE' && ov && (ov.overdue_count || 0) > 0);
+    return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial;
   });
 
   const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
@@ -526,10 +551,23 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2 px-4 py-1 bg-brand-surface-2 rounded-full">
+          <div className="flex items-center gap-2 px-4 py-1 bg-brand-surface-2 rounded-full shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[10px] font-black uppercase text-brand-muted tracking-widest">{filteredStudents.length} Alunos</span>
           </div>
+
+          {/* Filtros avançados */}
+          <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
+            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            <option value="ALL">Todos os níveis</option>
+            {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <select value={financialFilter} onChange={e => setFinancialFilter(e.target.value)}
+            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            <option value="ALL">Situação: todas</option>
+            <option value="RISK">⚠ Em risco</option>
+            <option value="OVERDUE">Inadimplentes</option>
+          </select>
 
           {/* ADD BUTTON */}
           <button
@@ -549,27 +587,57 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                 <RefreshCw className="animate-spin mb-4" size={32} />
                 <p className="text-xs font-black uppercase tracking-widest">Carregando Alunos...</p>
               </div>
-            ) : filteredStudents.map((student, i) => (
+            ) : filteredStudents.map((student, i) => {
+              const ov = overviewMap[student.id];
+              const canEdit = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+              return (
               <div key={i} className="group bg-brand-surface rounded-[2rem] border border-brand-border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit">
 
                 {/* Header: Name & Edit */}
-                <div className="flex justify-between items-start mb-6">
+                <div className="flex justify-between items-start mb-4">
                   <div className="flex-1 pr-4">
                     <h3 className="font-black text-brand-text text-lg leading-tight tracking-tight mb-1">{student.name}</h3>
+                    {ov && ov.risk_level !== 'LOW' && (
+                      <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${ov.risk_level === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}
+                        title={(ov.risk_reasons || []).join(' · ')}>
+                        <AlertTriangle size={10} /> {ov.risk_level === 'HIGH' ? 'ALTO RISCO' : 'ATENÇÃO'}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-black text-xs">
                       {student.levelBadge}
                     </div>
-                    <button
-                      onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
-                      className="w-8 h-8 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-sm"
-                      title="Editar Perfil"
-                    >
-                      <Edit3 size={14} />
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
+                        className="w-8 h-8 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-sm"
+                        title="Editar Perfil"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {/* Frequência + risco (chips) */}
+                {ov && (
+                  <div className="flex flex-wrap gap-2 mb-4 text-[10px] font-bold">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-surface-2 text-brand-muted">
+                      <CalendarCheck size={11} /> Freq. {ov.attendance_rate != null ? `${ov.attendance_rate}%` : '—'}
+                    </span>
+                    {(ov.overdue_count || 0) > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-600 dark:bg-red-900/20">
+                        <CreditCard size={11} /> {ov.overdue_count} em atraso
+                      </span>
+                    )}
+                    {ov.days_since_last != null && ov.days_since_last > 14 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-900/20">
+                        {ov.days_since_last}d sem aula
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Content Sections */}
                 <div className="space-y-5">
@@ -674,17 +742,27 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                 </div>
 
                 {/* Footer */}
-                <div className="mt-8 pt-6 border-t border-brand-border">
+                <div className="mt-8 pt-6 border-t border-brand-border flex gap-2">
                   <button
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2 transition-colors"
-                    onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-tenant-primary/10 text-tenant-primary text-xs font-black uppercase hover:bg-tenant-primary hover:text-white transition-colors"
+                    onClick={() => setViewStudentId(student.id)}
                   >
-                    <Info size={14} /> Editar Perfil Completo
+                    <Eye size={14} /> Ver Ficha 360°
                   </button>
+                  {canEdit && (
+                    <button
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 transition-colors"
+                      onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
+                      title="Editar Perfil Completo"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                  )}
                 </div>
 
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {!loading && filteredStudents.length === 0 && (
@@ -712,6 +790,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             currentUserRole={user?.role}
           />
         </div>
+      )}
+
+      {/* Ficha 360° do aluno */}
+      {viewStudentId && (
+        <StudentProfileView studentId={viewStudentId} user={user as any} onClose={() => setViewStudentId(null)} />
       )}
 
       {/* Wolf Intelligence Profile Editor */}
