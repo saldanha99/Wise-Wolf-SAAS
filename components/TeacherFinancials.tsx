@@ -12,10 +12,12 @@ import {
     Search,
     ArrowRight,
     ClipboardCheck,
-    MessageSquare
+    MessageSquare,
+    FileDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
+import TeacherActivityReport from './TeacherActivityReport';
 
 interface TeacherFinancialsProps {
     user: User;
@@ -31,6 +33,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [isContesting, setIsContesting] = useState(false);
     const [contestReason, setContestReason] = useState('');
     const [isConfirming, setIsConfirming] = useState(false);
+    const [showReport, setShowReport] = useState(false);
     // Rate real do professor (fonte da verdade = banco), evita cair no default R$8
     const [rate, setRate] = useState<number>(user.hourlyRate || LESSON_RATE);
 
@@ -204,6 +207,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                     <p className="text-brand-muted text-sm font-medium">Gerencie seus ganhos e fechamentos.</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button onClick={() => setShowReport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-tenant-primary/10 text-tenant-primary text-xs font-bold" title="Ver/baixar meu relatório de atividades (PDF)">
+                        <FileDown size={14} /> Meu Relatório (PDF)
+                    </button>
                     <Calendar size={18} className="text-brand-muted" />
                     <input
                         type="month"
@@ -213,6 +219,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                     />
                 </div>
             </div>
+            {showReport && <TeacherActivityReport teacherId={user.id} onClose={() => setShowReport(false)} />}
 
             {/* Forecast Card */}
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden">

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   X, Loader2, Users, CalendarCheck, AlertTriangle, Star, DollarSign, History,
-  UserX, BookOpen, CheckCircle, XCircle, Phone, Wallet
+  UserX, BookOpen, CheckCircle, XCircle, Phone, Wallet, FileDown
 } from 'lucide-react';
+import TeacherActivityReport from './TeacherActivityReport';
 
 interface Props { teacherId: string; onClose: () => void; }
 
@@ -18,6 +19,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState<any>(null);
   const [tab, setTab] = useState<'overview' | 'students' | 'classes' | 'financial' | 'history'>('overview');
+  const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -55,6 +57,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
                   <span className="flex items-center gap-1"><Wallet size={11} />{money(p.hourly_rate)}/h</span>
                 </p>
               </div>
+              <button onClick={() => setShowReport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-tenant-primary/10 text-tenant-primary text-xs font-bold" title="Gerar folha/relatório em PDF para enviar"><FileDown size={14} /> Folha/PDF</button>
               <button onClick={onClose} className="p-2 rounded-xl hover:bg-brand-surface-2 text-brand-muted"><X size={20} /></button>
             </div>
 
@@ -147,6 +150,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
           </>
         )}
       </div>
+      {showReport && <TeacherActivityReport teacherId={teacherId} editable onClose={() => setShowReport(false)} />}
     </div>
   );
 };
