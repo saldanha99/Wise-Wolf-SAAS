@@ -665,7 +665,40 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
             {/* Grid Content */}
             <div className="flex-1 overflow-auto p-4 scrollbar-hide relative">
-              <div className="min-w-[700px]">
+              {/* MOBILE: lista por dia (a grade larga é inviável no celular) */}
+              <div className="md:hidden space-y-3">
+                {DAYS.map((day, dIdx) => {
+                  const dayBookings = TIMES
+                    .map(time => ({ time, b: bookings[`${dIdx}-${time}`], conflict: conflicts.has(`${dIdx}-${time}`) }))
+                    .filter(x => x.b);
+                  return (
+                    <div key={day} className="bg-brand-surface-2/40 border border-brand-border rounded-xl p-3">
+                      <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2">{day} · {dayBookings.length} aula(s)</p>
+                      {dayBookings.length === 0 ? (
+                        <p className="text-[11px] text-brand-muted italic">Sem aulas</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {dayBookings.map(({ time, b, conflict }) => {
+                            const match = slotSearch.trim() !== '' && (b.student || '').toLowerCase().includes(slotSearch.toLowerCase());
+                            const dim = slotSearch.trim() !== '' && !match;
+                            return (
+                              <div key={time} onClick={() => !b.isTrial && setEditingBooking(b)}
+                                className={`flex items-center gap-2 rounded-lg px-2.5 py-2 cursor-pointer ${b.isTrial ? 'bg-purple-600 text-white' : 'bg-emerald-500 text-white'} ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''} ${dim ? 'opacity-30' : ''}`}>
+                                <span className="text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
+                                <span className="text-[11px] font-black uppercase truncate flex-1">{b.student}</span>
+                                <span className="text-[9px] font-bold opacity-80">{b.module}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP: grade completa */}
+              <div className="hidden md:block min-w-[700px]">
                 <table className="w-full border-separate border-spacing-1">
                   <thead>
                     <tr>
