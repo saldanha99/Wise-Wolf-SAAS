@@ -631,7 +631,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                         <CreditCard size={11} /> {ov.overdue_count} em atraso
                       </span>
                     )}
-                    {ov.days_since_last != null && ov.days_since_last > 14 && (
+                    {ov.days_since_last != null && ov.days_since_last > 30 && (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-600 dark:bg-orange-900/20">
                         {ov.days_since_last}d sem aula
                       </span>
@@ -721,6 +721,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
                     {/* Materials */}
                     <button
+                      onClick={() => setPedagogicalStudent(student)}
                       className="flex flex-col items-center justify-center gap-1 p-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 border border-purple-100 dark:border-purple-900/30 rounded-xl transition-colors group"
                       title="Materiais do Aluno"
                     >
@@ -795,6 +796,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       {/* Ficha 360° do aluno */}
       {viewStudentId && (
         <StudentProfileView studentId={viewStudentId} user={user as any} onClose={() => setViewStudentId(null)} />
+      )}
+
+      {/* Materiais / Pedagógico do aluno */}
+      {pedagogicalStudent && (
+        <TeacherPedagogicalModal student={pedagogicalStudent} onClose={() => setPedagogicalStudent(null)} />
       )}
 
       {/* Wolf Intelligence Profile Editor */}
