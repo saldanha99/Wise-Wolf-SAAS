@@ -36,21 +36,37 @@ const RESPONSE_LABEL: Record<string, string> = {
 
 const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
   const [conflicts, setConflicts] = useState<Conf[]>([]);
+  const [alerts, setAlerts] = useState<Conf[]>([]);
   const [stats, setStats] = useState({ pending: 0, confirmed: 0, conflict: 0 });
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState<string | null>(null);
 
+  const SELECT_COLS = 'id, class_log_id, teacher_id, student_name, teacher_name, class_date, class_time, teacher_reported, student_response, status, responded_at, created_at';
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Conflitos confirmados (já têm lançamento + resposta divergente) → resolver pagamento
       let q = supabase
         .from('attendance_confirmations')
-        .select('id, class_log_id, teacher_id, student_name, teacher_name, class_date, class_time, teacher_reported, student_response, status, responded_at, created_at')
+        .select(SELECT_COLS)
         .eq('status', 'CONFLICT')
         .order('responded_at', { ascending: false });
       if (tenantId) q = q.eq('tenant_id', tenantId);
       const { data: conf } = await q;
       setConflicts((conf as Conf[]) || []);
+
+      // Alertas: aluno disse que o PROFESSOR NÃO APARECEU e o professor ainda não lançou a aula.
+      // Sinal de fraude: professor pode estar adiando o lançamento para depois marcar "falta do aluno".
+      let aq = supabase
+        .from('attendance_confirmations')
+        .select(SELECT_COLS)
+        .eq('status', 'AWAITING_TEACHER')
+        .eq('student_response', 'TEACHER_NO_SHOW')
+        .order('responded_at', { ascending: false });
+      if (tenantId) aq = aq.eq('tenant_id', tenantId);
+      const { data: al } = await aq;
+      setAlerts((al as Conf[]) || []);
 
       // Estatísticas gerais (últimos 60 dias)
       const since = new Date(); since.setDate(since.getDate() - 60);
@@ -62,7 +78,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
       const { data: all } = await sq;
       const counts = { pending: 0, confirmed: 0, conflict: 0 };
       (all || []).forEach((r: any) => {
-        if (r.status === 'PENDING') counts.pending++;
+        if (r.status === 'PENDING' || r.status === 'AWAITING_TEACHER') counts.pending++;
         else if (r.status === 'CONFIRMED' || r.status === 'RESOLVED_PAID') counts.confirmed++;
         else if (r.status === 'CONFLICT') counts.conflict++;
       });
@@ -184,6 +200,31 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
           </div>
         )}
       </div>
+
+      {/* Alertas: aluno relatou ausência do professor sem lançamento ainda */}
+      {alerts.length > 0 && (
+        <div className="bg-amber-50/60 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-900/40 rounded-2xl p-5">
+          <h3 className="text-sm font-bold text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-2">
+            <AlertTriangle size={16} /> Alertas — aluno relatou ausência do professor
+            <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full">{alerts.length}</span>
+          </h3>
+          <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mb-4">
+            O aluno disse que o professor não apareceu, mas o professor ainda <b>não lançou</b> esta aula.
+            Fique de olho: se ele lançar como "falta do aluno", a aula vira conflito automaticamente e será retida.
+          </p>
+          <div className="space-y-2">
+            {alerts.map(a => (
+              <div key={a.id} className="bg-brand-surface border border-amber-200 dark:border-amber-900/30 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+                <UserIcon size={14} className="text-brand-muted shrink-0" />
+                <span className="text-sm font-bold text-brand-text">{a.teacher_name || 'Professor'}</span>
+                <span className="text-xs text-brand-muted">· aluno {a.student_name || '—'}</span>
+                <span className="text-xs text-brand-muted">· {fmtDate(a.class_date)}{a.class_time ? ` às ${String(a.class_time).slice(0,5)}` : ''}</span>
+                <span className="ml-auto text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full uppercase">Aguardando lançamento</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="text-[11px] text-brand-muted leading-relaxed px-1">
         💡 Como funciona: após cada aula, o aluno recebe no WhatsApp (pelo número central da escola) um link de 1 toque para confirmar se a aula aconteceu.
