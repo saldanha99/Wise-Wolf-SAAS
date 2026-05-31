@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   LayoutDashboard, Users, Database, CreditCard,
-  Briefcase, Building2, Server, LogOut, GraduationCap
+  Briefcase, Building2, Server, LogOut, GraduationCap, TrendingUp
 } from 'lucide-react';
 
 // Sub Components
@@ -14,13 +14,14 @@ import SaasCrmBoard from './saas/SaasCrmBoard';
 import SaasPlansManager from './SaasPlansManager';
 import SaasBilling from './saas/SaasBilling';
 import TeacherLeadsPanel from './saas/TeacherLeadsPanel';
+import SaasCommandCenter from './SaasCommandCenter';
 
 interface SuperAdminDashboardProps {
   onLogout?: () => void;
 }
 
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'global' | 'tenants' | 'crm' | 'infra' | 'billing' | 'teachers'>('global');
+  const [activeTab, setActiveTab] = useState<'command' | 'global' | 'tenants' | 'crm' | 'infra' | 'billing' | 'teachers'>('command');
   const [loading, setLoading] = useState(true);
 
   // Global Stats for the Dashboard Tab
@@ -74,13 +75,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'command': return <SaasCommandCenter />;
       case 'global': return <SuperAdminMetrics />;
       case 'tenants': return <SaasTenantManager />;
       case 'crm': return <SaasCrmBoard />;
       case 'infra': return <SaasPlansManager />;
       case 'billing': return <SaasBilling />;
       case 'teachers': return <TeacherLeadsPanel />;
-      default: return <SuperAdminMetrics />;
+      default: return <SaasCommandCenter />;
     }
   };
 
@@ -97,6 +99,13 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
         </div>
 
         <nav className="flex-1 px-4 space-y-1">
+          <button
+            onClick={() => setActiveTab('command')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'command' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
+          >
+            <TrendingUp size={20} />
+            Command Center
+          </button>
           <button
             onClick={() => setActiveTab('global')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === 'global' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400' : 'text-brand-muted hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2'}`}
@@ -166,6 +175,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
         <header className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-black text-brand-text">
+              {activeTab === 'command' && 'Command Center'}
               {activeTab === 'global' && 'Visão Geral'}
               {activeTab === 'tenants' && 'Escolas Parceiras'}
               {activeTab === 'infra' && 'Infraestrutura'}
