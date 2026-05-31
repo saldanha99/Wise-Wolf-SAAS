@@ -540,9 +540,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   });
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
+    <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
-      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm">
+      <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
         <div className="p-5 border-b dark:border-brand-border">
           <h3 className="font-black text-gray-800 dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
             <Users size={14} className="text-tenant-primary" /> Corpo Docente
@@ -569,7 +569,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           </select>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
+        <div className="max-h-60 xl:max-h-none xl:flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
           {filteredTeachers.map((teacher) => (
             <button
               key={teacher.id}
@@ -597,7 +597,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       </div>
 
       {/* Main Area: Detailed Schedule Explorer */}
-      <div className="flex-1 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm overflow-hidden">
+      <div className="flex-1 min-h-[70vh] xl:min-h-0 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm overflow-hidden">
         {selectedTeacher ? (
           <>
             {/* Detail Header - Compact */}
