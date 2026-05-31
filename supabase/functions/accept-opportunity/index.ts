@@ -131,16 +131,18 @@ serve(async (req) => {
             // Clean Phone
             let phone = oppData.student_phone.replace(/\D/g, '');
             if (!phone.startsWith('55') && phone.length > 10) phone = '55' + phone;
-            const jid = `${phone}@s.whatsapp.net`;
 
-            const instanceEncoded = encodeURIComponent(INSTANCE); // "wise%20wolf"
-            const endpoint = `${API_URL}/message/sendText/${instanceEncoded}`;
+            // Instância central REAL do tenant (o "wise wolf" fixo não existe na Evolution)
+            const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: oppData.tenant_id });
+            const sendInstance = centralInst || INSTANCE;
+            const endpoint = `${API_URL}/message/sendText/${encodeURIComponent(sendInstance)}`;
 
-            await fetch(endpoint, {
+            const evoRes = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "apikey": API_KEY },
-                body: JSON.stringify({ number: jid, text: message })
+                body: JSON.stringify({ number: phone, text: message })
             });
+            if (!evoRes.ok) console.error("[accept-opportunity] Evolution falhou:", sendInstance, await evoRes.text());
         }
 
         return new Response(

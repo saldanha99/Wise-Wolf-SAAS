@@ -120,7 +120,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                         data: {
                             student_name: student?.student_name,
                             student_phone: student?.student_phone,
-                            portal_link: window.location.origin
+                            portal_link: window.location.origin,
+                            tenant_id: student?.tenant_id || tenantId
                         }
                     }
                 });

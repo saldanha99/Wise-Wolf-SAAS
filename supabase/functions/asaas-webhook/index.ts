@@ -224,17 +224,20 @@ Prepare-se, as suas aulas de ${freq}x por semana começam em breve!`;
 
                             console.log(`Sending Welcome WhatsApp to ${cleanPhone}...`);
 
-                            // Evolution API Call
-                            const evoRes = await fetch("https://api.2b.app.br/message/sendText/wise-wolf", {
+                            // Instância central REAL do tenant (o "wise-wolf" fixo não existe) + payload v2 + apikey global
+                            const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
+                            const sendInstance = centralInst || 'wise-wolf';
+                            const evoRes = await fetch(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
                                 method: 'POST',
                                 headers: {
-                                    'apikey': '2AFB8724075F-40FB-92CF-414EE13EDA54',
+                                    'apikey': 'd037768b3d06382756a0d9edecf3e40e',
                                     'Content-Type': 'application/json'
                                 },
                                 body: JSON.stringify({
                                     number: cleanPhone,
-                                    options: { delay: 1200, presence: "composing", linkPreview: true },
-                                    textMessage: { text: message }
+                                    text: message,
+                                    delay: 1200,
+                                    linkPreview: true
                                 })
                             });
 

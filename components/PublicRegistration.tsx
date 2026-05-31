@@ -361,7 +361,8 @@ const PublicRegistration: React.FC = () => {
                     type: 'DIRECTOR_NEW_CONTRACT',
                     data: {
                         student_name: name,
-                        class_frequency: `${contractData.classesPerWeek}x`
+                        class_frequency: `${contractData.classesPerWeek}x`,
+                        tenant_id: contractData.unitId
                     }
                 }
             }).catch(e => console.warn("Supressed Director Notification Error:", e));
