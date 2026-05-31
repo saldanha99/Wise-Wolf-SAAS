@@ -212,6 +212,18 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## Gestão de Vendedores (SALESPERSON) ✅
+
+- **Criação:** por link de convite (`VendorInviteGenerator`, payload base64 com `commissionRate` em **centavos**) — vendedor se autocadastra. Surfaced no hub.
+- **Hub do diretor** (`VendorManagement`, aba "Vendedores"): KPIs (a pagar, receita trazida), lista com editar comissão inline + ativar/desativar + convite. `VendorProfileView` = ficha 360 (comissões, funil, histórico) com **workflow** Confirmar→Pagar.
+- **RPCs (só admin):** `list_vendors_overview()`, `get_vendor_overview(uuid)`, `set_vendor_commission_status(uuid, text)`.
+- **Auto-confirm:** trigger `confirm_vendor_commission_on_payment` em `student_payments` → comissão PENDING vira CONFIRMED quando o aluno indicado paga (RECEIVED).
+- **Atribuição:** link de matrícula com `?vendor_id=` cria `vendor_commissions` (vendor_id, student_id, amount_brl em **reais**, status PENDING/CONFIRMED/PAID).
+- `profiles.commission_rate` em **centavos** (dividir por 100 p/ exibir). Auditoria de comissão via `log_profile_changes` (role SALESPERSON).
+- **Estado atual:** 0 vendedores / 0 comissões — camada estava inerte; agora operável.
+
+---
+
 ## Convenções do Projeto
 
 - TypeScript estrito (sem `any`)
