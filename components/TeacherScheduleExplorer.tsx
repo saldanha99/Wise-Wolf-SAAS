@@ -48,6 +48,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const [studentsList, setStudentsList] = useState<any[]>([]);
   const [availableSlots, setAvailableSlots] = useState<Set<string>>(new Set());
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
+  const [conflicts, setConflicts] = useState<Set<string>>(new Set());
+  const [slotSearch, setSlotSearch] = useState('');
 
   useEffect(() => {
     if (teachers && teachers.length > 0) {
@@ -88,6 +90,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     ]);
 
     const newBookings: Record<string, any> = {};
+    const conflictKeys = new Set<string>();
 
     if (bookingsRes.data) {
       bookingsRes.data.forEach((b: any) => {
@@ -98,6 +101,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         if (typeof b.time_slot === 'string') {
           const timeKey = b.time_slot.substring(0, 5);
           if (dIdx !== undefined) {
+             // Conflito: dois alunos no mesmo horário deste professor
+             if (newBookings[`${dIdx}-${timeKey}`] && newBookings[`${dIdx}-${timeKey}`].studentId !== b.student?.id) {
+               conflictKeys.add(`${dIdx}-${timeKey}`);
+             }
              newBookings[`${dIdx}-${timeKey}`] = {
               id: b.id,
               studentId: b.student?.id,
@@ -132,6 +139,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
 
     setBookings(newBookings);
+    setConflicts(conflictKeys);
 
     if (availRes.data) {
       const newAvail = new Set<string>();
@@ -613,17 +621,45 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap justify-end">
+                {/* Ocupação + alunos distintos + conflitos */}
+                {(() => {
+                  const occupied = Object.keys(bookings).length;
+                  const free = Array.from(availableSlots).filter(k => !bookings[k]).length;
+                  const denom = occupied + free;
+                  const pct = denom > 0 ? Math.round(100 * occupied / denom) : 0;
+                  const distinct = new Set(Object.values(bookings).map((b: any) => b.studentId || b.student)).size;
+                  return (
+                    <>
+                      <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-lg text-center">
+                        <p className="text-[8px] font-black text-emerald-600 uppercase tracking-wide">Ocupação</p>
+                        <p className="text-sm font-black text-emerald-700 dark:text-emerald-400 leading-none">{pct}%</p>
+                      </div>
+                      <div className="px-3 py-1.5 bg-brand-surface-2 border border-brand-border rounded-lg text-center">
+                        <p className="text-[8px] font-black text-brand-muted uppercase tracking-wide">Aulas · Alunos</p>
+                        <p className="text-sm font-black text-brand-text leading-none">{occupied} · {distinct}</p>
+                      </div>
+                      {conflicts.size > 0 && (
+                        <div className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg text-center" title="Horários com mais de um aluno">
+                          <p className="text-[8px] font-black text-red-600 uppercase tracking-wide">Conflitos</p>
+                          <p className="text-sm font-black text-red-600 leading-none">{conflicts.size}</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+                <input
+                  value={slotSearch}
+                  onChange={e => setSlotSearch(e.target.value)}
+                  placeholder="Localizar aluno na grade…"
+                  className="px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-none text-brand-text w-44"
+                />
                 <button
                   onClick={() => setIsAssignmentModalOpen(true)}
                   className="px-4 py-2.5 bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.05] transition-all flex items-center gap-2"
                 >
                   <UserPlus size={14} /> Atribuir Aluno
                 </button>
-                <div className="px-3 py-1.5 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-100 dark:border-yellow-900/30 rounded-lg flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
-                  <span className="text-[9px] font-black text-yellow-600 dark:text-yellow-400 uppercase tracking-wide">Reposições</span>
-                </div>
               </div>
             </div>
 
@@ -650,6 +686,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                           const booking = bookings[key];
                           const isAvailable = availableSlots.has(key);
                           const reschedule = getRescheduleForSlot(dIdx, time);
+                          const isConflict = conflicts.has(key);
+                          const matchSearch = slotSearch.trim() !== '' && booking && (booking.student || '').toLowerCase().includes(slotSearch.toLowerCase());
+                          const dimmed = slotSearch.trim() !== '' && booking && !matchSearch;
 
                           return (
                             <td key={dIdx} className="h-8 relative">
@@ -664,9 +703,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                               ) : booking ? (
                                 <div
                                   onClick={() => !booking.isTrial && setEditingBooking(booking)}
-                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-transform cursor-pointer shadow-md group/booking ${booking.isTrial 
-                                    ? 'bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse hover:scale-105' 
-                                    : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'}`}
+                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking ${booking.isTrial
+                                    ? 'bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse hover:scale-105'
+                                    : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'} ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
                                 >
                                   <div className="flex items-center gap-1 overflow-hidden">
                                      {booking.isTrial && <Zap size={6} className="text-white fill-current shrink-0" />}
