@@ -14,6 +14,12 @@ const ConfirmAttendance: React.FC = () => {
   const [sending, setSending] = useState<Resp | null>(null);
   const [done, setDone] = useState<Resp | 'already' | null>(null);
   const [error, setError] = useState<string>('');
+  const [rated, setRated] = useState(false);
+
+  const rate = async (stars: number) => {
+    setRated(true);
+    await supabase.rpc('rate_attendance', { p_token: token, p_stars: stars });
+  };
 
   useEffect(() => {
     (async () => {
@@ -75,6 +81,23 @@ const ConfirmAttendance: React.FC = () => {
       <div style={{ fontSize: 54, marginBottom: 10 }}>✅</div>
       <h1 style={{ fontSize: 20, fontWeight: 800 }}>Resposta registrada</h1>
       <p style={{ fontSize: 14, color: '#475569', marginTop: 8 }}>{msg}</p>
+      {/* Avaliação opcional da aula (só quando teve a aula) */}
+      {done === 'STUDENT_PRESENT' && (
+        rated ? (
+          <p style={{ fontSize: 13, color: '#10b981', marginTop: 16, fontWeight: 700 }}>Obrigado pela avaliação! ⭐</p>
+        ) : (
+          <div style={{ marginTop: 18, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+            <p style={{ fontSize: 13, color: '#334155', marginBottom: 10 }}>Como foi a aula com <b>{prof}</b>?</p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => rate(n)} aria-label={`${n} estrelas`}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 32, lineHeight: 1, padding: 0 }}>⭐</button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Toque nas estrelas (opcional)</p>
+          </div>
+        )
+      )}
       <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 18 }}>Obrigado{aluno ? `, ${aluno}` : ''}. Pode fechar esta página.</p>
     </>);
   }

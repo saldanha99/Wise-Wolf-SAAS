@@ -39,6 +39,7 @@ const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
+const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoard'));
 const StudentMaterials = lazy(() => import('./components/StudentMaterials'));
 const StudentPedagogicalView = lazy(() => import('./components/StudentPedagogicalView'));
 const WhatsappConfig = lazy(() => import('./components/WhatsappConfig'));
@@ -569,6 +570,7 @@ const App: React.FC = () => {
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'attendance-disputes': <AttendanceDisputes user={user} tenantId={currentTenant?.id} />,
       'student-insights': <StudentInsightsBoard user={user} tenantId={currentTenant?.id} />,
+      'teacher-insights': <TeacherInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
       'practice': <StudentPracticeHub userId={user.id} tenantId={currentTenant?.id} wolfieConfig={(user as any).wolfie_settings} />,
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,

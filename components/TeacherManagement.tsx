@@ -260,7 +260,11 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     <div className="p-3 bg-purple-50 dark:bg-purple-900/20 text-purple-600 rounded-xl"><Briefcase size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Custo Hora Médio</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">R$ 42,00</p>
+                        <p className="text-2xl font-black text-gray-800 dark:text-white">{(() => {
+                          const rates = teachers.map(t => Number(t.hourlyRate || 0)).filter(v => v > 0);
+                          const avg = rates.length ? rates.reduce((s, v) => s + v, 0) / rates.length : 0;
+                          return `R$ ${avg.toFixed(2).replace('.', ',')}`;
+                        })()}</p>
                     </div>
                 </div>
             </div>
