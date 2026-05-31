@@ -36,6 +36,9 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [noteCat, setNoteCat] = useState('GERAL');
   const [savingNote, setSavingNote] = useState(false);
 
+  const [creditBalance, setCreditBalance] = useState<number>(0);
+  const [applying, setApplying] = useState(false);
+
   const load = async () => {
     setLoading(true);
     const { data: d, error } = await supabase.rpc('get_student_overview', { p_student_id: studentId });
@@ -43,12 +46,27 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
       setData({ error: d?.error || error?.message || 'erro' });
     } else {
       setData(d);
+      if (d?.can_edit_financial) {
+        const { data: bal } = await supabase.rpc('get_student_credit_balance', { p_student_id: studentId });
+        setCreditBalance(Number(bal) || 0);
+      }
     }
     setLoading(false);
   };
   useEffect(() => { load(); }, [studentId]);
 
   const isAdmin = data?.can_edit_financial === true;
+
+  const applyCredit = async () => {
+    if (creditBalance <= 0) return;
+    if (!confirm(`Aplicar R$ ${creditBalance.toFixed(2).replace('.', ',')} de crédito na próxima cobrança pendente deste aluno?`)) return;
+    setApplying(true);
+    const { data: res, error } = await supabase.rpc('apply_credit_next_pending', { p_student_id: studentId });
+    setApplying(false);
+    if (error || res?.ok === false) { alert(res?.error === 'sem_cobranca_pendente' ? 'Sem cobrança pendente para aplicar.' : 'Erro ao aplicar crédito.'); return; }
+    alert(`Crédito aplicado: R$ ${Number(res.applied || 0).toFixed(2).replace('.', ',')}.\n⚠️ Se a cobrança estiver sincronizada na Asaas, ajuste o valor lá também.`);
+    load();
+  };
 
   const addNote = async () => {
     if (!newNote.trim()) return;
@@ -224,6 +242,17 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
               {/* FINANCIAL (admin) */}
               {tab === 'financial' && isAdmin && (
                 <div className="space-y-2">
+                  {creditBalance > 0 && (
+                    <div className="bg-emerald-50/60 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 rounded-xl p-3 flex items-center justify-between gap-2 mb-2">
+                      <div className="text-sm">
+                        <span className="font-bold text-emerald-700 dark:text-emerald-400">💰 Crédito disponível: {money(creditBalance)}</span>
+                        <p className="text-[11px] text-brand-muted">de indicações — aplicável na próxima cobrança</p>
+                      </div>
+                      <button onClick={applyCredit} disabled={applying} className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold disabled:opacity-50 shrink-0">
+                        {applying ? 'Aplicando…' : 'Aplicar crédito'}
+                      </button>
+                    </div>
+                  )}
                   {(data.payments || []).length === 0 ? <Empty txt="Nenhuma cobrança registrada." /> :
                     (data.payments || []).map((pay: any, i: number) => {
                       const pl = PAY_LABEL[pay.status] || { txt: pay.status, cls: 'text-brand-muted' };
