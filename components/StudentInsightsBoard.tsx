@@ -62,13 +62,16 @@ const StudentInsightsBoard: React.FC<Props> = ({ user }) => {
     return Object.values(map).sort((a, b) => b.count - a.count);
   }, [rows]);
 
+  const active = useMemo(() => rows.filter(r => r.has_activity), [rows]);
+  const orphans = useMemo(() => rows.filter(r => !r.has_activity), [rows]);
   const maxCount = Math.max(1, ...byTeacher.map(t => t.count));
   const totals = useMemo(() => ({
-    total: rows.length,
-    risk: atRisk.length,
+    total: active.length,            // alunos REAIS (com matrícula/pagamento)
+    orphans: orphans.length,         // perfis sem matrícula (possíveis testes)
+    risk: atRisk.filter(r => r.has_activity).length,
     overdue: rows.filter(r => (r.overdue_count || 0) > 0).length,
-    avgRate: (() => { const v = rows.filter(r => r.attendance_rate != null); return v.length ? Math.round(v.reduce((s, r) => s + r.attendance_rate, 0) / v.length) : null; })(),
-  }), [rows, atRisk]);
+    avgRate: (() => { const v = active.filter(r => r.attendance_rate != null); return v.length ? Math.round(v.reduce((s, r) => s + r.attendance_rate, 0) / v.length) : null; })(),
+  }), [rows, atRisk, active, orphans]);
 
   const fmtMoney = (v: any) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`;
 
@@ -106,11 +109,16 @@ const StudentInsightsBoard: React.FC<Props> = ({ user }) => {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<Users size={16} />} label="Alunos" value={`${totals.total}`} />
+        <Kpi icon={<Users size={16} />} label="Alunos ativos" value={`${totals.total}`} />
         <Kpi icon={<AlertTriangle size={16} className="text-red-500" />} label="Em risco" value={`${totals.risk}`} accent="text-red-600" />
         <Kpi icon={<CreditCard size={16} className="text-amber-500" />} label="Inadimplentes" value={`${totals.overdue}`} accent="text-amber-600" />
         <Kpi icon={<TrendingUp size={16} className="text-emerald-500" />} label="Freq. média" value={totals.avgRate != null ? `${totals.avgRate}%` : '—'} />
       </div>
+      {totals.orphans > 0 && (
+        <div className="bg-amber-50/60 dark:bg-amber-900/10 border border-amber-300 dark:border-amber-900/40 rounded-2xl px-4 py-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+          <AlertTriangle size={14} /> <b>{totals.orphans} perfis sem matrícula</b> (sem aula e sem pagamento) — provavelmente contas de teste. Filtre por “Sem matrícula” na aba Alunos para revisar/arquivar. O número de <b>alunos ativos ({totals.total})</b> exclui esses.
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Alunos em risco */}

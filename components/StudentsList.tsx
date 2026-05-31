@@ -478,7 +478,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     const matchesLevel = levelFilter === 'ALL' || s.levelBadge === levelFilter;
     const matchesFinancial = financialFilter === 'ALL'
       || (financialFilter === 'RISK' && ov && ov.risk_level !== 'LOW')
-      || (financialFilter === 'OVERDUE' && ov && (ov.overdue_count || 0) > 0);
+      || (financialFilter === 'OVERDUE' && ov && (ov.overdue_count || 0) > 0)
+      || (financialFilter === 'ORPHAN' && ov && ov.has_activity === false);
     return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial;
   });
 
@@ -567,6 +568,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             <option value="ALL">Situação: todas</option>
             <option value="RISK">⚠ Em risco</option>
             <option value="OVERDUE">Inadimplentes</option>
+            <option value="ORPHAN">Sem matrícula (testes)</option>
           </select>
 
           {/* ADD BUTTON */}
