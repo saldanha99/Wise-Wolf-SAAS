@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Trash2, FileText, Video, Link as LinkIcon, Music, Layers, Globe } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Trash2, FileText, Video, Link as LinkIcon, Music, Layers, Globe, Pencil } from 'lucide-react';
 
 // =============================================================
 // Componente reutilizável de biblioteca de materiais pedagógicos.
@@ -23,6 +23,7 @@ export interface MaterialItem {
 interface Props {
     materials: MaterialItem[];
     onDelete?: (id: string) => void; // se fornecido, mostra botão de excluir (admin)
+    onEdit?: (m: MaterialItem) => void; // se fornecido, mostra botão de editar (admin)
     emptyText?: string;
 }
 
@@ -47,7 +48,7 @@ const typeVisual = (type?: string) => {
     return { Icon: LinkIcon, color: 'bg-slate-500' };
 };
 
-const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, emptyText = 'Nenhum material disponível.' }) => {
+const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, onEdit, emptyText = 'Nenhum material disponível.' }) => {
     const [search, setSearch] = useState('');
     const [groupBy, setGroupBy] = useState<'level' | 'niche'>('level');
     const [typeFilter, setTypeFilter] = useState<string>('ALL');
@@ -192,6 +193,11 @@ const MaterialsLibrary: React.FC<Props> = ({ materials, onDelete, emptyText = 'N
                                                             </div>
                                                         </div>
                                                     </a>
+                                                    {onEdit && m.id && (
+                                                        <button onClick={(e) => { e.stopPropagation(); onEdit(m); }} className="p-2 text-brand-muted hover:text-tenant-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0" title="Editar material">
+                                                            <Pencil size={15} />
+                                                        </button>
+                                                    )}
                                                     {onDelete && m.id && (
                                                         <button onClick={() => onDelete(m.id!)} className="p-2 text-brand-muted hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0">
                                                             <Trash2 size={15} />

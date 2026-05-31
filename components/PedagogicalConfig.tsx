@@ -28,6 +28,40 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   const [uploading, setUploading] = useState(false);
   const [newMaterial, setNewMaterial] = useState({ title: '', level: 'A1', type: 'PDF', file: null as File | null, url: '', category: 'General', niche: 'GENERAL' });
   const [selectedNiche, setSelectedNiche] = useState('ALL');
+  const [customNiches, setCustomNiches] = useState<{ key: string; label: string }[]>([]);
+  const [newNicheLabel, setNewNicheLabel] = useState('');
+  const [showNewNiche, setShowNewNiche] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
+
+  const isTeacher = user.role === UserRole.TEACHER;
+  const canUpload = isTeacher || user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
+
+  // Carrega nichos customizados da escola
+  useEffect(() => {
+    supabase.rpc('list_niches').then(({ data }) => { if (Array.isArray(data)) setCustomNiches(data); });
+  }, [tenantId]);
+
+  const addNiche = async () => {
+    const label = newNicheLabel.trim();
+    if (label.length < 2) return;
+    const { data } = await supabase.rpc('upsert_niche', { p_label: label });
+    if (data?.ok) {
+      setCustomNiches(prev => prev.some(n => n.key === data.key) ? prev : [...prev, { key: data.key, label: data.label }]);
+      setNewMaterial(m => ({ ...m, niche: data.key }));
+      setNewNicheLabel(''); setShowNewNiche(false);
+    } else alert('Erro ao criar nicho.');
+  };
+
+  const saveMaterialEdit = async () => {
+    if (!editingMaterial) return;
+    const { data } = await supabase.rpc('update_material', { p_id: editingMaterial.id, p: {
+      title: editingMaterial.title, niche: editingMaterial.niche, level_tag: editingMaterial.level_tag, type: editingMaterial.type,
+    }});
+    if (data?.ok) {
+      setMaterials(prev => prev.map(m => m.id === editingMaterial.id ? { ...m, ...editingMaterial } : m));
+      setEditingMaterial(null);
+    } else alert('Erro ao salvar edição.');
+  };
 
   useEffect(() => {
     fetchMaterials();
@@ -257,9 +291,10 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
       {activeTab === 'materials' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-full min-h-0">
-          {showSidebar && (
+          {canUpload && (
             <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 h-fit">
-              <h3 className="text-xl font-black mb-6 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
+              <h3 className="text-xl font-black mb-2 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
+              {isTeacher && <p className="text-[11px] text-amber-600 mb-4">📋 Seu material vai para aprovação do diretor antes de entrar no banco.</p>}
               <div className="space-y-4">
                 <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none" placeholder="Título" />
                 <div className="flex gap-2">
@@ -271,6 +306,9 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                   <select value={newMaterial.level} onChange={e => setNewMaterial({ ...newMaterial, level: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
+                </div>
+                {/* Nicho: predefinidos + custom + criar novo */}
+                <div className="flex gap-2 items-center">
                   <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     <option value="GENERAL">🌎 Geral</option>
                     <option value="MEDICINE">🏥 Medicina</option>
@@ -280,26 +318,80 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                     <option value="KIDS">🧸 Crianças</option>
                     <option value="TOEFL_IELTS">🎓 TOEFL/IELTS</option>
                     <option value="CONVERSATION">💬 Conversação</option>
+                    {customNiches.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
                   </select>
+                  <button type="button" onClick={() => setShowNewNiche(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo nicho">+ Nicho</button>
                 </div>
+                {showNewNiche && (
+                  <div className="flex gap-2">
+                    <input value={newNicheLabel} onChange={e => setNewNicheLabel(e.target.value)} placeholder="Nome do novo nicho (ex: Jurídico)" className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs" />
+                    <button type="button" onClick={addNiche} className="px-3 py-2 bg-emerald-500 text-white rounded-xl text-xs font-black">Salvar</button>
+                  </div>
+                )}
                 {newMaterial.type === 'PDF' ? (
                   <div className="p-4 border-2 border-dashed rounded-xl text-center"><input type="file" accept=".pdf" onChange={e => setNewMaterial({ ...newMaterial, file: e.target.files?.[0] || null })} className="hidden" id="file-up" /><label htmlFor="file-up" className="cursor-pointer text-xs font-bold text-brand-muted">{newMaterial.file ? newMaterial.file.name : 'Selecionar PDF'}</label></div>
                 ) : (
                   <input value={newMaterial.url} onChange={e => setNewMaterial({ ...newMaterial, url: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm" placeholder="https://..." />
                 )}
-                <button onClick={handleUploadMaterial} disabled={uploading} className="w-full py-3 bg-tenant-primary text-white rounded-xl font-black uppercase tracking-widest hover:scale-105 transition-all">{uploading ? 'Enviando...' : 'Salvar Material'}</button>
+                <button onClick={handleUploadMaterial} disabled={uploading} className="w-full py-3 bg-tenant-primary text-white rounded-xl font-black uppercase tracking-widest hover:scale-105 transition-all">{uploading ? 'Enviando...' : (isTeacher ? 'Enviar para aprovação' : 'Salvar Material')}</button>
               </div>
             </div>
           )}
 
-          <div className={`${showSidebar ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
+          <div className={`${canUpload ? 'md:col-span-2' : 'md:col-span-3'} bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 flex flex-col`}>
             <h3 className="text-xl font-black mb-6">Biblioteca Master</h3>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <MaterialsLibrary
                 materials={materials}
                 onDelete={showSidebar ? handleDeleteMaterial : undefined}
+                onEdit={showSidebar ? (m: any) => setEditingMaterial({ ...m }) : undefined}
                 emptyText="Nenhum material na biblioteca ainda. Suba o primeiro no painel ao lado."
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edição de material (diretor) */}
+      {editingMaterial && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setEditingMaterial(null)}>
+          <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-brand-text">Editar material</h3>
+            <div>
+              <label className="text-xs font-bold text-brand-muted">Título</label>
+              <input value={editingMaterial.title || ''} onChange={e => setEditingMaterial({ ...editingMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold mt-1" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-bold text-brand-muted">Nível</label>
+                <select value={editingMaterial.level_tag || 'A1'} onChange={e => setEditingMaterial({ ...editingMaterial, level_tag: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                  {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-bold text-brand-muted">Tipo</label>
+                <select value={editingMaterial.type || 'PDF'} onChange={e => setEditingMaterial({ ...editingMaterial, type: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                  <option value="PDF">PDF</option><option value="VIDEO">Vídeo</option><option value="LINK">Link</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-brand-muted">Nicho</label>
+              <select value={editingMaterial.niche || 'GENERAL'} onChange={e => setEditingMaterial({ ...editingMaterial, niche: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                <option value="GENERAL">🌎 Geral</option>
+                <option value="MEDICINE">🏥 Medicina</option>
+                <option value="TECH">💻 Tech</option>
+                <option value="BUSINESS">💼 Business</option>
+                <option value="TRAVEL">✈️ Viagem</option>
+                <option value="KIDS">🧸 Crianças</option>
+                <option value="TOEFL_IELTS">🎓 TOEFL/IELTS</option>
+                <option value="CONVERSATION">💬 Conversação</option>
+                {customNiches.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setEditingMaterial(null)} className="flex-1 py-2.5 rounded-xl border border-brand-border text-brand-muted text-sm font-bold">Cancelar</button>
+              <button onClick={saveMaterialEdit} className="flex-1 py-2.5 rounded-xl bg-tenant-primary text-white text-sm font-bold">Salvar</button>
             </div>
           </div>
         </div>
