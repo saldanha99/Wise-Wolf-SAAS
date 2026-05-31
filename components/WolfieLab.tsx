@@ -51,9 +51,15 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
     const [turns, setTurns] = useState<WolfieTurn[]>([]);
     const [corrections, setCorrections] = useState<WolfieCorrection[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [insights, setInsights] = useState<any>(null);
+    const [showInsights, setShowInsights] = useState(true);
 
     useEffect(() => {
         fetchSessions();
+        (async () => {
+            const { data } = await supabase.rpc('wolfie_insights');
+            if (data && !data.error) setInsights(data);
+        })();
     }, [tenantId]);
 
     useEffect(() => {
@@ -126,8 +132,57 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         );
     };
 
+    const t = insights?.totals || {};
     return (
-        <div className="flex h-[calc(100vh-100px)] gap-6 font-sans">
+      <div className="space-y-4 font-sans">
+        {/* INSIGHTS PEDAGÓGICOS */}
+        {insights && (
+          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/10 dark:to-indigo-900/10 border border-purple-200 dark:border-purple-900/30 rounded-2xl p-4">
+            <button onClick={() => setShowInsights(s => !s)} className="w-full flex items-center justify-between">
+              <h3 className="text-sm font-bold text-brand-text flex items-center gap-2"><Brain size={16} className="text-purple-600" /> Inteligência do Tutor</h3>
+              <span className="text-xs text-brand-muted">{showInsights ? 'ocultar ▲' : 'mostrar ▼'}</span>
+            </button>
+            {showInsights && (
+              <div className="mt-3 space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <MiniKpi label="Sessões" value={`${t.sessions ?? 0}`} sub={`${t.sessions_7d ?? 0} nos 7 dias`} />
+                  <MiniKpi label="Alunos usando" value={`${t.students ?? 0}`} />
+                  <MiniKpi label="Nota média" value={t.avg_score != null ? `${t.avg_score}/5` : '—'} />
+                  <MiniKpi label="Minutos praticados" value={`${t.minutes ?? 0}`} />
+                  <MiniKpi label="Nunca usaram" value={`${insights.never_used ?? 0}`} accent={insights.never_used > 0 ? 'text-amber-600' : undefined} />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Pontos fracos recorrentes */}
+                  <div className="bg-brand-surface border border-brand-border rounded-xl p-3">
+                    <p className="text-xs font-bold text-brand-text mb-2">Pontos fracos recorrentes</p>
+                    {(insights.weak_points || []).length === 0 ? <p className="text-xs text-brand-muted">Sem dados ainda.</p> : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {(insights.weak_points || []).map((w: any, i: number) => (
+                          <span key={i} className="text-[11px] font-bold bg-red-50 dark:bg-red-900/20 text-red-600 px-2 py-1 rounded-lg">{w.error_type} · {w.count}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Top alunos por uso */}
+                  <div className="bg-brand-surface border border-brand-border rounded-xl p-3">
+                    <p className="text-xs font-bold text-brand-text mb-2">Mais engajados</p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {(insights.by_student || []).slice(0, 6).map((s: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-[11px]">
+                          <span className="text-brand-text truncate">{s.name || 'Aluno'}</span>
+                          <span className="text-brand-muted shrink-0">{s.sessions} sess. · {s.avg_score ?? '—'}★ · {s.minutes}min</span>
+                        </div>
+                      ))}
+                      {(insights.by_student || []).length === 0 && <p className="text-xs text-brand-muted">Sem dados ainda.</p>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex h-[calc(100vh-100px)] gap-6">
             {/* LEFT PANEL: LIST */}
             <div className="w-1/3 flex flex-col bg-brand-surface rounded-2xl border border-gray-100 dark:border-brand-border shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-gray-100 dark:border-brand-border">
@@ -279,7 +334,16 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 )}
             </div>
         </div>
+      </div>
     );
 };
+
+const MiniKpi: React.FC<{ label: string; value: string; sub?: string; accent?: string }> = ({ label, value, sub, accent }) => (
+    <div className="bg-brand-surface border border-brand-border rounded-xl p-3">
+        <p className="text-[9px] font-black text-brand-muted uppercase tracking-wide">{label}</p>
+        <p className={`text-lg font-black ${accent || 'text-brand-text'}`}>{value}</p>
+        {sub && <p className="text-[9px] text-brand-muted">{sub}</p>}
+    </div>
+);
 
 export default WolfieLab;
