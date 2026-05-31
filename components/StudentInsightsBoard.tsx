@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { ShieldAlert, Users, AlertTriangle, TrendingUp, RefreshCw, Eye, CreditCard, CalendarClock } from 'lucide-react';
+import { ShieldAlert, Users, AlertTriangle, TrendingUp, RefreshCw, Eye, CreditCard, CalendarClock, Sparkles } from 'lucide-react';
 import { User as UserType } from '../types';
 import StudentProfileView from './StudentProfileView';
 
@@ -10,6 +10,32 @@ const StudentInsightsBoard: React.FC<Props> = ({ user }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewId, setViewId] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiDigest, setAiDigest] = useState<string>('');
+  const [aiError, setAiError] = useState<string>('');
+
+  const genDigest = async () => {
+    setAiLoading(true); setAiError(''); setAiDigest('');
+    try {
+      const { data, error } = await supabase.functions.invoke('school-ai-digest', { body: {} });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'falha');
+      setAiDigest(data.digest);
+    } catch (e: any) {
+      setAiError(e.message || 'Não foi possível gerar o resumo.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Render simples de markdown (títulos ## e bullets -)
+  const renderMd = (md: string) => md.split('\n').map((ln, i) => {
+    const line = ln.replace(/\*\*(.*?)\*\*/g, '$1');
+    if (line.startsWith('## ')) return <h4 key={i} className="text-sm font-black text-brand-text mt-4 mb-1">{line.slice(3)}</h4>;
+    if (line.startsWith('# ')) return <h3 key={i} className="text-base font-black text-brand-text mt-4 mb-1">{line.slice(2)}</h3>;
+    if (/^\s*[-*]\s/.test(line)) return <li key={i} className="text-xs text-brand-muted ml-4 list-disc">{line.replace(/^\s*[-*]\s/, '')}</li>;
+    if (!line.trim()) return <div key={i} className="h-2" />;
+    return <p key={i} className="text-xs text-brand-muted">{line}</p>;
+  });
 
   const load = async () => {
     setLoading(true);
@@ -54,8 +80,29 @@ const StudentInsightsBoard: React.FC<Props> = ({ user }) => {
           <h2 className="text-xl font-bold text-brand-text">Painel de Alunos</h2>
           <p className="text-sm text-brand-muted">Risco de evasão, frequência e distribuição por professor</p>
         </div>
-        <button onClick={load} className="ml-auto p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
+        <button onClick={genDigest} disabled={aiLoading}
+          className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold shadow-lg disabled:opacity-60">
+          <Sparkles size={15} className={aiLoading ? 'animate-pulse' : ''} /> {aiLoading ? 'Analisando…' : 'Resumo IA'}
+        </button>
+        <button onClick={load} className="p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
       </div>
+
+      {/* Resumo executivo por IA */}
+      {(aiLoading || aiDigest || aiError) && (
+        <div className="bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/10 dark:to-indigo-900/10 border border-violet-200 dark:border-violet-900/30 rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles size={16} className="text-violet-600" />
+            <h3 className="text-sm font-bold text-brand-text">Resumo executivo (IA)</h3>
+          </div>
+          {aiLoading ? (
+            <p className="text-xs text-brand-muted flex items-center gap-2"><RefreshCw size={14} className="animate-spin" /> A IA está analisando os dados da escola…</p>
+          ) : aiError ? (
+            <p className="text-xs text-red-600">{aiError}</p>
+          ) : (
+            <div className="space-y-0.5">{renderMd(aiDigest)}</div>
+          )}
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
