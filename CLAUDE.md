@@ -264,6 +264,16 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 ---
 
+## Planner de Aula com IA (LessonPlannerAI) ✅
+
+> Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.
+
+- Edge `lesson-planner` (OpenRouter, Gemini free + fallback) monta plano PERSONALIZADO juntando: perfil (nível/CEFR, personalidade, KIDS, interesses, objetivos), **pontos fracos recorrentes** (`wolfie_corrections.error_type` das sessões do aluno), **histórico** (`class_logs` últimas 5 — continuidade), plano anterior (`lesson_plans`), e **materiais APROVADOS** do tenant (sugere só desses). Retorna `{objectives, content, materials, ai_memory_reflection, weak_points}` — o `content` traz seções com tempos (aquecimento/principal/prática/lição/evitar/continuidade).
+- `LessonPlannerAI.handleGeneratePlan` chama `supabase.functions.invoke('lesson-planner', { student_id, custom_prompt })` (não mais template). Salva em `lesson_plans` (memória p/ continuidade).
+- Guardrails: só sugere materiais da lista fornecida; usa dados reais (anti-genérico). Auth: TEACHER/admin.
+
+---
+
 ## Convenções do Projeto
 
 - TypeScript estrito (sem `any`)

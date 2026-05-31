@@ -79,27 +79,21 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
     const handleGeneratePlan = async () => {
         if (!selectedStudent) return;
         setGenerating(true);
-
         try {
-            // Mocking the AI response logic here, but in a real scenario we'd call an API
-            // or use the system's AI capabilities. Since I am the assistant, I will 
-            // format a high-quality plan based on the instruction.
-
-            const student = students.find(s => s.id === selectedStudent);
-
-            // Simulating AI "thinking" and memory search
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            const plan = {
-                objectives: `Aprimorar conversação sobre ${studentProfile?.interests?.[0] || 'temas gerais'} e gramática de nível ${studentProfile?.module || 'B1'}.`,
-                content: `1. Warm-up: Discussing recent activities (${studentProfile?.occupation || 'Daily life'}).\n2. Lesson Topic: Advanced structures for expressing opinions.\n3. Practical Exercise: Simulation of a real-world scenario related to ${studentProfile?.interests?.[1] || 'professional growth'}.`,
-                materials: "PDF Lesson 14, YouTube Video: 'Expressing Ambition', Interactive Quiz.",
-                ai_memory_reflection: `O aluno ${student.full_name} responde melhor a aulas baseadas em vídeos e conversação ativa. Evitar exercícios gramaticais puramente teóricos por longos períodos.`
-            };
-
-            setGeneratedPlan(plan);
-        } catch (err) {
-            alert("Erro ao gerar plano com IA.");
+            // IA real: edge function que junta perfil + pontos fracos + histórico + materiais + plano anterior
+            const { data, error } = await supabase.functions.invoke('lesson-planner', {
+                body: { student_id: selectedStudent, custom_prompt: customPrompt },
+            });
+            if (error || data?.error) throw new Error(data?.error || error?.message || 'falha');
+            setGeneratedPlan({
+                objectives: data.objectives,
+                content: data.content,
+                materials: data.materials,
+                ai_memory_reflection: data.ai_memory_reflection,
+                weak_points: data.weak_points || [],
+            });
+        } catch (err: any) {
+            alert("Erro ao gerar plano com IA: " + (err.message || 'tente novamente'));
         } finally {
             setGenerating(false);
         }
