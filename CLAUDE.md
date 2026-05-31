@@ -235,6 +235,17 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 ---
 
+## Programa de Indicações (referral) ✅
+
+- **Config do diretor** (`ReferralAdmin`, aba "Indicações"): liga/desliga, recompensa aluno/professor (R$), mín. pagamentos, teto mensal, validade do crédito, bloqueio auto-indicação. Fonte ÚNICA em `tenant_referral_settings` (antes os valores eram chumbados/inconsistentes: 45 vs 49).
+- **Recompensa real no pagamento:** trigger `grant_referral_reward_on_payment` em `student_payments` → `process_referral_reward()` premia quando o aluno indicado paga (respeita `min_payments`). Aluno indicador → `student_credits` (redimível); professor indicador → `referral_rewards` PENDING (admin marca PAID). Ledger único `referral_rewards` (unique por `referred_student_id` = idempotente).
+- **Atribuição:** `PublicRegistration` já grava `referrer_student_id`/`referrer_teacher_id` do `?ref=`/`?ref_student=` no perfil — fonte confiável (não depende de e-mail).
+- **RPCs:** `get_referral_settings()`, `save_referral_settings(jsonb)`, `list_referrals_overview()`, `set_referral_reward_status(uuid,text)` (admin); `get_my_referral_info()` (qualquer user: valor, convertidas, saldo de crédito).
+- `AffiliatePanel`/`TeacherAffiliateCard` agora leem o valor real via `get_my_referral_info` + mostram saldo de crédito.
+- **Estado:** programa começa DESLIGADO (sem linha em `tenant_referral_settings`); só paga quando o diretor configura+ativa. `monthly_cap=0` = ilimitado.
+
+---
+
 ## Convenções do Projeto
 
 - TypeScript estrito (sem `any`)

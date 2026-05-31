@@ -40,6 +40,9 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
     });
     const [loading, setLoading] = useState(true);
     const [pendingInvites, setPendingInvites] = useState(0);
+    const [reward, setReward] = useState<number>(BONUS_PER_REFERRAL);
+    const [creditBalance, setCreditBalance] = useState<number>(0);
+    const [programEnabled, setProgramEnabled] = useState<boolean>(true);
 
     const isTeacher = user.role === UserRole.TEACHER;
     const isStudent = user.role === UserRole.STUDENT;
@@ -74,6 +77,17 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                 .eq('referrer_id', user.id)
                 .eq('status', 'PENDING');
 
+            // Recompensa real + saldo de crédito (config do tenant)
+            try {
+                const { data: info } = await supabase.rpc('get_my_referral_info');
+                if (info && !info.error) {
+                    const rw = Number(info.reward_brl) || BONUS_PER_REFERRAL;
+                    setReward(rw);
+                    setCreditBalance(Number(info.credit_balance) || 0);
+                    setProgramEnabled(!!info.enabled);
+                }
+            } catch { /* mantém fallback */ }
+
             const converted = convertedCount || 0;
             const recentConverted: ReferredUser[] = (convertedInvites || []).map((inv: any) => ({
                 id: inv.id,
@@ -84,7 +98,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
 
             setStats({
                 referrals: converted,
-                totalEarnings: converted * BONUS_PER_REFERRAL,
+                totalEarnings: converted * reward,
                 recentReferrals: recentConverted,
             });
             setPendingInvites(pendingCount || 0);
@@ -141,8 +155,13 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                             </h1>
                             <p className="text-emerald-100/90 font-medium text-base max-w-sm">
                                 Cada amigo que se matricular pelo seu link vale{' '}
-                                <span className="font-black text-white">R$ {BONUS_PER_REFERRAL},00</span> pra você!
+                                <span className="font-black text-white">R$ {reward.toFixed(2).replace('.', ',')}</span> pra você!
                             </p>
+                            {creditBalance > 0 && (
+                                <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold bg-white/20 text-white px-3 py-1 rounded-full">
+                                    💰 Você tem R$ {creditBalance.toFixed(2).replace('.', ',')} em créditos
+                                </p>
+                            )}
                         </div>
                         <div className="hidden md:flex w-20 h-20 bg-brand-surface/15 backdrop-blur rounded-3xl items-center justify-center border border-white/20 shrink-0">
                             <Gift size={36} className="text-emerald-100" />
@@ -292,7 +311,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">
-                                        +R$ 45,00
+                                        +R$ {reward.toFixed(2).replace('.', ',')}
                                     </p>
                                     <p className="text-[10px] font-bold text-brand-muted uppercase tracking-wide">bônus</p>
                                 </div>
@@ -307,7 +326,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                                 Nenhuma indicação ainda
                             </h4>
                             <p className="text-sm text-brand-muted font-medium max-w-xs mx-auto">
-                                Compartilhe seu link e comece a ganhar R$ 45,00 por cada amigo matriculado!
+                                Compartilhe seu link e comece a ganhar R$ {reward.toFixed(2).replace('.', ',')} por cada amigo matriculado!
                             </p>
                         </div>
                     )}
@@ -327,7 +346,7 @@ const AffiliatePanel: React.FC<AffiliatePanelProps> = ({ user }) => {
                         { tip: 'Mande o link no status do WhatsApp', icon: '📲' },
                         { tip: 'Indique para quem já falou em aprender inglês', icon: '💬' },
                         { tip: 'Compartilhe nos seus stories com depoimento pessoal', icon: '🌟' },
-                        { tip: 'Cada matrícula confirmada = R$ 45,00 garantidos', icon: '💰' },
+                        { tip: `Cada matrícula confirmada = R$ ${reward.toFixed(2).replace('.', ',')} garantidos`, icon: '💰' },
                     ].map(({ tip, icon }) => (
                         <li key={tip} className="flex items-start gap-3">
                             <span className="text-base shrink-0 mt-0.5">{icon}</span>

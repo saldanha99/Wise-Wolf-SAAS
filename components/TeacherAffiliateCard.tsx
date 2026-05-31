@@ -10,6 +10,7 @@ interface TeacherAffiliateCardProps {
 const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => {
     const [copied, setCopied] = useState(false);
     const [stats, setStats] = useState({ referrals: 0, totalEarnings: 0 });
+    const [reward, setReward] = useState<number>(45);
 
     const affiliateLink = `${APP_BASE_URL}/matricula?ref=${user.id}`;
 
@@ -27,10 +28,13 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
                 .eq('role', 'STUDENT');
 
             const referrals = count || 0;
-            setStats({
-                referrals,
-                totalEarnings: referrals * 45 // R$45 fixos por indicação
-            });
+            let rw = 45;
+            try {
+                const { data: info } = await supabase.rpc('get_my_referral_info');
+                if (info && !info.error && Number(info.reward_brl) > 0) rw = Number(info.reward_brl);
+            } catch { /* fallback */ }
+            setReward(rw);
+            setStats({ referrals, totalEarnings: referrals * rw });
         } catch (err) {
             console.error('Error fetching affiliate stats:', err);
         }
@@ -51,7 +55,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
                         <Gift size={18} className="text-emerald-200" />
                         <h3 className="text-sm font-black uppercase tracking-wider">Programa de Indicação</h3>
                     </div>
-                    <p className="text-emerald-100/80 text-xs">Indique alunos e ganhe R$ 49,00 por matrícula convertida</p>
+                    <p className="text-emerald-100/80 text-xs">Indique alunos e ganhe R$ {reward.toFixed(2).replace('.', ',')} por matrícula convertida</p>
                 </div>
                 <div className="absolute -right-6 -top-6 w-24 h-24 bg-brand-surface/10 rounded-full blur-xl" />
             </div>
@@ -98,7 +102,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
                 </div>
 
                 <p className="text-[10px] text-brand-muted text-center font-medium">
-                    Compartilhe este link. Quando o aluno fechar contrato, você recebe R$ 49,00 + aulas recorrentes normais.
+                    Compartilhe este link. Quando o aluno indicado pagar, você recebe R$ {reward.toFixed(2).replace('.', ',')} + suas aulas recorrentes normais.
                 </p>
             </div>
         </div>
