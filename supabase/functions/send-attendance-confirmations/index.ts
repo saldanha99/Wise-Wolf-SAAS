@@ -11,9 +11,25 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const API_TOKEN = "2AFB8724075F-40FB-92CF-414EE13EDA54";
-const CENTRAL_INSTANCE = "wise-wolf"; // instância central da escola
+// Chave global do servidor Evolution (funciona para qualquer instância)
+const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
 const FUNCTIONS_BASE = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1`;
+
+// Resolve a instância CENTRAL da escola (WhatsApp do admin do tenant).
+// Importante para integridade: a verificação NÃO sai pela instância do professor checado.
+async function resolveCentralInstance(supabase: any, tenantId: string | null): Promise<string | null> {
+  if (!tenantId) return null;
+  const { data } = await supabase
+    .from("profiles")
+    .select("whatsapp_instance")
+    .eq("tenant_id", tenantId)
+    .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
+    .not("whatsapp_instance", "is", null)
+    .neq("whatsapp_instance", "")
+    .limit(1)
+    .maybeSingle();
+  return data?.whatsapp_instance || null;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -30,7 +46,7 @@ serve(async (req) => {
     // ainda pendentes (sem resposta) e com poucas tentativas.
     const { data: pending, error } = await supabase
       .from("attendance_confirmations")
-      .select("id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts")
+      .select("id, tenant_id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts")
       .is("sent_at", null)
       .eq("status", "PENDING")
       .lte("class_date", todayISO)
@@ -46,6 +62,7 @@ serve(async (req) => {
 
     let sent = 0;
     const failures: string[] = [];
+    const instanceCache: Record<string, string | null> = {};
 
     for (const c of pending) {
       try {
@@ -57,18 +74,31 @@ serve(async (req) => {
           continue;
         }
 
+        // Instância central da escola (cache por tenant)
+        const tk = c.tenant_id || "_";
+        if (!(tk in instanceCache)) {
+          instanceCache[tk] = await resolveCentralInstance(supabase, c.tenant_id);
+        }
+        const instance = instanceCache[tk];
+        if (!instance) {
+          failures.push(`${c.id}: escola sem WhatsApp central conectado`);
+          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
+          continue;
+        }
+
         const aluno = (c.student_name || "").split(" ")[0] || "";
         const prof = c.teacher_name || "seu professor";
         const link = `${FUNCTIONS_BASE}/confirm-attendance?token=${c.token}`;
         const text = `Oi ${aluno}! 🐺 Aqui é a Wise Wolf.\n\nVimos que você teve aula com *${prof}* hoje. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado! 💜`;
 
-        const resp = await fetch(`${EVOLUTION_API_BASE}/${CENTRAL_INSTANCE}`, {
+        const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: API_TOKEN },
           body: JSON.stringify({
             number: phone,
-            options: { delay: 1000, presence: "composing", linkPreview: true },
-            textMessage: { text },
+            text,
+            delay: 1000,
+            linkPreview: true,
           }),
         });
 

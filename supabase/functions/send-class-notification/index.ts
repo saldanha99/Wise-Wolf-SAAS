@@ -2,7 +2,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const API_TOKEN = "2AFB8724075F-40FB-92CF-414EE13EDA54";
+// Chave global do servidor Evolution (funciona para qualquer instância)
+const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
 
 interface RequestBody {
     type: 'CONFIRMATION' | 'RESCHEDULE' | 'CUSTOM';
@@ -62,17 +63,12 @@ serve(async (req) => {
             }
         }
 
-        // Prepare payload
+        // Prepare payload (Evolution API v2: 'text' no topo — formato aceito pelo servidor api.2b.app.br)
         const evolutionPayload = {
             number: cleanNumber,
-            options: {
-                delay: 1000,
-                presence: "composing",
-                linkPreview: true
-            },
-            textMessage: {
-                text: finalMessage
-            }
+            text: finalMessage,
+            delay: 1000,
+            linkPreview: true
         };
 
         console.log(`Sending ${type} Notification to ${cleanNumber} via ${activeInstance}...`);
