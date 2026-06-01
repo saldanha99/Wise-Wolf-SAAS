@@ -212,6 +212,28 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## Automações de WhatsApp por Cron ✅
+
+> Todas resolvem a **instância central da escola** via `profiles.whatsapp_instance` do `SCHOOL_ADMIN`/`SUPER_ADMIN` do tenant, usam payload **Evolution v2** (`{number,text,delay,linkPreview}`) com a apikey global, e são **idempotentes** via tabela `automation_sent (kind, subject_id, ref_date)` — índice único `(kind, subject_id, ref_date)`.
+
+**Base (migrations `automation_base` + `automation_read_rpcs`):**
+- `automation_sent` — dedupe diário. Cada envio insere uma linha; antes de enviar checa se já existe (mesmo `kind`+`subject`+`ref_date`).
+- `run_monthly_teacher_closing(p_month text DEFAULT NULL)` — default = mês anterior; gera `teacher_closings` (idempotente por `NOT EXISTS`) computando aulas pagas × `hourly_rate`. Retorna `{ok, month, created}`.
+- RPCs de leitura (só `service_role`): `birthdays_today()`, `teacher_agendas_today()`, `trial_followups()`, `weekly_digest_rows()`, `monthly_closings_to_notify(text)`.
+
+**Edge functions (deploy `--no-verify-jwt`, cron internas):**
+| Edge | Cron (`cron.job`) | Quando (UTC / BRT) | O quê |
+|------|-------------------|---------|-------|
+| `daily-automations` | `wisewolf-daily-automations` | `0 11 * * *` (08:00 BRT) | 3 em 1: **aniversário** (aluno+professor, `kind=BIRTHDAY`), **agenda do dia** do professor (`TEACHER_AGENDA`), **follow-up de trial** feito há 2 dias sem matrícula (`TRIAL_FOLLOWUP`) |
+| `weekly-director-digest` | `wisewolf-weekly-digest` | `0 11 * * 1` (seg 08:00 BRT) | Resumo da semana pro diretor (`WEEKLY_DIGEST`): alunos ativos, aulas 7d, recebido 7d, inadimplência |
+| `monthly-teacher-closing` | `wisewolf-monthly-closing` | `30 6 1 * *` (dia 1, 03:30 BRT) | Gera fechamento do mês anterior (`run_monthly_teacher_closing`) + avisa cada professor com aulas>0 (`MONTHLY_CLOSING`, subject=`teacher:month`) com link p/ *Financeiro → Meu Relatório (PDF)* |
+
+**Wrappers cron** (`trigger_daily_automations` / `trigger_weekly_director_digest` / `trigger_monthly_teacher_closing`): padrão idêntico ao `trigger_notify_payment_due` — lê `vault.decrypted_secrets` (`wisewolf_service_role_key`) + `net.http_post` com `Authorization: Bearer <service_key>`.
+
+**Testar manualmente:** `SELECT trigger_daily_automations();` → checar `SELECT * FROM net._http_response WHERE id=<request_id>` e `SELECT * FROM automation_sent WHERE ref_date=current_date`. Re-disparar deve retornar `skipped` (idempotência). ⚠️ Disparar manualmente **envia WhatsApp real** aos destinatários do dia.
+
+---
+
 ## Gestão de Vendedores (SALESPERSON) ✅
 
 - **Criação:** por link de convite (`VendorInviteGenerator`, payload base64 com `commissionRate` em **centavos**) — vendedor se autocadastra. Surfaced no hub.
