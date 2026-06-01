@@ -134,6 +134,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'settings_school', label: 'Branding', icon: Palette },
         { id: 'vendors-mgmt', label: 'Vendedores', icon: TrendingUp },
         { id: 'referral-admin', label: 'Indicações', icon: Gift },
+        { id: 'automations', label: 'Automações WPP', icon: Zap },
         { id: 'crm', label: 'CRM & Pipeline', icon: Users },
         { id: 'marketing', label: 'Site & Vendas', icon: Globe },
         { id: 'hr', label: 'Recursos Humanos', icon: Briefcase },
