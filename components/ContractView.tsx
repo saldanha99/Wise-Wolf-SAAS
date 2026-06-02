@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Download, FileText, Loader2, Printer, RefreshCw } from 'lucide-react';
-import { ContractDocument } from './ContractDocument';
+import { ContractDocument, type SchoolInfo } from './ContractDocument';
+import { getSchoolInfo } from '../lib/schoolInfo';
 
 interface ContractViewProps {
     userId: string;
@@ -18,6 +19,7 @@ const ContractView: React.FC<ContractViewProps> = ({
     onDownloadReady,
 }) => {
     const [profile, setProfile] = useState<any>(null);
+    const [school, setSchool] = useState<SchoolInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
 
@@ -36,6 +38,8 @@ const ContractView: React.FC<ContractViewProps> = ({
                 .single();
             if (error) throw error;
             setProfile(data);
+            // Carrega os dados da escola (cabeçalho/rodapé do contrato)
+            setSchool(await getSchoolInfo(data?.tenant_id));
         } catch (err) {
             console.error('Erro ao carregar contrato:', err);
         } finally {
@@ -133,13 +137,17 @@ const ContractView: React.FC<ContractViewProps> = ({
     const monthlyFee = Number(profile.monthly_fee || 0);
     const totalValue = (monthlyFee * duration).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
+    // Dependente: CONTRATANTE é o responsável financeiro (guardian); o aluno aparece como dependente.
+    const isDependent = !!(profile.guardian_id || profile.guardian_cpf);
     const contractProps = {
         innerRef: pdfRef,
-        studentName: profile.full_name || 'Aluno Wise Wolf',
-        studentCPF: profile.cpf || '000.000.000-00',
+        studentName: (isDependent ? profile.guardian_name : profile.full_name) || 'Aluno Wise Wolf',
+        studentCPF: (isDependent ? profile.guardian_cpf : profile.cpf) || '000.000.000-00',
+        dependentName: isDependent ? (profile.full_name || undefined) : undefined,
         studentAddress: `${profile.address || ''}, ${profile.address_number || ''} - ${profile.postal_code || ''}`,
-        studentEmail: profile.email,
-        studentPhone: profile.phone || '',
+        studentEmail: (isDependent ? profile.guardian_email : profile.email) || profile.email,
+        studentPhone: (isDependent ? profile.guardian_phone : profile.phone) || '',
+        school: school || undefined,
         planName,
         planValue: monthlyFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
         totalValue,

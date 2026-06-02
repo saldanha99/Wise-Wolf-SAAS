@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ContractDocument } from './ContractDocument';
+import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { ShieldCheck, ArrowRight, Lock, Loader2, PenTool } from 'lucide-react';
 
 interface ContractModalProps {
@@ -25,6 +25,8 @@ interface ContractModalProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    school?: SchoolInfo;
+    dependentName?: string;
 }
 
 const ContractModal: React.FC<ContractModalProps> = ({
@@ -125,6 +127,8 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     acceptedAt={contractProps.acceptedAt}
                                     userIp={contractProps.userIp}
                                     subscriptionId={contractProps.subscriptionId}
+                                    school={contractProps.school}
+                                    dependentName={contractProps.dependentName}
                                 />
                             </div>
                         </div>

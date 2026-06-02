@@ -33,6 +33,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [professorSearch2, setProfessorSearch2] = useState('');
     const [showProfessorList2, setShowProfessorList2] = useState(false);
 
+    // Matrícula de dependente: cobrança no CPF de um responsável financeiro já cadastrado
+    const [isDependent, setIsDependent] = useState(false);
+    const [guardianCandidates, setGuardianCandidates] = useState<any[]>([]);
+    const [guardianSearch, setGuardianSearch] = useState('');
+    const [showGuardianList, setShowGuardianList] = useState(false);
+    const [selectedGuardianId, setSelectedGuardianId] = useState('');
+    const selectedGuardian = guardianCandidates.find(g => g.id === selectedGuardianId) || null;
+
     // Schedule Array State
     const [scheduleSlots, setScheduleSlots] = useState<{ day: string; time: string }[]>(
         Array(2).fill({ day: '', time: '' })
@@ -106,6 +114,21 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         fetchProfessors();
     }, [tenantId, teachers]);
 
+    // Busca responsáveis já cadastrados (perfis com CPF) para vincular o dependente
+    useEffect(() => {
+        if (!isDependent || !tenantId || guardianCandidates.length > 0) return;
+        (async () => {
+            const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, cpf, email, phone')
+                .eq('tenant_id', tenantId)
+                .not('cpf', 'is', null)
+                .neq('cpf', '')
+                .order('full_name', { ascending: true });
+            if (data) setGuardianCandidates(data);
+        })();
+    }, [isDependent, tenantId]);
+
     const updateSlot = (index: number, field: 'day' | 'time', value: string) => {
         setScheduleSlots(prev => {
             const newSlots = [...prev];
@@ -130,6 +153,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const generateLink = () => {
         if (!tenantId) return alert("Erro: ID da unidade não encontrado.");
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
+        if (isDependent && !selectedGuardian) return alert("Selecione o responsável financeiro (titular já cadastrado) para a matrícula de dependente.");
 
         // Filter valid schedule slots
         const validSchedule = scheduleSlots.filter(s => s.day && s.time);
@@ -186,7 +210,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             proRataValue: enableProRata ? proRataValue : undefined,
             billingStartMonth,
             // Módulo 1 - Vendor commission tracking
-            vendorId: vendorId || null
+            vendorId: vendorId || null,
+            // Matrícula de dependente: cobrança no CPF do responsável financeiro
+            isDependent: isDependent && !!selectedGuardian,
+            guardianId: selectedGuardian?.id || null,
+            guardianCpf: selectedGuardian?.cpf || null,
+            guardianName: selectedGuardian?.full_name || null,
+            guardianEmail: selectedGuardian?.email || null,
+            guardianPhone: selectedGuardian?.phone || null,
         };
 
         const jsonStr = JSON.stringify(data);
@@ -624,6 +655,76 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* SECTION 2.5: MATRÍCULA DE DEPENDENTE (cobrança no CPF de outro titular) */}
+                <div className="bg-indigo-50/60 dark:bg-indigo-900/10 rounded-2xl p-6 border border-indigo-200/70 dark:border-indigo-900/30">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={isDependent}
+                            onChange={e => { setIsDependent(e.target.checked); if (!e.target.checked) { setSelectedGuardianId(''); setGuardianSearch(''); } }}
+                            className="w-5 h-5 rounded accent-indigo-600 shrink-0"
+                        />
+                        <span className="text-sm font-black text-brand-text dark:text-slate-200">
+                            🔗 Cobrança no CPF de outro titular (responsável financeiro)
+                        </span>
+                    </label>
+
+                    {isDependent && (
+                        <div className="mt-4 space-y-2 relative z-40">
+                            <p className="text-[11px] text-brand-muted leading-relaxed">
+                                O aluno preenche o link com o <strong>próprio nome e e-mail</strong>, mas a assinatura é cobrada no
+                                CPF do responsável escolhido abaixo. Gera assinatura distinta no mesmo CPF — qualquer relação
+                                (cônjuge, familiar, terceiro pagador).
+                            </p>
+                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Responsável financeiro (titular já cadastrado)</label>
+                            <div className="relative group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted group-focus-within:text-indigo-500 transition-colors" size={16} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar por nome ou CPF..."
+                                    value={selectedGuardian ? `${selectedGuardian.full_name} — CPF ${selectedGuardian.cpf}` : guardianSearch}
+                                    onChange={e => { setGuardianSearch(e.target.value); setSelectedGuardianId(''); setShowGuardianList(true); }}
+                                    onFocus={() => { setGuardianSearch(''); setShowGuardianList(true); }}
+                                    onClick={() => { setGuardianSearch(''); setShowGuardianList(true); }}
+                                    className="w-full pl-10 pr-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm cursor-pointer"
+                                />
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
+                            </div>
+                            {showGuardianList && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowGuardianList(false)} />
+                                    <div className="absolute left-0 right-0 mt-2 bg-brand-surface border border-brand-border rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 animate-in fade-in zoom-in-95 duration-200">
+                                        {(() => {
+                                            const q = guardianSearch.trim().toLowerCase();
+                                            const list = guardianCandidates.filter(g =>
+                                                !q ||
+                                                (g.full_name || '').toLowerCase().includes(q) ||
+                                                (g.cpf || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+                                            ).slice(0, 30);
+                                            return list.length > 0 ? list.map(g => (
+                                                <button
+                                                    key={g.id}
+                                                    onClick={() => { setSelectedGuardianId(g.id); setShowGuardianList(false); setGuardianSearch(''); }}
+                                                    className="w-full text-left px-4 py-3 hover:bg-brand-surface-2 transition-colors flex items-center justify-between"
+                                                >
+                                                    <span className="min-w-0">
+                                                        <span className="block text-sm font-bold text-brand-text dark:text-slate-200 truncate">{g.full_name}</span>
+                                                        <span className="block text-[11px] text-brand-muted font-mono">CPF {g.cpf}{g.email ? ` · ${g.email}` : ''}</span>
+                                                    </span>
+                                                    {selectedGuardianId === g.id && <Check size={14} className="text-indigo-500 shrink-0" />}
+                                                </button>
+                                            )) : <div className="p-4 text-center text-brand-muted text-xs">Nenhum titular cadastrado encontrado.</div>;
+                                        })()}
+                                    </div>
+                                </>
+                            )}
+                            {selectedGuardian && (
+                                <p className="text-[11px] text-emerald-600 font-bold flex items-center gap-1"><Check size={12} /> Cobrança será feita no CPF de {selectedGuardian.full_name}.</p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* SECTION 3: MAGIC LINK AREA */}

@@ -24,6 +24,15 @@ export const asaasService = {
         student_signature_url?: string | null;
         signed_document_url?: string | null;
         startDate?: string;
+        // Matrícula de dependente: cobrança no CPF do responsável financeiro.
+        // Quando is_dependent=true, a edge cria SEMPRE um novo customer ASAAS
+        // (cpfCnpj = guardian_cpf) e grava guardian_* sem escrever profiles.cpf.
+        is_dependent?: boolean;
+        guardian_name?: string;
+        guardian_cpf?: string;
+        guardian_email?: string;
+        guardian_phone?: string;
+        guardian_id?: string | null;
     }) => {
         try {
             console.log('Syncing student to Asaas:', studentData);

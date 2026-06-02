@@ -54,16 +54,29 @@ serve(async (req) => {
             // Extended profile fields (from PublicRegistration enrollment)
             tenant_id, monthly_fee, due_day, class_frequency, professor_id, professor_id_2, classSchedule,
             contract_accepted, documentation_status, signature_ip,
-            student_signature_url, signed_document_url, startDate
+            student_signature_url, signed_document_url, startDate,
+            // Matrícula de dependente: cobrança no CPF do responsável financeiro (guardian)
+            is_dependent, guardian_name, guardian_cpf, guardian_email, guardian_phone, guardian_id
         } = body;
 
         // Asaas requires 'mobilePhone'. We accept 'phone' or 'mobilePhone' from frontend.
         const rawPhone = mobilePhone || phone;
 
         const sanitizedCpf = cpf ? cpf.replace(/\D/g, '') : null;
+        const sanitizedGuardianCpf = guardian_cpf ? guardian_cpf.replace(/\D/g, '') : null;
         const sanitizedPhone = rawPhone ? rawPhone.replace(/\D/g, '') : null;
 
+        // CPF usado para a cobrança no Asaas (cpfCnpj do customer):
+        // dependente cobra no CPF do responsável; aluno comum cobra no próprio CPF.
+        const billingCpf = is_dependent ? sanitizedGuardianCpf : sanitizedCpf;
+
         if (!user_id) throw new Error('User ID is required');
+        if (is_dependent && !sanitizedGuardianCpf) {
+            return new Response(
+                JSON.stringify({ success: false, error: "CPF do responsável é obrigatório para matrícula de dependente." }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+            );
+        }
 
         // Validation limits
         if (!sanitizedPhone || !email) {
@@ -89,8 +102,11 @@ serve(async (req) => {
         let asaasCustomerId: string | null = null;
 
         // 2. CHECK EXISTING (Proactive Recovery)
-        if (sanitizedCpf) {
-            const checkUrl = `${ASAAS_URL}${pathPrefix}/customers?cpfCnpj=${sanitizedCpf}`;
+        // Dependente: NÃO reusa customer pelo CPF — o responsável já tem um customer
+        // com este CPF. Forçamos a criação de um novo customer (o Asaas permite
+        // múltiplos customers com o mesmo cpfCnpj) → assinatura distinta no mesmo CPF.
+        if (billingCpf && !is_dependent) {
+            const checkUrl = `${ASAAS_URL}${pathPrefix}/customers?cpfCnpj=${billingCpf}`;
             console.log(`[Sync] Checking existence by CPF at: ${checkUrl}`);
             const searchRes = await fetch(checkUrl, {
                 method: 'GET',
@@ -112,7 +128,7 @@ serve(async (req) => {
         if (!asaasCustomerId) {
             const payload = {
                 name: name || 'Aluno sem nome',
-                cpfCnpj: sanitizedCpf,
+                cpfCnpj: billingCpf,
                 email: email,
                 mobilePhone: sanitizedPhone, // Explicitly mapped
                 externalReference: user_id,
@@ -170,8 +186,18 @@ serve(async (req) => {
         if (asaasCustomerId) {
             const profileUpdate: Record<string, any> = { asaas_customer_id: asaasCustomerId };
 
+            // Dependente: grava dados do responsável financeiro e NÃO escreve profiles.cpf
+            // (evita violar profiles_cpf_tenant_key, já que o CPF é o do responsável).
+            if (is_dependent) {
+                profileUpdate.guardian_cpf = sanitizedGuardianCpf;
+                if (guardian_name) profileUpdate.guardian_name = guardian_name;
+                if (guardian_email) profileUpdate.guardian_email = guardian_email;
+                if (guardian_phone) profileUpdate.guardian_phone = guardian_phone.replace(/\D/g, '');
+                if (guardian_id) profileUpdate.guardian_id = guardian_id;
+            }
+
             // Add extended profile fields if provided (from enrollment flow)
-            if (cpf) profileUpdate.cpf = sanitizedCpf;
+            if (cpf && !is_dependent) profileUpdate.cpf = sanitizedCpf;
             if (phone || mobilePhone) profileUpdate.phone = sanitizedPhone;
             if (postalCode) profileUpdate.postal_code = postalCode;
             if (address) profileUpdate.address = address;

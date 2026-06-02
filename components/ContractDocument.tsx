@@ -35,12 +35,20 @@ export interface PlanInfo {
 
 /** Props principais do componente. */
 interface ContractDocumentProps {
-    // ── Dados do aluno ──
+    // ── Dados do aluno (CONTRATANTE) ──
     studentName: string;
     studentCPF: string;
     studentAddress: string;
     studentEmail: string;
     studentPhone: string;
+
+    /**
+     * Nome do aluno beneficiário quando o CONTRATANTE é outro titular (responsável
+     * financeiro). Ex.: contrato/cobrança no nome do titular (studentName/studentCPF),
+     * aula para o beneficiário (dependentName) — qualquer relação (cônjuge, familiar,
+     * terceiro pagador). Quando presente, exibe a linha "Aluno(a) Beneficiário(a)".
+     */
+    dependentName?: string;
 
     // ── Plano ──
     planName: string;
@@ -92,6 +100,7 @@ export function ContractDocument({
     studentAddress,
     studentEmail,
     studentPhone,
+    dependentName,
     planName,
     planValue,
     totalValue,
@@ -208,6 +217,11 @@ export function ContractDocument({
                     <p className="mb-1">
                         <strong>CONTRATANTE:</strong> {studentName.toUpperCase()}, CPF nº {studentCPF || '__________._____.__-__'}
                     </p>
+                    {dependentName && (
+                        <p className="mb-1">
+                            <strong>ALUNO(A) BENEFICIÁRIO(A):</strong> {dependentName.toUpperCase()} (beneficiário(a) dos serviços educacionais, cuja contratação e pagamento são realizados pelo CONTRATANTE)
+                        </p>
+                    )}
                     <p className="mb-1">
                         Residente em: {studentAddress || '______________________________________________________'}
                     </p>

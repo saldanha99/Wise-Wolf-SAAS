@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Lock } from 'lucide-react';
+import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Lock, Mail } from 'lucide-react';
 import { asaasService } from '../services/asaasService';
+import { supabase } from '../lib/supabase';
 import StudentScheduleManager from './StudentScheduleManager';
 
 interface StudentProfileFormProps {
@@ -11,9 +12,19 @@ interface StudentProfileFormProps {
     title?: string;
     teachers?: any[];
     currentUserRole?: string; // RBAC
+    tenantId?: string; // usado para buscar responsáveis já cadastrados (matrícula de dependente)
 }
 
-const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, onSubmit, onCancel, onDelete, title = 'Aluno', teachers = [], currentUserRole }) => {
+/** Candidato a responsável financeiro (perfil já cadastrado com CPF). */
+interface GuardianCandidate {
+    id: string;
+    full_name: string;
+    cpf: string;
+    email: string | null;
+    phone: string | null;
+}
+
+const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, onSubmit, onCancel, onDelete, title = 'Aluno', teachers = [], currentUserRole, tenantId }) => {
     // RBAC Logic: Director (School Admin) or Super Admin has full access
     const isDirector = currentUserRole === 'SCHOOL_ADMIN' || currentUserRole === 'SUPER_ADMIN';
 
@@ -37,6 +48,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         meeting_link: '',
         guardian_name: '',
         guardian_phone: '',
+        guardian_cpf: '',
+        guardian_email: '',
+        guardian_id: '',
+        is_dependent: false,
         is_kids: false,
         img: 'https://i.pravatar.cc/150?u=new',
         fixed_schedule: '',
@@ -56,6 +71,66 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
     const [newInterest, setNewInterest] = useState('');
 
+    // ── Seletor de responsável (matrícula de dependente) ──
+    const [guardianCandidates, setGuardianCandidates] = useState<GuardianCandidate[]>([]);
+    const [loadingGuardians, setLoadingGuardians] = useState(false);
+    const [guardianQuery, setGuardianQuery] = useState('');
+
+    // Busca os perfis já cadastrados (com CPF) para vincular como responsável.
+    useEffect(() => {
+        if (!formData.is_dependent || !tenantId || guardianCandidates.length > 0) return;
+        let cancelled = false;
+        (async () => {
+            setLoadingGuardians(true);
+            try {
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, cpf, email, phone')
+                    .eq('tenant_id', tenantId)
+                    .not('cpf', 'is', null)
+                    .neq('cpf', '')
+                    .order('full_name', { ascending: true });
+                if (!cancelled && data) {
+                    // Não pode ser responsável de si mesmo
+                    setGuardianCandidates(data.filter((c: GuardianCandidate) => c.id !== initialData?.id));
+                }
+            } catch (_) {
+                // silencioso — usuário ainda pode preencher manualmente
+            } finally {
+                if (!cancelled) setLoadingGuardians(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [formData.is_dependent, tenantId]);
+
+    // Vincula o dependente a um responsável já cadastrado (autopreenche os campos).
+    const selectGuardian = (g: GuardianCandidate) => {
+        setFormData(prev => ({
+            ...prev,
+            guardian_id: g.id,
+            guardian_name: g.full_name || '',
+            guardian_cpf: g.cpf || '',
+            guardian_email: g.email || '',
+            guardian_phone: g.phone || '',
+        }));
+        setGuardianQuery('');
+    };
+
+    // Remove o vínculo (permite cadastrar um responsável novo manualmente).
+    const clearGuardianLink = () => {
+        setFormData(prev => ({ ...prev, guardian_id: '', guardian_name: '', guardian_cpf: '', guardian_email: '', guardian_phone: '' }));
+    };
+
+    const filteredGuardians = (() => {
+        const q = guardianQuery.trim().toLowerCase();
+        const base = guardianQuery.trim() === ''
+            ? guardianCandidates
+            : guardianCandidates.filter(g =>
+                (g.full_name || '').toLowerCase().includes(q) ||
+                (g.cpf || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')));
+        return base.slice(0, 8);
+    })();
+
     useEffect(() => {
         if (initialData) {
             setFormData({
@@ -71,6 +146,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 meeting_link: initialData.meeting_link || '',
                 guardian_name: initialData.guardian_name || '',
                 guardian_phone: initialData.guardian_phone || '',
+                guardian_cpf: initialData.guardian_cpf || '',
+                guardian_email: initialData.guardian_email || '',
+                guardian_id: initialData.guardian_id || '',
+                is_dependent: !!(initialData.guardian_id || initialData.guardian_cpf),
                 is_kids: initialData.is_kids || false,
                 img: initialData.img || 'https://i.pravatar.cc/150?u=new',
                 fixed_schedule: initialData.fixed_schedule || '',
@@ -546,6 +625,136 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                             className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-pink-500 outline-none font-mono"
                                             placeholder="5511999999999"
                                         />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Matrícula de dependente — cobrança no CPF do responsável financeiro */}
+                        <div className="pt-4 border-t border-brand-border">
+                            <label className="flex items-center gap-2 cursor-pointer mb-3">
+                                <input
+                                    type="checkbox"
+                                    disabled={!isDirector || !!initialData?.id}
+                                    checked={formData.is_dependent}
+                                    onChange={e => setFormData({ ...formData, is_dependent: e.target.checked })}
+                                    className="w-4 h-4 rounded accent-indigo-500"
+                                />
+                                <span className="text-sm font-bold text-brand-text dark:text-slate-200">🔗 Cobrança no CPF de outro titular (responsável financeiro)</span>
+                            </label>
+                            {formData.is_dependent && (
+                                <div className="space-y-4">
+                                    <p className="text-[11px] text-brand-muted leading-relaxed bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-3">
+                                        O aluno aparece na plataforma com o <strong>próprio nome e e-mail</strong> (login próprio), mas a
+                                        <strong> assinatura é cobrada no CPF de um responsável financeiro</strong>. O contrato sai em nome desse
+                                        responsável, indicando este aluno como beneficiário. Permite várias assinaturas distintas no mesmo CPF —
+                                        qualquer relação (cônjuge, familiar, terceiro pagador, etc.).
+                                    </p>
+
+                                    {/* Seletor inteligente: vincular a um responsável já cadastrado */}
+                                    {formData.guardian_id ? (
+                                        <div className="flex items-center justify-between gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 rounded-xl">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <Check size={16} className="text-emerald-600 shrink-0" />
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-bold text-brand-text dark:text-slate-200 truncate">
+                                                        Vinculado a: {formData.guardian_name || '—'}
+                                                    </p>
+                                                    <p className="text-[11px] text-brand-muted font-mono">CPF {formData.guardian_cpf || '—'}</p>
+                                                </div>
+                                            </div>
+                                            {isDirector && (
+                                                <button type="button" onClick={clearGuardianLink}
+                                                    className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 shrink-0">
+                                                    Trocar / limpar
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                                <User size={12} /> Selecionar responsável já cadastrado
+                                            </label>
+                                            <input
+                                                disabled={!isDirector}
+                                                value={guardianQuery}
+                                                onChange={e => setGuardianQuery(e.target.value)}
+                                                className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                placeholder="Buscar por nome ou CPF..."
+                                            />
+                                            {loadingGuardians && <p className="text-[11px] text-brand-muted">Carregando cadastrados...</p>}
+                                            {!loadingGuardians && filteredGuardians.length > 0 && (
+                                                <div className="max-h-44 overflow-y-auto rounded-xl border border-brand-border divide-y divide-brand-border">
+                                                    {filteredGuardians.map(g => (
+                                                        <button
+                                                            key={g.id}
+                                                            type="button"
+                                                            disabled={!isDirector}
+                                                            onClick={() => selectGuardian(g)}
+                                                            className="w-full text-left px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-colors"
+                                                        >
+                                                            <span className="block text-sm font-bold text-brand-text dark:text-slate-200 truncate">{g.full_name}</span>
+                                                            <span className="block text-[11px] text-brand-muted font-mono">CPF {g.cpf}{g.email ? ` · ${g.email}` : ''}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {!loadingGuardians && guardianQuery.trim() !== '' && filteredGuardians.length === 0 && (
+                                                <p className="text-[11px] text-brand-muted">Nenhum cadastrado encontrado — preencha os dados do responsável manualmente abaixo.</p>
+                                            )}
+                                            <p className="text-[11px] text-brand-muted">Ou preencha manualmente abaixo (responsável ainda não cadastrado).</p>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                                <User size={12} /> Nome do responsável (contratante)
+                                            </label>
+                                            <input
+                                                disabled={!isDirector}
+                                                value={formData.guardian_name}
+                                                onChange={e => setFormData({ ...formData, guardian_name: e.target.value })}
+                                                className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                placeholder="João da Silva"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                                CPF do responsável (cobrança)
+                                            </label>
+                                            <input
+                                                disabled={!isDirector}
+                                                value={formData.guardian_cpf}
+                                                onChange={e => setFormData({ ...formData, guardian_cpf: e.target.value })}
+                                                className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                                placeholder="000.000.000-00"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                                <Mail size={12} /> E-mail do responsável
+                                            </label>
+                                            <input
+                                                disabled={!isDirector}
+                                                value={formData.guardian_email}
+                                                onChange={e => setFormData({ ...formData, guardian_email: e.target.value })}
+                                                className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                placeholder="responsavel@email.com"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                                <Phone size={12} /> WhatsApp do responsável
+                                            </label>
+                                            <input
+                                                disabled={!isDirector}
+                                                value={formData.guardian_phone}
+                                                onChange={e => setFormData({ ...formData, guardian_phone: e.target.value })}
+                                                className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                                                placeholder="5511999999999"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             )}
