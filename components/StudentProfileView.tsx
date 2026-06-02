@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   X, Loader2, Flame, Gem, Heart, CalendarCheck, AlertTriangle, TrendingUp,
-  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy
+  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users
 } from 'lucide-react';
 import { User as UserType } from '../types';
 
@@ -39,6 +39,9 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [creditBalance, setCreditBalance] = useState<number>(0);
   const [applying, setApplying] = useState(false);
 
+  // Alunos vinculados: perfis que têm este titular como responsável financeiro (guardian_id)
+  const [dependents, setDependents] = useState<any[]>([]);
+
   const load = async () => {
     setLoading(true);
     const { data: d, error } = await supabase.rpc('get_student_overview', { p_student_id: studentId });
@@ -50,6 +53,17 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
         const { data: bal } = await supabase.rpc('get_student_credit_balance', { p_student_id: studentId });
         setCreditBalance(Number(bal) || 0);
       }
+    }
+    // Busca beneficiários cobrados no CPF deste titular (não bloqueante)
+    try {
+      const { data: deps } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, monthly_fee, subscription_id, status_financial')
+        .eq('guardian_id', studentId)
+        .order('full_name', { ascending: true });
+      setDependents(deps || []);
+    } catch (_) {
+      setDependents([]);
     }
     setLoading(false);
   };
@@ -185,6 +199,39 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                       </InfoBox>
                     )}
                   </div>
+
+                  {/* Alunos vinculados (beneficiários cobrados no CPF deste titular) */}
+                  {dependents.length > 0 && (
+                    <div className="bg-indigo-50/60 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-900/30 rounded-2xl p-4">
+                      <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300 mb-3 flex items-center gap-1.5">
+                        <Users size={14} /> Alunos vinculados — cobrados neste CPF ({dependents.length})
+                      </p>
+                      <div className="space-y-2">
+                        {dependents.map((dep) => (
+                          <div key={dep.id} className="flex items-center justify-between gap-3 bg-brand-surface dark:bg-slate-900 border border-brand-border rounded-xl px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-brand-text dark:text-slate-200 truncate">{dep.full_name}</p>
+                              <p className="text-[11px] text-brand-muted truncate">{dep.email || '—'}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              {isAdmin && <p className="text-sm font-bold text-brand-text dark:text-slate-200">{money(dep.monthly_fee)}</p>}
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">
+                                {dep.subscription_id ? 'Assinatura ativa' : 'Sem assinatura'}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {isAdmin && (
+                        <p className="text-[11px] text-brand-muted mt-2 pt-2 border-t border-indigo-200/60 dark:border-indigo-900/30">
+                          Total mensal neste CPF (titular + vinculados):{' '}
+                          <strong className="text-brand-text dark:text-slate-200">
+                            {money((Number(data.financial?.monthly_fee) || 0) + dependents.reduce((s, d) => s + (Number(d.monthly_fee) || 0), 0))}
+                          </strong>
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

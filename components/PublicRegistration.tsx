@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 import { whatsappService } from '../services/whatsappService';
-import { ContractDocument } from './ContractDocument';
+import { ContractDocument, type SchoolInfo } from './ContractDocument';
+import { getSchoolInfo } from '../lib/schoolInfo';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
 import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, Loader2, QrCode, Barcode, CreditCard, ShieldCheck, Download, FileText, ArrowLeft } from 'lucide-react';
@@ -15,6 +16,7 @@ const PublicRegistration: React.FC = () => {
     const [checkingPayment, setCheckingPayment] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [contractData, setContractData] = useState<any>(null);
+    const [school, setSchool] = useState<SchoolInfo | null>(null);
     // Signature Data for PDF
     const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string } | null>(null);
     const [signedPdfUrl, setSignedPdfUrl] = useState<string>('');
@@ -43,6 +45,13 @@ const PublicRegistration: React.FC = () => {
     const [ccNumber, setCcNumber] = useState('');
     const [ccExpiry, setCcExpiry] = useState(''); // MM/YYYY
     const [ccCcv, setCcCcv] = useState('');
+
+    // Matrícula de dependente: no contrato, o CONTRATANTE é o responsável financeiro
+    // e o aluno (quem preenche o link) aparece como beneficiário.
+    const isDependentLink = !!contractData?.isDependent;
+    const contratanteName = isDependentLink ? (contractData?.guardianName || name) : name;
+    const contratanteCpf = isDependentLink ? (contractData?.guardianCpf || '') : cpf;
+    const beneficiaryName = isDependentLink ? name : undefined;
 
     // Contract Printing Logic
     const contractRef = useRef<HTMLDivElement>(null);
@@ -99,6 +108,8 @@ const PublicRegistration: React.FC = () => {
                     classSchedule: data.classSchedule || data.schedule || [],
                     requiresEnrollment: data.requiresEnrollment !== false // default true
                 });
+                // Carrega os dados da escola (cabeçalho/rodapé do contrato)
+                if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
                 // Pre-fill from experimental trial data if available
                 if (data.studentName && !name) setName(data.studentName);
                 if (data.studentPhone && !phone) setPhone(data.studentPhone);
@@ -187,6 +198,12 @@ const PublicRegistration: React.FC = () => {
                 userId = authData.user.id;
             }
 
+            // Matrícula de dependente: cobrança no CPF do responsável financeiro.
+            // O aluno tem perfil/login próprios; profiles.cpf fica NULL e o CPF de
+            // cobrança vai em guardian_cpf (não viola profiles_cpf_tenant_key).
+            const isDependent = !!contractData.isDependent;
+            const guardianCpf = isDependent ? String(contractData.guardianCpf || '').replace(/\D/g, '') : null;
+
             // 2. Create Profile (with contract_accepted = true)
             const profileData: any = {
                 id: userId,
@@ -195,7 +212,7 @@ const PublicRegistration: React.FC = () => {
                 role: 'STUDENT',
                 tenant_id: contractData.unitId,
                 phone: phone,
-                cpf: cpf.replace(/\D/g, ''),
+                cpf: isDependent ? null : cpf.replace(/\D/g, ''),
                 postal_code: postalCode,
                 address: address,
                 address_number: addressNumber,
@@ -226,6 +243,15 @@ const PublicRegistration: React.FC = () => {
                 profileData.referrer_student_id = referrerStudentId;
             }
 
+            // Dependente: grava o responsável financeiro (contratante/cobrança)
+            if (isDependent) {
+                profileData.guardian_cpf = guardianCpf;
+                profileData.guardian_name = contractData.guardianName || null;
+                profileData.guardian_email = contractData.guardianEmail || null;
+                profileData.guardian_phone = contractData.guardianPhone ? String(contractData.guardianPhone).replace(/\D/g, '') : null;
+                profileData.guardian_id = contractData.guardianId || null;
+            }
+
             const { error: profileError } = await supabase.from('profiles').upsert(profileData);
 
             if (profileError) throw profileError;
@@ -245,10 +271,17 @@ const PublicRegistration: React.FC = () => {
                 name: name,
                 email: email,
                 phone: phone,
-                cpf: cpf.replace(/\D/g, ''),
+                cpf: isDependent ? '' : cpf.replace(/\D/g, ''),
                 postalCode: postalCode,
                 address: address,
                 addressNumber: addressNumber,
+                // Dependente: cobrança no CPF do responsável (cria customer ASAAS novo)
+                is_dependent: isDependent,
+                guardian_cpf: guardianCpf || undefined,
+                guardian_name: contractData.guardianName || undefined,
+                guardian_email: contractData.guardianEmail || undefined,
+                guardian_phone: contractData.guardianPhone || undefined,
+                guardian_id: contractData.guardianId || undefined,
                 // Extended profile fields (saved server-side with service role, bypasses RLS)
                 tenant_id: contractData.unitId,
                 monthly_fee: contractData.value,
@@ -282,12 +315,12 @@ const PublicRegistration: React.FC = () => {
                 proRataValue: contractData.proRataValue || undefined,
                 creditCard: creditCardData,
                 creditCardHolderInfo: billingType === 'CREDIT_CARD' ? {
-                    name,
-                    email,
-                    cpfCnpj: cpf.replace(/\D/g, ''),
+                    name: isDependent ? (contractData.guardianName || name) : name,
+                    email: isDependent ? (contractData.guardianEmail || email) : email,
+                    cpfCnpj: isDependent ? (guardianCpf || '') : cpf.replace(/\D/g, ''),
                     postalCode,
                     addressNumber,
-                    phone: phone.replace(/\D/g, '') // Asaas prefers numbers only
+                    phone: (isDependent && contractData.guardianPhone ? String(contractData.guardianPhone) : phone).replace(/\D/g, '') // Asaas prefers numbers only
                 } : undefined
             });
 
@@ -841,8 +874,9 @@ const PublicRegistration: React.FC = () => {
                     <div className="hidden">
                         <div ref={contractRef}>
                             <ContractDocument
-                                studentName={name}
-                                studentCPF={cpf.replace(/\D/g, '')}
+                                studentName={contratanteName}
+                                studentCPF={(contratanteCpf || '').replace(/\D/g, '')}
+                                dependentName={beneficiaryName}
                                 studentAddress={`${address}, ${addressNumber} - CEP: ${postalCode}`}
                                 studentEmail={email}
                                 studentPhone={phone}
@@ -857,6 +891,7 @@ const PublicRegistration: React.FC = () => {
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
                                 subscriptionId={signatureData?.subId}
+                                school={school || undefined}
                             />
                         </div>
                     </div>
@@ -1021,10 +1056,17 @@ const PublicRegistration: React.FC = () => {
                                 className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
 
+                            {contractData?.isDependent && (
+                                <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
+                                    <strong>Matrícula vinculada.</strong> A cobrança desta mensalidade será feita no CPF do responsável
+                                    {contractData?.guardianName ? <> (<strong>{contractData.guardianName}</strong>)</> : ''}. Você não precisa informar o próprio CPF.
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <input
-                                    required
-                                    placeholder="CPF"
+                                    required={!contractData?.isDependent}
+                                    placeholder={contractData?.isDependent ? 'CPF (opcional)' : 'CPF'}
                                     value={cpf}
                                     onChange={e => setCpf(e.target.value)}
                                     className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
@@ -1121,8 +1163,9 @@ const PublicRegistration: React.FC = () => {
                     onClose={() => setStep('FORM')}
                     onConfirm={handleRegister}
                     loading={loading}
-                    studentName={name.toUpperCase()}
-                    studentCPF={cpf}
+                    studentName={contratanteName.toUpperCase()}
+                    studentCPF={contratanteCpf}
+                    dependentName={beneficiaryName}
                     studentAddress={`${address}, ${addressNumber} - ${postalCode}`}
                     studentEmail={email}
                     studentPhone={phone}
@@ -1134,6 +1177,7 @@ const PublicRegistration: React.FC = () => {
                     endDate={getContractDates().endDate}
                     dueDay={contractData.dueDay || 10}
                     classFrequency={contractData.classesPerWeek || 2}
+                    school={school || undefined}
                 />
             )}
 
@@ -1141,8 +1185,9 @@ const PublicRegistration: React.FC = () => {
             <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
                 <div ref={contractRef}>
                     <ContractDocument
-                        studentName={name.toUpperCase()}
-                        studentCPF={cpf}
+                        studentName={contratanteName.toUpperCase()}
+                        studentCPF={contratanteCpf}
+                        dependentName={beneficiaryName}
                         studentAddress={`${address}, ${addressNumber} - ${postalCode}`}
                         studentEmail={email}
                         studentPhone={phone}
@@ -1157,6 +1202,7 @@ const PublicRegistration: React.FC = () => {
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}
                         subscriptionId={signatureData?.subId}
+                        school={school || undefined}
                     />
                 </div>
             </div>

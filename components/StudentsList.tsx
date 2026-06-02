@@ -229,9 +229,20 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
         if (!finalStudentId) throw new Error("Não foi possível gerar ID para o aluno.");
 
-        // Verifica consistência de CPF para evitar constraint duplicates
-        const studentCpf = formData.cpf?.replace(/\D/g, '') || null;
-        if (studentCpf && targetTenantId && !existingInTenant) {
+        // Matrícula de dependente: cobrança no CPF do responsável (guardian).
+        // O aluno tem perfil/login próprios; profiles.cpf fica NULL p/ não violar
+        // profiles_cpf_tenant_key. O CPF de cobrança vai em guardian_cpf.
+        const isDependent = !!formData.is_dependent;
+        const guardianCpf = isDependent ? (formData.guardian_cpf?.replace(/\D/g, '') || null) : null;
+        if (isDependent && !guardianCpf) {
+          alert('Informe o CPF do responsável para matrícula de dependente.');
+          return;
+        }
+
+        // Verifica consistência de CPF para evitar constraint duplicates.
+        // Dependente NUNCA reusa o perfil do responsável pelo CPF.
+        const studentCpf = isDependent ? null : (formData.cpf?.replace(/\D/g, '') || null);
+        if (!isDependent && studentCpf && targetTenantId && !existingInTenant) {
           const { data: existingByCpf } = await supabase
             .from('profiles')
             .select('id')
@@ -242,6 +253,19 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           if (existingByCpf) {
             finalStudentId = existingByCpf.id;
           }
+        }
+
+        // Resolve o id do responsável: usa o que foi SELECIONADO no formulário
+        // (responsável já cadastrado); senão tenta achar pelo CPF no tenant.
+        let guardianId: string | null = isDependent ? (formData.guardian_id || null) : null;
+        if (isDependent && !guardianId && guardianCpf && targetTenantId) {
+          const { data: guardianProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('cpf', guardianCpf)
+            .eq('tenant_id', targetTenantId)
+            .maybeSingle();
+          guardianId = guardianProfile?.id || null;
         }
 
         // Gera meeting link padrão
@@ -271,6 +295,15 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           private_notes: formData.private_notes,
         };
 
+        // Dependente: grava dados do responsável financeiro (contratante/cobrança)
+        if (isDependent) {
+          profilePayload.guardian_cpf = guardianCpf;
+          profilePayload.guardian_name = formData.guardian_name || null;
+          profilePayload.guardian_email = formData.guardian_email || null;
+          profilePayload.guardian_phone = formData.guardian_phone?.replace(/\D/g, '') || null;
+          profilePayload.guardian_id = guardianId;
+        }
+
         // Adiciona dados financeiros se existir valor
         if (formData.monthly_fee > 0) {
           profilePayload.monthly_tuition = formData.monthly_fee;
@@ -299,7 +332,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               tenant_id: targetTenantId,
               monthly_fee: formData.monthly_fee,
               due_day: profilePayload.due_day,
-              documentation_status: 'APPROVED'
+              documentation_status: 'APPROVED',
+              // Dependente: cobrança no CPF do responsável (novo customer ASAAS)
+              is_dependent: isDependent,
+              guardian_cpf: guardianCpf || undefined,
+              guardian_name: formData.guardian_name || undefined,
+              guardian_email: formData.guardian_email || undefined,
+              guardian_phone: formData.guardian_phone || undefined,
+              guardian_id: guardianId,
             });
 
             const durationEnum = formData.planDuration || 'RECURRENT';
@@ -791,6 +831,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             title={editingStudent.name}
             teachers={teachers}
             currentUserRole={user?.role}
+            tenantId={tenantId || user?.tenantId}
           />
         </div>
       )}
