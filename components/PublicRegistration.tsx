@@ -110,6 +110,16 @@ const PublicRegistration: React.FC = () => {
                 });
                 // Carrega os dados da escola (cabeçalho/rodapé do contrato)
                 if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
+
+                // Matrícula vinculada: o contrato/cobrança usa os dados do RESPONSÁVEL.
+                // Do beneficiário coletamos só nome + acesso; o resto vem pré-preenchido
+                // (e os campos ficam ocultos no formulário).
+                if (data.isDependent) {
+                    if (data.guardianPhone) setPhone(String(data.guardianPhone));
+                    if (data.guardianPostalCode) setPostalCode(String(data.guardianPostalCode));
+                    if (data.guardianAddress) setAddress(String(data.guardianAddress));
+                    if (data.guardianAddressNumber) setAddressNumber(String(data.guardianAddressNumber));
+                }
                 // Pre-fill from experimental trial data if available
                 if (data.studentName && !name) setName(data.studentName);
                 if (data.studentPhone && !phone) setPhone(data.studentPhone);
@@ -1056,39 +1066,41 @@ const PublicRegistration: React.FC = () => {
                                 className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
 
-                            {contractData?.isDependent && (
+                            {contractData?.isDependent ? (
                                 <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
-                                    <strong>Matrícula vinculada.</strong> A cobrança desta mensalidade será feita no CPF do responsável
-                                    {contractData?.guardianName ? <> (<strong>{contractData.guardianName}</strong>)</> : ''}. Você não precisa informar o próprio CPF.
+                                    <strong>Matrícula vinculada.</strong> O contrato e a cobrança são feitos no nome e CPF do responsável
+                                    {contractData?.guardianName ? <> (<strong>{contractData.guardianName}</strong>)</> : ''} — incluindo WhatsApp e endereço dele.
+                                    Você só precisa informar <strong>o nome do aluno</strong> (acima) e os <strong>dados de acesso</strong> (abaixo).
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <input
+                                        required
+                                        placeholder="CPF"
+                                        value={cpf}
+                                        onChange={e => setCpf(e.target.value)}
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    />
+                                    <input
+                                        required
+                                        placeholder="WhatsApp (com DDD)"
+                                        value={phone}
+                                        onChange={e => {
+                                            let v = e.target.value.replace(/\D/g, '');
+                                            // Mask: (XX) XXXXX-XXXX
+                                            if (v.length > 11) v = v.substring(0, 11);
+                                            if (v.length > 2) v = `(${v.substring(0, 2)}) ${v.substring(2)}`;
+                                            if (v.length > 10) v = `${v.substring(0, 10)}-${v.substring(10)}`;
+                                            setPhone(v);
+                                        }}
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    />
                                 </div>
                             )}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <input
-                                    required={!contractData?.isDependent}
-                                    placeholder={contractData?.isDependent ? 'CPF (opcional)' : 'CPF'}
-                                    value={cpf}
-                                    onChange={e => setCpf(e.target.value)}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                />
-                                <input
-                                    required
-                                    placeholder="WhatsApp (com DDD)"
-                                    value={phone}
-                                    onChange={e => {
-                                        let v = e.target.value.replace(/\D/g, '');
-                                        // Mask: (XX) XXXXX-XXXX
-                                        if (v.length > 11) v = v.substring(0, 11);
-                                        if (v.length > 2) v = `(${v.substring(0, 2)}) ${v.substring(2)}`;
-                                        if (v.length > 10) v = `${v.substring(0, 10)}-${v.substring(10)}`;
-                                        setPhone(v);
-                                    }}
-                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                />
-                            </div>
                         </div>
 
-                        {/* 3. Address */}
+                        {/* 3. Address — oculto em matrícula vinculada (usa o endereço do responsável) */}
+                        {!contractData?.isDependent && (
                         <div className="space-y-4 pt-2">
                             <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                 <MapPin size={14} /> Endereço
@@ -1117,6 +1129,7 @@ const PublicRegistration: React.FC = () => {
                                 className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
                             />
                         </div>
+                        )}
 
                         {/* 4. Credentials */}
                         <div className="space-y-4 pt-2">

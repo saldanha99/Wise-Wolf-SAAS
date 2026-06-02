@@ -120,7 +120,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         (async () => {
             const { data } = await supabase
                 .from('profiles')
-                .select('id, full_name, cpf, email, phone')
+                .select('id, full_name, cpf, email, phone, postal_code, address, address_number')
                 .eq('tenant_id', tenantId)
                 .not('cpf', 'is', null)
                 .neq('cpf', '')
@@ -218,6 +218,9 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             guardianName: selectedGuardian?.full_name || null,
             guardianEmail: selectedGuardian?.email || null,
             guardianPhone: selectedGuardian?.phone || null,
+            guardianPostalCode: selectedGuardian?.postal_code || null,
+            guardianAddress: selectedGuardian?.address || null,
+            guardianAddressNumber: selectedGuardian?.address_number || null,
         };
 
         const jsonStr = JSON.stringify(data);
