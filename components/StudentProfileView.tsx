@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   X, Loader2, Flame, Gem, Heart, CalendarCheck, AlertTriangle, TrendingUp,
-  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users
+  BookOpen, MessageSquarePlus, DollarSign, History, User as UserIcon, Phone, Trophy, Users, ArrowRightLeft
 } from 'lucide-react';
 import { User as UserType } from '../types';
+import TeacherTransferGenerator from './TeacherTransferGenerator';
 
 interface Props {
   studentId: string;
@@ -41,6 +42,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
 
   // Alunos vinculados: perfis que têm este titular como responsável financeiro (guardian_id)
   const [dependents, setDependents] = useState<any[]>([]);
+  const [showTransfer, setShowTransfer] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -153,8 +155,22 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   <span>Desde {fmtDate(p.start_date || p.created_at)}</span>
                 </p>
               </div>
+              {isAdmin && (
+                <button onClick={() => setShowTransfer(true)} title="Transferir de professor"
+                  className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0">
+                  <ArrowRightLeft size={14} /> Transferir
+                </button>
+              )}
               <button onClick={onClose} className="p-2 rounded-xl hover:bg-brand-surface-2 text-brand-muted"><X size={20} /></button>
             </div>
+
+            {showTransfer && (
+              <TeacherTransferGenerator
+                tenantId={(user as any)?.tenantId || (user as any)?.tenant_id}
+                student={{ id: studentId, full_name: p.full_name, professor_id: p.professor_id, class_frequency: p.class_frequency }}
+                onClose={() => setShowTransfer(false)}
+              />
+            )}
 
             {/* Tabs */}
             <div className="flex gap-1 px-4 pt-3 border-b border-brand-border overflow-x-auto">

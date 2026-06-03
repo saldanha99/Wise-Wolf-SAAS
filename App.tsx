@@ -55,6 +55,7 @@ const WiseWolfLanding = lazy(() => import('./components/landing/WiseWolfLanding'
 const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLandingTemplate'));
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const ConfirmAttendance = lazy(() => import('./components/ConfirmAttendance'));
+const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
@@ -370,6 +371,13 @@ const App: React.FC = () => {
   if (path === '/confirmar-presenca' || path.startsWith('/confirmar-presenca')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
       <ConfirmAttendance />
+    </Suspense>;
+  }
+
+  // Aceite de transferência de aluno pelo novo professor (link público, sem login)
+  if (path === '/transferencia' || path.startsWith('/transferencia')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
+      <TeacherTransferAccept />
     </Suspense>;
   }
 
