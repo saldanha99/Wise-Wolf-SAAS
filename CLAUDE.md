@@ -286,6 +286,26 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 ---
 
+## Biblioteca Pedagógica — Pastas, Nichos e Livros ✅
+
+> Estrutura de organização: **Nicho › Nível › Livro › Partes**. Resolveu o caso de livros grandes demais pro storage, que são **fracionados em partes** (A1 Part 1..N) e precisam ficar agrupados.
+
+**Nicho = catálogo dinâmico por escola (`tenant_niches`), fonte ÚNICA.**
+- ❌ NUNCA mais chumbe nichos em `<select>` no frontend nem em CHECK constraint. A constraint rígida `check_pedagogical_niche` (5 valores fixos) foi **removida** — era a causa do erro "Erro ao salvar edição" ao usar nicho novo. O catálogo controla o que é válido.
+- Os 5 base (GENERAL/MEDICINE/TECH/TRAVEL/BUSINESS) foram **seedados como dados** em `tenant_niches`, não são mais código. `niche='GENERAL'` é o fallback.
+- RPCs (SECURITY DEFINER): `list_niches()`, `upsert_niche(label)` (gera key UPPER sem acento), `rename_niche(key,label)` (mantém a key → não quebra materiais), `delete_niche(key)` (reatribui materiais/livros pra GENERAL; GENERAL é protegido).
+
+**Livro = `pedagogical_collections`** (id, tenant_id, title, niche, level_tag, cover_url). Cada livro mora numa pasta nicho+nível.
+- `pedagogical_materials.collection_id` (FK ON DELETE SET NULL) + `part_number` = a "parte" dentro do livro. `collection_id` NULL = material **avulso** (continua funcionando).
+- RPCs: `upsert_collection(id,title,niche,level,cover)`, `delete_collection(id)` (partes viram avulsas, não sào apagadas), `set_material_collection(material_id,collection_id,part_number)`.
+- Escrita de livro/nicho só via RPC (RLS só permite leitura por tenant — policies `tc_read`/`tn_read`).
+
+**Frontend:** `MaterialsLibrary.tsx` tem 3 modos: **Pastas** (árvore, default quando recebe prop `collections`), Nível, Nicho. Recebe `nicheLabels` (de `list_niches`) p/ rótulos. `PedagogicalConfig.tsx`: form de upload cria/seleciona livro + nº da parte (auto-incrementa ao subir partes em sequência), edição de material/livro, criação de nicho/livro inline. Visão do aluno (`StudentPedagogicalView`) não passa `collections` → cai no modo plano (retrocompatível).
+
+**Migrations:** `20260604152000_pedagogical_niche_catalog` (documenta tenant_niches + RPCs que existiam só no banco — havia drift), `20260604152637_pedagogical_library_structure`, `20260604152738_pedagogical_library_rpcs`.
+
+---
+
 ## Planner de Aula com IA (LessonPlannerAI) ✅
 
 > Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.

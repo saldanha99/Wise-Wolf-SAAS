@@ -26,30 +26,79 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   // Materials State
   const [materials, setMaterials] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [newMaterial, setNewMaterial] = useState({ title: '', level: 'A1', type: 'PDF', file: null as File | null, url: '', category: 'General', niche: 'GENERAL' });
-  const [selectedNiche, setSelectedNiche] = useState('ALL');
-  const [customNiches, setCustomNiches] = useState<{ key: string; label: string }[]>([]);
+  const [newMaterial, setNewMaterial] = useState({ title: '', level: 'A1', type: 'PDF', file: null as File | null, url: '', category: 'General', niche: 'GENERAL', collection_id: '' as string, part_number: '' as string });
+  // Catálogo de nichos da escola (base + customizados) — fonte única via list_niches.
+  const [niches, setNiches] = useState<{ key: string; label: string }[]>([]);
   const [newNicheLabel, setNewNicheLabel] = useState('');
   const [showNewNiche, setShowNewNiche] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
+  // Livros / coleções (agrupam partes de um material fracionado)
+  const [collections, setCollections] = useState<any[]>([]);
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [newCollection, setNewCollection] = useState({ title: '', niche: 'GENERAL', level: 'A1' });
+  const [editingCollection, setEditingCollection] = useState<any | null>(null);
+
+  // Fallback caso a escola ainda não tenha nichos no catálogo (escolas novas).
+  const BASE_NICHES = [
+    { key: 'GENERAL', label: '🌎 Geral' }, { key: 'MEDICINE', label: '🏥 Medicina' },
+    { key: 'TECH', label: '💻 Tech' }, { key: 'BUSINESS', label: '💼 Business' },
+    { key: 'TRAVEL', label: '✈️ Viagem' },
+  ];
+  const nicheOptions = niches.length ? niches : BASE_NICHES;
+  const nicheLabelMap = Object.fromEntries(nicheOptions.map(n => [n.key, n.label]));
 
   const isTeacher = user.role === UserRole.TEACHER;
   const canUpload = isTeacher || user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
 
-  // Carrega nichos customizados da escola
-  useEffect(() => {
-    supabase.rpc('list_niches').then(({ data }) => { if (Array.isArray(data)) setCustomNiches(data); });
-  }, [tenantId]);
+  // Carrega catálogo de nichos (base + customizados) e livros da escola
+  const loadNiches = () => supabase.rpc('list_niches').then(({ data }) => { if (Array.isArray(data)) setNiches(data); });
+  const loadCollections = async () => {
+    const { data } = await supabase.from('pedagogical_collections').select('*').order('title');
+    if (Array.isArray(data)) setCollections(data);
+  };
+  useEffect(() => { loadNiches(); loadCollections(); }, [tenantId]);
 
   const addNiche = async () => {
     const label = newNicheLabel.trim();
     if (label.length < 2) return;
     const { data } = await supabase.rpc('upsert_niche', { p_label: label });
     if (data?.ok) {
-      setCustomNiches(prev => prev.some(n => n.key === data.key) ? prev : [...prev, { key: data.key, label: data.label }]);
+      setNiches(prev => prev.some(n => n.key === data.key) ? prev : [...prev, { key: data.key, label: data.label }]);
       setNewMaterial(m => ({ ...m, niche: data.key }));
       setNewNicheLabel(''); setShowNewNiche(false);
     } else alert('Erro ao criar nicho.');
+  };
+
+  // Cria um livro (coleção) que agrupará as partes do material fracionado
+  const addCollection = async () => {
+    if (newCollection.title.trim().length < 2) return alert('Dê um nome ao livro.');
+    const { data } = await supabase.rpc('upsert_collection', {
+      p_id: null, p_title: newCollection.title.trim(), p_niche: newCollection.niche, p_level: newCollection.level, p_cover: null,
+    });
+    if (data?.ok) {
+      await loadCollections();
+      // já seleciona o livro recém-criado no formulário de material
+      setNewMaterial(m => ({ ...m, collection_id: data.id, niche: newCollection.niche, level: newCollection.level }));
+      setNewCollection({ title: '', niche: 'GENERAL', level: 'A1' });
+      setShowNewCollection(false);
+    } else alert('Erro ao criar livro.');
+  };
+
+  const saveCollectionEdit = async () => {
+    if (!editingCollection) return;
+    const { data } = await supabase.rpc('upsert_collection', {
+      p_id: editingCollection.id, p_title: editingCollection.title,
+      p_niche: editingCollection.niche, p_level: editingCollection.level_tag, p_cover: editingCollection.cover_url || null,
+    });
+    if (data?.ok) { await loadCollections(); setEditingCollection(null); }
+    else alert('Erro ao salvar livro.');
+  };
+
+  const handleDeleteCollection = async (id: string) => {
+    if (!confirm('Excluir este livro? As partes não são apagadas — voltam a ser materiais avulsos.')) return;
+    const { data } = await supabase.rpc('delete_collection', { p_id: id });
+    if (data?.ok) { await loadCollections(); fetchMaterials(); }
+    else alert('Erro ao excluir livro.');
   };
 
   const saveMaterialEdit = async () => {
@@ -57,10 +106,16 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
     const { data } = await supabase.rpc('update_material', { p_id: editingMaterial.id, p: {
       title: editingMaterial.title, niche: editingMaterial.niche, level_tag: editingMaterial.level_tag, type: editingMaterial.type,
     }});
-    if (data?.ok) {
-      setMaterials(prev => prev.map(m => m.id === editingMaterial.id ? { ...m, ...editingMaterial } : m));
-      setEditingMaterial(null);
-    } else alert('Erro ao salvar edição.');
+    if (!data?.ok) return alert('Erro ao salvar edição.');
+    // Vínculo com livro/parte (campo separado, via RPC própria)
+    const partNum = editingMaterial.part_number !== '' && editingMaterial.part_number != null ? Number(editingMaterial.part_number) : null;
+    await supabase.rpc('set_material_collection', {
+      p_material_id: editingMaterial.id,
+      p_collection_id: editingMaterial.collection_id || null,
+      p_part_number: partNum,
+    });
+    setMaterials(prev => prev.map(m => m.id === editingMaterial.id ? { ...m, ...editingMaterial, part_number: partNum, collection_id: editingMaterial.collection_id || null } : m));
+    setEditingMaterial(null);
   };
 
   useEffect(() => {
@@ -187,7 +242,9 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         uploaded_by: user.id,
         scope: scope,
         approval_status: approvalStatus,
-        niche: newMaterial.niche // Add niche to payload
+        niche: newMaterial.niche,
+        collection_id: newMaterial.collection_id || null, // livro (opcional)
+        part_number: newMaterial.part_number !== '' ? Number(newMaterial.part_number) : null, // ordem da parte
       }).select().single();
 
       if (error) {
@@ -199,7 +256,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       alert(approvalStatus === 'PENDING'
         ? '✅ Material enviado para aprovação do diretor. Assim que for aprovado, entra no banco de materiais.'
         : 'Material salvo com sucesso!');
-      setNewMaterial({ title: '', level: 'A1', type: 'PDF', file: null, url: '', category: 'General', niche: 'GENERAL' });
+      setNewMaterial(m => ({ title: '', level: m.level, type: 'PDF', file: null, url: '', category: 'General', niche: m.niche, collection_id: m.collection_id, part_number: m.part_number !== '' ? String(Number(m.part_number) + 1) : '' }));
     } catch (err: any) {
       console.error('Upload Error Details:', err);
       alert(`Erro ao salvar: ${err.message || JSON.stringify(err)}`);
@@ -224,13 +281,6 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesTeacher = selectedTeacherId === 'ALL' || s.assignedTeacherIds.includes(selectedTeacherId);
     return matchesSearch && matchesTeacher;
-  });
-
-  const filteredMaterials = materials.filter(m => {
-    if (selectedNiche === 'ALL') return true;
-    // Handle cases where old materials might not have a niche or default to GENERAL
-    const niche = m.niche || 'GENERAL';
-    return niche === selectedNiche;
   });
 
   return (
@@ -307,25 +357,49 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                     {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
-                {/* Nicho: predefinidos + custom + criar novo */}
-                <div className="flex gap-2 items-center">
-                  <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
-                    <option value="GENERAL">🌎 Geral</option>
-                    <option value="MEDICINE">🏥 Medicina</option>
-                    <option value="TECH">💻 Tech</option>
-                    <option value="BUSINESS">💼 Business</option>
-                    <option value="TRAVEL">✈️ Viagem</option>
-                    <option value="KIDS">🧸 Crianças</option>
-                    <option value="TOEFL_IELTS">🎓 TOEFL/IELTS</option>
-                    <option value="CONVERSATION">💬 Conversação</option>
-                    {customNiches.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
-                  </select>
-                  <button type="button" onClick={() => setShowNewNiche(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo nicho">+ Nicho</button>
+                {/* Nicho: catálogo dinâmico (base + custom) + criar novo */}
+                <div>
+                  <label className="text-[10px] font-black text-brand-muted uppercase tracking-wider">Nicho</label>
+                  <div className="flex gap-2 items-center mt-1">
+                    <select value={newMaterial.niche} onChange={e => setNewMaterial({ ...newMaterial, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
+                      {nicheOptions.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setShowNewNiche(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo nicho">+ Nicho</button>
+                  </div>
                 </div>
                 {showNewNiche && (
                   <div className="flex gap-2">
                     <input value={newNicheLabel} onChange={e => setNewNicheLabel(e.target.value)} placeholder="Nome do novo nicho (ex: Jurídico)" className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs" />
                     <button type="button" onClick={addNiche} className="px-3 py-2 bg-emerald-500 text-white rounded-xl text-xs font-black">Salvar</button>
+                  </div>
+                )}
+
+                {/* Livro (opcional): agrupa partes de um material fracionado */}
+                <div>
+                  <label className="text-[10px] font-black text-brand-muted uppercase tracking-wider">Livro (opcional — p/ material fracionado)</label>
+                  <div className="flex gap-2 items-center mt-1">
+                    <select value={newMaterial.collection_id} onChange={e => setNewMaterial({ ...newMaterial, collection_id: e.target.value })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
+                      <option value="">— Avulso (sem livro) —</option>
+                      {collections.map(c => <option key={c.id} value={c.id}>{(nicheLabelMap[c.niche] ? nicheLabelMap[c.niche].replace(/^[^\s\w]+\s*/, '') + ' · ' : '')}{c.level_tag ? c.level_tag + ' · ' : ''}{c.title}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setShowNewCollection(s => !s)} className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-black text-tenant-primary" title="Criar novo livro">+ Livro</button>
+                  </div>
+                  {newMaterial.collection_id && (
+                    <input type="number" min={1} value={newMaterial.part_number} onChange={e => setNewMaterial({ ...newMaterial, part_number: e.target.value })} placeholder="Nº da parte (1, 2, 3...)" className="w-full mt-2 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold" />
+                  )}
+                </div>
+                {showNewCollection && (
+                  <div className="p-3 bg-brand-surface-2/50 rounded-xl space-y-2 border border-brand-border">
+                    <input value={newCollection.title} onChange={e => setNewCollection({ ...newCollection, title: e.target.value })} placeholder="Nome do livro (ex: English for Kids A1)" className="w-full p-2 bg-brand-surface rounded-lg text-xs" />
+                    <div className="flex gap-2">
+                      <select value={newCollection.niche} onChange={e => setNewCollection({ ...newCollection, niche: e.target.value })} className="flex-1 p-2 bg-brand-surface rounded-lg text-xs font-bold">
+                        {nicheOptions.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
+                      </select>
+                      <select value={newCollection.level} onChange={e => setNewCollection({ ...newCollection, level: e.target.value })} className="flex-1 p-2 bg-brand-surface rounded-lg text-xs font-bold">
+                        {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <button type="button" onClick={addCollection} className="w-full py-2 bg-emerald-500 text-white rounded-lg text-xs font-black">Criar livro</button>
                   </div>
                 )}
                 {newMaterial.type === 'PDF' ? (
@@ -343,8 +417,12 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <MaterialsLibrary
                 materials={materials}
+                collections={collections}
+                nicheLabels={nicheLabelMap}
                 onDelete={showSidebar ? handleDeleteMaterial : undefined}
-                onEdit={showSidebar ? (m: any) => setEditingMaterial({ ...m }) : undefined}
+                onEdit={showSidebar ? (m: any) => setEditingMaterial({ ...m, collection_id: m.collection_id || '', part_number: m.part_number ?? '' }) : undefined}
+                onEditCollection={showSidebar ? (c: any) => setEditingCollection({ ...c }) : undefined}
+                onDeleteCollection={showSidebar ? handleDeleteCollection : undefined}
                 emptyText="Nenhum material na biblioteca ainda. Suba o primeiro no painel ao lado."
               />
             </div>
@@ -378,20 +456,53 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
             <div>
               <label className="text-xs font-bold text-brand-muted">Nicho</label>
               <select value={editingMaterial.niche || 'GENERAL'} onChange={e => setEditingMaterial({ ...editingMaterial, niche: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
-                <option value="GENERAL">🌎 Geral</option>
-                <option value="MEDICINE">🏥 Medicina</option>
-                <option value="TECH">💻 Tech</option>
-                <option value="BUSINESS">💼 Business</option>
-                <option value="TRAVEL">✈️ Viagem</option>
-                <option value="KIDS">🧸 Crianças</option>
-                <option value="TOEFL_IELTS">🎓 TOEFL/IELTS</option>
-                <option value="CONVERSATION">💬 Conversação</option>
-                {customNiches.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
+                {nicheOptions.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-brand-muted">Livro (opcional)</label>
+              <select value={editingMaterial.collection_id || ''} onChange={e => setEditingMaterial({ ...editingMaterial, collection_id: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                <option value="">— Avulso (sem livro) —</option>
+                {collections.map(c => <option key={c.id} value={c.id}>{c.level_tag ? c.level_tag + ' · ' : ''}{c.title}</option>)}
+              </select>
+              {editingMaterial.collection_id && (
+                <input type="number" min={1} value={editingMaterial.part_number ?? ''} onChange={e => setEditingMaterial({ ...editingMaterial, part_number: e.target.value })} placeholder="Nº da parte (1, 2, 3...)" className="w-full mt-2 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold" />
+              )}
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={() => setEditingMaterial(null)} className="flex-1 py-2.5 rounded-xl border border-brand-border text-brand-muted text-sm font-bold">Cancelar</button>
               <button onClick={saveMaterialEdit} className="flex-1 py-2.5 rounded-xl bg-tenant-primary text-white text-sm font-bold">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edição de livro (diretor) */}
+      {editingCollection && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setEditingCollection(null)}>
+          <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-black text-brand-text">Editar livro</h3>
+            <div>
+              <label className="text-xs font-bold text-brand-muted">Nome do livro</label>
+              <input value={editingCollection.title || ''} onChange={e => setEditingCollection({ ...editingCollection, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold mt-1" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-bold text-brand-muted">Nicho</label>
+                <select value={editingCollection.niche || 'GENERAL'} onChange={e => setEditingCollection({ ...editingCollection, niche: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                  {nicheOptions.map(n => <option key={n.key} value={n.key}>{n.label}</option>)}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-bold text-brand-muted">Nível</label>
+                <select value={editingCollection.level_tag || 'A1'} onChange={e => setEditingCollection({ ...editingCollection, level_tag: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                  {modulesList.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setEditingCollection(null)} className="flex-1 py-2.5 rounded-xl border border-brand-border text-brand-muted text-sm font-bold">Cancelar</button>
+              <button onClick={saveCollectionEdit} className="flex-1 py-2.5 rounded-xl bg-tenant-primary text-white text-sm font-bold">Salvar</button>
             </div>
           </div>
         </div>
