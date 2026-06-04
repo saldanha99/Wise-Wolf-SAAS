@@ -34,14 +34,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
   // No mobile baixa direto; no desktop abre modal
   const handleContractClick = async () => {
-    const isMobile = window.innerWidth < 640;
-    if (isMobile) {
-      if (!contractDownloadFn) return; // ainda carregando
-      setDownloadingContract(true);
-      try { await contractDownloadFn(); } finally { setDownloadingContract(false); }
-    } else {
-      setShowContract(true);
-    }
+    // Abre o modal em qualquer dispositivo — mais confiável que tentar gerar
+    // PDF via html2pdf em mobile (iOS/Android bloqueiam com frequência).
+    setShowContract(true);
   };
 
   // Derived state from Context

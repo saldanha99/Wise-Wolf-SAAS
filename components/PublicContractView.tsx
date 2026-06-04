@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { TeacherContractDocument } from './TeacherContractDocument';
-import { Loader2, AlertCircle, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, FileText, Download } from 'lucide-react';
 
 interface PublicContractViewProps {
     id?: string;
@@ -12,6 +12,29 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     const [error, setError] = useState<string | null>(null);
     const [profile, setProfile] = useState<any>(null);
     const [resolvedId, setResolvedId] = useState<string | null>(propId || null);
+    const [downloading, setDownloading] = useState(false);
+    const contractRef = useRef<HTMLDivElement>(null);
+
+    const handleDownloadPdf = async () => {
+        const el = contractRef.current;
+        if (!el) return;
+        setDownloading(true);
+        try {
+            const html2pdf = (await import('html2pdf.js')).default;
+            await html2pdf().set({
+                margin: 0,
+                filename: `Contrato_Professor_${(profile?.full_name || 'WiseWolf').replace(/\s+/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            }).from(el).save();
+        } catch (err) {
+            console.error('Erro ao gerar PDF do professor:', err);
+            alert('Erro ao gerar PDF. Tente usar o botão Imprimir.');
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -72,28 +95,38 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
 
     return (
         <div className="min-h-screen bg-gray-100 py-10">
-            {/* Security Header */}
-            <div className="max-w-[210mm] mx-auto mb-6 px-4 flex items-center justify-between text-brand-muted">
-                <div className="flex items-center gap-2">
+            {/* Barra de ação: header de segurança + botão de download */}
+            <div className="max-w-[210mm] mx-auto mb-4 px-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-brand-muted">
                     <FileText size={16} />
                     <span className="text-[10px] font-black uppercase tracking-widest">Documento Digital Autêntico</span>
+                    <span className="text-[10px] font-bold ml-2">ID: {resolvedId?.substring(0, 8)}...</span>
                 </div>
-                <div className="text-[10px] font-bold">
-                    ID: {resolvedId?.substring(0, 8)}...
-                </div>
+                {/* Botão de download PDF — funciona em mobile e desktop */}
+                <button
+                    onClick={handleDownloadPdf}
+                    disabled={downloading}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-md disabled:opacity-50"
+                >
+                    {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    {downloading ? 'Gerando...' : 'Baixar PDF'}
+                </button>
             </div>
 
-            <TeacherContractDocument
-                teacherName={profile.full_name}
-                teacherRG={profile.rg}
-                teacherCPF={profile.cpf}
-                teacherAddress={profile.address}
-                teacherBirthDate={profile.birth_date}
-                hourlyRate={profile.hourly_rate}
-                acceptedAt={profile.accepted_at}
-                userIp={profile.user_ip}
-                subscriptionId={resolvedId || undefined}
-            />
+            {/* Documento do contrato — passamos o ref para captura pelo html2pdf */}
+            <div ref={contractRef}>
+                <TeacherContractDocument
+                    teacherName={profile.full_name}
+                    teacherRG={profile.rg}
+                    teacherCPF={profile.cpf}
+                    teacherAddress={profile.address}
+                    teacherBirthDate={profile.birth_date}
+                    hourlyRate={profile.hourly_rate}
+                    acceptedAt={profile.accepted_at}
+                    userIp={profile.user_ip}
+                    subscriptionId={resolvedId || undefined}
+                />
+            </div>
         </div>
     );
 };
