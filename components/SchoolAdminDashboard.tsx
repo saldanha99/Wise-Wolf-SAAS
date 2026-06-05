@@ -6,9 +6,9 @@ import TeacherTrainingAdmin from './training/TeacherTrainingAdmin';
 import FinancialCharts from './FinancialCharts';
 import RegistrationLinkGenerator from './RegistrationLinkGenerator';
 import AdminPaymentsList from './AdminPaymentsList';
-import ContractManagement from './ContractManagement';
 import AutomacaoSmart from './AutomacaoSmart';
 import ManualTrialScheduler from './ManualTrialScheduler';
+import DirectorPendingCenter from './DirectorPendingCenter';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 
@@ -16,14 +16,15 @@ interface SchoolAdminDashboardProps {
   teachers: Teacher[];
   tenantId?: string;
   onViewTeacherSchedule?: (teacherName: string, action?: 'view' | 'allocate') => void;
+  onNavigate?: (tab: string) => void;
   userRole?: string;
 }
 
-const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, tenantId, onViewTeacherSchedule, userRole }) => {
+const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, tenantId, onViewTeacherSchedule, onNavigate, userRole }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'payments' | 'contracts' | 'recruiting'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'payments' | 'recruiting'>('analytics');
   const [showTrialScheduler, setShowTrialScheduler] = useState(false);
 
   const [stats, setStats] = useState({
@@ -250,13 +251,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               onClick={() => setActiveTab('payments')}
               className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
-              Fluxo de Caixa
-            </button>
-            <button
-              onClick={() => setActiveTab('contracts')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'contracts' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
-            >
-              Contratos
+              Mensalidades
             </button>
             <button
               onClick={() => setActiveTab('recruiting')}
@@ -296,6 +291,9 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
       {activeTab === 'analytics' && (
         <>
+          {/* Central de Pendências — tudo que precisa de ação do diretor */}
+          <DirectorPendingCenter onNavigate={onNavigate} />
+
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
@@ -625,7 +623,6 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {activeTab === 'training' && <TeacherTrainingAdmin tenantId={tenantId || ''} />}
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
       {activeTab === 'payments' && <AdminPaymentsList tenantId={tenantId || ''} />}
-      {activeTab === 'contracts' && <ContractManagement tenantId={tenantId} />}
       {activeTab === 'recruiting' && (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
           <TeacherInviteGenerator tenantId={tenantId || ''} />

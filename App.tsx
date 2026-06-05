@@ -39,6 +39,7 @@ const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
+const ContractManagement = lazy(() => import('./components/ContractManagement'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
 const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoard'));
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
@@ -112,6 +113,7 @@ const App: React.FC = () => {
   const [reschedules, setReschedules] = useState<Reschedule[]>([]);
   const [students, setStudents] = useState<any[]>([]); // Cache students for selection
   const [pendingLessonsCount, setPendingLessonsCount] = useState(0);
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({}); // pendências do diretor (badges)
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
@@ -322,6 +324,17 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  // Contadores de pendência do diretor (badges do menu + Central de Pendências)
+  const refreshPendingCounts = React.useCallback(async () => {
+    if (!user || (user.role !== UserRole.SCHOOL_ADMIN && user.role !== UserRole.SUPER_ADMIN)) return;
+    try {
+      const { data } = await supabase.rpc('director_pending_counts');
+      if (data && typeof data === 'object') setPendingCounts(data as Record<string, number>);
+    } catch (e) { /* silencioso — badges são best-effort */ }
+  }, [user]);
+
+  useEffect(() => { refreshPendingCounts(); }, [refreshPendingCounts, activeTab]);
+
   // Handle Theme
   useEffect(() => {
     if (theme === 'dark') {
@@ -485,6 +498,7 @@ const App: React.FC = () => {
             teachers={teachers}
             tenantId={currentTenant?.id}
             userRole={user.role}
+            onNavigate={setActiveTab}
             onViewTeacherSchedule={(name) => {
               setExplorerInitialState({ teacherName: name, autoAllocate: false });
               setActiveTab('schedule_explorer');
@@ -501,6 +515,7 @@ const App: React.FC = () => {
       'class_skills': <ClassSkillsDashboard user={user} tenantId={currentTenant?.id} />,
       'msg_settings': <TeacherMessageSettings user={user} />,
       'tenant_advanced': <TenantAdvancedSettings user={user} tenantId={currentTenant?.id} />,
+      'contracts': <ContractManagement tenantId={currentTenant?.id} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,
       'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,
@@ -646,6 +661,7 @@ const App: React.FC = () => {
             setActiveTab(tab);
           }}
           pendingLessonsCount={pendingLessonsCount}
+          pendingCounts={pendingCounts}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}

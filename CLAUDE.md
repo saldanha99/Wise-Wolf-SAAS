@@ -246,6 +246,19 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## Navegação do Diretor — menu, badges e Central de Pendências ✅
+
+> O acesso do diretor (`SCHOOL_ADMIN`) tinha 30 itens de menu **flat, sem grupos nem alertas**. Reorganizado para reduzir carga e dar visibilidade ao que precisa de ação.
+
+- **Menu agrupado** (`ModernSidebar`): `MenuItem` ganhou `section` (cabeçalho de grupo) e `badgeKey` (contador). Seções: Visão geral · Pessoas · Aulas · Pedagógico · Financeiro · Crescimento · Configurações. Renderização mostra header quando a seção muda; colapsado vira divisória.
+- **Badges de pendência**: `App.tsx` busca `director_pending_counts()` (RPC, migration `20260605140000`) em `pendingCounts` e passa ao sidebar; itens com `badgeKey` (`acolhimento`, `presenca`, `materiais`, `trials`) mostram o número. Atualiza ao trocar de aba (`activeTab`).
+- **Central de Pendências** (`components/DirectorPendingCenter.tsx`): no topo do Dashboard (aba analytics), lista tudo que espera ação com link direto (`onNavigate` = `setActiveTab` do App). Estado "tudo em dia" quando zero.
+- **Nomes corrigidos** (eram confusos): `automation`="WhatsApp (Conexão)" (AutomacaoSmart) vs `automations`="Disparos WhatsApp" (AutomationPanel); `payments`="Repasse a Profs" (**TeacherPayments — pagamento AO professor**); `approvals`="Acolhimento (Docs)"; `financial`="Lançamentos do Caixa".
+- **`contracts` agora é item de menu próprio** (`ContractManagement`) — antes só existia escondido na aba do Dashboard. A aba duplicada de Contratos foi **removida** do `SchoolAdminDashboard`.
+- ⚠️ **Cuidado — "duplicatas" que NÃO são**: a aba `payments` do Dashboard = `AdminPaymentsList` (**mensalidades de ALUNOS**, rotulada "Mensalidades"), diferente do menu `payments` = `TeacherPayments` (repasse ao professor). `training`/`registration`/`recruiting` do Dashboard são telas únicas que só existem ali. Não remova achando que são cópias.
+
+---
+
 ## Anti-duplicação de Agenda e Lançamento de Aula ✅
 
 > **Regra de ouro:** o pagamento do professor = `class_logs` pagáveis × `hourly_rate`. Logo, agenda/lançamento duplicado = pagamento inflado. Houve um caso real (aluno Anderson/prof Flávio): a matrícula manual criou **6 cópias** de cada horário porque o botão Salvar foi clicado várias vezes e **não havia trava de unicidade**.

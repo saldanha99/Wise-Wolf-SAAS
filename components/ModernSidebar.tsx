@@ -52,6 +52,7 @@ interface ModernSidebarProps {
     setIsCollapsed: (collapsed: boolean) => void; // Desktop set collapsed
     theme: 'light' | 'dark';
     toggleTheme: () => void;
+    pendingCounts?: Record<string, number>; // contadores de pendência por área (badges)
 }
 
 interface MenuItem {
@@ -59,6 +60,8 @@ interface MenuItem {
     label: string;
     icon: React.ElementType;
     badge?: number;
+    section?: string;        // grupo do menu (ex: "Pessoas", "Financeiro")
+    badgeKey?: string;       // chave em pendingCounts que vira badge (ex: "acolhimento")
 }
 
 const ModernSidebar: React.FC<ModernSidebarProps> = ({
@@ -73,7 +76,8 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     isCollapsed,
     setIsCollapsed,
     theme,
-    toggleTheme
+    toggleTheme,
+    pendingCounts = {}
 }) => {
 
     const teacherMenu: MenuItem[] = [
@@ -112,36 +116,44 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     ];
 
     const schoolAdminMenu: MenuItem[] = [
-        { id: 'dashboard', label: 'Dashboard', icon: Activity },
-        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
-        { id: 'teachers', label: 'Professores', icon: Users },
-        { id: 'teacher-insights', label: 'Gestão Profs', icon: ShieldAlert },
-        { id: 'students', label: 'Alunos', icon: GraduationCap },
-        { id: 'student-insights', label: 'Painel de Alunos', icon: TrendingUp },
-        { id: 'schedule_explorer', label: 'Mapa Aulas', icon: CalendarClock },
-        { id: 'approvals', label: 'Acolhimento', icon: CheckCircle },
-        { id: 'trials', label: 'Experimentais', icon: Zap },
-        { id: 'payments', label: 'Pagamentos', icon: DollarSign },
-        { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert },
-        { id: 'trial-settlement', label: 'Experimentais/Treinos', icon: GraduationCap },
-        { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet },
-        { id: 'financial', label: 'Caixa (detalhe)', icon: Wallet },
-        { id: 'pedagogical', label: 'Pedagógico', icon: Book },
-        { id: 'material-approvals', label: 'Aprovar Materiais', icon: FileText },
-        { id: 'learning_paths_builder', label: 'Trilhas', icon: Target },
-        { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
-        { id: 'automation', label: 'Smart', icon: Zap },
-        { id: 'training', label: 'Treinamento', icon: GraduationCap },
-        { id: 'settings_school', label: 'Branding', icon: Palette },
-        { id: 'vendors-mgmt', label: 'Vendedores', icon: TrendingUp },
-        { id: 'referral-admin', label: 'Indicações', icon: Gift },
-        { id: 'automations', label: 'Automações WPP', icon: Zap },
-        { id: 'crm', label: 'CRM & Pipeline', icon: Users },
-        { id: 'marketing', label: 'Site & Vendas', icon: Globe },
-        { id: 'hr', label: 'Recursos Humanos', icon: Briefcase },
-        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus },
-        { id: 'tenant_advanced', label: 'Avançado', icon: Settings },
-        { id: 'admin_workflows', label: 'Workflows', icon: Repeat },
+        // ── Visão geral ──
+        { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Visão geral' },
+        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Visão geral' },
+        // ── Pessoas ──
+        { id: 'students', label: 'Alunos', icon: GraduationCap, section: 'Pessoas' },
+        { id: 'student-insights', label: 'Painel de Alunos', icon: TrendingUp, section: 'Pessoas' },
+        { id: 'teachers', label: 'Professores', icon: Users, section: 'Pessoas' },
+        { id: 'teacher-insights', label: 'Gestão de Profs', icon: ShieldAlert, section: 'Pessoas' },
+        { id: 'approvals', label: 'Acolhimento (Docs)', icon: CheckCircle, section: 'Pessoas', badgeKey: 'acolhimento' },
+        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus, section: 'Pessoas' },
+        { id: 'hr', label: 'Recursos Humanos', icon: Briefcase, section: 'Pessoas' },
+        // ── Aulas ──
+        { id: 'schedule_explorer', label: 'Mapa de Aulas', icon: CalendarClock, section: 'Aulas' },
+        { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca' },
+        { id: 'trials', label: 'Agendar Experimental', icon: Zap, section: 'Aulas' },
+        { id: 'trial-settlement', label: 'Pagar Exp./Treino', icon: CheckCircle, section: 'Aulas', badgeKey: 'trials' },
+        // ── Pedagógico ──
+        { id: 'pedagogical', label: 'Biblioteca', icon: Book, section: 'Pedagógico' },
+        { id: 'material-approvals', label: 'Aprovar Materiais', icon: FileText, section: 'Pedagógico', badgeKey: 'materiais' },
+        { id: 'learning_paths_builder', label: 'Trilhas', icon: Target, section: 'Pedagógico' },
+        { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico' },
+        { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico' },
+        // ── Financeiro ──
+        { id: 'payments', label: 'Repasse a Profs', icon: DollarSign, section: 'Financeiro' },
+        { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet, section: 'Financeiro' },
+        { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },
+        // ── Crescimento ──
+        { id: 'crm', label: 'CRM & Funil', icon: Users, section: 'Crescimento' },
+        { id: 'marketing', label: 'Site & Vendas', icon: Globe, section: 'Crescimento' },
+        { id: 'referral-admin', label: 'Indicações', icon: Gift, section: 'Crescimento' },
+        { id: 'vendors-mgmt', label: 'Vendedores', icon: TrendingUp, section: 'Crescimento' },
+        // ── Configurações ──
+        { id: 'contracts', label: 'Contratos', icon: FileText, section: 'Configurações' },
+        { id: 'settings_school', label: 'Branding', icon: Palette, section: 'Configurações' },
+        { id: 'automation', label: 'WhatsApp (Conexão)', icon: Zap, section: 'Configurações' },
+        { id: 'automations', label: 'Disparos WhatsApp', icon: Bell, section: 'Configurações' },
+        { id: 'tenant_advanced', label: 'Config. Avançada', icon: Settings, section: 'Configurações' },
+        { id: 'admin_workflows', label: 'Workflows', icon: Repeat, section: 'Configurações' },
     ];
 
     const superAdminMenu: MenuItem[] = [
@@ -221,21 +233,37 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 </div>
 
                 <div className="space-y-1 mb-8 flex-1 overflow-y-auto scrollbar-hide">
-                    {menuItems.map((item) => (
-                        <Option
-                            key={item.id}
-                            Icon={item.icon}
-                            title={item.label}
-                            selected={activeTab}
-                            itemId={item.id}
-                            setSelected={(id: string) => {
-                                setActiveTab(id);
-                                if (window.innerWidth < 1024) setIsOpen(false);
-                            }}
-                            open={open}
-                            notifs={item.badge}
-                        />
-                    ))}
+                    {menuItems.map((item, idx) => {
+                        // Cabeçalho de seção: aparece quando a seção muda (só em menus agrupados)
+                        const prevSection = idx > 0 ? menuItems[idx - 1].section : undefined;
+                        const showHeader = !!item.section && item.section !== prevSection;
+                        // Badge: número fixo OU contador de pendência via badgeKey
+                        const badge = item.badge ?? (item.badgeKey ? pendingCounts[item.badgeKey] : undefined);
+                        return (
+                            <React.Fragment key={item.id}>
+                                {showHeader && open && (
+                                    <div className="px-3 pt-4 pb-1 text-[10px] font-black text-brand-muted uppercase tracking-widest">
+                                        {item.section}
+                                    </div>
+                                )}
+                                {showHeader && !open && idx > 0 && (
+                                    <div className="my-2 mx-3 border-t border-brand-border" />
+                                )}
+                                <Option
+                                    Icon={item.icon}
+                                    title={item.label}
+                                    selected={activeTab}
+                                    itemId={item.id}
+                                    setSelected={(id: string) => {
+                                        setActiveTab(id);
+                                        if (window.innerWidth < 1024) setIsOpen(false);
+                                    }}
+                                    open={open}
+                                    notifs={badge}
+                                />
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
 
                 <div className="border-t border-brand-border pt-4 space-y-1 mb-12">
