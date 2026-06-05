@@ -38,6 +38,7 @@ const TeacherManagement = lazy(() => import('./components/TeacherManagement'));
 const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
+const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
 const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoard'));
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
@@ -584,6 +585,7 @@ const App: React.FC = () => {
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'attendance-disputes': <AttendanceDisputes user={user} tenantId={currentTenant?.id} />,
+      'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,
       'student-insights': <StudentInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'teacher-insights': <TeacherInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'vendors-mgmt': <VendorManagement user={user} tenantId={currentTenant?.id} />,

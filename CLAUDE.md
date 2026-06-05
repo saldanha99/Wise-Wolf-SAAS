@@ -306,6 +306,25 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 ---
 
+## Aula Experimental & Treinamento — Pagamento ao Professor ✅
+
+> **Como o professor é remunerado por experimental e treinamento.** A regra de ouro: **o pagamento SÓ existe quando há um `class_logs` COMPLETED.** Tanto o "a receber" em tempo real (`TeacherFinancials.isLessonPaid`) quanto o fechamento mensal (`run_monthly_teacher_closing`) contam AULA EXPERIMENTAL e TREINAMENTO normalmente — eles só excluem `TEACHER_ABSENCE`, `REPOSIÇÃO` e `Teste Oral`. Ou seja: contabilizar = gerar o class_log.
+
+**Fluxo (experimental e treinamento são o mesmo mecanismo, via `opportunities.kind`):**
+1. Disparo: experimental pelo SmartFinder/`TrialsToContracts`; treinamento pelo `TrainingAdmin` ("Broadcast ao vivo"). Ambos chamam a edge `broadcast-opportunity` que cria `opportunities` (com `kind` TRIAL|TRAINING) e manda o link mágico `/claim-opportunity` no grupo de professores.
+2. Aceite: professor abre `/claim-opportunity` (`components/ClaimOpportunity.tsx`) → cria um `appointments` com `type = 'experimental' | 'training'` + seta `opportunities.winner_teacher_id` e `trial_appointment_id`.
+3. Lançamento manual: `LessonLauncher` lê esses appointments (via `opportunities.winner_teacher_id` + `trial_appointment_id`) e o professor lança → class_log COMPLETED, `subtype = 'AULA EXPERIMENTAL' | 'TREINAMENTO'`, `appointment_id` preenchido.
+4. **Liquidação pelo diretor (rede de segurança):** `components/TrialTrainingSettlement.tsx` (aba **"Experimentais/Treinos"**) lista os appointments realizados ainda sem class_log e o diretor marca **"Compareceu → Pagar"** (gera o class_log COMPLETED) ou "Não" (marca `appointments.status='no_show'`, não paga). RPCs: `list_pending_trial_sessions()`, `settle_trial_session(appointment_id, attended)`.
+
+**Pegadinhas / aprendido na marra:**
+- ⚠️ **O `LessonLauncher` só mostra os últimos ~8 dias E o mês corrente.** Experimental/treino realizado fora dessa janela some e o professor não consegue lançar → por isso o painel do diretor (passo 4) é a rede de segurança. (Histórico: das 26 experimentais aceitas, só 2 foram pagas; 24 ficaram órfãs.)
+- ⚠️ **`class_logs.appointment_id` é `text`; `appointments.id` é `uuid`** → sempre castar (`a.id::text`) ao cruzar.
+- ⚠️ **Vínculo do professor no appointment:** use `COALESCE(appointments.teacher_id, opportunities.winner_teacher_id)` — appointments antigos podem ter `teacher_id` nulo.
+- `settle_trial_session` é **idempotente** (se já há class_log para o appointment, retorna `ja_lancado`). Corte fixo `2026-06-01` no `list_pending_trial_sessions` ignora pendências históricas (decisão de negócio).
+- **Migration:** `20260605120000_trial_training_settlement_rpcs`.
+
+---
+
 ## Planner de Aula com IA (LessonPlannerAI) ✅
 
 > Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.

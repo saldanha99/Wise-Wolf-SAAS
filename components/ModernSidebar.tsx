@@ -123,6 +123,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'trials', label: 'Experimentais', icon: Zap },
         { id: 'payments', label: 'Pagamentos', icon: DollarSign },
         { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert },
+        { id: 'trial-settlement', label: 'Experimentais/Treinos', icon: GraduationCap },
         { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet },
         { id: 'financial', label: 'Caixa (detalhe)', icon: Wallet },
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
