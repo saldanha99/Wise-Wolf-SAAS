@@ -246,6 +246,22 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## Anti-duplicação de Agenda e Lançamento de Aula ✅
+
+> **Regra de ouro:** o pagamento do professor = `class_logs` pagáveis × `hourly_rate`. Logo, agenda/lançamento duplicado = pagamento inflado. Houve um caso real (aluno Anderson/prof Flávio): a matrícula manual criou **6 cópias** de cada horário porque o botão Salvar foi clicado várias vezes e **não havia trava de unicidade**.
+
+**Travas no banco (migration `20260605130000_prevent_duplicate_bookings_and_logs`):**
+- `uq_bookings_no_dup_active` — único parcial em `bookings (tenant_id, student_id, teacher_id, day_of_week, time_slot) WHERE status='SCHEDULED' AND student_id IS NOT NULL`. Impede 2 agendamentos ativos no mesmo dia/horário. ⚠️ É **parcial** → NÃO dá pra usar como `onConflict` do supabase-js (erro "no matching constraint"); filtre contra existentes no app.
+- `uq_class_logs_booking_date` — único em `class_logs (booking_id, class_date) WHERE booking_id IS NOT NULL`. Impede lançar o mesmo booking 2× no mesmo dia.
+
+**No frontend:**
+- `TeacherScheduleExplorer.handleAssignmentSubmit`: dedup do array + **filtra contra bookings SCHEDULED já existentes** antes de inserir (re-submit vira no-op, sem disparar o rollback que apaga o perfil recém-criado). NÃO usa upsert (índice parcial).
+- `LessonLauncher`: ao montar as aulas do dia, **só 1 aula por horário** (`slotSeen`) — defesa caso ainda exista booking redundante.
+
+**Como auditar duplicatas (rápido):** duplicata inequívoca = mesmo `student_id` + `class_date` + `time_slot` (do booking) com 2+ `class_logs` pagáveis (impossível dar 2 aulas no mesmíssimo horário). Atenção a falsos positivos: aluno com 2 aulas no mesmo dia em **horários diferentes** (ex: 19:00 e 19:30) é legítimo. Após limpar duplicatas, **regenere `teacher_closings` PENDENTE** (`DELETE` os afetados + `run_monthly_teacher_closing(mês)`) — o closing é snapshot e pode estar desatualizado mesmo sem duplicata.
+
+---
+
 ## ⚠️ Gotchas de RPC `RETURNS TABLE` (aprendido na marra)
 
 Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação). Erros que deixam o painel "vazio" silenciosamente (frontend engole o erro):

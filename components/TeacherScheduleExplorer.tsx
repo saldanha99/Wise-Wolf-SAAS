@@ -377,27 +377,50 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       if (!finalStudentId) throw new Error("ID do aluno não definido.");
 
-      // Insert bookings with Rollback
-      const toInsert = data.schedule.map(item => ({
-        teacher_id: selectedTeacher.id,
-        student_id: finalStudentId,
-        day_of_week: item.day,
-        time_slot: item.time,
-        module: data.module,
-        type: 'Individual',
-        tenant_id: currentTenantId || selectedTeacher.tenantId,
-        start_date: data.startDate
-      }));
+      // Insert bookings with Rollback.
+      // Anti-duplicação (3 camadas):
+      // 1) dedup do array (mesmo dia/hora repetido no payload);
+      // 2) filtro contra agendamentos ATIVOS já existentes do aluno (re-submit vira no-op);
+      // 3) índice único no banco (uq_bookings_no_dup_active) como rede final.
+      const seenSlots = new Set<string>();
+      let desired = data.schedule.filter((item: any) => {
+        const key = `${item.day}|${item.time}`;
+        if (seenSlots.has(key)) return false;
+        seenSlots.add(key);
+        return true;
+      });
 
-      const { error } = await supabase.from('bookings').insert(toInsert);
+      const { data: existing } = await supabase
+        .from('bookings')
+        .select('day_of_week, time_slot')
+        .eq('student_id', finalStudentId)
+        .eq('teacher_id', selectedTeacher.id)
+        .eq('status', 'SCHEDULED');
+      const existingKeys = new Set((existing || []).map((b: any) => `${b.day_of_week}|${b.time_slot}`));
 
-      if (error) {
-        // ROLLBACK: If booking fails and we just created the student, delete the profile
-        if (data.isNew && finalStudentId) {
-          console.error("Booking failed. Rolling back created student profile...", error);
-          await supabase.from('profiles').delete().eq('id', finalStudentId);
+      const toInsert = desired
+        .filter((item: any) => !existingKeys.has(`${item.day}|${item.time}`))
+        .map((item: any) => ({
+          teacher_id: selectedTeacher.id,
+          student_id: finalStudentId,
+          day_of_week: item.day,
+          time_slot: item.time,
+          module: data.module,
+          type: 'Individual',
+          tenant_id: currentTenantId || selectedTeacher.tenantId,
+          start_date: data.startDate
+        }));
+
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('bookings').insert(toInsert);
+        if (error) {
+          // ROLLBACK: If booking fails and we just created the student, delete the profile
+          if (data.isNew && finalStudentId) {
+            console.error("Booking failed. Rolling back created student profile...", error);
+            await supabase.from('profiles').delete().eq('id', finalStudentId);
+          }
+          throw error;
         }
-        throw error;
       }
 
       // --- SEND WHATSAPP NOTIFICATION ---

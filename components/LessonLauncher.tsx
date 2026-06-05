@@ -131,12 +131,17 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         // Bookings
         if (bookings) {
+          // Defesa contra agendamentos duplicados: no mesmo dia, só processa 1 aula
+          // por horário (evita que bookings redundantes virem várias aulas a lançar).
+          const slotSeen = new Set<string>();
           for (const b of bookings) {
             if (b.start_date && dateStr < b.start_date) continue;
             if (i === 0) {
               const [h, m] = b.time_slot.split(':').map(Number);
               if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
             }
+            if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
+            slotSeen.add(b.time_slot);
             if (!logs?.some(l => l.booking_id === b.id)) {
               await processLesson(b, 'REGULAR', b.time_slot);
             }
