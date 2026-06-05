@@ -255,7 +255,9 @@ onClick texto → sendMessage() → unlockAudio()
 - **Central de Pendências** (`components/DirectorPendingCenter.tsx`): no topo do Dashboard (aba analytics), lista tudo que espera ação com link direto (`onNavigate` = `setActiveTab` do App). Estado "tudo em dia" quando zero.
 - **Nomes corrigidos** (eram confusos): `automation`="WhatsApp (Conexão)" (AutomacaoSmart) vs `automations`="Disparos WhatsApp" (AutomationPanel); `payments`="Repasse a Profs" (**TeacherPayments — pagamento AO professor**); `approvals`="Acolhimento (Docs)"; `financial`="Lançamentos do Caixa".
 - **`contracts` agora é item de menu próprio** (`ContractManagement`) — antes só existia escondido na aba do Dashboard. A aba duplicada de Contratos foi **removida** do `SchoolAdminDashboard`.
-- ⚠️ **Cuidado — "duplicatas" que NÃO são**: a aba `payments` do Dashboard = `AdminPaymentsList` (**mensalidades de ALUNOS**, rotulada "Mensalidades"), diferente do menu `payments` = `TeacherPayments` (repasse ao professor). `training`/`registration`/`recruiting` do Dashboard são telas únicas que só existem ali. Não remova achando que são cópias.
+- ⚠️ **Cuidado — "duplicatas" que NÃO são**: o menu `payments` = `TeacherPayments` (**repasse AO professor**). Mensalidades de ALUNOS = `AdminPaymentsList`, exposto no menu como `student-payments` ("Mensalidades (Alunos)"). `training`/`registration`/`recruiting` do Dashboard são telas únicas que só existem ali. Não remova achando que são cópias.
+- **Seção Financeiro do menu** (4 telas distintas): `student-payments` (mensalidades de alunos, AdminPaymentsList) · `payments` (repasse a profs, TeacherPayments) · `cashflow` (CashflowPanel) · `financial` (FinancialReport). A aba "Mensalidades" do Dashboard foi removida (vive no menu); o "Ver Todos" do preview de recebimentos navega via `onNavigate('student-payments')`.
+- **Guard de segurança do admin** (`App.tsx renderContent`): `SCHOOL_ADMIN` tem allowlist de abas (igual student/vendor) — abas fora do escopo redirecionam ao Início. Ao adicionar um item novo ao menu do diretor, **inclua o id em `allowedAdminTabs`** senão ele cai no dashboard.
 
 ---
 

@@ -139,6 +139,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico' },
         { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico' },
         // ── Financeiro ──
+        { id: 'student-payments', label: 'Mensalidades (Alunos)', icon: CreditCard, section: 'Financeiro' },
         { id: 'payments', label: 'Repasse a Profs', icon: DollarSign, section: 'Financeiro' },
         { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet, section: 'Financeiro' },
         { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },

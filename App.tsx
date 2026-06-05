@@ -40,6 +40,7 @@ const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
 const TrialTrainingSettlement = lazy(() => import('./components/TrialTrainingSettlement'));
 const ContractManagement = lazy(() => import('./components/ContractManagement'));
+const AdminPaymentsList = lazy(() => import('./components/AdminPaymentsList'));
 const StudentInsightsBoard = lazy(() => import('./components/StudentInsightsBoard'));
 const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoard'));
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
@@ -491,6 +492,24 @@ const App: React.FC = () => {
       }
     }
 
+    // SECURITY GUARD: Strict School Admin Access Check
+    // Mantém o diretor dentro do escopo dele (abas de aluno/professor/vendedor
+    // não pertencem aqui). Redireciona silenciosamente ao Início.
+    if (user.role === UserRole.SCHOOL_ADMIN) {
+      const allowedAdminTabs = [
+        'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
+        'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
+        'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
+        'class_skills', 'training', 'payments', 'student-payments', 'cashflow', 'financial',
+        'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
+        'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
+      ];
+      if (!allowedAdminTabs.includes(activeTab)) {
+        setActiveTab('dashboard');
+        return null;
+      }
+    }
+
     const contentMap: Record<string, React.ReactNode> = {
       'dashboard': user.role === UserRole.SUPER_ADMIN ? <SuperAdminDashboard /> :
         user.role === UserRole.SCHOOL_ADMIN ?
@@ -516,6 +535,7 @@ const App: React.FC = () => {
       'msg_settings': <TeacherMessageSettings user={user} />,
       'tenant_advanced': <TenantAdvancedSettings user={user} tenantId={currentTenant?.id} />,
       'contracts': <ContractManagement tenantId={currentTenant?.id} />,
+      'student-payments': <AdminPaymentsList tenantId={currentTenant?.id} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,
       'admin_workflows': <AdminWorkflowsPanel user={user} tenantId={currentTenant?.id} />,
       'student_billing': <StudentBilling user={user} />,

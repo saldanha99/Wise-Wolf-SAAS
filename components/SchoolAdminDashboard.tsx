@@ -24,7 +24,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'payments' | 'recruiting'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'recruiting'>('analytics');
   const [showTrialScheduler, setShowTrialScheduler] = useState(false);
 
   const [stats, setStats] = useState({
@@ -248,12 +248,6 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               Link Matrícula
             </button>
             <button
-              onClick={() => setActiveTab('payments')}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
-            >
-              Mensalidades
-            </button>
-            <button
               onClick={() => setActiveTab('recruiting')}
               className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
@@ -403,7 +397,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               <div className="bg-brand-surface rounded-2xl border border-brand-border overflow-hidden">
                 <div className="p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-4">
                   <h3 className="text-brand-text font-bold text-sm">Recebimentos Recentes</h3>
-                  <button className="text-xs text-brand-accent font-semibold hover:text-brand-accent-hover transition-colors" onClick={() => setActiveTab('payments')}>
+                  <button className="text-xs text-brand-accent font-semibold hover:text-brand-accent-hover transition-colors" onClick={() => onNavigate?.('student-payments')}>
                     Ver Todos
                   </button>
                 </div>
@@ -622,7 +616,6 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
       {activeTab === 'training' && <TeacherTrainingAdmin tenantId={tenantId || ''} />}
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
-      {activeTab === 'payments' && <AdminPaymentsList tenantId={tenantId || ''} />}
       {activeTab === 'recruiting' && (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
           <TeacherInviteGenerator tenantId={tenantId || ''} />
