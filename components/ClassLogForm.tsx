@@ -12,6 +12,7 @@ export interface ClassLogItem {
     suggestedMaterial?: string;
     suggestedMaterialUrl?: string; // Add URL for direct access
     type?: string;
+    isLate?: boolean; // true = aula de dia anterior (atrasada)
 }
 
 interface ClassLogFormProps {
@@ -85,7 +86,15 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                 <div>
                     {title && <h3 className="text-lg font-black text-brand-text uppercase tracking-tight">{title}</h3>}
                     <p className="text-xs text-brand-muted font-medium mt-1">
-                        {items.length} aluno(s) listado(s)
+                        {(() => {
+                            const hoje = items.filter(i => !i.isLate).length;
+                            const atrasadas = items.filter(i => i.isLate).length;
+                            if (hoje > 0 && atrasadas > 0)
+                                return <><span className="text-brand-text font-bold">{hoje} de hoje</span> · <span className="text-amber-500 font-bold">{atrasadas} atrasada{atrasadas > 1 ? 's' : ''} (dia anterior)</span></>;
+                            if (atrasadas > 0)
+                                return <span className="text-amber-500 font-bold">{atrasadas} aula{atrasadas > 1 ? 's' : ''} atrasada{atrasadas > 1 ? 's' : ''} de dia anterior</span>;
+                            return <span>{hoje} aluno(s) listado(s)</span>;
+                        })()}
                     </p>
                 </div>
 
@@ -152,8 +161,18 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                                     ? 'bg-purple-50 dark:bg-purple-900/15 border-l-4 border-l-purple-500'
                                     : item.type === 'TREINAMENTO'
                                         ? 'bg-amber-50 dark:bg-amber-900/15 border-l-4 border-l-amber-500'
-                                        : 'bg-brand-surface'
+                                        : item.isLate
+                                            ? 'bg-orange-50 dark:bg-orange-900/10 border-l-4 border-l-orange-400'
+                                            : 'bg-brand-surface'
                             }`}>
+                            {/* Banner de aviso para aulas atrasadas */}
+                            {item.isLate && (
+                                <div className="flex items-center gap-2 px-4 pt-2.5">
+                                    <span className="text-[9px] font-black uppercase tracking-widest bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full border border-orange-200 dark:border-orange-800">
+                                        ⚠ Lançamento atrasado · {item.date}
+                                    </span>
+                                </div>
+                            )}
                                 {/* Main Row */}
                                 <div className="grid grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_minmax(120px,1fr)_minmax(100px,1fr)_minmax(200px,2fr)] gap-4 py-4 items-center">
                                     {/* Student Info */}

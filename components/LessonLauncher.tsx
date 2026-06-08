@@ -129,6 +129,19 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           });
         };
 
+        // Helper: checa se um horário HH:MM ainda está no futuro (hoje).
+        // Usa Date.now() para comparação sempre fresca (evita stale de async).
+        const isStillFutureToday = (timeSlot: string | null | undefined): boolean => {
+          if (!timeSlot) return false; // slot nulo → considerar passado (não bloqueia)
+          const parts = timeSlot.split(':');
+          const h = parseInt(parts[0], 10);
+          const m = parseInt(parts[1] || '0', 10);
+          if (isNaN(h) || isNaN(m)) return false;
+          const classTs = new Date();
+          classTs.setHours(h, m, 0, 0);
+          return classTs.getTime() > Date.now();
+        };
+
         // Bookings
         if (bookings) {
           // Defesa contra agendamentos duplicados: no mesmo dia, só processa 1 aula
@@ -136,10 +149,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           const slotSeen = new Set<string>();
           for (const b of bookings) {
             if (b.start_date && dateStr < b.start_date) continue;
-            if (i === 0) {
-              const [h, m] = b.time_slot.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
+            // Hoje: ocultar aulas que ainda não chegou o horário
+            if (i === 0 && isStillFutureToday(b.time_slot)) continue;
+            if (!b.time_slot) continue; // booking sem horário definido: ignorar
             if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
             slotSeen.add(b.time_slot);
             if (!logs?.some(l => l.booking_id === b.id)) {
@@ -151,26 +163,21 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // Reschedules
         if (reschedules) {
           for (const r of reschedules) {
-            if (i === 0) {
-              const [h, m] = (r as any).time.split(':').map(Number);
-              if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-            }
+            const rTime = (r as any).time;
+            if (i === 0 && isStillFutureToday(rTime)) continue;
             if (!logs?.some(l => l.reschedule_id === r.id)) {
-              await processLesson(r, 'REPOSIÇÃO', (r as any).time);
+              await processLesson(r, 'REPOSIÇÃO', rTime || '');
             }
           }
         }
 
         // Trials e Treinamentos (from appointments via opportunities)
         for (const t of appointments) {
-          // Extrair hora/minuto do start_time (timestamp UTC)
+          // Extrair hora/minuto do start_time (timestamp UTC → converte p/ horário local BRT)
           const apptDate = new Date(t.start_time);
-          const timeStr = `${String(apptDate.getUTCHours()).padStart(2, '0')}:${String(apptDate.getUTCMinutes()).padStart(2, '0')}`;
+          const timeStr = `${String(apptDate.getHours()).padStart(2, '0')}:${String(apptDate.getMinutes()).padStart(2, '0')}`;
 
-          if (i === 0) {
-            const [h, m] = timeStr.split(':').map(Number);
-            if (new Date().setHours(h, m, 0, 0) > currentDate.getTime()) continue;
-          }
+          if (i === 0 && isStillFutureToday(timeStr)) continue;
           if (!logs?.some(l => l.appointment_id === t.id)) {
             const isTraining = t.type === 'training';
             allLessons.push({
@@ -199,6 +206,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       );
     } catch (err) {
       console.error('Error fetching today schedule:', err);
+      // Limpa o estado para evitar que aulas "fantasma" (stale) fiquem visíveis
+      // após um erro, o que causava relançamentos duplicados.
+      setTodayLessons([]);
     } finally {
       setLoading(false);
     }

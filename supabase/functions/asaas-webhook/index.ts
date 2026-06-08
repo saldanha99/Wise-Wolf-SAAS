@@ -199,62 +199,50 @@ serve(async (req) => {
                 if (profileError) console.error('❌ Error updating Profile status:', profileError);
                 else console.log('✅ Profile Financial Status set to ACTIVE');
 
-                // --- WELCOME MESSAGE LOGIC ---
-                // Trigger: Contract Accepted AND No Welcome Sent Yet
-                if (profileData && profileData.contract_accepted && !profileData.welcome_sent_at) {
+                // --- CONFIRMAÇÃO DE PAGAMENTO VIA WHATSAPP ---
+                // Envia APENAS uma mensagem simples de confirmação, SEM links.
+                // A mensagem de Bem-vindo ao Império é disparada SOMENTE no fluxo de matrícula (PublicRegistration), NUNCA aqui.
+                if (profileData && profileData.phone && (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED')) {
                     try {
                         const studentName = profileData.full_name?.split(' ')[0] || 'Aluno';
                         const studentPhone = profileData.phone;
-                        const linkPdf = profileData.signed_document_url || 'https://aluno.wisewolf.com.br';
-                        const portalUrl = 'https://aluno.wisewolf.com.br';
-                        const freq = profileData.class_frequency || '2';
+                        let cleanPhone = studentPhone.replace(/\D/g, "");
+                        if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+                            cleanPhone = "55" + cleanPhone;
+                        }
 
-                        if (studentPhone) {
-                            let cleanPhone = studentPhone.replace(/\D/g, "");
-                            if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-                                cleanPhone = "55" + cleanPhone;
-                            }
-                            const message = `🐺 *Bem-vindo ao Império, ${studentName}!*
-Sua matrícula está 100% confirmada.
+                        const valorFormatado = payment.value
+                            ? `R$ ${Number(payment.value).toFixed(2).replace('.', ',')}`
+                            : '';
+                        const confirmationMessage = `✅ *Pagamento confirmado${valorFormatado ? `, ${valorFormatado}` : ''}!*\nObrigado, ${studentName}. Seu acesso segue ativo. 🐺`;
 
-📄 *Seu Contrato:* ${linkPdf}
-🔐 *Seu Portal:* ${portalUrl}
+                        console.log(`Sending payment confirmation WhatsApp to ${cleanPhone}...`);
 
-Prepare-se, as suas aulas de ${freq}x por semana começam em breve!`;
+                        const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
+                        const sendInstance = centralInst || 'wise-wolf';
+                        const evoRes = await fetch(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
+                            method: 'POST',
+                            headers: {
+                                'apikey': 'd037768b3d06382756a0d9edecf3e40e',
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                number: cleanPhone,
+                                text: confirmationMessage,
+                                delay: 1200,
+                                linkPreview: false
+                            })
+                        });
 
-                            console.log(`Sending Welcome WhatsApp to ${cleanPhone}...`);
-
-                            // Instância central REAL do tenant (o "wise-wolf" fixo não existe) + payload v2 + apikey global
-                            const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
-                            const sendInstance = centralInst || 'wise-wolf';
-                            const evoRes = await fetch(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
-                                method: 'POST',
-                                headers: {
-                                    'apikey': 'd037768b3d06382756a0d9edecf3e40e',
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    number: cleanPhone,
-                                    text: message,
-                                    delay: 1200,
-                                    linkPreview: true
-                                })
-                            });
-
-                            if (evoRes.ok) {
-                                console.log('✅ Welcome Message Sent!');
-                                // Update welcome_sent_at
-                                await supabase.from('profiles').update({ welcome_sent_at: new Date().toISOString() }).eq('id', studentId);
-                            } else {
-                                console.error('❌ Failed to send WhatsApp:', await evoRes.text());
-                            }
+                        if (evoRes.ok) {
+                            console.log('✅ Payment Confirmation WhatsApp Sent!');
+                        } else {
+                            console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes.text());
                         }
                     } catch (whatsappErr) {
-                        console.error('❌ Error in Welcome Message flow:', whatsappErr);
+                        console.error('❌ Error in Payment Confirmation WhatsApp flow:', whatsappErr);
                     }
                 }
-                // -----------------------------
-
                 // -----------------------------
 
                 // DIRECT LEDGER INSERTION (Restored for Real-Time Sync)
