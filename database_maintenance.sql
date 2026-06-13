@@ -113,56 +113,56 @@ END $$;
 -- ==============================================================================
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
--- 4.1 Trigger Pagamento -> WhatsApp (Mantido)
-CREATE OR REPLACE FUNCTION public.handle_new_payment_whatsapp()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_student_phone TEXT;
-    v_student_name TEXT;
-    v_contract_url TEXT;
-    v_message TEXT;
-BEGIN
-    -- Verifica status de pagamento confirmado
-    IF (NEW.status IN ('CONFIRMED', 'RECEIVED', 'PAGO', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED')) 
-       AND (OLD.status IS DISTINCT FROM NEW.status) THEN
-       
-        SELECT phone, full_name, signed_document_url 
-        INTO v_student_phone, v_student_name, v_contract_url
-        FROM profiles
-        WHERE id = NEW.student_id;
-
-        IF v_student_phone IS NOT NULL THEN
-            IF v_contract_url IS NOT NULL AND Length(v_contract_url) > 0 THEN
-                v_message := 'Olá ' || v_student_name || '! Pagamento confirmado. 🐺 Seu contrato: ' || v_contract_url;
-            ELSE
-                v_message := 'Olá ' || v_student_name || '! Pagamento confirmado na Wise Wolf. 🐺';
-            END IF;
-
-            -- Log de auditoria
-            INSERT INTO whatsapp_messages_log (student_id, phone, message_type, content_preview)
-            VALUES (NEW.student_id, v_student_phone, 'PAYMENT_CONFIRMATION', v_message);
-
-            -- DISPARO COM A VARIÁVEL CORRIGIDA (v_student_phone)
-            PERFORM net.http_post(
-                url := 'https://dvalxbtngopxzcbfdm.supabase.co/functions/v1/whatsapp-wise-wolf',
-                headers := jsonb_build_object(
-                    'Content-Type', 'application/json',
-                    'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
-                ),
-                body := jsonb_build_object('number', v_student_phone, 'message', v_message)
-            );
-        END IF;
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Trigger permanece o mesmo nome para substituir
-DROP TRIGGER IF EXISTS trg_payment_whatsapp ON student_payments;
-CREATE TRIGGER trg_payment_whatsapp
-AFTER UPDATE ON student_payments
-FOR EACH ROW
-EXECUTE FUNCTION public.handle_new_payment_whatsapp();
+-- 4.1 Trigger Pagamento -> WhatsApp (REMOVIDO / DUPLICADO - Agora gerenciado diretamente na Edge Function asaas-webhook)
+-- CREATE OR REPLACE FUNCTION public.handle_new_payment_whatsapp()
+-- RETURNS TRIGGER AS $$
+-- DECLARE
+--     v_student_phone TEXT;
+--     v_student_name TEXT;
+--     v_contract_url TEXT;
+--     v_message TEXT;
+-- BEGIN
+--     -- Verifica status de pagamento confirmado
+--     IF (NEW.status IN ('CONFIRMED', 'RECEIVED', 'PAGO', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED')) 
+--        AND (OLD.status IS DISTINCT FROM NEW.status) THEN
+--        
+--         SELECT phone, full_name, signed_document_url 
+--         INTO v_student_phone, v_student_name, v_contract_url
+--         FROM profiles
+--         WHERE id = NEW.student_id;
+-- 
+--         IF v_student_phone IS NOT NULL THEN
+--             IF v_contract_url IS NOT NULL AND Length(v_contract_url) > 0 THEN
+--                 v_message := 'Olá ' || v_student_name || '! Pagamento confirmado. 🐺 Seu contrato: ' || v_contract_url;
+--             ELSE
+--                 v_message := 'Olá ' || v_student_name || '! Pagamento confirmado na Wise Wolf. 🐺';
+--             END IF;
+-- 
+--             -- Log de auditoria
+--             INSERT INTO whatsapp_messages_log (student_id, phone, message_type, content_preview)
+--             VALUES (NEW.student_id, v_student_phone, 'PAYMENT_CONFIRMATION', v_message);
+-- 
+--             -- DISPARO COM A VARIÁVEL CORRIGIDA (v_student_phone)
+--             PERFORM net.http_post(
+--                 url := 'https://dvalxbtngopxzcbfdm.supabase.co/functions/v1/whatsapp-wise-wolf',
+--                 headers := jsonb_build_object(
+--                     'Content-Type', 'application/json',
+--                     'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
+--                 ),
+--                 body := jsonb_build_object('number', v_student_phone, 'message', v_message)
+--             );
+--         END IF;
+--     END IF;
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
+-- 
+-- -- Trigger permanece o mesmo nome para substituir
+-- DROP TRIGGER IF EXISTS trg_payment_whatsapp ON student_payments;
+-- CREATE TRIGGER trg_payment_whatsapp
+-- AFTER UPDATE ON student_payments
+-- FOR EACH ROW
+-- EXECUTE FUNCTION public.handle_new_payment_whatsapp();
 
 -- 4.2 Trigger Contrato -> WhatsApp (Mantido)
 CREATE OR REPLACE FUNCTION public.handle_contract_signed_hook()
