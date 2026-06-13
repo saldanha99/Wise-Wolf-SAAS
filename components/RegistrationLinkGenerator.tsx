@@ -150,7 +150,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         });
     };
 
-    const generateLink = () => {
+    const generateLink = async () => {
         if (!tenantId) return alert("Erro: ID da unidade não encontrado.");
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
         if (isDependent && !selectedGuardian) return alert("Selecione o responsável financeiro (titular já cadastrado) para a matrícula de dependente.");
@@ -223,10 +223,19 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             guardianAddressNumber: selectedGuardian?.address_number || null,
         };
 
-        const jsonStr = JSON.stringify(data);
-        const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-        const url = `${APP_BASE_URL}/matricula?data=${base64}`;
-        setGeneratedLink(url);
+        // Link assinado: grava o payload AUTORITATIVO (preço, cobrança, dados do
+        // responsável) num offer server-side e leva só o offer_id no URL — assim o
+        // aluno não consegue editar o preço pelo link. Fallback para o base64 legado
+        // se a RPC falhar, para o gerador nunca travar.
+        try {
+            const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', { p_payload: data });
+            if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
+            setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
+        } catch (e) {
+            console.error('create_enrollment_offer falhou — usando link legado base64:', e);
+            const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+            setGeneratedLink(`${APP_BASE_URL}/matricula?data=${base64}`);
+        }
         setCopied(false);
     };
 

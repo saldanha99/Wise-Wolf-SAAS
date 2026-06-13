@@ -98,31 +98,48 @@ const PublicRegistration: React.FC = () => {
         if (ref) setReferrerTeacherId(ref);
         if (refStudent) setReferrerStudentId(refStudent);
 
+        const offerId = params.get('offer');
+
+        // Aplica o payload da matrícula no estado (compartilhado pelos caminhos
+        // offer assinado e base64 legado).
+        const hydrate = (data: any) => {
+            setContractData({
+                ...data,
+                classSchedule: data.classSchedule || data.schedule || [],
+                requiresEnrollment: data.requiresEnrollment !== false // default true
+            });
+            // Dados da escola (cabeçalho/rodapé do contrato)
+            if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
+            // Matrícula vinculada: contrato/cobrança usa os dados do RESPONSÁVEL.
+            if (data.isDependent) {
+                if (data.guardianPhone) setPhone(String(data.guardianPhone));
+                if (data.guardianPostalCode) setPostalCode(String(data.guardianPostalCode));
+                if (data.guardianAddress) setAddress(String(data.guardianAddress));
+                if (data.guardianAddressNumber) setAddressNumber(String(data.guardianAddressNumber));
+            }
+            // Pre-fill de experimental, se houver
+            if (data.studentName) setName(prev => prev || data.studentName);
+            if (data.studentPhone) setPhone(prev => prev || data.studentPhone);
+        };
+
+        // Caminho seguro (novo): o preço/cobrança vem do SERVIDOR (offer), não do URL.
+        if (offerId) {
+            (async () => {
+                const { data: payload, error: offerErr } = await supabase.rpc('get_offer_public', { p_offer_id: offerId });
+                if (offerErr || !payload || (payload as any).error) {
+                    setError("Link de matrícula inválido, já utilizado ou expirado. Solicite um novo à escola.");
+                    return;
+                }
+                hydrate(payload); // payload já traz _offerId → consume_offer roda no submit
+            })();
+            return;
+        }
+
+        // Caminho legado (base64 no URL) — mantido p/ links antigos em circulação.
         if (encodedData) {
             try {
                 const jsonStr = decodeURIComponent(escape(atob(encodedData)));
-                const data = JSON.parse(jsonStr);
-                // Schema: { unitId, value, planDuration, classesPerWeek, dueDay, professorId, opportunityId?, studentName?, studentPhone?, schedule?, requiresEnrollment? }
-                setContractData({
-                    ...data,
-                    classSchedule: data.classSchedule || data.schedule || [],
-                    requiresEnrollment: data.requiresEnrollment !== false // default true
-                });
-                // Carrega os dados da escola (cabeçalho/rodapé do contrato)
-                if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
-
-                // Matrícula vinculada: o contrato/cobrança usa os dados do RESPONSÁVEL.
-                // Do beneficiário coletamos só nome + acesso; o resto vem pré-preenchido
-                // (e os campos ficam ocultos no formulário).
-                if (data.isDependent) {
-                    if (data.guardianPhone) setPhone(String(data.guardianPhone));
-                    if (data.guardianPostalCode) setPostalCode(String(data.guardianPostalCode));
-                    if (data.guardianAddress) setAddress(String(data.guardianAddress));
-                    if (data.guardianAddressNumber) setAddressNumber(String(data.guardianAddressNumber));
-                }
-                // Pre-fill from experimental trial data if available
-                if (data.studentName && !name) setName(data.studentName);
-                if (data.studentPhone && !phone) setPhone(data.studentPhone);
+                hydrate(JSON.parse(jsonStr));
             } catch (e) {
                 setError("Link de matrícula inválido ou expirado.");
             }
