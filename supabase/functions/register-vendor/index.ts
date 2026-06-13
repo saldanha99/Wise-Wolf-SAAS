@@ -28,21 +28,40 @@ serve(async (req) => {
             return new Response(JSON.stringify({ error: 'Dados incompletos.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        // Decode + validate offer
+        // Decode + validate offer.
+        // Caminho seguro: offerPayload é um UUID (offer_id) → commissionRate AUTORITATIVO
+        // vem do banco (offers), não do cliente. Caminho legado: base64 (links antigos).
         let offerData: any = null;
-        try {
-            const jsonStr = decodeURIComponent(escape(atob(offerPayload)));
-            offerData = JSON.parse(jsonStr);
-        } catch (e) {
-            return new Response(JSON.stringify({ error: 'Convite inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        let offerRowId: string | null = null;
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (typeof offerPayload === 'string' && UUID_RE.test(offerPayload.trim())) {
+            const { data: offerRow } = await supabaseAdmin
+                .from('offers')
+                .select('id, payload, kind, consumed_at, revoked_at, expires_at')
+                .eq('id', offerPayload.trim())
+                .maybeSingle();
+            if (!offerRow || offerRow.kind !== 'VENDOR_INVITE') {
+                return new Response(JSON.stringify({ error: 'Convite inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            if (offerRow.consumed_at || offerRow.revoked_at || (offerRow.expires_at && new Date(offerRow.expires_at) < new Date())) {
+                return new Response(JSON.stringify({ error: 'Convite expirado ou já utilizado.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            offerData = offerRow.payload;
+            offerRowId = offerRow.id;
+        } else {
+            try {
+                const jsonStr = decodeURIComponent(escape(atob(offerPayload)));
+                offerData = JSON.parse(jsonStr);
+            } catch (e) {
+                return new Response(JSON.stringify({ error: 'Convite inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            if (offerData.exp && Date.now() > offerData.exp) {
+                return new Response(JSON.stringify({ error: 'Link de convite expirou.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
         }
 
-        if (offerData.kind !== 'VENDOR_INVITE' || !offerData.tenantId || !offerData.commissionRate) {
+        if (!offerData || !offerData.tenantId || !offerData.commissionRate) {
             return new Response(JSON.stringify({ error: 'Payload inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        if (offerData.exp && Date.now() > offerData.exp) {
-            return new Response(JSON.stringify({ error: 'Link de convite expirou.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
         // IP server-side
@@ -93,6 +112,11 @@ serve(async (req) => {
 
         if (profileError) {
             return new Response(JSON.stringify({ error: profileError.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // Convite de uso único: marca o offer como consumido após sucesso.
+        if (offerRowId) {
+            await supabaseAdmin.from('offers').update({ consumed_at: new Date().toISOString() }).eq('id', offerRowId);
         }
 
         return new Response(JSON.stringify({
