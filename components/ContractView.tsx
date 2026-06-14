@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { PROFILE_SAFE_COLS } from '../constants';
 import { Download, FileText, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
@@ -33,7 +34,7 @@ const ContractView: React.FC<ContractViewProps> = ({
             setLoading(true);
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(PROFILE_SAFE_COLS)
                 .eq('id', userId)
                 .single();
             if (error) throw error;

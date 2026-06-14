@@ -15,7 +15,7 @@ import {
   Plus,
   Zap
 } from 'lucide-react';
-import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS } from '../constants';
+import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../constants';
 import { Teacher, Reschedule } from '../types';
 import { supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
@@ -84,7 +84,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .eq('type', 'experimental'),
       supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
         .eq('tenant_id', currentTenantId)
     ]);

@@ -434,13 +434,9 @@ const PublicRegistration: React.FC = () => {
             // ===== VENDOR COMMISSION TRACKING =====
             if (contractData.vendorId && userId) {
                 try {
-                    const { data: vendorProfile } = await supabase
-                        .from('profiles')
-                        .select('commission_rate')
-                        .eq('id', contractData.vendorId)
-                        .single();
+                    const { data: vendorRate } = await supabase.rpc('get_vendor_commission_rate', { p_vendor: contractData.vendorId });
 
-                    const commissionAmount = vendorProfile?.commission_rate ?? 3000;
+                    const commissionAmount = (vendorRate as number) ?? 3000;
 
                     await supabase.from('vendor_commissions').insert({
                         vendor_id: contractData.vendorId,

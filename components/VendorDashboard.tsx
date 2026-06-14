@@ -34,15 +34,11 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, tenantId, teach
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Busca taxa de comissão do vendedor
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('commission_rate')
-                .eq('id', user.id)
-                .single();
+            // Comissão do vendedor via RPC (coluna não é mais legível direto em profiles)
+            const { data: myPay } = await supabase.rpc('get_my_pay');
 
-            if (profile?.commission_rate) {
-                setCommissionRate(profile.commission_rate);
+            if ((myPay as any)?.commission_rate) {
+                setCommissionRate((myPay as any).commission_rate);
             }
 
             // Busca comissões

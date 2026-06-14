@@ -3,7 +3,7 @@ import { Search, RefreshCw, Upload, FileText, Trash2, Users, ChevronRight, BookO
 import { supabase } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import confetti from 'canvas-confetti';
-import { PEDAGOGICAL_BOOKS } from '../constants';
+import { PEDAGOGICAL_BOOKS, PROFILE_SAFE_COLS } from '../constants';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import MaterialsLibrary from './MaterialsLibrary';
 
@@ -130,7 +130,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       // 1. Fetch all students for this tenant
       const { data: allStudents, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
         .eq('tenant_id', targetTenant);
 

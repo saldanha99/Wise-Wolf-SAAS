@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Lock, Save, Camera, CreditCard, Bell, Shield, CheckCircle, Upload, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { PROFILE_SAFE_COLS } from '../constants';
 import TeacherPixSettings from './TeacherPixSettings';
 
 const TeacherProfile: React.FC = () => {
@@ -49,9 +50,13 @@ const TeacherProfile: React.FC = () => {
 
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(PROFILE_SAFE_COLS)
                 .eq('id', user.id)
                 .single();
+
+            // pix_key não vem mais em profiles (revogado) — o próprio usuário lê via RPC.
+            const { data: myPay } = await supabase.rpc('get_my_pay');
+            if (profile) (profile as any).pix_key = (myPay as any)?.pix_key ?? '';
 
             if (profile) {
                 setFormData({

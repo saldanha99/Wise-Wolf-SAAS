@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
-import { MOCK_TENANTS, MOCK_STUDENTS_LIST } from './constants';
+import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
 import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
@@ -160,17 +160,21 @@ const App: React.FC = () => {
         }
       }
 
-      // 2. Fetch Teachers
+      // 2. Fetch Teachers (sem o trio financeiro — vem via get_tenant_teacher_pay p/ admin)
       const { data: teachersData } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('role', 'TEACHER')
         .eq('tenant_id', user.tenantId);
+
+      // 2b. Pay autoritativo (hourly_rate/pix) — RPC só retorna p/ admin/coordenador.
+      const { data: payRows } = await supabase.rpc('get_tenant_teacher_pay');
+      const payById = new Map<string, any>((payRows as any[] || []).map((p: any) => [p.id, p]));
 
       // 3. Fetch Students
       const { data: studentsData } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
         .eq('tenant_id', user.tenantId);
 
@@ -212,8 +216,8 @@ const App: React.FC = () => {
             module: t.module || 'General',
             modules: [t.module || 'General'],
             specializations: t.specializations || [],
-            hourlyRate: t.hourly_rate || 8.00,
-            pixKey: t.pix_key || '',
+            hourlyRate: payById.get(t.id)?.hourly_rate ?? 8.00,
+            pixKey: payById.get(t.id)?.pix_key ?? '',
             phone: t.phone || '',
             studentsCount: uniqueStudents.size,
             classesCount: teacherBookings.length,

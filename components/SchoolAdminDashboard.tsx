@@ -126,14 +126,10 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       const presencialRevenue = (presencialCount / totalModality) * realRevenue;
       const onlineRevenue = (onlineCount / totalModality) * realRevenue;
 
-      // 3. Fetch Payroll
-      const { data: teachersData } = await supabase
-        .from('profiles')
-        .select('id, hourly_rate')
-        .eq('tenant_id', tenantId)
-        .eq('role', 'TEACHER');
+      // 3. Fetch Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
+      const { data: teachersData } = await supabase.rpc('get_tenant_teacher_pay');
 
-      const teacherRates = new Map(teachersData?.map(t => [t.id, t.hourly_rate || 0]));
+      const teacherRates = new Map((teachersData as any[] || []).map((t: any) => [t.id, t.hourly_rate || 0]));
 
       const { data: logs } = await supabase
         .from('class_logs')

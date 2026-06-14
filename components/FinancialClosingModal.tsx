@@ -48,15 +48,11 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
             if (error) throw error;
 
-            // FIX: busca o hourly_rate real do banco (fonte da verdade).
-            // Antes usava user.hourlyRate || 8.00 — se o objeto user não tivesse o
-            // rate carregado, professores de R$16 eram pagos a R$8 (metade).
-            const { data: teacherProfile } = await supabase
-                .from('profiles')
-                .select('hourly_rate')
-                .eq('id', user.id)
-                .single();
-            const rate = Number(teacherProfile?.hourly_rate) || user.hourlyRate || 8.00;
+            // hourly_rate real via RPC (fonte da verdade; coluna não é mais legível
+            // direto em profiles). get_tenant_teacher_pay retorna os profs do tenant p/ admin.
+            const { data: payRows } = await supabase.rpc('get_tenant_teacher_pay');
+            const teacherPay = (payRows as any[] || []).find((p: any) => p.id === user.id);
+            const rate = Number(teacherPay?.hourly_rate) || user.hourlyRate || 8.00;
 
             // FIX: regra de pagamento idêntica à visão diária (isLessonPaid em TeacherFinancials).
             // Os enums reais são em INGLÊS (TEACHER_ABSENCE), não 'Falta do Professor' —
