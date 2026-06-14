@@ -77,17 +77,19 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 throw uploadError;
             }
 
-            // 2. Get Public URL
-            const { data: { publicUrl } } = supabase.storage
+            // 2. Get Signed URL — o bucket "invoices" é PRIVADO; getPublicUrl gera link
+            // que dá 403. Signed URL de longa duração permite o diretor abrir a NF.
+            const { data: signed } = await supabase.storage
                 .from('invoices')
-                .getPublicUrl(filePath);
+                .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 5); // ~5 anos
+            const nfUrl = signed?.signedUrl || filePath;
 
-            // 3. Update teacher_closings
+            // 3. Update teacher_closings (status UNDER_REVIEW = badge "Em Análise")
             const { error: updateError } = await supabase
                 .from('teacher_closings')
                 .update({
-                    nf_link: publicUrl,
-                    status: 'EM ANÁLISE', // Force status update to trigger admin review
+                    nf_link: nfUrl,
+                    status: 'UNDER_REVIEW',
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', closingId);
@@ -199,7 +201,9 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                                                     const status = inv.status || '';
                                                     const isRejected = status === 'REJECTED';
                                                     const hasLink = !!inv.nf_link;
-                                                    const canUpload = ['REJECTED', 'CONFIRMADO', 'PAGO', 'PAID_WAITING_NF'].includes(status);
+                                                    // PENDENTE incluído: a maioria dos fechamentos fica PENDENTE e o professor
+                                                    // precisa conseguir anexar a NF mesmo antes do diretor marcar como pago.
+                                                    const canUpload = ['PENDENTE', 'REJECTED', 'CONFIRMADO', 'PAGO', 'PAID_WAITING_NF'].includes(status);
 
                                                     // 2. Se pode fazer upload (REJEITADO, CONFIRMADO, PAGO, WAIT_NF), Mostramos o Upload
                                                     // (Mesmo que tenha link, permitimos sobrescrever/corrigir)

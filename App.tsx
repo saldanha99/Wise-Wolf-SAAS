@@ -99,6 +99,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
+  const [notifOpen, setNotifOpen] = useState(false); // Dropdown de notificações (pendências do diretor)
 
   const [explorerInitialState, setExplorerInitialState] = useState<{ teacherName?: string, autoAllocate?: boolean } | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -761,13 +762,65 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                <button 
-                  onClick={() => alert('Sistema de notificações em desenvolvimento. Em breve você receberá avisos importantes aqui!')}
-                  className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />
-                </button>
+                {(() => {
+                  // Notificações = pendências do diretor (director_pending_counts).
+                  // Cada item navega direto para a tela que precisa de ação.
+                  const NOTIF_ITEMS: { key: string; label: string; tab: string }[] = [
+                    { key: 'acolhimento', label: 'Documentos de aluno p/ aprovar', tab: 'approvals' },
+                    { key: 'presenca', label: 'Conflitos de presença p/ resolver', tab: 'attendance-disputes' },
+                    { key: 'materiais', label: 'Materiais p/ aprovar', tab: 'material-approvals' },
+                    { key: 'trials', label: 'Experimentais/treinos p/ liquidar', tab: 'trial-settlement' },
+                    { key: 'fechamentos', label: 'Fechamentos de professor pendentes', tab: 'payments' },
+                    { key: 'pagamentos_retidos', label: 'Pagamentos retidos por conflito', tab: 'attendance-disputes' },
+                  ];
+                  const active = NOTIF_ITEMS.filter(i => (pendingCounts[i.key] || 0) > 0);
+                  const total = active.reduce((s, i) => s + (pendingCounts[i.key] || 0), 0);
+                  return (
+                    <div className="relative">
+                      <button
+                        onClick={() => setNotifOpen(o => !o)}
+                        className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
+                        aria-label="Notificações"
+                      >
+                        <Bell className="w-5 h-5" />
+                        {total > 0 && (
+                          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white dark:border-slate-900">
+                            {total > 99 ? '99+' : total}
+                          </span>
+                        )}
+                      </button>
+                      {notifOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+                          <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-800 z-50 overflow-hidden">
+                            <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+                              <span className="font-black text-sm text-gray-800 dark:text-slate-100">Pendências</span>
+                              {total > 0 && <span className="text-[10px] font-bold text-red-500">{total} aguardando ação</span>}
+                            </div>
+                            {active.length === 0 ? (
+                              <div className="px-4 py-8 text-center text-sm text-gray-400">🎉 Tudo em dia! Nenhuma pendência.</div>
+                            ) : (
+                              <div className="max-h-80 overflow-y-auto">
+                                {active.map(i => (
+                                  <button
+                                    key={i.key}
+                                    onClick={() => { setActiveTab(i.tab); setNotifOpen(false); setIsSidebarOpen(false); }}
+                                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 text-left transition-colors border-b border-gray-50 dark:border-slate-800/50 last:border-0"
+                                  >
+                                    <span className="text-sm text-gray-700 dark:text-slate-200">{i.label}</span>
+                                    <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 flex items-center justify-center bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 text-xs font-black rounded-full">
+                                      {pendingCounts[i.key]}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors">
                   {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
