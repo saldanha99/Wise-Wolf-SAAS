@@ -1,0 +1,41 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+	ignorecase = true
+	precomposeunicode = true
+[remote "origin"]
+	url = https://github.com/saldanha99/Wise-Wolf-SAAS.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[extensions]
+	worktreeConfig = true
+[branch "claude/elated-shamir-b28c7e"]
+	vscode-merge-base = origin/main
+[branch "temp-merge-main"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "sync-with-main"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "claude/eager-mayer-365fa6"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "claude/magical-bhaskara-10a589"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "feat/matricula-dependente-dados-escola"]
+	vscode-merge-base = origin/main
+	remote = origin
+	merge = refs/heads/feat/matricula-dependente-dados-escola
+[branch "feat/transferencia-professor"]
+	remote = origin
+	merge = refs/heads/feat/transferencia-professor

@@ -71,10 +71,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             if (logsError) throw logsError;
             setLessons(logs || []);
 
-            // Busca o hourly_rate real do banco (fonte da verdade)
-            const { data: tp } = await supabase
-                .from('profiles').select('hourly_rate').eq('id', user.id).single();
-            if (tp?.hourly_rate) setRate(Number(tp.hourly_rate));
+            // hourly_rate via RPC (a coluna não é mais legível direto em profiles)
+            const { data: myPay } = await supabase.rpc('get_my_pay');
+            if ((myPay as any)?.hourly_rate) setRate(Number((myPay as any).hourly_rate));
 
             // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase

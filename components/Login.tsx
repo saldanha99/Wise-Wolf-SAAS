@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { MOCK_ACCOUNTS, MOCK_TENANTS } from '../constants';
+import { MOCK_ACCOUNTS, MOCK_TENANTS, PROFILE_SAFE_COLS } from '../constants';
 import { SignInCard2 } from './ui/sign-in-card-2';
 
 
@@ -34,7 +34,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       // 2. Fetch User Profile
       let { data: profile } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('id', authData.user.id)
         .single();
 
@@ -74,7 +74,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           const { data: newProfile } = await supabase
             .from('profiles')
-            .select('*')
+            .select(PROFILE_SAFE_COLS)
             .eq('id', authData.user.id)
             .single();
           profile = newProfile;
@@ -125,6 +125,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         // Line 124 (cursor).
       }
 
+      // hourly_rate não vem mais em profiles (revogado p/ não vazar entre usuários);
+      // o próprio usuário lê a sua via RPC SECURITY DEFINER.
+      const { data: myPay } = await supabase.rpc('get_my_pay');
+
       const user = {
         id: profile.id,
         tenantId: profile.tenant_id,
@@ -136,7 +140,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         professor_id: profile.professor_id, // Added mapping
         currentBookPart: profile.current_book_part,
         evaluationUnlocked: profile.evaluation_unlocked,
-        hourlyRate: profile.hourly_rate,
+        hourlyRate: (myPay as any)?.hourly_rate ?? null,
         status_financial: profile.status_financial,
         due_day: profile.due_day,
         is_trainer: profile.is_trainer

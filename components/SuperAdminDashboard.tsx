@@ -57,7 +57,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ onLogout }) =
       });
 
       // 3. Total Students (Network wide)
-      const { count: studentCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'STUDENT');
+      const { count: studentCount } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'STUDENT');
 
       setGlobalStats({
         monthlyRevenue: b2bMrr,

@@ -29,15 +29,12 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
     const fetchPixData = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('pix_key, pix_key_type')
-                .eq('id', user.id)
-                .single();
+            // pix via RPC (coluna não é mais legível direto em profiles)
+            const { data } = await supabase.rpc('get_my_pay');
 
             if (data) {
-                setPixKey(data.pix_key || '');
-                setPixKeyType(data.pix_key_type || 'CPF');
+                setPixKey((data as any).pix_key || '');
+                setPixKeyType((data as any).pix_key_type || 'CPF');
             }
         } catch (err) {
             console.error('Error fetching Pix data:', err);

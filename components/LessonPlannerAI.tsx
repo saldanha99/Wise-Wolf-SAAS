@@ -16,6 +16,7 @@ import {
     PlusCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { PROFILE_SAFE_COLS } from '../constants';
 import { User as UserType } from '../types';
 
 interface LessonPlannerAIProps {
@@ -60,7 +61,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
 
     const fetchStudentContext = async (studentId: string) => {
         const [profileRes, wolfRes, historyRes] = await Promise.all([
-            supabase.from('profiles').select('*').eq('id', studentId).single(),
+            supabase.from('profiles').select(PROFILE_SAFE_COLS).eq('id', studentId).single(),
             supabase.from('wolf_intelligence').select('*').eq('student_id', studentId).single(),
             supabase.from('lesson_plans').select('*').eq('student_id', studentId).order('created_at', { ascending: false }).limit(5),
         ]);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain, Eye, AlertTriangle, CalendarCheck } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
+import { PROFILE_SAFE_COLS } from '../constants';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
 import StudentProfileForm from './StudentProfileForm';
@@ -44,7 +45,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       // 1. Fetch Students
       let query = supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
         .eq('tenant_id', tenantId);
 

@@ -23,7 +23,8 @@ GRANT EXECUTE ON FUNCTION public.get_tenant_teacher_pay() TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_vendor_commission_rate(p_vendor uuid)
 RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
-  SELECT commission_rate FROM profiles
-  WHERE id = p_vendor AND (_my_role() IN ('SCHOOL_ADMIN','SUPER_ADMIN','COORDINATOR','TEACHER','SALESPERSON'));
+  SELECT commission_rate FROM profiles WHERE id = p_vendor AND role = 'SALESPERSON';
 $$;
-GRANT EXECUTE ON FUNCTION public.get_vendor_commission_rate(uuid) TO authenticated;
+-- liberado a authenticated/anon: a matrícula roda como o aluno recém-criado e precisa
+-- da comissão do vendedor indicado para registrar vendor_commissions.
+GRANT EXECUTE ON FUNCTION public.get_vendor_commission_rate(uuid) TO authenticated, anon;

@@ -63,14 +63,10 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         .filter(t => t.type === 'SAIDA')
         .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
 
-      // 2. Teacher Payroll (Estimated from Class Logs) - Matches Dashboard logic
-      const { data: teachersData } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, hourly_rate')
-        .eq('tenant_id', tenantId)
-        .eq('role', 'TEACHER');
+      // 2. Teacher Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
+      const { data: teachersData } = await supabase.rpc('get_tenant_teacher_pay');
 
-      const teacherRates = new Map(teachersData?.map((t: any) => [t.id, t.hourly_rate || 0]));
+      const teacherRates = new Map((teachersData as any[] || []).map((t: any) => [t.id, t.hourly_rate || 0]));
 
       const { data: logs } = await supabase
         .from('class_logs')
