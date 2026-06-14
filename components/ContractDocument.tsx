@@ -136,7 +136,9 @@ export function ContractDocument({
         documentTitle: `Contrato_${s.name.replace(/\s+/g, '_')}_${studentName.replace(/\s+/g, '_')}`,
     });
 
-    const today = new Date().toLocaleDateString('pt-BR', {
+    // Data do contrato: quando já assinado, congela na data da assinatura (acceptedAt) —
+    // antes usava sempre new Date(), então a data "atualizava" toda vez que o aluno reabria.
+    const today = (acceptedAt ? new Date(acceptedAt) : new Date()).toLocaleDateString('pt-BR', {
         day: 'numeric', month: 'long', year: 'numeric'
     });
 

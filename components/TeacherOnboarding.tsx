@@ -32,7 +32,19 @@ const TeacherOnboarding: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         const encodedOffer = params.get('offer');
 
-        if (encodedOffer) {
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (encodedOffer && UUID_RE.test(encodedOffer.trim())) {
+            // Caminho seguro: offer_id (UUID) → hora-aula AUTORITATIVA do servidor.
+            (async () => {
+                const { data: payload, error: offerErr } = await supabase.rpc('get_invite_offer_public', { p_offer_id: encodedOffer.trim() });
+                if (offerErr || !payload || (payload as any).error) {
+                    setError("Link de convite inválido, expirado ou já utilizado. Solicite um novo.");
+                    return;
+                }
+                setOfferData(payload);
+            })();
+        } else if (encodedOffer) {
+            // Caminho legado: base64 no URL.
             try {
                 const jsonStr = decodeURIComponent(atob(encodedOffer).split('').map(function (c) {
                     return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
