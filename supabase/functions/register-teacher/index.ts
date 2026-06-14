@@ -181,14 +181,17 @@ serve(async (req) => {
             const targetInstance = instanceRow?.instance_name || "wise-wolf";
 
             const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${userId}`;
-            const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
-                `*Seus dados de acesso:*\n` +
-                `📧 Login: ${email}\n` +
-                `🔑 Senha: ${password}\n\n` +
-                `📜 *Seu Contrato Assinado:* ${contractUrl}\n\n` +
-                `Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
+            const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀
 
-            let cleanPhone = phone.replace(/\D/g, '');
+*Seus dados de acesso:*
+📧 Login: ${email}
+🔑 Senha: ${password}
+
+📜 *Seu Contrato Assinado:* ${contractUrl}
+
+Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
+
+            let cleanPhone = phone.replace(/[^0-9]/g, '');
             if (!cleanPhone.startsWith('55') && cleanPhone.length > 10) {
                 cleanPhone = '55' + cleanPhone;
             }
