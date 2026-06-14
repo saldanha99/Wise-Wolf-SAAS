@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, Link as LinkIcon, DollarSign, User as UserIcon, Briefcase } from 'lucide-react';
 import { APP_BASE_URL } from '../constants';
+import { supabase } from '../lib/supabase';
 
 interface Props {
     tenantId: string;
@@ -21,29 +22,34 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
 
-    const handleGenerate = () => {
+    const handleGenerate = async () => {
         const commissionCents = Math.round(parseFloat(commissionReais || '0') * 100);
         if (!commissionCents || commissionCents <= 0) {
             alert('Informe um valor de comissão válido.');
             return;
         }
 
-        const exp = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 dias
-
         const payload = {
             kind: 'VENDOR_INVITE',
             commissionRate: commissionCents,
             suggestedName: name || null,
             tenantId,
-            exp,
-            iat: Date.now(),
         };
 
-        const json = JSON.stringify(payload);
-        const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
-            (_match, p1) => String.fromCharCode(parseInt(p1, 16))));
-
-        setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${base64Payload}`);
+        // Link assinado: grava a comissão AUTORITATIVA num offer server-side e leva só
+        // o offer_id no URL — o vendedor não consegue editar a própria comissão.
+        // Fallback base64 legado se a RPC falhar, p/ não travar o gerador.
+        try {
+            const { data: offerId, error } = await supabase.rpc('create_invite_offer', { p_kind: 'VENDOR_INVITE', p_payload: payload });
+            if (error || !offerId) throw error || new Error('offer vazio');
+            setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${offerId}`);
+        } catch (e) {
+            console.error('create_invite_offer falhou — usando link legado base64:', e);
+            const json = JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000, iat: Date.now() });
+            const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+                (_match, p1) => String.fromCharCode(parseInt(p1, 16))));
+            setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${base64Payload}`);
+        }
         setCopied(false);
     };
 

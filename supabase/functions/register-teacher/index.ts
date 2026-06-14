@@ -49,12 +49,26 @@ serve(async (req) => {
         console.log("🚀 Receiving registration for:", email);
 
         // 3. DECODE OFFER PAYLOAD (SECURITY CHECK)
+        // Caminho seguro: offerPayload é um UUID (offer_id) → a taxa AUTORITATIVA vem
+        // do banco (offers), não do cliente. Caminho legado: base64 (links antigos).
         let offerData: any = null;
+        let offerRowId: string | null = null;
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         try {
-            // Check if it's already an object or a base64 string
-            if (typeof offerPayload === 'string') {
-                const jsonStr = atob(offerPayload);
-                offerData = JSON.parse(jsonStr);
+            if (typeof offerPayload === 'string' && UUID_RE.test(offerPayload.trim())) {
+                const { data: offerRow } = await supabaseAdmin
+                    .from('offers')
+                    .select('id, payload, kind, consumed_at, revoked_at, expires_at')
+                    .eq('id', offerPayload.trim())
+                    .maybeSingle();
+                if (!offerRow || offerRow.kind !== 'TEACHER_INVITE') throw new Error('invite');
+                if (offerRow.consumed_at) throw new Error('consumed');
+                if (offerRow.revoked_at) throw new Error('revoked');
+                if (offerRow.expires_at && new Date(offerRow.expires_at) < new Date()) throw new Error('expired');
+                offerData = offerRow.payload;
+                offerRowId = offerRow.id;
+            } else if (typeof offerPayload === 'string') {
+                offerData = JSON.parse(atob(offerPayload)); // legado base64
             } else {
                 offerData = offerPayload;
             }
@@ -64,7 +78,7 @@ serve(async (req) => {
             }
         } catch (e) {
             return new Response(
-                JSON.stringify({ error: 'Convite inválido ou corrompido.' }),
+                JSON.stringify({ error: 'Convite inválido, expirado ou já utilizado.' }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
             )
         }
@@ -72,7 +86,7 @@ serve(async (req) => {
         console.log("✅ Offer Validated:", offerData);
 
         // 4. CREATE AUTH USER (using Anon client usually, but Admin allows specific config)
-        // Using Admin to ensure we can create users without restrictions if needed, 
+        // Using Admin to ensure we can create users without restrictions if needed,
         // but normally Anon is fine. Let's use Admin.auth.signUp to be safe but allow email confirmation logic if enabled.
         // Actually, if we want to confirm email later, we use signUp.
 
@@ -142,6 +156,60 @@ serve(async (req) => {
                 JSON.stringify({ error: 'Usuário criado, mas erro ao configurar perfil: ' + profileError.message }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
             )
+        }
+
+        // Convite de uso único: marca o offer como consumido após sucesso.
+        if (offerRowId) {
+            await supabaseAdmin.from('offers').update({ consumed_at: new Date().toISOString() }).eq('id', offerRowId);
+        }
+
+        // 6. AUTOMATION: Send Welcome WhatsApp with Access Data
+        try {
+            const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') || "";
+            const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') || "https://api.2b.app.br";
+
+            // Get instance name for the tenant
+            const { data: instanceRow } = await supabaseAdmin
+                .from('whatsapp_instances')
+                .select('instance_name')
+                .eq('tenant_id', offerData.tenantId)
+                .in('status', ['connected', 'open'])
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const targetInstance = instanceRow?.instance_name || "wise-wolf";
+
+            const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${userId}`;
+            const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
+                `*Seus dados de acesso:*\n` +
+                `📧 Login: ${email}\n` +
+                `🔑 Senha: ${password}\n\n` +
+                `📜 *Seu Contrato Assinado:* ${contractUrl}\n\n` +
+                `Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
+
+            let cleanPhone = phone.replace(/\D/g, '');
+            if (!cleanPhone.startsWith('55') && cleanPhone.length > 10) {
+                cleanPhone = '55' + cleanPhone;
+            }
+
+            console.log(`[Reg Teacher] Sending welcome via ${targetInstance} to ${cleanPhone}`);
+
+            await fetch(`${EVOLUTION_API_URL}/message/sendText/${targetInstance}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': EVOLUTION_API_KEY
+                },
+                body: JSON.stringify({
+                    number: cleanPhone,
+                    text: msg,
+                    options: { delay: 1200, presence: "composing" }
+                })
+            });
+
+        } catch (waErr) {
+            console.error("[Reg Teacher] WhatsApp Automation Error (non-blocking):", waErr);
         }
 
         return new Response(

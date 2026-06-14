@@ -21,22 +21,38 @@ const VendorOnboarding: React.FC = () => {
             setError('Link inválido.');
             return;
         }
+
+        const apply = (data: any) => {
+            if (data.kind !== 'VENDOR_INVITE') { setError('Link de convite inválido.'); return; }
+            setOfferData(data);
+            if (data.suggestedName) setName(data.suggestedName);
+        };
+
+        // Caminho seguro: offer_id (UUID) → comissão AUTORITATIVA vem do servidor.
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (UUID_RE.test(encodedOffer.trim())) {
+            (async () => {
+                const { data: payload, error: offerErr } = await supabase.rpc('get_invite_offer_public', { p_offer_id: encodedOffer.trim() });
+                if (offerErr || !payload || (payload as any).error) {
+                    setError('Link de convite inválido, expirado ou já utilizado. Solicite um novo.');
+                    return;
+                }
+                apply(payload);
+            })();
+            return;
+        }
+
+        // Caminho legado: base64 no URL.
         try {
             const jsonStr = decodeURIComponent(atob(encodedOffer).split('').map(c =>
                 '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
             ).join(''));
             const data = JSON.parse(jsonStr);
-
-            if (data.kind !== 'VENDOR_INVITE') {
-                setError('Link de convite inválido.');
-                return;
-            }
             if (data.exp && Date.now() > data.exp) {
                 setError('Este link de convite expirou. Solicite um novo.');
                 return;
             }
-            setOfferData(data);
-            if (data.suggestedName) setName(data.suggestedName);
+            apply(data);
         } catch (e) {
             setError('Link de convite corrompido.');
         }

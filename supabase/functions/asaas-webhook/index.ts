@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
+
 // Environment Variables
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -12,32 +15,28 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, asaas-access-token',
 }
 
-serve(async (req) => {
-    // 0. CORS preflight
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
-    }
-
+// fetch com timeout (AbortController) — impede que uma API externa lenta
+// (ASAAS ou Evolution) pendure o processamento por dezenas de segundos.
+async function fetchComTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const reqText = await req.text();
-        if (!reqText) {
-            return new Response(JSON.stringify({ error: 'Empty body' }), { headers: corsHeaders, status: 400 });
-        }
+        return await fetch(url, { ...init, signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
-        const body = JSON.parse(reqText);
-
-        // Validate webhook token (uses dedicated ASAAS_WEBHOOK_TOKEN secret)
-        const requestToken = req.headers.get('asaas-access-token');
-        if (ASAAS_WEBHOOK_TOKEN && requestToken !== ASAAS_WEBHOOK_TOKEN) {
-            console.warn(`[Webhook] Token Mismatch! Received: '${requestToken}' | Expected: '${ASAAS_WEBHOOK_TOKEN}'`);
-            return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
-        }
-
+// Processa o evento do ASAAS. Roda em BACKGROUND (EdgeRuntime.waitUntil),
+// depois que o webhook já respondeu 200 — então NUNCA lança erro pro ASAAS,
+// apenas registra nos logs.
+async function processarPagamento(body: any): Promise<void> {
+    try {
         const { event, payment } = body;
 
         if (!event || !payment) {
-            console.warn("[Webhook] Ignored: Missing event or payment data.", body);
-            return new Response(JSON.stringify({ ignored: true }), { headers: corsHeaders, status: 200 });
+            console.warn("[Webhook] Ignorado: faltou event ou payment.", body);
+            return;
         }
 
         console.log(`🔔 WEBHOOK EVENT: ${event} | Payment ID: ${payment.id} | Status: ${payment.status} | Value: ${payment.value}`);
@@ -45,8 +44,8 @@ serve(async (req) => {
 
         const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
 
-        /* 
-          STRATEGY: 
+        /*
+          STRATEGY:
           1. Try to find the student (Profile) via externalReference (our ID) or customer (Asaas ID).
           2. Update/Insert the Payment in 'student_payments'.
           3. Update the Profile/Subscription status if necessary.
@@ -60,7 +59,7 @@ serve(async (req) => {
         if (payment.externalReference && isValidUUID(payment.externalReference)) {
             studentId = payment.externalReference;
         } else if (payment.externalReference) {
-            console.warn(`⚠️ Invalid UUID in externalReference: '${payment.externalReference}'. Ignoring to prevent 500 Error.`);
+            console.warn(`⚠️ Invalid UUID in externalReference: '${payment.externalReference}'. Ignoring to prevent error.`);
         }
 
         // If no external ref, lookup by Asaas Customer ID
@@ -80,7 +79,7 @@ serve(async (req) => {
                 // Fallback: Fetch Customer from Asaas to get Email
                 if (ASAAS_ACCESS_TOKEN) {
                     try {
-                        const asaasRes = await fetch(`https://api.asaas.com/v3/customers/${payment.customer}`, {
+                        const asaasRes = await fetchComTimeout(`https://api.asaas.com/v3/customers/${payment.customer}`, {
                             headers: { 'access_token': ASAAS_ACCESS_TOKEN }
                         });
 
@@ -125,6 +124,15 @@ serve(async (req) => {
         if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_UPDATED') {
             console.log(`Processing Payment Event: ${event}`);
 
+            // Check existing payment status to prevent duplicate WhatsApp sends (Idempotency check)
+            const { data: existingPayment } = await supabase
+                .from('student_payments')
+                .select('status')
+                .eq('asaas_payment_id', payment.id)
+                .maybeSingle();
+
+            const isAlreadyPaid = existingPayment && ['CONFIRMED', 'RECEIVED', 'PAGO', 'PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'].includes(existingPayment.status);
+
             // A. Update Payment Record
             // We use upsert to ensure we create it if it was missed during creation
             const desc = (payment.description || '').toLowerCase();
@@ -146,7 +154,7 @@ serve(async (req) => {
                 updated_at: new Date().toISOString()
             };
 
-            // CRITICAL FIX: Only set student_id if it is defined. 
+            // CRITICAL FIX: Only set student_id if it is defined.
             // DO NOT OVERWRITE EXISTING STUDENT_ID WITH NULL.
             if (studentId) {
                 paymentData.student_id = studentId;
@@ -173,8 +181,8 @@ serve(async (req) => {
 
             if (payError) {
                 console.error('❌ Error updating student_payments:', payError);
-                // Don't throw 500 if DB fails, just log it. Asaas retries on 500, but maybe we want that?
-                throw payError;
+                // Roda em background: apenas registra, não relança (o ASAAS já recebeu 200).
+                return;
             } else {
                 console.log('✅ Payment Record Updated:', payData?.[0]?.id);
             }
@@ -203,44 +211,48 @@ serve(async (req) => {
                 // Envia APENAS uma mensagem simples de confirmação, SEM links.
                 // A mensagem de Bem-vindo ao Império é disparada SOMENTE no fluxo de matrícula (PublicRegistration), NUNCA aqui.
                 if (profileData && profileData.phone && (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED')) {
-                    try {
-                        const studentName = profileData.full_name?.split(' ')[0] || 'Aluno';
-                        const studentPhone = profileData.phone;
-                        let cleanPhone = studentPhone.replace(/\D/g, "");
-                        if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-                            cleanPhone = "55" + cleanPhone;
+                    if (isAlreadyPaid) {
+                        console.log(`ℹ️ [Webhook] Payment confirmation WhatsApp skipped (already paid): ${payment.id}`);
+                    } else {
+                        try {
+                            const studentName = profileData.full_name?.split(' ')[0] || 'Aluno';
+                            const studentPhone = profileData.phone;
+                            let cleanPhone = studentPhone.replace(/\D/g, "");
+                            if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+                                cleanPhone = "55" + cleanPhone;
+                            }
+
+                            const valorFormatado = payment.value
+                                ? `R$ ${Number(payment.value).toFixed(2).replace('.', ',')}`
+                                : '';
+                            const confirmationMessage = `✅ *Pagamento confirmado${valorFormatado ? `, ${valorFormatado}` : ''}!*\nObrigado, ${studentName}. Seu acesso segue ativo. 🐺`;
+
+                            console.log(`Sending payment confirmation WhatsApp to ${cleanPhone}...`);
+
+                            const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
+                            const sendInstance = centralInst || 'wise-wolf';
+                            const evoRes = await fetchComTimeout(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
+                                method: 'POST',
+                                headers: {
+                                    'apikey': 'd037768b3d06382756a0d9edecf3e40e',
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    number: cleanPhone,
+                                    text: confirmationMessage,
+                                    delay: 1200,
+                                    linkPreview: false
+                                })
+                            });
+
+                            if (evoRes.ok) {
+                                console.log('✅ Payment Confirmation WhatsApp Sent!');
+                            } else {
+                                console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes.text());
+                            }
+                        } catch (whatsappErr) {
+                            console.error('❌ Error in Payment Confirmation WhatsApp flow:', whatsappErr);
                         }
-
-                        const valorFormatado = payment.value
-                            ? `R$ ${Number(payment.value).toFixed(2).replace('.', ',')}`
-                            : '';
-                        const confirmationMessage = `✅ *Pagamento confirmado${valorFormatado ? `, ${valorFormatado}` : ''}!*\nObrigado, ${studentName}. Seu acesso segue ativo. 🐺`;
-
-                        console.log(`Sending payment confirmation WhatsApp to ${cleanPhone}...`);
-
-                        const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
-                        const sendInstance = centralInst || 'wise-wolf';
-                        const evoRes = await fetch(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
-                            method: 'POST',
-                            headers: {
-                                'apikey': 'd037768b3d06382756a0d9edecf3e40e',
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                number: cleanPhone,
-                                text: confirmationMessage,
-                                delay: 1200,
-                                linkPreview: false
-                            })
-                        });
-
-                        if (evoRes.ok) {
-                            console.log('✅ Payment Confirmation WhatsApp Sent!');
-                        } else {
-                            console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes.text());
-                        }
-                    } catch (whatsappErr) {
-                        console.error('❌ Error in Payment Confirmation WhatsApp flow:', whatsappErr);
                     }
                 }
                 // -----------------------------
@@ -253,12 +265,7 @@ serve(async (req) => {
                     const { data: existingTrans } = await supabase
                         .from('financial_transactions')
                         .select('id')
-                        .eq('reference_id', studentId) // Check by student + description + date? or by unique ID?
-                        // Ideally we should have a unique constraint or column for source_id.
-                        // We will use a check on description containing the ID or just rely on 'student_payments.ledger_entry_created' if we updated it.
-                        // But wait, we haven't updated 'ledger_entry_created' yet essentially.
-                        // Let's check by 'student_payment_id' if we have it? No, we just upserted it.
-                        // We can fetch the student_payment first.
+                        .eq('reference_id', studentId)
                         .eq('description', `Mensalidade - Ref: ${payment.id}`) // Weak check
                         .maybeSingle();
 
@@ -336,7 +343,7 @@ serve(async (req) => {
                 updated_at: new Date().toISOString()
             };
 
-            // CRITICAL FIX: Only set student_id if it is defined. 
+            // CRITICAL FIX: Only set student_id if it is defined.
             if (studentId) {
                 paymentData.student_id = studentId;
 
@@ -353,11 +360,46 @@ serve(async (req) => {
             if (upsertError) console.error("❌ Error generic upsert:", upsertError);
         }
 
-        return new Response(JSON.stringify({ received: true }), { headers: corsHeaders, status: 200 });
-
     } catch (err: any) {
-        console.error('❌ CRITICAL WEBHOOK ERROR:', err);
-        // Returns 500 so Asaas retries.
-        return new Response(JSON.stringify({ error: err.message }), { headers: corsHeaders, status: 500 });
+        console.error('❌ CRITICAL WEBHOOK ERROR (background):', err);
     }
+}
+
+serve(async (req) => {
+    // 0. CORS preflight
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders })
+    }
+
+    // 1. Validação rápida (corpo + token) — tudo que precisa retornar erro HTTP
+    //    pro ASAAS acontece AQUI, antes do ACK.
+    let body: any;
+    try {
+        const reqText = await req.text();
+        if (!reqText) {
+            return new Response(JSON.stringify({ error: 'Empty body' }), { headers: corsHeaders, status: 400 });
+        }
+        body = JSON.parse(reqText);
+    } catch {
+        return new Response(JSON.stringify({ error: 'Invalid JSON' }), { headers: corsHeaders, status: 400 });
+    }
+
+    // Validate webhook token (uses dedicated ASAAS_WEBHOOK_TOKEN secret)
+    const requestToken = req.headers.get('asaas-access-token');
+    if (ASAAS_WEBHOOK_TOKEN && requestToken !== ASAAS_WEBHOOK_TOKEN) {
+        console.warn(`[Webhook] Token Mismatch! Received: '${requestToken}' | Expected: '${ASAAS_WEBHOOK_TOKEN}'`);
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+    }
+
+    // 2. Processa em BACKGROUND e responde 200 imediatamente.
+    //    Isso evita o "Read timed out" do ASAAS: o banco/WhatsApp continuam
+    //    rodando depois da resposta, sem segurar a conexão do webhook.
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
+        EdgeRuntime.waitUntil(processarPagamento(body));
+    } else {
+        // Fallback: process in background (non-blocking) to prevent timeouts
+        processarPagamento(body).catch(err => console.error("❌ Background processing error:", err));
+    }
+
+    return new Response(JSON.stringify({ received: true }), { headers: corsHeaders, status: 200 });
 });

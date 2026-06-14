@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, Link, DollarSign, BookOpen } from 'lucide-react';
 import { APP_BASE_URL } from '../constants';
+import { supabase } from '../lib/supabase';
 
 interface TeacherInviteGeneratorProps {
     tenantId: string;
@@ -12,28 +13,35 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
 
-    const handleGenerate = () => {
+    const handleGenerate = async () => {
         if (!subject) {
             alert("Por favor, informe a especialidade/matéria.");
             return;
         }
 
         const payload = {
+            kind: 'TEACHER_INVITE',
             hourlyRate: parseFloat(hourlyRate),
             subject,
             tenantId
         };
 
-        // Convert to Base64 (UTF-8 Safe - Robust)
-        const json = JSON.stringify(payload);
-        const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
-            function toSolidBytes(match, p1) {
-                return String.fromCharCode(parseInt(p1, 16));
-            }));
-
-        // Construct URL
-        const url = `${APP_BASE_URL}/teacher-onboarding?offer=${base64Payload}`;
-        setGeneratedLink(url);
+        // Link assinado: grava a taxa AUTORITATIVA num offer server-side e leva só o
+        // offer_id no URL — o professor não consegue editar a própria hora-aula.
+        // Fallback base64 legado se a RPC falhar.
+        try {
+            const { data: offerId, error } = await supabase.rpc('create_invite_offer', { p_kind: 'TEACHER_INVITE', p_payload: payload });
+            if (error || !offerId) throw error || new Error('offer vazio');
+            setGeneratedLink(`${APP_BASE_URL}/teacher-onboarding?offer=${offerId}`);
+        } catch (e) {
+            console.error('create_invite_offer falhou — usando link legado base64:', e);
+            const json = JSON.stringify(payload);
+            const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+                function toSolidBytes(match, p1) {
+                    return String.fromCharCode(parseInt(p1, 16));
+                }));
+            setGeneratedLink(`${APP_BASE_URL}/teacher-onboarding?offer=${base64Payload}`);
+        }
         setCopied(false);
     };
 

@@ -308,7 +308,10 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
             if (insertError || !appointmentData) throw new Error("Erro ao criar agendamento no banco." + (insertError ? ` (${insertError.message})` : ''));
 
             // B. Update Opportunity with trial data
-            const { error: updateError } = await supabase
+            // GUARD ATÔMICO DE CORRIDA: só vence quem pegar a vaga ainda OPEN. Dois
+            // professores clicando ao mesmo tempo → o 2º update não casa (status já
+            // CLAIMED) e retorna 0 linhas; nesse caso desfazemos o appointment criado.
+            const { data: claimedRows, error: updateError } = await supabase
                 .from('opportunities')
                 .update({
                     status: 'CLAIMED',
@@ -317,9 +320,16 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                     trial_status: 'SCHEDULED',
                     conversion_status: 'OPEN'
                 })
-                .eq('id', opp.id);
+                .eq('id', opp.id)
+                .in('status', ['OPEN', 'open'])
+                .select('id');
 
             if (updateError) throw updateError;
+            if (!claimedRows || claimedRows.length === 0) {
+                // Perdeu a corrida: outro professor já pegou. Desfaz o appointment recém-criado.
+                await supabase.from('appointments').delete().eq('id', appointmentData.id);
+                throw new Error("Esta vaga já foi preenchida por outro professor.");
+            }
 
             // C. Notify Logic (Payload exato pedido + 401 BYPASS STRATEGY)
             try {

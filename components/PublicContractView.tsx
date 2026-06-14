@@ -49,15 +49,13 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
 
         const fetchProfile = async () => {
             try {
-                // Fetch basic public profile info for the contract
+                // Rota pública (deslogado): lê os campos do contrato via RPC SECURITY DEFINER
+                // (anon não tem SELECT direto em profiles após o fix de RLS cross-tenant).
                 const { data, error: fetchError } = await supabase
-                    .from('profiles')
-                    .select('full_name, rg, cpf, address, birth_date, hourly_rate, contract_accepted, accepted_at, user_ip')
-                    .eq('id', id)
-                    .single();
+                    .rpc('get_contract_public', { p_id: id });
 
                 if (fetchError) throw fetchError;
-                if (!data) throw new Error("Contrato não encontrado.");
+                if (!data || !data.full_name) throw new Error("Contrato não encontrado.");
 
                 setProfile(data);
             } catch (err: any) {
