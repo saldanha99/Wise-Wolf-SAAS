@@ -39,16 +39,16 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
             // 1. Fetch Class Logs (Expenses)
             const { data: logs, error: logsError } = await supabase
                 .from('class_logs')
-                .select(`
-                    created_at,
-                    teacher_id,
-                    presence,
-                    profiles:teacher_id (hourly_rate)
-                `)
+                .select(`created_at, teacher_id, presence`)
                 .eq('tenant_id', tenantId)
                 .gte('created_at', sixMonthsAgo.toISOString());
 
             if (logsError) throw logsError;
+
+            // Taxas via RPC (hourly_rate não é mais legível direto em profiles).
+            // get_tenant_teacher_pay só retorna p/ admin; p/ professor vem vazio (gráfico de despesa 0).
+            const { data: payRows } = await supabase.rpc('get_tenant_teacher_pay');
+            const rateById = new Map<string, number>((payRows as any[] || []).map((p: any) => [p.id, Number(p.hourly_rate) || 0]));
 
             // 2. Fetch Payments (Projected Income only)
             const { data: pendingPayments, error: pendingError } = await supabase
@@ -86,7 +86,7 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
                 const month = log.created_at.slice(0, 7);
                 if (monthlyData.has(month)) {
                     if (log.presence === 'Presente' || log.presence === 'COMPLETED' || log.presence === 'Realizada') {
-                        const rate = log.profiles?.hourly_rate || 0;
+                        const rate = rateById.get(log.teacher_id) || 0;
                         const current = monthlyData.get(month)!;
                         current.expense += rate;
                     }

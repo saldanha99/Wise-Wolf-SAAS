@@ -27,13 +27,21 @@ const AdminFinancialApproval: React.FC<{ tenantId?: string }> = ({ tenantId }) =
         .from('teacher_closings')
         .select(`
           *,
-          teacher:teacher_id(full_name, avatar_url, pix_key)
+          teacher:teacher_id(full_name, avatar_url)
         `)
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRequests(data || []);
+
+      // pix_key não vem mais no join (revogado); mescla via RPC (admin).
+      const { data: payRows } = await supabase.rpc('get_tenant_teacher_pay');
+      const pixById = new Map<string, string>((payRows as any[] || []).map((p: any) => [p.id, p.pix_key]));
+      const withPix = (data || []).map((r: any) => ({
+        ...r,
+        teacher: { ...(r.teacher || {}), pix_key: pixById.get(r.teacher_id) || null }
+      }));
+      setRequests(withPix);
     } catch (err) {
       console.error('Error fetching approval requests:', err);
     } finally {
