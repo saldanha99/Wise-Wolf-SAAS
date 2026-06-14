@@ -17,6 +17,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
+  const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
+  const [dupNotice, setDupNotice] = useState<string | null>(null); // aviso quando uma aula já estava lançada (não duplicada)
 
   useEffect(() => {
     if (user && tenantId) {
@@ -37,6 +39,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
       const allLessons: any[] = [];
       const currentDate = new Date();
+      let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
 
       // FIX: appointments.teacher_id é null — o vínculo com o professor está em
       // opportunities.winner_teacher_id. Buscar os IDs de appointments via opportunities.
@@ -91,6 +94,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .select('booking_id, reschedule_id, appointment_id')
           .eq('teacher_id', user.id)
           .eq('class_date', dateStr);
+
+        if (i === 0) launchedToday = logs?.length || 0; // aulas de hoje já lançadas
 
         // Helper to process lesson
         const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
@@ -200,6 +205,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       }
 
       const currentMonthYear = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
+      setLaunchedTodayCount(launchedToday);
       setTodayLessons(allLessons
         .filter(l => l.dateObj.substring(0, 7) === currentMonthYear)
         .sort((a, b) => a.isLate === b.isLate ? 0 : a.isLate ? 1 : -1)
@@ -259,10 +265,29 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         };
       }).filter(Boolean);
 
+      let blockedDuplicates = 0; // aulas que já estavam lançadas (barradas pela trava de unicidade)
       if (entries.length > 0) {
-        // 1. Insert Class Logs
+        // 1. Insert Class Logs — resiliente: se uma aula já foi lançada (23505), NÃO
+        // derruba o lote inteiro. Cai pra inserção linha-a-linha e ignora as duplicatas
+        // (a trava de unicidade do banco garante que nunca há pagamento dobrado).
         const { error: logError } = await supabase.from('class_logs').insert(entries);
-        if (logError) throw logError;
+        if (logError) {
+          if (logError.code === '23505') {
+            for (const e of entries) {
+              const { error: rowErr } = await supabase.from('class_logs').insert([e]);
+              if (rowErr) {
+                if (rowErr.code === '23505') {
+                  blockedDuplicates++;
+                  console.warn('[LessonLauncher] Aula já lançada — ignorada (sem duplicar):', e.booking_id || e.appointment_id || e.reschedule_id);
+                } else {
+                  throw rowErr;
+                }
+              }
+            }
+          } else {
+            throw logError;
+          }
+        }
 
         // Update CRM Leads to TRIAL_DONE
         const trialEntries = (entries as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
@@ -333,6 +358,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         }
       }
 
+      if (blockedDuplicates > 0) {
+        setDupNotice(`${blockedDuplicates} aula(s) já estavam lançadas e foram mantidas — não duplicamos nada. ✓`);
+        setTimeout(() => setDupNotice(null), 6000);
+        // Auditoria leve (best-effort, nunca quebra o fluxo): registra a tentativa barrada.
+        try {
+          await supabase.from('debug_logs').insert([{
+            message: `[LessonLauncher] ${blockedDuplicates} lançamento(s) duplicado(s) barrado(s) — prof ${user.id} / tenant ${tenantId}`
+          }]);
+        } catch (_) { /* ignora: o console.warn já registrou */ }
+      }
       setShowSuccess(true);
       if (onRefresh) onRefresh();
       setTimeout(() => setShowSuccess(false), 3000);
@@ -371,6 +406,14 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         </div>
       )}
 
+      {/* Aviso: aula já estava lançada (não duplicada) — tranquiliza em vez de erro */}
+      {dupNotice && (
+        <div className="fixed top-28 right-10 z-50 bg-amber-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right duration-500 max-w-sm">
+          <CheckCircle size={20} className="shrink-0" />
+          <p className="text-sm font-medium">{dupNotice}</p>
+        </div>
+      )}
+
       {/* Bulk Form */}
       <div className="flex-1 min-h-0">
         {loading ? (
@@ -379,12 +422,37 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             <p className="text-sm font-bold uppercase tracking-widest">Sincronizando Agenda...</p>
           </div>
         ) : todayLessons.length > 0 ? (
-          <ClassLogForm
-            items={todayLessons}
-            onSave={handleBulkSave}
-            title="Aulas Programadas para Hoje"
-            loading={isSubmitting}
-          />
+          <div className="space-y-4">
+            {/* Resumo: hoje · atrasadas · já lançadas (confirmação visual) */}
+            {(() => {
+              const lateCount = todayLessons.filter(l => l.isLate).length;
+              const todayCount = todayLessons.length - lateCount;
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-tenant-primary/10 text-tenant-primary border border-tenant-primary/20">A lançar hoje: {todayCount}</span>
+                  {lateCount > 0 && <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300">Atrasadas: {lateCount}</span>}
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Já lançadas hoje: {launchedTodayCount}</span>
+                </div>
+              );
+            })()}
+
+            {/* Faixa explicativa das atrasadas — mata a confusão de "achei que não contou" */}
+            {todayLessons.some(l => l.isLate) && (
+              <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/15 border border-amber-200 dark:border-amber-800/40">
+                <Clock size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-200 font-medium leading-relaxed">
+                  Há aulas de <strong>dias anteriores</strong> ainda não lançadas (marcadas como atrasadas). Cada aula só pode ser lançada <strong>uma vez</strong> — lançar aqui <strong>não duplica</strong>. Aulas já lançadas somem desta lista e entram no contador "✓ Já lançadas".
+                </p>
+              </div>
+            )}
+
+            <ClassLogForm
+              items={todayLessons}
+              onSave={handleBulkSave}
+              title="Aulas Programadas para Hoje"
+              loading={isSubmitting}
+            />
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-20 bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
             <div className="w-20 h-20 bg-brand-surface-2 rounded-3xl flex items-center justify-center text-slate-300 mb-6">
