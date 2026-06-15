@@ -57,18 +57,17 @@ Retorne APENAS um array JSON válido com 4 objetos, cada um com os campos:
 As atividades devem ser 100% alinhadas com o perfil, variadas nos tipos e práticas para fazer sozinho.
 Responda APENAS com o JSON, sem markdown, sem explicação.`;
 
-        const { data, error } = await supabase.functions.invoke('wolfie-brain', {
-            body: {
-                message: prompt,
-                studentLevel: profile.module || 'B1',
-                previousContext: 'System: You are a JSON-only pedagogical activity generator. Return only valid JSON arrays.'
-            }
+        // Usa a edge function dedicada de geração de conteúdo (JSON estrito),
+        // NÃO o wolfie-brain (tutor conversacional, que embrulha tudo no schema da persona).
+        const { data, error } = await supabase.functions.invoke('pedagogical-content', {
+            body: { prompt, studentLevel: profile.module || 'B1' }
         });
 
         if (error) throw error;
 
-        const rawText = data?.aiText || '';
-        // Extract JSON array from response
+        // A função devolve o array já parseado em `result`; raw é o fallback.
+        if (Array.isArray(data?.result)) return (data.result as GeneratedActivity[]).slice(0, 4);
+        const rawText = data?.raw || data?.aiText || '';
         const match = rawText.match(/\[[\s\S]*\]/);
         if (!match) throw new Error('No JSON array in response');
 
@@ -227,15 +226,15 @@ Regras importantes:
 - Resposta DEVE ser JSON válido parseável.`;
 
   try {
-    const { data, error } = await supabase.functions.invoke('wolfie-brain', {
-      body: {
-        message: prompt,
-        studentLevel: targetLevel,
-        previousContext: 'System: You are a JSON-only pedagogical content generator. Output strict JSON only.'
-      }
+    // Usa a edge function dedicada de geração de conteúdo (JSON estrito),
+    // NÃO o wolfie-brain (tutor conversacional, que embrulha tudo no schema da persona).
+    const { data, error } = await supabase.functions.invoke('pedagogical-content', {
+      body: { prompt, studentLevel: targetLevel }
     });
     if (error) throw error;
-    const raw = data?.aiText || data?.chatResponse || '';
+    // A função já devolve o JSON parseado em `result`; raw é o fallback.
+    if (data?.result && typeof data.result === 'object') return data.result;
+    const raw = data?.raw || data?.aiText || '';
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('AI did not return valid JSON');
     return JSON.parse(match[0]);

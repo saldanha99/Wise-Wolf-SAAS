@@ -40,10 +40,12 @@ export function TeacherContractDocument({
     const finalHourlyRate = hourlyRate || 16;
     const halfHourlyRate = finalHourlyRate / 2;
 
-    // Data atual se não fornecida
-    const displayDate = contractDate || new Date().toLocaleDateString('pt-BR', {
-        day: 'numeric', month: 'long', year: 'numeric'
-    });
+    // Data do contrato: quando já assinado, CONGELA na data da assinatura (acceptedAt).
+    // Antes usava new Date() sempre, então o contrato mostrava a data de HOJE a cada
+    // visualização em vez da data real em que o professor assinou.
+    const displayDate = contractDate || (acceptedAt
+        ? new Date(acceptedAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+        : new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }));
 
     return (
         <div className="flex flex-col items-center gap-6 p-8 bg-gray-100 min-h-screen">

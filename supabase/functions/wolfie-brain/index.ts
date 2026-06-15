@@ -178,6 +178,16 @@ CORRECTION PHILOSOPHY:
 - Big errors only → use the correction object. Keep explanation_pt short and clear, not condescending.
 - NEVER correct more than 1 thing per turn. Pick the most important.
 
+SPEAKING / PRONUNCIATION (CRITICAL — this text goes straight to Text-to-Speech):
+- When speaking English, ALWAYS use natural, native-like pronunciation, rhythm, stress and connected speech.
+- NEVER spell words out, NEVER separate words into syllables, and NEVER slow down unnaturally — unless the learner explicitly asks for a slower repetition.
+- Preserve connected speech, reductions and contractions (I'd, gonna, wanna, "I'd like to" not "I would like to").
+- If the user asks for a translation PT→EN or "how do I say this in English?", FIRST say the complete English sentence in one natural, conversational flow, exactly as a fluent native speaker would say it — as a single normal phrase, never word-by-word.
+  ❌ WRONG: "I... would... like... to... book... a... hotel..."
+  ✅ RIGHT: "I'd like to book a hotel."
+- Only AFTER saying the full natural sentence, you may briefly explain it (e.g., "'I'd like to book a hotel' means 'Eu gostaria de reservar um hotel'."). Word-by-word breakdown ONLY if the learner explicitly asks.
+- Do NOT insert ellipses (...), dashes between words, or extra spaces/line breaks inside an English phrase — write it as one clean sentence so the TTS reads it naturally.
+
 OUTPUT — RETURN ONLY RAW JSON, NO MARKDOWN WRAPPERS:
 {
   "chatResponse": "${chatLangInstruct} NO markdown, NO emojis, NO bullet points. This goes straight to Text-to-Speech.",
@@ -397,7 +407,7 @@ serve(async (req) => {
             turnCount: body.turnCount ?? 0,
         };
 
-        console.log(`[WolfieBrain v110] Payload: Text=${message?.length || 0}, Audio=${!!audioBase64}, Turn=${config.turnCount}, ConvId=${conversationId ? conversationId.slice(0,8) : 'null'}`);
+        console.log(`[WolfieBrain v112-pronunciation] Text=${message?.length || 0}, Audio=${!!audioBase64}, Turn=${config.turnCount}, Lang=${studentLanguage || 'auto'}, ConvId=${conversationId ? conversationId.slice(0,8) : 'null'}`);
 
         _section = 'supabase_setup';
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -414,7 +424,6 @@ serve(async (req) => {
         if (authError || !user) {
             throw new Error(`Auth Error: ${authError?.message || 'No User'}. Header: ${!!authHeader}`);
         }
-        console.log(`[wolfie] Auth OK: ${user.id.slice(0,8)}`);
 
         _section = 'profile_fetch';
         const { data: profile, error: profileErr } = await supabaseClient
@@ -516,7 +525,6 @@ serve(async (req) => {
             if (sessionError) console.error(`[wolfie] session create error: ${sessionError.message}`);
             else if (newSession) sessionId = newSession.id;
         }
-        console.log(`[wolfie] sessionId: ${sessionId ? sessionId.slice(0,8) : 'null'}, turnCount: ${config.turnCount}`);
 
         _section = 'student_turn_insert';
         if (sessionId && (message || audioBase64)) {
@@ -552,7 +560,6 @@ serve(async (req) => {
         }
 
         _section = 'openrouter_call';
-        console.log(`[wolfie] Calling OpenRouter...`);
         const systemPrompt = buildSystemPrompt(config, profile?.full_name, profile?.goal, previousContext, wolfMemory, studentLanguage);
 
         const aiRawResult = await callOpenRouter(
@@ -576,8 +583,6 @@ serve(async (req) => {
                 quiz: null
             };
         }
-
-        console.log(`[wolfie] AI response OK. Length: ${parsedResult.chatResponse?.length || 0}`);
 
         _section = 'wolfie_turn_insert';
         let wolfieTurnId: string | null = null;

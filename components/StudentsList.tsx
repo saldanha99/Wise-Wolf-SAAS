@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain, Eye, AlertTriangle, CalendarCheck } from 'lucide-react';
+import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
@@ -20,6 +20,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | 'ALL'>('ALL');
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
   const [financialFilter, setFinancialFilter] = useState<string>('ALL'); // ALL | RISK | OVERDUE
+  const [statusFilter, setStatusFilter] = useState<string>('ALL'); // ALL | ACTIVE | INACTIVE
   const [overviewMap, setOverviewMap] = useState<Record<string, any>>({});
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
 
@@ -174,6 +175,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             accepted_at: s.accepted_at,
             documentation_status: s.documentation_status,
             tenant_id: s.tenant_id,
+            status: s.status,
             status_financial: s.status_financial,
             module: s.module,
           };
@@ -448,6 +450,28 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     }
   };
 
+  // Diretor alterna Ativo/Inativo — mantém os dados, só liga/desliga as notificações automáticas.
+  const handleToggleStatus = async (student: any) => {
+    const makeInactive = !isInactive(student);
+    const msg = makeInactive
+      ? `Inativar ${student.name}?\n\nO aluno PARA de receber mensagens automáticas (aniversário, cobrança), mas todos os dados são mantidos. Você pode reativar quando quiser.`
+      : `Reativar ${student.name}?\n\nO aluno volta a receber as notificações automáticas normalmente.`;
+    if (!window.confirm(msg)) return;
+    try {
+      const { data, error } = await supabase.rpc('set_student_status', {
+        p_student_id: student.id,
+        p_status: makeInactive ? 'Inativo' : 'Ativo',
+      });
+      if (error || (data && (data as any).ok === false)) {
+        throw new Error(error?.message || (data as any)?.error || 'falha');
+      }
+      const newStatus = makeInactive ? 'Inativo' : 'Ativo';
+      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: newStatus } : s));
+    } catch (err: any) {
+      alert('Erro ao alterar status do aluno: ' + (err.message || 'tente novamente.'));
+    }
+  };
+
   const handleDeleteStudentClick = () => {
     if (!editingStudent) return;
     const fine = editingStudent.monthly_fee ? (editingStudent.monthly_fee * 0.3) : 0;
@@ -510,6 +534,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   // Níveis disponíveis para o filtro
   const availableLevels = Array.from(new Set(students.map(s => s.levelBadge).filter((x: string) => x && x !== 'N/A'))).sort();
 
+  // Aluno inativo (diretor desligou as notificações) ou arquivado financeiramente.
+  const isInactive = (s: any) =>
+    ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'].includes(s?.status)
+    || s?.status_financial === 'ARCHIVED';
+
   // Filter Logic
   const filteredStudents = students.filter(s => {
     const ov = overviewMap[s.id];
@@ -521,7 +550,10 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       || (financialFilter === 'RISK' && ov && ov.risk_level !== 'LOW')
       || (financialFilter === 'OVERDUE' && ov && (ov.overdue_count || 0) > 0)
       || (financialFilter === 'ORPHAN' && ov && ov.has_activity === false);
-    return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial;
+    const matchesStatus = statusFilter === 'ALL'
+      || (statusFilter === 'ACTIVE' && !isInactive(s))
+      || (statusFilter === 'INACTIVE' && isInactive(s));
+    return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial && matchesStatus;
   });
 
   const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
@@ -611,6 +643,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             <option value="OVERDUE">Inadimplentes</option>
             <option value="ORPHAN">Sem matrícula (testes)</option>
           </select>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            <option value="ALL">Status: todos</option>
+            <option value="ACTIVE">Ativos</option>
+            <option value="INACTIVE">Inativos</option>
+          </select>
 
           {/* ADD BUTTON */}
           <button
@@ -633,8 +671,9 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             ) : filteredStudents.map((student, i) => {
               const ov = overviewMap[student.id];
               const canEdit = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+              const inactive = isInactive(student);
               return (
-              <div key={i} className="group bg-brand-surface rounded-[2rem] border border-brand-border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit">
+              <div key={i} className={`group bg-brand-surface rounded-[2rem] border p-6 hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all duration-300 relative overflow-hidden h-fit ${inactive ? 'border-slate-300 dark:border-slate-700 opacity-60 grayscale' : 'border-brand-border'}`}>
 
                 {/* Header: Name & Edit */}
                 <div className="flex justify-between items-start mb-4">
@@ -644,6 +683,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                       <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${ov.risk_level === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}
                         title={(ov.risk_reasons || []).join(' · ')}>
                         <AlertTriangle size={10} /> {ov.risk_level === 'HIGH' ? 'ALTO RISCO' : 'ATENÇÃO'}
+                      </span>
+                    )}
+                    {inactive && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300 mt-1"
+                        title="Aluno inativo: dados mantidos, sem notificações automáticas">
+                        <UserX size={10} /> INATIVO · SEM NOTIFICAÇÕES
                       </span>
                     )}
                   </div>
@@ -793,6 +838,15 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   >
                     <Eye size={14} /> Ver Ficha 360°
                   </button>
+                  {canEdit && (
+                    <button
+                      className={`flex items-center justify-center px-4 py-3 rounded-2xl border text-xs font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/40 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-600 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-900/20'}`}
+                      onClick={() => handleToggleStatus(student)}
+                      title={inactive ? 'Reativar aluno (volta a receber notificações)' : 'Inativar aluno (mantém os dados, para as notificações)'}
+                    >
+                      {inactive ? <UserCheck size={14} /> : <UserX size={14} />}
+                    </button>
+                  )}
                   {canEdit && (
                     <button
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 transition-colors"

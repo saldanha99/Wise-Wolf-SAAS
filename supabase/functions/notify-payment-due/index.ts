@@ -51,7 +51,15 @@ serve(async (req) => {
 
     for (const c of charges) {
       try {
-        const { data: student } = await supabase.from("profiles").select("full_name, phone").eq("id", c.student_id).maybeSingle();
+        const { data: student } = await supabase.from("profiles").select("full_name, phone, status, status_financial").eq("id", c.student_id).maybeSingle();
+
+        // Aluno inativo/arquivado: o diretor optou por NÃO notificar.
+        // Pula sem marcar como enviado → se reativar, volta a receber o aviso.
+        const st = student?.status || "Ativo";
+        const inactive = ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"].includes(st)
+          || student?.status_financial === "ARCHIVED";
+        if (inactive) { failures.push(`${c.id}: aluno inativo (sem notificar)`); continue; }
+
         let phone = (student?.phone || "").replace(/\D/g, "");
         if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
         if (phone.length < 12) { failures.push(`${c.id}: sem telefone`); await mark(supabase, c.id); continue; }
