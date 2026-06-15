@@ -373,3 +373,37 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 - Deploy automático via Vercel (push para `main`)
 - Edge functions: deploy manual via `supabase functions deploy` ou MCP Supabase
 - **Dados sensíveis da Wise Wolf** (CNPJ, email, telefone, endereço) **NUNCA no código** — apenas em variáveis de ambiente ou formulários preenchidos pelo usuário
+
+
+---
+
+## Geração de Conteúdo Pedagógico com IA (`pedagogical-content`) ✅
+
+> **Por que existe uma edge function separada do `wolfie-brain` só pra gerar JSON.** O `wolfie-brain` é o **tutor conversacional**: o system prompt dele força TODA resposta no schema da persona WOLFIE (`{chatResponse, correction, ...}`). Qualquer pedido de JSON estruturado (ex.: `{cards}`, `{questions}`, um array de atividades) era embrulhado nesse schema → o client recebia o objeto da persona, não o conteúdo pedido, e quebrava com `"AI did not return valid JSON"`. Não use o `wolfie-brain` para gerar material.
+
+- **Edge `pedagogical-content`** (`supabase/functions/pedagogical-content/index.ts`): gerador de **JSON estrito, sem persona**. System prompt é literalmente "strict JSON content generator" (CEFR-aligned, alunos pt-BR) — exige saída crua começando com `{` ou `[`, sem markdown, sem fences, sem comentário, sem chaves extras. Explicações pedagógicas em pt-BR (`exp`, `explanation_pt`, `translation`, `rule_pt`, `instructions_pt`); conteúdo de inglês em inglês natural no nível pedido.
+- **Lida com objeto OU array**: `extractJson()` decide pelo delimitador que aparece primeiro (`{` vs `[`), remove fences ```` ```json ````, e recorta só o bloco JSON. Cada modelo da cadeia ainda passa por `JSON.parse()` de validação antes de ser aceito — JSON inválido derruba pro próximo modelo.
+- **Mesma cadeia de modelos do `wolfie-brain`** (OpenRouter, `PREFERRED_MODELS`): Claude Haiku 3.5 primeiro (JSON confiável), depois Haiku 3, Gemini 2.0 Flash free, GPT-4o-mini, Gemini Flash 1.5, Llama 3.3 70B free, DeepSeek, GPT-OSS — pagos e gratuitos pra nunca deixar o professor sem conteúdo. `401` (chave inválida) aborta na hora; outros erros caem pro próximo. `temperature: 0.6`, `max_tokens: 2000`, timeout 25s por modelo.
+- **Retorno:** `{ result, raw, aiText }` — `result` é o JSON **já parseado** (server faz `JSON.parse(raw)`; fica `null` se falhar), `raw`/`aiText` é o texto limpo como fallback. Exige usuário autenticado (professor/admin chamam pelo painel).
+- **Como o client consome** (`services/geminiService.ts`): usa `data.result` direto quando já vem parseado (objeto em `generateUnitActivityContent`, array em `generateActivities`); só cai no `data.raw`/`data.aiText` + regex (`/\{[\s\S]*\}/` ou `/\[[\s\S]*\]/`) + `JSON.parse` quando `result` veio `null`.
+- **Quem usa:** `generateUnitActivityContent` → flashcards (`vocab_cards`), `quiz`, `grammar_drill`, `reading` e `speaking_wolfie` da trilha (LearningPathsBuilder), cada tipo com seu schema EXATO no prompt; `generateActivities` → 4 atividades complementares personalizadas (StudentActivities), com `getFallbackActivities()` local como rede de segurança se a IA falhar.
+- ⚠️ **Pegadinha:** `getPedagogicalSuggestion` e `generateBillingReminder` continuam em outro caminho (wolfie-brain / Gemini direto) porque são **texto livre**, não JSON estruturado — só material estruturado vai pelo `pedagogical-content`.
+
+---
+
+## Status do Aluno (Ativo/Inativo) e Gating de Notificações ✅
+
+> **Problema:** aluno inativo (sem professor / sem aulas) continuava recebendo WhatsApp automático (aniversário, lembrete de vencimento). O diretor quer **MANTER todos os dados** do aluno, só **parar de notificá-lo**, e poder **reativar depois**. Migration: `supabase/migrations/20260615120000_student_status_notifications.sql`.
+
+- **Fonte de verdade:** `profiles.status` (default `'Ativo'`). O diretor alterna; `status_financial = 'ARCHIVED'` (do `archive_student`) também silencia.
+- **`is_student_notifiable(uuid)`** — helper canônico (SQL STABLE SECURITY DEFINER): o aluno pode receber mensagem automática? `status NOT IN ('Inativo','INACTIVE','Inactive','Arquivado','Cancelado','Trancado')` **E** `status_financial <> 'ARCHIVED'`. Use este helper em qualquer automação nova em vez de repetir a lista.
+- **`set_student_status(uuid, text)`** — RPC SECURITY DEFINER que o diretor chama pra alternar. Só `SCHOOL_ADMIN`/`SUPER_ADMIN`/`COORDINATOR`, e admin/coordenador **só dentro do próprio tenant** (`s_tenant <> v_tenant` → `sem_permissao`). Normaliza entrada (`ativo`/`active` → `'Ativo'`, `inativo`/`inactive` → `'Inativo'`). **INATIVAR MANTÉM TODOS OS DADOS** — é só um `UPDATE profiles SET status` — desliga as notificações e pode reativar a qualquer momento. `GRANT EXECUTE ... TO authenticated`.
+- **Automações que respeitam o status:**
+  - `birthdays_today()` — professores sempre entram; **alunos só quando notificáveis** (mesma cláusula do helper inline no `WHERE`).
+  - `notify-payment-due` (`supabase/functions/notify-payment-due/index.ts`) — lê `status`/`status_financial` do aluno e, se inativo/arquivado, **pula sem marcar `due_reminder_sent_at`** (`continue` antes do `mark()`). Crítico: ao reativar, a cobrança volta a ser avisada (não ficou "queimada" como enviada).
+- **UI do diretor** (`components/StudentsList.tsx`):
+  - **Filtro** "Status: todos / Ativos / Inativos" (`statusFilter`, ao lado do filtro de Situação).
+  - **`isInactive(s)`** = `status` na lista de inativos OU `status_financial === 'ARCHIVED'`.
+  - **Badge cinza** `UserX · "INATIVO · SEM NOTIFICAÇÕES"` no card; o card inteiro fica **esmaecido** (`opacity-60 grayscale`, borda slate).
+  - **Botão por aluno** (`handleToggleStatus`): `UserX` (inativar, âmbar) ↔ `UserCheck` (reativar, esmeralda), com `window.confirm` explicando que os dados são mantidos. Chama `set_student_status` e atualiza o estado local otimista.
+- ⚠️ **Pegadinha:** o gating só silencia valores **explicitamente inativos** (`Inativo` / `INACTIVE` / `Inactive` / `Arquivado` / `Cancelado` / `Trancado`) ou `status_financial='ARCHIVED'`. **Nunca** silencia `'Ativo'` / `'ACTIVE'` / `null` — em produção só existem `'Ativo'` e `'ACTIVE'` (ambos ativos), então o default é "notifica". Ao adicionar uma automação nova, prefira `is_student_notifiable(uuid)` em vez de reescrever a lista (evita drift).
