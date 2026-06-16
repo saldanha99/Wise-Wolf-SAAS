@@ -224,6 +224,7 @@ const App: React.FC = () => {
             retention: '100%',
             tpi: 100,
             status: 'Ativo',
+            lifecycle_status: t.lifecycle_status || 'active',
             occupancy: t.occupancy || 0
           };
         });

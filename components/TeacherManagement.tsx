@@ -16,7 +16,11 @@ import {
     BookOpen,
     RefreshCw,
     Link,
-    FileText
+    FileText,
+    UserX,
+    UserCheck,
+    AlertTriangle,
+    CalendarOff
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
@@ -24,6 +28,7 @@ import { TEACHER_SPECIALIZATIONS } from '../constants';
 import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
 import TeacherFinancials from './TeacherFinancials';
+import AbsenceCoverageManager from './AbsenceCoverageManager';
 
 interface TeacherManagementProps {
     teachers: Teacher[];
@@ -40,6 +45,35 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     const [isSaving, setIsSaving] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [viewingFinancialsId, setViewingFinancialsId] = useState<string | null>(null);
+
+    // Ciclo de vida do professor (suspender/desligar/reativar) via school-admin.
+    // suspended/offboarded tira o professor do cruzamento de agenda e do lançamento de aula.
+    // Estado otimista local: o badge usa lifecycle_status canônico (não o legado teacher.status).
+    const [lifecycleById, setLifecycleById] = useState<Record<string, string>>({});
+    const [coverageTeacher, setCoverageTeacher] = useState<{ id: string; name: string } | null>(null);
+    const effLifecycle = (t: any): string =>
+        lifecycleById[t.id] || t.lifecycle_status ||
+        (['Inativo', 'INACTIVE', 'Inactive'].includes(t.status) ? 'suspended' : 'active');
+
+    const setTeacherLifecycle = async (teacher: any, status: 'active' | 'suspended' | 'offboarded') => {
+        const labels: Record<string, string> = {
+            suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.`,
+            offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).`,
+            active: `Reativar ${teacher.name}?\n\nVolta ao cruzamento de agenda e às automações.`,
+        };
+        const reason = status === 'active' ? null : window.prompt(labels[status] + '\n\nMotivo:', '');
+        if (status !== 'active' && reason === null) return;
+        if (status === 'active' && !window.confirm(labels.active)) return;
+        try {
+            const { data, error } = await supabase.functions.invoke('school-admin', {
+                body: { action: 'setTeacherLifecycle', teacherId: teacher.id, status, reason: reason || undefined },
+            });
+            if (error || (data && (data as any).ok === false)) throw new Error(error?.message || (data as any)?.error || 'falha');
+            setLifecycleById(prev => ({ ...prev, [teacher.id]: status }));
+        } catch (err: any) {
+            alert('Erro ao alterar status do professor: ' + (err.message || 'tente novamente.'));
+        }
+    };
 
     // New Teacher Form State
     const initialFormState = {
@@ -310,12 +344,22 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border ${teacher.status === 'Ativo' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30' :
-                                            teacher.status === 'Férias' ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30' :
-                                                'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
-                                            }`}>
-                                            {teacher.status}
-                                        </span>
+                                        {(() => {
+                                            const lc = effLifecycle(teacher);
+                                            const cls = lc === 'offboarded'
+                                                ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
+                                                : lc === 'suspended'
+                                                    ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                    : teacher.status === 'Férias'
+                                                        ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                                        : 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30';
+                                            const label = lc === 'offboarded' ? 'Desligado' : lc === 'suspended' ? 'Suspenso' : teacher.status;
+                                            return (
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wide border ${cls}`}>
+                                                    {label}
+                                                </span>
+                                            );
+                                        })()}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1">
@@ -380,6 +424,42 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                             >
                                                 <DollarSign size={18} />
                                             </button>
+                                            <button
+                                                onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })}
+                                                className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                                                title="Registrar ausência e cobrir aulas"
+                                            >
+                                                <CalendarOff size={18} />
+                                            </button>
+                                            {(() => {
+                                                const lc = effLifecycle(teacher);
+                                                return lc === 'active' ? (
+                                                    <>
+                                                        <button
+                                                            onClick={() => setTeacherLifecycle(teacher, 'suspended')}
+                                                            className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                                                            title="Suspender (sai do cruzamento de agenda)"
+                                                        >
+                                                            <UserX size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setTeacherLifecycle(teacher, 'offboarded')}
+                                                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                                                            title="Desligar definitivamente"
+                                                        >
+                                                            <AlertTriangle size={18} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setTeacherLifecycle(teacher, 'active')}
+                                                        className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
+                                                        title="Reativar professor"
+                                                    >
+                                                        <UserCheck size={18} />
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </td>
                                 </tr>
@@ -546,6 +626,10 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         </div>
                     </div>
                 </div>
+            )}
+
+            {coverageTeacher && (
+                <AbsenceCoverageManager teacher={coverageTeacher} onClose={() => setCoverageTeacher(null)} />
             )}
         </div>
     );
