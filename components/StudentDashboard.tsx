@@ -12,6 +12,7 @@ import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
 import { useStudentContext } from './contexts/StudentContext';
+import StudentAuditPanel from './StudentAuditPanel';
 
 interface StudentDashboardProps {
   user: UserType;
@@ -333,6 +334,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           </div>
         </div>
       )}
+
+      {/* 3.5 AUDITORIA DE AULAS */}
+      <StudentAuditPanel />
 
       {/* 4. CONTENT & HISTORY */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
