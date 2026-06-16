@@ -8,6 +8,7 @@ import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
+import TeacherTurboCard from './TeacherTurboCard';
 
 interface TeacherDashboardProps {
   user: UserType;
@@ -371,6 +372,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           }}
         />
       )}
+
+      {user?.id && <TeacherTurboCard teacherId={user.id} />}
 
       {/* Header Section */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
