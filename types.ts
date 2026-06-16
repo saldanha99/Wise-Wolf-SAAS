@@ -114,6 +114,7 @@ export interface Teacher {
   retention: string;
   tpi: number;
   status: 'Ativo' | 'Férias' | 'Inativo';
+  lifecycle_status?: 'active' | 'suspended' | 'offboarded';
   occupancy: number;
 }
 
