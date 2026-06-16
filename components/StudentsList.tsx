@@ -177,6 +177,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             tenant_id: s.tenant_id,
             status: s.status,
             status_financial: s.status_financial,
+            lifecycle_status: s.lifecycle_status,
             module: s.module,
           };
         });
@@ -450,25 +451,57 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     }
   };
 
-  // Diretor alterna Ativo/Inativo — mantém os dados, só liga/desliga as notificações automáticas.
+  // Suspender (adormecido) ↔ reativar — usa o eixo canônico lifecycle_status via school-admin.
+  // Ao suspender, a edge function cancela a assinatura no Asaas (para de gerar mensalidade).
   const handleToggleStatus = async (student: any) => {
     const makeInactive = !isInactive(student);
     const msg = makeInactive
-      ? `Inativar ${student.name}?\n\nO aluno PARA de receber mensagens automáticas (aniversário, cobrança), mas todos os dados são mantidos. Você pode reativar quando quiser.`
+      ? `Suspender ${student.name}?\n\nO aluno entra em modo ADORMECIDO: para de receber mensagens automáticas (aniversário, cobrança, lembrete) e a assinatura no Asaas é cancelada (não gera mais mensalidade). A dívida já vencida é mantida. Você pode reativar quando quiser.`
       : `Reativar ${student.name}?\n\nO aluno volta a receber as notificações automáticas normalmente.`;
     if (!window.confirm(msg)) return;
     try {
-      const { data, error } = await supabase.rpc('set_student_status', {
-        p_student_id: student.id,
-        p_status: makeInactive ? 'Inativo' : 'Ativo',
+      const { data, error } = await supabase.functions.invoke('school-admin', {
+        body: {
+          action: 'setStudentLifecycle',
+          studentId: student.id,
+          status: makeInactive ? 'suspended' : 'active',
+          reason: makeInactive ? 'Suspenso pela coordenação' : null,
+        },
       });
       if (error || (data && (data as any).ok === false)) {
         throw new Error(error?.message || (data as any)?.error || 'falha');
       }
-      const newStatus = makeInactive ? 'Inativo' : 'Ativo';
-      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: newStatus } : s));
+      const newLifecycle = makeInactive ? 'suspended' : 'active';
+      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, lifecycle_status: newLifecycle } : s));
     } catch (err: any) {
       alert('Erro ao alterar status do aluno: ' + (err.message || 'tente novamente.'));
+    }
+  };
+
+  // Desligamento definitivo (offboard): tira do ecossistema, cancela assinatura Asaas e
+  // anula as faturas FUTURAS — a dívida já vencida fica para cobrança. Reativável depois.
+  const handleOffboard = async (student: any) => {
+    const reason = window.prompt(
+      `Desligar ${student.name} definitivamente?\n\nIsto cancela a assinatura no Asaas, anula as faturas FUTURAS (a dívida vencida é mantida) e remove o aluno de todas as automações. Pode ser reativado depois.\n\nMotivo do desligamento:`,
+      ''
+    );
+    if (reason === null) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('school-admin', {
+        body: {
+          action: 'setStudentLifecycle',
+          studentId: student.id,
+          status: 'offboarded',
+          reason: reason || 'Desligado pela coordenação',
+        },
+      });
+      if (error || (data && (data as any).ok === false)) {
+        throw new Error(error?.message || (data as any)?.error || 'falha');
+      }
+      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, lifecycle_status: 'offboarded' } : s));
+      alert('Aluno desligado. Assinatura cancelada e faturas futuras anuladas.');
+    } catch (err: any) {
+      alert('Erro ao desligar aluno: ' + (err.message || 'tente novamente.'));
     }
   };
 
@@ -534,9 +567,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   // Níveis disponíveis para o filtro
   const availableLevels = Array.from(new Set(students.map(s => s.levelBadge).filter((x: string) => x && x !== 'N/A'))).sort();
 
-  // Aluno inativo (diretor desligou as notificações) ou arquivado financeiramente.
+  // Aluno fora do ciclo ativo: lifecycle_status canônico (suspended/offboarded) é a fonte de
+  // verdade; mantém fallback nos marcadores legados durante a transição.
   const isInactive = (s: any) =>
-    ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'].includes(s?.status)
+    (s?.lifecycle_status && s.lifecycle_status !== 'active')
+    || ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'].includes(s?.status)
     || s?.status_financial === 'ARCHIVED';
 
   // Filter Logic
@@ -842,9 +877,18 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                     <button
                       className={`flex items-center justify-center px-4 py-3 rounded-2xl border text-xs font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/40 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-600 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-900/20'}`}
                       onClick={() => handleToggleStatus(student)}
-                      title={inactive ? 'Reativar aluno (volta a receber notificações)' : 'Inativar aluno (mantém os dados, para as notificações)'}
+                      title={inactive ? 'Reativar aluno (volta a receber notificações)' : 'Suspender aluno (adormecido: cancela Asaas, para notificações)'}
                     >
                       {inactive ? <UserCheck size={14} /> : <UserX size={14} />}
+                    </button>
+                  )}
+                  {canEdit && student.lifecycle_status !== 'offboarded' && (
+                    <button
+                      className="flex items-center justify-center px-4 py-3 rounded-2xl border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:hover:bg-red-900/20 text-xs font-black uppercase transition-colors"
+                      onClick={() => handleOffboard(student)}
+                      title="Desligar definitivamente (cancela Asaas e anula faturas futuras)"
+                    >
+                      <AlertTriangle size={14} />
                     </button>
                   )}
                   {canEdit && (
