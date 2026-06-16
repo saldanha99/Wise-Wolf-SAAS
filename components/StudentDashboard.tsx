@@ -13,6 +13,7 @@ import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS } from '../constants';
 import { useStudentContext } from './contexts/StudentContext';
 import StudentAuditPanel from './StudentAuditPanel';
+import StudentAuditReminder from './StudentAuditReminder';
 
 interface StudentDashboardProps {
   user: UserType;
@@ -148,6 +149,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           onComplete={() => setOnboardingDone(true)}
         />
       )}
+
+      {/* 0. LEMBRETE DE AUDITORIA (aparece só com pendências) */}
+      <StudentAuditReminder />
 
       {/* 1. HERO SECTION: Premium Welcome Header */}
       <div className="relative rounded-[3rem] overflow-hidden bg-brand-accent shadow-2xl shadow-brand-accent/20 text-white p-8 md:p-12">

@@ -51,7 +51,7 @@ const StudentAuditPanel: React.FC = () => {
   const done = audits.filter(a => a.student_response);
 
   return (
-    <section className="bg-brand-surface border border-brand-border rounded-[2rem] p-6 shadow-sm">
+    <section id="auditoria-aulas" className="bg-brand-surface border border-brand-border rounded-[2rem] p-6 shadow-sm scroll-mt-24">
       <div className="flex items-center gap-2 mb-1">
         <ShieldCheck size={18} className="text-tenant-primary" />
         <h3 className="font-black text-brand-text dark:text-slate-100 text-sm uppercase tracking-widest">Auditoria de Aulas</h3>
