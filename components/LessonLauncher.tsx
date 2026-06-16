@@ -470,7 +470,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                         <span className="text-[10px] font-black uppercase bg-tenant-primary/10 text-tenant-primary px-3 py-1 rounded-full">{repos.length}</span>
                       </div>
                       <p className="text-xs text-brand-muted">
-                        Reposições agendadas e realizadas. Confirme o que aconteceu — presença, falta do aluno ou falta do professor. Isso define a contabilização: reposição por falta do professor é paga; por falta do aluno, não.
+                        Reposições agendadas e realizadas. Confirme o que aconteceu — presença, falta do aluno ou falta do professor. Reposição feita é sempre paga a quem deu a aula; só não é paga se a aula tiver sido coberta provisoriamente por outro professor.
                       </p>
                       <ClassLogForm
                         items={repos}
