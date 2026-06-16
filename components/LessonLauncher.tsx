@@ -446,12 +446,43 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               </div>
             )}
 
-            <ClassLogForm
-              items={todayLessons}
-              onSave={handleBulkSave}
-              title="Aulas Programadas para Hoje"
-              loading={isSubmitting}
-            />
+            {(() => {
+              // Separa as reposições numa seção dedicada — depois de agendadas e feitas, o
+              // professor confirma aqui o que aconteceu (presença / falta do aluno / falta do prof).
+              const repos = todayLessons.filter(l => l.type === 'REPOSIÇÃO');
+              const regular = todayLessons.filter(l => l.type !== 'REPOSIÇÃO');
+              return (
+                <div className="space-y-6">
+                  {regular.length > 0 && (
+                    <ClassLogForm
+                      items={regular}
+                      onSave={handleBulkSave}
+                      title="Aulas Programadas para Hoje"
+                      loading={isSubmitting}
+                    />
+                  )}
+
+                  {repos.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <RefreshCw size={16} className="text-tenant-primary" />
+                        <h3 className="text-sm font-black text-brand-text uppercase tracking-widest">Reposições a confirmar</h3>
+                        <span className="text-[10px] font-black uppercase bg-tenant-primary/10 text-tenant-primary px-3 py-1 rounded-full">{repos.length}</span>
+                      </div>
+                      <p className="text-xs text-brand-muted">
+                        Reposições agendadas e realizadas. Confirme o que aconteceu — presença, falta do aluno ou falta do professor. Isso define a contabilização: reposição por falta do professor é paga; por falta do aluno, não.
+                      </p>
+                      <ClassLogForm
+                        items={repos}
+                        onSave={handleBulkSave}
+                        title="Lançamento de Reposições"
+                        loading={isSubmitting}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-20 bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
