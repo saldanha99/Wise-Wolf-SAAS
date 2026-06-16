@@ -43,6 +43,26 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   // Alunos vinculados: perfis que têm este titular como responsável financeiro (guardian_id)
   const [dependents, setDependents] = useState<any[]>([]);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [serasaBusy, setSerasaBusy] = useState<string | null>(null);
+
+  // Negativação Serasa (via Asaas) de uma cobrança vencida — só admin (a aba financeira é gated).
+  const negativarSerasa = async (pay: any) => {
+    const payId = pay.asaas_payment_id || (pay.invoice_url ? 'pay_' + String(pay.invoice_url).split('/').pop() : null);
+    if (!payId) { alert('Sem identificador de fatura no Asaas para esta cobrança.'); return; }
+    if (!window.confirm('Negativar esta dívida no Serasa (via Asaas)?\n\nRegistra a negativação do CPF do aluno sobre a cobrança vencida. Use apenas após as tentativas de negociação.')) return;
+    setSerasaBusy(payId);
+    try {
+      const { data: r, error } = await supabase.functions.invoke('school-admin', { body: { action: 'serasaNegativar', paymentId: payId } });
+      const apiErr = r?.data?.errors?.[0]?.description;
+      if (error || !r?.ok) throw new Error(apiErr || r?.error || error?.message || 'falha');
+      alert('Negativação enviada ao Asaas/Serasa com sucesso.');
+      load();
+    } catch (e: any) {
+      alert('Não foi possível negativar: ' + (e.message || 'tente novamente.') + '\n\nO Asaas exige boleto vencido e cadastro completo do cliente (CPF, endereço).');
+    } finally {
+      setSerasaBusy(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -328,6 +348,16 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                           <div className="text-right shrink-0">
                             <span className={`text-xs font-black ${pl.cls}`}>{pl.txt}</span>
                             {pay.invoice_url && <a href={pay.invoice_url} target="_blank" rel="noreferrer" className="block text-[10px] text-brand-accent underline">ver fatura</a>}
+                            {pay.status === 'OVERDUE' && (
+                              <button
+                                onClick={() => negativarSerasa(pay)}
+                                disabled={serasaBusy !== null}
+                                className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 text-[10px] font-black uppercase hover:bg-red-100 disabled:opacity-50"
+                                title="Negativar no Serasa (via Asaas)"
+                              >
+                                {serasaBusy ? '...' : 'Negativar Serasa'}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
