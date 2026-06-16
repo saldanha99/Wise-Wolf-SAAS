@@ -19,7 +19,8 @@ import {
     FileText,
     UserX,
     UserCheck,
-    AlertTriangle
+    AlertTriangle,
+    CalendarOff
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
@@ -27,6 +28,7 @@ import { TEACHER_SPECIALIZATIONS } from '../constants';
 import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
 import TeacherFinancials from './TeacherFinancials';
+import AbsenceCoverageManager from './AbsenceCoverageManager';
 
 interface TeacherManagementProps {
     teachers: Teacher[];
@@ -48,6 +50,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     // suspended/offboarded tira o professor do cruzamento de agenda e do lançamento de aula.
     // Estado otimista local: o badge usa lifecycle_status canônico (não o legado teacher.status).
     const [lifecycleById, setLifecycleById] = useState<Record<string, string>>({});
+    const [coverageTeacher, setCoverageTeacher] = useState<{ id: string; name: string } | null>(null);
     const effLifecycle = (t: any): string =>
         lifecycleById[t.id] || t.lifecycle_status ||
         (['Inativo', 'INACTIVE', 'Inactive'].includes(t.status) ? 'suspended' : 'active');
@@ -421,6 +424,13 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                             >
                                                 <DollarSign size={18} />
                                             </button>
+                                            <button
+                                                onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })}
+                                                className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                                                title="Registrar ausência e cobrir aulas"
+                                            >
+                                                <CalendarOff size={18} />
+                                            </button>
                                             {(() => {
                                                 const lc = effLifecycle(teacher);
                                                 return lc === 'active' ? (
@@ -616,6 +626,10 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                         </div>
                     </div>
                 </div>
+            )}
+
+            {coverageTeacher && (
+                <AbsenceCoverageManager teacher={coverageTeacher} onClose={() => setCoverageTeacher(null)} />
             )}
         </div>
     );
