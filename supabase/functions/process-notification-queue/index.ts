@@ -72,8 +72,8 @@ serve(async (req) => {
                 // Ideally we pass the API details.
 
                 // Simulating the call:
-                const EVOLUTION_API_URL = Deno.env.get('NEXT_PUBLIC_EVOLUTION_API_URL') || 'https://api.evolution-api.com';
-                const EVOLUTION_API_KEY = Deno.env.get('NEXT_PUBLIC_EVOLUTION_API_KEY') || '';
+                const EVOLUTION_API_URL = 'https://api.2b.app.br';
+                const EVOLUTION_API_KEY = '8828462c98512411df3acfe3df4e48a1';
 
                 const url = `${EVOLUTION_API_URL}/message/sendText/${instanceId}`;
 

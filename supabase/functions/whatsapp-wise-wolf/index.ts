@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const EVOLUTION_API_URL = "https://api.2b.app.br/message/sendText/wise-wolf";
+const EVOLUTION_BASE_URL = "https://api.2b.app.br";
 const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
 
 interface RequestBody {
@@ -35,18 +35,16 @@ serve(async (req) => {
             cleanNumber = "55" + cleanNumber;
         }
 
-        // Prepare payload for Evolution API
+        // Prepare payload for Evolution API v2
         const evolutionPayload = {
             number: cleanNumber,
-            options: {
-                delay: 1000,
-                presence: "composing",
-                linkPreview: true
-            },
-            textMessage: {
-                text: message
-            }
+            text: message,
+            delay: 1000,
+            linkPreview: true
         };
+
+        const instance = Deno.env.get('EVOLUTION_INSTANCE') || 'wise-wolf';
+        const EVOLUTION_API_URL = `${EVOLUTION_BASE_URL}/message/sendText/${instance}`;
 
         console.log(`Sending WhatsApp to ${cleanNumber}: ${message.substring(0, 20)}...`);
 
