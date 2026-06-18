@@ -35,6 +35,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
     // Matrícula de dependente: cobrança no CPF de um responsável financeiro já cadastrado
     const [isDependent, setIsDependent] = useState(false);
+    const [studentPhone, setStudentPhone] = useState(''); // WhatsApp de quem assiste a aula (dependente)
     const [guardianCandidates, setGuardianCandidates] = useState<any[]>([]);
     const [guardianSearch, setGuardianSearch] = useState('');
     const [showGuardianList, setShowGuardianList] = useState(false);
@@ -213,6 +214,8 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             vendorId: vendorId || null,
             // Matrícula de dependente: cobrança no CPF do responsável financeiro
             isDependent: isDependent && !!selectedGuardian,
+            // Telefone de quem ASSISTE a aula (confirmação de presença) — separado do responsável (cobrança).
+            studentPhone: studentPhone ? studentPhone.replace(/\D/g, '') : null,
             guardianId: selectedGuardian?.id || null,
             guardianCpf: selectedGuardian?.cpf || null,
             guardianName: selectedGuardian?.full_name || null,
@@ -690,6 +693,17 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                 CPF do responsável escolhido abaixo. Gera assinatura distinta no mesmo CPF — qualquer relação
                                 (cônjuge, familiar, terceiro pagador).
                             </p>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">WhatsApp do aluno (confirmação de aula)</label>
+                                <input
+                                    type="text"
+                                    value={studentPhone}
+                                    onChange={e => setStudentPhone(e.target.value)}
+                                    placeholder="DDD + número de quem assiste a aula"
+                                    className="w-full px-4 py-3 bg-brand-surface border border-indigo-300 dark:border-indigo-900/50 rounded-xl text-sm font-medium text-brand-text dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm font-mono"
+                                />
+                                <p className="text-[10px] text-brand-muted mt-1">A confirmação de presença vai para este número (o aluno que assiste). A cobrança continua no responsável.</p>
+                            </div>
                             <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Responsável financeiro (titular já cadastrado)</label>
                             <div className="relative group">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted group-focus-within:text-indigo-500 transition-colors" size={16} />

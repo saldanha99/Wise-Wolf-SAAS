@@ -277,6 +277,11 @@ const PublicRegistration: React.FC = () => {
                 profileData.guardian_email = contractData.guardianEmail || null;
                 profileData.guardian_phone = contractData.guardianPhone ? String(contractData.guardianPhone).replace(/\D/g, '') : null;
                 profileData.guardian_id = contractData.guardianId || null;
+                // phone = responsável (cobrança). A CONFIRMAÇÃO DE AULA vai para quem assiste:
+                // o WhatsApp do próprio aluno (studentPhone), salvo em attendance_phone.
+                if (contractData.studentPhone) {
+                    profileData.attendance_phone = String(contractData.studentPhone).replace(/\D/g, '');
+                }
             }
 
             const { error: profileError } = await supabase.from('profiles').upsert(profileData);
