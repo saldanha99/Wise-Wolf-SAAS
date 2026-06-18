@@ -16,10 +16,19 @@ serve(async (req) => {
     }
 
     try {
-        const { name, phone, email, source, tenant_id } = await req.json();
+        const body = await req.json();
+        // Accept both naming conventions (institucional site sends lead_name/lead_phone, SAAS sends name/phone)
+        const rawName = body.lead_name || body.name;
+        const rawPhone = body.lead_phone || body.phone;
+        const rawEmail = body.lead_email || body.email;
+        const source = body.source;
+        const tenant_id = body.tenant_id;
+        const name = rawName;
+        const phone = rawPhone;
+        const email = rawEmail;
 
         if (!name || !tenant_id) {
-            throw new Error("Missing required fields: name, tenant_id");
+            throw new Error("Missing required fields: name (or lead_name), tenant_id");
         }
 
         // 1. Initialize Supabase Admin Client
@@ -93,21 +102,24 @@ Nossa equipe entrará em contato em breve para tirar suas dúvidas e agendar sua
 Enquanto isso, sinta-se à vontade para nos chamar aqui se tiver alguma pressa. Até logo! 🐾`;
 
         // 4. Send Internal Notification to Director
-        if (directorPhone) {
-            let cleanDirectorPhone = directorPhone.replace(/\D/g, "");
-            if (cleanDirectorPhone.length >= 10 && !cleanDirectorPhone.startsWith("55")) {
-                cleanDirectorPhone = "55" + cleanDirectorPhone;
-            }
+        // Use directorPhone if available, otherwise skip (message goes via instance self)
+        const cleanDirectorPhone = directorPhone ? directorPhone.replace(/\D/g, "") : '';
+        const finalDirectorPhone = cleanDirectorPhone && cleanDirectorPhone.length >= 10
+            ? (cleanDirectorPhone.startsWith('55') ? cleanDirectorPhone : '55' + cleanDirectorPhone)
+            : '';
 
-            console.log(`[CRM Lead] Sending internal alert to Director: ${cleanDirectorPhone}`);
+        if (finalDirectorPhone) {
+            console.log(`[CRM Lead] Sending internal alert to Director: ${finalDirectorPhone}`);
             await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_TOKEN },
                 body: JSON.stringify({
-                    number: cleanDirectorPhone,
+                    number: finalDirectorPhone,
                     text: internalMsg
                 })
             });
+        } else {
+            console.warn(`[CRM Lead] Director phone not set — skipping internal alert for tenant ${tenant_id}`);
         }
 
         // 5. Send Welcome message to Lead
