@@ -45,6 +45,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         correctionPreference: 'TODOS',
         occupation: '',
         phone: '',
+        attendance_phone: '',
         meeting_link: '',
         guardian_name: '',
         guardian_phone: '',
@@ -143,6 +144,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 correctionPreference: initialData.correctionPreference || 'TODOS',
                 occupation: initialData.occupation || '',
                 phone: initialData.phone || '',
+                attendance_phone: initialData.attendance_phone || '',
                 meeting_link: initialData.meeting_link || '',
                 guardian_name: initialData.guardian_name || '',
                 guardian_phone: initialData.guardian_phone || '',
@@ -572,6 +574,20 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     placeholder="5511999999999"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
+                                    <Phone size={12} /> WhatsApp do aluno (confirmação de aula)
+                                </label>
+                                <input
+                                    disabled={!isDirector}
+                                    value={formData.attendance_phone}
+                                    onChange={e => setFormData({ ...formData, attendance_phone: e.target.value })}
+                                    className={`w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono ${!isDirector ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    placeholder="Só se diferente do contato acima"
+                                />
+                                <p className="text-[10px] text-brand-muted leading-snug">Quem <b>assiste</b> a aula recebe a confirmação de presença aqui. Use quando o aluno é dependente ou está sob o contrato de um responsável. Vazio = usa o telefone principal.</p>
                             </div>
 
                             <div className="space-y-2">

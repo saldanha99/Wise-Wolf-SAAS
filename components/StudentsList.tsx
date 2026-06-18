@@ -178,6 +178,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             status: s.status,
             status_financial: s.status_financial,
             lifecycle_status: s.lifecycle_status,
+            attendance_phone: s.attendance_phone,
             module: s.module,
           };
         });
@@ -286,6 +287,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           tenant_id: targetTenantId,
           module: formData.currentModuleStatus,
           phone: formData.phone,
+          attendance_phone: formData.attendance_phone || null,
           occupation: formData.occupation,
           interests: formData.interests,
           avatar_url: formData.img || `https://ui-avatars.com/api/?name=${formData.name}`,
@@ -391,6 +393,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         interests: formData.interests,
         occupation: formData.occupation,
         phone: formData.phone,
+        attendance_phone: formData.attendance_phone || null,
         meeting_link: formData.meeting_link,
         avatar_url: formData.img,
         fixed_schedule: formData.fixed_schedule,
