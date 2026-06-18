@@ -63,6 +63,11 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
         if (!targetName || !tenantId) return;
 
         const res = await whatsappService.fetchConnectionState(tenantId, targetName);
+        if ((res as any).notFound) {
+            // Instance missing on server — mark as disconnected so user can regenerate QR
+            setConnectionStatus('disconnected');
+            return;
+        }
         if (res.success) {
             const state = res.state === 'open' ? 'connected' : 'disconnected';
             setConnectionStatus(state);
@@ -155,7 +160,26 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
 
         setLoading(true);
         try {
-            const res = await whatsappService.connectInstance(tenantId, targetName);
+            let res = await whatsappService.connectInstance(tenantId, targetName);
+
+            // Instance doesn't exist on new server — auto-recreate with same name
+            if ((res as any).notFound) {
+                console.log(`🔄 Instância ${targetName} não encontrada — recriando no servidor...`);
+                const createRes = await fetch(`https://api.2b.app.br/instance/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'apikey': '8828462c98512411df3acfe3df4e48a1' },
+                    body: JSON.stringify({ instanceName: targetName, qrcode: false, integration: 'WHATSAPP-BAILEYS' })
+                });
+                const createData = await createRes.json();
+                const newToken = createData?.hash?.apikey || createData?.hash || createData?.token;
+                if (newToken && instance) {
+                    await supabase.from('whatsapp_instances').update({ status: 'disconnected' }).eq('id', instance.id);
+                    await supabase.from('profiles').update({ whatsapp_token: newToken }).eq('id', user.id);
+                }
+                // Retry connect after recreation
+                res = await whatsappService.connectInstance(tenantId, targetName);
+            }
+
             if (res.success) {
                 if (res.qrcode) {
                     setQrCode(res.qrcode);
@@ -165,7 +189,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                     setQrCode(null);
                 }
             } else {
-                alert('Erro ao conectar: ' + res.error);
+                alert('Erro ao conectar: ' + (res.error || JSON.stringify((res as any).data)));
             }
         } catch (err) {
             console.error(err);

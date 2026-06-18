@@ -62,7 +62,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       // 1. Fetch Students (MRR Forecast & Active Count)
       const { data: students } = await supabase
         .from('profiles')
-        .select('id, monthly_fee, financial_status, modality')
+        .select('id, monthly_fee, status_financial, modality')
         .eq('tenant_id', tenantId)
         .eq('role', 'STUDENT');
 
@@ -173,10 +173,10 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
           value,
           status,
           payment_date,
-          profiles!inner(name, tenant_id)
+          profiles ( full_name )
         `)
-        .eq('profiles.tenant_id', tenantId)
-        .neq('status', 'PENDING') // Show finished/problematic ones? Or all? User said "items of student_payments". Let's show all recent.
+        .eq('tenant_id', tenantId)
+        .neq('status', 'PENDING')
         .order('payment_date', { ascending: false })
         .limit(5);
 
@@ -412,7 +412,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                       {recentPayments.length > 0 ? recentPayments.map((pay, i) => (
                         <tr key={i} className="hover:bg-brand-surface-2 transition-colors">
                           <td className="px-6 py-4 font-medium text-brand-text">
-                            {pay.profiles?.name || 'Aluno Desconhecido'}
+                            {pay.profiles?.full_name || 'Aluno Desconhecido'}
                           </td>
                           <td className="px-6 py-4 text-brand-text font-semibold">
                             R$ {Number(pay.value).toFixed(2)}
@@ -452,7 +452,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                                       category: 'student_tuition',
                                       amount: pay.value,
                                       amount_cents: Math.round(pay.value * 100),
-                                      description: `Mensalidade (Manual) - ${pay.profiles?.name || 'Aluno'}`,
+                                      description: `Mensalidade (Manual) - ${pay.profiles?.full_name || 'Aluno'}`,
                                       reference_id: pay.student_id,
                                       student_payment_id: pay.id,
                                       occurred_at: new Date().toISOString(),

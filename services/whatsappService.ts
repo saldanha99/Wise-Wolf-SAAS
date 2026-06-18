@@ -72,13 +72,16 @@ export const whatsappService = {
     // 2. Connect / Get QR Code
     async connectInstance(tenantId: string, instanceName: string) {
         try {
-            // Usa as credenciais globais para buscar o QR Code da instância específica
             const response = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
                 method: 'GET',
                 headers: {
                     'apikey': EVOLUTION_API_KEY
                 }
             });
+
+            if (response.status === 404) {
+                return { success: false, error: 'INSTANCE_NOT_FOUND', notFound: true };
+            }
 
             const data = await response.json();
 
@@ -106,10 +109,15 @@ export const whatsappService = {
                     'apikey': EVOLUTION_API_KEY
                 }
             });
+
+            if (response.status === 404) {
+                return { success: false, state: 'not_found', notFound: true };
+            }
+
             const data = await response.json();
             return { success: true, state: data.instance?.state || 'disconnected' };
         } catch (error: any) {
-            return { success: false, error: error.message };
+            return { success: false, error: error.message, state: 'disconnected' };
         }
     },
 
