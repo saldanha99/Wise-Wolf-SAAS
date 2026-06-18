@@ -12,7 +12,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
+const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
 
 function normPhone(raw: string): string {
   let p = (raw || "").replace(/\D/g, "");

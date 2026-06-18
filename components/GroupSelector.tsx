@@ -12,7 +12,7 @@ interface GroupSelectorProps {
 }
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "d037768b3d06382756a0d9edecf3e40e";
+const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const GroupSelector: React.FC<GroupSelectorProps> = ({
     user,

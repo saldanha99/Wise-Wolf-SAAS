@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const EVOLUTION_API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
+const EVOLUTION_API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',

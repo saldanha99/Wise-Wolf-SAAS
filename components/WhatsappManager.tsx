@@ -8,7 +8,7 @@ interface WhatsappManagerProps {
 }
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "2AFB8724075F-40FB-92CF-414EE13EDA54";
+const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const WhatsappManager: React.FC<WhatsappManagerProps> = ({ role, userId }) => {
     // Logic for Instance Name

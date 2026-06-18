@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 
 // CONSTANTES GLOBAIS (API KEY DO PORTAINER/MASTER)
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const EVOLUTION_API_KEY = "d037768b3d06382756a0d9edecf3e40e";
+const EVOLUTION_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 // Template default global de lembrete de aula (usado quando professor nao customiza)
 export const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋

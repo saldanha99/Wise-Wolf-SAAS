@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const EVOLUTION_API_URL = "https://api.2b.app.br/message/sendText/wise-wolf";
-const API_TOKEN = "2AFB8724075F-40FB-92CF-414EE13EDA54";
+const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
 
 interface RequestBody {
     student_name: string;

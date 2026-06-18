@@ -9,7 +9,7 @@ const corsHeaders = {
 
 // CONFIGURATION
 const API_URL = "https://api.2b.app.br";
-const API_KEY = "d037768b3d06382756a0d9edecf3e40e";
+const API_KEY = "8828462c98512411df3acfe3df4e48a1";
 const GROUP_JID = "120363403699904869@g.us";
 const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
 

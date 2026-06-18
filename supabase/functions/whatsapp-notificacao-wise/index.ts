@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e"; // chave global (funciona p/ qualquer instância)
+const API_TOKEN = "8828462c98512411df3acfe3df4e48a1"; // chave global (funciona p/ qualquer instância)
 const FALLBACK_INSTANCE = "wise-wolf-main";
 const FALLBACK_DIRECTOR_PHONE = "5511971681451";
 

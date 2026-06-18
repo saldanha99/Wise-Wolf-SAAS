@@ -234,7 +234,7 @@ async function processarPagamento(body: any): Promise<void> {
                             const evoRes = await fetchComTimeout(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
                                 method: 'POST',
                                 headers: {
-                                    'apikey': 'd037768b3d06382756a0d9edecf3e40e',
+                                    'apikey': '8828462c98512411df3acfe3df4e48a1',
                                     'Content-Type': 'application/json'
                                 },
                                 body: JSON.stringify({

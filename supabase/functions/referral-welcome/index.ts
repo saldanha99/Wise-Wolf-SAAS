@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const EVOLUTION_API_KEY = "d037768b3d06382756a0d9edecf3e40e";
+const EVOLUTION_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });

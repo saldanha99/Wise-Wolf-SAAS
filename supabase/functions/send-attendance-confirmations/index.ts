@@ -12,7 +12,7 @@ const corsHeaders = {
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 // Chave global do servidor Evolution (funciona para qualquer instância)
-const API_TOKEN = "d037768b3d06382756a0d9edecf3e40e";
+const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
 // Página de confirmação servida pelo SPA (edge functions do Supabase não renderizam HTML — CSP sandbox)
 const APP_URL = Deno.env.get("APP_PUBLIC_URL") || "https://system.wisewolflanguage.com.br";
 

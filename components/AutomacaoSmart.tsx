@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Smartphone, Plus, QrCode as QrIcon, CheckCircle, AlertCircle, RefreshCw, Key, UserCheck, Zap, Bell } from 'lucide-react';
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "d037768b3d06382756a0d9edecf3e40e";
+const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const AutomacaoSmart: React.FC = () => {
     const [loading, setLoading] = useState(false);
