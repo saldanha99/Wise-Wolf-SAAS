@@ -146,6 +146,21 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         <p className="text-white/80 text-sm mt-1">Acompanhe seus planos, pagamentos e histórico de mensalidades.</p>
       </header>
 
+      {/* SELO: PAGO ADIANTADO (6 meses / anual) */}
+      {billingInfo?.paid_through && billingInfo.paid_through >= new Date().toISOString().split('T')[0] && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+            <CheckCircle size={24} />
+          </div>
+          <div>
+            <p className="font-black text-emerald-700 dark:text-emerald-300 text-sm uppercase tracking-wide">Plano quitado — pago adiantado</p>
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              Você está em dia{billingInfo.prepaid_months ? ` (${billingInfo.prepaid_months} meses pagos de uma vez)` : ''} até <b>{new Date(billingInfo.paid_through + 'T00:00:00').toLocaleDateString('pt-BR')}</b>. Nenhuma mensalidade a pagar nesse período. 🎉
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ALERT STATUS CARDS */}
 
       {/* 1. BLOCKED STATUS (> 7 days late) */}
