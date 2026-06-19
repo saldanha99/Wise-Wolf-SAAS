@@ -118,7 +118,7 @@ const SkillsRadar: React.FC<Props> = ({ userId }) => {
                     <div className="flex flex-col lg:flex-row items-center gap-8">
                         {/* SVG Radar */}
                         <div className="shrink-0 relative">
-                            <svg viewBox={`0 0 ${size} ${size}`} className="w-[280px] h-[280px]">
+                            <svg viewBox={`-20 -10 ${size + 40} ${size + 20}`} className="w-full max-w-[280px] h-auto">
                                 {/* Background rings */}
                                 {Array.from({ length: levels }).map((_, lvl) => {
                                     const r = ((lvl + 1) / levels) * maxRadius;
@@ -185,7 +185,7 @@ const SkillsRadar: React.FC<Props> = ({ userId }) => {
                                 {/* Labels */}
                                 {SKILLS.map((skill, i) => {
                                     const angle = i * angleStep - Math.PI / 2;
-                                    const labelR = maxRadius + 22;
+                                    const labelR = maxRadius + 16;
                                     const x = center + labelR * Math.cos(angle);
                                     const y = center + labelR * Math.sin(angle);
                                     return (

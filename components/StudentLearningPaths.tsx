@@ -53,8 +53,9 @@ const CATEGORY_META: Record<string, { icon: React.ElementType; color: string; so
     CONVERSATION: { icon: Sparkles, color: 'from-cyan-500 to-blue-600', solid: '#06b6d4', label: 'Conversação' },
 };
 
-// Offset horizontal serpenteante (estilo Duolingo) — ciclo de 8 nós
-const ZIGZAG = [0, 44, 64, 44, 0, -44, -64, -44];
+// Offset horizontal serpenteante (estilo Duolingo) — ciclo de 8 nós.
+// Amplitude reduzida para caber no mobile (combinada com o container max-w centralizado abaixo).
+const ZIGZAG = [0, 32, 48, 32, 0, -32, -48, -32];
 
 const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig }) => {
     const [loading, setLoading] = useState(true);
@@ -120,12 +121,16 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
             setPaths(pathsData || []);
 
-            const { data: enrollData } = await supabase
+            // Pega a matrícula ATIVA mais recente. Alunos com mais de uma trilha ativa quebravam
+            // o .maybeSingle() (PGRST116) e a trilha não abria — order+limit resolve sem erro.
+            const { data: enrollRows } = await supabase
                 .from('student_path_enrollments')
                 .select('path_id, current_unit_id')
                 .eq('student_id', userId)
                 .is('completed_at', null)
-                .maybeSingle();
+                .order('started_at', { ascending: false })
+                .limit(1);
+            const enrollData = enrollRows?.[0] || null;
 
             if (enrollData) {
                 setEnrolledPathId(enrollData.path_id);
@@ -244,7 +249,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             <div className="bg-gradient-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <StreakModal userId={userId} streak={gami.streak} />
                 {/* Barra de status estilo Duolingo: ofensiva · XP · vidas */}
-                <div className="flex items-center justify-center gap-3 sm:gap-6 px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-6 px-3 sm:px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
                     {/* Ofensiva */}
                     <div className="flex items-center gap-1.5" title="Ofensiva (dias seguidos)">
                         <Flame size={20} className={gami.streak > 0 ? 'text-orange-500' : 'text-slate-300'} fill={gami.streak > 0 ? '#f97316' : 'none'} />
@@ -258,9 +263,9 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     </div>
                     <span className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
                     {/* Vidas */}
-                    <div className="flex items-center gap-1" title="Vidas">
+                    <div className="flex items-center gap-0.5 sm:gap-1" title="Vidas">
                         {[0, 1, 2, 3, 4].map((i) => (
-                            <Heart key={i} size={17} className={i < gami.hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < gami.hearts ? '#f43f5e' : 'none'} />
+                            <Heart key={i} size={15} className={i < gami.hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < gami.hearts ? '#f43f5e' : 'none'} />
                         ))}
                     </div>
                     <span className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
@@ -286,7 +291,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 </div>
 
                 {/* Header sticky com progresso */}
-                <div className={`bg-gradient-to-br ${meta.color} p-6 text-white relative overflow-hidden`}>
+                <div className={`bg-gradient-to-br ${meta.color} p-4 sm:p-6 text-white relative overflow-hidden`}>
                     <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
                     <button
                         onClick={() => setSelectedPath(null)}
@@ -296,7 +301,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     </button>
                     <Icon size={28} className="mb-3 opacity-90 relative" />
                     <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 relative">{meta.label} · {selectedPath.target_level}</p>
-                    <h2 className="text-2xl font-black mt-1 relative">{selectedPath.name}</h2>
+                    <h2 className="text-xl sm:text-2xl font-black mt-1 relative pr-20">{selectedPath.name}</h2>
 
                     <div className="mt-5 relative">
                         <div className="flex items-center justify-between mb-2">
@@ -317,7 +322,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 </div>
 
                 {/* TRILHA */}
-                <div className="px-4 py-8 sm:px-8">
+                <div className="px-4 py-8 sm:px-8 max-w-sm sm:max-w-md mx-auto">
                     {units.map((unit, unitIdx) => {
                         const acts = activitiesByUnit[unit.id] || [];
                         if (acts.length === 0) return null;
@@ -342,7 +347,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                 </div>
 
                                 {/* Nós da trilha */}
-                                <div className="flex flex-col items-center py-3">
+                                <div className="flex flex-col items-center py-3 w-full max-w-[280px] mx-auto">
                                     {acts.map((a) => {
                                         const flatIdx = flat.findIndex(f => f.activity.id === a.id);
                                         const p = progress[a.id];
@@ -353,7 +358,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                         globalNodeIdx++;
 
                                         return (
-                                            <div key={a.id} className="relative flex flex-col items-center" style={{ transform: `translateX(${offset}px)` }}>
+                                            <div key={a.id} className="relative flex flex-col items-center shrink-0 max-w-full" style={{ transform: `translateX(${offset}px)` }}>
                                                 {/* Tooltip COMEÇAR na atividade atual */}
                                                 {isCurrent && (
                                                     <motion.div
@@ -404,7 +409,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                                 </motion.button>
 
                                                 {/* Label da atividade */}
-                                                <div className="mt-2 mb-5 text-center max-w-[140px]">
+                                                <div className="mt-2 mb-5 text-center max-w-[112px] sm:max-w-[140px]">
                                                     <p className={`text-[11px] font-bold leading-tight ${locked ? 'text-slate-300 dark:text-slate-600' : 'text-slate-700 dark:text-slate-200'}`}>
                                                         {a.title}
                                                     </p>
@@ -510,7 +515,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 </div>
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {paths.length === 0 ? (
                     <div className="col-span-full text-center py-12 text-slate-400">
                         <BookOpen size={32} className="mx-auto mb-3 opacity-40" />
@@ -527,7 +532,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                             <button
                                 key={path.id}
                                 onClick={() => isEnrolled ? (setSelectedPath(path), loadPathDetails(path.id)) : enrollInPath(path)}
-                                className={`text-left rounded-2xl border-2 transition-all p-5 hover:shadow-lg hover:-translate-y-0.5 ${
+                                className={`text-left rounded-2xl border-2 transition-all p-4 sm:p-5 hover:shadow-lg hover:-translate-y-0.5 ${
                                     isEnrolled
                                         ? 'border-violet-500 dark:border-violet-400'
                                         : 'border-slate-100 dark:border-slate-800 hover:border-violet-200 dark:hover:border-violet-700'
