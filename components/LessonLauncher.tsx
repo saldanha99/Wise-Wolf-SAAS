@@ -40,6 +40,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const allLessons: any[] = [];
       const currentDate = new Date();
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
+      let teacherMeetLink: string | null | undefined = undefined; // link de reunião do professor (lazy)
 
       // FIX: appointments.teacher_id é null — o vínculo com o professor está em
       // opportunities.winner_teacher_id. Buscar os IDs de appointments via opportunities.
@@ -73,13 +74,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         const { data: bookings } = await supabase
           .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
+          .select('id, time_slot, start_date, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
           .eq('day_of_week', dayName);
 
         const { data: reschedules } = await supabase
           .from('reschedules')
-          .select('id, time, fault_type, student:student_id(id, full_name, email, avatar_url, module, current_topic_id, status)')
+          .select('id, time, fault_type, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
           .eq('teacher_id', user.id)
           .eq('date', dateStr);
 
@@ -96,6 +97,17 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           .eq('class_date', dateStr);
 
         if (i === 0) launchedToday = logs?.length || 0; // aulas de hoje já lançadas
+
+        // Link de reunião do professor (fallback para o link do aluno).
+        // Buscado uma única vez; usado no botão "Avisar aluno".
+        if (teacherMeetLink === undefined) {
+          const { data: tProf } = await supabase
+            .from('profiles')
+            .select('meeting_link')
+            .eq('id', user.id)
+            .maybeSingle();
+          teacherMeetLink = tProf?.meeting_link || null;
+        }
 
         // Helper to process lesson
         const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
@@ -120,6 +132,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             studentId: student.id,
             name: student.full_name || 'Estudante',
             email: student.email, // Added email
+            time, // horário HH:MM da aula (para o botão "Avisar aluno")
+            phone: student.phone || null,
+            meetLink: teacherMeetLink || student.meeting_link || null,
             date: i === 0 ? `Hoje às ${time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : ''}`,
             dateObj: dateStr,
             avatar: student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`,
@@ -190,6 +205,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               studentId: null,
               leadName: t.student_name,
               leadPhone: t.student_phone,
+              time: timeStr, // horário HH:MM (para o botão "Avisar aluno")
+              phone: t.student_phone || null,
+              meetLink: teacherMeetLink || null,
               name: t.student_name || (isTraining ? 'Treinamento' : 'Aula Experimental'),
               date: i === 0 ? `Hoje às ${timeStr}` : `${checkDate.toLocaleDateString('pt-BR')} às ${timeStr}`,
               dateObj: dateStr,

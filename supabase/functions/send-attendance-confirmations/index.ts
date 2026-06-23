@@ -42,16 +42,19 @@ serve(async (req) => {
     );
 
     const todayISO = new Date().toISOString().split("T")[0];
+    // Janela de envio: só aulas de ONTEM ou HOJE. Confirmações mais antigas que isso
+    // NÃO são enviadas (evita que um backlog acumulado dispare em massa fora de hora,
+    // mandando "você teve aula" para aulas de dias atrás).
+    const minDateISO = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    // Confirmações ainda não enviadas, de aulas que já ocorreram (data <= hoje),
-    // ainda pendentes (sem resposta) e com poucas tentativas.
     const { data: pending, error } = await supabase
       .from("attendance_confirmations")
       .select("id, tenant_id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts")
       .is("sent_at", null)
       .eq("status", "PENDING")
       .lte("class_date", todayISO)
-      .lt("send_attempts", 3)
+      .gte("class_date", minDateISO)
+      .lt("send_attempts", 8)
       .limit(50);
 
     if (error) throw error;
@@ -90,7 +93,11 @@ serve(async (req) => {
         const aluno = (c.student_name || "").split(" ")[0] || "";
         const prof = c.teacher_name || "seu professor";
         const link = `${APP_URL}/confirmar-presenca?token=${c.token}`;
-        const text = `Oi ${aluno}! 🐺 Aqui é a Wise Wolf.\n\nVimos que você teve aula com *${prof}* hoje. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado! 💜`;
+        // "hoje" só se a aula for de hoje; senão referencia a data real (DD/MM)
+        const quando = c.class_date === todayISO
+          ? "hoje"
+          : `no dia ${new Date(c.class_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+        const text = `Oi ${aluno}! 🐺 Aqui é a Wise Wolf.\n\nVimos que você teve aula com *${prof}* ${quando}. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado! 💜`;
 
         const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
           method: "POST",

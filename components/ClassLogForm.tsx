@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Save, X, Search, RefreshCw, BookOpen } from 'lucide-react';
+import { Save, X, Search, RefreshCw, BookOpen, MessageCircle } from 'lucide-react';
 import { PEDAGOGICAL_BOOKS } from '../constants';
 
 export interface ClassLogItem {
@@ -13,7 +13,23 @@ export interface ClassLogItem {
     suggestedMaterialUrl?: string; // Add URL for direct access
     type?: string;
     isLate?: boolean; // true = aula de dia anterior (atrasada)
+    time?: string;     // horário HH:MM da aula
+    phone?: string | null;    // telefone do aluno (para o botão "Avisar aluno")
+    meetLink?: string | null; // link do Meet (do professor ou do aluno)
 }
+
+// Monta o link wa.me que abre o WhatsApp do professor já com a mensagem pronta
+// de confirmação de aula + link do Meet. Disparo MANUAL (sem instância).
+const buildAvisarAlunoLink = (item: ClassLogItem): string | null => {
+    let phone = (item.phone || '').replace(/\D/g, '');
+    if (phone.length === 10 || phone.length === 11) phone = '55' + phone;
+    if (phone.length < 12) return null;
+    const nome = (item.name || '').split(' ')[0];
+    const quando = item.time ? `hoje às ${item.time}` : 'hoje';
+    const linkMeet = item.meetLink ? `\n\nLink da aula: ${item.meetLink}` : '';
+    const msg = `Oi ${nome}! 🐺 Aqui é a Wise Wolf.\n\nPassando pra confirmar que você tem aula ${quando}.${linkMeet}\n\nTe espero! 💜`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+};
 
 interface ClassLogFormProps {
     items: ClassLogItem[];
@@ -200,6 +216,24 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                                                 {item.level && <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider shrink-0 ${item.type === 'AULA EXPERIMENTAL' ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-black' : 'bg-brand-surface-2 dark:bg-brand-surface-2'}`}>{item.level}</span>}
                                                 {item.date}
                                             </p>
+                                            {/* Botão de aviso MANUAL ao aluno (abre o WhatsApp do professor já com a mensagem + link do Meet) */}
+                                            {(() => {
+                                                const waLink = buildAvisarAlunoLink(item);
+                                                if (!waLink) return null;
+                                                return (
+                                                    <a
+                                                        href={waLink}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={e => e.stopPropagation()}
+                                                        title="Avisar o aluno pelo WhatsApp (confirmação de aula + link do Meet)"
+                                                        className="inline-flex items-center gap-1 mt-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest border border-emerald-500/20 transition-colors"
+                                                    >
+                                                        <MessageCircle size={11} />
+                                                        Avisar aluno
+                                                    </a>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 
