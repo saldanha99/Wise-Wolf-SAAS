@@ -34,13 +34,19 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const todayStr = today.toISOString().split('T')[0];
       const todayDay = DAYS[today.getDay()];
 
+      // Janela de lançamento ampliada: cobre atrasos e a virada de mês (antes eram só 8 dias).
+      const LOOKBACK_DAYS = 45;
       const startDate = new Date();
-      startDate.setDate(today.getDate() - 7);
+      startDate.setDate(today.getDate() - LOOKBACK_DAYS);
+      const startStr = startDate.toISOString().split('T')[0];
 
       const allLessons: any[] = [];
-      const currentDate = new Date();
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
-      let teacherMeetLink: string | null | undefined = undefined; // link de reunião do professor (lazy)
+
+      // Link de reunião do professor (buscado uma única vez; usado no botão "Avisar aluno").
+      const { data: tProf } = await supabase
+        .from('profiles').select('meeting_link').eq('id', user.id).maybeSingle();
+      const teacherMeetLink: string | null = tProf?.meeting_link || null;
 
       // FIX: appointments.teacher_id é null — o vínculo com o professor está em
       // opportunities.winner_teacher_id. Buscar os IDs de appointments via opportunities.
@@ -64,7 +70,29 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         allTrialAppointments = trialAppts || [];
       }
 
-      for (let i = 0; i < 8; i++) {
+      // BUSCAS EM LOTE (1x cada) — antes eram N consultas por dia; com 45 dias isso
+      // ficaria lento. Buscamos tudo da janela e filtramos em memória por dia.
+      const { data: allBookings } = await supabase
+        .from('bookings')
+        .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+        .eq('teacher_id', user.id)
+        .not('day_of_week', 'is', null);
+
+      const { data: allReschedules } = await supabase
+        .from('reschedules')
+        .select('id, time, date, fault_type, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+        .eq('teacher_id', user.id)
+        .gte('date', startStr);
+
+      const { data: allLogs } = await supabase
+        .from('class_logs')
+        .select('booking_id, reschedule_id, appointment_id, class_date')
+        .eq('teacher_id', user.id)
+        .gte('class_date', startStr);
+
+      launchedToday = (allLogs || []).filter((l: any) => l.class_date === todayStr).length;
+
+      for (let i = 0; i < LOOKBACK_DAYS; i++) {
         const checkDate = new Date();
         checkDate.setDate(today.getDate() - i);
         const dateStr = checkDate.toISOString().split('T')[0];
@@ -72,17 +100,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         if (dayName === 'Domingo') continue;
 
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
-          .eq('teacher_id', user.id)
-          .eq('day_of_week', dayName);
-
-        const { data: reschedules } = await supabase
-          .from('reschedules')
-          .select('id, time, fault_type, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
-          .eq('teacher_id', user.id)
-          .eq('date', dateStr);
+        const bookings = (allBookings || []).filter((b: any) => b.day_of_week === dayName);
+        const reschedules = (allReschedules || []).filter((r: any) => r.date === dateStr);
 
         // Filtrar os trials deste professor para este dia específico
         const appointments = allTrialAppointments.filter(t => {
@@ -90,24 +109,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           return apptDate.toISOString().split('T')[0] === dateStr;
         });
 
-        const { data: logs } = await supabase
-          .from('class_logs')
-          .select('booking_id, reschedule_id, appointment_id')
-          .eq('teacher_id', user.id)
-          .eq('class_date', dateStr);
-
-        if (i === 0) launchedToday = logs?.length || 0; // aulas de hoje já lançadas
-
-        // Link de reunião do professor (fallback para o link do aluno).
-        // Buscado uma única vez; usado no botão "Avisar aluno".
-        if (teacherMeetLink === undefined) {
-          const { data: tProf } = await supabase
-            .from('profiles')
-            .select('meeting_link')
-            .eq('id', user.id)
-            .maybeSingle();
-          teacherMeetLink = tProf?.meeting_link || null;
-        }
+        const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);
 
         // Helper to process lesson
         const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
@@ -222,10 +224,10 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         }
       }
 
-      const currentMonthYear = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}`;
       setLaunchedTodayCount(launchedToday);
+      // Mostra tudo dentro da janela de 45 dias (inclui mês anterior). Antes filtrava só o
+      // mês atual, escondendo aulas atrasadas da virada de mês e impedindo o lançamento.
       setTodayLessons(allLessons
-        .filter(l => l.dateObj.substring(0, 7) === currentMonthYear)
         .sort((a, b) => a.isLate === b.isLate ? 0 : a.isLate ? 1 : -1)
       );
     } catch (err) {
