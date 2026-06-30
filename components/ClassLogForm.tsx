@@ -91,7 +91,19 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
             return;
         }
 
-        onSave(formData);
+        // FIX (contabilização): "Salvar Tudo" deve registrar TODAS as aulas listadas.
+        // Antes, só iam as linhas que o professor tocou (formData). As linhas no padrão
+        // visível "Aula Ocorreu" (COMPLETED) não entravam no payload e eram descartadas
+        // em silêncio — a aula sumia da lista, mas NÃO era lançada nem contabilizada.
+        // Agora materializamos o padrão visível para cada item listado.
+        const DEFAULT_ENTRY = { type: 'COMPLETED', subtype: '', personalized: '', lastApplied: '', observation: '' };
+        const completePayload: Record<string, any> = {};
+        for (const item of items) {
+            const id = String(item.id);
+            completePayload[id] = formData[id] || { ...DEFAULT_ENTRY };
+        }
+
+        onSave(completePayload);
     };
 
     return (

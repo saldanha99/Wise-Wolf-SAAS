@@ -81,7 +81,10 @@ const TeacherTrainingAdmin: React.FC<TeacherTrainingAdminProps> = ({ tenantId, c
 
             // Upload PDF if file is selected
             if (pdfFile && newModule.resource_type === 'pdf') {
-                const fileName = `${tenantId}/${Date.now()}_${pdfFile.name}`;
+                // Sanitiza o nome: acento/espaço/parênteses em nomes PT-BR (ex.: "Método (final).pdf")
+                // geram "Invalid key" no Supabase Storage → era o erro ao subir PDF de treinamento.
+                const safeName = pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                const fileName = `${tenantId}/${Date.now()}_${safeName}`;
                 const { data: uploadData, error: uploadError } = await supabase.storage
                     .from('training_materials')
                     .upload(fileName, pdfFile, { contentType: pdfFile.type });
