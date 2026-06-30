@@ -3,6 +3,7 @@ import { Users, BookOpen, Clock, Zap, ArrowUpRight, TrendingDown, Target, Award,
 import TeacherInviteGenerator from './TeacherInviteGenerator';
 import AvailabilityHeatmap from './AvailabilityHeatmap';
 import TeacherTrainingAdmin from './training/TeacherTrainingAdmin';
+import AiTeamPanel from './training/AiTeamPanel';
 import FinancialCharts from './FinancialCharts';
 import RegistrationLinkGenerator from './RegistrationLinkGenerator';
 import AdminPaymentsList from './AdminPaymentsList';
@@ -24,7 +25,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'recruiting'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'training' | 'registration' | 'recruiting' | 'ai_team'>('analytics');
   const [showTrialScheduler, setShowTrialScheduler] = useState(false);
 
   const [stats, setStats] = useState({
@@ -248,6 +249,12 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
               className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'recruiting' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
             >
               Recrutamento (Link)
+            </button>
+            <button
+              onClick={() => setActiveTab('ai_team')}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ai_team' ? 'bg-brand-accent text-white shadow-sm' : 'text-brand-muted hover:text-brand-text'}`}
+            >
+              🤖 Equipe de IA
             </button>
           </div>
 
@@ -611,6 +618,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       )}
 
       {activeTab === 'training' && <TeacherTrainingAdmin tenantId={tenantId || ''} />}
+      {activeTab === 'ai_team' && <AiTeamPanel tenantId={tenantId} />}
       {activeTab === 'registration' && <RegistrationLinkGenerator tenantId={tenantId} teachers={teachers} />}
       {activeTab === 'recruiting' && (
         <div className="max-w-md mx-auto animate-in zoom-in-95 duration-300">
