@@ -5,6 +5,27 @@ import { Download, FileText, Loader2, Printer, RefreshCw } from 'lucide-react';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 
+// O bucket 'contracts' é PRIVADO (dados pessoais/LGPD). Registros antigos guardam a URL
+// pública completa; registros novos guardam apenas o path dentro do bucket. Em ambos os
+// casos a visualização precisa de uma signed URL gerada na hora.
+const CONTRACTS_PUBLIC_MARKER = '/storage/v1/object/public/contracts/';
+async function resolveContractUrl(raw: string | null): Promise<string | null> {
+    if (!raw) return null;
+    let path: string | null = null;
+    if (raw.includes(CONTRACTS_PUBLIC_MARKER)) {
+        path = decodeURIComponent(raw.split(CONTRACTS_PUBLIC_MARKER)[1].split('?')[0]);
+    } else if (!raw.startsWith('http')) {
+        path = raw;
+    }
+    if (!path) return raw; // link externo (fora do storage) — usa como está
+    const { data, error } = await supabase.storage.from('contracts').createSignedUrl(path, 60 * 60);
+    if (error || !data?.signedUrl) {
+        console.error('Erro ao gerar signed URL do contrato:', error);
+        return raw;
+    }
+    return data.signedUrl;
+}
+
 interface ContractViewProps {
     userId: string;
     classFrequency?: number | string;
@@ -20,6 +41,7 @@ const ContractView: React.FC<ContractViewProps> = ({
     onDownloadReady,
 }) => {
     const [profile, setProfile] = useState<any>(null);
+    const [contractUrl, setContractUrl] = useState<string | null>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
@@ -39,6 +61,7 @@ const ContractView: React.FC<ContractViewProps> = ({
                 .single();
             if (error) throw error;
             setProfile(data);
+            setContractUrl(await resolveContractUrl(data?.contract_url));
             // Carrega os dados da escola (cabeçalho/rodapé do contrato)
             setSchool(await getSchoolInfo(data?.tenant_id));
         } catch (err) {
@@ -93,7 +116,7 @@ const ContractView: React.FC<ContractViewProps> = ({
     // — Contrato PDF enviado pelo admin —
     // Iframe de PDF não funciona em mobile (iOS/Android bloqueiam ou mostram branco).
     // Solução: botão de abrir em nova aba sempre visível + iframe apenas no desktop.
-    if (profile.contract_url) {
+    if (contractUrl) {
         return (
             <div className="space-y-4">
                 {/* Botões de ação — sempre visíveis */}
@@ -104,7 +127,7 @@ const ContractView: React.FC<ContractViewProps> = ({
                     </div>
                     <div className="flex gap-2">
                         <a
-                            href={profile.contract_url}
+                            href={contractUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 px-4 py-2 bg-tenant-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
@@ -116,7 +139,7 @@ const ContractView: React.FC<ContractViewProps> = ({
                 {/* Preview via iframe — apenas desktop (sm+); em mobile o PDF fica inacessível via iframe */}
                 <div className="hidden sm:block">
                     <iframe
-                        src={profile.contract_url}
+                        src={contractUrl}
                         className="w-full h-[70vh] rounded-2xl border border-brand-border"
                         title="Contrato do Aluno"
                     />
@@ -129,7 +152,7 @@ const ContractView: React.FC<ContractViewProps> = ({
                         <p className="text-xs text-brand-muted mt-1">Toque no botão abaixo para abrir o PDF</p>
                     </div>
                     <a
-                        href={profile.contract_url}
+                        href={contractUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-3 px-8 py-4 bg-tenant-primary text-white rounded-2xl font-black uppercase tracking-widest hover:scale-105 transition-transform w-full justify-center"

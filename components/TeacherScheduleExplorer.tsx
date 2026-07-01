@@ -265,8 +265,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             console.error("Erro ao subir contrato:", uploadError);
             alert("Atenção: Falha ao subir o arquivo de contrato. O aluno será criado sem o vínculo do arquivo.");
           } else {
-            const { data: publicUrlData } = supabase.storage.from('contracts').getPublicUrl(fileName);
-            contractUrl = publicUrlData.publicUrl;
+            // Bucket 'contracts' é privado: guardamos apenas o path; a visualização
+            // (ContractView) gera uma signed URL na hora de exibir.
+            contractUrl = fileName;
           }
         }
 

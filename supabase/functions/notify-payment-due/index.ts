@@ -51,13 +51,15 @@ serve(async (req) => {
 
     for (const c of charges) {
       try {
-        const { data: student } = await supabase.from("profiles").select("full_name, phone, status, status_financial").eq("id", c.student_id).maybeSingle();
+        const { data: student } = await supabase.from("profiles").select("full_name, phone, status, status_financial, lifecycle_status").eq("id", c.student_id).maybeSingle();
 
-        // Aluno inativo/arquivado: o diretor optou por NÃO notificar.
+        // Aluno inativo/arquivado/suspenso/desligado: o diretor optou por NÃO notificar.
+        // O eixo confiável é lifecycle_status (o campo `status` fica "Ativo" p/ quase todos).
         // Pula sem marcar como enviado → se reativar, volta a receber o aviso.
         const st = student?.status || "Ativo";
         const inactive = ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"].includes(st)
-          || student?.status_financial === "ARCHIVED";
+          || student?.status_financial === "ARCHIVED"
+          || ["suspended", "offboarded"].includes(student?.lifecycle_status || "");
         if (inactive) { failures.push(`${c.id}: aluno inativo (sem notificar)`); continue; }
 
         let phone = (student?.phone || "").replace(/\D/g, "");

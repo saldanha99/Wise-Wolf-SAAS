@@ -85,9 +85,14 @@ serve(async (req) => {
                 if (cls.student_id) {
                     const { data: student } = await supabaseClient
                         .from('profiles')
-                        .select('id, full_name, phone, meeting_link')
+                        .select('id, full_name, phone, meeting_link, lifecycle_status')
                         .eq('id', cls.student_id)
                         .single();
+                    // Aluno suspenso/desligado não recebe lembrete (horário fixo pode continuar na grade)
+                    if (student?.lifecycle_status === 'suspended' || student?.lifecycle_status === 'offboarded') {
+                        skipped.push(`class ${cls.source_id}: student ${student.lifecycle_status}`);
+                        continue;
+                    }
                     if (student) {
                         studentName = student.full_name;
                         studentPhone = student.phone;
