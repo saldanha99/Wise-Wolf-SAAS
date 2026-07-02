@@ -22,7 +22,26 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const EVOLUTION_API_KEY = (Deno.env.get("EVOLUTION_API_KEY") || "8828462c98512411df3acfe3df4e48a1").trim();
+// Tenta o secret EVOLUTION_API_KEY primeiro; se a Evolution devolver 401 (secret com
+// chave velha — gotcha da rotação de 30/06), re-tenta com a chave atual conhecida.
+const EVOLUTION_KEYS = Array.from(new Set([
+  (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
+  "8828462c98512411df3acfe3df4e48a1",
+].filter(Boolean)));
+
+async function sendWhats(instance: string, payload: unknown): Promise<Response> {
+  let last: Response | null = null;
+  for (const key of EVOLUTION_KEYS) {
+    const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: key },
+      body: JSON.stringify(payload),
+    });
+    if (resp.status !== 401) return resp;
+    last = resp;
+  }
+  return last!;
+}
 
 const MODELS = [
   "google/gemini-2.0-flash-exp:free",
@@ -230,6 +249,21 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// O gateway (verify_jwt=true desde a v3) já validou a ASSINATURA do JWT. Aqui basta
+// conferir o claim de role. Aceita igualdade textual com a env (compat) OU
+// role=service_role no payload — o cron manda o JWT service_role do Vault, que é
+// válido mas não é textualmente idêntico à env atual.
+function isServiceRole(bearer: string, serviceKey: string): boolean {
+  if (bearer && bearer === serviceKey) return true;
+  try {
+    const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(b64));
+    return payload?.role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -246,7 +280,7 @@ serve(async (req) => {
 
     // ── MODO SEND (cron / service role) ──
     if (mode === "send") {
-      if (bearer !== serviceKey) return json({ error: "forbidden" }, 403);
+      if (!isServiceRole(bearer, serviceKey)) return json({ error: "forbidden" }, 403);
       const { data: tenants } = await admin.from("tenants").select("id, ai_team_config").not("ai_team_config", "is", null);
       const result = { sent: 0, skipped: 0, failures: [] as string[] };
       for (const t of (tenants || [])) {
@@ -261,11 +295,7 @@ serve(async (req) => {
         if (!instance || phone.length < 12) { result.failures.push(`${t.id}: sem instância central ou telefone`); continue; }
         try {
           const { secretary } = await runForTenant(admin, t.id, cfg, useAi);
-          const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
-            body: JSON.stringify({ number: phone, text: wa(secretary.markdown), delay: 800, linkPreview: false }),
-          });
+          const resp = await sendWhats(instance, { number: phone, text: wa(secretary.markdown), delay: 800, linkPreview: false });
           if (!resp.ok) { result.failures.push(`${t.id}: evolution ${resp.status}`); continue; }
           result.sent++;
         } catch (e) { result.failures.push(`${t.id}: ${(e as Error).message}`); }
