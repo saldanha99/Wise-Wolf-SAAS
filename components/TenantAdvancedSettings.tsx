@@ -719,7 +719,7 @@ const ContractForm: React.FC<{ initial?: any; onSave: (t: any) => void; onCancel
     const [form, setForm] = useState(initial || { kind: 'STUDENT', name: '', body_markdown: '', cancellation_fee_pct: 30, notice_period_days: 30, active: true });
     return (
         <div className="bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Tipo</label>
                     <select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })} disabled={!!initial} className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm border border-slate-200 dark:border-slate-700">
@@ -729,7 +729,7 @@ const ContractForm: React.FC<{ initial?: any; onSave: (t: any) => void; onCancel
                 </div>
                 <Input label="Nome do template" value={form.name} onChange={v => setForm({ ...form, name: v })} placeholder="Ex: Padrão 2026" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Multa rescisória (%)" type="number" value={String(form.cancellation_fee_pct)} onChange={v => setForm({ ...form, cancellation_fee_pct: v })} />
                 <Input label="Aviso prévio (dias)" type="number" value={String(form.notice_period_days)} onChange={v => setForm({ ...form, notice_period_days: v })} />
             </div>

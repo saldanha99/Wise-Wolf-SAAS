@@ -82,7 +82,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-brand-surface rounded-3xl p-8 max-w-lg w-full shadow-2xl relative">
+            <div className="bg-brand-surface rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative max-h-[90dvh] overflow-y-auto">
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 text-brand-muted hover:text-brand-muted transition-colors"
@@ -147,7 +147,7 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                     </div>
 
                     {/* Date and Time */}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Data</label>
                             <input

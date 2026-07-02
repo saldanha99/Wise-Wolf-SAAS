@@ -267,7 +267,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     })}
                 </div>
 
-                <div className="border-t border-brand-border pt-4 space-y-1 mb-12">
+                <div className="border-t border-brand-border pt-4 space-y-1 mb-2 lg:mb-12 pb-[env(safe-area-inset-bottom)]">
                     {open && (
                         <div className="px-3 py-2 text-[10px] font-black text-brand-muted uppercase tracking-widest">
                             Conta
@@ -278,7 +278,10 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         title="Meu Perfil"
                         selected={activeTab}
                         itemId={'profile'}
-                        setSelected={setActiveTab}
+                        setSelected={(id: string) => {
+                            setActiveTab(id);
+                            if (window.innerWidth < 1024) setIsOpen(false);
+                        }}
                         open={open}
                     />
                     <button

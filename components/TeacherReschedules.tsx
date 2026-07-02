@@ -281,7 +281,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
             {/* Add/Edit Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="bg-brand-surface w-full max-w-md rounded-[3rem] shadow-[0_8px_40px_rgba(0,0,0,0.5)] border border-brand-border overflow-hidden flex flex-col transform animate-in zoom-in-95 duration-300">
+                    <div className="bg-brand-surface w-full max-w-md rounded-[3rem] shadow-[0_8px_40px_rgba(0,0,0,0.5)] border border-brand-border overflow-hidden flex flex-col transform animate-in zoom-in-95 duration-300 max-h-[90dvh]">
                         <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                             <div>
                                 <h3 className="text-xl font-black text-brand-text flex items-center gap-2 uppercase tracking-tight">
@@ -300,7 +300,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                        <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6 overflow-y-auto">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
                                     <User size={12} className="text-brand-accent" /> Aluno Selecionado
@@ -321,7 +321,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
                                         <Calendar size={12} className="text-brand-accent" /> Data

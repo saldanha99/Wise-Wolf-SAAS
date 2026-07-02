@@ -152,7 +152,7 @@ const StudentProfileEditor: React.FC<StudentProfileEditorProps> = ({ studentId, 
                                     {wolfIntelligence.accumulated_context && (
                                         <p className="text-sm text-gray-700 dark:text-slate-300 leading-relaxed mb-3">{wolfIntelligence.accumulated_context}</p>
                                     )}
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {wolfIntelligence.strong_points?.length > 0 && (
                                             <div>
                                                 <p className="text-[10px] font-black text-emerald-600 uppercase tracking-wider mb-1">Pontos Fortes</p>

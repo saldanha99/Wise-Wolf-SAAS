@@ -329,7 +329,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {
                 isContesting && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm">
-                        <div className="bg-brand-surface p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl">
+                        <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl max-h-[90dvh] overflow-y-auto">
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="p-2 bg-orange-100 dark:bg-orange-900/20 text-orange-600 rounded-xl">
                                     <MessageSquare size={20} />

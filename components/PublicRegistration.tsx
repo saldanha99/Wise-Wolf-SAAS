@@ -1031,7 +1031,7 @@ const PublicRegistration: React.FC = () => {
                                             onChange={e => setCcName(e.target.value)}
                                             className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                         />
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <input
                                                 required
                                                 type="text"
@@ -1091,7 +1091,7 @@ const PublicRegistration: React.FC = () => {
                                     Você só precisa informar <strong>o nome do aluno</strong> (acima) e os <strong>dados de acesso</strong> (abaixo).
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <input
                                         required
                                         placeholder="CPF"

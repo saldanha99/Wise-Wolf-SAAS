@@ -277,7 +277,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
             {/* Edit Modal */}
             {editingStudent && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-brand-surface w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 border border-white/10 relative">
+                    <div className="bg-brand-surface w-full max-w-md rounded-[2.5rem] shadow-2xl p-6 sm:p-8 border border-white/10 relative max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-black text-brand-text mb-2">Editar Sala de Aula</h3>
                         <p className="text-sm text-brand-muted mb-6">Defina o link permanente para <strong>{editingStudent.full_name}</strong>.</p>
 

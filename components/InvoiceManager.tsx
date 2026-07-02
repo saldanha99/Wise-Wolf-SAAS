@@ -113,7 +113,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             {/* Rejection Modal */}
             {isRejecting && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm">
-                    <div className="bg-brand-surface p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl animate-in zoom-in-95 duration-200">
+                    <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-md border border-brand-border dark:border-brand-border shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90dvh] overflow-y-auto">
                         <div className="flex items-center gap-3 mb-6">
                             <div className="p-2 bg-red-100 dark:bg-red-900/20 text-red-600 rounded-xl">
                                 <XCircle size={20} />

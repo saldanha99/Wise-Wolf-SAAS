@@ -343,7 +343,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       {/* Single Lesson Modal */}
       {selectedLesson && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="w-full max-w-[90%] lg:max-w-7xl">
+          <div className="w-full max-w-full lg:max-w-7xl max-h-[92dvh] overflow-y-auto rounded-3xl">
             <ClassLogForm
               items={[{
                 id: selectedLesson.id,
@@ -363,7 +363,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       {/* Bulk Regularize Modal */}
       {isBulkRegularizing && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="w-full max-w-[90%] lg:max-w-7xl">
+          <div className="w-full max-w-full lg:max-w-7xl max-h-[92dvh] overflow-y-auto rounded-3xl">
             <ClassLogForm
               items={pending.map(p => ({
                 id: p.id,

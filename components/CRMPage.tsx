@@ -121,7 +121,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
             </div>
 
             {/* Email + Telefone */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-1 block">E-mail</label>
                     <input
@@ -144,7 +144,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
             </div>
 
             {/* Origem + Nível */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-1 block">Origem</label>
                     <select
@@ -170,7 +170,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
             </div>
 
             {/* Valor + Status */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-1 block">Valor (R$)</label>
                     <input

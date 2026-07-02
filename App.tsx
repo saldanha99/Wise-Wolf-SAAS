@@ -703,12 +703,12 @@ const App: React.FC = () => {
         `}>
           {/* Top Header inside main */}
           <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
-            <div className="flex h-16 items-center justify-between px-6">
+            <div className="flex h-16 items-center justify-between px-3 sm:px-6">
 
               {/* Mobile Toggle */}
-              <div className="flex items-center gap-4 lg:hidden">
-                <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-600 dark:text-gray-400">
-                  <Menu size={20} />
+              <div className="flex items-center gap-2 lg:hidden min-w-0 flex-1">
+                <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-1 shrink-0 text-gray-600 dark:text-gray-400" aria-label="Abrir menu">
+                  <Menu size={22} />
                 </button>
                 <span className="font-bold text-sm text-gray-800 dark:text-white truncate">
                   {currentTenant?.name || 'EduCore'}
@@ -756,7 +756,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Right side actions */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 sm:gap-4 shrink-0">
                 {/* Search - Visual only for now */}
                 <div className="hidden md:flex relative group">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 group-focus-within:text-blue-500 transition-colors" />
@@ -831,7 +831,7 @@ const App: React.FC = () => {
                   {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
                 </button>
 
-                <div className="h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
+                <div className="hidden sm:block h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
 
                 <div className="flex items-center gap-3">
                   <div className="text-right hidden md:block">

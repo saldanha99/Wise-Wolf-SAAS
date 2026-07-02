@@ -190,7 +190,7 @@ const TeacherTransferGenerator: React.FC<Props> = ({ tenantId, student, onClose 
                     )}
 
                     {/* Data de virada + motivo */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted mb-1 flex items-center gap-1"><Calendar size={11} /> Início com o novo prof.</label>
                             <input type="date" value={cutover} min={new Date().toISOString().split('T')[0]} onChange={e => setCutover(e.target.value)}

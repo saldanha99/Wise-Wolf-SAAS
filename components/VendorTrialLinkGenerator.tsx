@@ -259,7 +259,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
                         <Calendar size={14} /> Data e Horário Sugerido (Opcional)
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Dia da semana</label>
                             <select

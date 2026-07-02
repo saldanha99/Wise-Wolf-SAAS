@@ -352,3 +352,23 @@ html, body, #root {
   --ww-blue-light: #3b82f6;
   --ww-silver: #f8fafc;
 }
+
+/* ══ Mobile-first: rede de segurança global (02/07/2026) ══════════════════ */
+
+/* iOS Safari: 100vh inclui a área atrás da barra do navegador — o rodapé de
+   sidebars/modais (ex.: botão "Sair") ficava inacessível. dvh acompanha a
+   barra dinâmica onde houver suporte. */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh; }
+  .min-h-screen { min-height: 100dvh; }
+  .max-h-screen { max-height: 100dvh; }
+}
+
+/* iOS dá zoom forçado ao focar input com fonte < 16px, desarrumando a tela.
+   Em telas touch, campo de formulário nunca fica abaixo de 16px. */
+@media (max-width: 1023px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* Rolagem horizontal com inércia nos wrappers de tabela (touch) */
+.overflow-x-auto { -webkit-overflow-scrolling: touch; }

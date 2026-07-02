@@ -131,7 +131,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
           <div className="flex items-center gap-2 text-amber-600 mb-1"><Clock size={16} /><span className="text-xs font-bold uppercase">Aguardando aluno</span></div>
           <p className="text-2xl font-black text-brand-text">{stats.pending}</p>

@@ -321,7 +321,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 )}
             </div>
 
-            <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <div className="p-5 sm:p-8 space-y-6 max-h-[65dvh] overflow-y-auto custom-scrollbar">
 
                 {/* Banner de contrato assinado */}
                 {contractSigned && (

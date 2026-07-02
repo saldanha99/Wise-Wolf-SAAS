@@ -58,7 +58,7 @@ const StudentOnboarding: React.FC<Props> = ({ userId, nome, onComplete }) => {
         <div className="fixed inset-0 z-[400] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
             <motion.div
                 initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-8 text-center shadow-2xl"
+                className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 text-center shadow-2xl max-h-[90dvh] overflow-y-auto"
             >
                 <AnimatePresence mode="wait">
                     <motion.div

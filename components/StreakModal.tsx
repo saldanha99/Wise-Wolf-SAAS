@@ -36,7 +36,7 @@ const StreakModal: React.FC<{ userId: string; streak: number }> = ({ userId, str
                     <motion.div
                         initial={{ scale: 0.85, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.85, opacity: 0 }}
                         transition={{ type: 'spring', stiffness: 240, damping: 18 }}
-                        className="relative bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-8 text-center shadow-2xl"
+                        className="relative bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 sm:p-8 text-center shadow-2xl max-h-[90dvh] overflow-y-auto"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button onClick={() => setOpen(false)} className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">

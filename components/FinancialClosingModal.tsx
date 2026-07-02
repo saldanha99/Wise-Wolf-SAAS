@@ -161,7 +161,7 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-brand-surface/80 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-brand-surface p-8 rounded-[2.5rem] w-full max-w-lg border border-brand-border dark:border-brand-border shadow-2xl relative overflow-hidden">
+            <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-lg border border-brand-border dark:border-brand-border shadow-2xl relative max-h-[90dvh] overflow-y-auto">
 
                 {/* Background blobs */}
                 <div className="absolute top-0 right-0 w-64 h-64 bg-tenant-primary/5 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />

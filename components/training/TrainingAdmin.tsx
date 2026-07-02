@@ -236,7 +236,7 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                                 <input value={liveFocus} onChange={e => setLiveFocus(e.target.value)} placeholder="Ex: Técnicas de correção em tempo real"
                                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Data *</label>
                                     <input type="date" value={liveDate} onChange={e => setLiveDate(e.target.value)}

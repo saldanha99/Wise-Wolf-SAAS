@@ -205,7 +205,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                     <Clock size={14} /> Data e Horário da Experimental
                                 </p>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {/* Date Picker */}
                                     <div className="relative">
                                         <input

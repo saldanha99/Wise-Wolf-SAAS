@@ -223,7 +223,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             {showEval && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => !isFinished && setShowEval(false)} />
-                    <div className="bg-brand-surface w-full max-w-2xl rounded-[3rem] overflow-hidden relative z-10 shadow-2xl animate-in zoom-in duration-300">
+                    <div className="bg-brand-surface w-full max-w-2xl rounded-[3rem] max-h-[90dvh] overflow-y-auto relative z-10 shadow-2xl animate-in zoom-in duration-300">
                         <div className="p-8 md:p-12">
                             {!isFinished ? (
                                 <>
