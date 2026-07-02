@@ -76,7 +76,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-4 sm:space-y-8 animate-in fade-in duration-500">
 
             {activeQuiz && (
                 <StudentQuizModal
@@ -88,7 +88,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
 
             {/* Quizzes Section (If any unlocked) */}
             {unlockedTests.length > 0 && (
-                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 dark:from-indigo-600 dark:to-indigo-900 rounded-[2.5rem] p-8 text-white shadow-lg relative overflow-hidden">
+                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 dark:from-indigo-600 dark:to-indigo-900 rounded-[2.5rem] p-5 sm:p-8 text-white shadow-lg relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                     <h3 className="text-xl font-black mb-6 flex items-center gap-2 relative z-10">
@@ -116,7 +116,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
 
             {/* Wolfie History Section — só aparece se houver sessões reais */}
             {wolfieSessions.length > 0 && (
-                <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 relative overflow-hidden">
+                <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-5 sm:p-8 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-500" />
 
                     <h3 className="text-xl font-black text-brand-text mb-6 flex items-center gap-2">
@@ -160,7 +160,7 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
             )}
 
             {/* My Assignments Library */}
-            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8">
+            <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-5 sm:p-8">
                 <h3 className="text-xl font-black text-brand-text mb-6 flex items-center gap-2">
                     <BookOpen className="text-indigo-500" /> Meus Materiais
                 </h3>

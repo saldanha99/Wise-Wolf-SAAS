@@ -322,7 +322,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 </div>
 
                 {/* TRILHA */}
-                <div className="px-4 py-8 sm:px-8 max-w-sm sm:max-w-md mx-auto">
+                <div className="px-4 py-5 sm:py-8 sm:px-8 max-w-sm sm:max-w-md mx-auto">
                     {units.map((unit, unitIdx) => {
                         const acts = activitiesByUnit[unit.id] || [];
                         if (acts.length === 0) return null;
@@ -440,7 +440,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
                     {/* ── Liga / Ranking ── */}
                     {leaderboard.length > 0 && (
-                        <div className="mt-10 max-w-md mx-auto">
+                        <div className="mt-6 sm:mt-10 max-w-md mx-auto">
                             <div className="rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
                                 {(() => {
                                     const div = gamificationService.leagueDivision(gami.xp);

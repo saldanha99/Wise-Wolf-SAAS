@@ -201,7 +201,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 
     return (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col safe-bottom">
+            <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-3xl w-full max-h-[95dvh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col safe-bottom">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
                     <div className="min-w-0">
@@ -222,7 +222,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     {result ? (
                         <VictoryScreen result={result} onContinue={() => onComplete(result.score)} />
                     ) : hearts <= 0 ? (
@@ -387,7 +387,7 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
             <div className="text-xs font-bold text-slate-400 mb-3">Card {idx + 1} de {cards.length}</div>
             <div
                 onClick={() => setFlipped(f => !f)}
-                className="relative bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-8 min-h-[260px] flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
+                className="relative bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-6 sm:p-8 min-h-[200px] sm:min-h-[260px] flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
             >
                 {!flipped ? (
                     <div className="text-center">

@@ -132,7 +132,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
 
     if (loading) {
         return (
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-8">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-5 sm:p-8">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
                         <Sparkles size={20} className="text-violet-600 dark:text-violet-400" />
