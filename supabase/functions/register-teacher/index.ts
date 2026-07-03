@@ -30,7 +30,7 @@ serve(async (req) => {
         )
 
         // 2. PARSE BODY
-        const { email, password, name, phone, pixKey, meetLink, avatar, offerPayload, rg, cpf, address, birthDate, contractAccepted } = await req.json()
+        const { email, password, name, phone, pixKey, meetLink, avatar, offerPayload, rg, cpf, address, birthDate, contractAccepted, contractPdfBase64 } = await req.json()
 
         // Auditoria server-side: IP e timestamp capturados aqui (nao confia no frontend)
         const trustedIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -156,6 +156,27 @@ serve(async (req) => {
                 JSON.stringify({ error: 'Usuário criado, mas erro ao configurar perfil: ' + profileError.message }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
             )
+        }
+
+        // ARQUIVO JURÍDICO (v34): grava o PDF do contrato aceito no bucket privado 'contracts'.
+        // Snapshot imutável do texto assinado — o template do contrato pode evoluir depois,
+        // mas o que o professor assinou fica preservado (com IP/data já no próprio documento).
+        if (contractPdfBase64 && typeof contractPdfBase64 === 'string' && contractPdfBase64.length < 8_000_000) {
+            try {
+                const bytes = Uint8Array.from(atob(contractPdfBase64), (c) => c.charCodeAt(0));
+                const path = `${offerData.tenantId}/${userId}/contrato-prestacao-servicos-${Date.now()}.pdf`;
+                const { error: upErr } = await supabaseAdmin.storage
+                    .from('contracts')
+                    .upload(path, bytes, { contentType: 'application/pdf', upsert: false });
+                if (upErr) {
+                    console.warn('⚠️ Falha ao arquivar PDF do contrato:', upErr.message);
+                } else {
+                    await supabaseAdmin.from('profiles').update({ signed_document_url: path }).eq('id', userId);
+                    console.log('📄 Contrato arquivado em', path);
+                }
+            } catch (e) {
+                console.warn('⚠️ PDF do contrato não arquivado (cadastro segue):', (e as Error).message);
+            }
         }
 
         // Convite de uso único: marca o offer como consumido após sucesso.

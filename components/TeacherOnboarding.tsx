@@ -6,7 +6,7 @@ import { TeacherContractDocument } from './TeacherContractDocument';
 
 const TeacherOnboarding: React.FC = () => {
     const [loading, setLoading] = useState(false);
-    const [step, setStep] = useState<'OFFER' | 'FORM' | 'CONTRACT' | 'SUCCESS'>('OFFER');
+    const [step, setStep] = useState<'OFFER' | 'FORM' | 'MINDSET' | 'CONTRACT' | 'SUCCESS'>('OFFER');
     const [error, setError] = useState<string | null>(null);
     const [offerData, setOfferData] = useState<any>(null);
 
@@ -74,7 +74,9 @@ const TeacherOnboarding: React.FC = () => {
 
     const goToContract = (e: React.FormEvent) => {
         e.preventDefault();
-        setStep('CONTRACT');
+        // Funil de contratação: antes do contrato, o candidato passa pelo funil de
+        // mentalidade PJ (manifesto + quiz de compreensão obrigatório).
+        setStep('MINDSET');
     };
 
     const handleRegister = async () => {
@@ -84,6 +86,29 @@ const TeacherOnboarding: React.FC = () => {
 
         try {
             console.log("🚀 Enviando registro para Edge Function...");
+
+            // Snapshot jurídico: gera o PDF do contrato exatamente como exibido/aceito.
+            // Falha na geração NÃO trava o cadastro (o aceite digital continua registrado).
+            let contractPdfBase64: string | null = null;
+            try {
+                const el = document.getElementById('teacher-contract-print');
+                if (el) {
+                    const html2pdf = (await import('html2pdf.js')).default;
+                    const dataUri: string = await html2pdf()
+                        .set({
+                            margin: 8,
+                            image: { type: 'jpeg', quality: 0.85 },
+                            html2canvas: { scale: 1.5, useCORS: true },
+                            jsPDF: { unit: 'mm', format: 'a4' },
+                            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+                        })
+                        .from(el)
+                        .outputPdf('datauristring');
+                    contractPdfBase64 = String(dataUri).split(',')[1] || null;
+                }
+            } catch (pdfErr) {
+                console.warn('⚠️ PDF do contrato não gerado (cadastro segue):', pdfErr);
+            }
 
             const { data, error: fnError } = await supabase.functions.invoke('register-teacher', {
                 body: {
@@ -101,7 +126,8 @@ const TeacherOnboarding: React.FC = () => {
                     birthDate,
                     contractAccepted: true,
                     acceptedAt: new Date().toISOString(),
-                    userIp: userIp || 'Pendente'
+                    userIp: userIp || 'Pendente',
+                    contractPdfBase64
                 }
             });
 
@@ -187,6 +213,16 @@ const TeacherOnboarding: React.FC = () => {
         return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
     }
 
+    if (step === 'MINDSET') {
+        return (
+            <MindsetFunnel
+                name={name}
+                onBack={() => setStep('FORM')}
+                onDone={() => setStep('CONTRACT')}
+            />
+        );
+    }
+
     if (step === 'CONTRACT') {
         return (
             <div className="min-h-screen bg-gray-100 relative">
@@ -227,7 +263,7 @@ const TeacherOnboarding: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="pb-32">
+                <div className="pb-32" id="teacher-contract-print">
                     <TeacherContractDocument
                         teacherName={name}
                         teacherRG={rg}
@@ -433,5 +469,142 @@ const Input = ({ label, value, onChange, icon, type = "text", required = false }
         </div>
     </div>
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNIL DE MENTALIDADE PJ — o candidato só chega ao contrato depois de LER o
+// manifesto e ACERTAR o quiz de compreensão. Objetivo: ele enxergar grandeza e
+// seriedade — é o CNPJ DELE em jogo, ele é uma empresa prestando serviço.
+// ─────────────────────────────────────────────────────────────────────────────
+const QUIZ: { q: string; options: string[]; correct: number; explain: string }[] = [
+    {
+        q: '1. Qual é a natureza da sua relação com a Wise Wolf?',
+        options: [
+            'Serei funcionário CLT da escola',
+            'Sou uma EMPRESA (meu CNPJ) prestando serviço para outra empresa — sem vínculo empregatício',
+            'Serei estagiário com supervisão diária',
+        ],
+        correct: 1,
+        explain: 'Exato: é contrato entre empresas. Seu CNPJ, sua reputação e sua autonomia — com liberdade e responsabilidade de dono.',
+    },
+    {
+        q: '2. O que acontece quando você falta a uma aula?',
+        options: [
+            'Nada, é só avisar depois',
+            'Perco o turbo por 30 dias (volto ao valor base de R$ 8,00/aula), a aula precisa de reposição e o aluno pode ser transferido se virar rotina',
+            'Recebo advertência por escrito',
+        ],
+        correct: 1,
+        explain: 'Isso. Assiduidade é o coração do negócio: falta derruba seu ganho, gera reposição e, se repetir, o aluno troca de professor.',
+    },
+    {
+        q: '3. Como uma aula conta para o seu pagamento?',
+        options: [
+            'Basta eu lançar no sistema',
+            'O aluno confirma a presença pelo WhatsApp; se a resposta dele divergir do meu lançamento, o pagamento daquela aula fica retido até a coordenação resolver',
+            'A escola confia sem verificação',
+        ],
+        correct: 1,
+        explain: 'Correto: temos verificação antifraude com o aluno. Lançamento honesto + aula dada = pagamento garantido, sem stress.',
+    },
+    {
+        q: '4. O que você emite todo mês depois de receber o repasse?',
+        options: [
+            'Nada, o Pix já resolve',
+            'Um recibo de papel assinado',
+            'A NFS-e do meu CNPJ (emissor nacional gov.br/nfse ou app MEI), no valor do fechamento, anexada na plataforma',
+        ],
+        correct: 2,
+        explain: 'Perfeito: empresa fatura com nota. É sua obrigação fiscal como PJ — e leva menos de 5 minutos no app MEI.',
+    },
+];
+
+const MANIFESTO: { emoji: string; title: string; text: string }[] = [
+    { emoji: '🏢', title: 'Você é uma empresa', text: 'A Wise Wolf não contrata funcionários — fecha parceria com EMPRESAS. É o seu CNPJ que assina, fatura e constrói reputação aqui. Aja como dono, porque você é.' },
+    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos, destrava o turbo (R$ 9,50/10,50 por aula) e cresce rápido. Quem falta, encolhe.' },
+    { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
+    { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
+    { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },
+];
+
+const MindsetFunnel: React.FC<{ name: string; onBack: () => void; onDone: () => void }> = ({ name, onBack, onDone }) => {
+    const [answers, setAnswers] = useState<(number | null)[]>(QUIZ.map(() => null));
+    const [checked, setChecked] = useState(false);
+    const allAnswered = answers.every(a => a !== null);
+    const allCorrect = answers.every((a, i) => a === QUIZ[i].correct);
+
+    const handleCheck = () => {
+        setChecked(true);
+        if (answers.every((a, i) => a === QUIZ[i].correct)) {
+            setTimeout(onDone, 900);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-brand-surface-2 font-sans">
+            <div className="max-w-3xl mx-auto px-4 py-8 sm:py-12 pb-32">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mb-2">Etapa 2 de 3 · Mentalidade Wise Wolf</p>
+                <h1 className="text-2xl sm:text-3xl font-black text-brand-text leading-tight">
+                    {name ? `${name.split(' ')[0]}, antes` : 'Antes'} de assinar: aqui você não é funcionário. <span className="text-brand-accent">Você é uma empresa.</span>
+                </h1>
+                <p className="text-sm text-brand-muted mt-2 leading-relaxed">
+                    Leia com atenção — o quiz no final é obrigatório e só libera o contrato com todas as respostas certas.
+                </p>
+
+                <div className="space-y-3 mt-8">
+                    {MANIFESTO.map(m => (
+                        <div key={m.title} className="bg-brand-surface border border-brand-border rounded-2xl p-5 flex items-start gap-4">
+                            <span className="text-2xl shrink-0">{m.emoji}</span>
+                            <div>
+                                <p className="font-black text-brand-text text-sm uppercase tracking-wide">{m.title}</p>
+                                <p className="text-sm text-brand-muted mt-1 leading-relaxed">{m.text}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <h2 className="text-lg font-black text-brand-text mt-10 mb-4">✅ Quiz de compreensão</h2>
+                <div className="space-y-6">
+                    {QUIZ.map((item, qi) => {
+                        const chosen = answers[qi];
+                        const isRight = checked && chosen === item.correct;
+                        const isWrong = checked && chosen !== null && chosen !== item.correct;
+                        return (
+                            <div key={qi} className={`bg-brand-surface border rounded-2xl p-5 transition-colors ${isWrong ? 'border-red-500/50' : isRight ? 'border-emerald-500/50' : 'border-brand-border'}`}>
+                                <p className="font-bold text-sm text-brand-text mb-3">{item.q}</p>
+                                <div className="space-y-2">
+                                    {item.options.map((opt, oi) => (
+                                        <button
+                                            key={oi}
+                                            type="button"
+                                            onClick={() => { const next = [...answers]; next[qi] = oi; setAnswers(next); setChecked(false); }}
+                                            className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${chosen === oi
+                                                ? 'border-brand-accent bg-brand-accent/10 text-brand-text font-bold'
+                                                : 'border-brand-border text-brand-muted hover:border-brand-accent/40'}`}
+                                        >
+                                            {opt}
+                                        </button>
+                                    ))}
+                                </div>
+                                {isRight && <p className="text-xs text-emerald-600 font-bold mt-3">✔ {item.explain}</p>}
+                                {isWrong && <p className="text-xs text-red-500 font-bold mt-3">✖ Ainda não — releia os cards acima e tente de novo.</p>}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="mt-8 flex items-center gap-3">
+                    <button onClick={onBack} className="text-brand-muted text-xs font-black uppercase tracking-widest hover:text-brand-text px-4 py-4">← Voltar</button>
+                    <button
+                        onClick={handleCheck}
+                        disabled={!allAnswered}
+                        className="flex-1 py-4 rounded-2xl bg-brand-accent text-white font-black uppercase tracking-widest text-sm hover:bg-brand-accent-hover transition-all disabled:opacity-30"
+                    >
+                        {checked && allCorrect ? 'Perfeito! Abrindo o contrato…' : 'Conferir respostas'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default TeacherOnboarding;

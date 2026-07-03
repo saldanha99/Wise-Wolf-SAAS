@@ -171,9 +171,18 @@ export function TeacherContractDocument({
                     </div>
 
                     <div>
-                        <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 7ª – RESPONSABILIDADES TRIBUTÁRIAS</h3>
+                        <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 7ª – RESPONSABILIDADES TRIBUTÁRIAS E NOTA FISCAL</h3>
                         <p className="text-justify">
                             7.1 O CONTRATADO é responsável pelo recolhimento de seus próprios tributos e contribuições (inclusive INSS autônomo, se optar), não recaindo sobre a CONTRATANTE qualquer obrigação previdenciária, trabalhista ou tributária.
+                        </p>
+                        <p className="text-justify">
+                            7.2 O CONTRATADO declara possuir (ou compromete-se a providenciar antes do primeiro repasse) inscrição ativa de pessoa jurídica — preferencialmente na condição de Microempreendedor Individual (MEI), em ocupação/CNAE compatível com o ensino de idiomas (ex.: 8593-7/00) — mantendo-a regular durante toda a vigência deste contrato.
+                        </p>
+                        <p className="text-justify">
+                            7.3 Para cada fechamento mensal pago pela CONTRATANTE, o CONTRATADO emitirá Nota Fiscal de Serviço eletrônica (NFS-e, pelo Emissor Nacional — gov.br/nfse ou aplicativo MEI) em face da CONTRATANTE, no exato valor do fechamento, anexando o documento na plataforma em até 5 (cinco) dias úteis contados do recebimento.
+                        </p>
+                        <p className="text-justify">
+                            7.4 A ausência reiterada da nota fiscal prevista na cláusula 7.3 autoriza a CONTRATANTE a suspender a liberação de novos repasses até a regularização, sem que isso configure mora ou inadimplemento da CONTRATANTE.
                         </p>
                     </div>
 

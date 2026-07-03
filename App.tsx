@@ -71,6 +71,7 @@ const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
+const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
 const TrialsToContracts = lazy(() => import('./components/TrialsToContracts'));
 const StudentAITutor = lazy(() => import('./src/pages/student/StudentAITutor'));
 const HRModule = lazy(() => import('./components/HRModule'));
@@ -531,7 +532,11 @@ const App: React.FC = () => {
           /> :
           user.role === UserRole.STUDENT ? <StudentDashboard user={user} tenantId={currentTenant?.id} /> :
           user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} /> :
-            <TeacherDashboard user={user} tenantId={currentTenant?.id} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />,
+            <>
+              {/* Funil pós-contratação: pop-up diário de responsabilidades do professor */}
+              <TeacherNudges userId={user.id} pendingLessons={pendingLessonsCount} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
+              <TeacherDashboard user={user} tenantId={currentTenant?.id} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
+            </>,
 
       'approvals': <InvoiceManager tenantId={currentTenant?.id} />,
       'payments': <TeacherPayments tenantId={currentTenant?.id} />,
