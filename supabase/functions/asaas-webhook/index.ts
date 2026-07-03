@@ -257,49 +257,12 @@ async function processarPagamento(body: any): Promise<void> {
                 }
                 // -----------------------------
 
-                // DIRECT LEDGER INSERTION (Restored for Real-Time Sync)
-                if (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED') {
-                    console.log(`ℹ️ [Webhook] Inserting Ledger Entry for ${payment.id}...`);
-
-                    // 1. Check if Transaction Exists
-                    const { data: existingTrans } = await supabase
-                        .from('financial_transactions')
-                        .select('id')
-                        .eq('reference_id', studentId)
-                        .eq('description', `Mensalidade - Ref: ${payment.id}`) // Weak check
-                        .maybeSingle();
-
-                    if (!existingTrans) {
-                        const amountCents = Math.round((payment.value || 0) * 100);
-
-                        const { error: insertError } = await supabase
-                            .from('financial_transactions')
-                            .insert({
-                                tenant_id: paymentData.tenant_id,
-                                type: 'ENTRADA',
-                                category: 'student_tuition',
-                                amount: payment.value,
-                                amount_cents: amountCents, // Critical for views
-                                description: `Mensalidade - Ref: ${payment.id}`,
-                                reference_id: studentId,
-                                occurred_at: payment.paymentDate || new Date().toISOString(),
-                                created_at: new Date().toISOString()
-                            });
-
-                        if (insertError) {
-                            console.error("❌ Failed to insert Ledger Entry:", insertError);
-                        } else {
-                            console.log("✅ Ledger Entry Created via Webhook");
-                            // Update student_payment to marked as reconciled
-                            await supabase
-                                .from('student_payments')
-                                .update({ ledger_entry_created: true })
-                                .eq('asaas_payment_id', payment.id);
-                        }
-                    } else {
-                        console.log("ℹ️ Ledger Entry already exists.");
-                    }
-                }
+                // LEDGER: a inserção no caixa é responsabilidade EXCLUSIVA do trigger
+                // ledger_on_payment_received (fonte única, idempotente por student_payment_id
+                // + índice único uq_financial_transactions_student_payment). O bloco de
+                // inserção direta que existia aqui foi removido em 03/07/2026 — era a origem
+                // do "caixa dobrado" (linha 'student_tuition Ref: pay_...' sem vínculo,
+                // duplicando a linha MENSALIDADE do trigger). NÃO reintroduzir.
             }
 
         } else if (event === 'PAYMENT_OVERDUE') {

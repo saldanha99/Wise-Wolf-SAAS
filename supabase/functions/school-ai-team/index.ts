@@ -167,6 +167,24 @@ async function buildFinanceiro(sb: any, tenantId: string): Promise<{ md: string;
     const entradas = (txs || []).filter((t: any) => String(t.type).toUpperCase() === "ENTRADA").reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
     const saidas = (txs || []).filter((t: any) => String(t.type).toUpperCase() !== "ENTRADA").reduce((s: number, t: any) => s + Number(t.amount || 0), 0);
     lines.push(`- 💰 Caixa do mês (entradas − saídas): **${fmtBRL(entradas - saidas)}**.`);
+
+    // Radar MEI: receita bruta do ano × teto do regime (fonte única: get_mei_radar)
+    try {
+      const { data: radar } = await sb.rpc('get_mei_radar', { p_tenant: tenantId });
+      if (radar && !radar.error) {
+        const proj = Math.max(Number(radar.projecao_media || 0), Number(radar.projecao_ritmo_3m || 0));
+        lines.push(`- 📡 Radar MEI ${radar.ano}: ${fmtBRL(radar.receita_acumulada)} de ${fmtBRL(radar.teto)} (${radar.pct_teto}% do teto) — projeção do ano ${fmtBRL(proj)} (${radar.pct_projecao_teto}% do teto).`);
+        if (Number(radar.receita_acumulada) >= Number(radar.teto)) {
+          hl.push('MEI: TETO ESTOURADO');
+          lines.push('- 🚨 URGENTE: o faturamento JÁ PASSOU do teto do MEI. Até R$ 97.200 paga DAS complementar e vira ME em janeiro; acima disso o desenquadramento é RETROATIVO. Falar com o contador AGORA.');
+        } else if (Number(radar.pct_teto) >= 90 || Number(radar.pct_projecao_teto) >= 100) {
+          hl.push(`MEI ${radar.pct_projecao_teto}% do teto (projeção)`);
+          lines.push('- ⚠️ ATENÇÃO: no ritmo atual o teto do MEI vai estourar. Planejar a migração para ME (Simples Anexo III, ~6%) com o contador ainda neste ano.');
+        } else if (Number(radar.pct_projecao_teto) >= 75) {
+          lines.push('- 🟡 Aviso: a projeção do ano já passa de 75% do teto do MEI — acompanhar mensalmente e alinhar com o contador a eventual virada para ME.');
+        }
+      }
+    } catch { /* radar indisponível não trava o relatório */ }
     if (overdue.length || (closings || []).length) lines.push("", "**Recomendação:** priorize cobrar as mensalidades vencidas e programar os fechamentos de professores.");
   } catch (e) { lines.push(`- (parcial: ${(e as Error).message})`); }
   return { md: lines.join("\n"), hl };

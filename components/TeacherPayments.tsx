@@ -279,7 +279,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                 </div>
 
                                 <div className="col-span-1 flex justify-center">
-                                    {invoice.invoice_url ? (
+                                    {(invoice.nf_link || invoice.invoice_url) ? (
                                         <button
                                             onClick={() => setSelectedInvoice(invoice)}
                                             className="p-2 text-tenant-primary hover:bg-tenant-primary/10 rounded-xl transition-colors"
@@ -359,7 +359,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
             {/* Modal Integration */}
             {selectedInvoice && (
                 <InvoiceReviewModal
-                    invoice={selectedInvoice}
+                    invoice={{ ...selectedInvoice, invoice_url: selectedInvoice.invoice_url || selectedInvoice.nf_link }}
                     onClose={() => setSelectedInvoice(null)}
                     onUpdate={fetchInvoices}
                 />

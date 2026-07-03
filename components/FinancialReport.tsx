@@ -301,69 +301,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
               <p className="text-[10px] text-brand-muted font-bold mt-1 uppercase tracking-tighter">Últimos pagamentos de alunos ({selectedMonth})</p>
             </div>
 
-            <button
-              onClick={async () => {
-                if (!confirm("Isso irá verificar e criar transações financeiras para pagamentos manuais que não foram registrados no caixa. Deseja continuar?")) return;
-                setLoading(true);
-                try {
-                  // 1. Get all RECEIVED payments from this month
-                  const startOfMonth = `${selectedMonth}-01T00:00:00Z`;
-                  const nextMonth = new Date(selectedMonth);
-                  nextMonth.setMonth(nextMonth.getMonth() + 1);
-                  const endOfMonth = nextMonth.toISOString();
-
-                  const { data: payments } = await supabase
-                    .from('student_payments')
-                    .select('id, value, payment_date, student_id, status, profiles(full_name, tenant_id)')
-                    .eq('profiles.tenant_id', tenantId)
-                    .eq('status', 'RECEIVED')
-                    .gte('payment_date', startOfMonth)
-                    .lt('payment_date', endOfMonth);
-
-                  // 2. Get all Transactions
-                  const { data: transactions } = await supabase
-                    .from('financial_transactions')
-                    .select('reference_id, amount')
-                    .eq('tenant_id', tenantId)
-                    .gte('created_at', startOfMonth)
-                    .lt('created_at', endOfMonth);
-
-                  let fixedCount = 0;
-                  for (const p of (payments || [])) {
-                    // Check if exists
-                    const exists = transactions?.some(t =>
-                      t.reference_id === p.student_id &&
-                      Math.abs(t.amount - p.value) < 1.0 // Tolerance
-                    );
-
-                    if (!exists) {
-                      // Create it
-                      await supabase.from('financial_transactions').insert({
-                        tenant_id: p.profiles?.tenant_id,
-                        type: 'ENTRADA',
-                        category: 'MENSALIDADE',
-                        amount: p.value,
-                        description: `Mensalidade (Manual Recuperado) - ${p.profiles?.full_name}`,
-                        reference_id: p.student_id,
-                        created_at: p.payment_date || new Date().toISOString()
-                      });
-                      fixedCount++;
-                    }
-                  }
-                  alert(`Correção concluída! ${fixedCount} registros recuperados.`);
-                  fetchFinancialData();
-
-                } catch (err: any) {
-                  alert("Erro ao corrigir: " + err.message);
-                } finally {
-                  setLoading(false);
-                }
-              }}
-              className="p-2 bg-brand-surface border border-brand-border rounded-lg text-brand-muted hover:text-emerald-400 transition-colors ml-2 shadow-sm"
-              title="Corrigir Lançamentos de Caixa"
-            >
-              <RefreshCw size={18} />
-            </button>
+            {/* Botão legado 'Corrigir Lançamentos' removido em 03/07/2026: criava linhas sem vínculo/data no caixa; o trigger + reconcile-ledger cobrem a conciliação. */}
           </div>
           <div className="overflow-y-auto max-h-[400px] custom-scrollbar">
             <table className="w-full">
@@ -413,20 +351,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
 
                                 if (updateError) throw updateError;
 
-                                // 2. Create Financial Transaction
-                                const { error: transError } = await supabase
-                                  .from('financial_transactions')
-                                  .insert({
-                                    tenant_id: receipt.tenant_id,
-                                    type: 'ENTRADA',
-                                    category: 'MENSALIDADE',
-                                    amount: receipt.amount,
-                                    description: `Mensalidade (Manual) - ${receipt.name}`,
-                                    reference_id: receipt.student_id,
-                                    created_at: new Date().toISOString()
-                                  });
-
-                                if (transError) console.error("Erro ao criar transação:", transError);
+                                // O lançamento no caixa é criado pelo trigger ledger_on_payment_received
+                                // (dispara no update de status acima). Insert manual removido em 03/07/2026.
                               } catch (err: any) {
                                 alert('Erro: ' + err.message);
                               }

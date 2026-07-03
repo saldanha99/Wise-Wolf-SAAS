@@ -167,26 +167,9 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
                                                         if (updateError) throw updateError;
 
-                                                        // 2. Insert into Financial Transactions (Revenue Ledger)
-                                                        const payload = {
-                                                            tenant_id: p.profiles?.tenant_id || tenantId,
-                                                            type: 'ENTRADA',
-                                                            category: 'student_tuition',
-                                                            amount: p.value,
-                                                            amount_cents: Math.round(p.value * 100),
-                                                            description: `Mensalidade (Manual) - ${p.profiles?.full_name}`,
-                                                            reference_id: p.student_id,
-                                                            student_payment_id: p.id,
-                                                            occurred_at: new Date().toISOString(),
-                                                            created_at: new Date().toISOString()
-                                                        };
-                                                        console.log("💰 Manually inserting transaction:", payload);
-
-                                                        const { error: transError } = await supabase
-                                                            .from('financial_transactions')
-                                                            .insert(payload);
-
-                                                        if (transError) console.error("Erro ao criar transação:", transError);
+                                                        // O lançamento no caixa é criado pelo trigger ledger_on_payment_received
+                                                        // (dispara no update de status acima). Insert manual removido em 03/07/2026
+                                                        // — duplicava a linha do trigger (caixa dobrado).
 
                                                         fetchPayments();
                                                         alert('Pagamento confirmado e registrado no caixa!');

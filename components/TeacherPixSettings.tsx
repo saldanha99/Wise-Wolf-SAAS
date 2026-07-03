@@ -18,6 +18,8 @@ const PIX_TYPES = [
 const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
     const [pixKey, setPixKey] = useState('');
     const [pixKeyType, setPixKeyType] = useState('CPF');
+    const [cnpj, setCnpj] = useState('');
+    const [companyName, setCompanyName] = useState('');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -35,6 +37,16 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
             if (data) {
                 setPixKey((data as any).pix_key || '');
                 setPixKeyType((data as any).pix_key_type || 'CPF');
+            }
+            // dados fiscais (CNPJ) ficam fora do trio de pagamento — leitura direta
+            const { data: fiscal } = await supabase
+                .from('profiles')
+                .select('cnpj, cnpj_company_name')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (fiscal) {
+                setCnpj(fiscal.cnpj || '');
+                setCompanyName(fiscal.cnpj_company_name || '');
             }
         } catch (err) {
             console.error('Error fetching Pix data:', err);
@@ -54,6 +66,8 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                 .update({
                     pix_key: pixKey,
                     pix_key_type: pixKeyType,
+                    cnpj: cnpj || null,
+                    cnpj_company_name: companyName || null,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', user.id);
@@ -108,6 +122,27 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                                 placeholder="Digite sua chave pix..."
                                 className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                                 required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">CNPJ (MEI)</label>
+                            <input
+                                type="text"
+                                value={cnpj}
+                                onChange={(e) => setCnpj(e.target.value)}
+                                placeholder="00.000.000/0001-00"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
+                            />
+                            <p className="text-[10px] text-brand-muted mt-1">Usado para conferir suas notas fiscais (NFS-e) dos fechamentos.</p>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-black uppercase tracking-widest text-brand-muted mb-2">Razão Social / Nome Empresarial</label>
+                            <input
+                                type="text"
+                                value={companyName}
+                                onChange={(e) => setCompanyName(e.target.value)}
+                                placeholder="Como consta no seu CNPJ"
+                                className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl border border-brand-border text-sm font-bold text-brand-text dark:text-slate-200 outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:font-normal"
                             />
                         </div>
                     </div>

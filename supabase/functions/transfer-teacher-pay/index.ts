@@ -13,15 +13,22 @@ serve(async (req) => {
     }
 
     try {
-        const supabaseClient = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        )
+        const url = Deno.env.get('SUPABASE_URL') ?? '';
+        const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+        const supabaseClient = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
 
-        // 1. Authentication Check (Simple check for now, ideally verify session role)
-        // For critical financial operations, checking Service Role or Admin logic is key.
-        // Here we rely on the caller providing a valid JWT if we wanted to check 'auth.users',
-        // but using SERVICE_ROLE_KEY allows us to bypass RLS for reading/writing the closing data needed.
+        // 1. AUTORIZAÇÃO (v37): operação financeira crítica — só SCHOOL_ADMIN/SUPER_ADMIN.
+        // O gateway (verify_jwt=true) já validou a assinatura do JWT; aqui conferimos o PAPEL.
+        const authHeader = req.headers.get('Authorization') || '';
+        const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
+        const { data: authData } = await userClient.auth.getUser();
+        if (!authData?.user) {
+            return new Response(JSON.stringify({ success: false, error: 'Não autenticado.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
+        }
+        const { data: me } = await supabaseClient.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
+        if (!me || !['SCHOOL_ADMIN', 'SUPER_ADMIN'].includes(me.role)) {
+            return new Response(JSON.stringify({ success: false, error: 'Sem permissão para disparar repasses.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
 
         const { closingId } = await req.json()
 
@@ -48,12 +55,33 @@ serve(async (req) => {
             throw new Error('Closing not found')
         }
 
-        if (closing.status === 'COMPLETED' || closing.status === 'PAID_WAITING_NF') {
-            // Already paid, but maybe just retry logic? Let's safeguard to avoid double pay if possible.
-            // However, 'PAID_WAITING_NF' is the *destiny* status. If it's *already* there, we might want to warn.
-            // For now, let's assume UI handles the button disable state, but strict double-spend check would be better.
-            if (closing.asaas_transfer_id) {
-                throw new Error('This closing already has a transfer ID attached.')
+        // 2a. ANTI-DOUBLE-PAY (v37): qualquer evidência de pagamento anterior bloqueia.
+        if (closing.asaas_transfer_id) {
+            throw new Error('Este fechamento já tem uma transferência registrada (anti-pagamento-duplo).')
+        }
+        if (['PAID_WAITING_NF', 'UNDER_REVIEW', 'COMPLETED', 'PAGO'].includes(closing.status)) {
+            throw new Error(`Este fechamento já está com status "${closing.status}" — pagamento bloqueado (anti-pagamento-duplo).`)
+        }
+
+        // 2b. TRAVA FISCAL configurável (v37): se o tenant exigir NF antes de novo repasse,
+        // bloqueia quando o professor tem fechamento ANTERIOR pago sem NF válida.
+        const { data: tenantCfg } = await supabaseClient
+            .from('tenants')
+            .select('require_nf_for_transfer')
+            .eq('id', closing.tenant_id)
+            .maybeSingle();
+        if (tenantCfg?.require_nf_for_transfer) {
+            const { data: pendentesNf } = await supabaseClient
+                .from('teacher_closings')
+                .select('id, month_year, status, nf_link, total_amount')
+                .eq('teacher_id', closing.teacher_id)
+                .neq('id', closingId)
+                .in('status', ['PAID_WAITING_NF', 'REJECTED', 'REJEITADO'])
+                .gt('total_amount', 0);
+            const semNf = (pendentesNf || []).filter((c: any) => !c.nf_link);
+            if (semNf.length > 0) {
+                const meses = semNf.map((c: any) => c.month_year).join(', ');
+                throw new Error(`Trava fiscal: o professor tem fechamento pago sem nota fiscal (${meses}). Peça a NF antes de liberar novo repasse.`)
             }
         }
 
@@ -117,7 +145,8 @@ serve(async (req) => {
             .update({
                 status: 'PAID_WAITING_NF',
                 asaas_transfer_id: asaasData.id,
-                transfer_status: asaasData.status, // e.g. PENDING, BANK_PROCESSING, DONE
+                transfer_status: asaasData.status,
+                paid_at: new Date().toISOString(), // e.g. PENDING, BANK_PROCESSING, DONE
                 updated_at: new Date().toISOString()
             })
             .eq('id', closingId)

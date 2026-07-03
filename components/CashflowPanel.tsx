@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { TrendingUp, TrendingDown, Wallet, Clock, RefreshCw, ArrowDownCircle, ArrowUpCircle, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Clock, RefreshCw, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Gauge } from 'lucide-react';
 import { User as UserType } from '../types';
 
 interface Props { user: UserType; tenantId?: string; }
 
-const CashflowPanel: React.FC<Props> = () => {
+const CashflowPanel: React.FC<Props> = ({ tenantId }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<string>(new Date().toISOString().slice(0, 7));
@@ -52,6 +52,9 @@ const CashflowPanel: React.FC<Props> = () => {
             <Kpi icon={<Wallet size={16} />} label="Saldo do mês" value={money(data.saldo)} accent={Number(data.saldo) >= 0 ? 'text-emerald-600' : 'text-red-600'} />
             <Kpi icon={<Clock size={16} className="text-amber-500" />} label="A receber (mês)" value={money(data.a_receber)} accent="text-amber-600" />
           </div>
+
+          {/* Radar MEI — receita bruta do ano × teto do regime */}
+          <MeiRadar tenantId={tenantId} />
 
           <div className="grid lg:grid-cols-2 gap-6">
             {/* Série de entradas */}
@@ -107,5 +110,63 @@ const Kpi: React.FC<{ icon: React.ReactNode; label: string; value: string; accen
 const Row: React.FC<{ k: string; v: string; danger?: boolean }> = ({ k, v, danger }) => (
   <div className="flex justify-between gap-2"><span className="text-brand-muted">{k}</span><span className={danger ? 'text-red-600 font-bold' : 'text-brand-text font-medium'}>{v}</span></div>
 );
+
+// ── Radar MEI: acumulado do ano vs teto (R$ 81k) com projeção e comparativo Simples ──
+const MeiRadar: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
+  const [r, setR] = useState<any>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase.rpc('get_mei_radar', { p_tenant: tenantId }).then(({ data }) => setR(data?.error ? null : data));
+  }, [tenantId]);
+  if (!r) return null;
+
+  const money = (v: any) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const proj = Math.max(Number(r.projecao_media || 0), Number(r.projecao_ritmo_3m || 0));
+  const pctProj = Number(r.pct_projecao_teto || 0);
+  const pctAno = Math.min(100, Number(r.pct_teto || 0));
+  const margem = Math.max(0, Number(r.teto) - Number(r.receita_acumulada));
+  const nivel = pctProj >= 100 || Number(r.pct_teto) >= 90 ? 'red' : pctProj >= 75 ? 'amber' : 'emerald';
+  const badgeCls = nivel === 'red'
+    ? 'bg-red-500/10 text-red-600 border-red-500/30'
+    : nivel === 'amber'
+    ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+    : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+  const barCls = nivel === 'red' ? 'bg-red-500' : nivel === 'amber' ? 'bg-amber-500' : 'bg-emerald-500';
+
+  return (
+    <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+        <h3 className="text-sm font-bold text-brand-text flex items-center gap-2">
+          <Gauge size={16} className="text-indigo-500" /> Radar MEI {r.ano}
+        </h3>
+        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${badgeCls}`}>
+          Projeção do ano: {pctProj.toFixed(0)}% do teto
+        </span>
+      </div>
+
+      {/* Barra: acumulado × teto */}
+      <div className="mb-1 flex justify-between text-[11px] font-bold text-brand-muted">
+        <span>{money(r.receita_acumulada)} acumulado</span>
+        <span>teto {money(r.teto)}</span>
+      </div>
+      <div className="h-3 bg-brand-surface-2 rounded-full overflow-hidden">
+        <div className={`h-full ${barCls} rounded-full transition-all`} style={{ width: `${pctAno}%` }} />
+      </div>
+      <p className="text-[10px] text-brand-muted mt-1">{Number(r.pct_teto).toFixed(1)}% do teto usado · margem restante {money(margem)}</p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+        <div><p className="text-[10px] font-bold uppercase text-brand-muted">Média mensal</p><p className="text-sm font-black text-brand-text">{money(r.media_mensal)}</p></div>
+        <div><p className="text-[10px] font-bold uppercase text-brand-muted">Ritmo (3 meses)</p><p className="text-sm font-black text-brand-text">{money(r.ritmo_3m)}</p></div>
+        <div><p className="text-[10px] font-bold uppercase text-brand-muted">Projeção do ano</p><p className={`text-sm font-black ${nivel === 'emerald' ? 'text-brand-text' : nivel === 'amber' ? 'text-amber-600' : 'text-red-600'}`}>{money(proj)}</p></div>
+        <div><p className="text-[10px] font-bold uppercase text-brand-muted">Como ME (Simples III ~6%)</p><p className="text-sm font-black text-brand-text">{money(r.simples_anexo3_estimado_ano)}/ano</p></div>
+      </div>
+
+      <p className="text-[10px] text-brand-muted mt-3 leading-relaxed">
+        Até {money(r.teto_tolerancia)} (teto +20%): permanece MEI até 31/12, paga DAS complementar e vira ME em janeiro.
+        Acima disso: desenquadramento <b>retroativo</b> com multa — planeje com o contador antes.
+      </p>
+    </div>
+  );
+};
 
 export default CashflowPanel;
