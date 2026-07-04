@@ -75,6 +75,20 @@ serve(async (req) => {
             cleanPhone = "55" + cleanPhone;
         }
 
+        // 3b. Banco de Talentos: convite p/ grupo WhatsApp (se configurado no tenant)
+        let groupBlock = '';
+        try {
+            const { data: t } = await supabase.from('tenants').select('talent_group_link').eq('id', tenant_id).maybeSingle();
+            if (t?.talent_group_link) {
+                groupBlock = `
+
+🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*
+${t.talent_group_link}
+
+É por lá que as vagas abrem primeiro — quem está no grupo sai na frente!`;
+            }
+        } catch (_e) { /* sem grupo, mensagem segue normal */ }
+
         // 4. Construct Welcome Message
         const message = `🐺 *Wise Wolf Language - Processo Seletivo*
 
@@ -82,7 +96,7 @@ Olá *${name}*! 👋
 
 Recebemos seu currículo com sucesso! ✅
 
-Nossa equipe de RH irá analisar suas informações e entraremos em contato em breve com os próximos passos.
+Nossa equipe de RH irá analisar suas informações e entraremos em contato em breve com os próximos passos.${groupBlock}
 
 Agradecemos o interesse em fazer parte do nosso time! 🚀
 
