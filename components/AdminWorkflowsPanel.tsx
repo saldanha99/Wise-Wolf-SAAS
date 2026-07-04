@@ -77,6 +77,16 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         } catch (err: any) { alert('Erro: ' + err.message); }
     };
 
+    const openMural = async (teacherId: string) => {
+        if (!confirm('Publicar os alunos deste professor no Mural de Oportunidades? Todos os professores ativos serão avisados e o primeiro a aceitar fica com o aluno.')) return;
+        try {
+            const { data, error } = await supabase.rpc('open_reallocation_for_teacher', { p_teacher: teacherId });
+            if (error) throw error;
+            alert(`Mural aberto: ${data?.oportunidades_criadas ?? 0} aluno(s) publicados, ${data?.professores_avisados ?? 0} professor(es) avisados por WhatsApp.`);
+            load();
+        } catch (err: any) { alert('Erro: ' + err.message); }
+    };
+
     const finalize = async (teacherId: string) => {
         if (!confirm('Finalizar a saída deste professor? (todos os alunos precisam estar reatribuídos)')) return;
         try {
@@ -113,10 +123,17 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                 <p className="text-xs text-slate-500">{t.email} · último dia: <b>{t.offboarding_last_day}</b></p>
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 italic">"{t.offboarding_reason}"</p>
                             </div>
-                            <button onClick={() => finalize(t.id)} disabled={students.length > 0}
-                                className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 disabled:opacity-50">
-                                Finalizar saída
-                            </button>
+                            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                                <button onClick={() => openMural(t.id)} disabled={students.length === 0}
+                                    className="px-3 py-1.5 bg-violet-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 disabled:opacity-50"
+                                    title="Publica os alunos no mural para os professores aceitarem sozinhos">
+                                    🎓 Abrir mural
+                                </button>
+                                <button onClick={() => finalize(t.id)} disabled={students.length > 0}
+                                    className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 disabled:opacity-50">
+                                    Finalizar saída
+                                </button>
+                            </div>
                         </div>
                         <div className="p-4 space-y-2">
                             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{students.length} aluno{students.length === 1 ? '' : 's'} para reatribuir:</p>

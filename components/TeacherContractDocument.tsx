@@ -158,15 +158,21 @@ export function TeacherContractDocument({
                     </div>
 
                     <div>
-                        <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 6ª – PRAZO E RESCISÃO</h3>
+                        <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 6ª – PRAZO, RESCISÃO E TRANSIÇÃO</h3>
                         <p className="text-justify">
                             6.1 O presente contrato é firmado por prazo indeterminado, vigorando enquanto houver interesse das partes.
                         </p>
                         <p className="text-justify">
-                            6.2 Qualquer das partes poderá rescindir o contrato mediante aviso prévio de 15 (quinze) dias.
+                            6.2 Qualquer das partes poderá rescindir o contrato mediante aviso prévio de 30 (trinta) dias (art. 599 do Código Civil), período em que o CONTRATADO se compromete a manter as aulas em andamento e a colaborar com a transição ordenada dos alunos.
                         </p>
                         <p className="text-justify">
                             6.3 O descumprimento contratual autoriza a rescisão imediata, sem prejuízo de eventuais indenizações por perdas e danos.
+                        </p>
+                        <p className="text-justify">
+                            6.4 CLÁUSULA PENAL (bilateral): a parte que rescindir sem cumprir o aviso prévio pagará à outra multa compensatória proporcional aos dias de aviso não cumpridos, limitada ao valor da média mensal dos 3 (três) últimos fechamentos do CONTRATADO (ou do último fechamento, se houver menos de três), nos termos dos arts. 408 a 416 do Código Civil, admitida a compensação com créditos existentes entre as partes.
+                        </p>
+                        <p className="text-justify">
+                            6.5 BÔNUS DE TRANSIÇÃO: cumprido integralmente o aviso prévio, com participação ativa na transição dos alunos e lançamentos em dia, o CONTRATADO fará jus a bônus de 10% (dez por cento) sobre o valor do seu último fechamento mensal, pago junto ao acerto final.
                         </p>
                     </div>
 

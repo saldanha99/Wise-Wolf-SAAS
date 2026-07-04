@@ -72,6 +72,8 @@ const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
+const StudentOpportunitiesBoard = lazy(() => import('./components/StudentOpportunitiesBoard'));
+const TeacherApplyLanding = lazy(() => import('./components/TeacherApplyLanding'));
 const TrialsToContracts = lazy(() => import('./components/TrialsToContracts'));
 const StudentAITutor = lazy(() => import('./src/pages/student/StudentAITutor'));
 const HRModule = lazy(() => import('./components/HRModule'));
@@ -389,6 +391,13 @@ const App: React.FC = () => {
     return <PublicRegistration />;
   }
 
+  // Banco de talentos: candidatura pública de professores (tráfego pago)
+  if (path === '/quero-ensinar') {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-violet-400" size={32} /></div>}>
+      <TeacherApplyLanding />
+    </Suspense>;
+  }
+
   // Confirmação de presença pelo aluno (link 1-clique do WhatsApp) — público, sem login
   if (path === '/confirmar-presenca' || path.startsWith('/confirmar-presenca')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
@@ -535,6 +544,7 @@ const App: React.FC = () => {
             <>
               {/* Funil pós-contratação: pop-up diário de responsabilidades do professor */}
               <TeacherNudges userId={user.id} pendingLessons={pendingLessonsCount} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
+              <StudentOpportunitiesBoard userId={user.id} />
               <TeacherDashboard user={user} tenantId={currentTenant?.id} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
             </>,
 

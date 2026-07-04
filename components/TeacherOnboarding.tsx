@@ -507,7 +507,17 @@ const QUIZ: { q: string; options: string[]; correct: number; explain: string }[]
         explain: 'Correto: temos verificação antifraude com o aluno. Lançamento honesto + aula dada = pagamento garantido, sem stress.',
     },
     {
-        q: '4. O que você emite todo mês depois de receber o repasse?',
+        q: '4. Como funciona uma saída correta da Wise Wolf?',
+        options: [
+            'Posso simplesmente parar de dar aula quando quiser',
+            'Aviso com 30 dias, ajudo na transição dos alunos e recebo o último fechamento com bônus de 10%; sumir sem aviso gera multa contratual',
+            'Preciso pedir demissão por carta registrada',
+        ],
+        correct: 1,
+        explain: 'Isso! Saída elegante é premiada; abandono é penalizado. Profissional de verdade fecha ciclos direito.',
+    },
+    {
+        q: '5. O que você emite todo mês depois de receber o repasse?',
         options: [
             'Nada, o Pix já resolve',
             'Um recibo de papel assinado',
@@ -524,6 +534,7 @@ const MANIFESTO: { emoji: string; title: string; text: string }[] = [
     { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
     { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
     { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },
+    { emoji: '🤝', title: 'Saída com elegância', text: 'Um dia você pode querer seguir outro caminho — sem problema. Avise com 30 dias, ajude na transição dos alunos e receba seu último fechamento com bônus de 10%. Sumir sem aviso gera multa contratual e queima sua reputação.' },
 ];
 
 const MindsetFunnel: React.FC<{ name: string; onBack: () => void; onDone: () => void }> = ({ name, onBack, onDone }) => {
