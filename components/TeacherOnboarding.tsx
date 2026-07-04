@@ -530,7 +530,7 @@ const QUIZ: { q: string; options: string[]; correct: number; explain: string }[]
 
 const MANIFESTO: { emoji: string; title: string; text: string }[] = [
     { emoji: '🏢', title: 'Você é uma empresa', text: 'A Wise Wolf não contrata funcionários — fecha parceria com EMPRESAS. É o seu CNPJ que assina, fatura e constrói reputação aqui. Aja como dono, porque você é.' },
-    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos, destrava o turbo (R$ 9,50/10,50 por aula) e cresce rápido. Quem falta, encolhe.' },
+    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, a partir de 10 alunos ativos + 30 dias sem falta, destrava o turbo (R$ 9,50/10,50 por aula) e cresce rápido. Quem falta, encolhe.' },
     { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
     { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
     { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },

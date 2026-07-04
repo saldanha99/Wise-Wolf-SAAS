@@ -1,3 +1,14 @@
+// Data local no formato YYYY-MM-DD. NUNCA use toISOString() para data de aula:
+// toISOString() converte para UTC e, depois das 21h no Brasil (UTC-3), a data pula
+// para o dia seguinte — o dia da semana (getDay, local) fica de um dia e a data de
+// outro. Foi isso que gerou aulas fantasma/duplicadas no fechamento dos professores.
+export const localYMD = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
 export const isBusinessDay = (date: Date): boolean => {
     const day = date.getDay();
     // 0 = Sunday, 6 = Saturday

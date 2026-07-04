@@ -3,6 +3,7 @@ import { Save, User as UserIcon, BookOpen, ChevronRight, Sparkles, AlertCircle, 
 import { getPedagogicalSuggestion } from '../services/geminiService';
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
+import { localYMD } from '../lib/dateUtils';
 import { User as UserType } from '../types';
 
 interface LessonLauncherProps {
@@ -31,14 +32,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     try {
       const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
       const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
+      // localYMD (NUNCA toISOString): depois das 21h a data UTC pula pro dia seguinte
+      // e a aula era listada com a data errada — gerava lançamento duplicado no fechamento.
+      const todayStr = localYMD(today);
       const todayDay = DAYS[today.getDay()];
 
       // Janela de lançamento ampliada: cobre atrasos e a virada de mês (antes eram só 8 dias).
       const LOOKBACK_DAYS = 45;
       const startDate = new Date();
       startDate.setDate(today.getDate() - LOOKBACK_DAYS);
-      const startStr = startDate.toISOString().split('T')[0];
+      const startStr = localYMD(startDate);
 
       const allLessons: any[] = [];
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
@@ -95,7 +98,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       for (let i = 0; i < LOOKBACK_DAYS; i++) {
         const checkDate = new Date();
         checkDate.setDate(today.getDate() - i);
-        const dateStr = checkDate.toISOString().split('T')[0];
+        const dateStr = localYMD(checkDate);
         const dayName = DAYS[checkDate.getDay()];
 
         if (dayName === 'Domingo') continue;
@@ -106,7 +109,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // Filtrar os trials deste professor para este dia específico
         const appointments = allTrialAppointments.filter(t => {
           const apptDate = new Date(t.start_time);
-          return apptDate.toISOString().split('T')[0] === dateStr;
+          return localYMD(apptDate) === dateStr;
         });
 
         const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);

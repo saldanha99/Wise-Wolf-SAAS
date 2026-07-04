@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, RefreshCw } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
+import { localYMD } from '../lib/dateUtils';
 import { User as UserType } from '../types';
 
 interface PendingLessonsProps {
@@ -44,7 +45,9 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       // Iterate dates from startDate to endDate
       for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
         const dayName = daysOfWeek[d.getDay()];
-        const dateStr = d.toISOString().split('T')[0];
+        // localYMD (NUNCA toISOString): depois das 21h a data UTC pula pro dia seguinte —
+        // a aula de segunda virava "pendência" de terça e era lançada em dobro no fechamento.
+        const dateStr = localYMD(d);
 
         if (dayName === 'Domingo') continue;
 
@@ -101,13 +104,15 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
       }
 
       // 3. Fetch logs from strict range to filter out
+      // Filtra por class_date (data real da aula), não por created_at: aula lançada
+      // com atraso tem created_at fora da janela e virava "pendência" duplicada.
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('booking_id, reschedule_id, student_id, created_at')
+        .select('booking_id, reschedule_id, student_id, class_date')
         .eq('teacher_id', user.id)
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString() + 'T23:59:59Z');
+        .gte('class_date', localYMD(startDate))
+        .lte('class_date', localYMD(endDate));
 
       const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
 
@@ -118,7 +123,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         if (expMonthYear < currentMonthYear) return false;
 
         const hasLog = logs?.some(log => {
-          const logDate = log.created_at.split('T')[0];
+          const logDate = log.class_date;
           const expDate = exp.rawDate;
 
           if (exp.type === 'REGULAR' && log.booking_id && String(log.booking_id) === String(exp.bookingId)) {

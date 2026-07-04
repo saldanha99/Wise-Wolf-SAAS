@@ -29,6 +29,10 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const potential = Number(p.amount_potential_turbo || 0);
   const leftOnTable = Math.max(0, potential - logged);
   const toNext = p.students_to_next;
+  // Regra 04/07/2026: turbo só destrava a partir de 10 alunos ativos
+  const studentsActive = Number(turbo.students_active || 0);
+  const studentsMissing = Number(turbo.students_missing || 0);
+  const daysToActivate = Number(turbo.days_to_activate || 0);
 
   return (
     <div className={`relative overflow-hidden rounded-3xl p-6 border ${active
@@ -81,12 +85,26 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
         {/* Estado do turbo */}
         {active ? (
           <p className="text-xs font-bold text-white/90">
-            Você está há <b>{turbo.days_clean} dias</b> sem faltar. Mantendo a ofensiva, seus alunos do 5º ao 9º valem <b>R$ 9,50</b> e do 10º em diante <b>R$ 10,50</b> por aula. Uma falta zera o turbo!
+            Você está há <b>{turbo.days_clean} dias</b> sem faltar, com <b>{studentsActive} alunos ativos</b>. Mantendo a ofensiva, seus alunos do 5º ao 9º valem <b>R$ 9,50</b> e do 10º em diante <b>R$ 10,50</b> por aula. Uma falta zera o turbo!
           </p>
         ) : (
-          <p className="text-xs font-bold text-brand-muted">
-            Faltam <b className="text-brand-text">{turbo.days_to_activate} dias</b> sem faltar pra destravar o turbo e ganhar mais por aluno (5º-9º: R$9,50 · 10º+: R$10,50).
-          </p>
+          <div className="space-y-2">
+            {studentsMissing > 0 && (
+              <div className="text-xs font-bold rounded-xl px-3 py-2 bg-brand-surface-2 border border-brand-border text-brand-text">
+                🎯 Faltam <b>{studentsMissing} aluno{studentsMissing === 1 ? '' : 's'}</b> para você poder ativar o turbo: o benefício destrava a partir de <b>10 alunos ativos</b> (hoje você tem {studentsActive}). Quanto mais assiduidade e qualidade, mais alunos a escola te envia.
+              </div>
+            )}
+            {daysToActivate > 0 && (
+              <p className="text-xs font-bold text-brand-muted">
+                {studentsMissing > 0 ? 'Além disso, são necessários ' : 'Faltam '}<b className="text-brand-text">{daysToActivate} dias</b> sem faltar pra destravar o turbo e ganhar mais por aluno (5º-9º: R$9,50 · 10º+: R$10,50).
+              </p>
+            )}
+            {studentsMissing === 0 && daysToActivate === 0 && (
+              <p className="text-xs font-bold text-brand-muted">
+                Requisitos completos — o turbo ativa automaticamente no próximo cálculo. Continue sem faltar!
+              </p>
+            )}
+          </div>
         )}
 
         {toNext != null && (
