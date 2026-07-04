@@ -49,13 +49,18 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                     });
                 }
 
-                // 2. Nota fiscal pendente (fechamento pago sem NF)
+                // 2. Nota fiscal pendente (fechamento pago sem NF) — professor isento não vê
+                const { data: prof } = await supabase
+                    .from('profiles')
+                    .select('nf_exempt')
+                    .eq('id', userId)
+                    .maybeSingle();
                 const { data: closings } = await supabase
                     .from('teacher_closings')
                     .select('id, month_year, total_amount, status, nf_link')
                     .eq('teacher_id', userId)
                     .in('status', ['PAID_WAITING_NF', 'REJECTED', 'REJEITADO']);
-                const semNf = (closings || []).filter(c => !c.nf_link && Number(c.total_amount) > 0);
+                const semNf = prof?.nf_exempt ? [] : (closings || []).filter(c => !c.nf_link && Number(c.total_amount) > 0);
                 if (semNf.length) {
                     found.push({
                         id: 'nf', tone: 'amber', icon: <FileText size={18} />,

@@ -45,7 +45,8 @@ serve(async (req) => {
           id,
           full_name,
           pix_key,
-          pix_key_type
+          pix_key_type,
+          nf_exempt
         )
       `)
             .eq('id', closingId)
@@ -70,7 +71,7 @@ serve(async (req) => {
             .select('require_nf_for_transfer')
             .eq('id', closing.tenant_id)
             .maybeSingle();
-        if (tenantCfg?.require_nf_for_transfer) {
+        if (tenantCfg?.require_nf_for_transfer && !closing.teacher?.nf_exempt) {
             const { data: pendentesNf } = await supabaseClient
                 .from('teacher_closings')
                 .select('id, month_year, status, nf_link, total_amount')
@@ -143,7 +144,7 @@ serve(async (req) => {
         const { error: updateError } = await supabaseClient
             .from('teacher_closings')
             .update({
-                status: 'PAID_WAITING_NF',
+                status: closing.teacher?.nf_exempt ? 'PAGO' : 'PAID_WAITING_NF',
                 asaas_transfer_id: asaasData.id,
                 transfer_status: asaasData.status,
                 paid_at: new Date().toISOString(), // e.g. PENDING, BANK_PROCESSING, DONE
