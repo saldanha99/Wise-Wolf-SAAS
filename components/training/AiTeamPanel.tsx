@@ -7,18 +7,19 @@ import { Loader2, Play, Save, Bot, Sparkles, MessageCircle } from 'lucide-react'
 // agente e define telefone do diretor + cadência. Config salva via RPC set_ai_team_config;
 // relatórios e envio rodam na edge function school-ai-team.
 
-type Role = 'atendente' | 'estagiario' | 'financeiro' | 'secretaria';
+type Role = 'atendente' | 'estagiario' | 'financeiro' | 'rh' | 'secretaria';
 interface AgentCfg { name: string; enabled: boolean; training: string }
 interface TeamConfig { ownerWhatsapp: string; schedule: 'daily' | 'weekly' | 'off'; agents: Record<Role, AgentCfg>; }
 interface Report { role: Role; name: string; emoji: string; markdown: string; highlights: string[] }
 
 const ROLE_LABEL: Record<Role, string> = {
   secretaria: 'Secretária (gestora)',
-  atendente: 'Atendente (comercial)',
+  atendente: 'Atendente (comercial + SDR)',
   estagiario: 'Coordenação Pedagógica',
   financeiro: 'Financeiro',
+  rh: 'RH / Recrutamento (Rita)',
 };
-const ROLE_ORDER: Role[] = ['secretaria', 'atendente', 'estagiario', 'financeiro'];
+const ROLE_ORDER: Role[] = ['secretaria', 'atendente', 'estagiario', 'financeiro', 'rh'];
 
 // Mini-render de markdown (negrito, títulos ###, bullets) — sem dependência extra.
 const Markdown: React.FC<{ md: string }> = ({ md }) => {
@@ -82,7 +83,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
           <div className="w-10 h-10 bg-tenant-primary/10 rounded-xl flex items-center justify-center"><Bot size={20} className="text-tenant-primary" /></div>
           <div>
             <h2 className="text-2xl font-black text-brand-text">Equipe de IA</h2>
-            <p className="text-brand-muted text-sm">4 funcionários virtuais que monitoram a escola e te avisam todo dia no WhatsApp.</p>
+            <p className="text-brand-muted text-sm">5 funcionários virtuais que monitoram a escola e te avisam todo dia no WhatsApp — a atendente e a Rita também conversam com leads e candidatos 24/7.</p>
           </div>
         </div>
         <button onClick={() => run(true)} disabled={running}

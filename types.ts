@@ -168,4 +168,13 @@ export interface JobApplication {
   resume_url?: string;
   status: JobStatus;
   created_at: string;
+  // Triagem da Rita (IA de RH) — preenchidos pela edge hr-ai-screening
+  ai_score?: number | null;
+  ai_summary?: string | null;
+  ai_flags?: { red_flags?: string[]; pontos_fortes?: string[] } | null;
+  ai_recommendation?: 'ENTREVISTAR' | 'TALVEZ' | 'RECUSAR' | null;
+  ai_screened_at?: string | null;
+  preinterview_status?: 'SENT' | 'IN_PROGRESS' | 'DONE' | null;
+  preinterview_answers?: Record<string, string | number> | null;
+  interview_slot?: string | null;
 }

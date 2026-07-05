@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, JobApplication, JobStatus } from '../types';
-import { Briefcase, FileText, Search, UserCheck, XCircle, Clock, ChevronDown, CheckCircle } from 'lucide-react';
+import { Briefcase, FileText, Search, ChevronDown, ChevronUp, Bot, Sparkles, Calendar, MessageCircle, Loader2 } from 'lucide-react';
+
+// Painel de RH com a triagem da RITA (IA de RH):
+// - score 0-10 + recomendação + resumo + red flags por candidato (edge hr-ai-screening)
+// - respostas da pré-entrevista feita pela Rita no WhatsApp
+// - entrevista agendada (interview_slot)
+// - botão PDF gera SIGNED URL (o bucket 'resumes' é PRIVADO — URL pública quebra)
 
 interface HRModuleProps {
     user: User;
@@ -12,6 +18,8 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
     const [applications, setApplications] = useState<JobApplication[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [screeningId, setScreeningId] = useState<string | null>(null);
 
     const fetchApplications = async () => {
         if (!tenantId) return;
@@ -24,7 +32,13 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setApplications(data || []);
+            // Melhores candidatos primeiro; sem triagem vai para o fim
+            const sorted = (data || []).sort((a: JobApplication, b: JobApplication) => {
+                const sa = a.ai_score ?? -1, sb = b.ai_score ?? -1;
+                if (sb !== sa) return sb - sa;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+            setApplications(sorted);
         } catch (error: any) {
             console.error('Error fetching job applications:', error);
             alert('Erro ao carregar currículos.');
@@ -55,6 +69,23 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
         }
     };
 
+    // Triagem manual (re-processa um candidato pela Rita; não dispara WhatsApp)
+    const screenNow = async (id: string) => {
+        setScreeningId(id);
+        try {
+            const { data, error } = await supabase.functions.invoke('hr-ai-screening', {
+                body: { application_id: id, send_preinterview: false }
+            });
+            if (error) throw new Error(error.message);
+            if (data?.error) throw new Error(data.error);
+            await fetchApplications();
+        } catch (e: any) {
+            alert('Falha na triagem: ' + (e.message || 'erro desconhecido'));
+        } finally {
+            setScreeningId(null);
+        }
+    };
+
     const getStatusBadge = (status: JobStatus) => {
         const styles: Record<JobStatus, string> = {
             'Novo': 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
@@ -71,12 +102,58 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
         );
     };
 
-    const openResume = (url?: string) => {
-        if (url) {
-            window.open(url, '_blank');
-        } else {
-            alert('Currículo não anexado.');
+    // Badge da nota da Rita: verde >=7, âmbar 4-6.9, vermelho <4
+    const getScoreBadge = (app: JobApplication) => {
+        if (app.ai_score === null || app.ai_score === undefined) {
+            return (
+                <button onClick={() => screenNow(app.id)} disabled={screeningId === app.id}
+                    className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:text-blue-600 hover:border-blue-400 transition-colors flex items-center gap-1 disabled:opacity-50">
+                    {screeningId === app.id ? <Loader2 size={11} className="animate-spin" /> : <Bot size={11} />}
+                    {screeningId === app.id ? 'Triando…' : 'Triar (IA)'}
+                </button>
+            );
         }
+        const score = Number(app.ai_score);
+        const cls = score >= 7
+            ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+            : score >= 4
+                ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'
+                : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20';
+        return (
+            <div className="flex items-center gap-1.5">
+                <span className={`px-2 py-1 rounded-lg text-xs font-black border ${cls}`}>{score.toFixed(1)}</span>
+                {app.ai_recommendation && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">{app.ai_recommendation}</span>
+                )}
+            </div>
+        );
+    };
+
+    // O bucket 'resumes' é privado — gera signed URL a partir do path salvo
+    const openResume = async (url?: string) => {
+        if (!url) { alert('Currículo não anexado.'); return; }
+        const m = url.match(/\/object\/(?:public|sign|authenticated)\/resumes\/(.+?)(?:\?|$)/);
+        if (m) {
+            const path = decodeURIComponent(m[1]);
+            const { data, error } = await supabase.storage.from('resumes').createSignedUrl(path, 3600);
+            if (!error && data?.signedUrl) { window.open(data.signedUrl, '_blank'); return; }
+        }
+        window.open(url, '_blank');
+    };
+
+    const PREINT_LABEL: Record<string, string> = {
+        SENT: 'Pré-entrevista enviada',
+        IN_PROGRESS: 'Pré-entrevista em andamento',
+        DONE: 'Pré-entrevista concluída ✓',
+    };
+
+    const ANSWER_LABEL: Record<string, string> = {
+        disponibilidade: 'Disponibilidade',
+        pretensao: 'Pretensão por aula',
+        nivel_ingles: 'Nível de inglês',
+        experiencia: 'Experiência',
+        apresentacao_en: 'Apresentação em inglês',
+        nota_ingles: 'Nota do inglês escrito (Rita)',
     };
 
     const filteredApps = applications.filter(app =>
@@ -92,8 +169,9 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                         <Briefcase className="w-8 h-8 text-blue-500" />
                         Recursos Humanos
                     </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Gerencie as candidaturas e currículos recebidos pelo site.
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
+                        <Bot size={14} className="text-blue-500" />
+                        A <strong>Rita (IA)</strong> tria cada candidatura: nota, resumo e pré-entrevista pelo WhatsApp. Você só decide.
                     </p>
                 </div>
             </div>
@@ -129,59 +207,122 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                     </div>
                 ) : (
                     <div className="overflow-x-auto relative z-10 -mx-6 px-6 pb-4">
-                        <table className="w-full text-sm text-left border-separate border-spacing-y-2 min-w-[500px]">
+                        <table className="w-full text-sm text-left border-separate border-spacing-y-2 min-w-[640px]">
                             <thead className="text-xs text-gray-500 uppercase font-semibold">
                                 <tr>
-                                    <th className="px-6 py-3 px-8">Candidato</th>
-                                    <th className="px-6 py-3">WhatsApp</th>
-                                    <th className="px-6 py-3">Status</th>
-                                    <th className="px-6 py-3">Data da Inscrição</th>
-                                    <th className="px-6 py-3 text-right">Ações</th>
+                                    <th className="px-4 py-3">Candidato</th>
+                                    <th className="px-4 py-3">Nota IA</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3">Inscrição</th>
+                                    <th className="px-4 py-3 text-right">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredApps.map((app) => (
-                                    <tr key={app.id} className="bg-gray-50 dark:bg-brand-surface-2/40 hover:bg-gray-100 dark:hover:bg-brand-surface-2/80 transition-colors group shadow-sm rounded-xl">
-                                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-gray-100 rounded-l-xl">
-                                            {app.name}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-600 dark:text-gray-400 font-medium">
-                                            {app.whatsapp}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {getStatusBadge(app.status)}
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-500 dark:text-gray-500 font-medium">
-                                            {new Date(app.created_at).toLocaleDateString('pt-BR')} às {new Date(app.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                        </td>
-                                        <td className="px-6 py-4 text-right rounded-r-xl">
-                                            <div className="flex items-center justify-end gap-3">
-                                                <button
-                                                    onClick={() => openResume(app.resume_url)}
-                                                    disabled={!app.resume_url}
-                                                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-lg transition-colors font-medium text-xs flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
-                                                    title="Visualizar Currículo (PDF)"
-                                                >
-                                                    <FileText className="w-4 h-4" />
-                                                    <span>PDF</span>
-                                                </button>
-
-                                                <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
-
-                                                <select
-                                                    value={app.status}
-                                                    onChange={(e) => updateStatus(app.id, e.target.value as JobStatus)}
-                                                    className="text-xs bg-brand-surface border border-gray-200 dark:border-gray-700 rounded-lg pl-3 pr-8 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239CA3AF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat"
-                                                >
-                                                    <option value="Novo">Novo</option>
-                                                    <option value="Em Análise">Em Análise</option>
-                                                    <option value="Entrevistado">Entrevistado</option>
-                                                    <option value="Contratado">Contratado</option>
-                                                    <option value="Rejeitado">Rejeitado</option>
-                                                </select>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <React.Fragment key={app.id}>
+                                        <tr className="bg-gray-50 dark:bg-brand-surface-2/40 hover:bg-gray-100 dark:hover:bg-brand-surface-2/80 transition-colors group shadow-sm rounded-xl">
+                                            <td className="px-4 py-4 rounded-l-xl">
+                                                <div className="font-bold text-gray-900 dark:text-gray-100">{app.name}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-2 mt-0.5">
+                                                    {app.whatsapp}
+                                                    {app.preinterview_status && (
+                                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                                            <MessageCircle size={9} /> {PREINT_LABEL[app.preinterview_status] || app.preinterview_status}
+                                                        </span>
+                                                    )}
+                                                    {app.interview_slot && (
+                                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                                                            <Calendar size={9} /> Entrevista {new Date(app.interview_slot).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4">{getScoreBadge(app)}</td>
+                                            <td className="px-4 py-4">{getStatusBadge(app.status)}</td>
+                                            <td className="px-4 py-4 text-gray-500 dark:text-gray-500 font-medium whitespace-nowrap">
+                                                {new Date(app.created_at).toLocaleDateString('pt-BR')}
+                                            </td>
+                                            <td className="px-4 py-4 text-right rounded-r-xl">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {(app.ai_summary || app.preinterview_answers) && (
+                                                        <button
+                                                            onClick={() => setExpandedId(expandedId === app.id ? null : app.id)}
+                                                            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-lg transition-colors font-medium text-xs flex items-center gap-1"
+                                                            title="Ver análise da Rita"
+                                                        >
+                                                            <Sparkles className="w-4 h-4" />
+                                                            {expandedId === app.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => openResume(app.resume_url)}
+                                                        disabled={!app.resume_url}
+                                                        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-lg transition-colors font-medium text-xs flex items-center gap-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        title="Visualizar Currículo (PDF)"
+                                                    >
+                                                        <FileText className="w-4 h-4" />
+                                                    </button>
+                                                    <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
+                                                    <select
+                                                        value={app.status}
+                                                        onChange={(e) => updateStatus(app.id, e.target.value as JobStatus)}
+                                                        className="text-xs bg-brand-surface border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-2 font-semibold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all cursor-pointer"
+                                                    >
+                                                        <option value="Novo">Novo</option>
+                                                        <option value="Em Análise">Em Análise</option>
+                                                        <option value="Entrevistado">Entrevistado</option>
+                                                        <option value="Contratado">Contratado</option>
+                                                        <option value="Rejeitado">Rejeitado</option>
+                                                    </select>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {expandedId === app.id && (
+                                            <tr>
+                                                <td colSpan={5} className="px-4 pb-2">
+                                                    <div className="bg-blue-50/60 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/15 rounded-xl p-4 space-y-3">
+                                                        {app.ai_summary && (
+                                                            <div>
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-1 mb-1"><Bot size={11} /> Análise da Rita</p>
+                                                                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{app.ai_summary}</p>
+                                                            </div>
+                                                        )}
+                                                        <div className="grid sm:grid-cols-2 gap-3">
+                                                            {(app.ai_flags?.pontos_fortes?.length ?? 0) > 0 && (
+                                                                <div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">Pontos fortes</p>
+                                                                    <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                                                                        {app.ai_flags!.pontos_fortes!.map((p, i) => <li key={i}>• {p}</li>)}
+                                                                    </ul>
+                                                                </div>
+                                                            )}
+                                                            {(app.ai_flags?.red_flags?.length ?? 0) > 0 && (
+                                                                <div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-1">Red flags</p>
+                                                                    <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                                                                        {app.ai_flags!.red_flags!.map((p, i) => <li key={i}>• {p}</li>)}
+                                                                    </ul>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {app.preinterview_answers && Object.keys(app.preinterview_answers).length > 0 && (
+                                                            <div>
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-1 mb-1"><MessageCircle size={11} /> Pré-entrevista (WhatsApp)</p>
+                                                                <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                                                                    {Object.entries(app.preinterview_answers).map(([k, v]) => (
+                                                                        <div key={k} className="text-xs">
+                                                                            <span className="font-bold text-gray-700 dark:text-gray-300">{ANSWER_LABEL[k] || k}: </span>
+                                                                            <span className="text-gray-600 dark:text-gray-400">{String(v)}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>
