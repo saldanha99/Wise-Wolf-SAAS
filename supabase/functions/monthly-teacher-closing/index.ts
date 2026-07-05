@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Cron mensal (início do mês): gera os fechamentos do mês anterior para todos os professores
-// (run_monthly_teacher_closing) e avisa cada professor pelo WhatsApp com o resumo + onde ver o PDF.
-// Idempotente: a geração já é idempotente (NOT EXISTS); o aviso usa automation_sent
-// (kind=MONTHLY_CLOSING, subject_id=`teacher:month`) ignorando ref_date (1 aviso por mês/professor).
+// Fechamento dos professores + aviso WhatsApp.
+// - Cron dia 1º (06:30 UTC): gera os fechamentos do mês anterior e avisa cada professor.
+// - Cron diário wisewolf-closing-recalc (11:30 UTC): reprocessa M-1 e M-2 (janela retroativa
+//   de 45 dias do LessonLauncher). A RPC recalcula totais enquanto status='PENDENTE' e, se o
+//   valor mudou, apaga o dedupe — aí esta função reavisa com o texto de "atualizado".
+// Dedupe: automation_sent (kind=MONTHLY_CLOSING, subject_id=`teacher:month`), ignora ref_date.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,18 +33,16 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
     const today = new Date().toISOString().split("T")[0];
 
-    // mês alvo: body.month ('YYYY-MM') ou mês anterior (default da RPC)
     let month: string | null = null;
     try { const b = await req.json(); month = b?.month || null; } catch { /* sem body */ }
 
-    // 1. Gera os fechamentos (idempotente)
     const { data: gen, error: genErr } = await supabase.rpc("run_monthly_teacher_closing", { p_month: month });
     if (genErr) throw genErr;
     const targetMonth: string = gen?.month || month || "";
+    const updatedIds: string[] = Array.isArray(gen?.updated_teacher_ids) ? gen.updated_teacher_ids : [];
 
-    // 2. Avisa cada professor
     const { data: closings } = await supabase.rpc("monthly_closings_to_notify", { p_month: targetMonth });
-    const result = { month: targetMonth, generated: gen?.created ?? 0, notified: 0, skipped: 0, failures: [] as string[] };
+    const result = { month: targetMonth, generated: gen?.created ?? 0, updated: gen?.updated ?? 0, notified: 0, skipped: 0, failures: [] as string[] };
 
     const instCache: Record<string, string | null> = {};
     async function instance(tenantId: string) {
@@ -56,10 +56,9 @@ serve(async (req) => {
     }
 
     for (const c of (closings || [])) {
-      if (!Number(c.lessons)) { result.skipped++; continue; } // sem aulas no mês → não avisa
+      if (!Number(c.lessons)) { result.skipped++; continue; }
       const subj = `${c.teacher_id}:${targetMonth}`;
 
-      // dedupe ignorando ref_date (1 aviso por mês/professor)
       const { data: dup } = await supabase.from("automation_sent").select("id")
         .eq("kind", "MONTHLY_CLOSING").eq("subject_id", subj).maybeSingle();
       if (dup) { result.skipped++; continue; }
@@ -71,7 +70,12 @@ serve(async (req) => {
       if (!inst) { result.failures.push(`${c.teacher_id}: tenant sem WhatsApp central`); continue; }
 
       const nome = (c.name || "").trim().split(" ")[0];
-      const text = `Olá ${nome}! 🐺\n\nSeu fechamento de *${monthLabel(targetMonth)}* já está pronto:\n\n` +
+      // Se a RPC atualizou os totais deste professor nesta passada, é um reaviso de valor novo
+      const isUpdate = updatedIds.includes(c.teacher_id);
+      const intro = isUpdate
+        ? `Seu fechamento de *${monthLabel(targetMonth)}* foi *atualizado* (novas aulas contabilizadas):`
+        : `Seu fechamento de *${monthLabel(targetMonth)}* já está pronto:`;
+      const text = `Olá ${nome}! 🐺\n\n${intro}\n\n` +
         `📚 Aulas pagas: *${c.lessons}*\n` +
         `💰 Total a receber: *${money(c.amount)}*\n\n` +
         `Você pode conferir o relatório completo e baixar o PDF na plataforma, em *Financeiro → Meu Relatório (PDF)*.\n\n` +

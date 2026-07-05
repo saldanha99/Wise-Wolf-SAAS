@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
+import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 
 interface InvoiceManagerProps {
     tenantId?: string;
@@ -15,6 +16,8 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, PENDING, PAID, CONTESTED
     const [updating, setUpdating] = useState<string | null>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+    // Fechamento clicado → relatório unificado por professor (formato da folha manual)
+    const [reportInvoice, setReportInvoice] = useState<any>(null);
 
     useEffect(() => {
         if (tenantId) fetchInvoices();
@@ -227,7 +230,12 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
 
                     <div className="divide-y divide-slate-100 dark:divide-slate-700">
                         {filteredInvoices.map((invoice) => (
-                            <div key={invoice.id} className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-brand-surface-2 dark:hover:bg-slate-700/30 transition-colors group">
+                            <div
+                                key={invoice.id}
+                                onClick={() => setReportInvoice(invoice)}
+                                title="Ver relatório de pagamento do professor"
+                                className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-brand-surface-2 dark:hover:bg-slate-700/30 transition-colors group cursor-pointer"
+                            >
                                 {/* ... Columns ... */}
                                 <div className="col-span-3 flex items-center gap-3">
                                     <img
@@ -281,7 +289,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                 <div className="col-span-1 flex justify-center">
                                     {(invoice.nf_link || invoice.invoice_url) ? (
                                         <button
-                                            onClick={() => setSelectedInvoice(invoice)}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); }}
                                             className="p-2 text-tenant-primary hover:bg-tenant-primary/10 rounded-xl transition-colors"
                                             title="Ver Nota Fiscal"
                                         >
@@ -300,7 +308,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                         <div className="flex gap-1">
                                             {/* Manual Pay */}
                                             <button
-                                                onClick={() => handleStatusUpdate(invoice.id, 'PAID_WAITING_NF')}
+                                                onClick={(e) => { e.stopPropagation(); handleStatusUpdate(invoice.id, 'PAID_WAITING_NF'); }}
                                                 disabled={updating === invoice.id}
                                                 className="px-3 py-1.5 bg-brand-surface-2 text-brand-muted rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors flex items-center gap-1 disabled:opacity-50"
                                                 title="Marcar como Pago (Manual)"
@@ -310,7 +318,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
 
                                             {/* Auto Pay (Asaas) */}
                                             <button
-                                                onClick={() => handlePayViaPix(invoice)}
+                                                onClick={(e) => { e.stopPropagation(); handlePayViaPix(invoice); }}
                                                 disabled={updating === invoice.id}
                                                 className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-sm shadow-emerald-500/20 flex items-center gap-1 disabled:opacity-50"
                                                 title="Pagar via Pix (Asaas)"
@@ -324,7 +332,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     {/* If Under Review or Completed, Show Review/View Button */}
                                     {(invoice.status === 'UNDER_REVIEW' || invoice.status === 'COMPLETED') && (
                                         <button
-                                            onClick={() => setSelectedInvoice(invoice)}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); }}
                                             className="px-3 py-1.5 bg-purple-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-colors shadow-sm shadow-purple-500/20 flex items-center gap-1"
                                         >
                                             <FileText size={12} />
@@ -334,7 +342,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
 
                                     {invoice.status !== 'CONTESTADO' && invoice.status !== 'REJECTED' && invoice.status !== 'COMPLETED' && (
                                         <button
-                                            onClick={() => handleStatusUpdate(invoice.id, 'REJECTED')}
+                                            onClick={(e) => { e.stopPropagation(); handleStatusUpdate(invoice.id, 'REJECTED'); }}
                                             disabled={updating === invoice.id}
                                             className="p-1.5 text-brand-muted hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors border border-transparent hover:border-100"
                                             title="Rejeitar / Contestar"
@@ -354,6 +362,15 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Relatório unificado por professor (formato da folha manual da escola) */}
+            {reportInvoice && (
+                <TeacherPayrollReportModal
+                    teacherId={reportInvoice.teacher_id}
+                    month={reportInvoice.month_year}
+                    onClose={() => setReportInvoice(null)}
+                />
             )}
 
             {/* Modal Integration */}

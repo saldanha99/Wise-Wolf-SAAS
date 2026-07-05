@@ -4,6 +4,7 @@ import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, R
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
+import { splitAlreadyLogged } from '../lib/classLogGuard';
 import { User as UserType } from '../types';
 
 interface PendingLessonsProps {
@@ -199,17 +200,30 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
       if (entries.length === 0) return;
 
-      const { error } = await supabase.from('class_logs').insert(entries);
+      // Guarda de origem cruzada: barra aula relançada como reposição quando o mesmo
+      // aluno já tem lançamento naquela data (as travas do banco não cobrem esse caso).
+      const { allowed, blocked } = await splitAlreadyLogged(supabase, user.id, entries as any[]);
+      if (blocked.length > 0) {
+        alert(`${blocked.length} aula(s) já estavam lançadas para o mesmo aluno na mesma data e foram ignoradas — nada foi duplicado.`);
+      }
+      if (allowed.length === 0) {
+        await fetchPendingLessons();
+        setSelectedLesson(null);
+        setIsBulkRegularizing(false);
+        return;
+      }
+
+      const { error } = await supabase.from('class_logs').insert(allowed);
       if (error) throw error;
 
-      // Clear used Reschedules 
-      const completedReschedules = entries.filter(e => e.reschedule_id).map(e => e.reschedule_id);
+      // Clear used Reschedules
+      const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
       if (completedReschedules.length > 0) {
         await supabase.from('reschedules').delete().in('id', completedReschedules);
       }
 
       // Handle Automated Reschedules for absences (exclusing makeup itself)
-      const absences = (entries as any[]).filter(e => (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada') && e.subtype !== 'REPOSIÇÃO');
+      const absences = (allowed as any[]).filter(e => (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada') && e.subtype !== 'REPOSIÇÃO');
       if (absences.length > 0) {
         const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 

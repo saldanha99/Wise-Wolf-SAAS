@@ -4,6 +4,7 @@ import { getPedagogicalSuggestion } from '../services/geminiService';
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
+import { splitAlreadyLogged } from '../lib/classLogGuard';
 import { User as UserType } from '../types';
 
 interface LessonLauncherProps {
@@ -288,15 +289,18 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         };
       }).filter(Boolean);
 
-      let blockedDuplicates = 0; // aulas que já estavam lançadas (barradas pela trava de unicidade)
-      if (entries.length > 0) {
+      // Guarda de origem cruzada: barra aula relançada como reposição quando o mesmo
+      // aluno já tem lançamento naquela data (as travas do banco não cobrem esse caso).
+      const { allowed, blocked: crossOriginDups } = await splitAlreadyLogged(supabase, user.id, entries as any[]);
+      let blockedDuplicates = crossOriginDups.length; // aulas que já estavam lançadas
+      if (allowed.length > 0) {
         // 1. Insert Class Logs — resiliente: se uma aula já foi lançada (23505), NÃO
         // derruba o lote inteiro. Cai pra inserção linha-a-linha e ignora as duplicatas
         // (a trava de unicidade do banco garante que nunca há pagamento dobrado).
-        const { error: logError } = await supabase.from('class_logs').insert(entries);
+        const { error: logError } = await supabase.from('class_logs').insert(allowed);
         if (logError) {
           if (logError.code === '23505') {
-            for (const e of entries) {
+            for (const e of allowed) {
               const { error: rowErr } = await supabase.from('class_logs').insert([e]);
               if (rowErr) {
                 if (rowErr.code === '23505') {
@@ -313,7 +317,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         }
 
         // Update CRM Leads to TRIAL_DONE
-        const trialEntries = (entries as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
+        const trialEntries = (allowed as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
         if (trialEntries.length > 0) {
           for (const entry of trialEntries) {
             const item = todayLessons.find(l => String(l.id) === `trial-${entry.appointment_id}`);
@@ -335,13 +339,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         }
 
         // 2. Clear used Reschedules if any
-        const completedReschedules = entries.filter(e => e.reschedule_id).map(e => e.reschedule_id);
+        const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
         if (completedReschedules.length > 0) {
           await supabase.from('reschedules').delete().in('id', completedReschedules);
         }
 
         // 3. Create credits for absences
-        const absences = (entries as any[]).filter(e =>
+        const absences = (allowed as any[]).filter(e =>
           (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada' || e.presence === 'TEACHER_ABSENCE')
           && e.subtype !== 'REPOSIÇÃO'
         );
