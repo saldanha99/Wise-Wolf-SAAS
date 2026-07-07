@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+    Mic,
     LayoutDashboard,
     BookOpen,
     Target,
@@ -97,6 +98,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'reschedules', label: 'Reposições', icon: Repeat },
         { id: 'pedagogical', label: 'Pedagógico', icon: Book },
         { id: 'training', label: 'Treinamentos', icon: GraduationCap },
+        { id: 'oral-tests', label: 'Testes Orais', icon: Mic },
         { id: 'automation', label: 'Smart', icon: Zap },
         { id: 'referral', label: 'Indicações', icon: Gift },
         { id: 'contract_teacher', label: 'Meu Contrato', icon: FileText },
@@ -132,6 +134,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca' },
         { id: 'trials', label: 'Agendar Experimental', icon: Zap, section: 'Aulas' },
         { id: 'trial-settlement', label: 'Pagar Exp./Treino', icon: CheckCircle, section: 'Aulas', badgeKey: 'trials' },
+        { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Aulas' },
         // ── Pedagógico ──
         { id: 'pedagogical', label: 'Biblioteca', icon: Book, section: 'Pedagógico' },
         { id: 'material-approvals', label: 'Aprovar Materiais', icon: FileText, section: 'Pedagógico', badgeKey: 'materiais' },

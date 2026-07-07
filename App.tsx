@@ -35,6 +35,7 @@ const EvolutionView = lazy(() => import('./components/EvolutionView'));
 const TeacherProfile = lazy(() => import('./components/TeacherProfile'));
 const TeacherReschedules = lazy(() => import('./components/TeacherReschedules'));
 const TeacherManagement = lazy(() => import('./components/TeacherManagement'));
+const OralTestsPanel = lazy(() => import('./components/OralTestsPanel'));
 const MeetingLinksView = lazy(() => import('./components/MeetingLinksView'));
 const TeacherFinancials = lazy(() => import('./components/TeacherFinancials'));
 const AttendanceDisputes = lazy(() => import('./components/AttendanceDisputes'));
@@ -516,7 +517,7 @@ const App: React.FC = () => {
         'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
         'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
         'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'payments', 'student-payments', 'cashflow', 'financial',
+        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'financial',
         'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
         'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
       ];
@@ -578,6 +579,7 @@ const App: React.FC = () => {
           setActiveTab('schedule_explorer');
         }}
       />,
+      'oral-tests': <OralTestsPanel user={user} tenantId={currentTenant?.id} />,
       'schedule_explorer': <TeacherScheduleExplorer
         user={user}
         teachers={teachers}
@@ -751,6 +753,7 @@ const App: React.FC = () => {
                       'automation': 'Automação',
                       'evolution': 'Evolução',
                       'teachers': 'Professores',
+                      'oral-tests': 'Testes Orais',
                       'schedule_explorer': 'Explorador de Agenda',
                       'approvals': 'Aprovações',
                       'payments': 'Pagamentos',
