@@ -17,6 +17,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // C) EXPIRAÇÃO: OPEN >48h ou com slot no passado → LOST (silencioso). Havia 58 zumbis com
 //    idade média de 75 dias poluindo os painéis e o funil.
 //
+// D) CONVITE DE ENTREVISTA (RH): a Rita aprovava (ai_recommendation=ENTREVISTAR) e o funil
+//    morria — nenhum código escrevia interview_slot (~60 candidaturas paradas, ~2 entrevistas
+//    em 2 meses). Agora: convite com link de agendamento (edge book-interview) + follow-ups
+//    24h/72h enquanto não agendar. O lembrete no dia da entrevista já existia (sdr-followups).
+//
 // Dedupe: automation_sent com verificação "ever" (sem ref_date) — cada lead/opp recebe cada
 // tipo de mensagem UMA vez na vida, mesmo com cron rodando a cada 15 min.
 
@@ -26,9 +31,12 @@ const EVOLUTION_KEYS = Array.from(new Set([
   "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
+// Página no frontend (não a edge): Supabase força text/plain em HTML no *.supabase.co
+const BOOK_BASE = "https://system.wisewolflanguage.com.br/book-interview";
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
 const FIRST_TOUCH_BATCH = 4;      // por execução — ban-safety
 const FIRST_TOUCH_DAILY_CAP = 24; // por dia — primeiro contato frio tem risco maior de report/block
+const INTERVIEW_INVITE_DAILY_CAP = 5; // agenda do diretor tem ~6 slots/noite — convidar mais rápido só gera fila
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
   for (const key of EVOLUTION_KEYS) {
@@ -114,6 +122,7 @@ serve(async (req) => {
     const result = {
       first_touch: 0, first_touch_skipped: 0,
       rebroadcasts: 0, director_alerts: 0,
+      interview_invites: 0, interview_followups: 0,
       expired: 0, failures: [] as string[],
     };
 
@@ -178,6 +187,79 @@ serve(async (req) => {
           await sb.from("ai_wa_messages").insert({ tenant_id: lead.tenant_id, phone, agent: "sdr", direction: "out", content: msg, meta: { lead_id: lead.id, kind: "first_touch", source: lead.source || null } });
           result.first_touch++;
         } else { await c.undo(); result.failures.push(`first_touch ${lead.id}`); }
+      }
+    }
+
+    // ============ D) CONVITE + FOLLOW-UP DE ENTREVISTA (RH) ============
+    if (businessHours) {
+      const { count: invitesToday } = await sb.from("automation_sent")
+        .select("id", { count: "exact", head: true })
+        .eq("kind", "INTERVIEW_INVITE").eq("ref_date", todayBRT());
+      let inviteBudget = Math.max(0, INTERVIEW_INVITE_DAILY_CAP - (invitesToday ?? 0));
+
+      // Aprovados pela Rita, sem entrevista marcada, ainda vivos no processo
+      const { data: cands } = await sb.from("job_applications")
+        .select("id, tenant_id, name, whatsapp, booking_token, status")
+        .eq("ai_recommendation", "ENTREVISTAR").is("interview_slot", null)
+        .not("status", "in", "(Contratado,Rejeitado,Entrevistado)")
+        .order("created_at", { ascending: true }); // mais antigos primeiro (fila justa)
+
+      // Momento do convite/FU1 já enviados (para calcular idade dos follow-ups)
+      const { data: rhMarks } = await sb.from("automation_sent")
+        .select("kind, subject_id, created_at").in("kind", ["INTERVIEW_INVITE", "INTERVIEW_INVITE_FU1", "INTERVIEW_INVITE_FU2"]);
+      const markAt = (kind: string, id: string) =>
+        (rhMarks || []).find((m: any) => m.kind === kind && m.subject_id === id)?.created_at || null;
+
+      for (const cand of (cands || [])) {
+        const t = byTenant[cand.tenant_id];
+        const cfg = cfgOf(cand.tenant_id);
+        if (!t || cfg?.rh?.enabled === false || cfg?.rh?.interview_invites === false) continue;
+        if (!cand.booking_token) continue; // linha anterior à migration do token
+        const phone = cleanPhone(cand.whatsapp || "");
+        if (phone.length < 12) continue;
+        const id = String(cand.id);
+        const first = greetName(cand.name);
+        const link = `${BOOK_BASE}?t=${cand.booking_token}`;
+
+        const invitedAt = markAt("INTERVIEW_INVITE", id);
+        if (!invitedAt) {
+          // Convite inicial — respeita o teto diário
+          if (inviteBudget <= 0) continue;
+          const c = await claim(sb, "INTERVIEW_INVITE", id);
+          if (!c.ok) continue;
+          const msg = `Oi${first ? ", " + first : ""}! Michelle da Wise Wolf por aqui 🐺 Ótima notícia: seu perfil foi aprovado na triagem e o diretor quer te conhecer! 🎉 É uma conversa online de ~30 minutos, pelo WhatsApp. Escolha o melhor horário pra você aqui:\n\n${link}\n\nQualquer dúvida, é só me responder 😊`;
+          if (await sendWhats(t.instance, phone, msg)) {
+            await sb.from("ai_wa_messages").insert({ tenant_id: cand.tenant_id, phone, agent: "rita", direction: "out", content: msg, meta: { application_id: cand.id, kind: "interview_invite" } });
+            result.interview_invites++;
+            inviteBudget--;
+          } else { await c.undo(); result.failures.push(`interview_invite ${id}`); }
+          continue;
+        }
+
+        // Follow-ups: só enquanto o convite tem menos de 10 dias (não ressuscitar processo morto)
+        const inviteAgeH = (Date.now() - new Date(invitedAt).getTime()) / 3600000;
+        if (inviteAgeH > 240) continue;
+
+        const fu1At = markAt("INTERVIEW_INVITE_FU1", id);
+        if (!fu1At && inviteAgeH >= 24) {
+          const c = await claim(sb, "INTERVIEW_INVITE_FU1", id);
+          if (!c.ok) continue;
+          const msg = `Oi${first ? ", " + first : ""}! Michelle de novo 😊 Vi que você ainda não escolheu o horário da sua entrevista com o diretor. Os horários da semana estão preenchendo — garante o seu aqui:\n\n${link}`;
+          if (await sendWhats(t.instance, phone, msg)) result.interview_followups++;
+          else { await c.undo(); result.failures.push(`interview_fu1 ${id}`); }
+          continue;
+        }
+
+        // FU2: 72h após o convite E pelo menos 24h após o FU1 (se o sweeper ficou fora do ar,
+        // não manda os dois lembretes em sequência)
+        if (fu1At && inviteAgeH >= 72 && (Date.now() - new Date(fu1At).getTime()) >= 24 * 3600000
+            && !markAt("INTERVIEW_INVITE_FU2", id)) {
+          const c = await claim(sb, "INTERVIEW_INVITE_FU2", id);
+          if (!c.ok) continue;
+          const msg = `Oi${first ? ", " + first : ""}! Última chamada 🐺 Seu processo na Wise Wolf está quase lá — falta só agendar a entrevista com o diretor:\n\n${link}\n\nSe não fizer mais sentido pra você, sem problemas — me avisa que encerro por aqui 😊`;
+          if (await sendWhats(t.instance, phone, msg)) result.interview_followups++;
+          else { await c.undo(); result.failures.push(`interview_fu2 ${id}`); }
+        }
       }
     }
 
