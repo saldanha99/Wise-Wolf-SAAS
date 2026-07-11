@@ -18,6 +18,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 import TeacherActivityReport from './TeacherActivityReport';
+import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 
 interface TeacherFinancialsProps {
     user: User;
@@ -34,8 +35,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [contestReason, setContestReason] = useState('');
     const [isConfirming, setIsConfirming] = useState(false);
     const [showReport, setShowReport] = useState(false);
+    const [showPayroll, setShowPayroll] = useState(false);
     // Rate real do professor (fonte da verdade = banco), evita cair no default R$8
     const [rate, setRate] = useState<number>(user.hourlyRate || LESSON_RATE);
+    // Relatório oficial do fechamento (get_teacher_closing_report) — MESMA fonte que o admin
+    // usa no painel Pagamentos. Antes o painel calculava aqui (rate flat × aulas, excluindo
+    // reposição) e divergia do RPC (tiers por aluno, reposição paga) → contestações em série.
+    const [report, setReport] = useState<any>(null);
 
     useEffect(() => {
         fetchFinancials();
@@ -75,6 +81,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             const { data: myPay } = await supabase.rpc('get_my_pay');
             if ((myPay as any)?.hourly_rate) setRate(Number((myPay as any).hourly_rate));
 
+            // Valores oficiais do mês (tiers por aluno, reposição paga, alunos não-faturáveis fora)
+            const { data: reportData } = await supabase.rpc('get_teacher_closing_report', {
+                p_teacher_id: user.id,
+                p_month: selectedMonth,
+            });
+            setReport(reportData || null);
+
             // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase
                 .from('teacher_closings')
@@ -94,18 +107,37 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     };
 
     const isLessonPaid = (log: any) => {
-        // Regra de pagamento ao professor:
+        // Regra CANÔNICA de pagamento (a mesma do fechamento/RPC — run_monthly_teacher_closing
+        // e get_teacher_closing_report). O painel exibia regra própria (reposição = R$0) e o
+        // professor via um valor diferente do que o admin pagava.
         // - TEACHER_ABSENCE: professor faltou → não recebe
-        // - REPOSIÇÃO: aluno faltou em aula anterior justificada (que já foi paga ao professor);
-        //   a reposição é entrega da aula devida, não gera nova hora-aula
         // - Teste Oral: avaliação periódica, fora do cômputo de hora-aula regular
-        // - FALTA do aluno (não-justificada): conta como aula paga (professor estava disponível)
+        // - payment_hold: conflito de presença retido até o admin resolver
+        // - REPOSIÇÃO e falta do aluno: PAGAS (professor estava disponível/entregou a aula)
         const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
-        const isReplacement = log.subtype === 'REPOSIÇÃO';
         const isOralTestOnly = log.subtype === 'Teste Oral';
-        // Aula em conflito de presença (aluno x professor) fica retida até o admin resolver
         const isOnHold = log.payment_hold === true;
-        return !isTeacherAbsence && !isReplacement && !isOralTestOnly && !isOnHold;
+        return !isTeacherAbsence && !isOralTestOnly && !isOnHold;
+    };
+
+    // Totais oficiais do RPC; fallback local só enquanto o relatório carrega.
+    // (O RPC também exclui alunos não-faturáveis, que o cálculo local não conhece.)
+    const officialTotal = (): number => {
+        const v = report?.resumo?.valor_total;
+        return v != null ? Number(v) : lessons.filter(isLessonPaid).length * rate;
+    };
+    const officialLessons = (): number => {
+        const v = report?.resumo?.total_aulas;
+        return v != null ? Number(v) : lessons.filter(isLessonPaid).length;
+    };
+    // Valor unitário real da aula (tiers variam por aluno): média do grupo do aluno no relatório
+    const perLessonValue = (log: any): number => {
+        const name = (log.student?.full_name || '').trim();
+        const isExp = log.subtype === 'AULA EXPERIMENTAL';
+        const grp = (report?.students || []).find((s: any) =>
+            s.student === name && (s.tipo === 'Aula experimental') === isExp);
+        if (grp && Number(grp.aulas) > 0) return Number(grp.valor) / Number(grp.aulas);
+        return rate;
     };
 
     const canCloseMonth = () => {
@@ -137,17 +169,14 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         if (isConfirming) return;
         setIsConfirming(true);
         try {
-            const paidLessons = lessons.filter(isLessonPaid);
-            const totalAmount = paidLessons.length * rate;
-
-            // Schema unificado (igual ao FinancialClosingModal e ao admin):
-            // month_year / total_lessons / total_amount / teacher_confirmation_status
+            // Totais SEMPRE do RPC oficial — o upsert do professor não pode sobrescrever o
+            // fechamento do admin com um cálculo local divergente (era a origem das contestações)
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
                 tenant_id: tenantId,
                 month_year: selectedMonth,
-                total_lessons: paidLessons.length,
-                total_amount: totalAmount,
+                total_lessons: officialLessons(),
+                total_amount: officialTotal(),
                 status: 'PENDENTE',
                 teacher_confirmation_status: 'OK',
                 teacher_confirmation_date: new Date().toISOString(),
@@ -169,15 +198,12 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         if (!contestReason) return;
         setIsConfirming(true);
         try {
-            const paidLessons = lessons.filter(isLessonPaid);
-            const totalAmount = paidLessons.length * rate;
-
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
                 tenant_id: tenantId,
                 month_year: selectedMonth,
-                total_lessons: paidLessons.length,
-                total_amount: totalAmount,
+                total_lessons: officialLessons(),
+                total_amount: officialTotal(),
                 status: 'PENDENTE',
                 teacher_confirmation_status: 'CONTESTADO',
                 teacher_confirmation_date: new Date().toISOString(),
@@ -219,6 +245,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 </div>
             </div>
             {showReport && <TeacherActivityReport teacherId={user.id} onClose={() => setShowReport(false)} />}
+            {showPayroll && <TeacherPayrollReportModal teacherId={user.id} month={selectedMonth} onClose={() => setShowPayroll(false)} />}
 
             {/* Forecast Card */}
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden">
@@ -234,10 +261,17 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
                     <div className="flex items-baseline gap-2">
                         <span className="text-4xl font-black tracking-tight">
-                            R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (rate), 0).toFixed(2).replace('.', ',')}
+                            R$ {officialTotal().toFixed(2).replace('.', ',')}
                         </span>
                         <span className="text-sm font-medium opacity-70">acumulado</span>
                     </div>
+
+                    <button
+                        onClick={() => setShowPayroll(true)}
+                        className="mt-3 text-[11px] font-bold uppercase tracking-widest bg-brand-surface/20 hover:bg-brand-surface/30 transition-colors rounded-lg px-3 py-1.5"
+                    >
+                        Ver detalhamento oficial →
+                    </button>
 
                     <div className="mt-4 flex gap-4 text-xs font-medium opacity-80">
                         <div className="flex items-center gap-2">
@@ -261,7 +295,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
                         <div>
                             <h3 className="text-xl font-black tracking-tight relative z-10">
-                                Finalizar Fechamento: R$ {lessons.filter(isLessonPaid).reduce((acc, log) => acc + (rate), 0).toFixed(2).replace('.', ',')}
+                                Finalizar Fechamento: R$ {officialTotal().toFixed(2).replace('.', ',')}
                             </h3>
                             <p className="text-brand-muted text-xs mt-1 relative z-10">
                                 Referente a {new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}. Confirme se os valores estão corretos.
@@ -413,7 +447,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                             ? 'text-slate-300 dark:text-brand-muted line-through'
                                             : 'text-emerald-600 dark:text-emerald-400'
                                             }`}>
-                                            R$ {!isLessonPaid(log) ? '0,00' : (rate).toFixed(2)}
+                                            R$ {!isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2)}
                                         </span>
                                     </td>
                                 </tr>

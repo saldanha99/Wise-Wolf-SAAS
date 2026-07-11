@@ -9,6 +9,7 @@ import FinancialClosingModal from './FinancialClosingModal';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
+import TeacherContractAccept from './TeacherContractAccept';
 
 interface TeacherDashboardProps {
   user: UserType;
@@ -32,6 +33,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
   const [teacherWa, setTeacherWa] = useState<{ instance: string | null; template: string | null; name: string; automation: boolean }>({ instance: null, template: null, name: '', automation: false });
   // Estado por aula: 'sending' | 'sent' | 'error'
   const [dispatching, setDispatching] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
+  // Aceite de contrato PJ pendente (contas criadas sem passar pelo onboarding nascem com
+  // contract_accepted=false e não tinham caminho de regularização).
+  const [contractPending, setContractPending] = useState(false);
+  const [showContractModal, setShowContractModal] = useState(false);
 
   const effectiveTenantId = tenantId || user.tenantId;
 
@@ -59,6 +64,19 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           automation: !!data.date_automation_enabled,
         });
       }
+    })();
+  }, [user?.id]);
+
+  // Verifica se o professor ainda não aceitou o contrato PJ (regularização).
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('contract_accepted')
+        .eq('id', user.id)
+        .single();
+      setContractPending(data ? data.contract_accepted !== true : false);
     })();
   }, [user?.id]);
 
@@ -374,6 +392,35 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       )}
 
       {user?.id && <TeacherTurboCard teacherId={user.id} />}
+
+      {/* Aceite de contrato PJ pendente — banner de regularização */}
+      {contractPending && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-4 animate-in slide-in-from-top-4">
+          <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-xl text-amber-600 dark:text-amber-400 self-start">
+            <AlertCircle size={24} />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-bold text-amber-700 dark:text-amber-400">Aceite do contrato pendente</h3>
+            <p className="text-sm text-amber-700/80 dark:text-amber-300/80 font-medium">
+              Você ainda não assinou o contrato de prestação de serviços PJ. É rápido e necessário para regularizar seu cadastro.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowContractModal(true)}
+            className="bg-amber-600 text-white px-6 py-3 rounded-xl text-xs font-bold hover:bg-amber-700 transition-all shadow-lg whitespace-nowrap self-start sm:self-auto"
+          >
+            Revisar e assinar
+          </button>
+        </div>
+      )}
+
+      {showContractModal && user?.id && (
+        <TeacherContractAccept
+          userId={user.id}
+          onClose={() => setShowContractModal(false)}
+          onAccepted={() => { setShowContractModal(false); setContractPending(false); }}
+        />
+      )}
 
       {/* Header Section */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">

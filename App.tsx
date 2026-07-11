@@ -70,6 +70,7 @@ const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
+const BookInterview = lazy(() => import('./components/BookInterview'));
 const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
@@ -375,6 +376,12 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
     return <ClaimOpportunity opportunityId={id} />;
+  }
+
+  // Candidato a professor agenda a entrevista com o diretor (link enviado pela Michelle/RH)
+  if (path === '/book-interview') {
+    const params = new URLSearchParams(window.location.search);
+    return <BookInterview token={params.get('t')} />;
   }
 
   if (path === '/new-saas') {

@@ -9,6 +9,43 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const ASAAS_ACCESS_TOKEN = (Deno.env.get('ASAAS_ACCESS_TOKEN') || Deno.env.get('ASAAS_API_KEY') || '').trim();
 const ASAAS_WEBHOOK_TOKEN = (Deno.env.get('ASAAS_WEBHOOK_TOKEN') || '').trim();
+// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia das demais.
+const EVOLUTION_API_KEYS = Array.from(new Set([
+    (Deno.env.get('EVOLUTION_API_KEY') || '').trim(),
+    '8828462c98512411df3acfe3df4e48a1',
+].filter(Boolean)));
+
+// META CAPI — mede o evento "Purchase" (matrícula paga) server-side. FB_CAPI_TOKEN ainda não
+// configurado → no-op silencioso até o secret existir.
+const FB_PIXEL_ID = "1475651934149356";
+const FB_CAPI_TOKEN = (Deno.env.get("FB_CAPI_TOKEN") || "").trim();
+async function sha256Hex(input: string): Promise<string> {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.trim().toLowerCase()));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sendMetaCapiEvent(opts: { eventName: string; phone?: string | null; value?: number; currency?: string }): Promise<void> {
+    if (!FB_CAPI_TOKEN) return;
+    try {
+        const userData: Record<string, unknown> = {};
+        if (opts.phone) {
+            const digits = opts.phone.replace(/\D/g, "");
+            userData.ph = [await sha256Hex(digits.startsWith("55") ? digits : `55${digits}`)];
+        }
+        const body = {
+            data: [{
+                event_name: opts.eventName,
+                event_time: Math.floor(Date.now() / 1000),
+                action_source: "system_generated",
+                event_source_url: "https://system.wisewolflanguage.com.br",
+                user_data: userData,
+                ...(opts.value ? { custom_data: { value: opts.value, currency: opts.currency || "BRL" } } : {}),
+            }],
+        };
+        await fetch(`https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+        }).catch(() => {});
+    } catch { /* CAPI nunca pode quebrar o fluxo principal */ }
+}
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -214,6 +251,8 @@ async function processarPagamento(body: any): Promise<void> {
                     if (isAlreadyPaid) {
                         console.log(`ℹ️ [Webhook] Payment confirmation WhatsApp skipped (already paid): ${payment.id}`);
                     } else {
+                        // Primeira confirmação real deste pagamento — dispara o evento de conversão.
+                        sendMetaCapiEvent({ eventName: 'Purchase', phone: profileData.phone, value: Number(payment.value) || undefined });
                         try {
                             const studentName = profileData.full_name?.split(' ')[0] || 'Aluno';
                             const studentPhone = profileData.phone;
@@ -231,24 +270,28 @@ async function processarPagamento(body: any): Promise<void> {
 
                             const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
                             const sendInstance = centralInst || 'wise-wolf';
-                            const evoRes = await fetchComTimeout(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
-                                method: 'POST',
-                                headers: {
-                                    'apikey': '8828462c98512411df3acfe3df4e48a1',
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    number: cleanPhone,
-                                    text: confirmationMessage,
-                                    delay: 1200,
-                                    linkPreview: false
-                                })
-                            });
+                            let evoRes: Response | null = null;
+                            for (const key of EVOLUTION_API_KEYS) {
+                                evoRes = await fetchComTimeout(`https://api.2b.app.br/message/sendText/${encodeURIComponent(sendInstance)}`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'apikey': key,
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({
+                                        number: cleanPhone,
+                                        text: confirmationMessage,
+                                        delay: 1200,
+                                        linkPreview: false
+                                    })
+                                });
+                                if (evoRes.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
+                            }
 
-                            if (evoRes.ok) {
+                            if (evoRes?.ok) {
                                 console.log('✅ Payment Confirmation WhatsApp Sent!');
                             } else {
-                                console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes.text());
+                                console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes?.text());
                             }
                         } catch (whatsappErr) {
                             console.error('❌ Error in Payment Confirmation WhatsApp flow:', whatsappErr);
