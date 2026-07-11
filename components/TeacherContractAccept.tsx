@@ -116,7 +116,6 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             teacherAddress={addressFull || '---'}
                                             teacherBirthDate={birth || '---'}
                                             hourlyRate={Number(profile?.hourly_rate) || undefined}
-                                            contractCity="Jacareí/SP"
                                             subscriptionId={profile?.subscription_id || undefined}
                                         />
                                     </div>
