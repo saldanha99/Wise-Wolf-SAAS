@@ -1,4 +1,4 @@
-﻿
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
 
@@ -9,7 +9,11 @@ const corsHeaders = {
 
 // CONFIGURATION
 const API_URL = "https://api.2b.app.br";
-const API_KEY = "8828462c98512411df3acfe3df4e48a1";
+// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
+const API_KEYS = Array.from(new Set([
+    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
+    "8828462c98512411df3acfe3df4e48a1",
+].filter(Boolean)));
 const GROUP_JID = "120363403699904869@g.us";
 const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
 
@@ -257,12 +261,17 @@ ${claimLink}`;
 
         let response: Response;
         try {
-            response = await fetch(endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": API_KEY },
-                body: JSON.stringify(payload),
-                signal: controller.signal
-            });
+            let resp: Response | null = null;
+            for (const key of API_KEYS) {
+                resp = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "apikey": key },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+                if (resp.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
+            }
+            response = resp!;
         } catch (fetchErr: any) {
             clearTimeout(timeoutId);
             const isTimeout = fetchErr?.name === 'AbortError';

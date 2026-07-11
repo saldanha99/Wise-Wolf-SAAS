@@ -15,7 +15,11 @@ const corsHeaders = {
 }
 
 const EVOLUTION_API_URL = 'https://api.2b.app.br';
-const EVOLUTION_API_KEY = '8828462c98512411df3acfe3df4e48a1';
+// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
+const EVOLUTION_API_KEYS = Array.from(new Set([
+    (Deno.env.get('EVOLUTION_API_KEY') || '').trim(),
+    '8828462c98512411df3acfe3df4e48a1',
+].filter(Boolean)));
 const MAX_ATTEMPTS = 3;
 
 // Normaliza telefone BR para o formato aceito pela Evolution (55 + DDD + número).
@@ -109,15 +113,19 @@ serve(async (req) => {
 
             try {
                 const url = `${EVOLUTION_API_URL}/message/sendText/${instanceId}`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
-                    body: JSON.stringify({ number: phone, text: message_body, delay: 1000 })
-                });
+                let response: Response | null = null;
+                for (const key of EVOLUTION_API_KEYS) {
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'apikey': key },
+                        body: JSON.stringify({ number: phone, text: message_body, delay: 1000 })
+                    });
+                    if (response.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
+                }
 
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Evolution API Error: ${response.status} - ${errText}`);
+                if (!response || !response.ok) {
+                    const errText = response ? await response.text() : 'sem resposta';
+                    throw new Error(`Evolution API Error: ${response?.status ?? '-'} - ${errText}`);
                 }
 
                 await supabaseClient.from('notification_queue')

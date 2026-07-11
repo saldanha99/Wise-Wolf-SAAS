@@ -2,7 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const EVOLUTION_API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
+const EVOLUTION_API_TOKENS = Array.from(new Set([
+    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
+    "8828462c98512411df3acfe3df4e48a1",
+].filter(Boolean)));
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -16,21 +20,21 @@ serve(async (req) => {
     }
 
     try {
-        const { whatsapp, name, tenant_id } = await req.json();
+        const { whatsapp, name, tenant_id, role } = await req.json();
 
         if (!whatsapp || !name || !tenant_id) {
             throw new Error("Missing required fields: whatsapp, name, tenant_id");
         }
 
-        // 1. Initialize Supabase Admin Client
+        // Vaga de professor recebe a triagem por IA (Rita). Vendedor/outros: welcome simples.
+        const isTeacher = !role || String(role).toLowerCase() === 'professor';
+
         const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 2. Fetch Director's WhatsApp Instance (same pattern as other functions)
+        // Instância do diretor (mesma da recepção inbound)
         let instanceName = '';
-
-        // PRIMARY: profiles table (director's linked instance)
         const { data: director } = await supabase
             .from('profiles')
             .select('whatsapp_instance')
@@ -40,12 +44,8 @@ serve(async (req) => {
             .neq('whatsapp_instance', '')
             .limit(1)
             .maybeSingle();
+        if (director?.whatsapp_instance) instanceName = director.whatsapp_instance;
 
-        if (director?.whatsapp_instance) {
-            instanceName = director.whatsapp_instance;
-        }
-
-        // FALLBACK: whatsapp_instances table
         if (!instanceName) {
             const { data: instanceRow } = await supabase
                 .from('whatsapp_instances')
@@ -54,89 +54,81 @@ serve(async (req) => {
                 .eq('status', 'open')
                 .limit(1)
                 .maybeSingle();
-
-            if (instanceRow?.instance_name) {
-                instanceName = instanceRow.instance_name;
-            }
+            if (instanceRow?.instance_name) instanceName = instanceRow.instance_name;
         }
-
         if (!instanceName) {
             instanceName = 'wise-wolf';
             console.warn(`[HR Welcome] No WhatsApp instance found for tenant ${tenant_id}, using fallback: ${instanceName}`);
         }
 
-        console.log(`[HR Welcome] Using instance: ${instanceName} for tenant ${tenant_id}`);
-
-        // 3. Format Phone
+        // Telefone
         let cleanPhone = whatsapp.replace(/\D/g, "");
-        if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
-            cleanPhone = "55" + cleanPhone;
-        } else if (cleanPhone.length > 11 && !cleanPhone.startsWith("55")) {
-            cleanPhone = "55" + cleanPhone;
-        }
+        if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = "55" + cleanPhone;
+        else if (cleanPhone.length > 11 && !cleanPhone.startsWith("55")) cleanPhone = "55" + cleanPhone;
 
-        // 3b. Banco de Talentos: convite p/ grupo WhatsApp (se configurado no tenant)
+        // Banco de Talentos (opcional)
         let groupBlock = '';
         try {
             const { data: t } = await supabase.from('tenants').select('talent_group_link').eq('id', tenant_id).maybeSingle();
             if (t?.talent_group_link) {
-                groupBlock = `
-
-🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*
-${t.talent_group_link}
-
-É por lá que as vagas abrem primeiro — quem está no grupo sai na frente!`;
+                groupBlock = `\n\n🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*\n${t.talent_group_link}\n\nÉ por lá que as vagas abrem primeiro — quem está no grupo sai na frente!`;
             }
-        } catch (_e) { /* sem grupo, mensagem segue normal */ }
+        } catch (_e) { /* sem grupo */ }
 
-        // 4. Construct Welcome Message
-        const message = `🐺 *Wise Wolf Language - Processo Seletivo*
+        const firstName = String(name).trim().split(/\s+/)[0] || name;
 
-Olá *${name}*! 👋
+        // Mensagem: professor -> convite pra iniciar a triagem (Rita); demais -> simples
+        const message = isTeacher
+            ? `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura para a vaga de *Professor(a) de Inglês* com sucesso! ✅\n\nPara dar continuidade, é bem rápido (5 a 10 min por aqui mesmo). Para começar sua triagem, responda esta mensagem com um *"Oi"*. 😊${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`
+            : `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá *${firstName}*! 👋\n\nRecebemos sua candidatura com sucesso! ✅\n\nNossa equipe irá analisar seu perfil e entraremos em contato em breve com os próximos passos.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`;
 
-Recebemos seu currículo com sucesso! ✅
-
-Nossa equipe de RH irá analisar suas informações e entraremos em contato em breve com os próximos passos.${groupBlock}
-
-Agradecemos o interesse em fazer parte do nosso time! 🚀
-
-_Atenciosamente, Equipe Wise Wolf_ 🐾`;
-
-        // 5. Send via Evolution API
-        const response = await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "apikey": EVOLUTION_API_TOKEN
-            },
-            body: JSON.stringify({
-                number: cleanPhone,
-                options: {
-                    delay: 1200,
-                    presence: "composing",
-                    linkPreview: false
-                },
-                textMessage: {
+        let response: Response | null = null;
+        let result: any = null;
+        for (const token of EVOLUTION_API_TOKENS) {
+            response = await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "apikey": token },
+                body: JSON.stringify({
+                    number: cleanPhone,
+                    options: { delay: 1200, presence: "composing", linkPreview: false },
+                    textMessage: { text: message },
                     text: message
-                },
-                text: message
-            })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
+                })
+            });
+            result = await response.json().catch(() => ({}));
+            if (response.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
+        }
+        if (!response || !response.ok) {
             console.error("[HR Welcome] Evolution API Error:", result);
-            throw new Error(`WhatsApp API Error: ${result.message || JSON.stringify(result)}`);
+            throw new Error(`WhatsApp API Error: ${result?.message || JSON.stringify(result)}`);
         }
 
-        console.log(`[HR Welcome] ✅ Message sent to ${cleanPhone} via ${instanceName}`);
+        // Ativa a triagem por IA (Rita) para a candidatura de professor:
+        // a Rita só engaja quem tem preinterview_status != null no whatsapp-inbound.
+        if (isTeacher) {
+            try {
+                const { data: appRow } = await supabase
+                    .from('job_applications')
+                    .select('id, role')
+                    .eq('tenant_id', tenant_id)
+                    .eq('whatsapp', whatsapp)
+                    .is('preinterview_status', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (appRow?.id && (!appRow.role || String(appRow.role).toLowerCase() === 'professor')) {
+                    await supabase.from('job_applications')
+                        .update({ preinterview_status: 'SENT' })
+                        .eq('id', appRow.id);
+                }
+            } catch (e) { console.warn('[HR Welcome] activate Rita failed (non-blocking):', (e as Error).message); }
+        }
 
-        return new Response(JSON.stringify({ success: true, instance: instanceName, result }), {
+        console.log(`[HR Welcome] ✅ Message sent to ${cleanPhone} via ${instanceName} (teacher=${isTeacher})`);
+        return new Response(JSON.stringify({ success: true, instance: instanceName, teacher: isTeacher, result }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,
         });
-
     } catch (error: any) {
         console.error("[HR Welcome] Function Error:", error.message);
         return new Response(JSON.stringify({ error: error.message }), {
