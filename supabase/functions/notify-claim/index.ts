@@ -9,6 +9,37 @@ const corsHeaders = {
 const DEFAULT_API_URL = "https://api.2b.app.br";
 const DEFAULT_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
+// META CAPI — mede evento "Schedule" (aula experimental confirmada) server-side.
+// FB_CAPI_TOKEN ainda não configurado → no-op silencioso até o secret existir.
+const FB_PIXEL_ID = "1475651934149356";
+const FB_CAPI_TOKEN = (Deno.env.get("FB_CAPI_TOKEN") || "").trim();
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.trim().toLowerCase()));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sendMetaCapiEvent(opts: { eventName: string; phone?: string | null }): Promise<void> {
+  if (!FB_CAPI_TOKEN) return;
+  try {
+    const userData: Record<string, unknown> = {};
+    if (opts.phone) {
+      const digits = opts.phone.replace(/\D/g, "");
+      userData.ph = [await sha256Hex(digits.startsWith("55") ? digits : `55${digits}`)];
+    }
+    const body = {
+      data: [{
+        event_name: opts.eventName,
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: "system_generated",
+        event_source_url: "https://system.wisewolflanguage.com.br",
+        user_data: userData,
+      }],
+    };
+    await fetch(`https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+    }).catch(() => {});
+  } catch { /* CAPI nunca pode quebrar o fluxo principal */ }
+}
+
 serve(async (req) => {
     // Handle CORS
     if (req.method === 'OPTIONS') {
@@ -42,7 +73,7 @@ serve(async (req) => {
         // Buscamos user_id E tenant_id
         const { data: opp, error: oppError } = await supabaseAdmin
             .from('opportunities')
-            .select('user_id, tenant_id')
+            .select('user_id, tenant_id, student_phone')
             .eq('id', opportunityId)
             .single();
 
@@ -52,6 +83,9 @@ serve(async (req) => {
 
         const ownerId = opp.user_id;
         const tenantId = opp.tenant_id;
+
+        // Aula experimental confirmada — dispara o evento de conversão.
+        if (opp.student_phone) sendMetaCapiEvent({ eventName: 'Schedule', phone: opp.student_phone });
 
         // 4. ESTRATEGIA HIBRIDA DE BUSCA DE INSTÂNCIA
         let senderInstanceName = null;

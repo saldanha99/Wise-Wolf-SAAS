@@ -16,6 +16,38 @@ const EVOLUTION_KEYS = Array.from(new Set([
   "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
+
+// META CAPI — mede Lead/Schedule/Purchase server-side (fora do alcance de ad-blocker/cookie).
+// FB_CAPI_TOKEN ainda não configurado → no-op silencioso até o secret existir.
+const FB_PIXEL_ID = "1475651934149356";
+const FB_CAPI_TOKEN = (Deno.env.get("FB_CAPI_TOKEN") || "").trim();
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.trim().toLowerCase()));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sendMetaCapiEvent(opts: { eventName: string; phone?: string | null; value?: number; currency?: string }): Promise<void> {
+  if (!FB_CAPI_TOKEN) return;
+  try {
+    const userData: Record<string, unknown> = {};
+    if (opts.phone) {
+      const digits = opts.phone.replace(/\D/g, "");
+      userData.ph = [await sha256Hex(digits.startsWith("55") ? digits : `55${digits}`)];
+    }
+    const body = {
+      data: [{
+        event_name: opts.eventName,
+        event_time: Math.floor(Date.now() / 1000),
+        action_source: "system_generated",
+        event_source_url: "https://system.wisewolflanguage.com.br",
+        user_data: userData,
+        ...(opts.value ? { custom_data: { value: opts.value, currency: opts.currency || "BRL" } } : {}),
+      }],
+    };
+    await fetch(`https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
+    }).catch(() => {});
+  } catch { /* CAPI nunca pode quebrar o fluxo principal */ }
+}
 const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
 const DAY_MAP: Record<number, string> = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 0: "Domingo" };
 
@@ -295,6 +327,7 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   if (!lead) {
     const { data: created } = await sb.from("crm_leads").insert({ tenant_id: tenantId, name: pushName || null, phone, status: "NEW", source: "WhatsApp (IA)", ai_handled: true }).select("id, name, phone, status, goal, level, notes, ai_handoff").single();
     lead = created;
+    if (lead) sendMetaCapiEvent({ eventName: "Lead", phone });
   }
   if (!lead) return;
 
