@@ -534,11 +534,18 @@ const App: React.FC = () => {
       }
     }
 
+    // Professores ATIVOS (lifecycle_status='active') — usado em tudo que é agenda,
+    // agendamento e disparo. Professor suspenso/desligado (offboarded) NÃO deve
+    // aparecer no mapa/explorador de agenda nem ser sugerido para novas aulas.
+    // A lista COMPLETA (`teachers`) continua indo só para o CRUD de professores
+    // (TeacherManagement), onde o diretor precisa ver e reativar os inativos.
+    const activeTeachers = teachers.filter(t => ((t as any).lifecycle_status || 'active') === 'active');
+
     const contentMap: Record<string, React.ReactNode> = {
       'dashboard': user.role === UserRole.SUPER_ADMIN ? <SuperAdminDashboard /> :
         user.role === UserRole.SCHOOL_ADMIN ?
           <SchoolAdminDashboard
-            teachers={teachers}
+            teachers={activeTeachers}
             tenantId={currentTenant?.id}
             userRole={user.role}
             onNavigate={setActiveTab}
@@ -548,7 +555,7 @@ const App: React.FC = () => {
             }}
           /> :
           user.role === UserRole.STUDENT ? <StudentDashboard user={user} tenantId={currentTenant?.id} /> :
-          user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} /> :
+          user.role === UserRole.SALESPERSON ? <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} /> :
             <>
               {/* Funil pós-contratação: pop-up diário de responsabilidades do professor */}
               <TeacherNudges userId={user.id} pendingLessons={pendingLessonsCount} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
@@ -589,7 +596,7 @@ const App: React.FC = () => {
       'oral-tests': <OralTestsPanel user={user} tenantId={currentTenant?.id} />,
       'schedule_explorer': <TeacherScheduleExplorer
         user={user}
-        teachers={teachers}
+        teachers={activeTeachers}
         initialTeacherName={explorerInitialState?.teacherName}
         autoAllocate={explorerInitialState?.autoAllocate}
         reschedules={reschedules}
@@ -674,16 +681,16 @@ const App: React.FC = () => {
       'contract_teacher': <PublicContractView id={user.id} />,
 
       // VENDEDOR tabs
-      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} />,
+      'vendor_dashboard': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
       'vendor_schedule': <TeacherScheduleExplorer
         user={user}
-        teachers={teachers}
+        teachers={activeTeachers}
         reschedules={[]}
         currentTenantId={currentTenant?.id}
       />,
-      'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={teachers} /></div>,
-      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={teachers} tenantId={currentTenant?.id || ''} vendorId={user.id} /></div>,
-      'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={teachers} onNavigate={setActiveTab} />,
+      'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={activeTeachers} /></div>,
+      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={activeTeachers} tenantId={currentTenant?.id || ''} vendorId={user.id} /></div>,
+      'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
     };
 
     return contentMap[activeTab] || contentMap['dashboard'];
