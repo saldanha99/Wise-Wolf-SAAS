@@ -86,6 +86,26 @@ const planToFrequency = (plan: string): number => {
     return 2;
 };
 
+// Converte um slot da oportunidade (preferred_slots) para o weekday em inglês minúsculo
+// que o wizard usa. O SDR grava { dow: int, time }; formatos legados podem trazer
+// { weekday: 'monday' | 'Segunda' } ou { day: int }.
+const DOW_TO_EN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const PT_TO_EN: Record<string, string> = {
+    'segunda': 'monday', 'terca': 'tuesday', 'terça': 'tuesday', 'quarta': 'wednesday',
+    'quinta': 'thursday', 'sexta': 'friday', 'sabado': 'saturday', 'sábado': 'saturday', 'domingo': 'sunday',
+};
+const slotToEnWeekday = (s: any): string | null => {
+    if (s == null) return null;
+    if (typeof s.dow === 'number') return DOW_TO_EN[s.dow] ?? null;
+    if (typeof s.day === 'number') return DOW_TO_EN[s.day] ?? null;
+    const w = String(s.weekday ?? s.day ?? '').trim().toLowerCase();
+    if (!w) return null;
+    if (DOW_TO_EN.includes(w)) return w;
+    if (w in PT_TO_EN) return PT_TO_EN[w];
+    if (/^[0-6]$/.test(w)) return DOW_TO_EN[Number(w)] ?? null;
+    return null;
+};
+
 // =============================================================
 // MAIN COMPONENT
 // =============================================================
@@ -400,17 +420,22 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
         setBillingStartMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 
-        // Pre-fill from feedback
-        const freq = fb ? planToFrequency(fb.recommended_plan) : 2;
+        // Pré-preenche a partir do que a EXPERIMENTAL já validou (frequência + horários reais
+        // capturados pelo SDR por capacidade). Fallback: feedback da aula ou 2x/semana.
+        const mappedSlots: ScheduleSlot[] = (Array.isArray((opp as any).preferred_slots) ? (opp as any).preferred_slots : [])
+            .map((s: any) => ({ weekday: slotToEnWeekday(s), time: String(s?.time || '').slice(0, 5) }))
+            .filter((s: any) => s.weekday && /^\d{2}:\d{2}$/.test(s.time)) as ScheduleSlot[];
+        const trialFreq = Number((opp as any).trial_frequency) || null;
+        const freq = trialFreq || (mappedSlots.length || (fb ? planToFrequency(fb.recommended_plan) : 2));
         setFrequency(freq);
         setDuration(12); // default annual
         setDueDay(10);
 
-        // Init schedule slots based on frequency
+        // Horários: usa os reais da experimental quando existirem; senão, o padrão antigo.
         const defaultDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const slots: ScheduleSlot[] = [];
-        for (let i = 0; i < freq; i++) {
-            slots.push({ weekday: defaultDays[i] || 'monday', time: '19:00' });
+        const slots: ScheduleSlot[] = mappedSlots.length ? mappedSlots.slice(0, freq) : [];
+        while (slots.length < freq) {
+            slots.push({ weekday: defaultDays[slots.length] || 'monday', time: '19:00' });
         }
         setClassSchedule(slots);
 
