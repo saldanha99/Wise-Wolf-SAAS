@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Printer, Loader2, ChevronDown, ChevronRight, GraduationCap, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Printer, Loader2, ChevronDown, ChevronRight, GraduationCap, AlertCircle, Pencil, Check, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // Relatório unificado de pagamento por professor — mesmo formato da folha manual da
@@ -14,7 +14,7 @@ interface ReportStudentRow {
     aulas: number;
     faltas_aluno: number;
     valor: number;
-    detalhe: { date: string; presence: string; subtype: string | null }[];
+    detalhe: { id: string; date: string; presence: string; subtype: string | null; valor: number; override: boolean }[];
 }
 
 interface PayrollReport {
@@ -70,26 +70,57 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [expanded, setExpanded] = useState<Set<number>>(new Set());
+    // Edição manual do valor de UM lançamento (ponto 2): id da aula em edição + rascunho.
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [draftValue, setDraftValue] = useState('');
+    const [savingId, setSavingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        const fetchReport = async () => {
-            setLoading(true);
-            try {
-                const { data, error: rpcError } = await supabase.rpc('get_teacher_closing_report', {
-                    p_teacher_id: teacherId,
-                    p_month: month
-                });
-                if (rpcError) throw rpcError;
-                setReport(data as PayrollReport);
-            } catch (err: any) {
-                console.error('Error fetching payroll report:', err);
-                setError(err.message || 'Erro ao carregar o relatório.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchReport();
+    const fetchReport = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { data, error: rpcError } = await supabase.rpc('get_teacher_closing_report', {
+                p_teacher_id: teacherId,
+                p_month: month
+            });
+            if (rpcError) throw rpcError;
+            setReport(data as PayrollReport);
+        } catch (err: any) {
+            console.error('Error fetching payroll report:', err);
+            setError(err.message || 'Erro ao carregar o relatório.');
+        } finally {
+            setLoading(false);
+        }
     }, [teacherId, month]);
+
+    useEffect(() => { fetchReport(); }, [fetchReport]);
+
+    // Salva o valor manual (ou limpa, voltando ao cálculo automático quando p_value é null).
+    const saveOverride = async (logId: string, rawValue: string | null) => {
+        setSavingId(logId);
+        try {
+            let parsed: number | null = null;
+            if (rawValue !== null) {
+                parsed = Number(rawValue.replace(',', '.'));
+                if (!isFinite(parsed) || parsed < 0) {
+                    alert('Informe um valor válido (ex: 8 ou 8,50).');
+                    setSavingId(null);
+                    return;
+                }
+            }
+            const { error: rpcError } = await supabase.rpc('set_class_log_rate_override', {
+                p_log_id: logId,
+                p_value: parsed
+            });
+            if (rpcError) throw rpcError;
+            setEditingId(null);
+            setDraftValue('');
+            await fetchReport();
+        } catch (err: any) {
+            alert('Erro ao salvar o valor: ' + (err.message || 'tente novamente.'));
+        } finally {
+            setSavingId(null);
+        }
+    };
 
     const toggleRow = (idx: number) => {
         setExpanded(prev => {
@@ -205,15 +236,60 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
                                                     </tr>
                                                     {expanded.has(idx) && (
                                                         <tr className="bg-brand-surface-2/40">
-                                                            <td colSpan={4} className="px-6 pb-4 pt-1">
-                                                                <div className="flex flex-wrap gap-1.5 pt-2">
-                                                                    {row.detalhe.map((d, i) => (
-                                                                        <span key={i} className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${d.presence === 'COMPLETED'
-                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                                                                            {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · {presenceLabel(d.presence, d.subtype)}
-                                                                        </span>
-                                                                    ))}
+                                                            <td colSpan={4} className="px-6 pb-4 pt-2">
+                                                                <div className="flex flex-col gap-1.5">
+                                                                    {row.detalhe.map((d, i) => {
+                                                                        const isEditing = editingId === d.id;
+                                                                        const isSaving = savingId === d.id;
+                                                                        return (
+                                                                            <div key={d.id || i} className={`flex items-center justify-between gap-3 text-[11px] font-bold px-3 py-2 rounded-lg border ${d.presence === 'COMPLETED'
+                                                                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                                                                : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                                                                                <span>
+                                                                                    {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · {presenceLabel(d.presence, d.subtype)}
+                                                                                </span>
+                                                                                {isEditing ? (
+                                                                                    <span className="flex items-center gap-1.5 print-hidden">
+                                                                                        <span className="text-brand-muted">R$</span>
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            inputMode="decimal"
+                                                                                            autoFocus
+                                                                                            value={draftValue}
+                                                                                            onChange={e => setDraftValue(e.target.value)}
+                                                                                            onKeyDown={e => { if (e.key === 'Enter') saveOverride(d.id, draftValue); if (e.key === 'Escape') setEditingId(null); }}
+                                                                                            className="w-20 px-2 py-1 rounded-md border border-brand-border bg-brand-surface text-brand-text text-right outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                                                            placeholder="0,00"
+                                                                                        />
+                                                                                        <button onClick={() => saveOverride(d.id, draftValue)} disabled={isSaving} title="Salvar valor" className="p-1 rounded-md text-emerald-600 hover:bg-emerald-100 disabled:opacity-50">
+                                                                                            {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                                                                        </button>
+                                                                                        {d.override && (
+                                                                                            <button onClick={() => saveOverride(d.id, null)} disabled={isSaving} title="Voltar ao valor automático" className="p-1 rounded-md text-brand-muted hover:bg-brand-surface-2">
+                                                                                                <RotateCcw size={13} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                        <button onClick={() => setEditingId(null)} disabled={isSaving} title="Cancelar" className="p-1 rounded-md text-brand-muted hover:bg-brand-surface-2">
+                                                                                            <X size={13} />
+                                                                                        </button>
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="flex items-center gap-2">
+                                                                                        <span className={d.override ? 'text-tenant-primary' : ''} title={d.override ? 'Valor ajustado manualmente' : undefined}>
+                                                                                            {money(d.valor)}{d.override ? ' ✎' : ''}
+                                                                                        </span>
+                                                                                        <button
+                                                                                            onClick={() => { setEditingId(d.id); setDraftValue(String(d.valor ?? '').replace('.', ',')); }}
+                                                                                            title="Editar valor deste lançamento"
+                                                                                            className="print-hidden p-1 rounded-md text-brand-muted hover:text-tenant-primary hover:bg-tenant-primary/10"
+                                                                                        >
+                                                                                            <Pencil size={12} />
+                                                                                        </button>
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             </td>
                                                         </tr>
