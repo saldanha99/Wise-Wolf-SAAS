@@ -15,6 +15,8 @@ const API_KEYS = Array.from(new Set([
     "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
+// Só usado no modo 'group' quando o diretor não configurou um grupo próprio (legado).
+const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
 
 const DAY_MAP: { [key: number]: string } = {
     1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado', 0: 'Domingo'
@@ -36,6 +38,33 @@ function cleanTeacherPhone(raw: string): string | null {
     return p.length >= 12 ? p : null;
 }
 
+// Resolve o JID real cadastrado no WhatsApp antes de enviar. Necessário porque
+// muitas contas brasileiras (DDDs mais antigos) ainda estão registradas SEM o
+// 9º dígito extra do celular — mandar pro número "no chute" (com o 9, como
+// fica salvo no cadastro) não bate com o JID real e a mensagem nunca chega,
+// mesmo a Evolution respondendo 200/PENDING. Resolve e usa o JID canônico.
+async function resolveJid(instance: string, phone: string): Promise<string | null> {
+    for (const key of API_KEYS) {
+        try {
+            const resp = await fetch(`${API_URL}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", apikey: key },
+                body: JSON.stringify({ numbers: [phone] }),
+                signal: AbortSignal.timeout(10000),
+            });
+            if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            const entry = Array.isArray(data) ? data[0] : null;
+            if (entry?.exists && entry.jid) return String(entry.jid).split('@')[0];
+            return null;
+        } catch {
+            return null;
+        }
+    }
+    return null;
+}
+
 serve(async (req) => {
     // Check CORS
     if (req.method === 'OPTIONS') {
@@ -46,8 +75,12 @@ serve(async (req) => {
         console.log("Broadcast Function Hit");
         // opportunity_id (opcional): quando presente, REAPROVEITA a oportunidade existente
         // (reagendamento de experimental com falta) em vez de criar uma nova.
-        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id, kind } = await req.json();
+        // dispatch_mode: 'individual' (default, DM só a professores ativos) | 'group' (posta
+        // no grupo de professores configurado — inclui quem estiver no grupo, sem filtro de
+        // status ativo/inativo).
+        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id, kind, dispatch_mode } = await req.json();
         const oppKind = kind === 'TRAINING' ? 'TRAINING' : 'TRIAL';
+        const mode = dispatch_mode === 'group' ? 'group' : 'individual';
 
         // VALIDATION: Date is now required (YYYY-MM-DD)
         if (!student_name || !date || !time) {
@@ -133,7 +166,7 @@ serve(async (req) => {
             });
         }
 
-        console.log(`[Broadcast] 🚀 Disparando pela instância de ${user.email}: ${INSTANCE}`);
+        console.log(`[Broadcast] 🚀 Disparando (${mode}) pela instância de ${user.email}: ${INSTANCE}`);
 
         // Date Logic
         const dateObj = new Date(date + 'T' + time + ':00');
@@ -216,7 +249,46 @@ serve(async (req) => {
             ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*\n\n📚 *Tema:* ${student_name}\n🎯 *Foco:* ${interests || 'Capacitação da equipe'}${preferredSlotsText}\n\n🏆 *Professor(a), quer participar deste treinamento?*\nO primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!\n\n👇 *Aceitar agora:*\n${claimLink}`
             : `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*\n\n📋 *Aluno:* ${student_name}\n🎯 *Objetivo:* ${interests || 'Não informado'}${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
 
-        // 5. DESTINATÁRIOS — envio INDIVIDUAL, só para professores ATIVOS do tenant.
+        const endpoint = `${API_URL}/message/sendText/${encodeURIComponent(INSTANCE)}`;
+
+        // ============ MODO GRUPO: posta no grupo de professores configurado ============
+        if (mode === 'group') {
+            const destinationGroup = profile?.teachers_group_id || DEFAULT_TEACHERS_GROUP;
+            let ok = false;
+            let errDetail: string | undefined;
+
+            try {
+                for (const key of API_KEYS) {
+                    const resp = await fetch(endpoint, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", apikey: key },
+                        body: JSON.stringify({ number: destinationGroup, text: textMessage, delay: 1200, linkPreview: false }),
+                        signal: AbortSignal.timeout(15000),
+                    });
+                    if (resp.status === 401) continue;
+                    ok = resp.ok;
+                    if (!ok) {
+                        try { errDetail = JSON.stringify(await resp.json()); } catch { errDetail = `HTTP ${resp.status}`; }
+                    }
+                    break;
+                }
+            } catch (err: any) {
+                errDetail = err?.message;
+            }
+
+            const warning = ok ? undefined : `Falha ao enviar pro grupo${errDetail ? `: ${errDetail}` : ''}.`;
+
+            return new Response(JSON.stringify({
+                success: true,
+                id: oppData.id,
+                instance_used: INSTANCE,
+                mode: 'group',
+                destination_group: destinationGroup,
+                ...(warning ? { warning } : {}),
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // ============ MODO INDIVIDUAL (default): DM só para professores ATIVOS ============
         //    Antes ia num broadcast de GRUPO: qualquer um no grupo (inclusive ex-professor
         //    desligado) recebia o convite. Agora o sistema escolhe a lista — desligado/
         //    suspenso NUNCA entra (mesma regra do is_teacher_notifiable). "O primeiro a
@@ -235,18 +307,20 @@ serve(async (req) => {
             .map((t: any) => ({ id: t.id, name: t.full_name, phone: cleanTeacherPhone(t.phone || '') }))
             .filter((t: any) => !!t.phone);
 
-        const endpoint = `${API_URL}/message/sendText/${encodeURIComponent(INSTANCE)}`;
         let sent = 0;
         const failed: string[] = [];
 
         for (const r of recipients) {
             let ok = false;
+            // Resolve o JID real (corrige o caso do 9º dígito) antes de enviar; se a
+            // resolução falhar, cai pro número "no chute" como antes (não bloqueia envio).
+            const targetNumber = (await resolveJid(INSTANCE, r.phone!)) || r.phone!;
             try {
                 for (const key of API_KEYS) {
                     const resp = await fetch(endpoint, {
                         method: "POST",
                         headers: { "Content-Type": "application/json", "apikey": key },
-                        body: JSON.stringify({ number: r.phone, text: textMessage, delay: 1200, linkPreview: false }),
+                        body: JSON.stringify({ number: targetNumber, text: textMessage, delay: 1200, linkPreview: false }),
                         signal: AbortSignal.timeout(15000),
                     });
                     if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
@@ -270,6 +344,7 @@ serve(async (req) => {
             success: true,
             id: oppData.id,
             instance_used: INSTANCE,
+            mode: 'individual',
             recipients: sent,
             total_active_teachers: recipients.length,
             failed: failed.length,

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus } from 'lucide-react';
+import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 // =====================================================
@@ -35,6 +35,10 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
 
     // Preferred Slots (weekly preferences)
     const [preferredSlots, setPreferredSlots] = useState<PreferredSlot[]>([]);
+
+    // Modo de disparo: 'individual' manda DM só pros professores ativos; 'group'
+    // posta no grupo de professores configurado em WhatsApp (Conexão).
+    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('individual');
 
     const [loading, setLoading] = useState(false);
 
@@ -99,6 +103,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                     time: targetTime,
                     interests: studentInterests,
                     preferred_slots: preferredSlots.length > 0 ? preferredSlots : undefined,
+                    dispatch_mode: dispatchMode,
                 })
             });
 
@@ -122,10 +127,18 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             // Use the ACTUAL instance reported by the backend
             const realInstance = data.instance_used || "Instância Desconhecida";
 
+            const isGroupMode = data.mode === 'group';
+
             if (data.warning) {
-                alert(`⚠️ Vaga criada, mas FALHA no WhatsApp!\nInstância: '${realInstance}'\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
+                const detail = isGroupMode
+                    ? `Grupo: '${data.destination_group}'`
+                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
+                alert(`⚠️ Vaga criada, mas FALHA no WhatsApp!\nInstância: '${realInstance}'\n${detail}\nErro: ${data.warning}`);
             } else {
-                alert(`🚀 Oportunidade enviada via '${realInstance}'!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}.\nID: ${data.id}`);
+                const detail = isGroupMode
+                    ? `Grupo: '${data.destination_group}'`
+                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
+                alert(`🚀 Oportunidade enviada via '${realInstance}'!\n${detail}.\nID: ${data.id}`);
             }
 
             // Clear fields (preserve date/time for convenience?)
@@ -281,6 +294,40 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 )}
                             </div>
 
+                            {/* Dispatch Mode Toggle */}
+                            <div className="space-y-3">
+                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
+                                    <Send size={14} /> Como disparar
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDispatchMode('individual')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${dispatchMode === 'individual'
+                                            ? 'bg-orange-500 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        <Users size={14} /> Todos os Professores
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDispatchMode('group')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${dispatchMode === 'group'
+                                            ? 'bg-orange-500 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        <MessageCircle size={14} /> Só no Grupo
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-brand-muted font-medium px-1">
+                                    {dispatchMode === 'individual'
+                                        ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem).'
+                                        : "Posta no grupo de professores configurado em WhatsApp (Conexão) — todo mundo no grupo vê, incluindo quem não estiver mais ativo."}
+                                </p>
+                            </div>
+
                         </div>
 
                         {/* Action Button */}
@@ -300,7 +347,9 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 )}
                             </button>
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
-                                Envia para todos os professores conectados a '{localStorage.getItem('whatsapp_instance') || "wise wolf"}'.
+                                {dispatchMode === 'individual'
+                                    ? `Envia individualmente a cada professor ativo de '${localStorage.getItem('whatsapp_instance') || "wise wolf"}'.`
+                                    : `Envia pro grupo de professores de '${localStorage.getItem('whatsapp_instance') || "wise wolf"}'.`}
                             </p>
                         </div>
 

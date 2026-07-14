@@ -3,51 +3,72 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // FUNNEL-SWEEPER — cron a cada 15 min. Três varreduras anti-vazamento do funil de alunos:
 //
-// A) PRIMEIRO TOQUE: leads NEW que nunca receberam NADA da IA. Leads de site/quiz/blog caem
-//    aqui — o whatsapp-inbound só atende quem manda mensagem primeiro, e o sdr-followups
-//    exige last_outbound_at preenchido. Resultado histórico: 74 de 92 leads NUNCA tocados.
-//    Lotes pequenos (4/run) em horário comercial = ban-safety da instância central.
-//    Após o toque: ai_handled=true + last_outbound_at=now() → o lead ENTRA na cadência
-//    existente do sdr-followups (2 toques extras) e a resposta dele cai no SDR IA normal.
+// A) PRIMEIRO TOQUE: leads NEW que nunca receberam NADA da IA. Dedup por TELEFONE (não
+//    lead.id) — dois leads duplicados do mesmo número NÃO disparam 2 boas-vindas (foi a
+//    causa da restrição do número).
+// B) ESCALONAMENTO DE CLAIM: oportunidade TRIAL OPEN sem aceite. >20min re-envia aos
+//    professores ATIVOS (individual); >60min alerta ao diretor.
+// C) EXPIRAÇÃO: OPEN >48h ou slot no passado → LOST (silencioso).
+// D) CONVITE DE ENTREVISTA (RH): aprovados pela Rita recebem link de agendamento + follow-ups.
 //
-// B) ESCALONAMENTO DE CLAIM: oportunidade TRIAL OPEN sem aceite de professor morria no vácuo
-//    (69% nunca aceitas; lead sem retorno). Agora: >20min → re-broadcast no grupo de
-//    professores (1x); >60min → alerta ao diretor (1x). Só oportunidades <48h e slot futuro.
-//
-// C) EXPIRAÇÃO: OPEN >48h ou com slot no passado → LOST (silencioso). Havia 58 zumbis com
-//    idade média de 75 dias poluindo os painéis e o funil.
-//
-// D) CONVITE DE ENTREVISTA (RH): a Rita aprovava (ai_recommendation=ENTREVISTAR) e o funil
-//    morria — nenhum código escrevia interview_slot (~60 candidaturas paradas, ~2 entrevistas
-//    em 2 meses). Agora: convite com link de agendamento (edge book-interview) + follow-ups
-//    24h/72h enquanto não agendar. O lembrete no dia da entrevista já existia (sdr-followups).
-//
-// Dedupe: automation_sent com verificação "ever" (sem ref_date) — cada lead/opp recebe cada
-// tipo de mensagem UMA vez na vida, mesmo com cron rodando a cada 15 min.
+// Dedupe: automation_sent com verificação "ever" — cada lead/opp recebe cada tipo UMA vez.
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_URL = "https://api.2b.app.br";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
   "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
-// Página no frontend (não a edge): Supabase força text/plain em HTML no *.supabase.co
 const BOOK_BASE = "https://system.wisewolflanguage.com.br/book-interview";
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
-const FIRST_TOUCH_BATCH = 4;      // por execução — ban-safety
-const FIRST_TOUCH_DAILY_CAP = 24; // por dia — primeiro contato frio tem risco maior de report/block
-const INTERVIEW_INVITE_DAILY_CAP = 5; // agenda do diretor tem ~6 slots/noite — convidar mais rápido só gera fila
+// Anti-ban: primeiro contato frio é o maior risco de restrição do número. Volume baixo e
+// espaçado (o número já foi restringido uma vez). Lote pequeno por run + teto diário menor.
+const FIRST_TOUCH_BATCH = 2;
+const FIRST_TOUCH_DAILY_CAP = 12;
+const INTERVIEW_INVITE_DAILY_CAP = 5;
+
+// Professor inativo (suspenso/desligado) NUNCA recebe convite de experimental —
+// mesma regra do is_teacher_notifiable. lifecycle_status é a fonte de verdade.
+const INACTIVE_STATUS = ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"];
+
+// Resolve o JID real cadastrado no WhatsApp antes de enviar. Muitas contas
+// brasileiras (DDDs mais antigos) ainda estão registradas SEM o 9º dígito
+// extra do celular — mandar pro número "no chute" não bate com o JID real e
+// a mensagem nunca chega, mesmo a Evolution respondendo 200/PENDING.
+async function resolveJid(instance: string, phone: string): Promise<string | null> {
+  for (const key of EVOLUTION_KEYS) {
+    try {
+      const resp = await fetch(`${EVOLUTION_API_URL}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: key },
+        body: JSON.stringify({ numbers: [phone] }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.status === 401) continue;
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const entry = Array.isArray(data) ? data[0] : null;
+      if (entry?.exists && entry.jid) return String(entry.jid).split("@")[0];
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
+  const target = (await resolveJid(instance, number)) || number;
   for (const key of EVOLUTION_KEYS) {
     try {
       const resp = await fetch(`${EVOLUTION_API_BASE}/${encodeURIComponent(instance)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ number, text, delay: 1200, linkPreview: false }),
+        body: JSON.stringify({ number: target, text, delay: 1200, linkPreview: false }),
         signal: AbortSignal.timeout(15000),
       });
-      if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
+      if (resp.status === 401) continue;
       return resp.ok;
     } catch { return false; }
   }
@@ -74,27 +95,19 @@ function phonesMatch(a: string, b: string): boolean {
   return !dddA || !dddB || dddA === dddB;
 }
 
-// Dedup "ever": este kind+subject já foi enviado ALGUMA vez (qualquer data)?
 async function sentEver(sb: any, kind: string, subjectId: string): Promise<boolean> {
   const { data } = await sb.from("automation_sent").select("id").eq("kind", kind).eq("subject_id", subjectId).limit(1);
   return !!(data && data.length);
 }
-async function markSent(sb: any, kind: string, subjectId: string) {
-  await sb.from("automation_sent").insert({ kind, subject_id: subjectId, ref_date: todayBRT() });
-}
-// Claim ATÔMICO: insere a marca ANTES de enviar (o índice único kind+subject+ref_date
-// derruba a corrida entre duas execuções paralelas — ex.: cron + disparo manual).
-// Retorna false se outra execução já reivindicou. Em falha de envio, o caller desfaz a marca.
 async function claim(sb: any, kind: string, subjectId: string): Promise<{ ok: boolean; undo: () => Promise<void> }> {
   if (await sentEver(sb, kind, subjectId)) return { ok: false, undo: async () => {} };
   const { error } = await sb.from("automation_sent").insert({ kind, subject_id: subjectId, ref_date: todayBRT() });
-  if (error) return { ok: false, undo: async () => {} }; // 23505 = outra execução chegou antes
+  if (error) return { ok: false, undo: async () => {} };
   return {
     ok: true,
     undo: async () => { await sb.from("automation_sent").delete().eq("kind", kind).eq("subject_id", subjectId).eq("ref_date", todayBRT()); },
   };
 }
-// Nome utilizável na saudação? (lead de formulário às vezes tem e-mail/telefone no campo nome)
 function greetName(raw: string | null): string {
   const first = (raw || "").trim().split(/\s+/)[0] || "";
   return /^[A-Za-zÀ-ÖØ-öø-ÿ]{2,20}$/.test(first) ? first.charAt(0).toUpperCase() + first.slice(1) : "";
@@ -106,6 +119,21 @@ function isServiceRole(bearer: string, serviceKey: string): boolean {
     const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
     return JSON.parse(atob(b64))?.role === "service_role";
   } catch { return false; }
+}
+
+// Telefones dos professores ATIVOS de um tenant (cache por execução).
+const _activeTeacherCache: Record<string, string[]> = {};
+async function activeTeacherPhones(sb: any, tenantId: string): Promise<string[]> {
+  if (tenantId in _activeTeacherCache) return _activeTeacherCache[tenantId];
+  const { data } = await sb.from("profiles")
+    .select("phone, status")
+    .eq("tenant_id", tenantId).eq("role", "TEACHER").eq("lifecycle_status", "active");
+  const phones = (data || [])
+    .filter((x: any) => !INACTIVE_STATUS.includes(x.status || ""))
+    .map((x: any) => cleanPhone(x.phone || ""))
+    .filter((p: string) => p.length >= 12);
+  _activeTeacherCache[tenantId] = phones;
+  return phones;
 }
 
 serve(async (req) => {
@@ -126,7 +154,6 @@ serve(async (req) => {
       expired: 0, failures: [] as string[],
     };
 
-    // Admin/instância central por tenant (mesmo padrão do sdr-followups)
     const { data: admins } = await sb.from("profiles")
       .select("tenant_id, phone, whatsapp_instance, teachers_group_id, role")
       .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
@@ -143,14 +170,12 @@ serve(async (req) => {
     const { data: tenants } = await sb.from("tenants").select("id, ai_team_config");
     const cfgOf = (t: string) => (tenants || []).find((x: any) => x.id === t)?.ai_team_config || {};
 
-    // TRAVA: telefone de candidato (RH) nunca recebe mensagem de SDR
     const { data: allApps } = await sb.from("job_applications").select("tenant_id, whatsapp");
     const isCandidatePhone = (tenantId: string, phone: string) =>
       (allApps || []).some((a: any) => a.tenant_id === tenantId && phonesMatch(a.whatsapp, phone));
 
     // ============ A) PRIMEIRO TOQUE ============
     if (businessHours) {
-      // Teto diário: primeiro contato frio em volume é o maior risco de block do número
       const { count: sentToday } = await sb.from("automation_sent")
         .select("id", { count: "exact", head: true })
         .eq("kind", "SDR_FIRST_TOUCH").eq("ref_date", todayBRT());
@@ -172,7 +197,9 @@ serve(async (req) => {
         if (phone.length < 12) { result.first_touch_skipped++; continue; }
         if (isCandidatePhone(lead.tenant_id, lead.phone || "")) { result.first_touch_skipped++; continue; }
 
-        const c = await claim(sb, "SDR_FIRST_TOUCH", String(lead.id));
+        // Dedup por TELEFONE (não lead.id): mesmo com leads duplicados, o número recebe o
+        // primeiro-toque UMA vez na vida. Foi a boas-vindas duplicada que travou o número.
+        const c = await claim(sb, "SDR_FIRST_TOUCH", phone);
         if (!c.ok) continue;
 
         const sdrName = cfg?.agents?.atendente?.name || "Bia";
@@ -197,14 +224,12 @@ serve(async (req) => {
         .eq("kind", "INTERVIEW_INVITE").eq("ref_date", todayBRT());
       let inviteBudget = Math.max(0, INTERVIEW_INVITE_DAILY_CAP - (invitesToday ?? 0));
 
-      // Aprovados pela Rita, sem entrevista marcada, ainda vivos no processo
       const { data: cands } = await sb.from("job_applications")
         .select("id, tenant_id, name, whatsapp, booking_token, status")
         .eq("ai_recommendation", "ENTREVISTAR").is("interview_slot", null)
         .not("status", "in", "(Contratado,Rejeitado,Entrevistado)")
-        .order("created_at", { ascending: true }); // mais antigos primeiro (fila justa)
+        .order("created_at", { ascending: true });
 
-      // Momento do convite/FU1 já enviados (para calcular idade dos follow-ups)
       const { data: rhMarks } = await sb.from("automation_sent")
         .select("kind, subject_id, created_at").in("kind", ["INTERVIEW_INVITE", "INTERVIEW_INVITE_FU1", "INTERVIEW_INVITE_FU2"]);
       const markAt = (kind: string, id: string) =>
@@ -214,7 +239,7 @@ serve(async (req) => {
         const t = byTenant[cand.tenant_id];
         const cfg = cfgOf(cand.tenant_id);
         if (!t || cfg?.rh?.enabled === false || cfg?.rh?.interview_invites === false) continue;
-        if (!cand.booking_token) continue; // linha anterior à migration do token
+        if (!cand.booking_token) continue;
         const phone = cleanPhone(cand.whatsapp || "");
         if (phone.length < 12) continue;
         const id = String(cand.id);
@@ -223,7 +248,6 @@ serve(async (req) => {
 
         const invitedAt = markAt("INTERVIEW_INVITE", id);
         if (!invitedAt) {
-          // Convite inicial — respeita o teto diário
           if (inviteBudget <= 0) continue;
           const c = await claim(sb, "INTERVIEW_INVITE", id);
           if (!c.ok) continue;
@@ -236,7 +260,6 @@ serve(async (req) => {
           continue;
         }
 
-        // Follow-ups: só enquanto o convite tem menos de 10 dias (não ressuscitar processo morto)
         const inviteAgeH = (Date.now() - new Date(invitedAt).getTime()) / 3600000;
         if (inviteAgeH > 240) continue;
 
@@ -250,8 +273,6 @@ serve(async (req) => {
           continue;
         }
 
-        // FU2: 72h após o convite E pelo menos 24h após o FU1 (se o sweeper ficou fora do ar,
-        // não manda os dois lembretes em sequência)
         if (fu1At && inviteAgeH >= 72 && (Date.now() - new Date(fu1At).getTime()) >= 24 * 3600000
             && !markAt("INTERVIEW_INVITE_FU2", id)) {
           const c = await claim(sb, "INTERVIEW_INVITE_FU2", id);
@@ -268,8 +289,6 @@ serve(async (req) => {
     const cutoff20m = new Date(Date.now() - 20 * 60 * 1000).toISOString();
     const cutoff60m = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    // C) zumbis: OPEN com mais de 48h → EXPIRED (status só aceita OPEN/CLAIMED/EXPIRED/CANCELED;
-    // o desfecho de funil vai em conversion_status='LOST'). Silencioso, sem mensagem.
     const { data: expired, error: expErr } = await sb.from("opportunities")
       .update({ status: "EXPIRED", conversion_status: "LOST" })
       .eq("status", "OPEN").lt("created_at", cutoff48h)
@@ -277,7 +296,6 @@ serve(async (req) => {
     if (expErr) result.failures.push(`expire_bulk: ${expErr.message}`);
     result.expired += (expired || []).length;
 
-    // B) recentes sem aceite
     const { data: opps } = await sb.from("opportunities")
       .select("id, tenant_id, student_name, student_phone, interests, kind, created_at, slots_proposed")
       .eq("status", "OPEN").eq("kind", "TRIAL")
@@ -287,7 +305,6 @@ serve(async (req) => {
       const slot = Array.isArray(opp.slots_proposed) ? opp.slots_proposed[0] : null;
       if (!slot?.date || !slot?.time) continue;
 
-      // slot já passou → expira silenciosamente (não adianta escalonar aula no passado)
       const slotPast = slot.date < todayBRT() || (slot.date === todayBRT() && slot.time <= hhmmBRT());
       if (slotPast) {
         const { error: pastErr } = await sb.from("opportunities")
@@ -307,24 +324,26 @@ serve(async (req) => {
       });
       const claimLink = `${CLAIM_BASE}?${params.toString()}`;
 
-      // Degrau 1 (>20min): re-broadcast no grupo de professores — 1x na vida da opp
+      // Degrau 1 (>20min): re-envio INDIVIDUAL só aos professores ATIVOS — 1x na vida da opp.
       if (!(await sentEver(sb, "OPP_REBROADCAST", String(opp.id)))) {
         const c1 = await claim(sb, "OPP_REBROADCAST", String(opp.id));
         if (c1.ok) {
           const msg = `⏳🐺 *Ainda sem professor!* Experimental aguardando aceite:\n\n📅 *${formatted} às ${slot.time}*\n📋 *Aluno:* ${opp.student_name || "-"}\n🎯 *Objetivo:* ${opp.interests || "Não informado"}\n\n🏆 O primeiro a clicar garante a aula:\n👇 ${claimLink}`;
-          if (await sendWhats(t.instance, t.groupJid, msg)) result.rebroadcasts++;
+          const phones = await activeTeacherPhones(sb, opp.tenant_id);
+          let anySent = false;
+          for (const ph of phones) { if (await sendWhats(t.instance, ph, msg)) anySent = true; }
+          if (anySent) result.rebroadcasts++;
           else { await c1.undo(); result.failures.push(`rebroadcast ${opp.id}`); }
         }
-        continue; // dá tempo do grupo reagir antes de alarmar o diretor
+        continue;
       }
 
-      // Degrau 2 (>60min): alerta ao diretor — 1x na vida da opp
       const isOld = opp.created_at < cutoff60m;
       if (isOld && t.ownerPhone.length >= 12 && !(await sentEver(sb, "OPP_DIRECTOR_ALERT", String(opp.id)))) {
         const c2 = await claim(sb, "OPP_DIRECTOR_ALERT", String(opp.id));
         if (c2.ok) {
           const ageMin = Math.round((Date.now() - new Date(opp.created_at).getTime()) / 60000);
-          const msg = `⚠️ *Experimental sem aceite há ${ageMin} min*\n\n📋 *${opp.student_name || "-"}* — ${formatted} às ${slot.time}\n🎯 ${opp.interests || "-"}\n📱 Lead: ${cleanPhone(opp.student_phone || "") || "-"}\n\nNenhum professor pegou (grupo já foi avisado 2x). Vale atribuir manualmente ou falar com o lead.\n${claimLink}`;
+          const msg = `⚠️ *Experimental sem aceite há ${ageMin} min*\n\n📋 *${opp.student_name || "-"}* — ${formatted} às ${slot.time}\n🎯 ${opp.interests || "-"}\n📱 Lead: ${cleanPhone(opp.student_phone || "") || "-"}\n\nNenhum professor pegou (equipe já foi avisada 2x). Vale atribuir manualmente ou falar com o lead.\n${claimLink}`;
           if (await sendWhats(t.instance, t.ownerPhone, msg)) result.director_alerts++;
           else { await c2.undo(); result.failures.push(`alert ${opp.id}`); }
         }
