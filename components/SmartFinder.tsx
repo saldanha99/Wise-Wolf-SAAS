@@ -36,9 +36,10 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     // Preferred Slots (weekly preferences)
     const [preferredSlots, setPreferredSlots] = useState<PreferredSlot[]>([]);
 
-    // Modo de disparo: 'individual' manda DM só pros professores ativos; 'group'
-    // posta no grupo de professores configurado em WhatsApp (Conexão).
-    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('individual');
+    // Modo de disparo: 'group' posta no grupo de professores configurado em
+    // WhatsApp (Conexão); 'individual' manda DM só pros professores ativos.
+    // Padrão = grupo (preferência do diretor).
+    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('group');
 
     const [loading, setLoading] = useState(false);
 
