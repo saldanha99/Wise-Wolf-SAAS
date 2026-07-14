@@ -14,7 +14,6 @@ const API_KEYS = Array.from(new Set([
     (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
     "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
-const GROUP_JID = "120363403699904869@g.us";
 const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
 
 const DAY_MAP: { [key: number]: string } = {
@@ -26,6 +25,16 @@ const WEEKDAY_LABELS: { [key: string]: string } = {
     'monday': 'Segunda', 'tuesday': 'Terça', 'wednesday': 'Quarta',
     'thursday': 'Quinta', 'friday': 'Sexta', 'saturday': 'Sábado', 'sunday': 'Domingo'
 };
+
+// Professor inativo (suspenso/desligado) NUNCA recebe convite — mesma regra do
+// helper is_teacher_notifiable. lifecycle_status é a fonte de verdade; status
+// (decorativo) também barra valores explicitamente inativos por segurança.
+const INACTIVE_STATUS = ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'];
+function cleanTeacherPhone(raw: string): string | null {
+    let p = (raw || '').replace(/\D/g, '');
+    if (p.length === 10 || p.length === 11) p = '55' + p;
+    return p.length >= 12 ? p : null;
+}
 
 serve(async (req) => {
     // Check CORS
@@ -52,7 +61,6 @@ serve(async (req) => {
         const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
         // 1. AUTH CHECK (Robust Mode)
-        // Try 'x-user-token' first (Bypass Gateway Check Strategy)
         const xUserToken = req.headers.get('x-user-token');
         const authHeader = req.headers.get('Authorization');
 
@@ -80,14 +88,12 @@ serve(async (req) => {
 
         console.log(`[Broadcast] User Authenticated: ${user.email} (${user.id})`);
 
-        // 2. REAL LINK LOOKUP (Smart Linking V3 - Profile Priority)
-
+        // 2. INSTÂNCIA DE ENVIO (Profile Priority)
         let activeInstanceName = null;
 
-        // A. PRIMARY: Check 'profiles' table
         const { data: profile } = await supabaseAdmin
             .from('profiles')
-            .select('whatsapp_instance, teachers_group_id, tenant_id') // Added tenant_id
+            .select('whatsapp_instance, teachers_group_id, tenant_id')
             .eq('id', user.id)
             .single();
 
@@ -96,7 +102,6 @@ serve(async (req) => {
             activeInstanceName = profile.whatsapp_instance;
         }
 
-        // B. SECONDARY: Fallback to 'whatsapp_instances'
         if (!activeInstanceName) {
             console.log("[Broadcast] ⚠️ Profile instance empty. Scanning connected instances...");
             const { data: wInstance, error: dbError } = await supabaseAdmin
@@ -116,7 +121,6 @@ serve(async (req) => {
             }
         }
 
-        // Final Decision
         const INSTANCE = activeInstanceName;
 
         if (!INSTANCE) {
@@ -131,19 +135,15 @@ serve(async (req) => {
 
         console.log(`[Broadcast] 🚀 Disparando pela instância de ${user.email}: ${INSTANCE}`);
 
-        // Date Logic (Backwards compatibility logic removed as we want strict date)
-        // Convert YYYY-MM-DD to "27/01/2026 (Terça-feira)" approximately for display
+        // Date Logic
         const dateObj = new Date(date + 'T' + time + ':00');
         const dayOfWeek = dateObj.getDay();
         const dayString = DAY_MAP[dayOfWeek] || "Dia";
+        const formattedDate = date.split('-').reverse().join('/');
 
-        const formattedDate = date.split('-').reverse().join('/'); // 2026-01-27 -> 27/01/2026
-
-        // 3. Create Opportunity
-        // Note: slots_proposed is JSON. We can store detailed info or just basic day/time.
-        // We will store the exact date in the slot for reference, though new system relies on URL params.
+        // 3. Create/Reuse Opportunity
         const createdSlot = {
-            day: dayOfWeek, // Legacy support
+            day: dayOfWeek,
             time: time,
             date: date,
             formatted: `${formattedDate} (${dayString})`
@@ -152,7 +152,6 @@ serve(async (req) => {
         let oppData: { id: string };
 
         if (opportunity_id) {
-            // REAGENDAMENTO: reabre a MESMA oportunidade para ser reaceita
             const { data: updated, error: updErr } = await supabaseAdmin
                 .from('opportunities')
                 .update({
@@ -192,7 +191,6 @@ serve(async (req) => {
         }
 
         // 4. Construct URL with Params
-        // http://localhost:3000/claim-opportunity?id=...&date=...&time=...
         const params = new URLSearchParams({
             id: oppData.id,
             date: date,
@@ -201,18 +199,7 @@ serve(async (req) => {
             studentPhone: student_phone || '',
             kind: oppKind
         });
-
         const claimLink = `${BASE_URL}?${params.toString()}`;
-
-        // 5. Message Destination (Dynamic Group -> Fallback)
-        let destinationGroup = profile?.teachers_group_id;
-
-        if (!destinationGroup) {
-            console.warn(`[Broadcast] ⚠️ User ID ${user.id} has NO GROUP configured in 'profiles'. Falling back to DEFAULT.`);
-            destinationGroup = GROUP_JID;
-        } else {
-            console.log(`[Broadcast] 🎯 Sending to Configured Group: ${destinationGroup}`);
-        }
 
         // Build preferred slots text
         let preferredSlotsText = '';
@@ -226,90 +213,68 @@ serve(async (req) => {
         }
 
         const textMessage = oppKind === 'TRAINING'
-            ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*
+            ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*\n\n📚 *Tema:* ${student_name}\n🎯 *Foco:* ${interests || 'Capacitação da equipe'}${preferredSlotsText}\n\n🏆 *Professor(a), quer participar deste treinamento?*\nO primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!\n\n👇 *Aceitar agora:*\n${claimLink}`
+            : `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*\n\n📋 *Aluno:* ${student_name}\n🎯 *Objetivo:* ${interests || 'Não informado'}${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
 
-📚 *Tema:* ${student_name}
-🎯 *Foco:* ${interests || 'Capacitação da equipe'}${preferredSlotsText}
+        // 5. DESTINATÁRIOS — envio INDIVIDUAL, só para professores ATIVOS do tenant.
+        //    Antes ia num broadcast de GRUPO: qualquer um no grupo (inclusive ex-professor
+        //    desligado) recebia o convite. Agora o sistema escolhe a lista — desligado/
+        //    suspenso NUNCA entra (mesma regra do is_teacher_notifiable). "O primeiro a
+        //    clicar garante" continua valendo: o accept-opportunity tem trava atômica.
+        const { data: teachers, error: teachersErr } = await supabaseAdmin
+            .from('profiles')
+            .select('id, full_name, phone, status')
+            .eq('tenant_id', profile?.tenant_id)
+            .eq('role', 'TEACHER')
+            .eq('lifecycle_status', 'active');
 
-🏆 *Professor(a), quer participar deste treinamento?*
-O primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!
+        if (teachersErr) throw new Error("DB Error (teachers): " + teachersErr.message);
 
-👇 *Aceitar agora:*
-${claimLink}`
-            : `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*
+        const recipients = (teachers || [])
+            .filter((t: any) => !INACTIVE_STATUS.includes(t.status || ''))
+            .map((t: any) => ({ id: t.id, name: t.full_name, phone: cleanTeacherPhone(t.phone || '') }))
+            .filter((t: any) => !!t.phone);
 
-📋 *Aluno:* ${student_name}
-🎯 *Objetivo:* ${interests || 'Não informado'}${preferredSlotsText}
+        const endpoint = `${API_URL}/message/sendText/${encodeURIComponent(INSTANCE)}`;
+        let sent = 0;
+        const failed: string[] = [];
 
-🏆 *Professor(a), essa aula é sua?*
-O primeiro a clicar no link abaixo garante a aula experimental!
-
-👇 *Aceitar agora:*
-${claimLink}`;
-
-        // 6. Send to Evolution
-        const payload = {
-            number: destinationGroup,
-            text: textMessage
-        };
-
-        const instanceEncoded = encodeURIComponent(INSTANCE);
-        const endpoint = `${API_URL}/message/sendText/${instanceEncoded}`;
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        let response: Response;
-        try {
-            let resp: Response | null = null;
-            for (const key of API_KEYS) {
-                resp = await fetch(endpoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "apikey": key },
-                    body: JSON.stringify(payload),
-                    signal: controller.signal
-                });
-                if (resp.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
+        for (const r of recipients) {
+            let ok = false;
+            try {
+                for (const key of API_KEYS) {
+                    const resp = await fetch(endpoint, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "apikey": key },
+                        body: JSON.stringify({ number: r.phone, text: textMessage, delay: 1200, linkPreview: false }),
+                        signal: AbortSignal.timeout(15000),
+                    });
+                    if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
+                    ok = resp.ok;
+                    break;
+                }
+            } catch (err: any) {
+                console.error(`[Broadcast] Falha ao enviar p/ ${r.name}:`, err?.message);
+                ok = false;
             }
-            response = resp!;
-        } catch (fetchErr: any) {
-            clearTimeout(timeoutId);
-            const isTimeout = fetchErr?.name === 'AbortError';
-            console.error(isTimeout ? "Evolution API timeout after 15s" : "Evolution fetch error:", fetchErr?.message);
-            return new Response(JSON.stringify({
-                success: true,
-                warning: isTimeout ? "WhatsApp API timeout — oportunidade criada mas mensagem pode não ter sido enviada." : fetchErr?.message,
-                id: oppData.id,
-                instance_used: INSTANCE,
-                destination_group: destinationGroup
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-        clearTimeout(timeoutId);
-
-        const apiData = await response.json();
-
-        if (!response.ok) {
-            console.error("Evolution Error:", apiData);
-            return new Response(JSON.stringify({
-                success: true,
-                warning: JSON.stringify(apiData),
-                id: oppData.id,
-                instance_used: INSTANCE,
-                destination_group: destinationGroup // Debug info
-            }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
+            if (ok) sent++; else failed.push(r.name || r.id);
         }
 
-        return new Response(
-            JSON.stringify({
-                success: true,
-                id: oppData.id,
-                instance_used: INSTANCE,
-                destination_group: destinationGroup // Debug info
-            }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        const warning = sent === 0
+            ? (recipients.length === 0
+                ? "Nenhum professor ativo com WhatsApp para receber o convite."
+                : "Oportunidade criada, mas nenhuma mensagem foi entregue (verifique a conexão do WhatsApp).")
+            : undefined;
+
+        return new Response(JSON.stringify({
+            success: true,
+            id: oppData.id,
+            instance_used: INSTANCE,
+            recipients: sent,
+            total_active_teachers: recipients.length,
+            failed: failed.length,
+            ...(warning ? { warning } : {}),
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     } catch (error: any) {
         console.error("Critical Error", error);

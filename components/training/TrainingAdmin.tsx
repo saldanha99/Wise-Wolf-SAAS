@@ -61,7 +61,11 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                 },
             });
             if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao disparar.');
-            alert('Treinamento disparado no grupo de professores! O primeiro a aceitar garante a vaga (remunerada como aula).');
+            if (data?.warning) {
+                alert(`⚠️ Treinamento criado, mas FALHA no envio ao WhatsApp!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
+            } else {
+                alert(`Treinamento disparado a ${data?.recipients ?? 0} professor(es) ativo(s)! O primeiro a aceitar garante a vaga (remunerada como aula).`);
+            }
             setShowLive(false);
             setLiveTopic(''); setLiveFocus(''); setLiveDate(''); setLiveTime('');
         } catch (err: any) {

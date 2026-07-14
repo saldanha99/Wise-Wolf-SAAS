@@ -123,9 +123,9 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             const realInstance = data.instance_used || "Instância Desconhecida";
 
             if (data.warning) {
-                alert(`⚠️ Vaga criada, mas FALHA no WhatsApp!\nInstância: '${realInstance}'\nGrupo: '${data.destination_group}'\nErro: ${data.warning}`);
+                alert(`⚠️ Vaga criada, mas FALHA no WhatsApp!\nInstância: '${realInstance}'\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
             } else {
-                alert(`🚀 Oportunidade enviada via '${realInstance}'!\nGrupo: '${data.destination_group || "Padrão"}'.\nID: ${data.id}`);
+                alert(`🚀 Oportunidade enviada via '${realInstance}'!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}.\nID: ${data.id}`);
             }
 
             // Clear fields (preserve date/time for convenience?)

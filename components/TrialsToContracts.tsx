@@ -338,7 +338,11 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 },
             });
             if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao reenviar o link.');
-            alert('Link mágico reenviado ao grupo! Qualquer professor pode reaceitar a experimental.');
+            if (data?.warning) {
+                alert(`⚠️ Oportunidade reaberta, mas FALHA no envio ao WhatsApp!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
+            } else {
+                alert(`Link mágico reenviado a ${data?.recipients ?? 0} professor(es) ativo(s)! Qualquer um pode reaceitar a experimental.`);
+            }
             setReschedOpp(null);
             fetchData();
         } catch (err: any) {

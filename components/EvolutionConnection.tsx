@@ -337,16 +337,13 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                     <RefreshCw size={12} /> Atualizar Status
                                 </button>
 
-                                {/* GROUP SELECTORS - DIRECTORS ONLY */}
+                                {/* GROUP SELECTOR - DIRECTORS ONLY */}
+                                {/* "Grupo de Oportunidades" (teachers_group_id) foi removido: as vagas de
+                                    experimental/treinamento agora vão por DM individual só a professores
+                                    ativos (ver supabase/functions/broadcast-opportunity), não mais a um
+                                    grupo — o seletor tinha ficado órfão e confundia o diretor. */}
                                 {['DIRECTOR', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN', 'FRANCHISEE'].includes(user.role) && (
                                     <div className="mt-8 w-full border-t border-brand-border pt-8 text-left grid grid-cols-1 gap-6">
-                                        <GroupSelector
-                                            user={user}
-                                            instanceName={instance.instance_name}
-                                            label="Grupo de Oportunidades"
-                                            description="Onde as vagas serão lançadas para os professores."
-                                            dbColumn="teachers_group_id"
-                                        />
                                         <GroupSelector
                                             user={user}
                                             instanceName={instance.instance_name}
