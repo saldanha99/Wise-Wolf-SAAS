@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Trash2, Video, FileText, Users, GraduationCap, Briefcase, Loader2, Save, X, Edit2, Eye, Link as LinkIcon, Zap } from 'lucide-react';
+import { Plus, Trash2, Video, FileText, Users, GraduationCap, Briefcase, Loader2, Save, X, Edit2, Eye, Link as LinkIcon, Zap, MessageCircle } from 'lucide-react';
 
 const AUDIENCE_OPTIONS = [
     { id: 'TEACHER', label: 'Professores', icon: Briefcase, color: 'emerald' },
@@ -45,6 +45,9 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
     const [liveDate, setLiveDate] = useState('');
     const [liveTime, setLiveTime] = useState('');
     const [liveSending, setLiveSending] = useState(false);
+    // Modo de disparo: 'group' posta só no grupo de professores; 'individual' manda
+    // DM a cada professor ativo. Padrão = grupo (preferência do diretor).
+    const [liveDispatchMode, setLiveDispatchMode] = useState<'individual' | 'group'>('group');
 
     const broadcastTraining = async () => {
         if (!liveTopic || !liveDate || !liveTime) { alert('Preencha tema, data e horário.'); return; }
@@ -58,11 +61,18 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                     date: liveDate,
                     time: liveTime,
                     interests: liveFocus || 'Capacitação da equipe',
+                    dispatch_mode: liveDispatchMode,
                 },
             });
             if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao disparar.');
+            const isGroupMode = data?.mode === 'group';
             if (data?.warning) {
-                alert(`⚠️ Treinamento criado, mas FALHA no envio ao WhatsApp!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
+                const detail = isGroupMode
+                    ? `Grupo: '${data.destination_group}'`
+                    : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
+                alert(`⚠️ Treinamento criado, mas FALHA no envio ao WhatsApp!\n${detail}\nErro: ${data.warning}`);
+            } else if (isGroupMode) {
+                alert('Treinamento disparado no grupo de professores! O primeiro a aceitar garante a vaga (remunerada como aula).');
             } else {
                 alert(`Treinamento disparado a ${data?.recipients ?? 0} professor(es) ativo(s)! O primeiro a aceitar garante a vaga (remunerada como aula).`);
             }
@@ -252,8 +262,30 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                                         className="w-full p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm border border-slate-200 dark:border-slate-700 outline-none focus:ring-2 focus:ring-amber-500" />
                                 </div>
                             </div>
+                            {/* Modo de disparo */}
+                            <div>
+                                <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">Como disparar</label>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLiveDispatchMode('group')}
+                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'group' ? 'bg-amber-500 text-white shadow' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
+                                    >
+                                        <MessageCircle size={12} /> Só no Grupo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLiveDispatchMode('individual')}
+                                        className={`flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold transition-colors ${liveDispatchMode === 'individual' ? 'bg-amber-500 text-white shadow' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-700'}`}
+                                    >
+                                        <Users size={12} /> Todos os Professores
+                                    </button>
+                                </div>
+                            </div>
                             <p className="text-[10px] text-slate-400">
-                                Dispara no grupo de professores. O primeiro a aceitar garante a vaga, que aparece na agenda dele (em âmbar) e é remunerada como aula ao ser lançada.
+                                {liveDispatchMode === 'group'
+                                    ? 'Posta no grupo de professores configurado em WhatsApp (Conexão). O primeiro a aceitar garante a vaga (em âmbar na agenda dele), remunerada como aula.'
+                                    : 'Manda DM individual só pros professores ativos. O primeiro a aceitar garante a vaga, remunerada como aula.'}
                             </p>
                         </div>
                         <div className="p-6 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
