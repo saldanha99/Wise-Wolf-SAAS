@@ -1,7 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { Resend } from "npm:resend@2.0.0"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0"
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"))
+const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim()
+const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL")?.trim()
+    || "Wise Wolf <nao-responda@wisewolflanguage.com.br>"
+const resendReplyTo = Deno.env.get("RESEND_REPLY_TO")?.trim()
+const systemUrl = (Deno.env.get("SYSTEM_URL")?.trim()
+    || "https://system.wisewolflanguage.com.br").replace(/\/+$/, "")
 
 interface WelcomeEmailRequest {
     email: string
@@ -10,7 +16,41 @@ interface WelcomeEmailRequest {
     contractBase64?: string // OR Base64 content of the PDF
 }
 
-const logoUrl = "https://your-project.supabase.co/storage/v1/object/public/assets/logo-wise-wolf.png" // Replace with actual logo URL
+interface EmailCaller {
+    email: string | null
+    isAdmin: boolean
+    isService: boolean
+}
+
+async function getEmailCaller(req: Request): Promise<EmailCaller | null> {
+    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim()
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+
+    if (!token || !supabaseUrl || !serviceRoleKey) return null
+    if (token === serviceRoleKey) return { email: null, isAdmin: true, isService: true }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data: { user } } = await supabase.auth.getUser(token)
+    if (!user) return null
+
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle()
+
+    return {
+        email: user.email || null,
+        isAdmin: ["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(profile?.role || ""),
+        isService: false,
+    }
+}
+
+const logoUrl = Deno.env.get("EMAIL_LOGO_URL")?.trim()
+    || "https://wisewolflanguage.com.br/logo.png"
 
 const handler = async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") {
@@ -18,7 +58,28 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     try {
+        const caller = await getEmailCaller(req)
+        if (!caller) {
+            return new Response(JSON.stringify({ error: "Não autorizado" }), {
+                status: 401,
+                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            })
+        }
+
         const { email, name, contractUrl, contractBase64 }: WelcomeEmailRequest = await req.json()
+        const isOwnEmail = caller.email?.toLowerCase() === email?.trim().toLowerCase()
+        if (!caller.isAdmin && !caller.isService && !isOwnEmail) {
+            return new Response(JSON.stringify({ error: "Não autorizado" }), {
+                status: 403,
+                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            })
+        }
+
+        if (!resendApiKey) {
+            throw new Error("RESEND_API_KEY não configurada")
+        }
+
+        const resend = new Resend(resendApiKey)
 
         // Attachments logic
         const attachments = []
@@ -77,7 +138,7 @@ const handler = async (req: Request): Promise<Response> => {
             </p>
 
             <div class="btn-group">
-              <a href="https://portal.wisewolf.com.br/dashboard" class="btn btn-primary">🚀 Acessar Minhas Aulas</a>
+              <a href="${systemUrl}" class="btn btn-primary">🚀 Acessar Minhas Aulas</a>
               <a href="https://chat.whatsapp.com/SEU_GRUPO_LINK" class="btn btn-secondary">👥 Entrar no Grupo de Alunos</a>
               <a href="https://wa.me/5511971681451" class="btn btn-accent">💬 Falar com Suporte</a>
             </div>
@@ -92,11 +153,12 @@ const handler = async (req: Request): Promise<Response> => {
     `
 
         const data = await resend.emails.send({
-            from: 'Wise Wolf <nao-responda@wisewolf.com.br>', // Configure seu domínio no Resend
+            from: resendFromEmail,
             to: [email],
             subject: '📄 Seu Contrato - Wise Wolf Language',
             html: htmlContent,
-            attachments: attachments.length > 0 ? attachments : undefined
+            attachments: attachments.length > 0 ? attachments : undefined,
+            ...(resendReplyTo ? { reply_to: resendReplyTo } : {})
         })
 
         return new Response(JSON.stringify(data), {
