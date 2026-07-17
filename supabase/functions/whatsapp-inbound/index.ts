@@ -9,12 +9,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // v15 — cidade REVERTIDA para Santa Isabel/SP (fonte: tenants.school_info; a v14 tinha
 // trocado para Jacareí com base em premissa errada da auditoria).
 
-const INBOUND_TOKEN = "wwlf-inb-4e9d1c7a2b5f4083";
-const EVOLUTION_BASE = "https://api.2b.app.br";
-const EVOLUTION_KEYS = Array.from(new Set([
-  (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  "8828462c98512411df3acfe3df4e48a1",
-].filter(Boolean)));
+const INBOUND_TOKEN = Deno.env.get("WHATSAPP_INBOUND_TOKEN") || "";
+const EVOLUTION_BASE = Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
+const EVOLUTION_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
 
 // META CAPI — mede Lead/Schedule/Purchase server-side (fora do alcance de ad-blocker/cookie).

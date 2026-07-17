@@ -9,10 +9,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const ASAAS_ACCESS_TOKEN = (Deno.env.get('ASAAS_ACCESS_TOKEN') || Deno.env.get('ASAAS_API_KEY') || '').trim();
 const ASAAS_WEBHOOK_TOKEN = (Deno.env.get('ASAAS_WEBHOOK_TOKEN') || '').trim();
-// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia das demais.
+// Chave via env para permitir rotação sem novo deploy.
 const EVOLUTION_API_KEYS = Array.from(new Set([
     (Deno.env.get('EVOLUTION_API_KEY') || '').trim(),
-    '8828462c98512411df3acfe3df4e48a1',
 ].filter(Boolean)));
 
 // META CAPI — mede o evento "Purchase" (matrícula paga) server-side. FB_CAPI_TOKEN ainda não
@@ -392,8 +391,8 @@ serve(async (req) => {
 
     // Validate webhook token (uses dedicated ASAAS_WEBHOOK_TOKEN secret)
     const requestToken = req.headers.get('asaas-access-token');
-    if (ASAAS_WEBHOOK_TOKEN && requestToken !== ASAAS_WEBHOOK_TOKEN) {
-        console.warn(`[Webhook] Token Mismatch! Received: '${requestToken}' | Expected: '${ASAAS_WEBHOOK_TOKEN}'`);
+    if (!ASAAS_WEBHOOK_TOKEN || requestToken !== ASAAS_WEBHOOK_TOKEN) {
+        console.warn('[Webhook] Token ausente ou inválido.');
         return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
     }
 

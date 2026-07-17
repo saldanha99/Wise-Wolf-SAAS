@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 // Chave global do servidor Evolution (funciona para qualquer instância)
-const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 interface RequestBody {
     type: 'CONFIRMATION' | 'RESCHEDULE' | 'CUSTOM';

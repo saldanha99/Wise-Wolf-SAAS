@@ -13,7 +13,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 const MONTHS_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 function normPhone(raw: string): string {

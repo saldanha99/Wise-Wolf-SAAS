@@ -8,12 +8,8 @@ const corsHeaders = {
 };
 
 // CONFIGURATION
-const API_URL = "https://api.2b.app.br";
-// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
-const API_KEYS = Array.from(new Set([
-    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-    "8828462c98512411df3acfe3df4e48a1",
-].filter(Boolean)));
+const API_URL = Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
+const API_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
 const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
 // Só usado no modo 'group' quando o diretor não configurou um grupo próprio (legado).
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";

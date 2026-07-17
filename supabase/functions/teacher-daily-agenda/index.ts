@@ -11,7 +11,7 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 function normalizePhone(raw: string): string | null {
   let phone = (raw || "").replace(/\D/g, "");

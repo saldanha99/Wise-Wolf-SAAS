@@ -13,7 +13,6 @@ const SCAN_TOKEN = "wwlf-oral-7c3a91f5";
 const EVOLUTION_BASE = "https://api.2b.app.br";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {

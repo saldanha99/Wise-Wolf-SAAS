@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const EVOLUTION_BASE_URL = "https://api.2b.app.br";
-const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 interface RequestBody {
     number: string;

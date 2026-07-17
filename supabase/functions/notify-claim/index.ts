@@ -7,7 +7,7 @@ const corsHeaders = {
 }
 
 const DEFAULT_API_URL = "https://api.2b.app.br";
-const DEFAULT_API_KEY = "8828462c98512411df3acfe3df4e48a1";
+const DEFAULT_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 // META CAPI — mede evento "Schedule" (aula experimental confirmada) server-side.
 // FB_CAPI_TOKEN ainda não configurado → no-op silencioso até o secret existir.

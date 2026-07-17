@@ -10,7 +10,6 @@ const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const EVOLUTION_KEYS = Array.from(new Set([
-  (Deno.env.get("EVOLUTION_API_KEY") || "").trim(), "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 
 async function sendWhats(instance: string, payload: unknown): Promise<Response> {

@@ -10,7 +10,7 @@ const corsHeaders = {
 // CONFIG
 const INSTANCE = "wise wolf";
 const API_URL = "https://api.2b.app.br";
-const API_KEY = "8828462c98512411df3acfe3df4e48a1";
+const API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 serve(async (req) => {
     // Handle CORS

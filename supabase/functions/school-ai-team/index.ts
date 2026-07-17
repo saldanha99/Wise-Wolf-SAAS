@@ -22,11 +22,9 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-// Tenta o secret EVOLUTION_API_KEY primeiro; se a Evolution devolver 401 (secret com
-// chave velha — gotcha da rotação de 30/06), re-tenta com a chave atual conhecida.
+// Chave via env para permitir rotação sem novo deploy.
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 
 async function sendWhats(instance: string, payload: unknown): Promise<Response> {

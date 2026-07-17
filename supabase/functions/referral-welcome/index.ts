@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const EVOLUTION_API_URL = "https://api.2b.app.br";
-const EVOLUTION_API_KEY = "8828462c98512411df3acfe3df4e48a1";
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });

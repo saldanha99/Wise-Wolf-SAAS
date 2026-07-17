@@ -10,9 +10,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
 // Chave global do servidor Evolution (funciona para qualquer instância)
-const API_TOKEN = "8828462c98512411df3acfe3df4e48a1";
+const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 // Página de confirmação servida pelo SPA (edge functions do Supabase não renderizam HTML — CSP sandbox)
 const APP_URL = Deno.env.get("APP_PUBLIC_URL") || "https://system.wisewolflanguage.com.br";
 
@@ -36,6 +36,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    if (!API_TOKEN) throw new Error("EVOLUTION_API_KEY não configurada");
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""

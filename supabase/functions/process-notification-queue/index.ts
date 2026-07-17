@@ -15,10 +15,9 @@ const corsHeaders = {
 }
 
 const EVOLUTION_API_URL = 'https://api.2b.app.br';
-// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
+// Chave via env para permitir rotação sem novo deploy.
 const EVOLUTION_API_KEYS = Array.from(new Set([
     (Deno.env.get('EVOLUTION_API_KEY') || '').trim(),
-    '8828462c98512411df3acfe3df4e48a1',
 ].filter(Boolean)));
 const MAX_ATTEMPTS = 3;
 

@@ -35,7 +35,6 @@ const corsHeaders = {
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  "8828462c98512411df3acfe3df4e48a1",
 ].filter(Boolean)));
 
 const BRT_OFFSET_MS = 3 * 3600 * 1000; // Brasil não tem mais horário de verão

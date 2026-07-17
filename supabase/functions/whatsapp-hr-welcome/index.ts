@@ -1,12 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-// Chave via env (rotação sem redeploy) com fallback na chave atual — mesma estratégia do whatsapp-inbound.
-const EVOLUTION_API_TOKENS = Array.from(new Set([
-    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-    "8828462c98512411df3acfe3df4e48a1",
-].filter(Boolean)));
+const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
+const EVOLUTION_API_TOKENS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
