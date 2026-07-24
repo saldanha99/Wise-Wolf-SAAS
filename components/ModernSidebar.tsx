@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Mic,
     LayoutDashboard,
@@ -36,7 +36,8 @@ import {
     Gift,
     UserPlus,
     TrendingUp,
-    ShieldAlert
+    ShieldAlert,
+    X
 } from 'lucide-react';
 import { Tenant, User as UserType, UserRole } from '../types';
 
@@ -60,7 +61,7 @@ interface MenuItem {
     id: string;
     label: string;
     icon: React.ElementType;
-    badge?: number;
+    badge?: number | string;
     section?: string;        // grupo do menu (ex: "Pessoas", "Financeiro")
     badgeKey?: string;       // chave em pendingCounts que vira badge (ex: "acolhimento")
 }
@@ -80,6 +81,76 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     toggleTheme,
     pendingCounts = {}
 }) => {
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+    );
+    const navRef = useRef<HTMLElement>(null);
+    const menuScrollRef = useRef<HTMLDivElement>(null);
+    const returnFocusRef = useRef<HTMLElement | null>(null);
+
+    useEffect(() => {
+        const media = window.matchMedia('(max-width: 1023px)');
+        const handleChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+
+        setIsMobile(media.matches);
+        media.addEventListener('change', handleChange);
+        return () => media.removeEventListener('change', handleChange);
+    }, []);
+
+    useEffect(() => {
+        if (!isMobile || !isOpen) return;
+
+        returnFocusRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        if (menuScrollRef.current) menuScrollRef.current.scrollTop = 0;
+
+        const focusFrame = window.requestAnimationFrame(() => {
+            const activeItem = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+            const firstItem = navRef.current?.querySelector<HTMLElement>('[data-sidebar-focusable="true"]');
+            const target = activeItem || firstItem;
+            target?.scrollIntoView({ block: 'nearest' });
+            target?.focus();
+        });
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                setIsOpen(false);
+                return;
+            }
+
+            if (event.key !== 'Tab' || !navRef.current) return;
+
+            const focusable = Array.from(
+                navRef.current.querySelectorAll<HTMLElement>('[data-sidebar-focusable="true"]:not([disabled])')
+            ) as HTMLElement[];
+            if (focusable.length === 0) return;
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.cancelAnimationFrame(focusFrame);
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousBodyOverflow;
+            window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+        };
+    }, [isMobile, isOpen, setIsOpen]);
 
     const teacherMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -185,44 +256,51 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     };
 
     const menuItems = getMenuItems();
-    const open = !isCollapsed;
+    const expanded = isMobile || !isCollapsed;
+    const drawerHidden = isMobile && !isOpen;
 
     return (
         <>
             <div
+                aria-hidden="true"
                 className={`fixed inset-0 z-[90] bg-black/60 lg:hidden transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={() => setIsOpen(false)}
             />
 
             <nav
+                ref={navRef}
+                id="app-primary-navigation"
+                aria-label="Navegação principal"
+                aria-hidden={drawerHidden || undefined}
+                inert={drawerHidden || undefined}
                 className={`
-          fixed lg:sticky top-0 left-0 z-[100] h-screen shrink-0 
+          fixed lg:relative inset-y-0 left-0 z-[100] h-dvh min-h-0 shrink-0
           transition-all duration-300 ease-in-out bg-brand-surface border-r border-brand-border
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          ${open ? 'w-64' : 'w-20'} 
-          p-3 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.2)]
+          ${expanded ? 'w-64' : 'w-20'}
+          p-3 flex flex-col overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.2)]
         `}
             >
-                <div className="mb-6 pb-4">
-                    <div className={`flex items-center ${open ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 transition-colors hover:bg-brand-surface-2`}>
+                <div className="flex-none mb-3 pb-3">
+                    <div className={`flex items-center ${expanded ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 transition-colors hover:bg-brand-surface-2`}>
                         <div className="flex items-center gap-3 w-full">
                             {user.role === UserRole.SUPER_ADMIN ? (
                                 <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-brand-accent to-brand-accent-hover shadow-lg text-white">
-                                    <Shield size={20} />
+                                    <Shield size={20} aria-hidden="true" />
                                 </div>
                             ) : tenant.branding?.logoUrl ? (
                                 <img
                                     src={tenant.branding.logoUrl}
                                     alt={tenant.name}
-                                    className={`object-contain transition-all duration-300 ${open ? 'h-14 max-w-[180px]' : 'h-8 w-8'} rounded-md`}
+                                    className={`object-contain transition-all duration-300 ${expanded ? 'h-14 max-w-[180px]' : 'h-8 w-8'} rounded-md`}
                                 />
                             ) : (
                                 <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-brand-accent to-brand-accent-hover shadow-lg text-white">
-                                    <School size={20} />
+                                    <School size={20} aria-hidden="true" />
                                 </div>
                             )}
 
-                            {open && (
+                            {expanded && (
                                 <div className={`overflow-hidden flex-1 ${tenant.branding?.logoUrl && user.role !== UserRole.SUPER_ADMIN ? 'hidden' : ''}`}>
                                     <h3 className="block text-sm font-bold text-brand-text truncate max-w-[120px]">
                                         {user.role === UserRole.SUPER_ADMIN ? 'EduCore SaaS' : tenant.name}
@@ -232,11 +310,26 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                     </span>
                                 </div>
                             )}
+
+                            {isMobile && (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsOpen(false)}
+                                    className="ml-auto grid size-10 shrink-0 place-content-center rounded-xl text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text"
+                                    aria-label="Fechar menu"
+                                    data-sidebar-focusable="true"
+                                >
+                                    <X size={20} aria-hidden="true" />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
 
-                <div className="space-y-1 mb-8 flex-1 overflow-y-auto scrollbar-hide">
+                <div
+                    ref={menuScrollRef}
+                    className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1"
+                >
                     {menuItems.map((item, idx) => {
                         // Cabeçalho de seção: aparece quando a seção muda (só em menus agrupados)
                         const prevSection = idx > 0 ? menuItems[idx - 1].section : undefined;
@@ -245,12 +338,12 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         const badge = item.badge ?? (item.badgeKey ? pendingCounts[item.badgeKey] : undefined);
                         return (
                             <React.Fragment key={item.id}>
-                                {showHeader && open && (
+                                {showHeader && expanded && (
                                     <div className="px-3 pt-4 pb-1 text-[10px] font-black text-brand-muted uppercase tracking-widest">
                                         {item.section}
                                     </div>
                                 )}
-                                {showHeader && !open && idx > 0 && (
+                                {showHeader && !expanded && idx > 0 && (
                                     <div className="my-2 mx-3 border-t border-brand-border" />
                                 )}
                                 <Option
@@ -262,7 +355,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                         setActiveTab(id);
                                         if (window.innerWidth < 1024) setIsOpen(false);
                                     }}
-                                    open={open}
+                                    open={expanded}
                                     notifs={badge}
                                 />
                             </React.Fragment>
@@ -270,8 +363,8 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     })}
                 </div>
 
-                <div className="border-t border-brand-border pt-4 space-y-1 mb-2 lg:mb-12 pb-[env(safe-area-inset-bottom)]">
-                    {open && (
+                <div className="flex-none border-t border-brand-border pt-3 mt-3 space-y-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:pb-0">
+                    {expanded && (
                         <div className="px-3 py-2 text-[10px] font-black text-brand-muted uppercase tracking-widest">
                             Conta
                         </div>
@@ -285,30 +378,40 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                             setActiveTab(id);
                             if (window.innerWidth < 1024) setIsOpen(false);
                         }}
-                        open={open}
+                        open={expanded}
                     />
                     <button
+                        type="button"
                         onClick={onLogout}
-                        className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 hover:bg-red-500/10`}
+                        className="relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 hover:bg-red-500/10"
+                        aria-label="Sair"
+                        title={!expanded ? 'Sair' : undefined}
+                        data-sidebar-focusable="true"
                     >
                         <div className="grid h-full w-12 place-content-center">
-                            <LogOut className="h-5 w-5" />
+                            <LogOut className="h-5 w-5" aria-hidden="true" />
                         </div>
-                        {open && <span className="text-sm font-bold">Sair</span>}
+                        {expanded && <span className="text-sm font-bold">Sair</span>}
                     </button>
                 </div>
 
                 <button
+                    type="button"
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="hidden lg:flex absolute bottom-0 left-0 right-0 border-t border-brand-border transition-colors hover:bg-brand-surface-2 items-center p-4"
+                    className="hidden lg:flex flex-none mt-2 border-t border-brand-border transition-colors hover:bg-brand-surface-2 items-center rounded-b-xl px-1 py-2"
+                    aria-label={expanded ? 'Recolher menu' : 'Expandir menu'}
+                    aria-expanded={expanded}
+                    title={!expanded ? 'Expandir menu' : undefined}
+                    data-sidebar-focusable="true"
                 >
                     <div className="grid size-10 place-content-center">
                         <ChevronsRight
-                            className={`h-5 w-5 transition-transform duration-300 text-brand-muted ${!open ? "rotate-180" : ""
+                            aria-hidden="true"
+                            className={`h-5 w-5 transition-transform duration-300 text-brand-muted ${!expanded ? "rotate-180" : ""
                                 }`}
                         />
                     </div>
-                    {open && (
+                    {expanded && (
                         <span className="text-sm font-bold text-brand-muted ml-2">
                             Recolher
                         </span>
@@ -319,22 +422,49 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     );
 };
 
-const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: any) => {
+interface OptionProps {
+    Icon: React.ElementType;
+    title: string;
+    selected: string;
+    setSelected: (id: string) => void;
+    itemId: string;
+    open: boolean;
+    notifs?: number | string;
+}
+
+const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: OptionProps) => {
     const isSelected = selected === itemId;
+    const hasNotification = typeof notifs === 'number' ? notifs > 0 : Boolean(notifs);
+    const accessibleLabel = typeof notifs === 'number' && notifs > 0
+        ? `${title}, ${notifs} ${notifs === 1 ? 'pendência' : 'pendências'}`
+        : typeof notifs === 'string' && notifs
+            ? `${title}, ${notifs}`
+            : title;
 
     return (
         <button
+            type="button"
             onClick={() => setSelected(itemId)}
             className={`relative flex h-11 w-full items-center rounded-xl transition-all duration-200 group mb-1 border border-transparent ${isSelected
                 ? "bg-brand-surface-2 border-brand-accent/30 text-brand-accent shadow-[inset_0_0_12px_rgba(var(--brand-accent),0.1)]"
                 : "text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text hover:border-brand-border"
                 }`}
-            title={!open ? title : ''}
+            title={!open ? title : undefined}
+            aria-label={accessibleLabel}
+            aria-current={isSelected ? 'page' : undefined}
+            data-sidebar-focusable="true"
         >
             <div className="grid h-full w-12 place-content-center relative">
-                <Icon className={`h-5 w-5 transition-transform ${isSelected ? 'scale-110' : 'group-hover:scale-110'}`} strokeWidth={isSelected ? 2.5 : 2} />
+                <Icon
+                    aria-hidden="true"
+                    className={`h-5 w-5 transition-transform ${isSelected ? 'scale-110' : 'group-hover:scale-110'}`}
+                    strokeWidth={isSelected ? 2.5 : 2}
+                />
                 {!open && isSelected && (
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-accent rounded-full shadow-[0_0_8px_rgba(var(--brand-accent),1)]" />
+                    <div
+                        aria-hidden="true"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-accent rounded-full shadow-[0_0_8px_rgba(var(--brand-accent),1)]"
+                    />
                 )}
             </div>
 
@@ -347,8 +477,11 @@ const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: an
                 </span>
             )}
 
-            {notifs && notifs > 0 && (
-                <span className={`${open ? 'absolute right-3' : 'absolute top-1 right-2'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white font-bold shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400`}>
+            {hasNotification && (
+                <span
+                    aria-hidden="true"
+                    className={`${open ? 'absolute right-3' : 'absolute top-1 right-2'} flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white font-bold shadow-[0_0_10px_rgba(239,68,68,0.5)] border border-red-400`}
+                >
                     {notifs}
                 </span>
             )}

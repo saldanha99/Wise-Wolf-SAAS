@@ -14,6 +14,9 @@ interface TeacherContractProps {
     acceptedAt?: string;
     userIp?: string;
     subscriptionId?: string;
+    displayMode?: 'responsive' | 'a4';
+    showPrintButton?: boolean;
+    innerRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function TeacherContractDocument({
@@ -27,12 +30,17 @@ export function TeacherContractDocument({
     contractDate,
     acceptedAt,
     userIp,
-    subscriptionId
+    subscriptionId,
+    displayMode = 'a4',
+    showPrintButton = true,
+    innerRef,
 }: TeacherContractProps) {
-    const componentRef = useRef(null);
+    const componentRef = useRef<HTMLDivElement>(null);
+    const documentRef = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
+    const isResponsive = displayMode === 'responsive';
 
     const handlePrint = useReactToPrint({
-        contentRef: componentRef,
+        contentRef: documentRef,
         documentTitle: `Contrato_Professor_WiseWolf_${teacherName}`,
     });
 
@@ -49,29 +57,64 @@ export function TeacherContractDocument({
         : (contractDate || new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }));
 
     return (
-        <div className="flex flex-col items-center gap-6 p-8 bg-gray-100 min-h-screen">
+        <div className={`teacher-contract-outer flex w-full flex-col items-center gap-6 ${isResponsive ? 'bg-transparent p-0' : 'min-h-screen bg-gray-100 p-8'}`}>
 
             {/* Botão de Ação (Aparece apenas na tela) */}
-            <div className="w-full max-w-[210mm] flex justify-end print:hidden">
-                <button
-                    onClick={handlePrint}
-                    className="bg-[#002366] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#001a4d] transition-all flex items-center gap-2"
-                >
-                    🖨️ Imprimir / Salvar PDF
-                </button>
-            </div>
+            {showPrintButton && (
+                <div className="w-full max-w-[210mm] flex justify-end print:hidden">
+                    <button
+                        type="button"
+                        onClick={handlePrint}
+                        className="bg-[#002366] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#001a4d] transition-all flex items-center gap-2"
+                    >
+                        🖨️ Imprimir / Salvar PDF
+                    </button>
+                </div>
+            )}
 
             {/* Folha A4 do Contrato */}
             <div
-                ref={componentRef}
-                className="w-[210mm] min-h-[297mm] bg-brand-surface p-[25mm] shadow-2xl text-brand-text text-[11px] leading-relaxed"
+                ref={documentRef}
+                className={isResponsive
+                    ? 'teacher-contract-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    : 'w-[210mm] min-h-[297mm] bg-white p-[25mm] shadow-2xl text-[11px] leading-relaxed text-gray-800'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
                 <style>{`
                     @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Great+Vibes&display=swap');
+                    @media (max-width: 639px) {
+                        .teacher-contract-responsive p {
+                            font-size: 0.8125rem !important;
+                            line-height: 1.5 !important;
+                            overflow-wrap: anywhere;
+                        }
+                        .teacher-contract-responsive h1 {
+                            font-size: 1rem !important;
+                            line-height: 1.35 !important;
+                        }
+                        .teacher-contract-responsive h3 {
+                            font-size: 0.75rem !important;
+                            line-height: 1.4 !important;
+                        }
+                        .teacher-contract-responsive .teacher-contract-header {
+                            align-items: flex-start;
+                            flex-direction: column;
+                            gap: 0.75rem;
+                        }
+                        .teacher-contract-responsive .teacher-contract-header > :last-child {
+                            text-align: left;
+                        }
+                        .teacher-contract-responsive .teacher-contract-signatures {
+                            flex-direction: column;
+                            gap: 2.5rem;
+                        }
+                        .teacher-contract-responsive .teacher-contract-seal {
+                            align-items: flex-start;
+                        }
+                    }
                 `}</style>
                 {/* Cabeçalho */}
-                <div className="flex justify-between items-center mb-6 border-b-2 border-[#002366] pb-2">
+                <div className="teacher-contract-header flex justify-between items-center mb-6 border-b-2 border-[#002366] pb-2">
                     <div className="text-xl font-black text-[#002366] tracking-tighter">
                         WISE WOLF <span className="text-red-600">LANGUAGE</span>
                     </div>
@@ -80,7 +123,7 @@ export function TeacherContractDocument({
                     </div>
                 </div>
 
-                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-brand-border py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
+                <h1 className="text-center font-bold text-md mb-6 uppercase border-y border-gray-200 py-2">CONTRATO DE PRESTAÇÃO DE SERVIÇOS – PROFESSOR AUTÔNOMO</h1>
 
                 {/* Identificação das Partes */}
                 <div className="mb-4 space-y-2 text-justify">
@@ -231,7 +274,7 @@ export function TeacherContractDocument({
                 <div className="mt-8 pt-4 border-t border-gray-100">
                     <p className="text-center mb-6">{contractCity}, {displayDate}.</p>
 
-                    <div className="flex justify-between gap-8 mt-10 min-h-[100px]">
+                    <div className="teacher-contract-signatures flex justify-between gap-8 mt-10 min-h-[100px]">
                         {/* Assinatura Wise Wolf */}
                         <div className="flex-1 flex flex-col items-center justify-end relative">
                             <div className="mb-2 flex flex-col items-center gap-1">
@@ -255,7 +298,7 @@ export function TeacherContractDocument({
                             <div className="mb-2 text-center h-12 flex items-end justify-center relative w-full">
                                 {acceptedAt ? (
                                     <>
-                                        <span className="text-2xl text-brand-text transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
+                                        <span className="text-2xl text-gray-800 transform -rotate-1 relative z-10" style={{ fontFamily: '"Dancing Script", cursive' }}>
                                             {teacherName}
                                         </span>
                                         <div className="absolute -right-2 top-0 border border-emerald-200 bg-emerald-50/80 p-1 rounded text-[7px] text-emerald-800 leading-tight w-20 opacity-80 rotate-3">
@@ -269,7 +312,7 @@ export function TeacherContractDocument({
                             </div>
                             <div className="border-t border-black pt-1 w-full text-center">
                                 <p className="font-bold uppercase text-[10px]">{teacherName || 'Professor'}</p>
-                                <p className="text-[8px] text-brand-muted uppercase">CONTRATADO</p>
+                                <p className="text-[8px] text-gray-500 uppercase">CONTRATADO</p>
                             </div>
                         </div>
                     </div>
@@ -277,13 +320,13 @@ export function TeacherContractDocument({
 
                 {/* Selo de Autenticação Digital */}
                 {acceptedAt && (
-                    <div className="mt-8 p-4 bg-brand-surface-2 border border-brand-border rounded-xl relative overflow-hidden flex items-center gap-4">
+                    <div className="teacher-contract-seal mt-8 p-4 bg-gray-50 border border-gray-200 rounded-xl relative overflow-hidden flex items-center gap-4">
                         <div className="p-2 bg-emerald-100 text-emerald-600 rounded-full">
                             <ShieldCheck size={32} />
                         </div>
                         <div className="flex-1">
                             <h4 className="text-sm font-black text-[#002366] uppercase tracking-tighter mb-1">Contrato Autenticado</h4>
-                            <div className="space-y-0.5 text-[9px] text-brand-muted font-mono">
+                            <div className="space-y-0.5 text-[9px] text-gray-500 font-mono">
                                 <p><strong>Data:</strong> {new Date(acceptedAt).toLocaleString('pt-BR')}</p>
                                 <p><strong>IP:</strong> {userIp || 'Não registrado'}</p>
                                 <p><strong>ID:</strong> {subscriptionId || 'PENDING'}</p>

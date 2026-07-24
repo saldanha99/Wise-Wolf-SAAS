@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { Target, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface SkillData {
@@ -52,17 +52,17 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
     };
 
     return (
-        <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col h-full">
+        <div className="bg-brand-surface p-4 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col h-full min-w-0 overflow-hidden">
 
-            <div className="flex justify-between items-start mb-8">
-                <h3 className="text-xs font-black text-gray-800 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-5 sm:mb-8 min-w-0">
+                <h3 className="text-xs font-black text-gray-800 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2 min-w-0">
                     <Target size={18} className="text-tenant-primary" /> Matriz de Competências
                 </h3>
 
                 {previousData && (
                     <button
                         onClick={() => setShowComparison(!showComparison)}
-                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-muted hover:text-tenant-primary transition-colors"
+                        className="w-full sm:w-auto flex items-center justify-center sm:justify-start gap-2 text-[10px] font-bold uppercase tracking-widest text-brand-muted hover:text-tenant-primary transition-colors border border-brand-border sm:border-0 rounded-xl sm:rounded-none px-3 sm:px-0 py-2 sm:py-0"
                     >
                         {showComparison ? <ToggleRight size={24} className="text-tenant-primary" /> : <ToggleLeft size={24} />}
                         Comparar Mês Anterior
@@ -70,11 +70,11 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
                 )}
             </div>
 
-            <div className="h-80 w-full relative z-10">
-                <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart cx="50%" cy="50%" outerRadius="75%" data={chartData}>
+            <div className="h-72 sm:h-80 w-full min-w-0 relative z-10">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={100}>
+                    <RadarChart cx="50%" cy="50%" outerRadius="62%" data={chartData} margin={{ top: 12, right: 20, bottom: 12, left: 20 }}>
                         <PolarGrid stroke="#e2e8f0" strokeDasharray="3 3" className="dark:opacity-10" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 'bold' }} />
+                        <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
                         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
 
                         {/* Current Month */}
@@ -105,10 +105,10 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
                 </ResponsiveContainer>
             </div>
 
-            <div className="grid grid-cols-5 gap-2 mt-8">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mt-5 sm:mt-8">
                 {chartData.map((s, i) => (
-                    <div key={i} className="text-center">
-                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-tighter truncate">{s.subject}</p>
+                    <div key={i} className="text-center min-w-0 rounded-xl bg-brand-surface-2/60 p-2 last:col-span-2 sm:last:col-span-1">
+                        <p className="text-[9px] font-black text-gray-500 dark:text-slate-400 uppercase leading-tight break-normal">{s.subject}</p>
                         <div className="flex flex-col items-center">
                             <p className="text-sm font-black text-tenant-primary">{s.A}%</p>
                             {showComparison && s.B !== undefined && (

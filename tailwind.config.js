@@ -54,6 +54,9 @@ module.exports = {
                     DEFAULT: "hsl(var(--card))",
                     foreground: "hsl(var(--card-foreground))",
                 },
+                tenant: {
+                    primary: "rgb(var(--tenant-primary-rgb, 0 35 102) / <alpha-value>)",
+                },
                 brand: {
                     bg: "var(--brand-bg)",
                     surface: "var(--brand-surface)",

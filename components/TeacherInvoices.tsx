@@ -108,40 +108,159 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'COMPLETED':
-                return <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200">Aprovado</span>;
+                return <span className="inline-flex whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-700">Aprovado</span>;
             case 'PAID_WAITING_NF':
-                return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-200">Envie sua NF</span>;
+                return <span className="inline-flex whitespace-nowrap rounded-full border border-blue-200 bg-blue-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-blue-700">Envie sua NF</span>;
             case 'UNDER_REVIEW':
-                return <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-purple-200">Em Análise</span>;
+                return <span className="inline-flex whitespace-nowrap rounded-full border border-purple-200 bg-purple-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-purple-700">Em Análise</span>;
             case 'REJECTED':
-                return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-red-200">Nota Rejeitada</span>;
+                return <span className="inline-flex whitespace-nowrap rounded-full border border-red-200 bg-red-100 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-red-700">Nota Rejeitada</span>;
             default:
-                return <span className="bg-brand-surface-2 text-brand-text px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-brand-border">Pendente</span>;
+                return <span className="inline-flex whitespace-nowrap rounded-full border border-brand-border bg-brand-surface-2 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-text">Pendente</span>;
         }
     };
 
+    const renderInvoiceAction = (inv: any) => {
+        const status = inv.status || '';
+        const isRejected = status === 'REJECTED';
+        const hasLink = !!inv.nf_link;
+        const canUpload = ['PENDENTE', 'REJECTED', 'CONFIRMADO', 'PAGO', 'PAID_WAITING_NF'].includes(status);
+
+        if (canUpload) {
+            return (
+                <div className="relative w-full">
+                    {hasLink && (
+                        <a
+                            href={inv.nf_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`mb-2 block text-center text-[10px] font-bold hover:underline ${isRejected ? 'text-red-500' : 'text-blue-500'}`}
+                        >
+                            {isRejected ? 'Ver Nota Rejeitada' : 'Ver Nota Atual'}
+                        </a>
+                    )}
+                    <label
+                        className={`flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-[1.02] active:scale-95 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 ${isUploadingFile === inv.id ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${isRejected ? 'bg-red-500 shadow-red-500/20' : 'bg-blue-700 bg-tenant-primary shadow-tenant-primary/20'}`}
+                    >
+                        <input
+                            type="file"
+                            accept=".pdf"
+                            aria-label={isRejected ? 'Reenviar nota fiscal em PDF' : 'Anexar nota fiscal em PDF'}
+                            className="sr-only"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(inv.id, file);
+                            }}
+                            disabled={isUploadingFile === inv.id}
+                        />
+                        {isUploadingFile === inv.id ? (
+                            <><RefreshCw size={14} className="animate-spin" /> Enviando...</>
+                        ) : (
+                            <><Upload size={14} /> {isRejected ? 'Reenviar Nota' : 'Anexar NF (PDF)'}</>
+                        )}
+                    </label>
+                </div>
+            );
+        }
+
+        if (hasLink) {
+            return (
+                <a
+                    href={inv.nf_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-brand-surface-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted transition-all hover:bg-blue-700 hover:bg-tenant-primary hover:text-white dark:bg-brand-surface-2"
+                >
+                    <FileText size={14} />
+                    <span>Ver Nota Fiscal</span>
+                </a>
+            );
+        }
+
+        return (
+            <span className="block text-center text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-brand-muted">
+                Aguardando Aprovação
+            </span>
+        );
+    };
+
     return (
-        <div className="p-8 max-w-[1200px] mx-auto min-h-screen bg-brand-surface-2/50 dark:bg-brand-surface/50">
+        <div className="mx-auto min-h-screen max-w-[1200px] bg-brand-surface-2/50 p-3 dark:bg-brand-surface/50 sm:p-6 lg:p-8">
             <div className="mb-8">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="p-3 bg-tenant-primary/10 rounded-xl">
+                <div className="mb-2 flex min-w-0 items-center gap-3">
+                    <div className="shrink-0 rounded-xl bg-tenant-primary/10 p-3">
                         <FileText className="text-tenant-primary" size={24} />
                     </div>
-                    <h1 className="text-3xl font-black text-brand-text tracking-tight">Minhas Notas Fiscais</h1>
+                    <h1 className="min-w-0 text-2xl font-black tracking-tight text-brand-text sm:text-3xl">Minhas Notas Fiscais</h1>
                 </div>
                 <p className="text-brand-muted font-medium">Envie suas notas fiscais após o receber o pagamento para regularizar sua situação.</p>
             </div>
 
             {/* History Table */}
             <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl overflow-hidden">
-                <div className="p-8 border-b dark:border-brand-border bg-brand-surface-2/50 dark:bg-brand-surface-2/30 flex justify-between items-center">
+                <div className="flex items-center justify-between border-b bg-brand-surface-2/50 p-5 dark:border-brand-border dark:bg-brand-surface-2/30 sm:p-8">
                     <h3 className="font-black text-brand-text dark:text-slate-200 text-xs uppercase tracking-widest flex items-center gap-2">
 
                         <FileUp size={16} className="text-tenant-primary" /> Envios Pendentes e Histórico
                     </h3>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="space-y-3 p-4 md:hidden">
+                    {loading ? (
+                        Array(3).fill(0).map((_, i) => (
+                            <div key={i} className="animate-pulse rounded-2xl border border-brand-border p-4">
+                                <div className="h-4 w-2/3 rounded bg-brand-surface-2" />
+                                <div className="mt-4 h-16 w-full rounded bg-brand-surface-2" />
+                            </div>
+                        ))
+                    ) : closings.length > 0 ? (
+                        closings.map((inv) => (
+                            <article key={inv.id} className="rounded-2xl border border-brand-border bg-brand-surface p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <div className="shrink-0 rounded-xl border border-brand-border bg-brand-surface-2 p-2.5 text-brand-muted">
+                                            <Calendar size={18} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-black text-brand-text">
+                                                {new Date(inv.month_year + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                                            </p>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Ref: {inv.month_year}</p>
+                                        </div>
+                                    </div>
+                                    <div className="shrink-0">{getStatusBadge(inv.status)}</div>
+                                </div>
+
+                                <dl className="my-4 grid grid-cols-2 gap-3 border-y border-brand-border py-4">
+                                    <div>
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Aulas</dt>
+                                        <dd className="mt-1 flex items-center gap-1.5 text-sm font-bold text-brand-text">
+                                            <Hash size={13} className="text-brand-muted" /> {inv.total_lessons} aulas
+                                        </dd>
+                                    </div>
+                                    <div className="text-right">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor total</dt>
+                                        <dd className="mt-1 text-base font-black text-brand-text">
+                                            R$ {Number(inv.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </dd>
+                                    </div>
+                                </dl>
+
+                                <div>
+                                    <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-brand-muted">Ação / Arquivo</p>
+                                    {renderInvoiceAction(inv)}
+                                </div>
+                            </article>
+                        ))
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-brand-muted">
+                            <FileText size={40} className="mb-4 opacity-20" />
+                            <p className="text-sm font-black uppercase tracking-widest">Nenhum fechamento disponível</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-left border-collapse min-w-[500px]">
                         <thead>
                             <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/50 text-[10px] text-brand-muted uppercase font-black border-b dark:border-brand-border">
@@ -197,73 +316,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex justify-center flex-col items-center gap-2">
-                                                {(() => {
-                                                    const status = inv.status || '';
-                                                    const isRejected = status === 'REJECTED';
-                                                    const hasLink = !!inv.nf_link;
-                                                    // PENDENTE incluído: a maioria dos fechamentos fica PENDENTE e o professor
-                                                    // precisa conseguir anexar a NF mesmo antes do diretor marcar como pago.
-                                                    const canUpload = ['PENDENTE', 'REJECTED', 'CONFIRMADO', 'PAGO', 'PAID_WAITING_NF'].includes(status);
-
-                                                    // 2. Se pode fazer upload (REJEITADO, CONFIRMADO, PAGO, WAIT_NF), Mostramos o Upload
-                                                    // (Mesmo que tenha link, permitimos sobrescrever/corrigir)
-                                                    if (canUpload) {
-                                                        return (
-                                                            <div className="relative w-full">
-                                                                {/* Show Link if exists (for reference) */}
-                                                                {hasLink && (
-                                                                    <a href={inv.nf_link} target="_blank" className={`block text-[9px] text-center mb-1 hover:underline ${isRejected ? 'text-red-400' : 'text-blue-400'}`}>
-                                                                        {isRejected ? 'Ver Nota Rejeitada' : 'Ver Nota Atual'}
-                                                                    </a>
-                                                                )}
-
-                                                                <input
-                                                                    type="file"
-                                                                    accept=".pdf"
-                                                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                                                    onChange={(e) => {
-                                                                        const file = e.target.files?.[0];
-                                                                        if (file) handleFileUpload(inv.id, file);
-                                                                    }}
-                                                                    disabled={isUploadingFile === inv.id}
-                                                                />
-                                                                <button
-                                                                    className={`w-full px-4 py-2 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 ${isRejected ? 'bg-red-500 shadow-red-500/20' : 'bg-tenant-primary shadow-tenant-primary/20'}`}
-                                                                    disabled={isUploadingFile === inv.id}
-                                                                >
-                                                                    {isUploadingFile === inv.id ? (
-                                                                        <><RefreshCw size={14} className="animate-spin" /> Enviando...</>
-                                                                    ) : (
-                                                                        <><Upload size={14} /> {isRejected ? 'Reenviar Nota' : 'Anexar NF (PDF)'}</>
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    // 3. Se tem Link mas NÃO pode fazer upload (Completed/Under Review), View Only
-                                                    if (hasLink) {
-                                                        return (
-                                                            <a
-                                                                href={inv.nf_link}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="w-full justify-center px-4 py-2 bg-brand-surface-2 dark:bg-brand-surface-2 text-brand-muted rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tenant-primary hover:text-white transition-all flex items-center gap-2 group/btn"
-                                                            >
-                                                                <FileText size={14} />
-                                                                <span>Ver Nota Fiscal</span>
-                                                                <Upload size={12} className="opacity-0 group-hover/btn:opacity-100 -ml-2 transition-opacity" />
-                                                            </a>
-                                                        );
-                                                    }
-
-                                                    // 4. Fallback (Aguardando Aprovação do Fechamento)
-                                                    return (
-                                                        <span className="text-[10px] font-bold text-slate-300 dark:text-brand-muted uppercase tracking-widest">
-                                                            Aguardando Aprovação
-                                                        </span>
-                                                    );
-                                                })()}
+                                                {renderInvoiceAction(inv)}
                                             </div>
                                         </td>
                                     </tr>

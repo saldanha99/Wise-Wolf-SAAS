@@ -11,6 +11,7 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+    const [insufficientData, setInsufficientData] = useState(false);
 
     useEffect(() => {
         if (studentId) {
@@ -21,10 +22,11 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
     const fetchLatestInsight = async () => {
         setLoading(true);
         setError(null);
+        setInsufficientData(false);
         try {
             const { data, error } = await supabase
                 .from('student_insights')
-                .select('*')
+                .select('content, created_at')
                 .eq('student_id', studentId)
                 .order('created_at', { ascending: false })
                 .limit(1);
@@ -33,17 +35,13 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
 
             if (data && data.length > 0) {
                 setInsight(data[0].content);
-                setLastUpdated(new Date(data[0].created_at).toLocaleDateString());
+                setLastUpdated(new Date(data[0].created_at).toLocaleDateString('pt-BR'));
             } else {
-                // If no insight exists, generate one automatically first time? 
-                // Or wait for user? The prompt says: "Se NÃO existir ... Mostrar Loading ... Chamar generate".
-                // Let's generate automatically if none exists.
-                generateNewInsight();
+                await generateNewInsight();
                 return; // generate handling loading
             }
         } catch (err: any) {
             console.error('Error fetching insight:', err);
-            // Don't show error immediately on fetch fail, just generic message or try generate
             setError('Não foi possível carregar o relatório.');
         } finally {
             setLoading(false);
@@ -52,8 +50,8 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
 
     const generateNewInsight = async () => {
         setLoading(true);
-        setInsight(null); // Clear old to show thinking state
         setError(null);
+        setInsufficientData(false);
 
         try {
             const { data, error } = await supabase.functions.invoke('generate-student-insights', {
@@ -61,14 +59,17 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
             });
 
             if (error) throw error;
-            if (data.error) throw new Error(data.error);
+            if (data?.error) throw new Error(data.error);
 
-            if (data.insight) {
+            if (data?.status === 'insufficient_data') {
+                setInsight(data.message || 'Ainda não há aulas suficientes para gerar uma análise.');
+                setLastUpdated(null);
+                setInsufficientData(true);
+            } else if (data?.insight) {
                 setInsight(data.insight.content);
-                setLastUpdated(new Date().toLocaleDateString());
-            } else if (data.message) {
-                // "Dados insuficientes" case
-                setInsight(data.message);
+                setLastUpdated(new Date(data.insight.created_at || Date.now()).toLocaleDateString('pt-BR'));
+            } else {
+                throw new Error('Invalid insight response');
             }
 
         } catch (err: any) {
@@ -80,7 +81,7 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
     };
 
     return (
-        <div className="bg-gradient-to-br from-tenant-primary to-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden group flex-1 flex flex-col justify-between min-h-[400px]">
+        <div className="relative flex min-h-[400px] min-w-0 flex-1 flex-col justify-between overflow-hidden rounded-[2.5rem] bg-slate-950 bg-gradient-to-br from-tenant-primary/80 to-slate-950 p-6 text-white shadow-xl group sm:p-8">
 
             {/* Background Decor */}
             <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
@@ -97,7 +98,7 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
 
                 <h4 className="text-xl font-bold mb-6 tracking-tight">Análise de Desempenho</h4>
 
-                <div className="min-h-[150px] flex items-center">
+                <div className="min-h-[150px] flex items-center" aria-live="polite" aria-busy={loading}>
                     {loading ? (
                         <div className="flex flex-col gap-3 w-full animate-pulse">
                             <div className="flex items-center gap-2 text-blue-200 italic">
@@ -113,6 +114,18 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
                                 <AlertCircle size={16} /> Ops!
                             </div>
                             <p className="text-xs">{error}</p>
+                            <button
+                                type="button"
+                                onClick={fetchLatestInsight}
+                                className="mt-1 self-start rounded-lg bg-white/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-white/20"
+                            >
+                                Tentar novamente
+                            </button>
+                        </div>
+                    ) : insufficientData ? (
+                        <div className="rounded-xl border border-blue-300/20 bg-blue-950/50 p-4">
+                            <p className="text-sm font-medium leading-relaxed text-blue-50">{insight}</p>
+                            <p className="mt-2 text-xs text-blue-200/70">O relatório será liberado quando houver registros de aula com observações.</p>
                         </div>
                     ) : (
                         <div className="relative">
@@ -129,12 +142,13 @@ const AIReportCard: React.FC<AIReportCardProps> = ({ studentId }) => {
             <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center relative z-10">
                 <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-blue-200/60 mb-1">Última Atualização</p>
-                    <p className="text-xs font-bold text-white">{lastUpdated || 'Hoje'}</p>
+                    <p className="text-xs font-bold text-white">{lastUpdated || 'Ainda não gerado'}</p>
                 </div>
 
                 <button
                     onClick={generateNewInsight}
                     disabled={loading}
+                    aria-label={insufficientData ? 'Verificar novamente se há dados para gerar relatório' : 'Recalcular relatório inteligente'}
                     className="px-4 py-2 bg-brand-surface/10 hover:bg-brand-surface/20 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Recalcular

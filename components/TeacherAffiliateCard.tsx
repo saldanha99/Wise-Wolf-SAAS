@@ -51,7 +51,7 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
     return (
         <div className="bg-brand-surface rounded-[32px] shadow-[0px_4px_20px_rgba(0,0,0,0.02)] border border-slate-50 dark:border-brand-border overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-6 text-white relative overflow-hidden">
+            <div className="relative overflow-hidden bg-emerald-700 bg-gradient-to-r from-emerald-500 to-teal-600 p-6 text-white">
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-1">
                         <Gift size={18} className="text-emerald-200" />
@@ -84,16 +84,19 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
                 </div>
 
                 {/* Link */}
-                <div className="bg-brand-surface dark:bg-brand-surface-2 rounded-xl p-3 flex items-center gap-3">
-                    <Link2 size={16} className="text-emerald-400 shrink-0" />
-                    <input
-                        readOnly
-                        value={affiliateLink}
-                        className="flex-1 bg-transparent text-xs font-mono text-emerald-400 outline-none truncate"
-                    />
+                <div className="flex flex-col items-stretch gap-3 rounded-xl bg-slate-900 p-3 sm:flex-row sm:items-center">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <Link2 size={16} className="shrink-0 text-emerald-400" aria-hidden="true" />
+                        <input
+                            readOnly
+                            aria-label="Link de indicação"
+                            value={affiliateLink}
+                            className="min-w-0 flex-1 truncate bg-transparent font-mono text-xs text-emerald-300 outline-none"
+                        />
+                    </div>
                     <button
                         onClick={handleCopy}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 ${copied
+                        className={`flex w-full shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 font-bold text-[10px] uppercase tracking-wider transition-all sm:w-auto sm:py-1.5 ${copied
                                 ? 'bg-emerald-500 text-white'
                                 : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                             }`}

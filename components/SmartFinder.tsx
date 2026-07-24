@@ -77,8 +77,6 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                 return;
             }
 
-            console.log("Token:", session.access_token.substring(0, 10) + "...");
-
             const localInstance = localStorage.getItem('whatsapp_instance');
             const userInstance = user?.tenant?.whatsapp_instance;
             const instanceName = localInstance || userInstance || "wise wolf";
@@ -104,13 +102,12 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                // ... rest of error handling ...
-                console.error("Fetch Error:", response.status, text);
+                await response.text();
+                console.error("Broadcast request failed:", response.status);
                 if (response.status === 401) {
-                    alert(`Erro 401 (Não Autorizado): O servidor rejeitou o token.\nDetalhes: ${text.substring(0, 100)}`);
+                    alert("Sua sessão expirou ou não possui acesso. Entre novamente e tente outra vez.");
                 } else {
-                    alert(`Erro ${response.status}: ${text.substring(0, 100)}`);
+                    alert("Não foi possível divulgar a oportunidade agora. Tente novamente em instantes.");
                 }
                 setLoading(false);
                 return;

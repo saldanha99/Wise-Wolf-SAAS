@@ -98,9 +98,9 @@ export default function WolfieLiveCallV3({
             const level = wolfieConfig?.level ?? 'B1';
             const topic = encodeURIComponent(scenarioId ?? 'Free Conversation');
             const mode = wolfieConfig?.goal === 'Fluency' ? 'fluency' : 'grammar_focus';
-            const wsUrl = `${PROXY_WS_URL}?token=${session.access_token}&level=${level}&topic=${topic}&mode=${mode}`;
+            const wsUrl = `${PROXY_WS_URL}?level=${level}&topic=${topic}&mode=${mode}`;
 
-            const ws = new WebSocket(wsUrl);
+            const ws = new WebSocket(wsUrl, ['wolfie-live', session.access_token]);
             wsRef.current = ws;
 
             ws.onopen = () => console.log('[WolfieLive] Proxy connected');

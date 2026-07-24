@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Mic, CalendarClock, CheckCircle, RefreshCw, Star, AlertCircle, GraduationCap, ShieldCheck, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { UserRole } from '../types';
@@ -45,35 +46,50 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
   const [scheduling, setScheduling] = useState<OralTest | null>(null);
   const [finishing, setFinishing] = useState<OralTest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [updatingTeacherId, setUpdatingTeacherId] = useState<string | null>(null);
 
   const teacherName = (id: string | null) => id ? (teachers.find(t => t.id === id)?.full_name || '—') : '—';
   const aptTeachers = useMemo(() => teachers.filter(t => t.can_oral_test), [teachers]);
 
   const load = async () => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      setLoading(false);
+      setLoadError('Não foi possível identificar a escola deste usuário.');
+      return;
+    }
     setLoading(true);
+    setLoadError(null);
     try {
       // Professores (para aptidão e para nomear examinadores)
-      const { data: profs } = await supabase.from('profiles')
+      const { data: profs, error: teachersError } = await supabase.from('profiles')
         .select('id, full_name, can_oral_test')
         .eq('tenant_id', tenantId).eq('role', 'TEACHER').order('full_name');
+      if (teachersError) throw teachersError;
       setTeachers((profs || []) as TeacherRow[]);
 
       // Testes
       let q = supabase.from('oral_tests').select('*').eq('tenant_id', tenantId);
       if (!isAdmin) q = q.eq('examiner_id', user.id); // professor vê só os seus
-      const { data: ot } = await q.order('due_date', { ascending: true });
+      const { data: ot, error: testsError } = await q.order('due_date', { ascending: true });
+      if (testsError) throw testsError;
       const list = (ot || []) as OralTest[];
       setTests(list);
 
       // Nomes dos alunos
       const studentIds = [...new Set(list.map(t => t.student_id))];
       if (studentIds.length) {
-        const { data: studs } = await supabase.from('profiles').select('id, full_name').in('id', studentIds);
+        const { data: studs, error: studentsError } = await supabase.from('profiles').select('id, full_name').in('id', studentIds);
+        if (studentsError) throw studentsError;
         const map: Record<string, string> = {};
         (studs || []).forEach((s: any) => { map[s.id] = (s.full_name || 'Aluno').trim(); });
         setStudentNames(map);
+      } else {
+        setStudentNames({});
       }
+    } catch (error) {
+      console.error('Oral tests load error:', error);
+      setLoadError('Não foi possível carregar os testes orais e professores aptos.');
     } finally {
       setLoading(false);
     }
@@ -86,17 +102,36 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
   const runDetection = async () => {
     if (!tenantId) return;
     setLoading(true);
-    await supabase.rpc('detect_due_oral_tests', { p_tenant: tenantId });
-    await load();
-    flash('Lista atualizada.');
+    try {
+      const { error } = await supabase.rpc('detect_due_oral_tests', { p_tenant: tenantId });
+      if (error) throw error;
+      await load();
+      flash('Lista atualizada.');
+    } catch (error) {
+      console.error('Oral test detection error:', error);
+      setLoading(false);
+      flash('Não foi possível atualizar as pendências.');
+    }
   };
 
   const toggleApt = async (t: TeacherRow) => {
     const next = !t.can_oral_test;
+    setUpdatingTeacherId(t.id);
     setTeachers(prev => prev.map(x => x.id === t.id ? { ...x, can_oral_test: next } : x));
-    const { error } = await supabase.from('profiles').update({ can_oral_test: next }).eq('id', t.id);
-    if (error) { flash('Erro ao salvar aptidão.'); setTeachers(prev => prev.map(x => x.id === t.id ? { ...x, can_oral_test: !next } : x)); }
-    else flash(next ? `${t.full_name.split(' ')[0]} agora aplica teste oral.` : `${t.full_name.split(' ')[0]} não aplica mais.`);
+    try {
+      const { error } = await supabase.rpc('set_teacher_oral_test_eligibility', {
+        p_teacher_id: t.id,
+        p_enabled: next,
+      });
+      if (error) throw error;
+      flash(next ? `${t.full_name.split(' ')[0]} agora aplica teste oral.` : `${t.full_name.split(' ')[0]} não aplica mais.`);
+    } catch (error) {
+      console.error('Oral test eligibility update error:', error);
+      flash('Erro ao salvar aptidão.');
+      setTeachers(prev => prev.map(x => x.id === t.id ? { ...x, can_oral_test: !next } : x));
+    } finally {
+      setUpdatingTeacherId(null);
+    }
   };
 
   const pending = tests.filter(t => t.status === 'DUE' || t.status === 'SCHEDULED');
@@ -119,6 +154,18 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
         )}
       </div>
 
+      {loadError && (
+        <div className="flex flex-col items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200 sm:flex-row sm:items-center" role="alert">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{loadError}</span>
+          </div>
+          <button type="button" onClick={load} className="shrink-0 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700">
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       {/* Aptidão dos professores (admin) */}
       {isAdmin && (
         <div className={`${brandCard} p-5`}>
@@ -126,9 +173,14 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {teachers.map(t => (
               <button key={t.id} onClick={() => toggleApt(t)}
+                type="button"
+                role="switch"
+                aria-checked={t.can_oral_test}
+                aria-label={`${t.full_name}: ${t.can_oral_test ? 'apto' : 'não apto'} para aplicar teste oral`}
+                disabled={updatingTeacherId === t.id}
                 className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition ${t.can_oral_test ? 'border-tenant-primary bg-tenant-primary/10 text-brand-text font-bold' : 'border-brand-border text-brand-muted hover:border-tenant-primary/40'}`}>
                 <span className="truncate">{t.full_name}</span>
-                <span className={`ml-2 shrink-0 w-9 h-5 rounded-full flex items-center px-0.5 transition ${t.can_oral_test ? 'bg-tenant-primary justify-end' : 'bg-gray-300 dark:bg-gray-600 justify-start'}`}>
+                <span aria-hidden="true" className={`ml-2 shrink-0 w-9 h-5 rounded-full flex items-center px-0.5 transition ${t.can_oral_test ? 'bg-tenant-primary justify-end' : 'bg-gray-300 dark:bg-gray-600 justify-start'} ${updatingTeacherId === t.id ? 'opacity-50' : ''}`}>
                   <span className="w-4 h-4 rounded-full bg-white" />
                 </span>
               </button>
@@ -141,7 +193,9 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
       {/* Pendentes */}
       <div className={`${brandCard} p-5`}>
         <div className="flex items-center gap-2 mb-4"><AlertCircle size={18} className="text-amber-500" /><h2 className="font-black text-brand-text">Pendentes {pending.length > 0 && <span className="text-brand-muted font-medium">({pending.length})</span>}</h2></div>
-        {loading ? <p className="text-sm text-brand-muted">Carregando…</p> : pending.length === 0 ? (
+        {loading ? <p className="text-sm text-brand-muted" role="status">Carregando…</p> : loadError ? (
+          <p className="text-sm text-brand-muted">A lista ficará disponível após recarregar os dados.</p>
+        ) : pending.length === 0 ? (
           <p className="text-sm text-brand-muted flex items-center gap-2"><CheckCircle size={16} className="text-green-500" /> Nenhum teste oral pendente. 🎉</p>
         ) : (
           <div className="space-y-2">
@@ -191,7 +245,7 @@ const OralTestsPanel: React.FC<OralTestsPanelProps> = ({ user, tenantId }) => {
       {scheduling && <ScheduleModal test={scheduling} aptTeachers={aptTeachers} onClose={() => setScheduling(null)} onSaved={() => { setScheduling(null); load(); flash('Teste oral agendado.'); }} />}
       {finishing && <FinishModal test={finishing} onClose={() => setFinishing(null)} onSaved={() => { setFinishing(null); load(); flash('Teste oral concluído. Lance a aula normalmente pelo seu horário.'); }} />}
 
-      {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] px-4 py-2.5 rounded-xl bg-brand-text text-brand-surface text-sm font-bold shadow-lg">{toast}</div>}
+      {toast && <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-xl bg-brand-text text-brand-surface text-sm font-bold shadow-lg">{toast}</div>}
     </div>
   );
 };
@@ -205,13 +259,16 @@ const ScheduleModal: React.FC<{ test: OralTest; aptTeachers: TeacherRow[]; onClo
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
+    if (!when) {
+      alert('Informe a data e a hora do teste.');
+      return;
+    }
     setSaving(true);
-    const payload: any = {
-      examiner_id: examiner === 'DIRETORIA' ? null : examiner,
-      scheduled_at: when ? new Date(when).toISOString() : null,
-      status: 'SCHEDULED',
-    };
-    const { error } = await supabase.from('oral_tests').update(payload).eq('id', test.id);
+    const { error } = await supabase.rpc('schedule_oral_test', {
+      p_test_id: test.id,
+      p_examiner_id: examiner === 'DIRETORIA' ? null : examiner,
+      p_scheduled_at: new Date(when).toISOString(),
+    });
     setSaving(false);
     if (error) { alert('Erro ao agendar: ' + error.message); return; }
     onSaved();
@@ -227,7 +284,7 @@ const ScheduleModal: React.FC<{ test: OralTest; aptTeachers: TeacherRow[]; onClo
       </select>
       {options.length === 0 && <p className="text-xs text-amber-600 mb-3">Nenhum professor apto disponível (além do professor do aluno). Marque aptos ou use a Diretoria.</p>}
       <label className="block text-xs font-bold text-brand-muted mb-1">Data e hora</label>
-      <input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} className="w-full mb-4 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm" />
+      <input type="datetime-local" required value={when} onChange={e => setWhen(e.target.value)} className="w-full mb-4 px-3 py-2.5 rounded-xl border border-brand-border bg-brand-surface text-brand-text text-sm" />
       <button disabled={saving} onClick={save} className="w-full py-2.5 rounded-xl bg-tenant-primary text-white font-bold text-sm disabled:opacity-50">{saving ? 'Salvando…' : 'Agendar'}</button>
     </ModalShell>
   );
@@ -241,13 +298,12 @@ const FinishModal: React.FC<{ test: OralTest; onClose: () => void; onSaved: () =
 
   const save = async () => {
     setSaving(true);
-    const payload: any = {
-      status: 'DONE',
-      done_at: new Date().toISOString(),
-      score: score === '' ? null : Math.max(0, Math.min(10, parseInt(score, 10) || 0)),
-      notes: notes || null,
-    };
-    const { error } = await supabase.from('oral_tests').update(payload).eq('id', test.id);
+    const parsedScore = score === '' ? null : Number.parseInt(score, 10);
+    const { error } = await supabase.rpc('complete_oral_test', {
+      p_test_id: test.id,
+      p_score: Number.isInteger(parsedScore) ? parsedScore : null,
+      p_notes: notes.trim() || null,
+    });
     setSaving(false);
     if (error) { alert('Erro ao concluir: ' + error.message); return; }
     onSaved();
@@ -265,16 +321,93 @@ const FinishModal: React.FC<{ test: OralTest; onClose: () => void; onSaved: () =
   );
 };
 
-const ModalShell: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; }> = ({ title, onClose, children }) => (
-  <div className="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-    <div className="bg-brand-surface rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-brand-text">{title}</h3>
-        <button onClick={onClose} className="text-brand-muted hover:text-brand-text"><X size={20} /></button>
+const ModalShell: React.FC<{ title: string; onClose: () => void; children: React.ReactNode; }> = ({ title, onClose, children }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = 'hidden';
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      const initialFocus = dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]');
+      (initialFocus || dialog)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusable = (Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )) as HTMLElement[]).filter(element => element.getAttribute('aria-hidden') !== 'true');
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const focusIsOutside = !(document.activeElement instanceof Node) || !dialog.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || focusIsOutside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || focusIsOutside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, []);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[150] bg-black/50 flex items-center justify-center p-4" onClick={() => onCloseRef.current()}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-brand-surface rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5"
+        onClick={event => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 id={titleId} className="font-black text-brand-text">{title}</h3>
+          <button
+            type="button"
+            onClick={() => onCloseRef.current()}
+            aria-label={`Fechar ${title}`}
+            data-dialog-initial-focus="true"
+            className="text-brand-muted hover:text-brand-text"
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
-  </div>
-);
+    </div>,
+    document.body,
+  );
+};
 
 export default OralTestsPanel;

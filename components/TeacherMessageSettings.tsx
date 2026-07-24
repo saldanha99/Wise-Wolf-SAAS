@@ -103,12 +103,12 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
         <div className="space-y-4">
             {/* Header */}
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
+                <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800 sm:p-6">
+                    <div className="flex min-w-0 items-start gap-3 sm:items-center">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/30">
                             <MessageSquare size={20} className="text-emerald-600 dark:text-emerald-400" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <h3 className="font-black text-slate-800 dark:text-white text-sm">Lembrete de Aula via WhatsApp</h3>
                             <p className="text-[10px] text-slate-400 uppercase tracking-widest">Disparado automaticamente 60 minutos antes de cada aula</p>
                         </div>
@@ -117,11 +117,13 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
 
                 {/* Automation toggle */}
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-                    <label className="flex items-center justify-between cursor-pointer">
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex min-w-0 items-start gap-3 sm:items-center">
                             {automationEnabled ? <Bell size={16} className="text-emerald-500" /> : <BellOff size={16} className="text-slate-400" />}
-                            <div>
-                                <p className="text-sm font-black text-slate-800 dark:text-white">Automação ligada</p>
+                            <div className="min-w-0">
+                                <p className="text-sm font-black text-slate-800 dark:text-white">
+                                    {automationEnabled ? 'Automação ligada' : 'Automação desligada'}
+                                </p>
                                 <p className="text-xs text-slate-500">
                                     {automationEnabled
                                         ? 'Seus alunos receberão um lembrete automático 1h antes de cada aula.'
@@ -130,12 +132,16 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                             </div>
                         </div>
                         <button
+                            type="button"
+                            role="switch"
+                            aria-checked={automationEnabled}
+                            aria-label={automationEnabled ? 'Desativar automação de lembretes' : 'Ativar automação de lembretes'}
                             onClick={() => setAutomationEnabled(!automationEnabled)}
-                            className={`relative w-12 h-6 rounded-full transition-colors ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
+                            className={`relative h-6 w-12 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${automationEnabled ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'}`}
                         >
                             <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${automationEnabled ? 'translate-x-6' : ''}`} />
                         </button>
-                    </label>
+                    </div>
                 </div>
 
                 {/* Variables row */}
@@ -158,11 +164,11 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                 {/* Editor + Preview lado a lado */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-slate-800">
                     <div className="p-6">
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Seu template</p>
                             <button
                                 onClick={resetToDefault}
-                                className="text-[10px] uppercase tracking-widest text-slate-400 hover:text-slate-600 font-bold flex items-center gap-1"
+                                className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600"
                             >
                                 <RefreshCw size={10} /> Restaurar padrão
                             </button>
@@ -199,20 +205,20 @@ const TeacherMessageSettings: React.FC<Props> = ({ user }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/50">
+                <div className="flex flex-col items-stretch gap-3 border-t border-slate-100 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/50 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     {savedFeedback ? (
-                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-600">
+                        <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-emerald-600" role="status" aria-live="polite">
                             <Check size={14} /> Configurações salvas!
                         </div>
                     ) : (
-                        <p className="text-xs text-slate-500">
+                        <p className="min-w-0 text-xs text-slate-500">
                             Variáveis vazias (ex.: link da aula sem cadastro) virão como string vazia.
                         </p>
                     )}
                     <button
                         onClick={save}
                         disabled={saving || template.length > 1000}
-                        className="px-4 py-2 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50 flex items-center gap-2"
+                        className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-emerald-700 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto"
                     >
                         {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                         Salvar

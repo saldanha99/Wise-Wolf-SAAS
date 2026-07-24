@@ -13,17 +13,17 @@ const TenantAdvancedSettings: React.FC<Props> = ({ user, tenantId }) => {
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-                <TabButton active={tab === 'escola'} onClick={() => setTab('escola')} icon={Building2} label="Dados da escola" />
-                <TabButton active={tab === 'domain'} onClick={() => setTab('domain')} icon={Globe} label="Domínio próprio" />
-                <TabButton active={tab === 'contracts'} onClick={() => setTab('contracts')} icon={FileText} label="Contratos" />
-                <TabButton active={tab === 'lgpd'} onClick={() => setTab('lgpd')} icon={Download} label="LGPD" />
+            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Configurações avançadas" aria-orientation="horizontal">
+                <TabButton id="tenant-tab-escola" controls="tenant-panel-escola" active={tab === 'escola'} onClick={() => setTab('escola')} icon={Building2} label="Dados da escola" />
+                <TabButton id="tenant-tab-domain" controls="tenant-panel-domain" active={tab === 'domain'} onClick={() => setTab('domain')} icon={Globe} label="Domínio próprio" />
+                <TabButton id="tenant-tab-contracts" controls="tenant-panel-contracts" active={tab === 'contracts'} onClick={() => setTab('contracts')} icon={FileText} label="Contratos" />
+                <TabButton id="tenant-tab-lgpd" controls="tenant-panel-lgpd" active={tab === 'lgpd'} onClick={() => setTab('lgpd')} icon={Download} label="LGPD" />
             </div>
 
-            {tab === 'escola' && <SchoolInfoPanel tenantId={tenantId} />}
-            {tab === 'domain' && <CustomDomainPanel tenantId={tenantId} />}
-            {tab === 'contracts' && <ContractTemplatesPanel user={user} tenantId={tenantId} />}
-            {tab === 'lgpd' && <LgpdPanel tenantId={tenantId} role={user.role} />}
+            {tab === 'escola' && <div role="tabpanel" id="tenant-panel-escola" aria-labelledby="tenant-tab-escola"><SchoolInfoPanel tenantId={tenantId} /></div>}
+            {tab === 'domain' && <div role="tabpanel" id="tenant-panel-domain" aria-labelledby="tenant-tab-domain"><CustomDomainPanel tenantId={tenantId} /></div>}
+            {tab === 'contracts' && <div role="tabpanel" id="tenant-panel-contracts" aria-labelledby="tenant-tab-contracts"><ContractTemplatesPanel user={user} tenantId={tenantId} /></div>}
+            {tab === 'lgpd' && <div role="tabpanel" id="tenant-panel-lgpd" aria-labelledby="tenant-tab-lgpd"><LgpdPanel tenantId={tenantId} role={user.role} /></div>}
         </div>
     );
 };
@@ -143,14 +143,14 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
     const preview: SchoolInfoForm = isCustom ? form : WISE_WOLF_PREVIEW;
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-6">
+        <div className="space-y-6 rounded-[2.5rem] border border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-6">
             {/* Header */}
-            <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+            <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-start">
+                <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/30">
                         <Building2 size={20} className="text-blue-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-black text-slate-800 dark:text-white text-sm">Dados da Escola</h3>
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest">
                             Aparecem no cabeçalho e rodapé dos contratos
@@ -158,12 +158,12 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                     </div>
                 </div>
                 {!isCustom && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                    <span className="self-start whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 sm:shrink-0">
                         ✦ Usando padrão Wise Wolf
                     </span>
                 )}
                 {isCustom && (
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                    <span className="self-start whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 sm:shrink-0">
                         ✓ Dados personalizados
                     </span>
                 )}
@@ -265,11 +265,11 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col items-stretch justify-between gap-3 pt-2 sm:flex-row sm:items-center">
                 {isCustom ? (
                     <button
                         onClick={handleClear}
-                        className="text-xs text-slate-400 hover:text-rose-500 transition-colors font-bold"
+                        className="w-full text-left text-xs font-bold text-slate-400 transition-colors hover:text-rose-500 sm:w-auto"
                     >
                         Remover personalização (voltar ao padrão)
                     </button>
@@ -277,7 +277,7 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                    className={`flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all sm:w-auto ${
                         saved
                             ? 'bg-emerald-500 text-white'
                             : 'bg-blue-600 hover:brightness-110 text-white'
@@ -460,7 +460,7 @@ const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 {subdomainUrl && (
                     <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl px-4 py-3 border border-slate-200 dark:border-slate-700">
                         <span className="flex-1 font-mono text-sm text-slate-700 dark:text-slate-200 truncate">{subdomainUrl}</span>
-                        <button onClick={copyUrl} className="shrink-0 flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors">
+                        <button onClick={copyUrl} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] font-bold text-slate-400 transition-colors hover:text-blue-600">
                             {copied ? <><CheckCircle2 size={14} className="text-emerald-500" /> Copiado</> : <><Copy size={14} /> Copiar</>}
                         </button>
                         <a href={subdomainUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 text-slate-400 hover:text-blue-600 transition-colors">
@@ -479,7 +479,7 @@ const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                         <br/>
                         <span className="text-slate-500">Ex: <em>joao-idiomas</em> → <strong>joao-idiomas.{BASE_DOMAIN}</strong></span>
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                         <div className="flex-1 flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
                             <span className="px-3 py-2.5 text-xs text-slate-400 bg-slate-50 dark:bg-slate-700 border-r border-slate-200 dark:border-slate-600 shrink-0 whitespace-nowrap select-none">
                                 https://
@@ -498,7 +498,7 @@ const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                         <button
                             onClick={saveSlug}
                             disabled={slugSaving || !slugEdit.trim() || slugEdit === tenantData?.slug}
-                            className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-1.5 ${slugSaved ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:brightness-110 text-white'}`}
+                            className={`flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 sm:w-auto ${slugSaved ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:brightness-110 text-white'}`}
                         >
                             {slugSaving ? <Loader2 size={12} className="animate-spin" /> : slugSaved ? <Check size={12} /> : <Save size={12} />}
                             {slugSaved ? 'Salvo!' : 'Salvar'}
@@ -533,7 +533,7 @@ const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 <div className="space-y-3">
                     <div>
                         <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1.5">Seu domínio</label>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                             <input
                                 type="text"
                                 value={customDomain}
@@ -544,7 +544,7 @@ const CustomDomainPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                             <button
                                 onClick={requestCustomDomain}
                                 disabled={domainWorking || !customDomain.trim()}
-                                className="shrink-0 px-4 py-2.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5"
+                                className="flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto"
                             >
                                 {domainWorking ? <Loader2 size={12} className="animate-spin" /> : null}
                                 Ver instruções DNS
@@ -674,17 +674,17 @@ const ContractTemplatesPanel: React.FC<{ user: any; tenantId?: string }> = ({ us
 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
                         <FileText size={20} className="text-violet-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-black text-slate-800 dark:text-white text-sm">Templates de Contrato</h3>
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest">Personalize prazos, multa e cláusulas</p>
                     </div>
                 </div>
-                <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
+                <button onClick={() => setCreating(true)} className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-violet-600 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:brightness-110 sm:w-auto sm:py-1.5">
                     <Plus size={12} /> Novo
                 </button>
             </div>
@@ -702,14 +702,14 @@ const ContractTemplatesPanel: React.FC<{ user: any; tenantId?: string }> = ({ us
                     <p className="text-center text-sm text-slate-400 py-8">Nenhum template ainda. Crie o primeiro!</p>
                 )}
                 {templates.map(t => (
-                    <div key={t.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
                         <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${t.kind === 'STUDENT' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>{t.kind}</span>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-black text-slate-800 dark:text-white">{t.name}</p>
                             <p className="text-[10px] text-slate-400">Multa {t.cancellation_fee_pct}% · {t.notice_period_days}d aviso prévio</p>
                         </div>
-                        <button onClick={() => setEditing(t)} className="text-xs text-violet-600 font-bold">Editar</button>
-                        <button onClick={() => remove(t.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>
+                        <button onClick={() => setEditing(t)} className="shrink-0 whitespace-nowrap text-xs font-bold text-violet-600">Editar</button>
+                        <button onClick={() => remove(t.id)} aria-label={`Excluir template ${t.name}`} className="shrink-0 p-1 text-rose-500 hover:text-rose-700"><Trash2 size={14} /></button>
                     </div>
                 ))}
             </div>
@@ -740,9 +740,9 @@ const ContractForm: React.FC<{ initial?: any; onSave: (t: any) => void; onCancel
                 <textarea value={form.body_markdown} onChange={e => setForm({ ...form, body_markdown: e.target.value })} rows={10}
                     className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm font-mono border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500" />
             </div>
-            <div className="flex gap-2 justify-end">
-                <button onClick={onCancel} className="text-xs font-bold text-slate-500 px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>
-                <button onClick={() => onSave(form)} disabled={!form.name || !form.body_markdown} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2"><Save size={12} /> Salvar</button>
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+                <button onClick={onCancel} className="w-full shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 sm:w-auto">Cancelar</button>
+                <button onClick={() => onSave(form)} disabled={!form.name || !form.body_markdown} className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-violet-600 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto"><Save size={12} /> Salvar</button>
             </div>
         </div>
     );
@@ -822,8 +822,16 @@ const LgpdPanel: React.FC<{ tenantId?: string; role: string }> = ({ tenantId, ro
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
-const TabButton: React.FC<{ active: boolean; onClick: () => void; icon: any; label: string }> = ({ active, onClick, icon: Icon, label }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-700'}`}>
+const TabButton: React.FC<{ id: string; controls: string; active: boolean; onClick: () => void; icon: any; label: string }> = ({ id, controls, active, onClick, icon: Icon, label }) => (
+    <button
+        type="button"
+        id={id}
+        role="tab"
+        aria-selected={active}
+        aria-controls={controls}
+        onClick={onClick}
+        className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-violet-600 text-white' : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900'}`}
+    >
         <Icon size={12} /> {label}
     </button>
 );

@@ -44,16 +44,20 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"><Users size={24} /></div>
-        <div>
-          <h2 className="text-xl font-bold text-brand-text">Vendedores</h2>
-          <p className="text-sm text-brand-muted">Equipe de vendas, desempenho e comissões</p>
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="shrink-0 rounded-2xl bg-emerald-50 p-3 text-emerald-600 dark:bg-emerald-900/20"><Users size={24} /></div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-brand-text">Vendedores</h2>
+            <p className="text-sm text-brand-muted">Equipe de vendas, desempenho e comissões</p>
+          </div>
         </div>
-        <button onClick={() => setShowInvite(s => !s)} className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-tenant-primary text-white text-xs font-bold">
-          <UserPlus size={15} /> Convidar vendedor
-        </button>
-        <button onClick={load} className="p-2 rounded-xl border border-brand-border text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
+        <div className="flex w-full items-stretch gap-2 sm:ml-auto sm:w-auto">
+          <button onClick={() => setShowInvite(s => !s)} className="flex min-w-0 flex-1 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 bg-tenant-primary px-4 py-2 text-xs font-bold text-white sm:flex-none">
+            <UserPlus size={15} /> Convidar vendedor
+          </button>
+          <button onClick={load} aria-label="Atualizar vendedores" title="Atualizar vendedores" className="shrink-0 rounded-xl border border-brand-border p-2 text-brand-muted hover:text-brand-text"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
+        </div>
       </div>
 
       {showInvite && <div className="animate-in fade-in"><VendorInviteGenerator tenantId={tenantId || ''} /></div>}
@@ -77,30 +81,30 @@ const VendorManagement: React.FC<Props> = ({ tenantId }) => {
           <div className="space-y-2">
             {rows.map(v => (
               <div key={v.vendor_id} className="border border-brand-border rounded-xl p-3">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <img src={v.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(v.full_name || 'V')}`} className="w-8 h-8 rounded-lg object-cover" alt="" />
-                    <span className="text-sm font-bold text-brand-text truncate">{v.full_name}</span>
-                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${v.status === 'Ativo' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'}`}>{v.status || '—'}</span>
-                    {v.alert_level !== 'LOW' && <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${v.alert_level === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}><AlertTriangle size={9} className="inline" /></span>}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1">
+                    <img src={v.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(v.full_name || 'V')}`} className="h-8 w-8 shrink-0 rounded-lg object-cover" alt="" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-bold text-brand-text">{v.full_name}</span>
+                    <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-black ${v.status === 'Ativo' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'}`}>{v.status || '—'}</span>
+                    {v.alert_level !== 'LOW' && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black ${v.alert_level === 'HIGH' ? 'bg-red-600 text-white' : 'bg-amber-400 text-amber-900'}`}><AlertTriangle size={9} className="inline" /></span>}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-brand-muted shrink-0">
-                    <span title="Matrículas"><BadgeCheck size={12} className="inline" /> {v.matriculas}</span>
-                    <span className="text-emerald-600 font-bold" title="Receita trazida">{money(v.revenue_brought)}</span>
-                    {Number(v.confirmed_unpaid) > 0 && <span className="text-indigo-600 font-bold" title="A pagar">a pagar {money(v.confirmed_unpaid)}</span>}
+                  <div className="grid w-full grid-cols-2 items-center gap-3 text-[11px] text-brand-muted sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                    <span className="whitespace-nowrap" title="Matrículas"><BadgeCheck size={12} className="inline" /> {v.matriculas}</span>
+                    <span className="whitespace-nowrap font-bold text-emerald-600" title="Receita trazida">{money(v.revenue_brought)}</span>
+                    {Number(v.confirmed_unpaid) > 0 && <span className="whitespace-nowrap font-bold text-indigo-600" title="A pagar">a pagar {money(v.confirmed_unpaid)}</span>}
                     {/* Comissão editável */}
                     {editId === v.vendor_id ? (
-                      <span className="flex items-center gap-1">
+                      <span className="flex min-w-0 items-center gap-1">
                         <input value={editVal} onChange={e => setEditVal(e.target.value)} className="w-16 px-2 py-1 rounded border border-brand-border bg-brand-surface text-brand-text" placeholder="R$" />
-                        <button onClick={() => saveCommission(v.vendor_id)} className="p-1 bg-emerald-500 text-white rounded"><Check size={14} /></button>
+                        <button onClick={() => saveCommission(v.vendor_id)} aria-label="Salvar comissão" className="shrink-0 rounded bg-emerald-600 p-1 text-white"><Check size={14} /></button>
                       </span>
                     ) : (
-                      <button onClick={() => { setEditId(v.vendor_id); setEditVal(((v.commission_rate || 0) / 100).toFixed(2)); }} className="underline hover:text-brand-text" title="Editar comissão">
+                      <button onClick={() => { setEditId(v.vendor_id); setEditVal(((v.commission_rate || 0) / 100).toFixed(2)); }} className="shrink-0 whitespace-nowrap underline hover:text-brand-text" title="Editar comissão">
                         {money((v.commission_rate || 0) / 100)}/matríc.
                       </button>
                     )}
-                    <button onClick={() => toggleStatus(v.vendor_id, v.status)} className="p-1.5 rounded-lg border border-brand-border hover:bg-brand-surface-2" title={v.status === 'Ativo' ? 'Desativar' : 'Ativar'}><Power size={13} /></button>
-                    <button onClick={() => setViewId(v.vendor_id)} className="p-1.5 rounded-lg text-brand-accent hover:bg-brand-accent/10" title="Ver ficha"><Eye size={14} /></button>
+                    <button onClick={() => toggleStatus(v.vendor_id, v.status)} className="shrink-0 rounded-lg border border-brand-border p-1.5 hover:bg-brand-surface-2" aria-label={v.status === 'Ativo' ? 'Desativar vendedor' : 'Ativar vendedor'} title={v.status === 'Ativo' ? 'Desativar' : 'Ativar'}><Power size={13} /></button>
+                    <button onClick={() => setViewId(v.vendor_id)} className="shrink-0 rounded-lg p-1.5 text-brand-accent hover:bg-brand-accent/10" aria-label="Ver ficha do vendedor" title="Ver ficha"><Eye size={14} /></button>
                   </div>
                 </div>
                 {(v.alert_reasons || []).length > 0 && (

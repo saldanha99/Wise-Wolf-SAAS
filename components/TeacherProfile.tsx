@@ -208,25 +208,33 @@ const TeacherProfile: React.FC = () => {
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
 
             {/* Header */}
-            <div className="flex items-end justify-between border-b border-brand-border dark:border-brand-border pb-6">
-                <div>
+            <div className="flex flex-col gap-4 border-b border-brand-border pb-6 md:flex-row md:items-end md:justify-between dark:border-brand-border">
+                <div className="min-w-0">
                     <h2 className="text-3xl font-black text-brand-text tracking-tighter">Meu Perfil</h2>
                     <p className="text-brand-muted mt-1">Gerencie suas informações pessoais e preferências.</p>
                 </div>
                 <button
+                    type="button"
                     onClick={handleSave}
                     disabled={isSaving}
+                    aria-busy={isSaving}
                     className="hidden md:flex bg-tenant-primary text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all items-center gap-2 shadow-lg shadow-tenant-primary/20 disabled:opacity-50"
                 >
-                    {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={18} />}
+                    {isSaving
+                        ? <div aria-hidden="true" className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        : <Save size={18} aria-hidden="true" />}
                     {isSaving ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
             </div>
 
             {/* Success Toast */}
             {showSuccess && (
-                <div className="fixed top-10 right-10 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-500">
-                    <div className="bg-brand-surface/20 p-2 rounded-full"><CheckCircle size={20} /></div>
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="fixed inset-x-4 top-4 z-[120] flex items-center gap-4 rounded-2xl bg-emerald-500 px-5 py-4 text-white shadow-2xl animate-in slide-in-from-right duration-500 sm:left-auto sm:right-6 sm:w-auto"
+                >
+                    <div className="bg-brand-surface/20 p-2 rounded-full"><CheckCircle size={20} aria-hidden="true" /></div>
                     <div>
                         <p className="font-black uppercase text-xs tracking-widest">Sucesso!</p>
                         <p className="text-sm font-medium">Perfil atualizado com sucesso.</p>
@@ -428,14 +436,21 @@ const TeacherProfile: React.FC = () => {
                 </div>
             </div>
 
-            {/* Floating Save Button (Mobile) */}
-            <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="md:hidden fixed bottom-6 right-6 z-50 bg-tenant-primary text-white p-4 rounded-full shadow-2xl shadow-tenant-primary/40 hover:scale-110 active:scale-95 transition-all text-sm font-bold uppercase tracking-widest flex items-center justify-center"
-            >
-                {isSaving ? <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={24} />}
-            </button>
+            {/* Ação mobile no fluxo: não cobre campos nem compete com a navegação. */}
+            <div className="md:hidden">
+                <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    aria-busy={isSaving}
+                    className="flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl bg-tenant-primary px-6 py-4 text-sm font-bold uppercase tracking-widest text-white shadow-xl shadow-tenant-primary/30 transition-all hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {isSaving
+                        ? <div aria-hidden="true" className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        : <Save size={20} aria-hidden="true" />}
+                    {isSaving ? 'Salvando alterações...' : 'Salvar alterações'}
+                </button>
+            </div>
         </div>
     );
 };

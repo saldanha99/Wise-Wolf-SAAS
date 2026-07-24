@@ -9,6 +9,16 @@ interface MeetingLinksViewProps {
     tenantId?: string;
 }
 
+const safeMeetingLink = (value?: string | null): string | null => {
+    if (!value) return null;
+    try {
+        const url = new URL(value.trim());
+        return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+    } catch {
+        return null;
+    }
+};
+
 const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) => {
     const [loading, setLoading] = useState(true);
     const [students, setStudents] = useState<any[]>([]);
@@ -83,7 +93,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                 .select('meeting_link')
                 .eq('id', user.id)
                 .single();
-            setStudentLink(data?.meeting_link || null);
+            setStudentLink(safeMeetingLink(data?.meeting_link));
         } catch (err) {
             console.error('Error fetching student link:', err);
         } finally {
@@ -105,17 +115,22 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
 
     const handleUpdateLink = async () => {
         if (!editingStudent) return;
+        const normalizedLink = newLink.trim() ? safeMeetingLink(newLink) : null;
+        if (newLink.trim() && !normalizedLink) {
+            alert('Informe um link válido começando com https:// ou http://.');
+            return;
+        }
         setIsSaving(true);
         try {
             const { error } = await supabase
                 .from('profiles')
-                .update({ meeting_link: newLink })
+                .update({ meeting_link: normalizedLink })
                 .eq('id', editingStudent.id);
 
             if (error) throw error;
 
             // Update local state
-            setStudents(prev => prev.map(s => s.id === editingStudent.id ? { ...s, meeting_link: newLink } : s));
+            setStudents(prev => prev.map(s => s.id === editingStudent.id ? { ...s, meeting_link: normalizedLink } : s));
             setEditingStudent(null);
         } catch (err) {
             alert('Erro ao salvar link.');
@@ -149,34 +164,42 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
 
             {user.role === UserRole.STUDENT && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-gradient-to-br from-tenant-primary to-blue-900 p-10 rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
-                        <div className="absolute right-0 top-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-32 -mt-32" />
+                    <div className="bg-blue-950 bg-gradient-to-br from-tenant-primary to-blue-900 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] text-white shadow-2xl relative overflow-hidden group">
+                        <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-32 -mt-32" />
 
                         <div className="relative z-10">
-                            <div className="p-4 bg-brand-surface/10 rounded-2xl w-fit mb-8 backdrop-blur-md border border-white/20">
+                            <div className="p-4 bg-white/10 rounded-2xl w-fit mb-6 sm:mb-8 backdrop-blur-md border border-white/20">
                                 <Video size={32} className="text-white" />
                             </div>
-                            <h3 className="text-4xl font-black tracking-tight mb-4">Sua Sala Virtual</h3>
-                            <p className="text-blue-100 text-lg mb-10 max-w-md leading-relaxed">
+                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Sua Sala Virtual</h3>
+                            <p className="text-blue-100 text-base sm:text-lg mb-7 sm:mb-10 max-w-md leading-relaxed">
                                 Este é o seu link permanente. Utilize-o para todas as suas aulas com qualquer professor da nossa rede.
                             </p>
 
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <a
-                                    href={studentLink || '#'}
-                                    target="_blank"
-                                    className="bg-brand-surface text-tenant-primary px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 hover:scale-105 transition-all shadow-xl shadow-black/20"
-                                >
-                                    <Monitor size={20} /> Entrar Agora
-                                </a>
-                                <button
-                                    onClick={() => handleCopy(studentLink || '', 'me')}
-                                    className="bg-brand-surface/10 hover:bg-brand-surface/20 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 transition-all border border-white/20 backdrop-blur-md"
-                                >
-                                    {copySuccess === 'me' ? <CheckCircle size={20} className="text-emerald-400" /> : <Copy size={20} />}
-                                    {copySuccess === 'me' ? 'Copiado!' : 'Copiar Link'}
-                                </button>
-                            </div>
+                            {studentLink ? (
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <a
+                                        href={studentLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-white text-blue-950 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 hover:scale-[1.02] sm:hover:scale-105 transition-all shadow-xl shadow-black/20"
+                                    >
+                                        <Monitor size={20} /> Entrar Agora
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCopy(studentLink, 'me')}
+                                        className="bg-white/10 hover:bg-white/20 text-white px-6 sm:px-8 py-4 sm:py-5 rounded-2xl font-black text-sm uppercase flex items-center justify-center gap-3 transition-all border border-white/20 backdrop-blur-md"
+                                    >
+                                        {copySuccess === 'me' ? <CheckCircle size={20} className="text-emerald-400" /> : <Copy size={20} />}
+                                        {copySuccess === 'me' ? 'Copiado!' : 'Copiar Link'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="rounded-2xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm font-bold text-amber-100" role="status">
+                                    Seu link ainda não foi cadastrado. Fale com a secretaria ou com seu professor.
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -223,7 +246,9 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {filteredStudents.map((student) => (
+                        {filteredStudents.map((student) => {
+                            const meetingLink = safeMeetingLink(student.meeting_link);
+                            return (
                             <div key={student.id} className="group bg-brand-surface p-6 rounded-[2rem] border border-brand-border hover:shadow-2xl hover:shadow-slate-200/50 dark:hover:shadow-black/40 transition-all">
                                 <div className="flex items-center gap-4 mb-6">
                                     <div className="w-12 h-12 rounded-xl overflow-hidden bg-brand-surface-2">
@@ -236,18 +261,27 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                 </div>
 
                                 <div className="space-y-2">
-                                    <a
-                                        href={student.meeting_link || '#'}
-                                        target="_blank"
-                                        className={`w-full py-3 bg-tenant-primary text-white rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-opacity ${!student.meeting_link ? 'opacity-50 pointer-events-none' : ''}`}
-                                    >
-                                        <Video size={14} /> Entrar na Sala
-                                    </a>
+                                    {meetingLink ? (
+                                        <a
+                                            href={meetingLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="w-full py-3 bg-tenant-primary text-white rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                                        >
+                                            <Video size={14} /> Entrar na Sala
+                                        </a>
+                                    ) : (
+                                        <div className="w-full py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2" role="status">
+                                            <Video size={14} /> Link não cadastrado
+                                        </div>
+                                    )}
 
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={() => handleCopy(student.meeting_link || '', student.id)}
-                                            className="flex-1 py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-surface-2 dark:hover:bg-slate-700 transition-all"
+                                            type="button"
+                                            onClick={() => meetingLink && handleCopy(meetingLink, student.id)}
+                                            disabled={!meetingLink}
+                                            className="flex-1 py-3 bg-brand-surface-2 text-brand-muted rounded-xl font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-surface-2 dark:hover:bg-slate-700 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {copySuccess === student.id ? <CheckCircle size={14} className="text-emerald-500" /> : <Copy size={14} />}
                                             {copySuccess === student.id ? 'Copiado!' : 'Copiar'}
@@ -262,7 +296,8 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {filteredStudents.length === 0 && (

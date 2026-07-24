@@ -333,17 +333,18 @@ const PublicRegistration: React.FC = () => {
 
             // O welcome é idempotente. Só o primeiro envio dispara também o aviso
             // administrativo, evitando duplicidade em refresh/retry.
-            if (!welcomeResult?.skipped) {
-                await supabase.functions.invoke('whatsapp-notificacao-wise', {
+            if (welcomeResult?.skipped !== 'test_fixture') {
+                const { error: directorNotificationError } = await supabase.functions.invoke('whatsapp-notificacao-wise', {
                     body: {
                         type: 'DIRECTOR_NEW_CONTRACT',
                         data: {
-                            student_name: name,
-                            class_frequency: `${enrollmentData.classesPerWeek}x`,
-                            tenant_id: enrollmentData.unitId
+                            student_id: userId
                         }
                     }
                 });
+                if (directorNotificationError) {
+                    console.warn('Aviso administrativo enfileirado com falha; será necessário reprocessar.');
+                }
             }
         } catch {
             console.warn('Matrícula concluída; comunicação será tentada novamente.');

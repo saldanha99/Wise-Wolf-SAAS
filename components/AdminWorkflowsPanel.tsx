@@ -12,14 +12,14 @@ const AdminWorkflowsPanel: React.FC<Props> = ({ user, tenantId }) => {
 
     return (
         <div className="space-y-4">
-            <div className="flex gap-2 flex-wrap">
-                <TabBtn active={tab === 'offboarding'} onClick={() => setTab('offboarding')} icon={LogOut} label="Saídas de professor" />
-                <TabBtn active={tab === 'absences'} onClick={() => setTab('absences')} icon={CalendarOff} label="Ausências & Coberturas" />
-                <TabBtn active={tab === 'trials'} onClick={() => setTab('trials')} icon={Sparkles} label="Trials pendentes" />
+            <div className="flex flex-nowrap gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Fluxos administrativos" aria-orientation="horizontal">
+                <TabBtn id="workflow-tab-offboarding" controls="workflow-panel-offboarding" active={tab === 'offboarding'} onClick={() => setTab('offboarding')} icon={LogOut} label="Saídas de professor" />
+                <TabBtn id="workflow-tab-absences" controls="workflow-panel-absences" active={tab === 'absences'} onClick={() => setTab('absences')} icon={CalendarOff} label="Ausências & Coberturas" />
+                <TabBtn id="workflow-tab-trials" controls="workflow-panel-trials" active={tab === 'trials'} onClick={() => setTab('trials')} icon={Sparkles} label="Trials pendentes" />
             </div>
-            {tab === 'offboarding' && <OffboardingPanel tenantId={tenantId} />}
-            {tab === 'absences' && <AbsencesPanel tenantId={tenantId} />}
-            {tab === 'trials' && <TrialsPanel tenantId={tenantId} />}
+            {tab === 'offboarding' && <div role="tabpanel" id="workflow-panel-offboarding" aria-labelledby="workflow-tab-offboarding"><OffboardingPanel tenantId={tenantId} /></div>}
+            {tab === 'absences' && <div role="tabpanel" id="workflow-panel-absences" aria-labelledby="workflow-tab-absences"><AbsencesPanel tenantId={tenantId} /></div>}
+            {tab === 'trials' && <div role="tabpanel" id="workflow-panel-trials" aria-labelledby="workflow-tab-trials"><TrialsPanel tenantId={tenantId} /></div>}
         </div>
     );
 };
@@ -117,20 +117,20 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                 const availableTeachers = teachers.filter(x => x.id !== t.id);
                 return (
                     <div key={t.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-rose-200 dark:border-rose-800/30 overflow-hidden">
-                        <div className="p-4 bg-rose-50 dark:bg-rose-900/10 flex items-center justify-between gap-3">
-                            <div>
+                        <div className="flex flex-col items-stretch justify-between gap-3 bg-rose-50 p-4 dark:bg-rose-900/10 sm:flex-row sm:items-center">
+                            <div className="min-w-0">
                                 <p className="text-sm font-black text-slate-800 dark:text-white">{t.full_name}</p>
                                 <p className="text-xs text-slate-500">{t.email} · último dia: <b>{t.offboarding_last_day}</b></p>
                                 <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 italic">"{t.offboarding_reason}"</p>
                             </div>
-                            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
                                 <button onClick={() => openMural(t.id)} disabled={students.length === 0}
-                                    className="px-3 py-1.5 bg-violet-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 disabled:opacity-50"
+                                    className="w-full shrink-0 whitespace-nowrap rounded-lg bg-violet-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto sm:py-1.5"
                                     title="Publica os alunos no mural para os professores aceitarem sozinhos">
                                     🎓 Abrir mural
                                 </button>
                                 <button onClick={() => finalize(t.id)} disabled={students.length > 0}
-                                    className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 disabled:opacity-50">
+                                    className="w-full shrink-0 whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 disabled:opacity-50 sm:w-auto sm:py-1.5">
                                     Finalizar saída
                                 </button>
                             </div>
@@ -139,14 +139,15 @@ const OffboardingPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">{students.length} aluno{students.length === 1 ? '' : 's'} para reatribuir:</p>
                             {students.length === 0 && <p className="text-xs text-emerald-600 font-bold">✓ Todos alunos já foram reatribuídos. Pode finalizar.</p>}
                             {students.map(s => (
-                                <div key={s.student_id} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                                <div key={s.student_id} className="flex flex-col items-stretch gap-2 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/50 sm:flex-row sm:items-center">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{(s.student as any)?.full_name || s.student_id}</p>
                                         <p className="text-[10px] text-slate-400">{s.day_of_week} · {s.time_slot}</p>
                                     </div>
                                     <select defaultValue=""
                                         onChange={e => e.target.value && reassign(s.student_id, e.target.value)}
-                                        className="text-xs p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                                        aria-label={`Mover ${(s.student as any)?.full_name || 'aluno'} para outro professor`}
+                                        className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto">
                                         <option value="">→ Mover para...</option>
                                         {availableTeachers.map(t2 => <option key={t2.id} value={t2.id}>{t2.full_name}</option>)}
                                     </select>
@@ -241,14 +242,15 @@ const AbsencesPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                             <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Aulas no período:</p>
                             {bookings.length === 0 && <p className="text-xs text-slate-400">Nenhuma aula recorrente no período.</p>}
                             {bookings.map((b, i) => (
-                                <div key={`${b.id}-${i}`} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                                <div key={`${b.id}-${i}`} className="flex flex-col items-stretch gap-2 rounded-xl bg-slate-50 p-2 dark:bg-slate-800/50 sm:flex-row sm:items-center">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{(b.student as any)?.full_name}</p>
                                         <p className="text-[10px] text-slate-400">{b.class_date} · {b.time_slot}</p>
                                     </div>
                                     <select defaultValue=""
                                         onChange={e => e.target.value && assignCover(b, e.target.value, a.id)}
-                                        className="text-xs p-1.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                                        aria-label={`Selecionar cobertura para ${(b.student as any)?.full_name || 'aluno'}`}
+                                        className="w-full min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900 sm:w-auto">
                                         <option value="">→ Cobertura...</option>
                                         {teachers.filter(t => t.id !== a.teacher_id).map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
                                     </select>
@@ -306,26 +308,36 @@ const TrialsPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         <div className="space-y-2">
             <p className="text-xs text-slate-500 px-2">Aluno trial fica na agenda do professor enquanto aqui pendente. Marque como aprovado (mantém na agenda) ou perdido (some).</p>
             {opps.map(o => (
-                <div key={o.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-3 flex items-center gap-3">
+                <div key={o.id} className="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:items-center">
                     <div className="flex-1 min-w-0">
                         <p className="text-sm font-black text-slate-800 dark:text-white truncate">{o.student_name}</p>
                         <p className="text-[10px] text-slate-400">{o.student_phone} · prof {(o.teacher as any)?.full_name || '—'}</p>
                         <p className="text-[10px] text-slate-400">Status: <b>{o.trial_status}</b> · {o.conversion_status || 'not_contacted'}</p>
                     </div>
-                    <button onClick={() => markApproved(o.id)} className="p-2 bg-emerald-600 text-white rounded-lg hover:brightness-110" title="Aprovar (mantém na agenda)">
-                        <Check size={14} />
-                    </button>
-                    <button onClick={() => markLost(o.id)} className="p-2 bg-rose-600 text-white rounded-lg hover:brightness-110" title="Marcar perdido (tira da agenda)">
-                        <X size={14} />
-                    </button>
+                    <div className="flex w-full shrink-0 gap-2 sm:w-auto">
+                        <button onClick={() => markApproved(o.id)} className="flex flex-1 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-emerald-600 p-2 text-xs font-bold text-white hover:brightness-110 sm:flex-none" title="Aprovar (mantém na agenda)">
+                            <Check size={14} /> <span className="sm:hidden">Aprovar</span>
+                        </button>
+                        <button onClick={() => markLost(o.id)} className="flex flex-1 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-rose-600 p-2 text-xs font-bold text-white hover:brightness-110 sm:flex-none" title="Marcar perdido (tira da agenda)">
+                            <X size={14} /> <span className="sm:hidden">Marcar perdido</span>
+                        </button>
+                    </div>
                 </div>
             ))}
         </div>
     );
 };
 
-const TabBtn: React.FC<{ active: boolean; onClick: () => void; icon: any; label: string }> = ({ active, onClick, icon: Icon, label }) => (
-    <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-violet-600 text-white' : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-700'}`}>
+const TabBtn: React.FC<{ id: string; controls: string; active: boolean; onClick: () => void; icon: any; label: string }> = ({ id, controls, active, onClick, icon: Icon, label }) => (
+    <button
+        type="button"
+        id={id}
+        role="tab"
+        aria-selected={active}
+        aria-controls={controls}
+        onClick={onClick}
+        className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest transition-all ${active ? 'bg-violet-600 text-white' : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900'}`}
+    >
         <Icon size={12} /> {label}
     </button>
 );

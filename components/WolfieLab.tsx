@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase'; // Adjust path if needed
 import {
-    Search, Filter, Brain, MessageSquare,
+    Search, Brain, MessageSquare,
     CheckCircle, AlertTriangle, Star,
-    ChevronRight, ChevronLeft, User, Calendar
+    User, Calendar, RefreshCw
 } from 'lucide-react';
 
 interface WolfieSession {
@@ -46,6 +46,9 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
     const [sessions, setSessions] = useState<WolfieSession[]>([]);
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [detailError, setDetailError] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Detail View State
     const [turns, setTurns] = useState<WolfieTurn[]>([]);
@@ -70,12 +73,13 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
 
     const fetchSessions = async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             let query = supabase
                 .from('wolfie_sessions')
                 .select(`
                     id, created_at, topic, student_level, mode, overall_score, summary,
-                    student:student_id(full_name, avatar_url),
+                    student:profiles!wolfie_sessions_student_id_fkey(full_name, avatar_url),
                     wolfie_evaluations(overall_score, adequacy_to_level, clarity_of_corrections, encouragement_and_tone, textual_feedback_pt)
                 `)
                 .order('created_at', { ascending: false })
@@ -90,6 +94,8 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
             setSessions(data as any || []);
         } catch (error) {
             console.error("Error fetching sessions:", error);
+            setSessions([]);
+            setLoadError('Não foi possível carregar as sessões do Wolfie.');
         } finally {
             setLoading(false);
         }
@@ -97,22 +103,30 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
 
     const fetchSessionDetails = async (sessionId: string) => {
         setDetailLoading(true);
+        setDetailError(null);
         try {
-            const { data: turnData } = await supabase
-                .from('wolfie_turns')
-                .select('*')
-                .eq('session_id', sessionId)
-                .order('turn_index', { ascending: true });
+            const [turnResult, correctionResult] = await Promise.all([
+                supabase
+                    .from('wolfie_turns')
+                    .select('id, speaker, content, turn_index')
+                    .eq('session_id', sessionId)
+                    .order('turn_index', { ascending: true }),
+                supabase
+                    .from('wolfie_corrections')
+                    .select('id, wrong_sentence, correct_sentence, explanation_pt, turn_id')
+                    .eq('session_id', sessionId),
+            ]);
 
-            const { data: corrData } = await supabase
-                .from('wolfie_corrections')
-                .select('*')
-                .eq('session_id', sessionId);
+            if (turnResult.error) throw turnResult.error;
+            if (correctionResult.error) throw correctionResult.error;
 
-            setTurns(turnData || []);
-            setCorrections(corrData || []);
+            setTurns((turnResult.data || []) as WolfieTurn[]);
+            setCorrections((correctionResult.data || []) as WolfieCorrection[]);
         } catch (e) {
             console.error(e);
+            setTurns([]);
+            setCorrections([]);
+            setDetailError('Não foi possível carregar a conversa e as correções.');
         } finally {
             setDetailLoading(false);
         }
@@ -132,6 +146,13 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         );
     };
 
+    const normalizedSearch = searchTerm.trim().toLocaleLowerCase('pt-BR');
+    const filteredSessions = normalizedSearch
+        ? sessions.filter((session) => (
+            session.student?.full_name?.toLocaleLowerCase('pt-BR').includes(normalizedSearch)
+            || session.topic.toLocaleLowerCase('pt-BR').includes(normalizedSearch)
+        ))
+        : sessions;
     const t = insights?.totals || {};
     return (
       <div className="space-y-4 font-sans">
@@ -182,9 +203,9 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
           </div>
         )}
 
-        <div className="flex h-[calc(100vh-100px)] gap-6">
+        <div className="flex min-h-[32rem] flex-col gap-4 xl:h-[calc(100dvh-8rem)] xl:flex-row xl:gap-6">
             {/* LEFT PANEL: LIST */}
-            <div className="w-1/3 flex flex-col bg-brand-surface rounded-2xl border border-gray-100 dark:border-brand-border shadow-sm overflow-hidden">
+            <div className="flex max-h-[32rem] w-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-sm dark:border-brand-border xl:max-h-none xl:w-1/3">
                 <div className="p-4 border-b border-gray-100 dark:border-brand-border">
                     <h2 className="text-lg font-bold text-brand-text flex items-center gap-2">
                         <Brain className="text-purple-600" /> Wolfie Lab
@@ -193,6 +214,9 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <input
                             type="text"
+                            value={searchTerm}
+                            onChange={(event) => setSearchTerm(event.target.value)}
+                            aria-label="Buscar por aluno ou tópico"
                             placeholder="Buscar aluno ou tópico..."
                             className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 rounded-lg text-sm border-none focus:ring-2 focus:ring-purple-500/50"
                         />
@@ -201,12 +225,30 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
 
                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
                     {loading ? (
-                        <p className="text-center text-gray-400 py-10">Carregando sessões...</p>
-                    ) : sessions.map(session => (
-                        <div
+                        <p className="text-center text-gray-400 py-10" role="status">Carregando sessões...</p>
+                    ) : loadError ? (
+                        <div className="m-2 rounded-xl border border-red-200 bg-red-50 p-4 text-center dark:border-red-900/40 dark:bg-red-950/20" role="alert">
+                            <AlertTriangle className="mx-auto mb-2 text-red-500" size={20} />
+                            <p className="text-xs font-bold text-red-700 dark:text-red-200">{loadError}</p>
+                            <button
+                                type="button"
+                                onClick={fetchSessions}
+                                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700"
+                            >
+                                <RefreshCw size={13} /> Tentar novamente
+                            </button>
+                        </div>
+                    ) : filteredSessions.length === 0 ? (
+                        <p className="px-4 py-10 text-center text-sm text-gray-400">
+                            {searchTerm ? 'Nenhuma sessão corresponde à busca.' : 'Nenhuma sessão registrada ainda.'}
+                        </p>
+                    ) : filteredSessions.map(session => (
+                        <button
+                            type="button"
                             key={session.id}
                             onClick={() => setSelectedSessionId(session.id)}
-                            className={`p-3 rounded-xl cursor-pointer transition-all border ${selectedSessionId === session.id ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-brand-surface-2'}`}
+                            aria-pressed={selectedSessionId === session.id}
+                            className={`w-full p-3 text-left rounded-xl cursor-pointer transition-all border ${selectedSessionId === session.id ? 'bg-purple-50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-brand-surface-2'}`}
                         >
                             <div className="flex justify-between items-start mb-1">
                                 <div className="flex items-center gap-2">
@@ -214,7 +256,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                         {session.student?.full_name?.charAt(0) || 'A'}
                                     </div>
                                     <span className="text-sm font-semibold text-brand-text dark:text-gray-200">
-                                        {session.student?.full_name}
+                                        {session.student?.full_name || 'Aluno'}
                                     </span>
                                 </div>
                                 <span className="text-[10px] text-gray-400">
@@ -239,22 +281,22 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                     </span>
                                 </div>
                             )}
-                        </div>
+                        </button>
                     ))}
                 </div>
             </div>
 
             {/* RIGHT PANEL: DETAILS */}
-            <div className="flex-1 bg-brand-surface rounded-2xl border border-gray-100 dark:border-brand-border shadow-sm overflow-hidden flex flex-col">
+            <div className="flex min-h-[30rem] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-brand-surface shadow-sm dark:border-brand-border">
                 {selectedSessionId ? (
                     <>
                         {/* Header */}
-                        <div className="p-6 border-b border-gray-100 dark:border-brand-border flex justify-between items-start bg-gray-50/50 dark:bg-brand-surface-2/50">
-                            <div>
+                        <div className="flex flex-col items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/50 p-4 dark:border-brand-border dark:bg-brand-surface-2/50 sm:p-6 md:flex-row">
+                            <div className="min-w-0">
                                 <h3 className="text-xl font-bold text-brand-text mb-1">
                                     Detalhes da Sessão
                                 </h3>
-                                <div className="flex items-center gap-4 text-sm text-gray-500">
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                                     <span className="flex items-center gap-1"><User size={14} /> {sessions.find(s => s.id === selectedSessionId)?.student?.full_name}</span>
                                     <span className="flex items-center gap-1"><Calendar size={14} /> {new Date(sessions.find(s => s.id === selectedSessionId)?.created_at || '').toLocaleString()}</span>
                                 </div>
@@ -270,18 +312,31 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                                         </span>
                                         <div className="flex flex-col">
                                             {renderStars(sessions.find(s => s.id === selectedSessionId)?.wolfie_evaluations[0].overall_score || 0)}
-                                            <span className="text-[10px] text-gray-400">Gemini 2.0 Flash</span>
+                                            <span className="text-[10px] text-gray-400">Avaliação automática</span>
                                         </div>
                                     </div>
                                 </div>
                             )}
                         </div>
 
-                        <div className="flex-1 flex overflow-hidden">
+                        <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
                             {/* Chat Transcript */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-brand-surface-2 dark:bg-slate-950/50">
+                            <div className="min-h-[18rem] flex-1 space-y-6 overflow-y-auto bg-brand-surface-2 p-4 dark:bg-slate-950/50 sm:p-6">
                                 {detailLoading ? (
                                     <p className="text-center text-gray-400">Carregando conversa...</p>
+                                ) : detailError ? (
+                                    <div className="mx-auto max-w-md rounded-xl border border-red-200 bg-red-50 p-4 text-center dark:border-red-900/40 dark:bg-red-950/20" role="alert">
+                                        <p className="text-sm font-bold text-red-700 dark:text-red-200">{detailError}</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchSessionDetails(selectedSessionId)}
+                                            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white"
+                                        >
+                                            <RefreshCw size={13} /> Tentar novamente
+                                        </button>
+                                    </div>
+                                ) : turns.length === 0 ? (
+                                    <p className="text-center text-sm text-gray-400">Esta sessão não possui transcrição.</p>
                                 ) : turns.map(turn => (
                                     <div key={turn.id} className={`flex ${turn.speaker === 'student' ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[70%] p-4 rounded-2xl shadow-sm ${turn.speaker === 'student'
@@ -295,7 +350,7 @@ const WolfieLab: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
                             </div>
 
                             {/* Sidebar: Corrections & Feedback */}
-                            <div className="w-80 border-l border-gray-100 dark:border-brand-border bg-brand-surface flex flex-col">
+                            <div className="flex max-h-[24rem] w-full flex-col border-t border-gray-100 bg-brand-surface dark:border-brand-border lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
                                 <div className="p-4 border-b border-gray-100 dark:border-brand-border font-bold text-brand-text dark:text-white flex items-center gap-2">
                                     <CheckCircle size={16} className="text-green-500" />
                                     Correções ({corrections.length})

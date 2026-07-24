@@ -223,32 +223,76 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         }
     };
 
+    const lessonStatusClass = (log: any) =>
+        (log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'EXPIRED') ? 'bg-red-50 dark:bg-red-900/20 text-red-600' :
+            log.subtype === 'REPOSIÇÃO' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' :
+                (log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta') ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600' :
+                    log.presence === 'Falta Justificada' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' :
+                        'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600';
+
+    const lessonStatusLabel = (log: any) =>
+        log.subtype === 'REPOSIÇÃO' ? 'Reposição' :
+            log.presence === 'COMPLETED' ? 'Realizada' :
+                log.presence === 'STUDENT_ABSENCE' ? 'Falta Aluno' :
+                    log.presence === 'TEACHER_ABSENCE' ? 'Falta Prof.' :
+                        log.presence === 'EXPIRED' ? 'Expirada (Prazo)' :
+                            log.presence;
+
+    const handleDownloadStatement = () => {
+        const csvCell = (value: string | number) => {
+            const text = String(value);
+            const formulaSafe = /^[=+\-@]/.test(text) ? `'${text}` : text;
+            return `"${formulaSafe.replace(/"/g, '""')}"`;
+        };
+        const rows = lessons.map((log) => [
+            new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
+            log.student?.full_name || 'Aluno não informado',
+            lessonStatusLabel(log),
+            !isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2).replace('.', ','),
+        ]);
+        const csv = [
+            ['Data', 'Aluno', 'Status', 'Valor (R$)'],
+            ...rows,
+        ].map((row) => row.map(csvCell).join(';')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `extrato-aulas-${selectedMonth}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    };
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             {/* Month Selector code ... */}
-            <div className="flex justify-between items-center bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm">
-                <div>
+            <div className="flex flex-col items-stretch justify-between gap-4 bg-brand-surface p-4 sm:p-6 rounded-[2rem] border border-brand-border shadow-sm sm:flex-row sm:items-center">
+                <div className="min-w-0">
                     <h2 className="text-2xl font-black text-brand-text tracking-tight">Financeiro</h2>
                     <p className="text-brand-muted text-sm font-medium">Gerencie seus ganhos e fechamentos.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setShowReport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-tenant-primary/10 text-tenant-primary text-xs font-bold" title="Ver/baixar meu relatório de atividades (PDF)">
+                <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
+                    <button onClick={() => setShowReport(true)} className="flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-tenant-primary/10 px-3 py-2 text-xs font-bold text-tenant-primary sm:w-auto" title="Ver/baixar meu relatório de atividades (PDF)">
                         <FileDown size={14} /> Meu Relatório (PDF)
                     </button>
-                    <Calendar size={18} className="text-brand-muted" />
-                    <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="bg-brand-surface-2 border-none rounded-xl text-sm font-bold text-brand-text dark:text-slate-300 focus:ring-2 focus:ring-tenant-primary outline-none py-2 px-4"
-                    />
+                    <div className="flex w-full items-center gap-2 sm:w-auto">
+                        <Calendar size={18} className="shrink-0 text-brand-muted" aria-hidden="true" />
+                        <input
+                            type="month"
+                            aria-label="Mês do fechamento"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="min-w-0 flex-1 rounded-xl border-none bg-brand-surface-2 px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary dark:text-slate-300 sm:flex-none"
+                        />
+                    </div>
                 </div>
             </div>
             {showReport && <TeacherActivityReport teacherId={user.id} onClose={() => setShowReport(false)} />}
             {showPayroll && <TeacherPayrollReportModal teacherId={user.id} month={selectedMonth} onClose={() => setShowPayroll(false)} />}
 
             {/* Forecast Card */}
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden">
+            <div className="relative overflow-hidden rounded-[2.5rem] bg-indigo-700 bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl shadow-indigo-500/20 sm:p-8">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
                 <div className="relative z-10">
@@ -268,12 +312,12 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
                     <button
                         onClick={() => setShowPayroll(true)}
-                        className="mt-3 text-[11px] font-bold uppercase tracking-widest bg-brand-surface/20 hover:bg-brand-surface/30 transition-colors rounded-lg px-3 py-1.5"
+                        className="mt-3 shrink-0 whitespace-nowrap rounded-lg bg-brand-surface/20 px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest transition-colors hover:bg-brand-surface/30"
                     >
                         Ver detalhamento oficial →
                     </button>
 
-                    <div className="mt-4 flex gap-4 text-xs font-medium opacity-80">
+                    <div className="mt-4 flex flex-col gap-2 text-xs font-medium opacity-80 sm:flex-row sm:gap-4">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-400" />
                             {lessons.filter(l => l.presence === 'COMPLETED').length} Aulas Realizadas
@@ -289,28 +333,28 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {/* Action Bar */}
             {
                 (!closing || closing.status === 'PENDING_TEACHER' || closing.status === 'PENDENTE') && !viewOnly && (
-                    <div className={`${canCloseMonth() ? 'flex' : 'hidden'} bg-brand-surface p-8 rounded-[2.5rem] text-white flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden`}>
+                    <div className={`${canCloseMonth() ? 'flex' : 'hidden'} relative flex-col items-stretch justify-between gap-6 overflow-hidden rounded-[2.5rem] bg-slate-900 p-6 text-white md:flex-row md:items-center md:p-8`}>
                         {/* Background Effect */}
                         <div className="absolute top-0 right-0 w-64 h-64 bg-tenant-primary/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
-                        <div>
+                        <div className="min-w-0">
                             <h3 className="text-xl font-black tracking-tight relative z-10">
                                 Finalizar Fechamento: R$ {officialTotal().toFixed(2).replace('.', ',')}
                             </h3>
-                            <p className="text-brand-muted text-xs mt-1 relative z-10">
+                            <p className="relative z-10 mt-1 text-xs text-slate-300">
                                 Referente a {new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}. Confirme se os valores estão corretos.
                             </p>
                         </div>
-                        <div className="flex gap-4 relative z-10">
+                        <div className="relative z-10 flex w-full flex-col gap-3 sm:flex-row md:w-auto">
                             <button
                                 onClick={() => setIsContesting(true)}
-                                className="px-6 py-3 border border-brand-border rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-surface-2 transition-colors"
+                                className="w-full shrink-0 whitespace-nowrap rounded-xl border border-slate-600 px-6 py-3 text-xs font-bold uppercase tracking-widest transition-colors hover:bg-slate-800 sm:w-auto"
                             >
                                 Contestar Valor
                             </button>
                             <button
                                 onClick={handleConfirm}
-                                className="px-8 py-3 bg-tenant-primary text-white rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-tenant-primary/20 flex items-center gap-2"
+                                className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-700 bg-tenant-primary px-8 py-3 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-tenant-primary/20 transition-all hover:scale-105 active:scale-95 sm:w-auto"
                             >
                                 <ClipboardCheck size={16} /> Confirmar e Fechar
                             </button>
@@ -322,7 +366,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             {/* Rejection Action Bar */}
             {
                 closing?.status === 'REJEITADO' && (
-                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-8 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden">
+                    <div className="relative flex flex-col items-stretch justify-between gap-6 overflow-hidden rounded-[2.5rem] border border-red-100 bg-red-50 p-6 dark:border-red-900/30 dark:bg-red-900/10 md:flex-row md:items-center md:p-8">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/5 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 
                         <div className="relative z-10">
@@ -341,16 +385,16 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             <p className="text-brand-muted text-xs mt-2 font-medium">Verifique as observações e conteste novamente ou fale com o suporte.</p>
                         </div>
 
-                        <div className="flex gap-4 relative z-10">
+                        <div className="relative z-10 flex w-full flex-col gap-3 sm:flex-row md:w-auto">
                             <button
                                 onClick={() => window.open(`https://wa.me/5511999999999?text=Ol%C3%A1%2C%20gostaria%20de%20falar%20sobre%20meu%20fechamento%20de%20${selectedMonth}`, '_blank')}
-                                className="px-6 py-3 bg-brand-surface dark:bg-brand-surface-2 text-brand-text dark:text-slate-200 border border-brand-border rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-brand-surface-2 dark:hover:bg-slate-700 transition-colors"
+                                className="w-full shrink-0 whitespace-nowrap rounded-xl border border-brand-border bg-brand-surface px-6 py-3 text-xs font-bold uppercase tracking-widest text-brand-text transition-colors hover:bg-brand-surface-2 dark:bg-brand-surface-2 dark:text-slate-200 dark:hover:bg-slate-700 sm:w-auto"
                             >
                                 Falar com Suporte
                             </button>
                             <button
                                 onClick={() => setIsContesting(true)}
-                                className="px-6 py-3 bg-red-500 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20 flex items-center gap-2"
+                                className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-red-500 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-red-500/20 transition-colors hover:bg-red-600 sm:w-auto"
                             >
                                 <MessageSquare size={16} /> Contestar Novamente
                             </button>
@@ -379,16 +423,16 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                 placeholder="Descreva aqui quais aulas estão faltando ou qual valor está incorreto..."
                             />
 
-                            <div className="flex gap-3">
+                            <div className="flex flex-col-reverse gap-3 sm:flex-row">
                                 <button
                                     onClick={() => setIsContesting(false)}
-                                    className="flex-1 py-3 text-brand-muted font-bold text-xs uppercase tracking-widest"
+                                    className="flex-1 shrink-0 whitespace-nowrap py-3 text-xs font-bold uppercase tracking-widest text-brand-muted"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     onClick={handleContest}
-                                    className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/20"
+                                    className="flex-1 shrink-0 whitespace-nowrap rounded-xl bg-orange-500 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-orange-500/20"
                                 >
                                     Enviar Contestação
                                 </button>
@@ -400,14 +444,57 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
             {/* Lesson List */}
             <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm">
-                <div className="p-8 border-b border-slate-50 dark:border-brand-border flex justify-between items-center">
+                <div className="flex items-center justify-between border-b border-slate-50 p-5 dark:border-brand-border sm:p-8">
                     <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Extrato de Aulas</h3>
-                    <button className="p-2 bg-brand-surface-2 rounded-lg text-brand-muted hover:text-tenant-primary transition-colors">
+                    <button
+                        type="button"
+                        onClick={handleDownloadStatement}
+                        disabled={lessons.length === 0}
+                        aria-label="Baixar extrato de aulas em CSV"
+                        title={lessons.length > 0 ? 'Baixar extrato de aulas em CSV' : 'Nenhuma aula para exportar'}
+                        className="rounded-lg bg-brand-surface-2 p-2 text-brand-muted transition-colors hover:text-tenant-primary disabled:cursor-not-allowed disabled:opacity-40"
+                    >
                         <Download size={18} />
                     </button>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="space-y-3 p-4 md:hidden">
+                    {lessons.map((log) => (
+                        <article key={log.id} className="rounded-2xl border border-brand-border bg-brand-surface-2/50 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Aluno</p>
+                                    <p className="mt-1 truncate text-sm font-black uppercase text-brand-text">{log.student?.full_name || 'Aluno não informado'}</p>
+                                </div>
+                                <span className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${lessonStatusClass(log)}`}>
+                                    {lessonStatusLabel(log)}
+                                </span>
+                            </div>
+                            <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-brand-border pt-4">
+                                <div>
+                                    <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Data</dt>
+                                    <dd className="mt-1 text-sm font-bold text-brand-text">
+                                        {new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                                    </dd>
+                                </div>
+                                <div className="text-right">
+                                    <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor</dt>
+                                    <dd className={`mt-1 text-sm font-black ${!isLessonPaid(log) ? 'text-slate-400 line-through dark:text-brand-muted' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                        R$ {!isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2)}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </article>
+                    ))}
+                    {lessons.length === 0 && (
+                        <div className="flex flex-col items-center gap-3 py-12 text-center text-brand-muted">
+                            <FileText size={40} className="opacity-20" />
+                            <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula registrada neste mês.</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
                     <table className="w-full min-w-[500px]">
                         <thead>
                             <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/30">
@@ -428,18 +515,8 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                         <span className="text-sm font-black text-brand-text dark:text-slate-100 uppercase">{log.student?.full_name}</span>
                                     </td>
                                     <td className="px-8 py-6">
-                                        <div className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${(log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'EXPIRED') ? 'bg-red-50 dark:bg-red-900/20 text-red-600' :
-                                            log.subtype === 'REPOSIÇÃO' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' :
-                                                (log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta') ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600' :
-                                                    log.presence === 'Falta Justificada' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' :
-                                                        'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600'
-                                            }`}>
-                                            {log.subtype === 'REPOSIÇÃO' ? 'Reposição' :
-                                                log.presence === 'COMPLETED' ? 'Realizada' :
-                                                    log.presence === 'STUDENT_ABSENCE' ? 'Falta Aluno' :
-                                                        log.presence === 'TEACHER_ABSENCE' ? 'Falta Prof.' :
-                                                            log.presence === 'EXPIRED' ? 'Expirada (Prazo)' :
-                                                                log.presence}
+                                        <div className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${lessonStatusClass(log)}`}>
+                                            {lessonStatusLabel(log)}
                                         </div>
                                     </td>
                                     <td className="px-8 py-6">

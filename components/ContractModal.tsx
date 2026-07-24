@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { ShieldCheck, ArrowRight, Lock, Loader2, PenTool } from 'lucide-react';
 
@@ -82,6 +83,8 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
     useEffect(() => {
         if (!isOpen) return;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
         const previousFocus = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : null;
@@ -116,6 +119,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
         document.addEventListener('keydown', handleKeyDown);
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousOverflow;
             previousFocus?.focus();
         };
     }, [isOpen, loading]);
@@ -151,47 +155,38 @@ const ContractModal: React.FC<ContractModalProps> = ({
     ];
     const currentProgressIndex = progressSteps.findIndex(item => item.key === contractProps.processingStage);
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+    return createPortal(
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 animate-in fade-in duration-300 sm:p-4">
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="contract-dialog-title"
                 tabIndex={-1}
-                className="bg-brand-surface rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] lg:h-[90vh] animate-in slide-in-from-bottom-5 duration-500 relative"
+                className="relative flex h-dvh max-h-dvh w-full max-w-5xl flex-col bg-brand-surface shadow-2xl animate-in slide-in-from-bottom-5 duration-500 sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl lg:h-[90dvh]"
             >
                 {/* Header */}
-                <div className="p-6 border-b border-brand-border bg-brand-surface-2 flex justify-between items-center shrink-0 rounded-t-3xl z-20">
-                    <h3 id="contract-dialog-title" className="font-black text-brand-text text-lg flex items-center gap-2">
+                <div className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-brand-border bg-brand-surface-2 p-4 sm:rounded-t-3xl sm:p-6">
+                    <h3 id="contract-dialog-title" className="flex min-w-0 items-center gap-2 text-base font-black text-brand-text sm:text-lg">
                         <ShieldCheck className="text-emerald-600" /> Assinatura Digital
                     </h3>
                     <button
+                        type="button"
                         onClick={onClose}
                         disabled={loading}
-                        className="text-brand-muted hover:text-brand-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                        aria-label="Voltar para o formulário de matrícula"
+                        className="shrink-0 text-brand-muted hover:text-brand-text disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <ArrowRight size={20} className="rotate-180" /> Voltar
                     </button>
                 </div>
 
-                <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
 
                     {/* Left: Contract Viewer (Takes most width on lg) */}
-                    <div className="flex-1 bg-brand-surface-2/50 p-2 sm:p-4 lg:p-6 pb-24 lg:pb-6 relative w-full flex flex-col items-center">
-                        {/* 
-                            For mobile/tablet layout footprint reduction we use zoom. 
-                            CSS style object is used because Tailwind standard arbitrarily strips zoom depending on the compiler setup
-                        */}
-                        <div className="bg-brand-surface shadow-xl transition-all origin-top contract-zoom">
-                            <style>{`
-                                @media (max-width: 639px) { .contract-zoom { zoom: 0.43; } }
-                                @media (min-width: 640px) and (max-width: 1023px) { .contract-zoom { zoom: 0.55; } }
-                                @media (min-width: 1024px) { .contract-zoom { zoom: 0.8; } }
-                                @media (min-width: 1280px) { .contract-zoom { zoom: 1; } }
-                            `}</style>
-                            {/* We can disable interaction inside or just let them read */}
-                            <div className="pointer-events-none select-none w-[800px] max-w-none transform-gpu">
+                    <div className="relative flex w-full flex-1 flex-col items-center bg-brand-surface-2/50 p-2 pb-24 sm:p-4 sm:pb-24 lg:p-6">
+                        <div className="w-full max-w-[210mm] bg-white shadow-xl">
+                            <div className="select-text">
                                 <ContractDocument
                                     studentName={contractProps.studentName}
                                     studentCPF={contractProps.studentCPF}
@@ -213,13 +208,15 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     subscriptionId={contractProps.subscriptionId}
                                     school={contractProps.school}
                                     dependentName={contractProps.dependentName}
+                                    displayMode="responsive"
+                                    showPrintButton={false}
                                 />
                             </div>
                         </div>
                     </div>
 
                     {/* Right: Signature Actions */}
-                    <div ref={signatureRef} className="w-full bg-brand-surface border-t border-brand-border p-6 flex flex-col gap-6 shrink-0 z-10 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-visible">
+                    <div ref={signatureRef} className="relative z-10 flex w-full shrink-0 flex-col gap-6 overflow-visible border-t border-brand-border bg-brand-surface p-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] sm:p-6">
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900 max-w-3xl mx-auto w-full">
                             <div>
@@ -370,7 +367,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
             {/* Floating Action Button for Mobile */}
             {!isSignatureVisible && (
-                <div className="lg:hidden fixed bottom-6 left-0 right-0 flex justify-center z-[60] animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
+                <div className="lg:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-[260] animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
                     <button
                         onClick={scrollToSignature}
                         disabled={loading}
@@ -380,7 +377,8 @@ const ContractModal: React.FC<ContractModalProps> = ({
                     </button>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body,
     );
 };
 

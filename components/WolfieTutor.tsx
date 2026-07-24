@@ -101,7 +101,7 @@ const InlineQuiz: React.FC<{ quiz: QuizData }> = ({ quiz }) => {
 
                     let classes = 'w-full text-left text-xs p-3 rounded-xl border transition-all ';
                     if (answered === null) {
-                        classes += 'bg-brand-surface/5 hover:bg-fuchsia-500/20 border-white/5 text-slate-200 cursor-pointer';
+                        classes += 'bg-white/5 hover:bg-fuchsia-500/20 border-white/5 text-slate-200 cursor-pointer';
                     } else if (isSelected && isCorrect) {
                         classes += 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300';
                     } else if (isSelected && !isCorrect) {
@@ -109,7 +109,7 @@ const InlineQuiz: React.FC<{ quiz: QuizData }> = ({ quiz }) => {
                     } else if (isCorrect) {
                         classes += 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
                     } else {
-                        classes += 'bg-brand-surface/5 border-white/5 text-brand-muted';
+                        classes += 'bg-white/5 border-white/5 text-slate-400';
                     }
 
                     return (
@@ -1010,7 +1010,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // ============================================================
     if (!hasSelectedTopic) {
         return (
-            <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col items-center justify-center p-8 relative overflow-hidden font-sans">
+            <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-8 overflow-hidden font-sans">
                 {/* Background Atmosphere */}
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,_#1e1b4b_0%,_#020617_60%)] pointer-events-none" />
                 <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
@@ -1019,7 +1019,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 </div>
 
                 {onClose && (
-                    <button onClick={onClose} className="absolute top-6 right-6 p-3 rounded-full bg-brand-surface/5 text-white/50 hover:bg-brand-surface/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
+                    <button onClick={onClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
                         <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                     </button>
                 )}
@@ -1033,7 +1033,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
                             Olá, {user?.full_name?.split(' ')[0] || 'Aluno'}!
                         </h1>
-                        <p className="text-brand-muted text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
+                        <p className="text-slate-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
                             Como você prefere praticar o seu inglês hoje?
                         </p>
                     </div>
@@ -1042,27 +1042,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         {/* Voice Mode */}
                         <button
                             onClick={() => handleModeSelection('voice')}
-                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
+                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-indigo-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300">
                                 <Mic size={24} className="sm:w-8 sm:h-8 text-indigo-400 group-hover:text-white transition-colors" />
                             </div>
                             <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">Por Voz</h3>
-                            <p className="text-brand-muted text-xs sm:text-sm hidden sm:block">Pratique com conversas em tempo real usando o microfone.</p>
+                            <p className="text-slate-400 text-xs sm:text-sm hidden sm:block">Pratique com conversas em tempo real usando o microfone.</p>
                         </button>
 
                         {/* Text Mode */}
                         <button
                             onClick={() => handleModeSelection('text')}
-                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-brand-surface/40 backdrop-blur-xl border border-white/10 hover:bg-brand-surface-2/60 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
+                            className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
                         >
                             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                             <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-emerald-500 transition-all duration-300">
                                 <MessageSquare size={24} className="sm:w-8 sm:h-8 text-emerald-400 group-hover:text-white transition-colors" />
                             </div>
                             <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">Por Texto</h3>
-                            <p className="text-brand-muted text-xs sm:text-sm hidden sm:block">Pratique a escrita através do chat interativo do Wolfie.</p>
+                            <p className="text-slate-400 text-xs sm:text-sm hidden sm:block">Pratique a escrita através do chat interativo do Wolfie.</p>
                         </button>
                     </div>
                 </div>
@@ -1087,15 +1087,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
             {/* CLOSE BUTTON */}
             {onClose && (
-                <button onClick={onClose} className="absolute top-6 right-6 p-3 rounded-full bg-brand-surface/5 text-white/50 hover:bg-brand-surface/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
+                <button onClick={onClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
                     <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                 </button>
             )}
 
             {/* HEADER HUD */}
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
+            <div className="absolute top-4 sm:top-6 left-1/2 -translate-x-1/2 z-40 w-full px-16 sm:px-20 flex flex-col items-center gap-2">
                 {/* Status Badge */}
-                <div className="flex items-center gap-3 px-5 py-2 rounded-full bg-brand-surface/5 border border-white/10 backdrop-blur-md shadow-2xl">
+                <div className="flex items-center gap-3 px-5 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl">
                     <div className={`w-2 h-2 rounded-full ${state === 'LISTENING' ? 'bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]' :
                         state === 'THINKING' ? 'bg-purple-500 animate-pulse' :
                             state === 'SPEAKING' ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]' :
@@ -1104,10 +1104,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 </div>
 
                 {/* Timer + Level + Controls */}
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-surface/5 border border-white/10 backdrop-blur-md">
-                        <Clock size={10} className="text-brand-muted" />
-                        <span className="text-[10px] font-mono text-brand-muted">{formatTime(elapsed)}</span>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+                        <Clock size={10} className="text-slate-400" />
+                        <span className="text-[10px] font-mono text-slate-400">{formatTime(elapsed)}</span>
                     </div>
                     <div className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
                         {studentLevel}
@@ -1115,7 +1115,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     {/* Translation Toggle */}
                     <button
                         onClick={() => setTranslationEnabled(p => !p)}
-                        className={`p-1.5 rounded-full border transition-all ${translationEnabled ? 'bg-sky-500/15 border-sky-500/30 text-sky-300' : 'bg-brand-surface/5 border-white/10 text-brand-muted'}`}
+                        className={`p-1.5 rounded-full border transition-all ${translationEnabled ? 'bg-sky-500/15 border-sky-500/30 text-sky-300' : 'bg-white/5 border-white/10 text-slate-400'}`}
                         title={translationEnabled ? 'Tradução ON' : 'Tradução OFF'}
                     >
                         <Languages size={12} />
@@ -1123,7 +1123,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     {/* Auto-Speak Toggle */}
                     <button
                         onClick={() => { setAutoSpeakEnabled(p => !p); if (state === 'SPEAKING') stopSpeaking(); }}
-                        className={`p-1.5 rounded-full border transition-all ${autoSpeakEnabled ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-brand-surface/5 border-white/10 text-brand-muted'}`}
+                        className={`p-1.5 rounded-full border transition-all ${autoSpeakEnabled ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' : 'bg-white/5 border-white/10 text-slate-400'}`}
                         title={autoSpeakEnabled ? 'Auto-speak ON' : 'Auto-speak OFF'}
                     >
                         {autoSpeakEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
@@ -1131,7 +1131,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     {/* Text Toggle */}
                     <button
                         onClick={() => setShowTextInput(p => !p)}
-                        className={`p-1.5 rounded-full border transition-all ${showTextInput ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-brand-surface/5 border-white/10 text-brand-muted'}`}
+                        className={`p-1.5 rounded-full border transition-all ${showTextInput ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400'}`}
                         title={showTextInput ? 'Teclado ON' : 'Teclado OFF'}
                     >
                         <MessageSquare size={12} />
@@ -1140,7 +1140,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     <button
                         onClick={slowReplay}
                         disabled={!lastSpokenTextRef.current}
-                        className="p-1.5 rounded-full bg-brand-surface/5 border border-white/10 text-brand-muted hover:text-white hover:bg-brand-surface/10 transition-all disabled:opacity-30"
+                        className="p-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
                         title="Repetir devagar (0.7x)"
                     >
                         <RotateCcw size={12} />
@@ -1211,7 +1211,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     {/* Hover Hint */}
                     {state === 'IDLE' && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                            <div className="px-5 py-2.5 rounded-full bg-brand-surface/10 backdrop-blur-xl border border-white/20 tracking-[0.2em] text-white/90 text-[10px] font-bold uppercase shadow-2xl">
+                            <div className="px-5 py-2.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 tracking-[0.2em] text-white/90 text-[10px] font-bold uppercase shadow-2xl">
                                 Segure para falar
                             </div>
                         </div>
@@ -1225,7 +1225,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             "{subtitle}"
                         </p>
                     ) : state !== 'IDLE' ? (
-                        <p className={`text-xs tracking-[0.4em] font-bold uppercase ${state === 'THINKING' ? 'text-purple-400 animate-pulse' : state === 'LISTENING' ? 'text-red-400 animate-pulse' : 'text-brand-muted'}`}>
+                        <p className={`text-xs tracking-[0.4em] font-bold uppercase ${state === 'THINKING' ? 'text-purple-400 animate-pulse' : state === 'LISTENING' ? 'text-red-400 animate-pulse' : 'text-slate-400'}`}>
                             {state === 'THINKING' ? 'Processando...' : state === 'LISTENING' ? 'Ouvindo...' : ''}
                         </p>
                     ) : null}
@@ -1237,7 +1237,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             {showTextInput && (
                 <div className="absolute bottom-6 left-4 right-4 z-50 max-w-2xl mx-auto animate-in slide-in-from-bottom-6 fade-in duration-300">
-                    <div className="flex items-center gap-2 bg-brand-surface/80 backdrop-blur-xl border border-white/10 rounded-full p-2 pl-5 shadow-2xl ring-1 ring-white/5 focus-within:ring-cyan-500/50 transition-all">
+                    <div className="flex items-center gap-2 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-full p-2 pl-5 shadow-2xl ring-1 ring-white/5 focus-within:ring-cyan-500/50 transition-all">
                         <input
                             type="text"
                             value={inputText}
@@ -1245,7 +1245,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputText)}
                             placeholder="Type in English..."
                             disabled={state === 'THINKING'}
-                            className="flex-1 bg-transparent border-none text-slate-200 placeholder:text-brand-muted focus:ring-0 focus:outline-none text-sm font-medium"
+                            className="flex-1 min-w-0 bg-transparent border-none text-slate-200 placeholder:text-slate-500 focus:ring-0 focus:outline-none text-sm font-medium"
                         />
                         <button
                             onClick={() => sendMessage(inputText)}
@@ -1263,7 +1263,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             {/* ============================================================ */}
             {correction && (
                 <div className="absolute bottom-6 left-4 right-4 md:right-auto md:left-8 md:w-[420px] z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
-                    <div className="bg-brand-surface/40 backdrop-blur-3xl border border-white/10 p-5 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-brand-surface/60 transition-colors">
+                    <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/80 p-5 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-slate-800/95 transition-colors">
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-80" />
                         <div className="flex flex-col gap-3 relative z-10">
                             <div className="flex items-center justify-between border-b border-white/5 pb-2">
@@ -1273,7 +1273,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                                     </div>
                                     <h4 className="text-white font-black text-[10px] uppercase tracking-widest">Correção</h4>
                                 </div>
-                                <button onClick={() => setCorrection(null)} className="text-brand-muted hover:text-white transition-colors bg-brand-surface/5 p-1.5 rounded-full">
+                                <button onClick={() => setCorrection(null)} aria-label="Fechar correção" className="text-slate-400 hover:text-white transition-colors bg-white/5 p-1.5 rounded-full">
                                     <X size={12} />
                                 </button>
                             </div>
@@ -1336,13 +1336,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         </div>
                         <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
                             {vocabulary.keyTerms.map((term, idx) => (
-                                <div key={idx} className="bg-brand-surface/5 p-2.5 rounded-xl border border-white/10">
+                                <div key={idx} className="bg-white/5 p-2.5 rounded-xl border border-white/10">
                                     <div className="flex justify-between items-center mb-1">
                                         <span className="font-bold text-indigo-300 text-sm">{term.term}</span>
                                         <span className="text-[9px] font-bold bg-indigo-500/20 px-1.5 py-0.5 rounded text-indigo-200">{term.level}</span>
                                     </div>
                                     <p className="text-[11px] text-slate-300 leading-relaxed">{term.definition}</p>
-                                    <p className="text-[10px] text-brand-muted italic mt-1">"{term.example}"</p>
+                                    <p className="text-[10px] text-slate-400 italic mt-1">"{term.example}"</p>
                                 </div>
                             ))}
                         </div>
@@ -1366,7 +1366,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40">
                 <button
                     onClick={() => setShowTranscript(p => !p)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-surface/5 border border-white/10 text-brand-muted hover:text-white hover:bg-brand-surface/10 transition-all text-[10px] font-bold uppercase tracking-wider"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all text-[10px] font-bold uppercase tracking-wider"
                 >
                     {showTranscript ? <ChevronDown size={10} /> : <ChevronUp size={10} />}
                     Histórico ({messages.length})
@@ -1378,13 +1378,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 <div className="absolute bottom-28 left-4 right-4 max-h-[40vh] z-40 animate-in slide-in-from-bottom-6 fade-in duration-300">
                     <div className="bg-slate-950/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 overflow-y-auto max-h-[40vh] space-y-3">
                         {messages.length === 0 ? (
-                            <p className="text-xs text-brand-muted text-center py-4">Nenhuma mensagem ainda</p>
+                            <p className="text-xs text-slate-400 text-center py-4">Nenhuma mensagem ainda</p>
                         ) : (
                             messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-[80%] p-3 rounded-xl text-sm ${msg.role === 'user'
                                         ? 'bg-indigo-600/30 text-indigo-100 rounded-tr-sm'
-                                        : 'bg-brand-surface-2/50 text-slate-200 rounded-tl-sm border-l-2 border-cyan-500'}`}>
+                                        : 'bg-slate-800/70 text-slate-200 rounded-tl-sm border-l-2 border-cyan-500'}`}>
                                         <p className="leading-relaxed">{msg.content}</p>
                                         {msg.correction && (
                                             <div className="mt-2 pt-2 border-t border-white/10 text-xs">

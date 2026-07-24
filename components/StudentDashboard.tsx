@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Video, BookOpen, Clock, Star, TrendingUp, Sparkles, Download, CreditCard, ChevronRight, CheckCircle, RefreshCw, Target, Zap, Award, Medal, MessageSquareText, FileText, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Video, BookOpen, Clock, Star, TrendingUp, Sparkles, Download, CreditCard, ChevronRight, CheckCircle, RefreshCw, Target, Zap, Award, Medal, MessageSquareText, FileText, X, AlertCircle } from 'lucide-react';
 import { getPedagogicalSuggestion } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
@@ -20,6 +21,16 @@ interface StudentDashboardProps {
   tenantId?: string;
 }
 
+const safeHttpUrl = (value?: string | null): string | null => {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) => {
   const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
 
@@ -29,16 +40,28 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [assignedTeacher, setAssignedTeacher] = useState<any>(null);
   const [showContract, setShowContract] = useState(false);
-  const [contractDownloadFn, setContractDownloadFn] = useState<(() => void) | null>(null);
+  const [contractDownloadFn, setContractDownloadFn] = useState<(() => Promise<void>) | null>(null);
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
   const [onboardingDone, setOnboardingDone] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const contractDialogRef = useRef<HTMLDivElement>(null);
 
   // No mobile baixa direto; no desktop abre modal
   const handleContractClick = async () => {
     // Abre o modal em qualquer dispositivo — mais confiável que tentar gerar
     // PDF via html2pdf em mobile (iOS/Android bloqueiam com frequência).
     setShowContract(true);
+  };
+
+  const handleContractDownload = async () => {
+    if (!contractDownloadFn || downloadingContract) return;
+    setDownloadingContract(true);
+    try {
+      await contractDownloadFn();
+    } finally {
+      setDownloadingContract(false);
+    }
   };
 
   // Derived state from Context
@@ -55,7 +78,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
     return {
       time: nc.time_slot,
       teacher: assignedTeacher?.full_name || 'Professor',
-      meet: profile?.meeting_link || '#',
+      meet: safeHttpUrl(profile?.meeting_link),
       rawDate: typeof rawDate === 'number' ? new Date(rawDate) : rawDate
     };
   })() : null;
@@ -106,6 +129,60 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
     }
   }, [nextClass]);
 
+  useEffect(() => {
+    if (!showContract) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = 'hidden';
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const dialog = contractDialogRef.current;
+      const initialFocus = dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]');
+      (initialFocus || dialog)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const dialog = contractDialogRef.current;
+      if (!dialog) return;
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowContract(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusable = (Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )) as HTMLElement[]).filter(element => element.getAttribute('aria-hidden') !== 'true');
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const focusIsOutside = !(document.activeElement instanceof Node) || !dialog.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || focusIsOutside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || focusIsOutside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [showContract]);
+
   const handleConfirmLog = async (logId: string) => {
     try {
       const { error } = await supabase.from('class_logs').update({ student_confirmed: true }).eq('id', logId);
@@ -136,6 +213,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const currentPartKey = profile?.current_book_part || `${currentModule}-1`;
   const currentPartIndex = parseInt(currentPartKey.split('-')[1]) || 1;
   const currentPartData = ((PEDAGOGICAL_BOOKS as any)[currentModule] || []).find((p: any) => p.part === currentPartIndex);
+  const teacherPhoneDigits = assignedTeacher?.phone?.replace(/\D/g, '') || '';
+  const teacherWhatsApp = teacherPhoneDigits.length === 10 || teacherPhoneDigits.length === 11
+    ? `55${teacherPhoneDigits}`
+    : teacherPhoneDigits.startsWith('55') && (teacherPhoneDigits.length === 12 || teacherPhoneDigits.length === 13)
+      ? teacherPhoneDigits
+      : null;
 
 
   return (
@@ -172,8 +255,34 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           </div>
 
           {/* Documentation Alerts (Fixed Logic) */}
-          {profile?.documentation_status === 'PENDING' ? (
-            <div className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-red-500/20 cursor-pointer shadow-[0_0_30px_-10px_rgba(239,68,68,0.3)]" onClick={handleContractClick}>
+          {profile?.documentation_status === 'REJECTED' ? (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="student-contract-dialog"
+              className="max-w-md bg-amber-400/15 backdrop-blur-xl border border-amber-300/40 p-5 rounded-3xl flex items-start gap-4 text-left transition-all hover:bg-amber-400/20 cursor-pointer shadow-[0_0_30px_-10px_rgba(251,191,36,0.35)]"
+              onClick={handleContractClick}
+            >
+              <div className="p-3 bg-amber-400 text-amber-950 rounded-2xl shadow-lg shrink-0">
+                <AlertCircle size={24} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase text-amber-300 tracking-wider">Documentação devolvida</p>
+                <p className="text-sm font-bold text-white tracking-tight">Revise e corrija seu contrato</p>
+                <p className="mt-1 text-xs font-medium leading-relaxed text-amber-100 line-clamp-2">
+                  {profile.rejection_reason || 'A escola solicitou uma correção. Abra o contrato para revisar as informações.'}
+                </p>
+              </div>
+              <ChevronRight size={18} className="ml-auto mt-3 shrink-0 text-amber-200" />
+            </button>
+          ) : profile?.documentation_status === 'PENDING' ? (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="student-contract-dialog"
+              className="bg-red-500/10 backdrop-blur-xl border border-red-500/20 p-5 rounded-3xl flex items-center gap-4 text-left transition-all hover:bg-red-500/20 cursor-pointer shadow-[0_0_30px_-10px_rgba(239,68,68,0.3)]"
+              onClick={handleContractClick}
+            >
               <div className="p-3 bg-red-500 text-white rounded-2xl shadow-lg">
                 {downloadingContract ? <RefreshCw size={24} className="animate-spin" /> : <FileText size={24} />}
               </div>
@@ -182,9 +291,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
                 <p className="text-sm font-bold text-white tracking-tight">{downloadingContract ? 'Gerando PDF...' : 'Assinar Contrato'}</p>
               </div>
               <ChevronRight size={18} className="ml-2 text-red-300" />
-            </div>
+            </button>
           ) : (
-            <div className="bg-brand-surface/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 transition-all hover:bg-brand-surface/20 cursor-pointer" onClick={handleContractClick}>
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="student-contract-dialog"
+              className="bg-brand-surface/10 backdrop-blur-xl border border-white/20 p-5 rounded-3xl flex items-center gap-4 text-left transition-all hover:bg-brand-surface/20 cursor-pointer"
+              onClick={handleContractClick}
+            >
               <div className="p-3 bg-brand-surface/20 text-white rounded-2xl shadow-lg">
                 {downloadingContract ? <RefreshCw size={24} className="animate-spin" /> : <FileText size={24} />}
               </div>
@@ -193,7 +308,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
                 <p className="text-sm font-bold text-white tracking-tight">{downloadingContract ? 'Gerando PDF...' : 'Meu Contrato'}</p>
               </div>
               <ChevronRight size={18} className="ml-2 text-slate-300" />
-            </div>
+            </button>
           )}
         </div>
       </div>
@@ -276,10 +391,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               </div>
             </div>
             <div className="flex flex-col items-stretch md:items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
-              <a href={nextClass.meet} target="_blank" className="w-full md:w-auto px-12 py-5 bg-brand-surface text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
-                <Video size={18} className="group-hover:scale-110 transition-transform" />
-                Entrar na Sala
-              </a>
+              {nextClass.meet ? (
+                <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto px-12 py-5 bg-brand-surface text-brand-accent rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-10px_rgba(0,0,0,0.3)] flex items-center justify-center gap-3 group">
+                  <Video size={18} className="group-hover:scale-110 transition-transform" />
+                  Entrar na Sala
+                </a>
+              ) : (
+                <p className="w-full rounded-2xl border border-white/30 bg-white/10 px-6 py-4 text-center text-sm font-bold text-white md:w-auto" role="status">
+                  Link ainda não cadastrado
+                </p>
+              )}
               <p className="text-[11px] font-black text-white/80 uppercase tracking-widest text-center">
                 {minutesToClass && minutesToClass > 0 ? `Começa em ${minutesToClass} minutos` : 'A sala já está aberta!'}
               </p>
@@ -303,9 +424,15 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
                   <p className="text-brand-muted font-medium mt-2 text-lg">com Professor(a) <span className="font-bold text-brand-text">{nextClass.teacher}</span></p>
                 </div>
                 <div className="h-16 w-px bg-brand-border hidden md:block"></div>
-                <a href={nextClass.meet} target="_blank" className="w-full md:w-auto md:min-w-[180px] bg-brand-accent text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-brand-accent-hover transition-colors flex items-center justify-center gap-3 shadow-lg">
-                  Ver Link <ChevronRight size={16} />
-                </a>
+                {nextClass.meet ? (
+                  <a href={nextClass.meet} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto md:min-w-[180px] bg-brand-accent text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-brand-accent-hover transition-colors flex items-center justify-center gap-3 shadow-lg">
+                    Ver Link <ChevronRight size={16} />
+                  </a>
+                ) : (
+                  <p className="w-full rounded-2xl bg-brand-surface-2 px-6 py-4 text-center text-xs font-bold uppercase tracking-wider text-brand-muted md:w-auto md:min-w-[180px]" role="status">
+                    Link pendente
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 py-8 text-center relative z-10">
@@ -330,8 +457,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               <h4 className="font-extrabold text-brand-text text-xl tracking-tight mb-2">Precisa de Ajuda?</h4>
               <p className="text-sm text-brand-muted font-medium">Converse direto com o suporte pedagógico no WhatsApp.</p>
             </div>
-            {assignedTeacher && (
-              <a href={`https://wa.me/${assignedTeacher.phone}`} target="_blank" className="w-full relative z-10 py-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 rounded-2xl text-[11px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-2">
+            {teacherWhatsApp && (
+              <a href={`https://wa.me/${teacherWhatsApp}`} target="_blank" rel="noopener noreferrer" className="w-full relative z-10 py-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 rounded-2xl text-[11px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-2">
                 <MessageSquareText size={16} /> Falar no WhatsApp
               </a>
             )}
@@ -345,24 +472,35 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       {/* 4. CONTENT & HISTORY */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center gap-4 mb-6">
             <h3 className="font-bold text-brand-text text-sm uppercase tracking-widest">Histórico Recente</h3>
-            <button className="text-xs font-bold text-brand-muted hover:text-brand-accent transition-colors">Ver tudo</button>
+            {recentLogs.length > 3 && (
+              <button
+                type="button"
+                onClick={() => setShowAllHistory(value => !value)}
+                aria-expanded={showAllHistory}
+                aria-controls="student-recent-history"
+                className="shrink-0 text-xs font-bold text-brand-muted hover:text-brand-accent transition-colors inline-flex items-center gap-1"
+              >
+                {showAllHistory ? 'Ver menos' : 'Ver tudo'}
+                <ChevronRight size={14} className={`transition-transform ${showAllHistory ? '-rotate-90' : 'rotate-90'}`} />
+              </button>
+            )}
           </div>
-          <div className="space-y-4">
-            {recentLogs.slice(0, 3).map(log => (
-              <div key={log.id} className="flex items-center justify-between p-4 bg-brand-surface-2 rounded-2xl border border-brand-border hover:border-brand-accent/30 transition-colors">
-                <div className="flex items-center gap-4">
+          <div id="student-recent-history" className="space-y-4">
+            {(showAllHistory ? recentLogs : recentLogs.slice(0, 3)).map(log => (
+              <div key={log.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border hover:border-brand-accent/30 transition-colors">
+                <div className="flex items-center gap-4 min-w-0">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.presence === 'Presença' ? 'bg-emerald-400/10 text-emerald-500 border border-emerald-400/20' : 'bg-red-400/10 text-red-500 border border-red-400/20'}`}>
                     {log.presence === 'Presença' ? <CheckCircle size={16} /> : <X size={16} />}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-bold text-brand-text text-xs">{new Date(log.created_at).toLocaleDateString('pt-BR')}</p>
-                    <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider">{log.teacher?.full_name}</p>
+                    <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider truncate">{log.teacher?.full_name}</p>
                   </div>
                 </div>
                 {!log.student_confirmed && (
-                  <button onClick={() => handleConfirmLog(log.id)} className="px-4 py-2 bg-brand-accent text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-accent-hover transition-colors">Conferir</button>
+                  <button onClick={() => handleConfirmLog(log.id)} className="w-full sm:w-auto shrink-0 px-4 py-2.5 bg-brand-accent text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-accent-hover transition-colors">Conferir</button>
                 )}
               </div>
             ))}
@@ -400,23 +538,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
       {/* Trilhas e Atividades movidas para a aba "Praticar" no sidebar */}
 
-      {/* ContractView fora da tela para pré-popular contractDownloadFn antes do clique */}
-      {profile && (
-        <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1, pointerEvents: 'none' }} aria-hidden="true">
-          <ContractView
-            userId={user.id}
-            classFrequency={profile?.class_frequency ? parseInt(profile.class_frequency) : (nextClass ? 2 : 1)}
-            showDownloadButton={false}
-            onDownloadReady={(fn) => setContractDownloadFn(() => fn)}
-          />
-        </div>
-      )}
-
-      {showContract && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+      {showContract && profile && createPortal(
+        <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
           {/* Overlay clicável para fechar */}
-          <div className="absolute inset-0" onClick={() => setShowContract(false)} />
-          <div className="relative bg-brand-surface rounded-t-[2rem] sm:rounded-[2rem] w-full sm:max-w-4xl h-[94dvh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300">
+          <div aria-hidden="true" className="absolute inset-0" onClick={() => setShowContract(false)} />
+          <div id="student-contract-dialog" ref={contractDialogRef} role="dialog" aria-modal="true" aria-labelledby="student-contract-title" tabIndex={-1} className="relative flex h-dvh w-full flex-col bg-brand-surface shadow-2xl animate-in slide-in-from-bottom duration-300 sm:h-auto sm:max-h-[92dvh] sm:max-w-4xl sm:rounded-[2rem] sm:slide-in-from-bottom-0 sm:zoom-in-95">
             {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 sm:hidden shrink-0">
               <div className="w-10 h-1 bg-brand-border rounded-full" />
@@ -425,19 +551,25 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
             <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-border shrink-0 gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText size={16} className="text-tenant-primary shrink-0" />
-                <span className="font-black text-brand-text text-sm uppercase tracking-widest truncate">Seu Contrato</span>
+                <span id="student-contract-title" className="font-black text-brand-text text-sm uppercase tracking-widest truncate">Seu Contrato</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {contractDownloadFn && (
                   <button
-                    onClick={contractDownloadFn}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-sm"
+                    type="button"
+                    onClick={() => void handleContractDownload()}
+                    disabled={downloadingContract}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-sm disabled:cursor-wait disabled:opacity-70"
                   >
-                    <Download size={12} /> Baixar PDF
+                    {downloadingContract ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+                    {downloadingContract ? 'Preparando...' : 'Baixar PDF'}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setShowContract(false)}
+                  aria-label="Fechar contrato"
+                  data-dialog-initial-focus="true"
                   className="p-2 bg-brand-surface-2 dark:bg-slate-800 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   <X size={18} className="text-brand-muted" />
@@ -454,7 +586,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

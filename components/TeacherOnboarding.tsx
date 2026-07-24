@@ -182,8 +182,8 @@ const TeacherOnboarding: React.FC = () => {
     if (step === 'CONTRACT') {
         return (
             <div className="min-h-screen bg-gray-100 relative">
-                <div className="fixed bottom-0 left-0 w-full p-6 bg-brand-surface border-t border-gray-200 z-50 shadow-2xl">
-                    <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+                <div className="fixed bottom-0 left-0 z-50 max-h-[48dvh] w-full overflow-y-auto border-t border-gray-200 bg-brand-surface p-3 shadow-2xl sm:p-6">
+                    <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 md:gap-6">
                         <div className="flex-1 space-y-2">
                             <div className="flex items-center gap-3">
                                 <input 
@@ -197,21 +197,21 @@ const TeacherOnboarding: React.FC = () => {
                                     Li e aceito os termos do contrato de prestação de serviço docente.
                                 </label>
                             </div>
-                            <div className="flex items-center gap-2 text-[10px] text-brand-muted font-mono uppercase tracking-wider ml-8 bg-brand-surface-2 p-2 rounded-lg border border-brand-border">
+                            <div className="ml-0 flex flex-wrap items-center gap-2 rounded-lg border border-brand-border bg-brand-surface-2 p-2 text-[10px] font-mono uppercase tracking-wider text-brand-muted sm:ml-8">
                                 <span>🔒 Assinatura vinculada ao IP: <span className="text-blue-500 font-bold">{userIp || 'Detectando...'}</span></span>
                                 <span className="mx-2 opacity-30">|</span>
                                 <span>🕒 Timestamp: <span className="text-brand-muted font-bold">{new Date().toLocaleString('pt-BR')}</span></span>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-4 shrink-0">
-                            <button onClick={() => setStep('FORM')} className="text-brand-muted text-sm font-black uppercase tracking-widest hover:text-brand-muted transition-colors px-4">
+                        <div className="flex w-full flex-col-reverse items-stretch gap-2 shrink-0 sm:flex-row sm:items-center md:w-auto md:gap-4">
+                            <button onClick={() => setStep('FORM')} className="w-full px-4 py-3 text-sm font-black uppercase tracking-widest text-brand-muted transition-colors hover:text-brand-text sm:w-auto">
                                 Corrigir Dados
                             </button>
                             <button
                                 onClick={handleRegister}
                                 disabled={loading || !contractAccepted}
-                                className="bg-emerald-600 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/20 disabled:opacity-30 disabled:grayscale disabled:scale-95"
+                                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-700 disabled:scale-95 disabled:grayscale disabled:opacity-30 sm:w-auto sm:px-10"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20} /> Assinar e Concluir</>}
                             </button>
@@ -219,7 +219,7 @@ const TeacherOnboarding: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="pb-32" id="teacher-contract-print">
+                <div className="pb-[48dvh] sm:pb-48" id="teacher-contract-print">
                     <TeacherContractDocument
                         teacherName={name}
                         teacherRG={rg}
@@ -231,6 +231,8 @@ const TeacherOnboarding: React.FC = () => {
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                         acceptedAt={contractAccepted ? new Date().toISOString() : undefined}
                         userIp={userIp}
+                        displayMode="responsive"
+                        showPrintButton={false}
                     />
                 </div>
             </div>

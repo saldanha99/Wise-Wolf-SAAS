@@ -258,16 +258,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     </h2>
                     <p className="text-gray-500 dark:text-brand-muted text-sm">Administre os professores, contratos e atribuições.</p>
                 </div>
-                <div className="flex gap-3">
+                <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
                     <button
                         onClick={() => setIsInviteModalOpen(true)}
-                        className="bg-brand-surface text-tenant-primary border border-tenant-primary/20 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-tenant-primary/5 transition-all flex items-center gap-2"
+                        className="w-full md:w-auto bg-brand-surface text-tenant-primary border border-tenant-primary/20 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-tenant-primary/5 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                     >
                         <Link size={18} /> Convidar (Link)
                     </button>
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="bg-tenant-primary text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-lg shadow-tenant-primary/20 flex items-center gap-2"
+                        className="w-full md:w-auto bg-[#002366] bg-tenant-primary text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-lg shadow-tenant-primary/20 flex items-center justify-center gap-2 whitespace-nowrap"
                     >
                         <Plus size={18} /> Novo Professor
                     </button>
@@ -319,7 +319,106 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+                    {filteredTeachers.map(teacher => {
+                        const lc = effLifecycle(teacher);
+                        const statusClass = lc === 'offboarded'
+                            ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
+                            : lc === 'suspended'
+                                ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                : teacher.status === 'Férias'
+                                    ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20 dark:border-amber-900/30'
+                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30';
+                        const statusLabel = lc === 'offboarded' ? 'Desligado' : lc === 'suspended' ? 'Suspenso' : teacher.status;
+
+                        return (
+                            <article key={teacher.id} className="p-4 sm:p-5 space-y-4">
+                                <div className="flex items-start gap-3 min-w-0">
+                                    <img src={teacher.avatar} alt="" className="w-12 h-12 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-bold text-sm text-gray-800 dark:text-slate-200 truncate">{teacher.name}</p>
+                                        <p className="text-xs text-gray-400 dark:text-brand-muted truncate">{teacher.email}</p>
+                                    </div>
+                                    <span className={`shrink-0 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wide border whitespace-nowrap ${statusClass}`}>
+                                        {statusLabel}
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3 min-w-0">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Módulo</p>
+                                        <p className="font-bold text-gray-700 dark:text-slate-200 truncate">{teacher.module}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Alunos</p>
+                                        <p className="font-black text-gray-700 dark:text-slate-200">{teacher.studentsCount}</p>
+                                    </div>
+                                </div>
+
+                                {(teacher.specializations || []).length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(teacher.specializations || []).map(s => (
+                                            <span key={s} className="px-2 py-1 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full border border-amber-100 dark:border-amber-800">
+                                                {s}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Avaliação (TPI)</span>
+                                        <span className="text-xs font-black text-gray-700 dark:text-slate-300">{teacher.tpi}</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-gray-100 dark:bg-brand-surface-2 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full rounded-full ${teacher.tpi >= 90 ? 'bg-emerald-500' : teacher.tpi >= 70 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                            style={{ width: `${teacher.tpi}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')} className="px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                        <BookOpen size={15} /> Agenda
+                                    </button>
+                                    <button onClick={() => handleEdit(teacher)} className="px-3 py-2.5 rounded-xl bg-gray-100 dark:bg-brand-surface-2 text-gray-700 dark:text-slate-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                        <Briefcase size={15} /> Editar
+                                    </button>
+                                    <button onClick={() => setViewingFinancialsId(teacher.id)} className="px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                        <DollarSign size={15} /> Financeiro
+                                    </button>
+                                    <button onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })} className="px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                        <CalendarOff size={15} /> Ausência
+                                    </button>
+                                    {lc === 'active' ? (
+                                        <>
+                                            <button onClick={() => setTeacherLifecycle(teacher, 'suspended')} className="px-3 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900/40 text-amber-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                                <UserX size={15} /> Suspender
+                                            </button>
+                                            <button onClick={() => setTeacherLifecycle(teacher, 'offboarded')} className="px-3 py-2.5 rounded-xl border border-red-200 dark:border-red-900/40 text-red-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                                <AlertTriangle size={15} /> Desligar
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button onClick={() => setTeacherLifecycle(teacher, 'active')} className="col-span-2 px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40 text-emerald-600 text-[10px] font-black uppercase flex items-center justify-center gap-2">
+                                            <UserCheck size={15} /> Reativar professor
+                                        </button>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
+                    {filteredTeachers.length === 0 && (
+                        <div className="px-6 py-12 text-center text-gray-400 dark:text-brand-muted">
+                            <Users size={40} className="mb-3 mx-auto opacity-50" />
+                            <p className="text-sm font-bold">Nenhum professor encontrado</p>
+                            <p className="text-xs">Tente buscar por outro termo ou adicione um novo.</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left min-w-[600px]">
                         <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] uppercase font-black text-gray-500 dark:text-brand-muted">
                             <tr>
@@ -413,8 +512,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 onClick={() => handleEdit(teacher)}
                                                 className="p-2 text-gray-400 hover:text-tenant-primary hover:bg-gray-100 dark:hover:bg-brand-surface-2 rounded-lg transition-all"
                                                 title="Editar Professor"
+                                                aria-label={`Editar ${teacher.name}`}
                                             >
-                                                <Briefcase size={18} />
                                                 <Briefcase size={18} />
                                             </button>
                                             <button

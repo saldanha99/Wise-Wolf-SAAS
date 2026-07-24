@@ -586,11 +586,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
+    <div className="flex flex-col xl:flex-row gap-6 h-auto xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
 
       {/* Sidebar: Teacher Filter (Admins Only) */}
       {showSidebar && (
-        <div className="w-full xl:w-72 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
+        <div className="w-full xl:w-72 max-h-[22rem] xl:max-h-none min-h-0 bg-brand-surface border border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
           <div className="p-5 border-b border-brand-border">
             <h3 className="font-black text-brand-text dark:text-slate-100 text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2">
               <Users size={14} className="text-tenant-primary" /> Filtrar por Professor
@@ -598,11 +598,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             {/* Optional Search inside sidebar could go here */}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 custom-scrollbar">
             <button
               onClick={() => setSelectedTeacherId('ALL')}
               className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === 'ALL'
-                ? 'bg-brand-surface-2 border-brand-border text-white shadow-lg'
+                ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg'
                 : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-brand-border'
                 }`}
             >
@@ -620,7 +620,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                 key={teacher.id}
                 onClick={() => setSelectedTeacherId(teacher.id)}
                 className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacherId === teacher.id
-                  ? 'bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
+                  ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
                   : 'bg-brand-surface border-slate-50 dark:border-brand-border hover:border-tenant-primary/30'
                   }`}
               >
@@ -638,10 +638,10 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col gap-6 overflow-hidden">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-6 overflow-visible xl:overflow-hidden">
         {/* Header Search */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-brand-surface p-4 rounded-[2rem] border border-brand-border shrink-0">
-          <div className="flex items-center gap-4 w-full">
+        <div className="flex flex-col md:flex-row md:flex-wrap xl:flex-nowrap justify-between items-stretch md:items-center gap-3 md:gap-4 bg-brand-surface p-4 rounded-[2rem] border border-brand-border shrink-0">
+          <div className="flex items-center gap-4 w-full md:min-w-[18rem] md:flex-1">
             <div className="p-3 bg-brand-surface-2 rounded-full">
               <Search size={20} className="text-brand-muted" />
             </div>
@@ -652,26 +652,26 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2 px-4 py-1 bg-brand-surface-2 rounded-full shrink-0">
+          <div className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-surface-2 rounded-full shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-[10px] font-black uppercase text-brand-muted tracking-widest">{filteredStudents.length} Alunos</span>
           </div>
 
           {/* Filtros avançados */}
           <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)}
-            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
             <option value="ALL">Todos os níveis</option>
             {availableLevels.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
           <select value={financialFilter} onChange={e => setFinancialFilter(e.target.value)}
-            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
             <option value="ALL">Situação: todas</option>
             <option value="RISK">⚠ Em risco</option>
             <option value="OVERDUE">Inadimplentes</option>
             <option value="ORPHAN">Sem matrícula (testes)</option>
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
+            className="w-full sm:w-auto text-xs font-bold bg-brand-surface-2 text-brand-text rounded-full px-3 py-2 outline-none border border-brand-border shrink-0">
             <option value="ALL">Status: todos</option>
             <option value="ACTIVE">Ativos</option>
             <option value="INACTIVE">Inativos</option>
@@ -680,15 +680,17 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           {/* ADD BUTTON */}
           <button
             onClick={() => setEditingStudent({} as any)} // Empty object signals creation
-            className="p-3 bg-tenant-primary text-white rounded-full hover:scale-110 transition-transform shadow-lg shadow-tenant-primary/20"
+            className="w-full md:w-auto p-3 bg-[#002366] bg-tenant-primary text-white rounded-xl md:rounded-full hover:scale-[1.02] md:hover:scale-110 transition-transform shadow-lg shadow-tenant-primary/20 flex items-center justify-center gap-2 shrink-0"
             title="Adicionar Novo Aluno"
+            aria-label="Adicionar novo aluno"
           >
             <UserPlus size={20} />
+            <span className="md:hidden text-xs font-black uppercase tracking-widest">Adicionar aluno</span>
           </button>
         </div>
 
         {/* Grid */}
-        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-visible xl:overflow-y-auto pr-0 xl:pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
             {loading ? (
               <div className="col-span-full py-20 flex flex-col items-center justify-center text-brand-muted">

@@ -13,10 +13,10 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     const [profile, setProfile] = useState<any>(null);
     const [resolvedId, setResolvedId] = useState<string | null>(propId || null);
     const [downloading, setDownloading] = useState(false);
-    const contractRef = useRef<HTMLDivElement>(null);
+    const contractPdfRef = useRef<HTMLDivElement>(null);
 
     const handleDownloadPdf = async () => {
-        const el = contractRef.current;
+        const el = contractPdfRef.current;
         if (!el) return;
         setDownloading(true);
         try {
@@ -67,7 +67,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
         };
 
         fetchProfile();
-    }, []);
+    }, [propId]);
 
     if (loading) {
         return (
@@ -92,7 +92,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     }
 
     return (
-        <div className="min-h-screen bg-gray-100 py-10">
+        <div className="min-h-screen bg-gray-100 py-4 sm:py-10">
             {/* Barra de ação: header de segurança + botão de download */}
             <div className="max-w-[210mm] mx-auto mb-4 px-4 flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 text-brand-muted">
@@ -111,8 +111,8 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                 </button>
             </div>
 
-            {/* Documento do contrato — passamos o ref para captura pelo html2pdf */}
-            <div ref={contractRef}>
+            {/* Leitura fluida na tela; o clone A4 abaixo é exclusivo do PDF. */}
+            <div className="mx-auto w-full max-w-[210mm] px-3 sm:px-4">
                 <TeacherContractDocument
                     teacherName={profile.full_name}
                     teacherRG={profile.rg}
@@ -123,6 +123,27 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}
+                    displayMode="responsive"
+                    showPrintButton={false}
+                />
+            </div>
+            <div
+                aria-hidden="true"
+                style={{ position: 'fixed', left: '-12000px', top: 0, width: '210mm', pointerEvents: 'none' }}
+            >
+                <TeacherContractDocument
+                    teacherName={profile.full_name}
+                    teacherRG={profile.rg}
+                    teacherCPF={profile.cpf}
+                    teacherAddress={profile.address}
+                    teacherBirthDate={profile.birth_date}
+                    hourlyRate={profile.hourly_rate}
+                    acceptedAt={profile.accepted_at}
+                    userIp={profile.user_ip}
+                    subscriptionId={resolvedId || undefined}
+                    displayMode="a4"
+                    showPrintButton={false}
+                    innerRef={contractPdfRef}
                 />
             </div>
         </div>

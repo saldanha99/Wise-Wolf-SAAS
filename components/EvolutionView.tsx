@@ -19,7 +19,7 @@ const EvolutionView: React.FC<EvolutionViewProps> = ({ user }) => {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0">
         {/* Radar Chart Card (Refactored) */}
         <CompetencyRadarChart
           currentData={[
@@ -39,14 +39,14 @@ const EvolutionView: React.FC<EvolutionViewProps> = ({ user }) => {
         />
 
         {/* AI Analysis Card */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 min-w-0">
           <AIReportCard studentId={user?.id} />
 
-          <div className="bg-brand-surface p-8 rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-5">
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl shadow-sm">
+          <div className="bg-brand-surface p-5 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-gray-100 dark:border-brand-border shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 min-w-0">
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl shadow-sm shrink-0">
               <MessageSquareText size={24} />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-[10px] text-gray-400 dark:text-brand-muted font-black uppercase tracking-widest">Feedback Recente do Prof.</p>
               <p className="text-sm font-bold text-gray-800 dark:text-slate-200 mt-0.5">"Julia está muito mais confiante para falar sobre temas técnicos em reuniões!"</p>
             </div>

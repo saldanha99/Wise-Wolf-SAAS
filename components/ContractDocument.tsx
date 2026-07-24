@@ -77,6 +77,8 @@ interface ContractDocumentProps {
     showPrintButton?: boolean;
     /** Ref externo para captura do PDF (html2pdf.js) — aponta para a folha A4 */
     innerRef?: React.RefObject<HTMLDivElement>;
+    /** "responsive" is for reading on screen; "a4" preserves the PDF layout. */
+    displayMode?: 'responsive' | 'a4';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +124,7 @@ export function ContractDocument({
     school,
     showPrintButton = true,
     innerRef,
+    displayMode = 'a4',
 }: ContractDocumentProps) {
     const componentRef = useRef<HTMLDivElement>(null);
     // Usa innerRef externo se fornecido, senão usa o interno
@@ -148,9 +151,10 @@ export function ContractDocument({
     });
 
     const isUsingDefaultTemplate = !school || Object.keys(school).length === 0;
+    const isResponsive = displayMode === 'responsive';
 
     return (
-        <div className="flex flex-col items-center gap-4 p-4 bg-gray-100 contract-doc-outer">
+        <div className={`contract-doc-outer flex w-full flex-col items-center gap-4 ${isResponsive ? 'bg-transparent p-0' : 'bg-gray-100 p-4'}`}>
 
             {/* Barra de ações — oculta na impressão */}
             {showPrintButton && (
@@ -173,7 +177,9 @@ export function ContractDocument({
             {/* ─── Folha A4 ─── */}
             <div
                 ref={a4Ref}
-                className="w-[210mm] min-h-[297mm] bg-white p-[22mm] shadow-2xl text-gray-800 text-[11px] leading-relaxed"
+                className={isResponsive
+                    ? 'contract-doc-responsive w-full max-w-[210mm] overflow-hidden rounded-2xl bg-white p-4 text-[13px] leading-relaxed text-gray-800 shadow-sm sm:p-8 lg:p-[18mm] lg:text-[11px]'
+                    : 'w-[210mm] min-h-[297mm] bg-white p-[22mm] shadow-2xl text-gray-800 text-[11px] leading-relaxed'}
                 style={{ fontFamily: 'Arial, sans-serif' }}
             >
                 <style>{`
@@ -184,10 +190,46 @@ export function ContractDocument({
                         .contract-no-print { display: none !important; }
                         @page { size: A4; margin: 0mm; }
                     }
+                    @media (max-width: 639px) {
+                        .contract-doc-responsive p {
+                            font-size: 0.8125rem !important;
+                            line-height: 1.5 !important;
+                            overflow-wrap: anywhere;
+                        }
+                        .contract-doc-responsive h2 {
+                            font-size: 1rem !important;
+                            line-height: 1.35 !important;
+                        }
+                        .contract-doc-responsive h3 {
+                            font-size: 0.75rem !important;
+                            line-height: 1.4 !important;
+                        }
+                        .contract-doc-responsive .contract-document-header {
+                            flex-direction: column;
+                            gap: 0.75rem;
+                        }
+                        .contract-doc-responsive .contract-document-header > :last-child {
+                            text-align: left;
+                        }
+                        .contract-doc-responsive .contract-summary-grid {
+                            grid-template-columns: repeat(2, minmax(0, 1fr));
+                            gap: 0.75rem;
+                        }
+                        .contract-doc-responsive .contract-signatures {
+                            flex-direction: column;
+                            gap: 2.5rem;
+                        }
+                        .contract-doc-responsive .contract-authentication {
+                            align-items: flex-start;
+                        }
+                        .contract-doc-responsive .contract-authentication > :last-child {
+                            min-width: 0;
+                        }
+                    }
                 `}</style>
 
                 {/* ── CABEÇALHO ── */}
-                <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-[#002366]">
+                <div className="contract-document-header flex justify-between items-start mb-6 pb-4 border-b-2 border-[#002366]">
                     <div>
                         <div className="text-xl font-black text-[#002366] tracking-tighter leading-tight">
                             {s.name.split(' ').map((word, i) =>
@@ -250,7 +292,7 @@ export function ContractDocument({
                 {/* ── RESUMO DO PLANO ── */}
                 <div className="mb-4 p-3 bg-[#002366]/5 border border-[#002366]/20 rounded-md">
                     <p className="font-bold text-[#002366] text-[10px] uppercase tracking-wider mb-2">II. Resumo do Plano Contratado</p>
-                    <div className="grid grid-cols-3 gap-2 text-[10px]">
+                    <div className="contract-summary-grid grid grid-cols-3 gap-2 text-[10px]">
                         <div>
                             <p className="text-gray-500 text-[9px] uppercase">Plano</p>
                             <p className="font-bold">{planName}</p>
@@ -403,7 +445,7 @@ export function ContractDocument({
                         {s.city} — {s.state}, {today}
                     </p>
 
-                    <div className="flex justify-between gap-12 mt-8 min-h-[110px]">
+                    <div className="contract-signatures flex justify-between gap-12 mt-8 min-h-[110px]">
 
                         {/* Assinatura da escola */}
                         <div className="flex-1 flex flex-col items-center justify-end">
@@ -460,7 +502,7 @@ export function ContractDocument({
                 {/* ── SELO DE AUTENTICAÇÃO DIGITAL ── */}
                 {acceptedAt && (
                     <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded-xl relative overflow-hidden">
-                        <div className="flex items-center gap-4 relative z-10">
+                        <div className="contract-authentication flex items-center gap-4 relative z-10">
                             <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full flex-shrink-0">
                                 <ShieldCheck size={36} />
                             </div>

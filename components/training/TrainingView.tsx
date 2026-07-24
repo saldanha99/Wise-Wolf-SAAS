@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
-import { Play, FileText, CheckCircle, Loader2, GraduationCap, Award, ExternalLink, Lock } from 'lucide-react';
+import { Play, FileText, CheckCircle, Loader2, GraduationCap, Award, ExternalLink, AlertCircle } from 'lucide-react';
 
 interface Module {
     id: string;
@@ -31,24 +32,97 @@ const TrainingView: React.FC<Props> = ({ user }) => {
     const [active, setActive] = useState<Module | null>(null);
     const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
     const [marking, setMarking] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => { load(); }, [user.id]);
 
+    useEffect(() => {
+        if (!active) return;
+
+        const previousOverflow = document.body.style.overflow;
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        document.body.style.overflow = 'hidden';
+
+        const focusFrame = window.requestAnimationFrame(() => {
+            const dialog = dialogRef.current;
+            const initialFocus = dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]');
+            (initialFocus || dialog)?.focus();
+        });
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                setActive(null);
+                return;
+            }
+
+            if (event.key !== 'Tab') return;
+            const focusable = (Array.from(dialog.querySelectorAll<HTMLElement>(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )) as HTMLElement[]).filter(element => element.getAttribute('aria-hidden') !== 'true');
+
+            if (focusable.length === 0) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const focusIsOutside = !(document.activeElement instanceof Node) || !dialog.contains(document.activeElement);
+            if (event.shiftKey && (document.activeElement === first || focusIsOutside)) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || focusIsOutside)) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.cancelAnimationFrame(focusFrame);
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousOverflow;
+            previousFocus?.focus();
+        };
+    }, [active?.id]);
+
     const load = async () => {
         setLoading(true);
-        const { data, error } = await supabase.rpc('my_training_modules');
-        if (error) console.error('Training load error:', error);
-        setModules((data || []) as Module[]);
-        setLoading(false);
+        setLoadError(null);
+        try {
+            const { data, error } = await supabase.rpc('my_training_modules');
+            if (error) throw error;
+            setModules((data || []) as Module[]);
+        } catch (error) {
+            console.error('Training load error:', error);
+            setModules([]);
+            setLoadError('Não foi possível carregar os treinamentos. Tente novamente.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const markComplete = async (moduleId: string) => {
         setMarking(moduleId);
+        setActionError(null);
         try {
-            await supabase.rpc('mark_training_complete', { p_module_id: moduleId });
+            const { error } = await supabase.rpc('mark_training_complete', { p_module_id: moduleId });
+            if (error) throw error;
             await load();
             if (active?.id === moduleId) setActive(null);
-        } finally { setMarking(null); }
+        } catch (error) {
+            console.error('Training completion error:', error);
+            setActionError('Não foi possível concluir este módulo. Verifique sua conexão e tente novamente.');
+        } finally {
+            setMarking(null);
+        }
     };
 
     const categories = Array.from(new Set(modules.map(m => m.category).filter(Boolean)));
@@ -57,7 +131,26 @@ const TrainingView: React.FC<Props> = ({ user }) => {
     const completedCount = modules.filter(m => m.progress_status === 'COMPLETED').length;
     const mandatoryPending = modules.filter(m => m.is_mandatory && m.progress_status !== 'COMPLETED').length;
 
-    if (loading) return <div className="p-12 flex items-center justify-center"><Loader2 className="animate-spin text-violet-500" size={24} /></div>;
+    if (loading) return (
+        <div className="p-12 flex items-center justify-center" role="status" aria-live="polite">
+            <Loader2 className="animate-spin text-violet-500" size={24} />
+            <span className="sr-only">Carregando treinamentos</span>
+        </div>
+    );
+
+    if (loadError) return (
+        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-900/50 dark:bg-rose-950/30" role="alert">
+            <AlertCircle className="mx-auto mb-3 text-rose-500" size={28} />
+            <p className="text-sm font-bold text-rose-800 dark:text-rose-200">{loadError}</p>
+            <button
+                type="button"
+                onClick={load}
+                className="mt-4 rounded-xl bg-rose-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-rose-700"
+            >
+                Tentar novamente
+            </button>
+        </div>
+    );
 
     return (
         <div className="space-y-4">
@@ -97,7 +190,7 @@ const TrainingView: React.FC<Props> = ({ user }) => {
                             {filtered.map(m => {
                                 const done = m.progress_status === 'COMPLETED';
                                 return (
-                                    <button key={m.id} onClick={() => setActive(m)}
+                                    <button key={m.id} type="button" onClick={() => { setActionError(null); setActive(m); }}
                                         className={`text-left rounded-2xl border p-4 hover:shadow-lg transition-all ${done ? 'border-emerald-200 bg-emerald-50/50 dark:bg-emerald-900/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
                                         {m.thumbnail_url && (
                                             <div className="aspect-video rounded-xl bg-slate-100 dark:bg-slate-800 mb-3 overflow-hidden">
@@ -122,15 +215,30 @@ const TrainingView: React.FC<Props> = ({ user }) => {
             </div>
 
             {/* Player modal */}
-            {active && (
+            {active && createPortal(
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-4xl w-full max-h-[95vh] overflow-y-auto shadow-2xl">
+                    <div
+                        ref={dialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="training-dialog-title"
+                        tabIndex={-1}
+                        className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-4xl w-full max-h-[95dvh] overflow-y-auto shadow-2xl"
+                    >
                         <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 z-10">
                             <div className="flex-1 min-w-0">
                                 <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{active.category}</p>
-                                <h3 className="font-black text-slate-800 dark:text-white">{active.title}</h3>
+                                <h3 id="training-dialog-title" className="font-black text-slate-800 dark:text-white">{active.title}</h3>
                             </div>
-                            <button onClick={() => setActive(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">✕</button>
+                            <button
+                                type="button"
+                                onClick={() => setActive(null)}
+                                aria-label="Fechar treinamento"
+                                data-dialog-initial-focus="true"
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                            >
+                                ✕
+                            </button>
                         </div>
 
                         <div className="p-6 space-y-4">
@@ -141,13 +249,14 @@ const TrainingView: React.FC<Props> = ({ user }) => {
                                 <div className="aspect-video rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800">
                                     {active.video_url.includes('youtube') || active.video_url.includes('youtu.be') ? (
                                         <iframe
+                                            title={`Vídeo do treinamento ${active.title}`}
                                             src={active.video_url
                                                 .replace('youtu.be/', 'youtube.com/embed/')
                                                 .replace('watch?v=', 'embed/')}
                                             className="w-full h-full" allowFullScreen
                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" />
                                     ) : active.video_url.includes('vimeo') ? (
-                                        <iframe src={active.video_url.replace('vimeo.com/', 'player.vimeo.com/video/')}
+                                        <iframe title={`Vídeo do treinamento ${active.title}`} src={active.video_url.replace('vimeo.com/', 'player.vimeo.com/video/')}
                                             className="w-full h-full" allowFullScreen />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">
@@ -181,15 +290,23 @@ const TrainingView: React.FC<Props> = ({ user }) => {
                                     </div>
                                 </div>
                             ) : (
-                                <button onClick={() => markComplete(active.id)} disabled={marking === active.id}
-                                    className="w-full py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2">
-                                    {marking === active.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                                    Marcar como concluído
-                                </button>
+                                <>
+                                    {actionError && (
+                                        <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200" role="alert">
+                                            {actionError}
+                                        </p>
+                                    )}
+                                    <button type="button" onClick={() => markComplete(active.id)} disabled={marking === active.id}
+                                        className="w-full py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2">
+                                        {marking === active.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                        Marcar como concluído
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

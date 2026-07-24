@@ -1,4 +1,5 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
@@ -6,6 +7,7 @@ import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
+import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -19,7 +21,6 @@ const PendingLessons = lazy(() => import('./components/PendingLessons'));
 const TeacherAvailabilityEditor = lazy(() => import('./components/TeacherAvailabilityEditor'));
 const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleExplorer'));
 const SchoolAdminDashboard = lazy(() => import('./components/SchoolAdminDashboard'));
-const InvoiceManager = lazy(() => import('./components/InvoiceManager'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
 const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
 const ClassSkillsDashboard = lazy(() => import('./components/ClassSkillsDashboard'));
@@ -100,6 +101,115 @@ import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import { StudentProvider } from './components/contexts/StudentContext';
 
+interface NavigationSearchItem {
+  tab: string;
+  label: string;
+  group: string;
+  keywords?: string;
+}
+
+const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
+  [UserRole.SUPER_ADMIN]: [
+    { tab: 'dashboard', label: 'Visão Global', group: 'Administração' },
+    { tab: 'tenants', label: 'Tenants', group: 'Administração' },
+    { tab: 'billing', label: 'Faturamento', group: 'Administração' },
+    { tab: 'settings', label: 'Infraestrutura', group: 'Administração' },
+    { tab: 'automation', label: 'Smart', group: 'Administração' },
+  ],
+  [UserRole.SCHOOL_ADMIN]: [
+    { tab: 'dashboard', label: 'Início', group: 'Visão geral', keywords: 'dashboard painel' },
+    { tab: 'wolfie-lab', label: 'Wolfie Lab', group: 'Visão geral' },
+    { tab: 'students', label: 'Alunos', group: 'Pessoas' },
+    { tab: 'student-insights', label: 'Painel de Alunos', group: 'Pessoas' },
+    { tab: 'teachers', label: 'Professores', group: 'Pessoas' },
+    { tab: 'teacher-insights', label: 'Gestão de Professores', group: 'Pessoas' },
+    { tab: 'approvals', label: 'Acolhimento (Docs)', group: 'Pessoas', keywords: 'documentos contratos alunos' },
+    { tab: 'recruiting', label: 'Recrutamento', group: 'Pessoas' },
+    { tab: 'hr', label: 'Recursos Humanos', group: 'Pessoas', keywords: 'rh' },
+    { tab: 'schedule_explorer', label: 'Mapa de Aulas', group: 'Aulas', keywords: 'agenda horários' },
+    { tab: 'attendance-disputes', label: 'Verificar Presença', group: 'Aulas' },
+    { tab: 'trials', label: 'Agendar Experimental', group: 'Aulas' },
+    { tab: 'trial-settlement', label: 'Pagar Experimental/Treino', group: 'Aulas' },
+    { tab: 'oral-tests', label: 'Testes Orais', group: 'Aulas' },
+    { tab: 'pedagogical', label: 'Biblioteca', group: 'Pedagógico' },
+    { tab: 'material-approvals', label: 'Aprovar Materiais', group: 'Pedagógico' },
+    { tab: 'learning_paths_builder', label: 'Trilhas', group: 'Pedagógico' },
+    { tab: 'class_skills', label: 'Skills da Turma', group: 'Pedagógico' },
+    { tab: 'training', label: 'Treinamentos', group: 'Pedagógico' },
+    { tab: 'student-payments', label: 'Mensalidades dos Alunos', group: 'Financeiro' },
+    { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
+    { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
+    { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
+    { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
+    { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
+    { tab: 'referral-admin', label: 'Indicações', group: 'Crescimento' },
+    { tab: 'vendors-mgmt', label: 'Vendedores', group: 'Crescimento' },
+    { tab: 'contracts', label: 'Contratos', group: 'Configurações' },
+    { tab: 'settings_school', label: 'Branding', group: 'Configurações' },
+    { tab: 'automation', label: 'WhatsApp (Conexão)', group: 'Configurações' },
+    { tab: 'automations', label: 'Disparos WhatsApp', group: 'Configurações' },
+    { tab: 'tenant_advanced', label: 'Configuração Avançada', group: 'Configurações' },
+    { tab: 'admin_workflows', label: 'Workflows', group: 'Configurações' },
+    { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
+  ],
+  [UserRole.TEACHER]: [
+    { tab: 'dashboard', label: 'Dashboard', group: 'Professor' },
+    { tab: 'lessons', label: 'Lançar Aula', group: 'Professor' },
+    { tab: 'pending', label: 'Pendentes', group: 'Professor' },
+    { tab: 'meeting_links', label: 'Links de Aula', group: 'Professor' },
+    { tab: 'students', label: 'Alunos', group: 'Professor' },
+    { tab: 'lesson-planner-ai', label: 'Planner IA', group: 'Professor' },
+    { tab: 'wolfie-lab', label: 'Wolfie Lab', group: 'Professor' },
+    { tab: 'class_skills', label: 'Skills da Turma', group: 'Professor' },
+    { tab: 'msg_settings', label: 'Mensagens', group: 'Professor' },
+    { tab: 'teacher_workflows', label: 'Saída / Ausência', group: 'Professor' },
+    { tab: 'schedule', label: 'Agenda', group: 'Professor' },
+    { tab: 'invoices', label: 'Notas Fiscais', group: 'Professor' },
+    { tab: 'teacher-financials', label: 'Financeiro', group: 'Professor' },
+    { tab: 'reschedules', label: 'Reposições', group: 'Professor' },
+    { tab: 'pedagogical', label: 'Pedagógico', group: 'Professor' },
+    { tab: 'training', label: 'Treinamentos', group: 'Professor' },
+    { tab: 'oral-tests', label: 'Testes Orais', group: 'Professor' },
+    { tab: 'automation', label: 'Smart', group: 'Professor' },
+    { tab: 'referral', label: 'Indicações', group: 'Professor' },
+    { tab: 'contract_teacher', label: 'Meu Contrato', group: 'Professor' },
+    { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
+  ],
+  [UserRole.STUDENT]: [
+    { tab: 'dashboard', label: 'Meu Portal', group: 'Aluno', keywords: 'início dashboard' },
+    { tab: 'ai-tutor', label: 'Wolfie Tutor', group: 'Aluno' },
+    { tab: 'practice', label: 'Praticar', group: 'Aluno' },
+    { tab: 'schedule', label: 'Aulas', group: 'Aluno' },
+    { tab: 'meeting_links', label: 'Links', group: 'Aluno' },
+    { tab: 'materials', label: 'Materiais', group: 'Aluno' },
+    { tab: 'financial', label: 'Financeiro', group: 'Aluno' },
+    { tab: 'evolution', label: 'Evolução', group: 'Aluno' },
+    { tab: 'training', label: 'Treinamentos', group: 'Aluno' },
+    { tab: 'referral', label: 'Indicações', group: 'Aluno' },
+    { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
+  ],
+  [UserRole.SALESPERSON]: [
+    { tab: 'vendor_dashboard', label: 'Dashboard', group: 'Vendas' },
+    { tab: 'vendor_schedule', label: 'Agenda de Professores', group: 'Vendas' },
+    { tab: 'vendor_trial', label: 'Link Experimental', group: 'Vendas' },
+    { tab: 'vendor_enrollment', label: 'Gerar Matrícula', group: 'Vendas' },
+    { tab: 'vendor_commissions', label: 'Minhas Comissões', group: 'Vendas' },
+    { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
+  ],
+};
+
+const NOTIFICATION_ITEMS: { key: string; label: string; tab: string }[] = [
+  { key: 'acolhimento', label: 'Documentos de aluno para aprovar', tab: 'approvals' },
+  { key: 'presenca', label: 'Conflitos de presença para resolver', tab: 'attendance-disputes' },
+  { key: 'materiais', label: 'Materiais para aprovar', tab: 'material-approvals' },
+  { key: 'trials', label: 'Experimentais/treinos para liquidar', tab: 'trial-settlement' },
+  { key: 'fechamentos', label: 'Fechamentos de professor pendentes', tab: 'payments' },
+  { key: 'pagamentos_retidos', label: 'Pagamentos retidos por conflito', tab: 'attendance-disputes' },
+];
+
+const normalizeSearchText = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
@@ -107,6 +217,15 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
   const [notifOpen, setNotifOpen] = useState(false); // Dropdown de notificações (pendências do diretor)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  const [notifPosition, setNotifPosition] = useState({ top: 72, left: 12, width: 320 });
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const notifButtonRef = useRef<HTMLButtonElement>(null);
+  const notifPanelRef = useRef<HTMLDivElement>(null);
 
   const [explorerInitialState, setExplorerInitialState] = useState<{ teacherName?: string, autoAllocate?: boolean } | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -127,6 +246,119 @@ const App: React.FC = () => {
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+
+  const navigationSearchItems = user ? ROLE_NAVIGATION_ITEMS[user.role] : [];
+  const filteredSearchItems = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(searchQuery.trim());
+    const matches = normalizedQuery
+      ? navigationSearchItems.filter((item) =>
+        normalizeSearchText(`${item.label} ${item.group} ${item.keywords || ''}`).includes(normalizedQuery)
+      )
+      : navigationSearchItems;
+
+    return matches.slice(0, 10);
+  }, [navigationSearchItems, searchQuery]);
+
+  const canSeeDirectorNotifications = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+  const activeNotifications = canSeeDirectorNotifications
+    ? NOTIFICATION_ITEMS.filter((item) => (pendingCounts[item.key] || 0) > 0)
+    : [];
+  const notificationTotal = activeNotifications.reduce(
+    (sum, item) => sum + (pendingCounts[item.key] || 0),
+    0
+  );
+
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [activeTab]);
+
+  useEffect(() => {
+    setSearchActiveIndex(0);
+  }, [searchQuery, user?.role]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!searchContainerRef.current?.contains(event.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+
+    const updatePosition = () => {
+      const trigger = notifButtonRef.current;
+      if (!trigger) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const margin = window.innerWidth < 640 ? 12 : 16;
+      const width = Math.min(320, window.innerWidth - (margin * 2));
+      const left = Math.min(
+        Math.max(margin, rect.right - width),
+        window.innerWidth - margin - width
+      );
+
+      setNotifPosition({
+        top: rect.bottom + 8,
+        left,
+        width,
+      });
+    };
+
+    const closeAndRestoreFocus = () => {
+      setNotifOpen(false);
+      window.requestAnimationFrame(() => notifButtonRef.current?.focus());
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeAndRestoreFocus();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !notifPanelRef.current) return;
+
+      const focusable = Array.from(
+        notifPanelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')
+      ) as HTMLElement[];
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        notifPanelRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === notifPanelRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    updatePosition();
+    const focusFrame = window.requestAnimationFrame(() => notifPanelRef.current?.focus());
+    window.addEventListener('resize', updatePosition);
+    window.visualViewport?.addEventListener('resize', updatePosition);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener('resize', updatePosition);
+      window.visualViewport?.removeEventListener('resize', updatePosition);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [notifOpen]);
 
   // Restaura a sessão persistida pelo Supabase depois de refresh/reabertura da aba.
   useEffect(() => {
@@ -158,6 +390,15 @@ const App: React.FC = () => {
       if (event === 'SIGNED_OUT' && mounted) {
         setUser(null);
         setCurrentTenant(null);
+        setPendingCounts({});
+        setPendingLessonsCount(0);
+        setTeachers([]);
+        setStudents([]);
+        setReschedules([]);
+        setNotifOpen(false);
+        setSearchOpen(false);
+        setSearchQuery('');
+        setActiveTab('dashboard');
       }
     });
 
@@ -173,8 +414,7 @@ const App: React.FC = () => {
       setHostnameTenant(tenant);
       if (tenant?.branding) {
         // Aplica branding do tenant na tela de login
-        document.documentElement.style.setProperty('--primary-color', tenant.branding.primaryColor);
-        document.documentElement.style.setProperty('--secondary-color', tenant.branding.secondaryColor);
+        applyTenantBranding(tenant.branding.primaryColor, tenant.branding.secondaryColor);
         document.title = `${tenant.name} — Portal do Aluno`;
       }
     });
@@ -193,18 +433,20 @@ const App: React.FC = () => {
           .eq('id', user.tenantId)
           .single();
         if (tenantData) {
+          const safeBranding = applyTenantBranding(
+            tenantData.branding?.primaryColor,
+            tenantData.branding?.secondaryColor,
+          );
           setCurrentTenant({
             id: tenantData.id,
             name: tenantData.name,
             domain: tenantData.domain,
-            branding: tenantData.branding,
+            branding: { ...tenantData.branding, ...safeBranding },
             studentLimit: tenantData.student_limit,
             teacherLimit: tenantData.teacher_limit,
             whatsapp_enabled: tenantData.whatsapp_enabled,
             school_info: tenantData.school_info ?? null,
           });
-          document.documentElement.style.setProperty('--primary-color', tenantData.branding.primaryColor);
-          document.documentElement.style.setProperty('--secondary-color', tenantData.branding.secondaryColor);
           document.title = `${tenantData.name} - Portal EduCore`;
         }
       }
@@ -382,7 +624,10 @@ const App: React.FC = () => {
 
   // Contadores de pendência do diretor (badges do menu + Central de Pendências)
   const refreshPendingCounts = React.useCallback(async () => {
-    if (!user || (user.role !== UserRole.SCHOOL_ADMIN && user.role !== UserRole.SUPER_ADMIN)) return;
+    if (!user || (user.role !== UserRole.SCHOOL_ADMIN && user.role !== UserRole.SUPER_ADMIN)) {
+      setPendingCounts({});
+      return;
+    }
     try {
       const { data } = await supabase.rpc('director_pending_counts');
       if (data && typeof data === 'object') setPendingCounts(data as Record<string, number>);
@@ -403,6 +648,50 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
+  const navigateFromSearch = (item: NavigationSearchItem) => {
+    setActiveTab(item.tab);
+    setSearchQuery('');
+    setSearchOpen(false);
+    setSearchActiveIndex(0);
+    setNotifOpen(false);
+    setIsSidebarOpen(false);
+
+    window.requestAnimationFrame(() => {
+      mainScrollRef.current?.scrollTo({ top: 0, left: 0 });
+      mainScrollRef.current?.focus({ preventScroll: true });
+    });
+  };
+
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setSearchActiveIndex((index) =>
+        filteredSearchItems.length === 0 ? 0 : Math.min(index + 1, filteredSearchItems.length - 1)
+      );
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSearchOpen(true);
+      setSearchActiveIndex((index) =>
+        filteredSearchItems.length === 0 ? 0 : Math.max(index - 1, 0)
+      );
+    } else if (event.key === 'Enter' && filteredSearchItems[searchActiveIndex]) {
+      event.preventDefault();
+      navigateFromSearch(filteredSearchItems[searchActiveIndex]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      setSearchOpen(false);
+      setSearchQuery('');
+    }
+  };
+
+  const closeNotifications = (restoreFocus = true) => {
+    setNotifOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => notifButtonRef.current?.focus());
+    }
+  };
+
   const handleLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -416,11 +705,18 @@ const App: React.FC = () => {
     } finally {
       setUser(null);
       setCurrentTenant(null);
+      setPendingCounts({});
+      setPendingLessonsCount(0);
+      setTeachers([]);
+      setStudents([]);
+      setReschedules([]);
+      setNotifOpen(false);
+      setSearchOpen(false);
+      setSearchQuery('');
       setActiveTab('dashboard');
       setIsSidebarOpen(false);
       setExplorerInitialState(null);
-      document.documentElement.style.setProperty('--primary-color', '#002366');
-      document.documentElement.style.setProperty('--secondary-color', '#D32F2F');
+      resetTenantBranding();
     }
   };
 
@@ -553,16 +849,21 @@ const App: React.FC = () => {
 
   const handleUpdateTenant = (newBranding: any) => {
     if (currentTenant) {
-      setCurrentTenant({ ...currentTenant, branding: newBranding });
-      document.documentElement.style.setProperty('--primary-color', newBranding.primaryColor);
-      document.documentElement.style.setProperty('--secondary-color', newBranding.secondaryColor);
+      const safeBranding = applyTenantBranding(
+        newBranding?.primaryColor,
+        newBranding?.secondaryColor,
+      );
+      setCurrentTenant({
+        ...currentTenant,
+        branding: { ...newBranding, ...safeBranding },
+      });
     }
   };
 
   const renderContent = () => {
     // SECURITY GUARD: Strict Vendor Access Check
     if (user.role === UserRole.SALESPERSON) {
-      const allowedVendorTabs = ['vendor_dashboard', 'vendor_schedule', 'vendor_trial', 'vendor_enrollment', 'vendor_commissions'];
+      const allowedVendorTabs = ['vendor_dashboard', 'vendor_schedule', 'vendor_trial', 'vendor_enrollment', 'vendor_commissions', 'profile'];
       if (!allowedVendorTabs.includes(activeTab)) {
         setActiveTab('vendor_dashboard');
         return null;
@@ -590,6 +891,15 @@ const App: React.FC = () => {
             </button>
           </div>
         );
+      }
+    }
+
+    // SECURITY GUARD: Strict Teacher Access Check
+    if (user.role === UserRole.TEACHER) {
+      const allowedTeacherTabs = ROLE_NAVIGATION_ITEMS[UserRole.TEACHER].map((item) => item.tab);
+      if (!allowedTeacherTabs.includes(activeTab)) {
+        setActiveTab('dashboard');
+        return null;
       }
     }
 
@@ -640,7 +950,7 @@ const App: React.FC = () => {
               <TeacherDashboard user={user} tenantId={currentTenant?.id} onNavigate={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }} />
             </>,
 
-      'approvals': <InvoiceManager tenantId={currentTenant?.id} />,
+      'approvals': <ContractManagement tenantId={currentTenant?.id} />,
       'payments': <TeacherPayments tenantId={currentTenant?.id} />,
       'pedagogical': <PedagogicalConfig user={user} tenantId={currentTenant?.id} />,
       'learning_paths_builder': <LearningPathsBuilder user={user} tenantId={currentTenant?.id} />,
@@ -785,8 +1095,8 @@ const App: React.FC = () => {
   }
 
   const appLayout = (
-    <div className={`flex min-h-screen w-full ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="flex w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+    <div className={`app-shell flex h-dvh max-h-dvh w-full overflow-hidden ${theme === 'dark' ? 'dark' : ''}`}>
+      <div className="flex h-full min-h-0 w-full overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
         <ModernSidebar
           tenant={{ ...currentTenant, branding: currentBranding } as any}
           user={user}
@@ -805,8 +1115,12 @@ const App: React.FC = () => {
           toggleTheme={toggleTheme}
         />
 
-        <main className={`
-          flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out
+        <main
+          ref={mainScrollRef}
+          tabIndex={-1}
+          aria-label="Conteúdo principal"
+          className={`
+          app-main-scroll flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-y-auto overflow-x-clip outline-none transition-all duration-300 ease-in-out
           ${isSidebarCollapsed ? 'lg:ml-0' : 'lg:ml-0'} 
         `}>
           {/* Top Header inside main */}
@@ -815,7 +1129,14 @@ const App: React.FC = () => {
 
               {/* Mobile Toggle */}
               <div className="flex items-center gap-2 lg:hidden min-w-0 flex-1">
-                <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-1 shrink-0 text-gray-600 dark:text-gray-400" aria-label="Abrir menu">
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="p-2 -ml-1 shrink-0 text-gray-600 dark:text-gray-400"
+                  aria-label="Abrir menu"
+                  aria-controls="app-primary-navigation"
+                  aria-expanded={isSidebarOpen}
+                >
                   <Menu size={22} />
                 </button>
                 <span className="font-bold text-sm text-gray-800 dark:text-white truncate">
@@ -846,7 +1167,7 @@ const App: React.FC = () => {
                       'teachers': 'Professores',
                       'oral-tests': 'Testes Orais',
                       'schedule_explorer': 'Explorador de Agenda',
-                      'approvals': 'Aprovações',
+                      'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',
@@ -866,78 +1187,210 @@ const App: React.FC = () => {
 
               {/* Right side actions */}
               <div className="flex items-center gap-1 sm:gap-4 shrink-0">
-                {/* Search - Visual only for now */}
-                <div className="hidden md:flex relative group">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 group-focus-within:text-blue-500 transition-colors" />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    className="pl-9 pr-4 py-2 bg-gray-100 dark:bg-slate-800 rounded-full text-sm border-none focus:ring-2 focus:ring-blue-500/50 w-64 transition-all"
+                <div ref={searchContainerRef} className="hidden md:block relative group">
+                  <label htmlFor="app-header-search" className="sr-only">
+                    Buscar uma tela do sistema
+                  </label>
+                  <Search
+                    aria-hidden="true"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 group-focus-within:text-blue-500 transition-colors"
                   />
-                </div>
+                  <input
+                    ref={searchInputRef}
+                    id="app-header-search"
+                    type="search"
+                    value={searchQuery}
+                    placeholder="Buscar uma tela..."
+                    autoComplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="app-header-search-results"
+                    aria-expanded={searchOpen}
+                    aria-activedescendant={
+                      searchOpen && filteredSearchItems[searchActiveIndex]
+                        ? `app-search-option-${filteredSearchItems[searchActiveIndex].tab}`
+                        : undefined
+                    }
+                    onFocus={() => setSearchOpen(true)}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    onKeyDown={handleSearchKeyDown}
+                    className="pl-9 pr-9 py-2 bg-gray-100 dark:bg-slate-800 rounded-full text-sm border-none focus:ring-2 focus:ring-blue-500/50 w-64 transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSearchOpen(true);
+                        searchInputRef.current?.focus();
+                      }}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 grid size-8 place-content-center rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 hover:text-gray-700 dark:hover:text-gray-100"
+                      aria-label="Limpar busca"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  )}
 
-                {(() => {
-                  // Notificações = pendências do diretor (director_pending_counts).
-                  // Cada item navega direto para a tela que precisa de ação.
-                  const NOTIF_ITEMS: { key: string; label: string; tab: string }[] = [
-                    { key: 'acolhimento', label: 'Documentos de aluno p/ aprovar', tab: 'approvals' },
-                    { key: 'presenca', label: 'Conflitos de presença p/ resolver', tab: 'attendance-disputes' },
-                    { key: 'materiais', label: 'Materiais p/ aprovar', tab: 'material-approvals' },
-                    { key: 'trials', label: 'Experimentais/treinos p/ liquidar', tab: 'trial-settlement' },
-                    { key: 'fechamentos', label: 'Fechamentos de professor pendentes', tab: 'payments' },
-                    { key: 'pagamentos_retidos', label: 'Pagamentos retidos por conflito', tab: 'attendance-disputes' },
-                  ];
-                  const active = NOTIF_ITEMS.filter(i => (pendingCounts[i.key] || 0) > 0);
-                  const total = active.reduce((s, i) => s + (pendingCounts[i.key] || 0), 0);
-                  return (
-                    <div className="relative">
-                      <button
-                        onClick={() => setNotifOpen(o => !o)}
-                        className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
-                        aria-label="Notificações"
-                      >
-                        <Bell className="w-5 h-5" />
-                        {total > 0 && (
-                          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white dark:border-slate-900">
-                            {total > 99 ? '99+' : total}
-                          </span>
-                        )}
-                      </button>
-                      {notifOpen && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                          <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-gray-100 dark:border-slate-800 z-50 overflow-hidden">
-                            <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-                              <span className="font-black text-sm text-gray-800 dark:text-slate-100">Pendências</span>
-                              {total > 0 && <span className="text-[10px] font-bold text-red-500">{total} aguardando ação</span>}
-                            </div>
-                            {active.length === 0 ? (
-                              <div className="px-4 py-8 text-center text-sm text-gray-400">🎉 Tudo em dia! Nenhuma pendência.</div>
-                            ) : (
-                              <div className="max-h-80 overflow-y-auto">
-                                {active.map(i => (
-                                  <button
-                                    key={i.key}
-                                    onClick={() => { setActiveTab(i.tab); setNotifOpen(false); setIsSidebarOpen(false); }}
-                                    className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 text-left transition-colors border-b border-gray-50 dark:border-slate-800/50 last:border-0"
-                                  >
-                                    <span className="text-sm text-gray-700 dark:text-slate-200">{i.label}</span>
-                                    <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 flex items-center justify-center bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 text-xs font-black rounded-full">
-                                      {pendingCounts[i.key]}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </>
+                  {searchOpen && (
+                    <div
+                      id="app-header-search-results"
+                      role="listbox"
+                      aria-label="Telas disponíveis"
+                      className="absolute left-0 right-0 top-full mt-2 max-h-80 overflow-y-auto rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl z-[60]"
+                    >
+                      {filteredSearchItems.length === 0 ? (
+                        <p role="status" className="px-3 py-5 text-center text-sm text-gray-500 dark:text-slate-400">
+                          Nenhuma tela encontrada.
+                        </p>
+                      ) : (
+                        filteredSearchItems.map((item, index) => (
+                          <button
+                            type="button"
+                            id={`app-search-option-${item.tab}`}
+                            key={item.tab}
+                            role="option"
+                            aria-selected={index === searchActiveIndex}
+                            onMouseEnter={() => setSearchActiveIndex(index)}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => navigateFromSearch(item)}
+                            className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
+                              index === searchActiveIndex
+                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+                                : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="block text-sm font-bold">{item.label}</span>
+                            <span className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                              {item.group}
+                            </span>
+                          </button>
+                        ))
                       )}
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
 
-                <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors">
-                  {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                {canSeeDirectorNotifications && (<>
+                <button
+                  ref={notifButtonRef}
+                  type="button"
+                  onClick={() => {
+                    if (notifOpen) closeNotifications(false);
+                    else setNotifOpen(true);
+                  }}
+                  className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
+                  aria-label={
+                    notificationTotal > 0
+                      ? `Notificações, ${notificationTotal} ${notificationTotal === 1 ? 'pendência' : 'pendências'}`
+                      : 'Notificações, nenhuma pendência'
+                  }
+                  aria-haspopup="dialog"
+                  aria-expanded={notifOpen}
+                  aria-controls="app-notifications-panel"
+                >
+                  <Bell className="w-5 h-5" aria-hidden="true" />
+                  {notificationTotal > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-black rounded-full border-2 border-white dark:border-slate-900"
+                    >
+                      {notificationTotal > 99 ? '99+' : notificationTotal}
+                    </span>
+                  )}
+                </button>
+
+                {notifOpen && createPortal(
+                  <>
+                    <button
+                      type="button"
+                      className="fixed inset-0 z-[110] cursor-default bg-black/10 sm:bg-transparent"
+                      aria-label="Fechar notificações"
+                      tabIndex={-1}
+                      onClick={() => closeNotifications()}
+                    />
+                    <div
+                      ref={notifPanelRef}
+                      id="app-notifications-panel"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="app-notifications-title"
+                      tabIndex={-1}
+                      style={{
+                        top: notifPosition.top,
+                        left: notifPosition.left,
+                        width: notifPosition.width,
+                        maxHeight: `calc(100dvh - ${notifPosition.top + 12}px)`,
+                      }}
+                      className="fixed z-[120] flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-slate-900"
+                    >
+                      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-slate-800">
+                        <div className="min-w-0">
+                          <h2 id="app-notifications-title" className="font-black text-sm text-gray-800 dark:text-slate-100">
+                            Pendências
+                          </h2>
+                          {notificationTotal > 0 && (
+                            <p className="text-[10px] font-bold text-red-500">
+                              {notificationTotal} aguardando ação
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeNotifications()}
+                          className="grid size-9 shrink-0 place-content-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                          aria-label="Fechar notificações"
+                        >
+                          <X size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                      {activeNotifications.length === 0 ? (
+                        <div className="overflow-y-auto px-4 py-8 text-center text-sm text-gray-400">
+                          🎉 Tudo em dia! Nenhuma pendência.
+                        </div>
+                      ) : (
+                        <div className="min-h-0 overflow-y-auto overscroll-contain">
+                          {activeNotifications.map((item) => (
+                            <button
+                              type="button"
+                              key={item.key}
+                              onClick={() => {
+                                setActiveTab(item.tab);
+                                setIsSidebarOpen(false);
+                                closeNotifications(false);
+                                window.requestAnimationFrame(() => mainScrollRef.current?.focus({ preventScroll: true }));
+                              }}
+                              className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 text-left transition-colors border-b border-gray-50 dark:border-slate-800/50 last:border-0"
+                            >
+                              <span className="text-sm text-gray-700 dark:text-slate-200">{item.label}</span>
+                              <span
+                                aria-label={`${pendingCounts[item.key]} pendências`}
+                                className="shrink-0 min-w-[22px] h-[22px] px-1.5 flex items-center justify-center bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 text-xs font-black rounded-full"
+                              >
+                                {pendingCounts[item.key]}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>,
+                  document.body
+                )}
+                </>)}
+
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400 transition-colors"
+                  aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
+                  title={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
+                >
+                  {theme === 'light'
+                    ? <Moon className="w-5 h-5" aria-hidden="true" />
+                    : <Sun className="w-5 h-5" aria-hidden="true" />}
                 </button>
 
                 <div className="hidden sm:block h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-2" />
@@ -965,7 +1418,7 @@ const App: React.FC = () => {
             </div>
           </header>
 
-          <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-x-hidden">
+          <div className="p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip">
             <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 w-full">
@@ -986,7 +1439,7 @@ const App: React.FC = () => {
 
   if (user.role === UserRole.STUDENT) {
     return (
-      <StudentProvider userId={user.id}>
+      <StudentProvider userId={user.id} tenantId={user.tenantId} onLogout={handleLogout}>
         {appLayout}
       </StudentProvider>
     );

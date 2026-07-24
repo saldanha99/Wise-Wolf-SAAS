@@ -567,7 +567,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   });
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100vh-6rem)] animate-in fade-in duration-500 relative">
+    <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100dvh-6rem)] min-h-0 animate-in fade-in duration-500 relative">
       {/* Sidebar: Teacher Selection */}
       <div className="w-full xl:w-72 bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2rem] flex flex-col shadow-sm shrink-0">
         <div className="p-5 border-b dark:border-brand-border">
@@ -602,7 +602,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               key={teacher.id}
               onClick={() => setSelectedTeacher(teacher)}
               className={`w-full p-3 rounded-xl border transition-all flex items-center gap-3 text-left group ${selectedTeacher?.id === teacher.id
-                ? 'bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
+                ? 'bg-[#002366] bg-tenant-primary border-tenant-primary text-white shadow-lg shadow-tenant-primary/20'
                 : 'bg-brand-surface border-gray-50 dark:border-brand-border hover:border-tenant-primary/30'
                 }`}
             >
@@ -628,18 +628,18 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         {selectedTeacher ? (
           <>
             {/* Detail Header - Compact */}
-            <div className="px-6 py-4 border-b dark:border-brand-border flex justify-between items-center bg-gray-50/30 dark:bg-brand-surface-2/20">
-              <div className="flex items-center gap-4">
-                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-brand-border" alt="" />
-                <div>
-                  <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-none">{selectedTeacher.name}</h2>
+            <div className="px-4 sm:px-6 py-4 border-b dark:border-brand-border flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-gray-50/30 dark:bg-brand-surface-2/20">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <img src={selectedTeacher.avatar} className="w-12 h-12 rounded-xl shadow-md border-2 border-white dark:border-brand-border shrink-0" alt="" />
+                <div className="min-w-0">
+                  <h2 className="text-sm font-black text-gray-800 dark:text-slate-100 uppercase tracking-tight leading-tight truncate">{selectedTeacher.name}</h2>
                   <p className="text-[10px] text-gray-500 dark:text-brand-muted mt-1 font-bold">
                     {selectedTeacher.module}
                   </p>
                   {(selectedTeacher.specializations || []).length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {(selectedTeacher.specializations || []).map(s => (
-                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[8px] font-black rounded-full border border-amber-100 dark:border-amber-800">
+                        <span key={s} className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 text-[8px] font-black rounded-full border border-amber-100 dark:border-amber-800 whitespace-nowrap">
                           {s}
                         </span>
                       ))}
@@ -648,7 +648,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 flex-wrap justify-end">
+              <div className="w-full lg:w-auto grid grid-cols-2 sm:grid-cols-3 lg:flex items-stretch lg:items-center gap-3 lg:flex-wrap lg:justify-end">
                 {/* Ocupação + alunos distintos + conflitos */}
                 {(() => {
                   const occupied = Object.keys(bookings).length;
@@ -658,16 +658,16 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                   const distinct = new Set(Object.values(bookings).map((b: any) => b.studentId || b.student)).size;
                   return (
                     <>
-                      <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-lg text-center">
+                      <div className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 rounded-lg text-center min-w-0">
                         <p className="text-[8px] font-black text-emerald-600 uppercase tracking-wide">Ocupação</p>
                         <p className="text-sm font-black text-emerald-700 dark:text-emerald-400 leading-none">{pct}%</p>
                       </div>
-                      <div className="px-3 py-1.5 bg-brand-surface-2 border border-brand-border rounded-lg text-center">
+                      <div className="px-3 py-1.5 bg-brand-surface-2 border border-brand-border rounded-lg text-center min-w-0">
                         <p className="text-[8px] font-black text-brand-muted uppercase tracking-wide">Aulas · Alunos</p>
                         <p className="text-sm font-black text-brand-text leading-none">{occupied} · {distinct}</p>
                       </div>
                       {conflicts.size > 0 && (
-                        <div className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg text-center" title="Horários com mais de um aluno">
+                        <div className="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg text-center min-w-0" title="Horários com mais de um aluno">
                           <p className="text-[8px] font-black text-red-600 uppercase tracking-wide">Conflitos</p>
                           <p className="text-sm font-black text-red-600 leading-none">{conflicts.size}</p>
                         </div>
@@ -679,11 +679,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                   value={slotSearch}
                   onChange={e => setSlotSearch(e.target.value)}
                   placeholder="Localizar aluno na grade…"
-                  className="px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-none text-brand-text w-44"
+                  className="col-span-2 sm:col-span-3 lg:col-span-1 px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-none text-brand-text w-full lg:w-44 min-w-0"
                 />
                 <button
                   onClick={() => setIsAssignmentModalOpen(true)}
-                  className="px-4 py-2.5 bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.05] transition-all flex items-center gap-2"
+                  className="col-span-2 sm:col-span-3 lg:col-span-1 w-full lg:w-auto px-4 py-2.5 bg-[#002366] bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.02] lg:hover:scale-[1.05] transition-all flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
                 >
                   <UserPlus size={14} /> Atribuir Aluno
                 </button>
@@ -691,33 +691,91 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
             </div>
 
             {/* Grid Content */}
-            <div className="flex-1 overflow-auto p-4 scrollbar-hide relative">
+            <div className="flex-1 overflow-auto p-3 sm:p-4 scrollbar-hide relative">
               {/* MOBILE: lista por dia (a grade larga é inviável no celular) */}
               <div className="md:hidden space-y-3">
                 {DAYS.map((day, dIdx) => {
-                  const dayBookings = TIMES
-                    .map(time => ({ time, b: bookings[`${dIdx}-${time}`], conflict: conflicts.has(`${dIdx}-${time}`) }))
-                    .filter(x => x.b);
+                  const daySlots = TIMES
+                    .map(time => ({
+                      time,
+                      booking: bookings[`${dIdx}-${time}`],
+                      reschedule: getRescheduleForSlot(dIdx, time),
+                      conflict: conflicts.has(`${dIdx}-${time}`),
+                    }));
+                  const dayEntries = daySlots.filter(entry => entry.booking || entry.reschedule);
+                  const freeTimes = daySlots
+                    .filter(entry => (
+                      availableSlots.has(`${dIdx}-${entry.time}`)
+                      && !entry.booking
+                      && !entry.reschedule
+                    ))
+                    .map(entry => entry.time);
                   return (
                     <div key={day} className="bg-brand-surface-2/40 border border-brand-border rounded-xl p-3">
-                      <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest mb-2">{day} · {dayBookings.length} aula(s)</p>
-                      {dayBookings.length === 0 ? (
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest">
+                          {day} · {dayEntries.length} compromisso(s)
+                        </p>
+                        <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">
+                          {freeTimes.length} livre{freeTimes.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      {dayEntries.length === 0 ? (
                         <p className="text-[11px] text-brand-muted italic">Sem aulas</p>
                       ) : (
                         <div className="space-y-1.5">
-                          {dayBookings.map(({ time, b, conflict }) => {
-                            const match = slotSearch.trim() !== '' && (b.student || '').toLowerCase().includes(slotSearch.toLowerCase());
+                          {dayEntries.map(({ time, booking, reschedule, conflict }) => {
+                            const searchableName = reschedule?.studentName || booking?.student || '';
+                            const match = slotSearch.trim() !== '' && searchableName.toLowerCase().includes(slotSearch.toLowerCase());
                             const dim = slotSearch.trim() !== '' && !match;
+                            if (reschedule) {
+                              return (
+                                <div
+                                  key={time}
+                                  className={`flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-100 px-2.5 py-2 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-100 ${match ? 'ring-2 ring-yellow-400' : ''} ${dim ? 'opacity-30' : ''}`}
+                                >
+                                  <Clock size={13} aria-hidden="true" className="shrink-0" />
+                                  <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
+                                  <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{reschedule.studentName}</span>
+                                  <span className="text-[9px] font-bold uppercase opacity-80">Reposição</span>
+                                </div>
+                              );
+                            }
                             return (
-                              <div key={time} onClick={() => !b.isTrial && setEditingBooking(b)}
-                                className={`flex items-center gap-2 rounded-lg px-2.5 py-2 cursor-pointer ${b.isTrial ? 'bg-purple-600 text-white' : 'bg-emerald-500 text-white'} ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''} ${dim ? 'opacity-30' : ''}`}>
+                              <button
+                                key={time}
+                                type="button"
+                                disabled={booking.isTrial}
+                                onClick={() => setEditingBooking(booking)}
+                                aria-label={`${booking.isTrial ? 'Aula experimental' : 'Editar aula'} de ${booking.student}, ${day} às ${time}`}
+                                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left ${booking.isTrial ? 'cursor-default bg-purple-600 text-white' : 'cursor-pointer bg-emerald-500 text-white'} ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''} ${dim ? 'opacity-30' : ''}`}
+                              >
                                 <span className="text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
-                                <span className="text-[11px] font-black uppercase truncate flex-1">{b.student}</span>
-                                <span className="text-[9px] font-bold opacity-80">{b.module}</span>
-                              </div>
+                                <span className="text-[11px] font-black uppercase truncate flex-1">{booking.student}</span>
+                                <span className="text-[9px] font-bold opacity-80">{booking.module}</span>
+                              </button>
                             );
                           })}
                         </div>
+                      )}
+                      {freeTimes.length > 0 && (
+                        <details className="group mt-2 rounded-lg border border-emerald-500/25 bg-brand-surface">
+                          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-600 marker:hidden dark:text-emerald-400">
+                            <span>Horários livres</span>
+                            <span className="text-[9px] text-brand-muted group-open:hidden">Ver horários</span>
+                            <span className="hidden text-[9px] text-brand-muted group-open:inline">Ocultar</span>
+                          </summary>
+                          <div className="grid grid-cols-3 gap-1.5 border-t border-emerald-500/20 p-2.5">
+                            {freeTimes.map(time => (
+                              <span
+                                key={time}
+                                className="rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-center font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+                              >
+                                {time}
+                              </span>
+                            ))}
+                          </div>
+                        </details>
                       )}
                     </div>
                   );
@@ -761,10 +819,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                   <p className="text-[7px] font-bold text-yellow-800 dark:text-yellow-200 truncate leading-none mt-0.5">{reschedule.studentName}</p>
                                 </div>
                               ) : booking ? (
-                                <div
+                                <button
+                                  type="button"
+                                  disabled={booking.isTrial}
                                   onClick={() => !booking.isTrial && setEditingBooking(booking)}
+                                  aria-label={`${booking.isTrial ? 'Aula experimental' : 'Editar aula'} de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
                                   className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking ${booking.isTrial
-                                    ? 'bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse hover:scale-105'
+                                    ? 'cursor-default bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse'
                                     : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'} ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
                                 >
                                   <div className="flex items-center gap-1 overflow-hidden">
@@ -774,7 +835,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                   <div className="flex justify-between items-center mt-0.5">
                                     <p className="text-[6px] font-bold text-emerald-100 uppercase">{booking.module}</p>
                                   </div>
-                                </div>
+                                </button>
                               ) : isAvailable ? (
                                 <div className="w-full h-full bg-brand-surface border border-dashed border-emerald-500/50 rounded-md flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors cursor-default">
                                   <span className="text-[7px] font-bold text-emerald-500/70 uppercase tracking-wider">LIVRE</span>
