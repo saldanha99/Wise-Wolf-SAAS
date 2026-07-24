@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.93.3'
 import { authorizeAutomation } from '../_shared/automation-auth.ts'
 
 // Processa a fila de notificações (lembretes de aula, avisos) e envia via WhatsApp.
@@ -15,12 +15,43 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const EVOLUTION_API_URL = 'https://api.2b.app.br';
+const EVOLUTION_API_URL = (Deno.env.get('EVOLUTION_API_URL') || '')
+    .trim()
+    .replace(/\/+$/, '');
 // Chave via env para permitir rotação sem novo deploy.
 const EVOLUTION_API_KEYS = Array.from(new Set([
     (Deno.env.get('EVOLUTION_API_KEY') || '').trim(),
 ].filter(Boolean)));
 const MAX_ATTEMPTS = 3;
+const PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
+type QueueRelation<T> = T | T[] | null;
+
+type TeacherRelation = {
+    whatsapp_instance: string | null;
+    tenant_id: string | null;
+};
+
+type StudentRelation = {
+    is_test_account: boolean | null;
+    tenant_id: string | null;
+};
+
+type QueueItem = {
+    id: string;
+    student_phone: string;
+    message_body: string;
+    tenant_id: string | null;
+    attempts: number | null;
+    notification_kind: string | null;
+    source_id: string | null;
+    teacher: QueueRelation<TeacherRelation>;
+    student: QueueRelation<StudentRelation>;
+};
+
+function relationOne<T>(value: QueueRelation<T>): T | null {
+    return Array.isArray(value) ? value[0] ?? null : value;
+}
 
 // Normaliza telefone BR para o formato aceito pela Evolution (55 + DDD + número).
 function normalizePhone(raw: string): string | null {
@@ -31,11 +62,11 @@ function normalizePhone(raw: string): string | null {
 }
 
 // Resolve a instância central da escola (admin do tenant com WhatsApp conectado).
-async function resolveCentralInstance(supabase: any, tenantId: string | null, cache: Record<string, string | null>): Promise<string | null> {
+async function resolveCentralInstance(supabase: SupabaseClient, tenantId: string | null, cache: Record<string, string | null>): Promise<string | null> {
     const key = tenantId || '_';
     if (key in cache) return cache[key];
     if (!tenantId) { cache[key] = null; return null; }
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('profiles')
         .select('whatsapp_instance')
         .eq('tenant_id', tenantId)
@@ -44,8 +75,32 @@ async function resolveCentralInstance(supabase: any, tenantId: string | null, ca
         .neq('whatsapp_instance', '')
         .limit(1)
         .maybeSingle();
+    if (error) throw error;
     cache[key] = data?.whatsapp_instance || null;
     return cache[key];
+}
+
+async function markClaim(
+    supabase: SupabaseClient,
+    id: string,
+    status: 'pending' | 'sent' | 'failed' | 'skipped',
+    lastError: string | null,
+): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { data, error } = await supabase
+            .from('notification_queue')
+            .update({
+                status,
+                last_error: lastError,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', id)
+            .eq('status', 'processing')
+            .select('id')
+            .maybeSingle();
+        if (!error) return Boolean(data);
+    }
+    return false;
 }
 
 serve(async (req) => {
@@ -60,6 +115,34 @@ serve(async (req) => {
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
+        if (!EVOLUTION_API_URL || EVOLUTION_API_KEYS.length === 0) {
+            return new Response(
+                JSON.stringify({ error: 'notification_provider_unavailable' }),
+                { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+            );
+        }
+
+        // Recupera claims abandonados por timeout/restart do worker.
+        const staleBefore = new Date(Date.now() - PROCESSING_LEASE_MS).toISOString();
+        const { data: staleClaims, error: staleClaimsError } = await supabaseClient
+            .from('notification_queue')
+            .select('id, attempts')
+            .eq('status', 'processing')
+            .lt('updated_at', staleBefore)
+            .limit(100);
+        if (staleClaimsError) throw staleClaimsError;
+        for (const stale of (staleClaims || [])) {
+            const { error: staleRecoveryError } = await supabaseClient
+                .from('notification_queue')
+                .update({
+                    status: (stale.attempts || 0) >= MAX_ATTEMPTS ? 'failed' : 'pending',
+                    last_error: 'worker_lease_expired',
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', stale.id)
+                .eq('status', 'processing');
+            if (staleRecoveryError) throw staleRecoveryError;
+        }
 
         // 1. Busca notificações pendentes e vencidas
         const { data: pending, error: fetchError } = await supabaseClient
@@ -70,7 +153,10 @@ serve(async (req) => {
                 message_body,
                 tenant_id,
                 attempts,
-                teacher:teacher_id ( whatsapp_instance )
+                notification_kind,
+                source_id,
+                teacher:teacher_id ( whatsapp_instance, tenant_id ),
+                student:student_id ( is_test_account, tenant_id )
             `)
             .eq('status', 'pending')
             .lte('scheduled_for', new Date().toISOString())
@@ -81,79 +167,175 @@ serve(async (req) => {
             return new Response(JSON.stringify({ message: "No pending notifications due." }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
 
-        const results: any[] = [];
+        const queueItems = pending as unknown as QueueItem[];
+        const results: Array<Record<string, unknown>> = [];
         const centralCache: Record<string, string | null> = {};
+        let persistenceFailed = false;
 
         // 2. Processa o lote
-        for (const item of pending) {
-            const { id, student_phone, message_body, tenant_id, attempts } = item as any;
-            const teacher = (item as any).teacher;
+        for (const item of queueItems) {
+            const { id, student_phone, message_body, tenant_id, attempts } = item;
+            const teacher = relationOne(item.teacher);
+            const student = relationOne(item.student);
             const nextAttempts = (attempts || 0) + 1;
+            const { data: claim, error: claimError } = await supabaseClient
+                .from('notification_queue')
+                .update({
+                    status: 'processing',
+                    attempts: nextAttempts,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', id)
+                .eq('status', 'pending')
+                .select('id')
+                .maybeSingle();
+            if (claimError || !claim) {
+                results.push({ id, status: 'skipped' });
+                continue;
+            }
+
+            if (student?.is_test_account === true) {
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    'skipped',
+                    'test_fixture_suppressed',
+                );
+                persistenceFailed ||= !marked;
+                results.push({
+                    id,
+                    status: marked ? 'skipped' : 'marker_failed',
+                });
+                continue;
+            }
+            if (student?.tenant_id && student.tenant_id !== tenant_id) {
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    'failed',
+                    'student_tenant_mismatch',
+                );
+                persistenceFailed ||= !marked;
+                results.push({
+                    id,
+                    status: marked ? 'failed' : 'marker_failed',
+                    error: 'tenant_mismatch',
+                });
+                continue;
+            }
 
             // Resolve instância: professor → fallback central
-            let instanceId: string | null = teacher?.whatsapp_instance || null;
+            let instanceId: string | null = teacher?.tenant_id === tenant_id
+                ? teacher?.whatsapp_instance || null
+                : null;
             if (!instanceId) {
                 instanceId = await resolveCentralInstance(supabaseClient, tenant_id, centralCache);
             }
 
             if (!instanceId) {
-                await supabaseClient.from('notification_queue')
-                    .update({ status: 'failed', last_error: 'Sem instância (professor e escola sem WhatsApp central)', attempts: nextAttempts })
-                    .eq('id', id);
-                results.push({ id, status: 'failed', error: 'no_instance' });
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    'failed',
+                    'no_whatsapp_instance',
+                );
+                persistenceFailed ||= !marked;
+                results.push({
+                    id,
+                    status: marked ? 'failed' : 'marker_failed',
+                    error: 'no_instance',
+                });
                 continue;
             }
 
             const phone = normalizePhone(student_phone);
             if (!phone) {
-                await supabaseClient.from('notification_queue')
-                    .update({ status: 'failed', last_error: 'Telefone inválido', attempts: nextAttempts })
-                    .eq('id', id);
-                results.push({ id, status: 'failed', error: 'invalid_phone' });
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    'failed',
+                    'invalid_phone',
+                );
+                persistenceFailed ||= !marked;
+                results.push({
+                    id,
+                    status: marked ? 'failed' : 'marker_failed',
+                    error: 'invalid_phone',
+                });
                 continue;
             }
 
             try {
-                const url = `${EVOLUTION_API_URL}/message/sendText/${instanceId}`;
+                const url = `${EVOLUTION_API_URL}/message/sendText/${encodeURIComponent(instanceId)}`;
                 let response: Response | null = null;
                 for (const key of EVOLUTION_API_KEYS) {
                     response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'apikey': key },
-                        body: JSON.stringify({ number: phone, text: message_body, delay: 1000 })
+                        body: JSON.stringify({ number: phone, text: message_body, delay: 1000 }),
+                        signal: AbortSignal.timeout(15_000),
                     });
                     if (response.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
                 }
 
                 if (!response || !response.ok) {
-                    const errText = response ? await response.text() : 'sem resposta';
-                    throw new Error(`Evolution API Error: ${response?.status ?? '-'} - ${errText}`);
+                    throw new Error(`provider_http_${response?.status ?? 'unavailable'}`);
                 }
 
-                await supabaseClient.from('notification_queue')
-                    .update({ status: 'sent', updated_at: new Date().toISOString(), attempts: nextAttempts })
-                    .eq('id', id);
-                results.push({ id, status: 'sent' });
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    'sent',
+                    null,
+                );
+                if (!marked) {
+                    persistenceFailed = true;
+                    console.error('Notification delivery marker failed', { id });
+                }
+                results.push({ id, status: marked ? 'sent' : 'marker_failed' });
 
-            } catch (err: any) {
-                console.error(`Falha ao enviar ${id}:`, err);
+            } catch (err: unknown) {
+                const safeReason = err instanceof DOMException &&
+                    (err.name === 'TimeoutError' || err.name === 'AbortError')
+                    ? 'provider_timeout'
+                    : err instanceof Error && /^provider_http_[a-z0-9_-]+$/i.test(err.message)
+                        ? err.message
+                        : 'provider_network_error';
+                console.error('Notification queue delivery failed', {
+                    id,
+                    reason: safeReason,
+                });
                 // Mantém 'pending' para re-tentar até MAX_ATTEMPTS; depois marca 'failed'.
                 const finalStatus = nextAttempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
-                await supabaseClient.from('notification_queue')
-                    .update({ status: finalStatus, last_error: err.message, attempts: nextAttempts, updated_at: new Date().toISOString() })
-                    .eq('id', id);
-                results.push({ id, status: finalStatus, error: err.message });
+                const marked = await markClaim(
+                    supabaseClient,
+                    id,
+                    finalStatus,
+                    safeReason,
+                );
+                persistenceFailed ||= !marked;
+                results.push({
+                    id,
+                    status: marked ? finalStatus : 'marker_failed',
+                    error: safeReason,
+                });
             }
         }
 
         return new Response(
             JSON.stringify({ processed: results.length, details: results }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            {
+                status: persistenceFailed ? 500 : 200,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            }
         )
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        console.error('Notification queue worker failed', {
+            type: error instanceof Error ? error.name : 'UnknownError',
+        });
         return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ error: 'notification_queue_processing_failed' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }

@@ -128,26 +128,25 @@ const getFallbackActivities = (englishFor: string, level: string): GeneratedActi
 
 export const getPedagogicalSuggestion = async (module: string, lastContent: string) => {
   try {
-    const prompt = `O aluno está no módulo ${module}. O último conteúdo aplicado foi: "${lastContent}". Sugira um tópico de 1 frase para a próxima aula e uma breve dica pedagógica.`;
+    const prompt = `O aluno está no módulo ${module}. O último conteúdo aplicado foi: "${lastContent}".
+Retorne exatamente este JSON, sem campos adicionais:
+{"suggestion":"uma sugestão curta, em português do Brasil, com um tópico para a próxima aula e uma dica pedagógica prática"}`;
 
-    // Call Wolfie Brain (Edge Function) instead of direct Gemini API
-    const { data, error } = await supabase.functions.invoke('wolfie-brain', {
+    const { data, error } = await supabase.functions.invoke('pedagogical-content', {
       body: {
-        message: prompt,
+        prompt,
         studentLevel: module,
-        previousContext: "System: You are acting as a Pedagogical Advisor now."
       }
     });
 
     if (error) throw error;
-    if (data?.aiText) return data.aiText;
+    if (typeof data?.result?.suggestion === 'string' && data.result.suggestion.trim()) {
+      return data.result.suggestion.trim();
+    }
 
     return "Dica não disponível no momento.";
-  } catch (error: any) {
-    console.error("Gemini Suggestion Error Details:", error);
-    if (error.context && typeof error.context.json === 'function') {
-      error.context.json().then((errBody: any) => console.error("Edge Function Body:", errBody));
-    }
+  } catch (error) {
+    console.error("Pedagogical suggestion failed:", error instanceof Error ? error.name : "UnknownError");
     return "Sugestão indisponível no momento.";
   }
 };
@@ -246,24 +245,27 @@ Regras importantes:
 
 export const generateBillingReminder = async (studentName: string, amount: number, dueDate: string, tone: 'friendly' | 'professional' | 'urgent') => {
   try {
-    const prompt = `Escreva um e-mail curto e elegante de lembrete de pagamento para o aluno ${studentName}. 
+    const prompt = `Escreva uma mensagem curta e elegante de lembrete de pagamento para o aluno ${studentName}.
     Valor: R$ ${amount}. Vencimento: ${dueDate}. 
     Tom de voz: ${tone === 'friendly' ? 'Amigável e leve' : tone === 'urgent' ? 'Urgente e sério' : 'Profissional e direto'}. 
-    O e-mail deve ser em português, incluir um espaço para o link do boleto/pix e terminar com o nome da escola (use [Nome da Escola]).`;
+    A mensagem deve ser em português, incluir um espaço para o link do boleto/pix e terminar com o nome da escola (use [Nome da Escola]).
+Retorne exatamente este JSON, sem campos adicionais:
+{"message":"mensagem pronta para envio"}`;
 
-    const { data, error } = await supabase.functions.invoke('wolfie-brain', {
+    const { data, error } = await supabase.functions.invoke('pedagogical-content', {
       body: {
-        message: prompt,
+        prompt,
         studentLevel: 'B1',
-        previousContext: 'System: Você redige comunicações financeiras claras e respeitosas em português do Brasil.'
       }
     });
 
     if (error) throw error;
-    if (data?.aiText) return data.aiText;
+    if (typeof data?.result?.message === 'string' && data.result.message.trim()) {
+      return data.result.message.trim();
+    }
     throw new Error('A IA não retornou o lembrete de pagamento.');
   } catch (error) {
-    console.error("Gemini Billing Error:", error);
+    console.error("Billing reminder generation failed:", error instanceof Error ? error.name : "UnknownError");
     return `Olá ${studentName}, lembramos que sua fatura de R$ ${amount} vence em ${dueDate}. Por favor, regularize seu débito.`;
   }
 };

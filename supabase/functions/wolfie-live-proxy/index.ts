@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 
 // ============================================================
 // wolfie-live-proxy — Secure WebSocket bridge
@@ -9,6 +9,22 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
 
 const GEMINI_LIVE_URL =
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+const DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+const ALLOWED_LEVELS = new Set(["A1", "A2", "B1", "B2", "C1", "C2"]);
+const ALLOWED_TOPICS = new Set([
+    "freestyle_chat",
+    "airport_survival",
+    "tech_job_interview",
+    "grammar_workout",
+]);
+const SETTLED_PAYMENT_STATUSES = new Set([
+    "RECEIVED",
+    "CONFIRMED",
+    "RECEIVED_IN_CASH",
+    "PAGO",
+    "PAYMENT_RECEIVED",
+    "PAYMENT_CONFIRMED",
+]);
 
 serve(async (req) => {
     // Only accept WebSocket upgrades
@@ -17,7 +33,13 @@ serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const token = url.searchParams.get("token") ?? "";
+    const requestedProtocols = (req.headers.get("sec-websocket-protocol") ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+    const token = requestedProtocols[0] === "wolfie-live"
+        ? requestedProtocols[1] ?? ""
+        : "";
 
     if (!token) {
         return new Response("Missing auth token", { status: 401 });
@@ -38,36 +60,20 @@ serve(async (req) => {
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // ── Payment check (block if > 7 days overdue) ──
-    const now = new Date();
-    const { data: overduePayments } = await supabase
-        .from("student_payments")
-        .select("due_date")
-        .eq("student_id", user.id)
-        .not("status", "in", "(RECEIVED,CONFIRMED)")
-        .lt("due_date", now.toISOString());
-
-    if (overduePayments && overduePayments.length > 0) {
-        const oldest = overduePayments.sort(
-            (a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
-        )[0];
-        const daysLate = Math.ceil(
-            Math.abs(now.getTime() - new Date(oldest.due_date).getTime()) / 86_400_000
-        );
-        if (daysLate > 7) {
-            return new Response(JSON.stringify({ error: "PAYMENT_REQUIRED" }), { status: 402 });
-        }
-    }
-
     // ── Fetch student context from DB ──
-    const studentLevel = url.searchParams.get("level") ?? "B1";
-    const topic = url.searchParams.get("topic") ?? "Free Conversation";
-    const mode = url.searchParams.get("mode") ?? "fluency";
+    const requestedLevel = (url.searchParams.get("level") ?? "B1").toUpperCase();
+    const requestedTopic = url.searchParams.get("topic") ?? "freestyle_chat";
+    const requestedMode = url.searchParams.get("mode") ?? "fluency";
+    const studentLevel = ALLOWED_LEVELS.has(requestedLevel) ? requestedLevel : "B1";
+    const topic = ALLOWED_TOPICS.has(requestedTopic)
+        ? requestedTopic
+        : "freestyle_chat";
+    const mode = requestedMode === "grammar_focus" ? "grammar_focus" : "fluency";
 
     const [profileRes, wolfIntelRes] = await Promise.all([
         supabase
             .from("profiles")
-            .select("full_name, goal, english_for, short_term_goal, preferred_topics, avoided_topics")
+            .select("full_name, goal, english_for, short_term_goal, preferred_topics, avoided_topics, tenant_id, role, is_test_account")
             .eq("id", user.id)
             .single(),
         supabase
@@ -79,13 +85,75 @@ serve(async (req) => {
 
     const profile = profileRes.data;
     const wolfIntel = wolfIntelRes.data;
+    if (
+        profileRes.error ||
+        !profile ||
+        profile.role !== "STUDENT" ||
+        !profile.tenant_id
+    ) {
+        return new Response("Student profile required", { status: 403 });
+    }
+    if (profile.is_test_account === true) {
+        return new Response(
+            JSON.stringify({
+                error: "TEST_FIXTURE_SUPPRESSED",
+                skipped: "test_fixture",
+            }),
+            {
+                status: 403,
+                headers: { "Content-Type": "application/json" },
+            },
+        );
+    }
+    if (wolfIntelRes.error) {
+        console.error("[WolfieLive] student context lookup failed", {
+            code: wolfIntelRes.error.code,
+        });
+        return new Response("Could not load student context", { status: 503 });
+    }
+
+    // ── Payment check (block if > 7 days overdue) ──
+    const now = new Date();
+    const { data: overduePayments, error: paymentError } = await supabase
+        .from("student_payments")
+        .select("due_date, status")
+        .eq("student_id", user.id)
+        .eq("tenant_id", profile.tenant_id)
+        .lt("due_date", now.toISOString());
+
+    if (paymentError) {
+        console.error("[WolfieLive] payment check failed", {
+            code: paymentError.code,
+        });
+        return new Response("Could not validate account access", { status: 503 });
+    }
+
+    for (const payment of overduePayments ?? []) {
+        const status = typeof payment.status === "string"
+            ? payment.status.toUpperCase()
+            : "";
+        if (SETTLED_PAYMENT_STATUSES.has(status)) continue;
+        const dueTime = new Date(payment.due_date).getTime();
+        if (!Number.isFinite(dueTime)) {
+            return new Response("Could not validate account access", { status: 503 });
+        }
+        if (now.getTime() - dueTime > 7 * 86_400_000) {
+            return new Response(
+                JSON.stringify({ error: "PAYMENT_REQUIRED" }),
+                {
+                    status: 402,
+                    headers: { "Content-Type": "application/json" },
+                },
+            );
+        }
+    }
 
     // ── Create wolfie_sessions record ──
-    const { data: sessionRow } = await supabase
+    const { data: sessionRow, error: sessionError } = await supabase
         .from("wolfie_sessions")
         .insert({
             student_id: user.id,
-            tenant_id: user.user_metadata?.tenant_id ?? null,
+            tenant_id: profile.tenant_id,
             topic,
             mode,
             student_level: studentLevel,
@@ -93,6 +161,13 @@ serve(async (req) => {
         })
         .select("id")
         .single();
+
+    if (sessionError || !sessionRow) {
+        console.error("[WolfieLive] session creation failed", {
+            code: sessionError?.code,
+        });
+        return new Response("Could not create Wolfie session", { status: 500 });
+    }
 
     const sessionId = sessionRow?.id ?? null;
 
@@ -131,13 +206,45 @@ STRICT RULES (voice conversation — keep it natural):
     };
 
     // ── Upgrade to WebSocket ──
-    const { socket: clientWs, response } = Deno.upgradeWebSocket(req);
+    const { socket: clientWs, response } = Deno.upgradeWebSocket(req, {
+        protocol: "wolfie-live",
+    });
 
     let geminiWs: WebSocket | null = null;
     let geminiReady = false;
+    let clientActivityStarted = false;
     let turnIndex = 0;
 
     const geminiKey = (Deno.env.get("GEMINI_API_KEY") ?? "").trim();
+    const requestedModel = (
+        Deno.env.get("GEMINI_LIVE_MODEL") ?? DEFAULT_GEMINI_LIVE_MODEL
+    ).trim();
+    const configuredModel = /^[A-Za-z0-9._/-]+$/.test(requestedModel)
+        ? requestedModel
+        : DEFAULT_GEMINI_LIVE_MODEL;
+    const geminiModel = configuredModel.startsWith("models/")
+        ? configuredModel
+        : `models/${configuredModel}`;
+
+    const persistTurn = async (
+        speaker: "student" | "wolfie",
+        content: string,
+        index: number,
+    ): Promise<void> => {
+        if (!sessionId) return;
+        const { error } = await supabase.from("wolfie_turns").insert({
+            session_id: sessionId,
+            speaker,
+            content,
+            turn_index: index,
+        });
+        if (error) {
+            console.error("[WolfieLive] turn save failed", {
+                code: error.code,
+                speaker,
+            });
+        }
+    };
 
     const sendToClient = (msg: object) => {
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -146,21 +253,23 @@ STRICT RULES (voice conversation — keep it natural):
     };
 
     clientWs.onopen = () => {
-        console.log(`[WolfieLive] Client connected: ${user.id}`);
+        console.log("[WolfieLive] Client connected");
 
         if (!geminiKey) {
-            sendToClient({ type: "error", message: "GEMINI_API_KEY não configurado no servidor." });
+            sendToClient({ type: "error", message: "Serviço de voz indisponível." });
             clientWs.close();
             return;
         }
 
-        geminiWs = new WebSocket(`${GEMINI_LIVE_URL}?key=${geminiKey}`);
+        geminiWs = new WebSocket(
+            `${GEMINI_LIVE_URL}?key=${encodeURIComponent(geminiKey)}`,
+        );
 
         geminiWs.onopen = () => {
             console.log("[WolfieLive] Gemini connected, sending setup...");
             geminiWs!.send(JSON.stringify({
                 setup: {
-                    model: "models/gemini-2.0-flash-live-001",
+                    model: geminiModel,
                     generationConfig: {
                         responseModalities: ["AUDIO"],
                         speechConfig: {
@@ -168,8 +277,11 @@ STRICT RULES (voice conversation — keep it natural):
                                 prebuiltVoiceConfig: { voiceName: "Aoede" },
                             },
                         },
-                        inputAudioTranscription: {},
-                        outputAudioTranscription: {},
+                    },
+                    inputAudioTranscription: {},
+                    outputAudioTranscription: {},
+                    realtimeInputConfig: {
+                        automaticActivityDetection: { disabled: true },
                     },
                     systemInstruction: {
                         parts: [{ text: buildSystemPrompt() }],
@@ -214,12 +326,7 @@ STRICT RULES (voice conversation — keep it natural):
                     if (text) {
                         sendToClient({ type: "transcript", role: "user", text });
                         if (sessionId) {
-                            supabase.from("wolfie_turns").insert({
-                                session_id: sessionId,
-                                speaker: "student",
-                                content: text,
-                                turn_index: turnIndex++,
-                            }).catch((e: any) => console.error("[WolfieLive] turn save:", e));
+                            void persistTurn("student", text, turnIndex++);
                         }
                     }
                 }
@@ -229,12 +336,7 @@ STRICT RULES (voice conversation — keep it natural):
                     if (text) {
                         sendToClient({ type: "transcript", role: "wolfie", text });
                         if (sessionId) {
-                            supabase.from("wolfie_turns").insert({
-                                session_id: sessionId,
-                                speaker: "wolfie",
-                                content: text,
-                                turn_index: turnIndex++,
-                            }).catch((e: any) => console.error("[WolfieLive] turn save:", e));
+                            void persistTurn("wolfie", text, turnIndex++);
                         }
                     }
                 }
@@ -243,19 +345,21 @@ STRICT RULES (voice conversation — keep it natural):
                 if (sc.turnComplete) sendToClient({ type: "turn_complete" });
                 if (sc.interrupted) sendToClient({ type: "interrupted" });
 
-            } catch (e) {
-                console.error("[WolfieLive] Gemini message parse error:", e);
+            } catch (error) {
+                console.error("[WolfieLive] Gemini message parse error", {
+                    type: error instanceof Error ? error.name : "UnknownError",
+                });
             }
         };
 
         geminiWs.onclose = (ev) => {
-            console.log(`[WolfieLive] Gemini disconnected: ${ev.code} ${ev.reason}`);
+            console.log(`[WolfieLive] Gemini disconnected: ${ev.code}`);
             sendToClient({ type: "error", message: "Conexão com a IA foi encerrada." });
             if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
         };
 
-        geminiWs.onerror = (e) => {
-            console.error("[WolfieLive] Gemini error:", e);
+        geminiWs.onerror = () => {
+            console.error("[WolfieLive] Gemini websocket error");
             sendToClient({ type: "error", message: "Erro na conexão com a IA." });
         };
     };
@@ -264,49 +368,87 @@ STRICT RULES (voice conversation — keep it natural):
     clientWs.onmessage = (event) => {
         if (!geminiWs || geminiWs.readyState !== WebSocket.OPEN || !geminiReady) return;
         try {
-            const msg = JSON.parse(event.data);
+            const rawMessage: unknown = JSON.parse(event.data);
+            if (
+                typeof rawMessage !== "object" ||
+                rawMessage === null ||
+                Array.isArray(rawMessage)
+            ) return;
+            const msg = rawMessage as {
+                type?: unknown;
+                data?: unknown;
+                text?: unknown;
+            };
 
-            if (msg.type === "audio" && msg.data) {
+            if (
+                msg.type === "audio" &&
+                typeof msg.data === "string" &&
+                msg.data.length > 0 &&
+                msg.data.length <= 512_000
+            ) {
+                if (!clientActivityStarted) {
+                    geminiWs.send(JSON.stringify({
+                        realtimeInput: { activityStart: {} },
+                    }));
+                    clientActivityStarted = true;
+                }
                 geminiWs.send(JSON.stringify({
                     realtimeInput: {
-                        mediaChunks: [{
+                        audio: {
                             mimeType: "audio/pcm;rate=16000",
                             data: msg.data,
-                        }],
+                        },
                     },
                 }));
             } else if (msg.type === "end_turn") {
-                geminiWs.send(JSON.stringify({
-                    realtimeInput: { activityEnd: {} },
-                }));
-            } else if (msg.type === "text" && msg.text) {
+                if (clientActivityStarted) {
+                    geminiWs.send(JSON.stringify({
+                        realtimeInput: { activityEnd: {} },
+                    }));
+                    clientActivityStarted = false;
+                }
+            } else if (
+                msg.type === "text" &&
+                typeof msg.text === "string" &&
+                msg.text.trim().length > 0 &&
+                msg.text.length <= 2_000
+            ) {
                 // Fallback: send text if mic unavailable
                 geminiWs.send(JSON.stringify({
                     clientContent: {
-                        turns: [{ role: "user", parts: [{ text: msg.text }] }],
+                        turns: [{
+                            role: "user",
+                            parts: [{ text: msg.text.trim() }],
+                        }],
                         turnComplete: true,
                     },
                 }));
             }
-        } catch (e) {
-            console.error("[WolfieLive] Client message parse error:", e);
+        } catch (error) {
+            console.error("[WolfieLive] Client message parse error", {
+                type: error instanceof Error ? error.name : "UnknownError",
+            });
         }
     };
 
     clientWs.onclose = async () => {
-        console.log(`[WolfieLive] Client disconnected: ${user.id}`);
+        console.log("[WolfieLive] Client disconnected");
         if (geminiWs && geminiWs.readyState === WebSocket.OPEN) geminiWs.close();
 
         if (sessionId) {
-            await supabase
+            const { error } = await supabase
                 .from("wolfie_sessions")
-                .update({ ended_at: new Date().toISOString() })
-                .eq("id", sessionId)
-                .catch((e: any) => console.error("[WolfieLive] session close error:", e));
+                .update({ finished_at: new Date().toISOString() })
+                .eq("id", sessionId);
+            if (error) {
+                console.error("[WolfieLive] session close failed", {
+                    code: error.code,
+                });
+            }
         }
     };
 
-    clientWs.onerror = (e) => console.error("[WolfieLive] Client socket error:", e);
+    clientWs.onerror = () => console.error("[WolfieLive] Client websocket error");
 
     return response;
 });
