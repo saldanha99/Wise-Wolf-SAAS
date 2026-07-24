@@ -1,11 +1,35 @@
 #!/usr/bin/env bash
-# CUTOVER Wise Wolf: hosted -> VPS. Rodar na madrugada com RUN=yes.
+# CUTOVER Wise Wolf: hosted -> VPS.
+# Rodar na madrugada somente com as duas confirmacoes explicitas:
+# RUN=yes I_UNDERSTAND_DATA_REPLACEMENT=yes.
 # Pre-requisitos: DNS api. e app. apontando para a VPS; TLS emitido; testes ok.
 set -Eeuo pipefail
 umask 077
 
 HOSTED_CRONS_PAUSED=0
 RESTORE_STARTED=0
+CURL_SECRET_DIR=""
+CURL_SECRET_FILES=()
+
+cleanup() {
+  local exit_code=$?
+  trap - ERR EXIT
+  set +e
+
+  if ((${#CURL_SECRET_FILES[@]} > 0)); then
+    rm -f -- "${CURL_SECRET_FILES[@]}"
+  fi
+  if [[ -n "$CURL_SECRET_DIR" && -d "$CURL_SECRET_DIR" ]]; then
+    rmdir -- "$CURL_SECRET_DIR" 2>/dev/null || true
+  fi
+
+  unset \
+    PGPASSWORD ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN EVOLUTION_API_KEY \
+    GEMINI_API_KEY RESEND_API_KEY WHATSAPP_INBOUND_TOKEN \
+    ASAAS_PAYLOAD PAYLOAD INBOUND_URL
+  exit "$exit_code"
+}
+
 on_error() {
   local exit_code=$?
   echo "ERRO: cutover interrompido na linha ${BASH_LINENO[0]} (codigo ${exit_code})." >&2
@@ -18,10 +42,15 @@ on_error() {
   exit "$exit_code"
 }
 trap on_error ERR
+trap cleanup EXIT
 
 if [[ "${RUN:-}" != "yes" ]]; then
-  echo "Ensaio encerrado sem alteracoes. Para executar: RUN=yes $0"
+  echo "Ensaio encerrado sem alteracoes. Para executar, informe as duas confirmacoes exigidas."
   exit 0
+fi
+if [[ "${I_UNDERSTAND_DATA_REPLACEMENT:-}" != "yes" ]]; then
+  echo "ERRO: cutover bloqueado. Confirme explicitamente a substituicao dos dados com I_UNDERSTAND_DATA_REPLACEMENT=yes." >&2
+  exit 1
 fi
 
 require_command() {
@@ -44,7 +73,7 @@ scalar() {
     -v ON_ERROR_STOP=1 -Atqc "$1"
 }
 
-for command_name in docker psql pg_dump sed jq curl; do
+for command_name in docker psql pg_dump sed jq curl mktemp; do
   require_command "$command_name"
 done
 
@@ -73,11 +102,21 @@ ASAAS_API_URL="$(runtime_env ASAAS_API_URL)"
 ASAAS_WEBHOOK_TOKEN="$(runtime_env ASAAS_WEBHOOK_TOKEN)"
 EVOLUTION_API_KEY="$(runtime_env EVOLUTION_API_KEY)"
 EVOLUTION_API_URL="$(runtime_env EVOLUTION_API_URL)"
+GEMINI_API_KEY="$(runtime_env GEMINI_API_KEY)"
+GEMINI_MODEL="$(runtime_env GEMINI_MODEL)"
+GEMINI_LIVE_MODEL="$(runtime_env GEMINI_LIVE_MODEL)"
+SYSTEM_URL="$(runtime_env SYSTEM_URL)"
+RESEND_API_KEY="$(runtime_env RESEND_API_KEY)"
+RESEND_FROM_EMAIL="$(runtime_env RESEND_FROM_EMAIL)"
+RESEND_REPLY_TO="$(runtime_env RESEND_REPLY_TO)"
 WHATSAPP_INBOUND_TOKEN="$(runtime_env WHATSAPP_INBOUND_TOKEN)"
 
 for required in \
   ASAAS_API_KEY ASAAS_API_URL ASAAS_WEBHOOK_TOKEN \
-  EVOLUTION_API_KEY EVOLUTION_API_URL WHATSAPP_INBOUND_TOKEN; do
+  EVOLUTION_API_KEY EVOLUTION_API_URL \
+  GEMINI_API_KEY GEMINI_MODEL GEMINI_LIVE_MODEL \
+  SYSTEM_URL RESEND_API_KEY RESEND_FROM_EMAIL \
+  WHATSAPP_INBOUND_TOKEN; do
   [[ -n "${!required}" ]] ||
     { echo "ERRO: variavel $required ausente no runtime" >&2; exit 1; }
 done
@@ -85,8 +124,22 @@ done
   die "ASAAS_API_URL deve usar HTTPS"
 [[ "$EVOLUTION_API_URL" =~ ^https:// ]] ||
   die "EVOLUTION_API_URL deve usar HTTPS"
+[[ "$SYSTEM_URL" =~ ^https://[^[:space:]]+$ ]] ||
+  die "SYSTEM_URL deve ser uma URL HTTPS valida"
 [[ ${#ASAAS_API_KEY} -ge 20 && ${#ASAAS_WEBHOOK_TOKEN} -ge 16 ]] ||
   die "credenciais Asaas parecem truncadas"
+[[ ${#GEMINI_API_KEY} -ge 20 ]] ||
+  die "credencial Gemini parece truncada"
+[[ ${#RESEND_API_KEY} -ge 20 ]] ||
+  die "credencial Resend parece truncada"
+[[ "$RESEND_FROM_EMAIL" == *"@"* ]] ||
+  die "RESEND_FROM_EMAIL parece invalido"
+[[ -z "$RESEND_REPLY_TO" || "$RESEND_REPLY_TO" == *"@"* ]] ||
+  die "RESEND_REPLY_TO parece invalido"
+[[ "$GEMINI_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] ||
+  die "GEMINI_MODEL contem caracteres invalidos"
+[[ "$GEMINI_LIVE_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] ||
+  die "GEMINI_LIVE_MODEL contem caracteres invalidos"
 
 ASAAS_API_URL="${ASAAS_API_URL%/}"
 if [[ "$ASAAS_API_URL" = */v3 ]]; then
@@ -95,6 +148,35 @@ else
   ASAAS_V3_BASE="$ASAAS_API_URL/v3"
 fi
 EVOLUTION_API_URL="${EVOLUTION_API_URL%/}"
+SYSTEM_URL="${SYSTEM_URL%/}"
+
+CURL_SECRET_DIR="$(mktemp -d /tmp/wisewolf-cutover-curl.XXXXXX)"
+ASAAS_CURL_HEADERS="$CURL_SECRET_DIR/asaas.headers"
+EVOLUTION_CURL_HEADERS="$CURL_SECRET_DIR/evolution.headers"
+GEMINI_CURL_HEADERS="$CURL_SECRET_DIR/gemini.headers"
+RESEND_CURL_HEADERS="$CURL_SECRET_DIR/resend.headers"
+ASAAS_WEBHOOK_TOKEN_FILE="$CURL_SECRET_DIR/asaas-webhook-token"
+INBOUND_URL_FILE="$CURL_SECRET_DIR/evolution-inbound-url"
+CURL_SECRET_FILES=(
+  "$ASAAS_CURL_HEADERS"
+  "$EVOLUTION_CURL_HEADERS"
+  "$GEMINI_CURL_HEADERS"
+  "$RESEND_CURL_HEADERS"
+  "$ASAAS_WEBHOOK_TOKEN_FILE"
+  "$INBOUND_URL_FILE"
+)
+
+printf 'access_token: %s\nContent-Type: application/json\n' \
+  "$ASAAS_API_KEY" > "$ASAAS_CURL_HEADERS"
+printf 'apikey: %s\nContent-Type: application/json\n' \
+  "$EVOLUTION_API_KEY" > "$EVOLUTION_CURL_HEADERS"
+printf 'x-goog-api-key: %s\n' \
+  "$GEMINI_API_KEY" > "$GEMINI_CURL_HEADERS"
+printf 'Authorization: Bearer %s\nContent-Type: application/json\n' \
+  "$RESEND_API_KEY" > "$RESEND_CURL_HEADERS"
+printf '%s' "$ASAAS_WEBHOOK_TOKEN" > "$ASAAS_WEBHOOK_TOKEN_FILE"
+: > "$INBOUND_URL_FILE"
+chmod 0600 -- "${CURL_SECRET_FILES[@]}"
 
 echo "== PREFLIGHT: conectividade, credenciais e contagens =="
 [[ "$(docker inspect supabase-db --format '{{.State.Running}}')" = "true" ]]
@@ -103,7 +185,22 @@ docker exec supabase-db pg_isready -U supabase_admin -d postgres >/dev/null
 [[ "$(psql "$HCONN" -X -v ON_ERROR_STOP=1 -Atqc 'select 1')" = "1" ]]
 curl -fsS --max-time 20 \
   "$ASAAS_V3_BASE/customers?limit=1" \
-  -H "access_token: $ASAAS_API_KEY" >/dev/null
+  --header "@$ASAAS_CURL_HEADERS" >/dev/null
+curl -fsS --max-time 20 \
+  "$EVOLUTION_API_URL/instance/fetchInstances" \
+  --header "@$EVOLUTION_CURL_HEADERS" >/dev/null
+curl -fsS --max-time 20 \
+  "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_MODEL" \
+  --header "@$GEMINI_CURL_HEADERS" >/dev/null
+curl -fsS --max-time 20 \
+  "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_LIVE_MODEL" \
+  --header "@$GEMINI_CURL_HEADERS" >/dev/null
+curl -fsS --max-time 20 \
+  https://api.resend.com/domains \
+  --header "@$RESEND_CURL_HEADERS" >/dev/null
+curl -fsS --max-time 20 \
+  "$SYSTEM_URL/" >/dev/null
+echo "  integracoes: Asaas=ok Evolution=ok Gemini=ok Resend=ok SYSTEM_URL=ok"
 
 EXPECTED_COUNTS="$(
   psql "$HCONN" -X -v ON_ERROR_STOP=1 -AtF '|' -c \
@@ -228,7 +325,7 @@ echo "   + adicionar Host(system...) no router traefik do frontend e reiniciar f
 echo "== PASSO 4: webhook ASAAS =="
 WEBHOOKS="$(
   curl -fsS --max-time 30 "$ASAAS_V3_BASE/webhooks" \
-    -H "access_token: $ASAAS_API_KEY"
+    --header "@$ASAAS_CURL_HEADERS"
 )"
 WEBHOOK_ID="$(
   jq -r \
@@ -241,21 +338,20 @@ WEBHOOK_ID="$(
 
 CURRENT_WEBHOOK="$(
   curl -fsS --max-time 30 "$ASAAS_V3_BASE/webhooks/$WEBHOOK_ID" \
-    -H "access_token: $ASAAS_API_KEY"
+    --header "@$ASAAS_CURL_HEADERS"
 )"
 ASAAS_PAYLOAD="$(
   jq \
     --arg url "https://api.wisewolflanguage.com.br/functions/v1/asaas-webhook" \
-    --arg auth "$ASAAS_WEBHOOK_TOKEN" \
+    --rawfile auth "$ASAAS_WEBHOOK_TOKEN_FILE" \
     '{name:(.name // "SaasWise"),url:$url,sendType:(.sendType // "SEQUENTIALLY"),enabled:true,interrupted:false,authToken:$auth,events:.events}' \
     <<< "$CURRENT_WEBHOOK"
 )"
 UPDATED_WEBHOOK="$(
   curl -fsS --max-time 30 -X PUT \
     "$ASAAS_V3_BASE/webhooks/$WEBHOOK_ID" \
-    -H "access_token: $ASAAS_API_KEY" \
-    -H "Content-Type: application/json" \
-    -d "$ASAAS_PAYLOAD"
+    --header "@$ASAAS_CURL_HEADERS" \
+    --data-binary @- <<< "$ASAAS_PAYLOAD"
 )"
 jq -e \
   --arg url "https://api.wisewolflanguage.com.br/functions/v1/asaas-webhook" \
@@ -266,15 +362,15 @@ jq '{id,name,url,enabled,interrupted,event_count:(.events|length)}' \
 
 echo "== PASSO 5: webhook Evolution (whatsapp-inbound) =="
 INBOUND_URL="https://api.wisewolflanguage.com.br/functions/v1/whatsapp-inbound?token=$WHATSAPP_INBOUND_TOKEN"
+printf '%s' "$INBOUND_URL" > "$INBOUND_URL_FILE"
 PAYLOAD="$(
-  jq -nc --arg url "$INBOUND_URL" \
+  jq -nc --rawfile url "$INBOUND_URL_FILE" \
     '{webhook:{enabled:true,url:$url,byEvents:false,base64:false,events:["MESSAGES_UPSERT"]}}'
 )"
 curl -fsS --max-time 30 -X POST \
   "$EVOLUTION_API_URL/webhook/set/prof-diretorww-d6bg" \
-  -H "apikey: $EVOLUTION_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD" >/dev/null
+  --header "@$EVOLUTION_CURL_HEADERS" \
+  --data-binary @- <<< "$PAYLOAD" >/dev/null
 
 echo "== PASSO 6: ativar crons no VPS =="
 docker exec supabase-db psql -X -U supabase_admin -d postgres \
@@ -287,7 +383,7 @@ echo "== PASSO 7: smoke tests externos =="
 curl -fsS --max-time 20 \
   https://api.wisewolflanguage.com.br/auth/v1/health >/dev/null
 curl -fsS --max-time 20 \
-  https://system.wisewolflanguage.com.br/ >/dev/null
+  "$SYSTEM_URL/" >/dev/null
 
 echo "== CUTOVER CONCLUIDO =="
 echo "Hosted permanece congelado; VPS restaurada, validada e com crons ativos."
