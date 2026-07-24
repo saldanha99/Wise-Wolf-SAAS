@@ -1,15 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Smartphone, RefreshCw, LogOut, QrCode as QrIcon, CheckCircle, AlertCircle } from 'lucide-react';
+import { whatsappService } from '../services/whatsappService';
 
 interface WhatsappConnectionProps {
     role: 'SCHOOL_ADMIN' | 'TEACHER';
     userName: string;
     userId: string;
 }
-
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName, userId }) => {
     // Determine Instance Name
@@ -21,26 +19,17 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // Headers for API calls
-    const headers = {
-        'apikey': GLOBAL_API_KEY,
-        'Content-Type': 'application/json'
-    };
-
     const checkConnection = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { headers });
-
-            if (!res.ok) {
+            const res = await whatsappService.fetchConnectionState(undefined, instanceName);
+            if (!res.success) {
                 // If instance not found or error, assume disconnected
                 setStatus('DISCONNECTED');
                 return;
             }
-
-            const data = await res.json();
             // Evolution API usually returns { instance: { state: "open" } } for connected
-            if (data?.instance?.state === 'open') {
+            if (res.state === 'open' || res.state === 'connected') {
                 setStatus('CONNECTED');
                 setQrCode(null);
             } else {
@@ -59,20 +48,14 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
         try {
             setLoading(true);
             // Create/Connect instance
-            const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-                method: 'GET',
-                headers
-            });
-
-            if (!res.ok) throw new Error("Falha ao gerar QR Code");
-
-            const data = await res.json();
+            const res = await whatsappService.connectInstance(undefined, instanceName);
+            if (!res.success) throw new Error(res.error || "Falha ao gerar QR Code");
 
             // Evolution returns base64 in 'base64' or sometimes nested
-            if (data?.base64) {
-                setQrCode(data.base64);
+            if (res.qrcode) {
+                setQrCode(res.qrcode);
                 setStatus('DISCONNECTED'); // Waiting for scan
-            } else if (data?.instance?.state === 'open') {
+            } else if (res.status === 'connected') {
                 setStatus('CONNECTED');
                 setQrCode(null);
                 alert("Instância já está conectada!");
@@ -91,10 +74,8 @@ const WhatsappConnection: React.FC<WhatsappConnectionProps> = ({ role, userName,
 
         try {
             setLoading(true);
-            await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
-                method: 'DELETE',
-                headers
-            });
+            const result = await whatsappService.logoutInstance(undefined, instanceName);
+            if (!result.success) throw new Error(result.error || 'Falha ao desconectar.');
             setStatus('DISCONNECTED');
             setQrCode(null);
         } catch (error) {

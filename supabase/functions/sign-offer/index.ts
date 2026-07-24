@@ -38,6 +38,15 @@ serve(async (req) => {
         return new Response('ok', { headers: corsHeaders });
     }
 
+    // Endpoint legado desativado: ele gravava ofertas com service role sem
+    // validar papel/tenant e gerava URLs incompatíveis com os fluxos atuais.
+    // Matrículas usam create_enrollment_offer; convites usam create_invite_offer.
+    return new Response(
+        JSON.stringify({ error: 'Endpoint descontinuado. Gere o link pelo painel.' }),
+        { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+    /*
     try {
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
@@ -160,6 +169,7 @@ serve(async (req) => {
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
+    */
 });
 
 /**

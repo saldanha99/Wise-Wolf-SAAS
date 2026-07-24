@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, CheckCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
+import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
@@ -32,8 +32,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
   // Deletion Modal State
   const [studentToDelete, setStudentToDelete] = useState<any>(null);
-  const [applyDeletePenalty, setApplyDeletePenalty] = useState(true);
-  const [deletePenaltyValue, setDeletePenaltyValue] = useState<number>(0);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -179,6 +177,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             status_financial: s.status_financial,
             lifecycle_status: s.lifecycle_status,
             attendance_phone: s.attendance_phone,
+            is_test_account: s.is_test_account === true,
             module: s.module,
           };
         });
@@ -510,9 +509,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
   const handleDeleteStudentClick = () => {
     if (!editingStudent) return;
-    const fine = editingStudent.monthly_fee ? (editingStudent.monthly_fee * 0.3) : 0;
-    setDeletePenaltyValue(fine);
-    setApplyDeletePenalty(fine > 0);
     setStudentToDelete(editingStudent);
   };
 
@@ -524,9 +520,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       // Usar Edge Function para garantir a remoção correta do Auth User (que fará cascade) e Asaas
       const { data, error } = await supabase.functions.invoke('delete-student-account', {
         body: {
-          studentId: studentToDelete.id,
-          applyPenalty: applyDeletePenalty,
-          penaltyValue: applyDeletePenalty ? deletePenaltyValue : 0
+          studentId: studentToDelete.id
         }
       });
 
@@ -534,16 +528,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         throw new Error(error.message || 'Erro ao remover aluno via função.');
       }
 
-      if (data?.error) {
+      if (data?.success !== true) {
         throw new Error(data.error);
       }
 
-      if (data?.asaas?.error) {
-        console.warn('Aviso do Asaas:', data.asaas.error);
-        alert('Aluno removido do banco local com sucesso. Porém houve um aviso no Asaas: ' + data.asaas.error);
-      } else {
-        alert('Aluno, histórico local e dados do Asaas removidos com sucesso.');
-      }
+      alert('Conta de teste removida do acesso, do perfil e do Asaas.');
 
       setStudentToDelete(null);
       setEditingStudent(null);
@@ -929,7 +918,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             initialData={editingStudent}
             onSubmit={handleUpdateStudent}
             onCancel={() => setEditingStudent(null)}
-            onDelete={(user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN') ? handleDeleteStudentClick : undefined}
+            onDelete={
+              editingStudent.is_test_account === true &&
+              (user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN')
+                ? handleDeleteStudentClick
+                : undefined
+            }
             title={editingStudent.name}
             teachers={teachers}
             currentUserRole={user?.role}
@@ -958,7 +952,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         />
       )}
 
-      {/* Delete Confirmation Modal with Fine Calculation */}
+      {/* Exclusão permanente existe apenas para fixtures E2E marcadas. */}
       {studentToDelete && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-brand-surface rounded-3xl w-full max-w-md p-8 shadow-2xl border border-red-100 dark:border-red-900/30">
@@ -967,47 +961,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             </div>
 
             <h3 className="text-2xl font-black text-center text-brand-text mb-2 tracking-tight">
-              Excluir Aluno?
+              Excluir conta de teste?
             </h3>
             <p className="text-center text-brand-muted text-sm mb-6">
-              Você está prestes a excluir <strong>{studentToDelete.name}</strong>. Esta ação removerá o acesso, histórico de aulas e cancelará a assinatura no Asaas.
+              Você está prestes a excluir a fixture <strong>{studentToDelete.name}</strong>. O acesso, os registros locais e os recursos de teste no Asaas serão removidos.
             </p>
 
-            <div className="bg-brand-surface-2/50 p-5 rounded-2xl mb-6 border border-brand-border">
-              <label className="flex items-start gap-3 cursor-pointer group mb-4">
-                <div className="relative flex items-center justify-center w-5 h-5 mt-0.5">
-                  <input
-                    type="checkbox"
-                    checked={applyDeletePenalty}
-                    onChange={(e) => setApplyDeletePenalty(e.target.checked)}
-                    className="appearance-none w-5 h-5 border-2 border-brand-border dark:border-slate-600 rounded checked:border-red-500 checked:bg-red-500 transition-colors"
-                  />
-                  {applyDeletePenalty && <CheckCircle size={14} className="absolute text-white pointer-events-none" />}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-brand-text dark:text-slate-200 group-hover:text-red-600 transition-colors">
-                    Aplicar Multa Rescisória de Cancelamento
-                  </p>
-                  <p className="text-xs text-brand-muted mt-0.5">
-                    Gera uma cobrança avulsa no Asaas e mantém o cliente ativo faturado.
-                  </p>
-                </div>
-              </label>
-
-              {applyDeletePenalty && (
-                <div className="pl-8 animate-in slide-in-from-top-2">
-                  <label className="text-xs font-bold text-brand-muted dark:text-brand-muted uppercase tracking-widest mb-2 block">
-                    Valor da Multa (R$) - Sugerido 30%
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={deletePenaltyValue || ''}
-                    onChange={(e) => setDeletePenaltyValue(Number(e.target.value))}
-                    className="w-full bg-brand-surface border border-brand-border rounded-xl px-4 py-3 text-brand-text font-bold text-lg focus:ring-2 focus:ring-red-500 outline-none transition-all"
-                  />
-                </div>
-              )}
+            <div className="bg-amber-50 p-5 rounded-2xl mb-6 border border-amber-200 text-sm text-amber-900">
+              Esta ação é definitiva e só aparece para contas marcadas pelo sistema como teste. Alunos reais devem ser desligados para preservar contratos e histórico financeiro.
             </div>
 
             <div className="flex gap-3">

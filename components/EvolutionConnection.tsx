@@ -41,7 +41,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
             // Get instance from DB (LATEST)
             const { data } = await supabase
                 .from('whatsapp_instances')
-                .select('*')
+                .select('id, user_id, instance_name, instance_id, status, updated_at')
                 .eq('user_id', user.id)
                 .order('updated_at', { ascending: false })
                 .limit(1)
@@ -73,14 +73,7 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
             setConnectionStatus(state);
             if (state === 'connected') setQrCode(null);
 
-            // Update DB status
-            if (instance) {
-                await supabase.from('whatsapp_instances').update({ status: state, updated_at: new Date() }).eq('id', instance.id);
-                // SYNC PROFILE (Fix existing connections)
-                if (state === 'connected') {
-                    await supabase.from('profiles').update({ whatsapp_instance: targetName }).eq('id', user.id);
-                }
-            }
+            // O proxy atualiza o status no banco usando credenciais server-side.
         }
     };
 
@@ -92,23 +85,10 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
             const res = await whatsappService.fetchConnectionState(tenantId, newInstanceName);
 
             if (res.success) {
-                // 2. If exists, save to DB
-                const { data, error } = await supabase.from('whatsapp_instances').upsert({
-                    user_id: user.id,
-                    instance_name: newInstanceName,
-                    instance_id: newInstanceName,
-                    status: res.state === 'open' ? 'connected' : 'disconnected'
-                }).select().single();
-
-                if (error) throw error;
-
-                // 3. Sync Profile
-                await supabase.from('profiles').update({
-                    whatsapp_instance: newInstanceName
-                }).eq('id', user.id);
-
-                setInstance(data);
-                handleConnect(newInstanceName);
+                // A importação só é aceita quando o proxy já reconhece a
+                // instância como pertencente ao usuário/tenant.
+                await fetchInstance();
+                await handleConnect(newInstanceName);
                 alert(`Instância ${newInstanceName} importada com sucesso!`);
             } else {
                 alert('Instância não encontrada na API. Verifique o nome exato.');
@@ -127,23 +107,9 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
         try {
             const res = await whatsappService.createInstance(tenantId, newInstanceName);
             if (res.success) {
-                // Save to DB
-                const { data, error } = await supabase.from('whatsapp_instances').insert({
-                    user_id: user.id,
-                    instance_name: res.instanceName, // Unique name returned by service
-                    instance_id: res.data.instance?.instanceId || res.instanceName,
-                    status: 'disconnected'
-                }).select().single();
-
-                if (error) throw error;
-
-                // SYNC PROFILE (Crucial for Broadcast)
-                await supabase.from('profiles').update({
-                    whatsapp_instance: res.instanceName
-                }).eq('id', user.id);
-
-                setInstance(data);
-                handleConnect(data.instance_name);
+                // O proxy persiste perfil e metadados da instância.
+                await fetchInstance();
+                await handleConnect(res.instanceName);
             } else {
                 alert('Erro ao criar instância: ' + res.error);
             }
@@ -165,16 +131,10 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
             // Instance doesn't exist on new server — auto-recreate with same name
             if ((res as any).notFound) {
                 console.log(`🔄 Instância ${targetName} não encontrada — recriando no servidor...`);
-                const createRes = await fetch(`https://api.2b.app.br/instance/create`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'apikey': '8828462c98512411df3acfe3df4e48a1' },
-                    body: JSON.stringify({ instanceName: targetName, qrcode: false, integration: 'WHATSAPP-BAILEYS' })
-                });
-                const createData = await createRes.json();
-                const newToken = createData?.hash?.apikey || createData?.hash || createData?.token;
-                if (newToken && instance) {
-                    await supabase.from('whatsapp_instances').update({ status: 'disconnected' }).eq('id', instance.id);
-                    await supabase.from('profiles').update({ whatsapp_token: newToken }).eq('id', user.id);
+                const recreateRes = await whatsappService.recreateInstance(tenantId, targetName);
+                if (!recreateRes.success) {
+                    alert('Erro ao recriar instância: ' + (recreateRes.error || 'falha desconhecida'));
+                    return;
                 }
                 // Retry connect after recreation
                 res = await whatsappService.connectInstance(tenantId, targetName);
@@ -203,7 +163,6 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
         setLoading(true);
         try {
             await whatsappService.deleteInstance(tenantId, instance.instance_name);
-            await supabase.from('whatsapp_instances').delete().eq('id', instance.id);
             setInstance(null);
             setQrCode(null);
             setConnectionStatus('disconnected');
@@ -338,16 +297,13 @@ const EvolutionConnection: React.FC<EvolutionConnectionProps> = ({ user, tenantI
                                 </button>
 
                                 {/* GROUP SELECTORS - DIRECTORS ONLY */}
-                                {/* "Grupo de Oportunidades" volta a ser usado: o Lançador (SmartFinder)
-                                    tem opção "Só no Grupo" que lê teachers_group_id — ver
-                                    supabase/functions/broadcast-opportunity (dispatch_mode='group'). */}
                                 {['DIRECTOR', 'ADMIN', 'SUPER_ADMIN', 'SCHOOL_ADMIN', 'FRANCHISEE'].includes(user.role) && (
                                     <div className="mt-8 w-full border-t border-brand-border pt-8 text-left grid grid-cols-1 gap-6">
                                         <GroupSelector
                                             user={user}
                                             instanceName={instance.instance_name}
                                             label="Grupo de Oportunidades"
-                                            description="Usado quando o Lançador dispara no modo 'Só no Grupo'."
+                                            description="Onde as vagas serão lançadas para os professores."
                                             dbColumn="teachers_group_id"
                                         />
                                         <GroupSelector

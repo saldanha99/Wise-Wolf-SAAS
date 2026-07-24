@@ -1,9 +1,96 @@
 
 import { supabase } from '../lib/supabase';
 
-// CONSTANTES GLOBAIS (API KEY DO PORTAINER/MASTER)
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const EVOLUTION_API_KEY = "8828462c98512411df3acfe3df4e48a1";
+type EvolutionAction =
+    | 'instance/create'
+    | 'instance/connect'
+    | 'instance/connectionState'
+    | 'instance/logout'
+    | 'instance/delete'
+    | 'message/sendText'
+    | 'group/fetchAllGroups';
+
+type EvolutionProxyResult = {
+    ok?: boolean;
+    instanceName?: string;
+    instanceId?: string;
+    state?: string;
+    qrcode?: string;
+    messageId?: string;
+    groups?: Array<{ id: string; subject: string }>;
+    error?: string;
+    code?: string;
+};
+
+class EvolutionProxyError extends Error {
+    code?: string;
+    status?: number;
+}
+
+async function resolveTenantId(tenantId?: string): Promise<string> {
+    const suppliedTenantId = tenantId?.trim();
+    if (suppliedTenantId) return suppliedTenantId;
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) throw new Error('Sessão expirada. Entre novamente.');
+
+    const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', authData.user.id)
+        .single();
+
+    if (profileError || !profile?.tenant_id) throw new Error('Tenant do usuário não encontrado.');
+    return String(profile.tenant_id);
+}
+
+async function invokeEvolution(
+    action: EvolutionAction,
+    tenantId: string | undefined,
+    instanceName: string,
+    payload?: Record<string, unknown>,
+): Promise<EvolutionProxyResult> {
+    const callerTenantId = await resolveTenantId(tenantId);
+    const { data, error } = await supabase.functions.invoke('whatsapp-evolution-proxy', {
+        body: { action, tenantId: callerTenantId, instanceName, payload },
+    });
+
+    if (error) {
+        const proxyError = new EvolutionProxyError(error.message || 'Falha na integração com WhatsApp.');
+        const context = (error as any)?.context;
+        if (context && typeof context.clone === 'function') {
+            proxyError.status = context.status;
+            try {
+                const details = await context.clone().json();
+                if (details?.error) proxyError.message = String(details.error);
+                if (details?.code) proxyError.code = String(details.code);
+            } catch {
+                // A resposta pode não ser JSON; mantemos a mensagem genérica do SDK.
+            }
+        }
+        throw proxyError;
+    }
+
+    const result = (data || {}) as EvolutionProxyResult;
+    if (result.error) {
+        const proxyError = new EvolutionProxyError(result.error);
+        proxyError.code = result.code;
+        throw proxyError;
+    }
+    return result;
+}
+
+function buildUniqueInstanceName(instanceName: string): string {
+    const clean = instanceName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '')
+        .replace(/^[-_]+|[-_]+$/g, '')
+        .slice(0, 60) || 'usuario';
+    const baseName = clean.startsWith('prof-') || clean.startsWith('escola-') ? clean : `prof-${clean}`;
+    return `${baseName}-${Math.random().toString(36).slice(2, 6)}`;
+}
 
 // Template default global de lembrete de aula (usado quando professor nao customiza)
 export const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
@@ -24,128 +111,80 @@ export const REMINDER_TEMPLATE_VARIABLES = [
 
 export const whatsappService = {
     // 1. Create Instance
-    async createInstance(tenantId: string, instanceName: string) {
+    async createInstance(
+        tenantId: string | undefined,
+        instanceName: string,
+        options?: { preserveName?: boolean; ownerUserId?: string },
+    ) {
         try {
-            // AJUSTE DE NOME (FIX DUPLICIDADE E UNICIDADE)
-            // Se já vier com "prof-", mantemos. Se não, adicionamos.
-            const baseName = instanceName.toLowerCase().startsWith('prof')
-                ? instanceName.toLowerCase()
-                : `prof-${instanceName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-
-            // Adiciona sulfixo aleatório para garantir unicidade: prof-dani-9x2a
-            const uniqueName = `${baseName}-${Math.random().toString(36).substring(2, 6)}`;
-
-            console.log(`🚀 Criando instância única: ${uniqueName}`);
-
-            const response = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': EVOLUTION_API_KEY
-                },
-                body: JSON.stringify({
-                    instanceName: uniqueName,
-                    token: uniqueName,
-                    qrcode: true,
-                    integration: 'WHATSAPP-BAILEYS'
-                })
+            const requestedName = options?.preserveName ? instanceName.trim() : buildUniqueInstanceName(instanceName);
+            const data = await invokeEvolution('instance/create', tenantId, requestedName, {
+                ownerUserId: options?.ownerUserId,
             });
-
-            const data = await response.json();
-
-            // Tratamento de erro específico para duplicidade (caso raro com sufixo)
-            if (!response.ok) {
-                if (data?.error === 'Instance already exists') {
-                    // Se por milagre cair num hash igual, tentamos de novo ou retornamos erro
-                    throw new Error('Nome de instância indisponível. Tente novamente.');
-                }
-                throw new Error(data.message || 'Failed to create instance');
-            }
-
-            return { success: true, instanceName: uniqueName, data };
+            const createdName = data.instanceName || requestedName;
+            return {
+                success: true,
+                instanceName: createdName,
+                data: { instance: { instanceName: createdName, instanceId: data.instanceId, status: data.state } },
+            };
         } catch (error: any) {
             console.error('Create Instance Error:', error);
             return { success: false, error: error.message };
         }
     },
 
-    // 2. Connect / Get QR Code
-    async connectInstance(tenantId: string, instanceName: string) {
+    async recreateInstance(tenantId: string | undefined, instanceName: string) {
         try {
-            const response = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-                method: 'GET',
-                headers: {
-                    'apikey': EVOLUTION_API_KEY
-                }
-            });
+            const data = await invokeEvolution('instance/create', tenantId, instanceName, { recreate: true });
+            return { success: true, instanceName: data.instanceName || instanceName, data };
+        } catch (error: any) {
+            console.error('Recreate Instance Error:', error);
+            return { success: false, error: error.message };
+        }
+    },
 
-            if (response.status === 404) {
-                return { success: false, error: 'INSTANCE_NOT_FOUND', notFound: true };
+    // 2. Connect / Get QR Code
+    async connectInstance(tenantId: string | undefined, instanceName: string) {
+        try {
+            const data = await invokeEvolution('instance/connect', tenantId, instanceName);
+            if (data.qrcode) {
+                return { success: true, qrcode: data.qrcode };
             }
-
-            const data = await response.json();
-
-            if (data.base64) {
-                return { success: true, qrcode: data.base64 };
-            }
-
-            if (data.instance?.state === 'open' || data.instance?.state === 'connected') {
+            if (data.state === 'open' || data.state === 'connected') {
                 return { success: true, status: 'connected' };
             }
-
             return { success: false, data };
         } catch (error: any) {
+            if (error?.code === 'INSTANCE_NOT_FOUND' || error?.status === 404) {
+                return { success: false, error: 'INSTANCE_NOT_FOUND', notFound: true };
+            }
             console.error('Connect Error:', error);
             return { success: false, error: error.message };
         }
     },
 
     // 3. Get Status
-    async fetchConnectionState(tenantId: string, instanceName: string) {
+    async fetchConnectionState(tenantId: string | undefined, instanceName: string) {
         try {
-            const response = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
-                method: 'GET',
-                headers: {
-                    'apikey': EVOLUTION_API_KEY
-                }
-            });
-
-            if (response.status === 404) {
+            const data = await invokeEvolution('instance/connectionState', tenantId, instanceName);
+            return { success: true, state: data.state || 'disconnected' };
+        } catch (error: any) {
+            if (error?.code === 'INSTANCE_NOT_FOUND' || error?.status === 404) {
                 return { success: false, state: 'not_found', notFound: true };
             }
-
-            const data = await response.json();
-            return { success: true, state: data.instance?.state || 'disconnected' };
-        } catch (error: any) {
             return { success: false, error: error.message, state: 'disconnected' };
         }
     },
 
     // 4. Send Message
-    async sendText(tenantId: string, instanceName: string, number: string, text: string, userId?: string) {
+    async sendText(tenantId: string | undefined, instanceName: string, number: string, text: string, userId?: string) {
         try {
-            // Instâncias criadas com a chave global PODEM ser controladas com a chave global
-            // OU com o token específico salvo no banco (recomendado se tiver).
-            // Para simplicidade e correção do erro 401, vamos usar a GLOBAL KEY aqui também,
-            // pois ela tem permissão de "Super Admin" sobre todas as instâncias.
-
             const cleanNumber = number.replace(/\D/g, '');
             const finalNumber = cleanNumber.startsWith('55') && cleanNumber.length > 10 ? cleanNumber : `55${cleanNumber}`;
-
-            const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': EVOLUTION_API_KEY
-                },
-                body: JSON.stringify({
-                    number: finalNumber,
-                    text: text,
-                    linkPreview: true
-                })
+            const result = await invokeEvolution('message/sendText', tenantId, instanceName, {
+                number: finalNumber,
+                text,
             });
-
-            const result = await response.json();
 
             // Log to DB
             if (userId) {
@@ -153,26 +192,31 @@ export const whatsappService = {
                     user_id: userId,
                     destination: finalNumber,
                     message: text,
-                    status: response.ok ? 'sent' : 'error',
+                    status: 'sent',
                     response_data: result
                 });
             }
 
-            return { success: response.ok, data: result };
+            return { success: true, data: result };
         } catch (error: any) {
             console.error('Send Text Error:', error);
+            if (userId) {
+                await supabase.from('whatsapp_logs').insert({
+                    user_id: userId,
+                    destination: number.replace(/\D/g, ''),
+                    message: text,
+                    status: 'error',
+                    response_data: { error: 'proxy_error' },
+                });
+            }
             return { success: false, error: error.message };
         }
     },
 
     // 5. Logout
-    async logoutInstance(tenantId: string, instanceName: string) {
+    async logoutInstance(tenantId: string | undefined, instanceName: string) {
         try {
-            // Nota: O tenantId não é mais usado para buscar config, mas mantemos assinatura para compatibilidade
-            await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
-                method: 'DELETE',
-                headers: { 'apikey': EVOLUTION_API_KEY }
-            });
+            await invokeEvolution('instance/logout', tenantId, instanceName);
             return { success: true };
         } catch (error: any) {
             return { success: false, error: error.message };
@@ -180,20 +224,26 @@ export const whatsappService = {
     },
 
     // 6. Delete
-    async deleteInstance(tenantId: string, instanceName: string) {
+    async deleteInstance(tenantId: string | undefined, instanceName: string) {
         try {
-            await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
-                method: 'DELETE',
-                headers: { 'apikey': EVOLUTION_API_KEY }
-            });
+            await invokeEvolution('instance/delete', tenantId, instanceName);
             return { success: true };
         } catch (error: any) {
             return { success: false, error: error.message };
         }
     },
 
+    async fetchGroups(tenantId: string | undefined, instanceName: string) {
+        try {
+            const data = await invokeEvolution('group/fetchAllGroups', tenantId, instanceName);
+            return { success: true, groups: data.groups || [] };
+        } catch (error: any) {
+            return { success: false, groups: [], error: error.message };
+        }
+    },
+
     // Helpers for automated messages
-    async sendLessonReminder(tenantId: string, teacherId: string, instanceName: string, studentName: string, studentPhone: string, time: string, options?: { classLink?: string; teacherName?: string; tenantName?: string }) {
+    async sendLessonReminder(tenantId: string | undefined, teacherId: string, instanceName: string, studentName: string, studentPhone: string, time: string, options?: { classLink?: string; teacherName?: string; tenantName?: string }) {
         const text = await this.renderLessonReminder(teacherId, {
             studentName,
             classTime: time,
@@ -224,7 +274,7 @@ export const whatsappService = {
             .replace(/\{tenant_name\}/g, vars.tenantName || '');
     },
 
-    async sendRescheduleConfirmation(tenantId: string, teacherId: string, instanceName: string, studentName: string, studentPhone: string, date: string, time: string) {
+    async sendRescheduleConfirmation(tenantId: string | undefined, teacherId: string, instanceName: string, studentName: string, studentPhone: string, date: string, time: string) {
         const text = `Olá ${studentName}! 🐺\n\nSua reposição na Wise Wolf foi confirmada para o dia *${date}* às *${time}*.\n\nAté lá! 🚀`;
         return this.sendText(tenantId, instanceName, studentPhone, text, teacherId);
     }

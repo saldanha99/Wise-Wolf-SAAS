@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 // Cron diário (06:00 BRT): a INSTÂNCIA CENTRAL da escola envia, no privado de cada
 // professor, a agenda de aulas do dia — um lembrete matinal.
@@ -39,6 +40,8 @@ async function resolveCentralInstance(supabase: any, tenantId: string | null, ca
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authError = await authorizeAutomation(req, corsHeaders);
+  if (authError) return authError;
 
   try {
     const supabase = createClient(
@@ -87,6 +90,7 @@ serve(async (req) => {
     (teachers || []).forEach((t: any) => { teacherById[t.id] = t; });
 
     let sent = 0;
+    let skipped = 0;
     const failures: string[] = [];
     const instanceCache: Record<string, string | null> = {};
 
@@ -94,6 +98,15 @@ serve(async (req) => {
       const t = teacherById[tid];
       if (!t) { failures.push(`${tid}: professor não encontrado`); continue; }
       if (t.date_automation_enabled === false) continue; // professor optou por não receber
+
+      const { data: duplicate } = await supabase
+        .from("automation_sent")
+        .select("id")
+        .eq("kind", "TEACHER_AGENDA")
+        .eq("subject_id", tid)
+        .eq("ref_date", todayBRT)
+        .maybeSingle();
+      if (duplicate) { skipped++; continue; }
 
       const phone = normalizePhone(t.phone || "");
       if (!phone) { failures.push(`${tid}: telefone inválido`); continue; }
@@ -126,6 +139,12 @@ serve(async (req) => {
           console.error("Evolution error:", errText);
           continue;
         }
+        const { error: markError } = await supabase.from("automation_sent").insert({
+          kind: "TEACHER_AGENDA",
+          subject_id: tid,
+          ref_date: todayBRT,
+        });
+        if (markError) throw markError;
         sent++;
       } catch (inner) {
         console.error(`Erro agenda ${tid}:`, inner);
@@ -134,7 +153,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ date: todayBRT, teachers: teacherIds.length, sent, failures: failures.length, failure_reasons: failures.slice(0, 10) }),
+      JSON.stringify({ date: todayBRT, teachers: teacherIds.length, sent, skipped, failures: failures.length, failure_reasons: failures.slice(0, 10) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e: any) {

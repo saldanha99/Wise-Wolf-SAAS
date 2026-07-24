@@ -12,7 +12,9 @@ const TeacherAffiliateCard: React.FC<TeacherAffiliateCardProps> = ({ user }) => 
     const [stats, setStats] = useState({ referrals: 0, totalEarnings: 0 });
     const [reward, setReward] = useState<number>(45);
 
-    const affiliateLink = `${APP_BASE_URL}/matricula?ref=${user.id}`;
+    // A indicação primeiro captura o interesse; a matrícula exige uma oferta
+    // comercial autoritativa com plano, preço e vencimento.
+    const affiliateLink = `${APP_BASE_URL}/indicacao?ref=${user.id}`;
 
     useEffect(() => {
         fetchAffiliateStats();

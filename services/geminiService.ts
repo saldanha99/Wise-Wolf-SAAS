@@ -246,22 +246,22 @@ Regras importantes:
 
 export const generateBillingReminder = async (studentName: string, amount: number, dueDate: string, tone: 'friendly' | 'professional' | 'urgent') => {
   try {
-    const ai = getRequestConfig();
-    if (!ai) return "Configuração de IA ausente.";
-
     const prompt = `Escreva um e-mail curto e elegante de lembrete de pagamento para o aluno ${studentName}. 
     Valor: R$ ${amount}. Vencimento: ${dueDate}. 
     Tom de voz: ${tone === 'friendly' ? 'Amigável e leve' : tone === 'urgent' ? 'Urgente e sério' : 'Profissional e direto'}. 
     O e-mail deve ser em português, incluir um espaço para o link do boleto/pix e terminar com o nome da escola (use [Nome da Escola]).`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
-      contents: prompt,
-      config: {
-        temperature: 0.8,
-      },
+    const { data, error } = await supabase.functions.invoke('wolfie-brain', {
+      body: {
+        message: prompt,
+        studentLevel: 'B1',
+        previousContext: 'System: Você redige comunicações financeiras claras e respeitosas em português do Brasil.'
+      }
     });
-    return response.text();
+
+    if (error) throw error;
+    if (data?.aiText) return data.aiText;
+    throw new Error('A IA não retornou o lembrete de pagamento.');
   } catch (error) {
     console.error("Gemini Billing Error:", error);
     return `Olá ${studentName}, lembramos que sua fatura de R$ ${amount} vence em ${dueDate}. Por favor, regularize seu débito.`;

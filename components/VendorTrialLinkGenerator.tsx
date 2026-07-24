@@ -57,11 +57,27 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
 
     const handleGenerate = async () => {
         if (!prospectName.trim()) return alert('Informe o nome do prospect.');
+        if (prospectPhone.replace(/\D/g, '').length < 10) return alert('Informe um WhatsApp válido.');
+        if (!selectedTeacher || !selectedDay || !selectedTime) return alert('Selecione professor, dia e horário.');
         if (!tenantId) return alert('Tenant ID não encontrado.');
 
         setSaving(true);
         try {
-            // Create opportunity in DB
+            const dayIndex: Record<string, number> = {
+                Domingo: 0, Segunda: 1, Terça: 2, Quarta: 3, Quinta: 4, Sexta: 5, Sábado: 6,
+            };
+            const brtNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+            let delta = (dayIndex[selectedDay] - brtNow.getUTCDay() + 7) % 7;
+            let selectedDate = new Date(Date.UTC(brtNow.getUTCFullYear(), brtNow.getUTCMonth(), brtNow.getUTCDate() + delta));
+            let ymd = selectedDate.toISOString().split('T')[0];
+            let startAt = new Date(`${ymd}T${selectedTime}:00-03:00`);
+            if (startAt.getTime() < Date.now() + 60 * 60 * 1000) {
+                delta += 7;
+                selectedDate = new Date(Date.UTC(brtNow.getUTCFullYear(), brtNow.getUTCMonth(), brtNow.getUTCDate() + delta));
+                ymd = selectedDate.toISOString().split('T')[0];
+                startAt = new Date(`${ymd}T${selectedTime}:00-03:00`);
+            }
+
             const { data: opp, error: oppErr } = await supabase
                 .from('opportunities')
                 .insert({
@@ -72,11 +88,12 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
                     trial_status: 'SCHEDULED',
                     conversion_status: 'OPEN',
                     winner_teacher_id: selectedTeacher || null,
-                    slots_proposed: selectedDay && selectedTime ? [{
+                    slots_proposed: [{
                         day: selectedDay,
                         time: selectedTime,
                         formatted: selectedDay,
-                    }] : [],
+                        start_time: startAt.toISOString(),
+                    }],
                     created_by_vendor_id: user.id,
                 })
                 .select()
@@ -84,26 +101,14 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
 
             if (oppErr) throw oppErr;
 
-            // Build the link data (same format as broadcast-opportunity)
-            const linkData = {
-                opportunityId: opp.id,
-                tenantId,
-                studentName: prospectName.trim(),
-                studentPhone: prospectPhone.replace(/\D/g, '') || null,
-                teacherId: selectedTeacher || null,
-                day: selectedDay || null,
-                time: selectedTime || null,
-                vendorId: user.id,
-            };
-
-            const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(linkData))));
-            const trialUrl = `${APP_BASE_URL}/experimental?data=${base64}`;
+            const linkToken = crypto.randomUUID();
+            const trialUrl = `${APP_BASE_URL}/experimental?token=${linkToken}`;
 
             // Save enrollment link record
-            await supabase.from('enrollment_links').insert({
+            const { error: linkError } = await supabase.from('enrollment_links').insert({
                 tenant_id: tenantId,
                 opportunity_id: opp.id,
-                link_token: `vendor_trial_${opp.id}_${Date.now()}`,
+                link_token: linkToken,
                 link_url: trialUrl,
                 student_name: prospectName.trim(),
                 student_phone: prospectPhone.replace(/\D/g, '') || null,
@@ -111,6 +116,10 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
                 status: 'PENDING',
                 created_by_vendor_id: user.id,
             });
+            if (linkError) {
+                await supabase.from('opportunities').delete().eq('id', opp.id);
+                throw linkError;
+            }
 
             setGeneratedLink(trialUrl);
             await navigator.clipboard.writeText(trialUrl).catch(() => {});

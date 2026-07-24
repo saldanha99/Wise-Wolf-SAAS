@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { FUNCTIONS_URL } from '../lib/supabase';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agendamento público de entrevista do candidato a professor (rota /book-interview).
@@ -12,7 +13,7 @@ import { Calendar, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 // Mobile-first: o link chega pelo WhatsApp.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const API_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co/functions/v1/book-interview';
+const API_URL = `${FUNCTIONS_URL}/book-interview`;
 const BRT_OFFSET_MS = 3 * 3600 * 1000; // Brasil não tem mais horário de verão
 
 const fmtBRT = (iso: string) => {

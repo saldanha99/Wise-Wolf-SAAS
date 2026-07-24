@@ -7,14 +7,6 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Check, Star } from "lucide-react";
-import Link from "next/link"; // Changed to next/link but this is a vite app, so likely need to change to react-router-dom Link or similar, but let's stick to provided code and adjust if needed. Actually user provided 'next/link'. I should assume I need to adapt if this is Vite. 
-// Vite project -> 'Link' from react-router-dom is better, but user provided next/link.
-// I will start by using standard <a> or simple mock if next/link is not available, but since this is Vite, I should probably replace next/link with react-router-dom Link or just <a>.
-// Wait, the user prompt says "The codebase should support: shadcn... Tailwind... Typescript". It doesn't say Next.js explicitly, but the imports "next/link" imply it.
-// Checking package.json... "vite": "^6.2.0". It is VITE.
-// I MUST REPLACE `next/link` with `react-router-dom` Link or `a` tag.
-// Also `next/image` in other components content.
-// I will adapt: next/link -> react-router-dom Link (if installed) or <a>.
 import { useState, useRef } from "react";
 import confetti from "canvas-confetti";
 import NumberFlow from "@number-flow/react";

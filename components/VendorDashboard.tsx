@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, Users, Link, Calendar, Copy, CheckCircle, Clock, Award } from 'lucide-react';
+import { TrendingUp, DollarSign, Users, Link, Calendar, CheckCircle, Clock, Award } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
-import { APP_BASE_URL } from '../constants';
 
 interface VendorDashboardProps {
     user: User;
@@ -23,9 +22,6 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, tenantId, teach
     const [commissions, setCommissions] = useState<Commission[]>([]);
     const [commissionRate, setCommissionRate] = useState(3000); // centavos
     const [loading, setLoading] = useState(true);
-    const [copied, setCopied] = useState(false);
-
-    const myReferralBase = `${APP_BASE_URL}/matricula?vendor_id=${user.id}`;
 
     useEffect(() => {
         fetchData();
@@ -68,12 +64,6 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, tenantId, teach
         } finally {
             setLoading(false);
         }
-    };
-
-    const copyLink = (link: string) => {
-        navigator.clipboard.writeText(link);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
     };
 
     const totalPending = commissions.filter(c => c.status === 'PENDING').reduce((s, c) => s + c.amount_brl, 0);
@@ -132,21 +122,20 @@ const VendorDashboard: React.FC<VendorDashboardProps> = ({ user, tenantId, teach
 
             {/* Ferramentas rápidas */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Link de matrícula com vendor_id */}
+                {/* A matrícula exige uma oferta com plano, preço e vencimento. */}
                 <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
                     <h3 className="font-black text-sm text-gray-800 dark:text-white mb-1 flex items-center gap-2">
-                        <Link size={16} className="text-tenant-primary" /> Meu Link de Matrícula
+                        <Link size={16} className="text-tenant-primary" /> Link de Matrícula
                     </h3>
-                    <p className="text-xs text-gray-400 mb-3">Toda matrícula via este link será vinculada a você.</p>
-                    <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-3 flex items-center gap-2">
-                        <code className="text-[10px] text-gray-500 dark:text-slate-400 flex-1 truncate">{myReferralBase}</code>
-                        <button
-                            onClick={() => copyLink(myReferralBase)}
-                            className="shrink-0 p-2 bg-tenant-primary text-white rounded-lg hover:brightness-110 transition-all"
-                        >
-                            {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
-                        </button>
-                    </div>
+                    <p className="text-xs text-gray-400 mb-3">
+                        Configure o plano para gerar um link seguro vinculado à sua comissão.
+                    </p>
+                    <button
+                        onClick={() => onNavigate?.('vendor_enrollment')}
+                        className="w-full px-4 py-3 bg-tenant-primary text-white rounded-xl text-xs font-black uppercase tracking-wider hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                    >
+                        <Link size={14} /> Gerar link personalizado
+                    </button>
                 </div>
 
                 {/* Atalhos */}

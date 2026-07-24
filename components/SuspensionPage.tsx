@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, Lock, externalLink } from 'lucide-react';
+import { AlertCircle, Lock } from 'lucide-react';
 import { User } from '../types';
 
 interface SuspensionPageProps {

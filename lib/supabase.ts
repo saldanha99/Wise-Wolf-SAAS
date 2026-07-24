@@ -1,7 +1,27 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://dvalxbtngopxopzcbfdm.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YWx4YnRuZ29weG9wemNiZmRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5ODkwMTksImV4cCI6MjA4MjU2NTAxOX0.rrq_vbAub4GGIcZc9cpS-QxGFYQ3B0aeka2p4xiYKiE';
+const requirePublicEnv = (name: 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY', value?: string) => {
+    const normalized = value?.trim();
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    if (!normalized) {
+        throw new Error(`[Configuração] ${name} não foi definida no build do frontend.`);
+    }
+
+    return normalized;
+};
+
+// Não use fallback para outro projeto: um build mal configurado deve falhar antes
+// de autenticar ou gravar dados no ambiente anterior.
+export const SUPABASE_URL = requirePublicEnv('VITE_SUPABASE_URL', import.meta.env.VITE_SUPABASE_URL)
+    .replace(/\/+$/, '');
+export const SUPABASE_ANON_KEY = requirePublicEnv('VITE_SUPABASE_ANON_KEY', import.meta.env.VITE_SUPABASE_ANON_KEY);
+export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+    },
+});

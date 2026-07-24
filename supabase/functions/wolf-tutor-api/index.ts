@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import OpenAI from "https://esm.sh/openai@4";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -12,16 +12,17 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
+    if (req.method !== 'POST') return methodNotAllowed(corsHeaders);
+
+    const auth = await authorizeRequest(req, {
+        corsHeaders,
+        allowedRoles: ['STUDENT', 'TEACHER', 'COORDINATOR', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'SALESPERSON'],
+    });
+    if (!auth.ok) return auth.response;
 
     try {
-        const supabaseClient = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
-
-        const openai = new OpenAI({
-            apiKey: Deno.env.get('OPENAI_API_KEY'),
-        });
+        const supabaseClient = auth.context.admin;
+        const userId = auth.context.userId!;
 
         // Check if request is multipart/form-data (audio file) or JSON
         const contentType = req.headers.get('content-type') || '';
@@ -29,55 +30,153 @@ serve(async (req) => {
         let userText = '';
         let studentLevel = 'A1';
         let conversationId = '';
+        let audioFile: File | null = null;
+        let audioBase64: string | null = null;
 
         if (contentType.includes('multipart/form-data')) {
             const formData = await req.formData();
-            const audioFile = formData.get('audio') as File;
-            studentLevel = formData.get('studentLevel') as string || 'A1';
-            conversationId = formData.get('conversationId') as string || crypto.randomUUID();
-            const textInput = formData.get('text') as string;
+            const audioValue = formData.get('audio');
+            const levelValue = formData.get('studentLevel');
+            const conversationValue = formData.get('conversationId');
+            const textValue = formData.get('text');
+            audioFile = audioValue instanceof File ? audioValue : null;
+            studentLevel = typeof levelValue === 'string' ? levelValue : 'A1';
+            conversationId = typeof conversationValue === 'string' ? conversationValue : crypto.randomUUID();
+            userText = typeof textValue === 'string' ? textValue : '';
 
             if (audioFile) {
-                // Convert File to standard File object if needed, but OpenAI SDK handles it usually.
-                // Deno's formData returns File objects.
-                const transcription = await openai.audio.transcriptions.create({
-                    file: audioFile,
-                    model: 'whisper-1',
-                    language: 'en', // Force English for tutor
-                });
-                userText = transcription.text;
-            } else if (textInput) {
-                userText = textInput;
+                if (audioFile.size > 10_000_000) {
+                    return new Response(JSON.stringify({ error: 'Audio file is too large' }), {
+                        status: 413,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    });
+                }
             }
         } else {
-            const json = await req.json();
-            userText = json.text || '';
+            const json = await req.json() as Record<string, unknown>;
+            userText = typeof json.text === 'string' ? json.text : '';
             // If audioBase64 comes in JSON input (less common for large files but possible)
             if (json.audioBase64) {
-                // Would need to convert base64 to File/Buffer for Whisper
-                // For now, let's assume we use multipart for Audio upload as it's standard.
-                // Or if the user insists on "audioBase64" input:
-                const binaryString = atob(json.audioBase64);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
+                if (typeof json.audioBase64 !== 'string' || json.audioBase64.length > 14_000_000) {
+                    return new Response(JSON.stringify({ error: 'Audio payload is too large' }), {
+                        status: 413,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    });
                 }
-                const file = new File([bytes], "input.wav", { type: "audio/wav" });
-                const transcription = await openai.audio.transcriptions.create({
-                    file: file,
-                    model: 'whisper-1',
-                    language: 'en',
-                });
-                userText = transcription.text;
+                audioBase64 = json.audioBase64;
             }
-            studentLevel = json.studentLevel || 'A1';
-            conversationId = json.conversationId || crypto.randomUUID();
+            studentLevel = typeof json.studentLevel === 'string' ? json.studentLevel : 'A1';
+            conversationId = typeof json.conversationId === 'string'
+                ? json.conversationId
+                : crypto.randomUUID();
         }
 
-        if (!userText) {
+        const allowedLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+        studentLevel = allowedLevels.includes(studentLevel) ? studentLevel : 'A1';
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!uuidPattern.test(conversationId)) conversationId = crypto.randomUUID();
+        userText = typeof userText === 'string' ? userText.trim() : '';
+
+        if (!userText && !audioFile && !audioBase64) {
             return new Response(JSON.stringify({ error: 'No input provided' }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: 400,
+            });
+        }
+        if (userText.length > 5_000) {
+            return new Response(JSON.stringify({ error: 'Input is too long' }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 413,
+            });
+        }
+
+        // A service-role client bypasses RLS, so conversation ownership must be
+        // checked explicitly before reading history or spending AI resources.
+        const { data: existingConversation, error: conversationLookupError } = await supabaseClient
+            .from('ai_conversations')
+            .select('id, student_id')
+            .eq('id', conversationId)
+            .maybeSingle();
+        if (conversationLookupError) {
+            console.error('Tutor conversation lookup failed', { code: conversationLookupError.code });
+            return new Response(JSON.stringify({ error: 'Could not validate conversation' }), {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+        }
+        if (existingConversation && existingConversation.student_id !== userId) {
+            return new Response(JSON.stringify({ error: 'Conversation access denied' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+        }
+        if (!existingConversation) {
+            const { error: conversationInsertError } = await supabaseClient
+                .from('ai_conversations')
+                .insert({ id: conversationId, student_id: userId });
+
+            if (conversationInsertError) {
+                // A concurrent request may have created this UUID after our
+                // lookup. Re-read and accept it only if the same user owns it.
+                const { data: concurrentConversation, error: concurrentLookupError } = await supabaseClient
+                    .from('ai_conversations')
+                    .select('id, student_id')
+                    .eq('id', conversationId)
+                    .maybeSingle();
+                if (concurrentLookupError || !concurrentConversation) {
+                    console.error('Tutor conversation creation failed', {
+                        code: conversationInsertError.code,
+                    });
+                    return new Response(JSON.stringify({ error: 'Could not create conversation' }), {
+                        status: 500,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    });
+                }
+                if (concurrentConversation.student_id !== userId) {
+                    return new Response(JSON.stringify({ error: 'Conversation access denied' }), {
+                        status: 403,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    });
+                }
+            }
+        }
+
+        const openai = new OpenAI({
+            apiKey: Deno.env.get('OPENAI_API_KEY'),
+        });
+        if (audioFile) {
+            const transcription = await openai.audio.transcriptions.create({
+                file: audioFile,
+                model: 'whisper-1',
+                language: 'en',
+            });
+            userText = transcription.text.trim();
+        } else if (audioBase64) {
+            let binaryString: string;
+            try {
+                binaryString = atob(audioBase64);
+            } catch {
+                return new Response(JSON.stringify({ error: 'Invalid audio payload' }), {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                });
+            }
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            const file = new File([bytes], 'input.wav', { type: 'audio/wav' });
+            const transcription = await openai.audio.transcriptions.create({
+                file,
+                model: 'whisper-1',
+                language: 'en',
+            });
+            userText = transcription.text.trim();
+        }
+        if (!userText) {
+            return new Response(JSON.stringify({ error: 'No input provided' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
         }
 
@@ -86,12 +185,16 @@ serve(async (req) => {
         // Optimization: The client usually sends context or we fetch last 5 messages.
         // Let's simplified fetching from Supabase for context.
 
-        const { data: history } = await supabaseClient
+        const { data: history, error: historyError } = await supabaseClient
             .from('ai_messages')
             .select('role, content')
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: false })
             .limit(6);
+        if (historyError) {
+            console.error('Tutor history lookup failed', { code: historyError.code });
+            throw new Error('Tutor history unavailable');
+        }
 
         const previousMessages = history ? history.reverse().map((msg: any) => ({ role: msg.role, content: msg.content })) : [];
 
@@ -129,25 +232,32 @@ serve(async (req) => {
         const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
         // --- 6. SAVE TO SUPABASE ---
-        await supabaseClient.from('ai_messages').insert([
+        const { error: saveError } = await supabaseClient.from('ai_messages').insert([
             { conversation_id: conversationId, role: 'user', content: userText },
-            { conversation_id: conversationId, role: 'assistant', content: aiText, audio_base64: null } // Don't save base64 to DB to save space? Or upload to storage?
+            { conversation_id: conversationId, role: 'assistant', content: aiText }
             // User didn't specify DB schema details, just "Save ... in ai_messages". 
             // I'll assume standard saving.
         ]);
+        if (saveError) {
+            console.error('Tutor message persistence failed', { code: saveError.code });
+            throw new Error('Tutor message persistence failed');
+        }
 
         return new Response(
             JSON.stringify({
                 userText,
                 aiText,
                 aiAudioBase64: base64Audio,
-                corrections: null // Placeholder as we didn't force JSON output from GPT
+                corrections: null, // Placeholder as we didn't force JSON output from GPT
+                conversationId,
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-    } catch (error) {
-        console.error(error);
-        return new Response(JSON.stringify({ error: error.message }), {
+    } catch (error: unknown) {
+        console.error('Wolf tutor request failed', {
+            type: error instanceof Error ? error.name : 'UnknownError',
+        });
+        return new Response(JSON.stringify({ error: 'Internal server error' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 500,
         });

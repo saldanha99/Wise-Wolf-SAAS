@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { authorizedResumePath } from "../_shared/authorized-resume-path.ts";
 
 // RITA — recrutadora de IA. Triagem de job_applications: lê o PDF do currículo
 // (bucket privado via Storage API), avalia (score+resumo+flags+recomendação), muda
@@ -10,6 +11,7 @@ const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-
 
 const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const EVOLUTION_KEYS = Array.from(new Set([
+  (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
 ].filter(Boolean)));
 
 async function sendWhats(instance: string, payload: unknown): Promise<Response> {
@@ -19,7 +21,10 @@ async function sendWhats(instance: string, payload: unknown): Promise<Response> 
     if (resp.status !== 401) return resp;
     last = resp;
   }
-  return last!;
+  return last ?? new Response(
+    JSON.stringify({ error: "Evolution integration is unavailable" }),
+    { status: 503, headers: { "Content-Type": "application/json" } },
+  );
 }
 
 // ---- IA: Gemini (free) primeiro, OpenRouter (free) fallback. Retorna TEXTO (a saida
@@ -73,23 +78,26 @@ function extractJson(text: string): any | null {
   } catch { return null; }
 }
 
-async function downloadResume(sb: any, url: string): Promise<{ buf: Uint8Array | null; note: string | null }> {
+async function downloadResume(
+  sb: any,
+  url: string,
+  tenantId: string,
+): Promise<{ buf: Uint8Array | null; note: string | null }> {
   try {
-    const m = url.match(/\/object\/(?:public|sign|authenticated)\/resumes\/(.+?)(?:\?|$)/);
-    if (m) {
-      const path = decodeURIComponent(m[1]);
-      const { data, error } = await sb.storage.from("resumes").download(path);
-      if (error || !data) return { buf: null, note: `currículo não encontrado no storage (${error?.message || "vazio"})` };
-      return { buf: new Uint8Array(await data.arrayBuffer()), note: null };
-    }
-    const resp = await fetch(encodeURI(url), { signal: AbortSignal.timeout(20000) });
-    if (!resp.ok) return { buf: null, note: `currículo inacessível (HTTP ${resp.status})` };
-    return { buf: new Uint8Array(await resp.arrayBuffer()), note: null };
+    const path = authorizedResumePath(url, tenantId);
+    if (!path) return { buf: null, note: "caminho do currículo não pertence ao tenant" };
+    const { data, error } = await sb.storage.from("resumes").download(path);
+    if (error || !data) return { buf: null, note: `currículo não encontrado no storage (${error?.message || "vazio"})` };
+    return { buf: new Uint8Array(await data.arrayBuffer()), note: null };
   } catch (e) { return { buf: null, note: `falha ao baixar currículo (${(e as Error).message.slice(0, 80)})` }; }
 }
 
-async function extractResumeText(sb: any, url: string): Promise<{ text: string; note: string | null }> {
-  const { buf, note } = await downloadResume(sb, url);
+async function extractResumeText(
+  sb: any,
+  url: string,
+  tenantId: string,
+): Promise<{ text: string; note: string | null }> {
+  const { buf, note } = await downloadResume(sb, url, tenantId);
   if (!buf) return { text: "", note };
   try {
     if (buf.length < 5 || String.fromCharCode(...buf.slice(0, 4)) !== "%PDF") return { text: "", note: "arquivo do currículo não é PDF" };
@@ -122,7 +130,9 @@ async function centralInstance(sb: any, tenantId: string): Promise<{ instance: s
 function cleanPhone(raw: string): string { let p = (raw || "").replace(/\D/g, ""); if (p.length === 10 || p.length === 11) p = "55" + p; return p; }
 
 async function screenOne(sb: any, app: AppRow, sendPreinterview: boolean): Promise<any> {
-  const resume = app.resume_url ? await extractResumeText(sb, app.resume_url) : { text: "", note: "candidato não anexou currículo" };
+  const resume = app.resume_url
+    ? await extractResumeText(sb, app.resume_url, app.tenant_id)
+    : { text: "", note: "candidato não anexou currículo" };
   const userMsg = [
     `Candidato: ${app.name}`, `WhatsApp: ${app.whatsapp}`, `Data da candidatura: ${app.created_at}`,
     app.notes ? `Observações do formulário: ${app.notes}` : null,
@@ -169,8 +179,7 @@ async function screenOne(sb: any, app: AppRow, sendPreinterview: boolean): Promi
 }
 
 function isServiceRole(bearer: string, serviceKey: string): boolean {
-  if (bearer && bearer === serviceKey) return true;
-  try { const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(atob(b64))?.role === "service_role"; } catch { return false; }
+  return Boolean(serviceKey && bearer === serviceKey);
 }
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }

@@ -23,7 +23,7 @@ export interface PlanInfo {
     planName: string;           // Ex: "Plano Semestral"
     planValue: string;          // Mensalidade. Ex: "149,90"
     totalValue: string;         // Total do contrato. Ex: "1.678,80"
-    planDuration: number;       // Em meses
+    planDuration: number;       // Em meses; 0 representa serviço avulso
     startDate: string;          // "01/02/2025"
     endDate: string;            // "01/08/2025"
     dueDay: number;             // Dia de vencimento
@@ -59,6 +59,8 @@ interface ContractDocumentProps {
     endDate: string;
     dueDay: number;
     classFrequency: number | string;
+    enrollmentFee?: number;
+    proRataValue?: number;
     classDuration?: number;
     cancellationFee?: number;
     repositionLimit?: number;
@@ -109,6 +111,8 @@ export function ContractDocument({
     endDate,
     dueDay,
     classFrequency,
+    enrollmentFee = 0,
+    proRataValue = 0,
     classDuration = 30,
     cancellationFee = 30,
     repositionLimit = 1,
@@ -130,6 +134,7 @@ export function ContractDocument({
             Object.entries(school || {}).filter(([, v]) => v !== undefined && v !== '')
         ),
     };
+    const isOneTime = planDuration === 0;
 
     const handlePrint = useReactToPrint({
         contentRef: a4Ref,
@@ -251,7 +256,7 @@ export function ContractDocument({
                             <p className="font-bold">{planName}</p>
                         </div>
                         <div>
-                            <p className="text-gray-500 text-[9px] uppercase">Mensalidade</p>
+                            <p className="text-gray-500 text-[9px] uppercase">{isOneTime ? 'Valor' : 'Mensalidade'}</p>
                             <p className="font-bold">R$ {planValue}</p>
                         </div>
                         <div>
@@ -260,7 +265,7 @@ export function ContractDocument({
                         </div>
                         <div>
                             <p className="text-gray-500 text-[9px] uppercase">Duração</p>
-                            <p className="font-bold">{planDuration} {planDuration === 1 ? 'mês' : 'meses'}</p>
+                            <p className="font-bold">{isOneTime ? 'Serviço avulso' : `${planDuration} ${planDuration === 1 ? 'mês' : 'meses'}`}</p>
                         </div>
                         <div>
                             <p className="text-gray-500 text-[9px] uppercase">Frequência</p>
@@ -268,11 +273,17 @@ export function ContractDocument({
                         </div>
                         <div>
                             <p className="text-gray-500 text-[9px] uppercase">Vencimento</p>
-                            <p className="font-bold">Dia {dueDay} de cada mês</p>
+                            <p className="font-bold">{isOneTime ? `Pagamento único (dia ${dueDay})` : `Dia ${dueDay} de cada mês`}</p>
                         </div>
                     </div>
                     <div className="mt-2 pt-2 border-t border-[#002366]/20 text-[9px] text-gray-500">
                         <strong>Vigência:</strong> {startDate} a {endDate}
+                        {enrollmentFee > 0 && (
+                            <> | <strong>Taxa de matrícula:</strong> R$ {enrollmentFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
+                        )}
+                        {proRataValue > 0 && (
+                            <> | <strong>Valor proporcional inicial:</strong> R$ {proRataValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
+                        )}
                     </div>
                 </div>
 
@@ -284,11 +295,15 @@ export function ContractDocument({
                             Cláusula 1 — Do Objeto
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O presente contrato tem por objeto a prestação de serviços educacionais de ensino de língua inglesa pela <strong>CONTRATADA</strong> ao <strong>CONTRATANTE</strong>, consistindo em aulas online individuais de <strong>{classDuration} (trinta) minutos</strong>, realizadas <strong>{classFrequency} (
-                            {typeof classFrequency === 'number'
-                                ? ['uma', 'duas', 'três', 'quatro', 'cinco'][classFrequency - 1] || classFrequency
-                                : classFrequency}
-                            ) vezes por semana</strong>, além de acesso à plataforma de aprendizagem com materiais didáticos, atividades complementares e suporte de inteligência artificial (Wolfie AI Tutor).
+                            {isOneTime ? (
+                                <>O presente contrato tem por objeto uma prestação avulsa de serviço educacional de língua inglesa pela <strong>CONTRATADA</strong> ao <strong>CONTRATANTE</strong>, consistindo em uma aula online individual de <strong>{classDuration} (trinta) minutos</strong>, no horário contratado.</>
+                            ) : (
+                                <>O presente contrato tem por objeto a prestação de serviços educacionais de ensino de língua inglesa pela <strong>CONTRATADA</strong> ao <strong>CONTRATANTE</strong>, consistindo em aulas online individuais de <strong>{classDuration} (trinta) minutos</strong>, realizadas <strong>{classFrequency} (
+                                {typeof classFrequency === 'number'
+                                    ? ['uma', 'duas', 'três', 'quatro', 'cinco'][classFrequency - 1] || classFrequency
+                                    : classFrequency}
+                                ) vezes por semana</strong>, além de acesso à plataforma de aprendizagem com materiais didáticos, atividades complementares e suporte de inteligência artificial (Wolfie AI Tutor).</>
+                            )}
                         </p>
                     </div>
 
@@ -297,9 +312,13 @@ export function ContractDocument({
                             Cláusula 2 — Da Vigência
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O presente contrato terá vigência de <strong>{planDuration} ({
-                                ['um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze'][planDuration - 1] || planDuration
-                            }) {planDuration === 1 ? 'mês' : 'meses'}</strong>, com início em <strong>{startDate}</strong> e término em <strong>{endDate}</strong>. Ao término do período, o contrato será renovado automaticamente por prazo indeterminado, salvo manifestação em contrário de qualquer das partes com antecedência mínima de <strong>15 (quinze) dias</strong>.
+                            {isOneTime ? (
+                                <>O presente contrato refere-se a uma prestação avulsa, com execução no período de <strong>{startDate}</strong> a <strong>{endDate}</strong>, e <strong>não possui renovação automática</strong>.</>
+                            ) : (
+                                <>O presente contrato terá vigência de <strong>{planDuration} ({
+                                    ['um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze'][planDuration - 1] || planDuration
+                                }) {planDuration === 1 ? 'mês' : 'meses'}</strong>, com início em <strong>{startDate}</strong> e término em <strong>{endDate}</strong>. Ao término do período, o contrato será renovado automaticamente por prazo indeterminado, salvo manifestação em contrário de qualquer das partes com antecedência mínima de <strong>15 (quinze) dias</strong>.</>
+                            )}
                         </p>
                     </div>
 
@@ -308,9 +327,13 @@ export function ContractDocument({
                             Cláusula 3 — Do Valor e Forma de Pagamento
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O valor total do presente contrato é de <strong>R$ {totalValue} (reais)</strong>, a ser pago em <strong>{planDuration} ({
-                                ['uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze'][planDuration - 1] || planDuration
-                            }) parcelas mensais no valor unitário de R$ {planValue}</strong>, referente ao <strong>{planName}</strong>. O vencimento das parcelas será no dia <strong>{dueDay}</strong> de cada mês, mediante boleto bancário, PIX ou cartão de crédito, conforme opção do CONTRATANTE. O não pagamento até o 7º (sétimo) dia útil após o vencimento autoriza a CONTRATADA a suspender o acesso à plataforma e às aulas até a regularização.
+                            {isOneTime ? (
+                                <>O valor total do serviço avulso é de <strong>R$ {totalValue} (reais)</strong>, pago em parcela única por boleto bancário, PIX ou cartão de crédito, conforme opção do CONTRATANTE. A confirmação da aula fica condicionada à identificação do pagamento.</>
+                            ) : (
+                                <>O valor total do presente contrato é de <strong>R$ {totalValue} (reais)</strong>, incluindo as cobranças iniciais discriminadas no resumo quando aplicáveis. As mensalidades serão pagas em <strong>{planDuration} ({
+                                    ['uma', 'duas', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze'][planDuration - 1] || planDuration
+                                }) parcelas mensais no valor unitário de R$ {planValue}</strong>, referente ao <strong>{planName}</strong>. O vencimento das parcelas será no dia <strong>{dueDay}</strong> de cada mês, mediante boleto bancário, PIX ou cartão de crédito, conforme opção do CONTRATANTE. O não pagamento até o 7º (sétimo) dia útil após o vencimento autoriza a CONTRATADA a suspender o acesso à plataforma e às aulas até a regularização.</>
+                            )}
                         </p>
                     </div>
 
@@ -337,11 +360,15 @@ export function ContractDocument({
                             Cláusula 6 — Da Rescisão e Multa Contratual
                         </h3>
                         <p className="text-justify text-gray-700 leading-relaxed">
-                            O presente contrato poderá ser rescindido por qualquer das partes mediante comunicação prévia de <strong>15 (quinze) dias</strong>. Em caso de rescisão antecipada por iniciativa do CONTRATANTE sem justa causa, será cobrada multa compensatória equivalente a <strong>{cancellationFee}% (
-                                {['dez', 'quinze', 'vinte', 'trinta', 'quarenta', 'cinquenta'][
-                                    [10, 15, 20, 30, 40, 50].indexOf(cancellationFee)
-                                ] || cancellationFee} por cento
-                            ) do valor restante do contrato</strong>, a fim de compensar custos administrativos e operacionais.
+                            {isOneTime ? (
+                                <>Por se tratar de serviço avulso, não há fidelidade nem renovação. Pedidos de cancelamento ou reagendamento devem ser comunicados com antecedência mínima de <strong>24 (vinte e quatro) horas</strong>, sujeitos à disponibilidade da agenda.</>
+                            ) : (
+                                <>O presente contrato poderá ser rescindido por qualquer das partes mediante comunicação prévia de <strong>15 (quinze) dias</strong>. Em caso de rescisão antecipada por iniciativa do CONTRATANTE sem justa causa, será cobrada multa compensatória equivalente a <strong>{cancellationFee}% (
+                                    {['dez', 'quinze', 'vinte', 'trinta', 'quarenta', 'cinquenta'][
+                                        [10, 15, 20, 30, 40, 50].indexOf(cancellationFee)
+                                    ] || cancellationFee} por cento
+                                ) do valor restante do contrato</strong>, a fim de compensar custos administrativos e operacionais.</>
+                            )}
                         </p>
                     </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { Smartphone, Check, Calendar, Clock, ArrowRight, MessageCircle, Lock, AlertCircle, TrendingUp } from 'lucide-react';
 import { User as AuthUser } from '@supabase/supabase-js';
 
@@ -338,15 +338,12 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
 
                 if (!accessToken) throw new Error("No Access Token available for Notification");
 
-                const PROJECT_REF = "dvalxbtngopxopzcbfdm";
-                const FUNCTION_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/notify-claim`;
-                // @ts-ignore
-                const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase['supabaseKey'];
+                const FUNCTION_URL = `${FUNCTIONS_URL}/notify-claim`;
 
                 const notifyResponse = await fetch(FUNCTION_URL, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${ANON_KEY}`,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
                         'x-user-token': accessToken,
                         'Content-Type': 'application/json'
                     },

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Palette, Globe, Image as ImageIcon, Save, RefreshCw, Check, Loader2, UploadCloud, Zap } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Tenant } from '../types';
@@ -11,8 +11,6 @@ interface TenantSettingsProps {
 
 const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => {
   const [whatsappConfig, setWhatsappConfig] = useState({
-    url: tenant.whatsapp_api_url || '',
-    key: tenant.whatsapp_api_key || '',
     enabled: tenant.whatsapp_enabled ?? true
   });
 
@@ -31,13 +29,11 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // update tenant branding and whatsapp config
+      // update tenant branding and whether notifications are enabled
       // Note: onUpdate in App.tsx updates local state, but we need to persist to DB here or in App.tsx.
 
       const { error } = await supabase.from('tenants').update({
         branding: branding,
-        whatsapp_api_url: whatsappConfig.url,
-        whatsapp_api_key: whatsappConfig.key,
         whatsapp_enabled: whatsappConfig.enabled,
         domain: domain,
         financial_cutoff_day: tenant.financial_cutoff_day
@@ -274,28 +270,9 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">API Gateway URL</label>
-                  <input
-                    type="text"
-                    value={whatsappConfig.url}
-                    onChange={(e) => setWhatsappConfig({ ...whatsappConfig, url: e.target.value })}
-                    placeholder="https://sua-api.com"
-                    className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl outline-none text-xs"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">API Key (Segredo)</label>
-                  <input
-                    type="password"
-                    value={whatsappConfig.key}
-                    onChange={(e) => setWhatsappConfig({ ...whatsappConfig, key: e.target.value })}
-                    placeholder="••••••••••••"
-                    className="w-full p-3 bg-gray-50 dark:bg-brand-surface-2 border border-gray-100 dark:border-brand-border rounded-xl outline-none text-xs"
-                  />
-                </div>
-              </div>
+              <p className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-800 dark:border-blue-900/30 dark:bg-blue-900/10 dark:text-blue-200">
+                A conexão com o provedor é gerenciada com segurança pelo servidor. Nenhuma credencial é carregada neste painel.
+              </p>
 
               <div className="mt-6 pt-6 border-t border-gray-100 dark:border-brand-border">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Dia de Fechamento Financeiro</label>

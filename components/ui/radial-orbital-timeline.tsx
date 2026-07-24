@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ElementType, type MouseEvent } from "react";
 import { ArrowRight, Link, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ interface TimelineItem {
     date: string;
     content: string;
     category: string;
-    icon: React.ElementType;
+    icon: ElementType;
     relatedIds: number[];
     status: "completed" | "in-progress" | "pending";
     energy: number;
@@ -40,7 +40,7 @@ export default function RadialOrbitalTimeline({
     const orbitRef = useRef<HTMLDivElement>(null);
     const nodeRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
-    const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const handleContainerClick = (e: MouseEvent<HTMLDivElement>) => {
         if (e.target === containerRef.current || e.target === orbitRef.current) {
             setExpandedItems({});
             setActiveNodeId(null);

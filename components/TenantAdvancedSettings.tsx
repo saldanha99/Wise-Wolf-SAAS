@@ -111,7 +111,9 @@ const SchoolInfoPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         setSaving(true);
         try {
             // Se todos os campos estiverem vazios, salva null (volta ao padrão Wise Wolf)
-            const hasData = Object.values(form).some(v => v.trim() !== '');
+            const hasData = Object.values(form).some(value =>
+                typeof value === 'string' && value.trim() !== ''
+            );
             const payload = hasData ? form : null;
             const { error } = await supabase
                 .from('tenants')

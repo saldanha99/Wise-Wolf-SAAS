@@ -1,10 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { whatsappService } from '../services/whatsappService';
 import { Smartphone, Plus, QrCode as QrIcon, CheckCircle, AlertCircle, RefreshCw, Key, UserCheck, Zap, Bell } from 'lucide-react';
-
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const AutomacaoSmart: React.FC = () => {
     const [loading, setLoading] = useState(false);
@@ -14,11 +12,6 @@ const AutomacaoSmart: React.FC = () => {
     const [feedback, setFeedback] = useState('');
     const [automationEnabled, setAutomationEnabled] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
-
-    const headers = {
-        'apikey': GLOBAL_API_KEY,
-        'Content-Type': 'application/json'
-    };
 
     useEffect(() => {
         fetchSettings();
@@ -87,8 +80,8 @@ const AutomacaoSmart: React.FC = () => {
 
             // 2. RECUPERAR NOME PARA ID
             // Melhor usar o nome do usuário para gerar o ID legível
-            const { data: profile } = await supabase.from('profiles').select('name').eq('id', user.id).single();
-            const userName = profile?.name || 'admin';
+            const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+            const userName = profile?.full_name || 'admin';
 
             // 3. UNICIDADE (ANTI-COLISÃO)
             // Gera ID único: prof-daniela-9x2a
@@ -101,55 +94,22 @@ const AutomacaoSmart: React.FC = () => {
             setStatus('CREATING');
             console.log(`🚀 Criando instância para ${userName}: ${uniqueId}`);
 
-            const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    instanceName: uniqueId,
-                    qrcode: false,
-                    integration: 'WHATSAPP-BAILEYS'
-                })
-            });
+            const createResult = await whatsappService.createInstance(undefined, uniqueId, { preserveName: true });
+            if (!createResult.success) throw new Error(createResult.error || 'Falha ao criar instância.');
+            const createdName = createResult.instanceName || uniqueId;
+            setInstanceId(createdName);
 
-            const createData = await createRes.json();
-
-            // Recupera token (Hash)
-            const token = createData?.hash?.apikey || createData?.hash || createData?.token;
-
-            // Tratativa de Erro da API (ex: Instância já existe)
-            if (!token && createData?.instance?.status !== 'created') {
-                console.warn("API Warning:", createData);
-            }
-
-            // 5. PERSISTÊNCIA (Supabase)
-            if (token) {
-                console.log("💾 Salvando ID no seu Perfil...");
-                const { error: dbError } = await supabase
-                    .from('profiles')
-                    .update({
-                        whatsapp_instance: uniqueId, // Salva o ID técnico ÚNICO
-                        whatsapp_token: token        // Salva o Token de Acesso
-                    })
-                    .eq('id', user.id); // VINCULA AO USUÁRIO LOGADO
-
-                if (dbError) throw new Error(`Erro ao salvar no banco: ${dbError.message}`);
-            }
-
-            // 6. CONEXÃO (GET /instance/connect/{uniqueId})
+            // 5. CONEXÃO — o proxy já persistiu a posse da instância.
             setStatus('QR_CODE');
-            console.log(`🔗 Conectando: ${uniqueId}`);
+            console.log(`🔗 Conectando: ${createdName}`);
 
-            const connectRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${uniqueId}`, {
-                method: 'GET',
-                headers
-            });
+            const connectResult = await whatsappService.connectInstance(undefined, createdName);
+            if (!connectResult.success) throw new Error(connectResult.error || 'Falha ao conectar instância.');
 
-            const connectData = await connectRes.json();
-
-            if (connectData?.base64) {
-                setQrCode(connectData.base64);
-            } else if (connectData?.instance?.state === 'open') {
-                setFeedback(`✅ Conectado com Sucesso!\nInstância: ${uniqueId}`);
+            if (connectResult.qrcode) {
+                setQrCode(connectResult.qrcode);
+            } else if (connectResult.status === 'connected') {
+                setFeedback(`✅ Conectado com Sucesso!\nInstância: ${createdName}`);
                 setStatus('SUCCESS');
                 setQrCode(null);
             } else {

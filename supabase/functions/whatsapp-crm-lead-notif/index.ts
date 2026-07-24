@@ -1,150 +1,178 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
-const EVOLUTION_API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  authorizeRequest,
+  methodNotAllowed,
+} from "../_shared/request-auth.ts";
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  "Access-Control-Allow-Origin": "https://wisewolflanguage.com.br",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+type LeadRow = {
+  id: string;
+  tenant_id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  notification_sent_at: string | null;
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeBrazilPhone(value: string | null): string {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
 }
 
 serve(async (req) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+
+  const auth = await authorizeRequest(req, {
+    allowService: true,
+    corsHeaders,
+  });
+  if (!auth.ok) return auth.response;
+  if (!auth.context.isService) return json({ error: "Service access required" }, 403);
+
+  let claimedLead: LeadRow | null = null;
+
+  try {
+    const payload = await req.json().catch(() => ({}));
+    if (!isUuid(payload?.lead_id)) return json({ error: "lead_id is required" }, 400);
+
+    const { data: lead, error: leadError } = await auth.context.admin
+      .from("crm_leads")
+      .select("id, tenant_id, name, phone, email, source, notification_sent_at")
+      .eq("id", payload.lead_id)
+      .maybeSingle();
+
+    if (leadError) {
+      console.error("CRM notification lead lookup failed", { code: leadError.code });
+      return json({ error: "Unable to load lead" }, 503);
+    }
+    if (!lead) return json({ error: "Lead not found" }, 404);
+    if (lead.notification_sent_at) return json({ success: true, already_processed: true });
+
+    const claimedAt = new Date().toISOString();
+    const { data: claimed, error: claimError } = await auth.context.admin
+      .from("crm_leads")
+      .update({ notification_sent_at: claimedAt })
+      .eq("id", lead.id)
+      .is("notification_sent_at", null)
+      .select("id, tenant_id, name, phone, email, source, notification_sent_at")
+      .maybeSingle();
+
+    if (claimError) {
+      console.error("CRM notification claim failed", { code: claimError.code });
+      return json({ error: "Unable to claim notification" }, 503);
+    }
+    if (!claimed) return json({ success: true, already_processed: true });
+    claimedLead = claimed as LeadRow;
+
+    const evolutionBase = (Deno.env.get("EVOLUTION_API_URL") ?? "https://api.2b.app.br")
+      .replace(/\/+$/, "");
+    const evolutionKey = Deno.env.get("EVOLUTION_API_KEY")?.trim() ?? "";
+    if (!evolutionKey) throw new Error("Evolution integration is unavailable");
+
+    const { data: director, error: directorError } = await auth.context.admin
+      .from("profiles")
+      .select("whatsapp_instance, phone")
+      .eq("tenant_id", claimedLead.tenant_id)
+      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
+      .not("whatsapp_instance", "is", null)
+      .neq("whatsapp_instance", "")
+      .limit(1)
+      .maybeSingle();
+
+    if (directorError) throw new Error("Director lookup failed");
+
+    let instanceName = director?.whatsapp_instance?.trim() ?? "";
+    if (!instanceName) {
+      const { data: instance, error: instanceError } = await auth.context.admin
+        .from("whatsapp_instances")
+        .select("instance_name")
+        .eq("tenant_id", claimedLead.tenant_id)
+        .eq("status", "open")
+        .limit(1)
+        .maybeSingle();
+      if (instanceError) throw new Error("WhatsApp instance lookup failed");
+      instanceName = instance?.instance_name?.trim() ?? "";
+    }
+    if (!instanceName) throw new Error("WhatsApp instance is unavailable");
+
+    const name = claimedLead.name?.trim() || "Contato";
+    const leadPhone = normalizeBrazilPhone(claimedLead.phone);
+    const directorPhone = normalizeBrazilPhone(director?.phone ?? null);
+    const endpoint = `${evolutionBase}/message/sendText/${encodeURIComponent(instanceName)}`;
+    const messages: Array<{ number: string; text: string }> = [];
+
+    if (directorPhone.length >= 12) {
+      messages.push({
+        number: directorPhone,
+        text: `🐺 *Wise Wolf - Novo Lead!*\n\n📌 *Nome:* ${name}\n📞 *WhatsApp:* ${claimedLead.phone || "Não informado"}\n📧 *E-mail:* ${claimedLead.email || "Não informado"}\n🌍 *Origem:* ${claimedLead.source || "Direto / Desconhecida"}\n\nAcesse seu CRM para gerenciar este contato.`,
+      });
     }
 
-    try {
-        const body = await req.json();
-        // Accept both naming conventions (institucional site sends lead_name/lead_phone, SAAS sends name/phone)
-        const rawName = body.lead_name || body.name;
-        const rawPhone = body.lead_phone || body.phone;
-        const rawEmail = body.lead_email || body.email;
-        const source = body.source;
-        const tenant_id = body.tenant_id;
-        const name = rawName;
-        const phone = rawPhone;
-        const email = rawEmail;
-
-        if (!name || !tenant_id) {
-            throw new Error("Missing required fields: name (or lead_name), tenant_id");
-        }
-
-        // 1. Initialize Supabase Admin Client
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const supabase = createClient(supabaseUrl, supabaseKey);
-
-        // 2. Fetch Director info and instance
-        let instanceName = '';
-        let directorPhone = '';
-
-        const { data: director } = await supabase
-            .from('profiles')
-            .select('whatsapp_instance, phone')
-            .eq('tenant_id', tenant_id)
-            .in('role', ['SCHOOL_ADMIN', 'DIRECTOR', 'SUPER_ADMIN'])
-            .not('whatsapp_instance', 'is', null)
-            .neq('whatsapp_instance', '')
-            .limit(1)
-            .maybeSingle();
-
-        if (director) {
-            instanceName = director.whatsapp_instance;
-            directorPhone = director.phone;
-        }
-
-        // FALLBACK: Check whatsapp_instances table for the tenant
-        if (!instanceName) {
-            const { data: instanceRow } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('tenant_id', tenant_id)
-                .eq('status', 'open')
-                .limit(1)
-                .maybeSingle();
-
-            if (instanceRow?.instance_name) {
-                instanceName = instanceRow.instance_name;
-            }
-        }
-
-        // FINAL FALLBACK
-        if (!instanceName) {
-            instanceName = 'wise-wolf';
-        }
-
-        console.log(`[CRM Lead] Processing lead ${name} for tenant ${tenant_id} using instance ${instanceName}`);
-
-        // 3. Format Messages
-        const cleanLeadPhone = phone ? phone.replace(/\D/g, "") : "";
-        let formattedLeadPhone = cleanLeadPhone;
-        if (cleanLeadPhone && cleanLeadPhone.length >= 10 && !cleanLeadPhone.startsWith("55")) {
-            formattedLeadPhone = "55" + cleanLeadPhone;
-        }
-
-        const internalMsg = `🐺 *Wise Wolf - Novo Lead!*
-        
-📌 *Nome:* ${name}
-📞 *WhatsApp:* ${phone || 'Não informado'}
-📧 *E-mail:* ${email || 'Não informado'}
-🌍 *Origem:* ${source || 'Direto / Desconhecida'}
-
-Acesse seu CRM para gerenciar este contato! 🚀`;
-
-        const welcomeMsg = `🐺 *Olá ${name.split(' ')[0]}, bem-vindo(a) à Wise Wolf!*
-        
-Recebemos seu interesse em dominar um novo idioma e ficamos muito felizes! 🚀
-
-Nossa equipe entrará em contato em breve para tirar suas dúvidas e agendar sua *aula experimental gratuita*.
-
-Enquanto isso, sinta-se à vontade para nos chamar aqui se tiver alguma pressa. Até logo! 🐾`;
-
-        // 4. Send Internal Notification to Director
-        // Use directorPhone if available, otherwise skip (message goes via instance self)
-        const cleanDirectorPhone = directorPhone ? directorPhone.replace(/\D/g, "") : '';
-        const finalDirectorPhone = cleanDirectorPhone && cleanDirectorPhone.length >= 10
-            ? (cleanDirectorPhone.startsWith('55') ? cleanDirectorPhone : '55' + cleanDirectorPhone)
-            : '';
-
-        if (finalDirectorPhone) {
-            console.log(`[CRM Lead] Sending internal alert to Director: ${finalDirectorPhone}`);
-            await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_TOKEN },
-                body: JSON.stringify({
-                    number: finalDirectorPhone,
-                    text: internalMsg
-                })
-            });
-        } else {
-            console.warn(`[CRM Lead] Director phone not set — skipping internal alert for tenant ${tenant_id}`);
-        }
-
-        // 5. Send Welcome message to Lead
-        if (formattedLeadPhone) {
-            console.log(`[CRM Lead] Sending welcome msg to Lead: ${formattedLeadPhone}`);
-            await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": EVOLUTION_API_TOKEN },
-                body: JSON.stringify({
-                    number: formattedLeadPhone,
-                    text: welcomeMsg
-                })
-            });
-        }
-
-        return new Response(JSON.stringify({ success: true, instance: instanceName }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-        });
-
-    } catch (error: any) {
-        console.error("[CRM Lead] Error:", error.message);
-        return new Response(JSON.stringify({ error: error.message }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-        })
+    if (leadPhone.length >= 12) {
+      const firstName = name.split(/\s+/)[0];
+      messages.push({
+        number: leadPhone,
+        text: `🐺 *Olá ${firstName}, bem-vindo(a) à Wise Wolf!*\n\nRecebemos seu interesse e nossa equipe entrará em contato em breve para agendar sua aula experimental gratuita. 🚀`,
+      });
     }
-})
+
+    if (messages.length === 0) throw new Error("No valid notification destination");
+
+    for (const message of messages) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": evolutionKey,
+        },
+        body: JSON.stringify({
+          number: message.number,
+          options: { delay: 800, presence: "composing", linkPreview: false },
+          textMessage: { text: message.text },
+          text: message.text,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`Evolution request failed (${response.status})`);
+    }
+
+    console.log("CRM lead notification sent", {
+      lead_id: claimedLead.id,
+      tenant_id: claimedLead.tenant_id,
+      message_count: messages.length,
+    });
+    return json({ success: true });
+  } catch (error) {
+    if (claimedLead) {
+      await auth.context.admin
+        .from("crm_leads")
+        .update({ notification_sent_at: null })
+        .eq("id", claimedLead.id)
+        .eq("notification_sent_at", claimedLead.notification_sent_at);
+    }
+    console.error("CRM lead notification failed", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+    return json({ error: "Notification failed" }, 502);
+  }
+});

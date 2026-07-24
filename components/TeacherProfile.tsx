@@ -59,20 +59,25 @@ const TeacherProfile: React.FC = () => {
             if (profile) (profile as any).pix_key = (myPay as any)?.pix_key ?? '';
 
             if (profile) {
+                const profileData = profile as typeof profile & {
+                    bio?: string;
+                    pix_key?: string;
+                    notifications?: typeof formData.notifications;
+                };
                 setFormData({
-                    id: profile.id,
-                    name: profile.full_name || '',
-                    email: profile.email || user.email || '',
-                    phone: profile.phone || '',
-                    avatar_url: profile.avatar_url || '',
-                    role: profile.role || 'STUDENT',
-                    whatsappInstance: profile.whatsapp_instance || '', // Assuming column exists or we use a placeholder
-                    bio: profile.bio || '', // Assuming column exists
-                    pixKey: profile.pix_key || '',
-                    bankName: profile.bank_name || '',
-                    agency: profile.agency || '',
-                    accountNumber: profile.account_number || '',
-                    notifications: profile.notifications || { email: true, push: true, marketing: false }
+                    id: profileData.id,
+                    name: profileData.full_name || '',
+                    email: profileData.email || user.email || '',
+                    phone: profileData.phone || '',
+                    avatar_url: profileData.avatar_url || '',
+                    role: profileData.role || 'STUDENT',
+                    whatsappInstance: profileData.whatsapp_instance || '', // Assuming column exists or we use a placeholder
+                    bio: profileData.bio || '', // Assuming column exists
+                    pixKey: profileData.pix_key || '',
+                    bankName: profileData.bank_name || '',
+                    agency: profileData.agency || '',
+                    accountNumber: profileData.account_number || '',
+                    notifications: profileData.notifications || { email: true, push: true, marketing: false }
                 });
             }
         } catch (error) {

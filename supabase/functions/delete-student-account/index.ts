@@ -1,204 +1,355 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 
-let ASAAS_URL = Deno.env.get('ASAAS_API_URL') || 'https://api-sandbox.asaas.com';
-ASAAS_URL = ASAAS_URL.replace(/\/+$/, "")
+const RAW_ASAAS_URL = (Deno.env.get("ASAAS_API_URL") || "").trim();
+const ASAAS_URL = RAW_ASAAS_URL.replace(/\/+$/, "")
   .replace(/\/v3$/, "")
   .replace(/\/api\/v3$/, "")
   .replace(/\/api$/, "");
-
-const ASAAS_API_KEY = (Deno.env.get('ASAAS_API_KEY') || "").trim() || (Deno.env.get('ASAAS_ACCESS_TOKEN') || "").trim();
+const ASAAS_API_KEY = (Deno.env.get("ASAAS_API_KEY") || "").trim() ||
+  (Deno.env.get("ASAAS_ACCESS_TOKEN") || "").trim();
+const ASAAS_PATH_PREFIX =
+  ASAAS_URL.includes("api-sandbox") || ASAAS_URL.includes("api.asaas.com")
+    ? "/v3"
+    : "/api/v3";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+type AsaasDeletionResult = {
+  subscriptionDeleted: boolean;
+  customerDeleted: boolean;
+  error: string | null;
+  failedStage: "subscription" | "customer" | null;
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function domainFailure(
+  error: string,
+  details: Record<string, unknown> = {},
+) {
+  // O caller atual lê data.error. Manter HTTP 200 aqui preserva a mensagem útil
+  // na interface, sem jamais responder success:true em uma exclusão parcial.
+  return json({ success: false, error, ...details });
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(value);
+}
+
+function isAuthNotFound(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { status?: number; message?: string };
+  return candidate.status === 404 ||
+    /not found|does not exist/i.test(candidate.message || "");
+}
+
+async function asaasError(response: Response) {
+  const payload = await response.json().catch(() => null) as
+    | { errors?: Array<{ description?: string }>; error?: string }
+    | null;
+  const descriptions = payload?.errors
+    ?.map((item) => item.description)
+    .filter(Boolean)
+    .join("; ");
+  const message = descriptions || payload?.error ||
+    `HTTP ${response.status}`;
+  return message.slice(0, 500);
 }
 
 serve(async (req) => {
-  // 1. CORS
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return json({ error: "Método não permitido." }, 405);
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const supabase = createClient(supabaseUrl!, supabaseKey!) // Service role required
-
-    // 2. Validate Authorization
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing Auth Header' }), { status: 401, headers: corsHeaders })
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("[delete-student-account] Supabase runtime incompleto");
+      return json({ error: "Serviço temporariamente indisponível." }, 503);
     }
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json({ error: "Sessão ausente." }, 401);
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      token,
+    );
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+      return json({ error: "Sessão inválida." }, 401);
     }
 
-    // 3. Verify Admin Role
-    const { data: adminProfile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!adminProfile || (adminProfile.role !== 'SCHOOL_ADMIN' && adminProfile.role !== 'SUPER_ADMIN')) {
-      return new Response(JSON.stringify({ error: 'Forbidden: Requires Admin Role' }), { status: 403, headers: corsHeaders })
+    const { data: adminProfile, error: adminError } = await supabase
+      .from("profiles")
+      .select("id, role, tenant_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (adminError) {
+      console.error(
+        "[delete-student-account] Falha ao consultar solicitante",
+        adminError.message,
+      );
+      return json({ error: "Não foi possível validar sua permissão." }, 503);
+    }
+    if (
+      !adminProfile ||
+      !["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(adminProfile.role)
+    ) {
+      return json({ error: "Ação permitida apenas para administradores." }, 403);
+    }
+    if (
+      adminProfile.role === "SCHOOL_ADMIN" &&
+      !adminProfile.tenant_id
+    ) {
+      return json({
+        error: "Administrador sem escola vinculada. A exclusão foi bloqueada.",
+      }, 403);
     }
 
-    // 4. Parse Request
-    const { studentId, applyPenalty, penaltyValue } = await req.json()
-    if (!studentId) {
-      return new Response(JSON.stringify({ error: 'Missing studentId parameter' }), { status: 400, headers: corsHeaders })
+    const body = await req.json().catch(() => null) as
+      | {
+        studentId?: unknown;
+        applyPenalty?: unknown;
+        penaltyValue?: unknown;
+      }
+      | null;
+    if (!body || !isUuid(body.studentId)) {
+      return json({ error: "Aluno inválido." }, 400);
+    }
+    const studentId = body.studentId;
+    if (studentId === user.id) {
+      return json({
+        error: "Você não pode excluir sua própria conta enquanto estiver logado.",
+      }, 400);
     }
 
-    // Prevent self-deletion via this endpoint
-    const { data: targetUser } = await supabase.auth.admin.getUserById(studentId);
-    if (studentId === user.id || (targetUser?.user?.email === user.email)) {
-      console.warn(`[Supabase] Self-deletion attempt blocked for user ${user.email} (ID: ${user.id}) trying to delete target ID: ${studentId}`);
-      return new Response(JSON.stringify({ error: 'Você não pode excluir sua própria conta enquanto estiver logado.' }), { status: 400, headers: corsHeaders })
-    }
+    const applyPenaltyRequested = body.applyPenalty === true;
 
-    // 5. Get Student Profile to find Asaas IDs
     const { data: studentProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('full_name, asaas_customer_id, subscription_id')
-      .eq('id', studentId)
-      .single()
-
+      .from("profiles")
+      .select(
+        "id, role, tenant_id, asaas_customer_id, subscription_id, is_test_account",
+      )
+      .eq("id", studentId)
+      .maybeSingle();
     if (profileError) {
-      console.error(`[Supabase] Profile not found for target user ID: ${studentId}`, profileError);
-      // We proceed because we still want to try deleting the Auth User if it exists (orphaned checks)
+      console.error(
+        "[delete-student-account] Falha ao consultar alvo",
+        profileError.message,
+      );
+      return json({ error: "Não foi possível validar o aluno." }, 503);
+    }
+    if (!studentProfile) {
+      return json({ error: "Aluno não encontrado." }, 404);
+    }
+    if (studentProfile.role !== "STUDENT") {
+      return json({
+        error: "Esta função só pode excluir contas com papel de aluno.",
+      }, 409);
+    }
+    if (
+      adminProfile.role !== "SUPER_ADMIN" &&
+      studentProfile.tenant_id !== adminProfile.tenant_id
+    ) {
+      return json({ error: "Aluno pertence a outra escola." }, 403);
+    }
+    if (!studentProfile.is_test_account) {
+      return domainFailure(
+        "A exclusão permanente é reservada a contas de teste. Para um aluno real, use a opção “Desligar”, que cancela as cobranças futuras e preserva o histórico.",
+      );
     }
 
-    const studentName = studentProfile?.full_name || 'Usuário';
+    const customerId = studentProfile.asaas_customer_id;
+    const subscriptionId = studentProfile.subscription_id;
+    // Fixtures jamais geram multa rescisória, mesmo que um caller antigo envie
+    // a opção que existia na tela de exclusão de alunos reais.
+    const needsAsaas = Boolean(customerId || subscriptionId);
+    const asaas: AsaasDeletionResult = {
+      subscriptionDeleted: false,
+      customerDeleted: false,
+      error: null,
+      failedStage: null,
+    };
 
-    // 6. Delete Asaas Subscription and Customer (if they exist)
-    let asaasDeletionResult = { subscriptionDeleted: false, customerDeleted: false, error: null };
-    if (ASAAS_API_KEY) {
-      const asaas_customer_id = studentProfile?.asaas_customer_id;
-      const subscription_id = studentProfile?.subscription_id;
+    if (needsAsaas && (!RAW_ASAAS_URL || !ASAAS_API_KEY)) {
+      return domainFailure(
+        "A exclusão foi interrompida porque a integração financeira não está configurada. Nenhum dado local foi removido.",
+        { asaas: { ...asaas, error: "Integração Asaas indisponível" } },
+      );
+    }
 
-      let pathPrefix = '/api/v3';
-      if (ASAAS_URL.includes('api-sandbox') || ASAAS_URL.includes('api.asaas.com')) {
-        pathPrefix = '/v3';
-      }
-
+    if (needsAsaas) {
       try {
-        // Cancel/Delete Subscription first
-        if (subscription_id) {
-          const subUrl = `${ASAAS_URL}${pathPrefix}/subscriptions/${subscription_id}`;
-          console.log(`[Asaas] Attempting to delete subscription ${subscription_id} for ${studentName}`);
-          const subRes = await fetch(subUrl, {
-            method: 'DELETE',
-            headers: { 'access_token': ASAAS_API_KEY! }
-          });
-          if (subRes.ok) {
-            asaasDeletionResult.subscriptionDeleted = true;
-            console.log(`[Asaas] Subscription ${subscription_id} deleted successfully.`);
-          } else {
-            const subErr = await subRes.text();
-            console.warn(`[Asaas] Failed to delete subscription ${subscription_id} (Status ${subRes.status}): ${subErr}`);
-          }
-        }
-
-        let penaltyCreated = false;
-        if (applyPenalty && penaltyValue && asaas_customer_id) {
-          // Create a fine charge (Multa Rescisória)
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + 5); // Due in 5 days
-          const formattedDueDate = dueDate.toISOString().split('T')[0];
-
-          const fineUrl = `${ASAAS_URL}${pathPrefix}/payments`;
-          console.log(`[Asaas] Creating penalty charge of R$ ${penaltyValue} for customer ${asaas_customer_id}`);
-          const fineRes = await fetch(fineUrl, {
-            method: 'POST',
-            headers: {
-              'access_token': ASAAS_API_KEY!,
-              'Content-Type': 'application/json'
+        if (subscriptionId) {
+          const response = await fetch(
+            `${ASAAS_URL}${ASAAS_PATH_PREFIX}/subscriptions/${subscriptionId}`,
+            {
+              method: "DELETE",
+              headers: { access_token: ASAAS_API_KEY },
             },
-            body: JSON.stringify({
-              customer: asaas_customer_id,
-              billingType: 'UNDEFINED',
-              value: penaltyValue,
-              dueDate: formattedDueDate,
-              description: `Multa Contratual Rescisória - Aluno: ${studentName}`,
-              postalService: false
-            })
-          });
-
-          if (fineRes.ok) {
-            penaltyCreated = true;
-            const fineData = await fineRes.json();
-            console.log(`[Asaas] Penalty created successfully. Payment ID: ${fineData.id}`);
+          );
+          if (response.ok || response.status === 404) {
+            asaas.subscriptionDeleted = true;
           } else {
-            const fineErr = await fineRes.text();
-            console.error(`[Asaas] FAILED to create penalty charge: ${fineErr}`);
-            // We DON'T throw here, because we want the local deletion to proceed if possible,
-            // but we should probably warn the user.
-            asaasDeletionResult.error = `Erro ao criar multa no Asaas: ${fineErr}`;
+            asaas.failedStage = "subscription";
+            asaas.error = await asaasError(response);
           }
         }
 
-        // Delete Customer (ONLY if we didn't just create a penalty, because Asaas blocks deletion of customers with pending payments)
-        if (asaas_customer_id && !penaltyCreated) {
-          const custUrl = `${ASAAS_URL}${pathPrefix}/customers/${asaas_customer_id}`;
-          console.log(`[Asaas] Deleting customer ${asaas_customer_id} (${studentName})`);
-          const custRes = await fetch(custUrl, {
-            method: 'DELETE',
-            headers: { 'access_token': ASAAS_API_KEY! }
-          });
-          if (custRes.ok) {
-            asaasDeletionResult.customerDeleted = true;
-            console.log(`[Asaas] Customer ${asaas_customer_id} deleted successfully.`);
+        if (!asaas.error && customerId) {
+          const response = await fetch(
+            `${ASAAS_URL}${ASAAS_PATH_PREFIX}/customers/${customerId}`,
+            {
+              method: "DELETE",
+              headers: { access_token: ASAAS_API_KEY },
+            },
+          );
+          if (response.ok || response.status === 404) {
+            asaas.customerDeleted = true;
           } else {
-            const custErr = await custRes.text();
-            console.warn(`[Asaas] Failed to delete customer ${asaas_customer_id} (Status ${custRes.status}): ${custErr}`);
+            asaas.failedStage = "customer";
+            asaas.error = await asaasError(response);
           }
-        } else if (penaltyCreated) {
-          console.log(`[Asaas] Skipping customer deletion because a penalty invoice was generated.`);
-          (asaasDeletionResult as any).penaltyCreated = true;
         }
-      } catch (asaasErr: any) {
-        console.error('[Asaas] Critical error during Asaas cleanup:', asaasErr.message);
-        asaasDeletionResult.error = asaasErr.message;
+      } catch (error) {
+        asaas.error = error instanceof Error
+          ? error.message.slice(0, 500)
+          : "Falha de comunicação com o Asaas";
       }
     }
 
-    // 7. Delete Auth User from Supabase
-    console.log(`[Supabase] Deleting auth user: ${studentId} (${studentName})`);
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(studentId)
-
-    if (deleteError) {
-      console.error(`[Supabase] MAJOR ERROR deleting auth user ${studentId}:`, deleteError);
-      // Return a 400 but with the descriptive error (likely FK violation)
-      return new Response(JSON.stringify({
-        error: `Erro ao remover usuário do sistema: ${deleteError.message}`,
-        details: deleteError
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
+    if (asaas.error) {
+      console.error(
+        `[delete-student-account] Limpeza Asaas interrompida em ${
+          asaas.failedStage || "network"
+        }: ${asaas.error}`,
+      );
+      return domainFailure(
+        "A exclusão foi interrompida por uma falha no Asaas. Os dados locais foram preservados; verifique a cobrança antes de tentar novamente.",
+        { asaas, retryable: true },
+      );
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      message: 'User deleted successfully from Auth and Profiles',
-      asaas: asaasDeletionResult
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    const { data: deletionTarget, error: deletionTargetError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", studentId)
+      .eq("role", "STUDENT")
+      .eq("is_test_account", true)
+      .maybeSingle();
+    if (deletionTargetError || !deletionTarget) {
+      return domainFailure(
+        "A conta deixou de estar marcada como teste durante a operação. A exclusão local foi cancelada.",
+        { retryable: false, asaas },
+      );
+    }
 
-  } catch (error: any) {
-    console.error("Unexpected Error in delete-student-account:", error);
-    return new Response(JSON.stringify({ error: `Erro inesperado: ${error.message}` }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+    // A ausência no Auth é aceitável apenas para reparar um perfil órfão já
+    // autorizado acima por papel e tenant. Outros erros abortam antes do perfil.
+    const authLookup = await supabase.auth.admin.getUserById(studentId);
+    if (authLookup.error && !isAuthNotFound(authLookup.error)) {
+      console.error(
+        "[delete-student-account] Falha ao verificar Auth",
+        authLookup.error.message,
+      );
+      return domainFailure(
+        "Não foi possível confirmar a conta de acesso. A exclusão local não foi iniciada.",
+        { retryable: true },
+      );
+    }
+
+    let authDeleted = !authLookup.data.user;
+    if (authLookup.data.user) {
+      const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(
+        studentId,
+      );
+      if (deleteAuthError && !isAuthNotFound(deleteAuthError)) {
+        console.error(
+          "[delete-student-account] Falha ao excluir Auth",
+          deleteAuthError.message,
+        );
+        return domainFailure(
+          "O acesso do aluno não pôde ser removido. O perfil foi preservado.",
+          { retryable: true },
+        );
+      }
+      authDeleted = true;
+    }
+
+    // A instalação atual não pode depender de cascade Auth -> profiles.
+    // A condição role=STUDENT evita ampliar o alvo caso ele tenha mudado
+    // entre a autorização e esta etapa.
+    const { error: deleteProfileError } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("id", studentId)
+      .eq("role", "STUDENT")
+      .eq("is_test_account", true);
+
+    const [{ data: remainingProfile, error: profileCheckError }, authCheck] =
+      await Promise.all([
+        supabase.from("profiles").select("id").eq("id", studentId)
+          .maybeSingle(),
+        supabase.auth.admin.getUserById(studentId),
+      ]);
+    const authStillExists = Boolean(authCheck.data.user);
+    const authCheckFailed = Boolean(
+      authCheck.error && !isAuthNotFound(authCheck.error),
+    );
+
+    if (
+      deleteProfileError || profileCheckError || remainingProfile ||
+      authStillExists || authCheckFailed || !authDeleted
+    ) {
+      console.error("[delete-student-account] Pós-condição não satisfeita", {
+        studentId,
+        authStillExists,
+        profileStillExists: Boolean(remainingProfile),
+        authCheckFailed,
+        profileDeleteError: deleteProfileError?.message,
+        profileCheckError: profileCheckError?.message,
+      });
+      return domainFailure(
+        "A exclusão ficou incompleta e não foi confirmada. O administrador técnico deve concluir a limpeza antes de uma nova tentativa.",
+        {
+          partial: true,
+          authDeleted: !authStillExists && !authCheckFailed,
+          profileDeleted: !remainingProfile && !profileCheckError,
+          asaas,
+        },
+      );
+    }
+
+    return json({
+      success: true,
+      message: "Aluno removido do acesso, do perfil e do financeiro.",
+      penaltyIgnoredForTest: applyPenaltyRequested,
+      asaas,
+    });
+  } catch (error) {
+    console.error(
+      "[delete-student-account] Erro inesperado",
+      error instanceof Error ? error.message : error,
+    );
+    return json({ error: "Erro inesperado ao excluir o aluno." }, 500);
   }
-})
+});

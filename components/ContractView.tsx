@@ -167,8 +167,8 @@ const ContractView: React.FC<ContractViewProps> = ({
     // — Template digital gerado —
     let duration = 12;
     let planName = 'Plano Recorrente';
-    if (profile.module?.includes('Semestral') || profile.modality === 'SEMESTER') { duration = 6; planName = 'Plano Semestral'; }
-    else if (profile.module?.includes('Anual') || profile.modality === 'ANNUAL') { duration = 12; planName = 'Plano Anual'; }
+    if (profile.module?.includes('Semestral') || profile.fidelity_plan === 'SEMESTER') { duration = 6; planName = 'Plano Semestral'; }
+    else if (profile.module?.includes('Anual') || profile.fidelity_plan === 'ANNUAL') { duration = 12; planName = 'Plano Anual'; }
 
     const enrollmentDate = new Date(profile.created_at || new Date());
     const dueDay = profile.due_day || 1;

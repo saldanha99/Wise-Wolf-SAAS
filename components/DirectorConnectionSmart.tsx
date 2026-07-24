@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { whatsappService } from '../services/whatsappService';
 import { Smartphone, Plus, QrCode as QrIcon, AlertCircle, RefreshCw, Search, Building2 } from 'lucide-react';
-
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const DirectorConnectionSmart: React.FC = () => {
     const [nameInput, setNameInput] = useState('');
@@ -11,11 +9,6 @@ const DirectorConnectionSmart: React.FC = () => {
     const [status, setStatus] = useState<'IDLE' | 'SEARCHING' | 'CREATING' | 'QR_CODE' | 'SUCCESS' | 'ERROR'>('IDLE');
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [feedback, setFeedback] = useState('');
-
-    const headers = {
-        'apikey': GLOBAL_API_KEY,
-        'Content-Type': 'application/json'
-    };
 
     const handleCreate = async () => {
         if (!nameInput.trim()) {
@@ -66,52 +59,23 @@ const DirectorConnectionSmart: React.FC = () => {
             setStatus('CREATING');
             console.log(`🚀 Criando instância SaaS: ${uniqueId}`);
 
-            const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    instanceName: uniqueId,
-                    qrcode: false,
-                    integration: 'WHATSAPP-BAILEYS'
-                })
+            const createResult = await whatsappService.createInstance(undefined, uniqueId, {
+                preserveName: true,
+                ownerUserId: targetUser.id,
             });
+            if (!createResult.success) throw new Error(createResult.error || 'Falha ao criar instância.');
+            const createdName = createResult.instanceName || uniqueId;
 
-            const createData = await createRes.json();
-
-            // Tratamento API v1/v2
-            const token = createData?.hash?.apikey || createData?.hash || createData?.token;
-
-            // 4. PERSISTÊNCIA (Supabase)
-            if (token) {
-                console.log("💾 Salvando ID e Token no Perfil Admin...");
-                const { error: dbError } = await supabase
-                    .from('profiles')
-                    .update({
-                        whatsapp_instance: uniqueId,
-                        whatsapp_token: token
-                    })
-                    .eq('id', targetUser.id);
-
-                if (dbError) throw new Error(`Erro ao salvar no banco: ${dbError.message}`);
-            } else {
-                console.warn("⚠️ Sem token retornado. API pode ter falhado ou inst. já existe.");
-                // Permitimos continuar para tentar conectar se já existir
-            }
-
-            // 5. CONEXÃO
+            // 4. CONEXÃO — o proxy já persistiu o vínculo no perfil alvo.
             setStatus('QR_CODE');
-            console.log(`🔗 Conectando: ${uniqueId}`);
+            console.log(`🔗 Conectando: ${createdName}`);
 
-            const connectRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${uniqueId}`, {
-                method: 'GET',
-                headers
-            });
+            const connectResult = await whatsappService.connectInstance(undefined, createdName);
+            if (!connectResult.success) throw new Error(connectResult.error || 'Falha ao conectar instância.');
 
-            const connectData = await connectRes.json();
-
-            if (connectData?.base64) {
-                setQrCode(connectData.base64);
-            } else if (connectData?.instance?.state === 'open') {
+            if (connectResult.qrcode) {
+                setQrCode(connectResult.qrcode);
+            } else if (connectResult.status === 'connected') {
                 setFeedback(`✅ A Escola ${cleanName} já está conectada!`);
                 setStatus('SUCCESS');
                 setQrCode(null);

@@ -1,0 +1,29 @@
+# Compose label fragment for the EXISTING frontend service that already serves
+# app.wisewolflanguage.com.br. Merge this mapping under that service's `labels`.
+# Required variables deliberately fail Compose interpolation when the deployed
+# service name or certificate resolver has not been confirmed on the VPS.
+
+traefik.enable: "true"
+
+traefik.http.routers.wisecore-system-http.rule: "Host(`system.wisewolflanguage.com.br`)"
+traefik.http.routers.wisecore-system-http.entrypoints: "${TRAEFIK_HTTP_ENTRYPOINT:-web}"
+traefik.http.routers.wisecore-system-http.service: "${TRAEFIK_FRONTEND_SERVICE:?Set the existing Traefik frontend service name}"
+traefik.http.routers.wisecore-system-http.middlewares: "wisecore-system-https-redirect"
+
+traefik.http.routers.wisecore-system.rule: "Host(`system.wisewolflanguage.com.br`)"
+traefik.http.routers.wisecore-system.entrypoints: "${TRAEFIK_HTTPS_ENTRYPOINT:-websecure}"
+traefik.http.routers.wisecore-system.service: "${TRAEFIK_FRONTEND_SERVICE:?Set the existing Traefik frontend service name}"
+traefik.http.routers.wisecore-system.middlewares: "wisecore-system-security"
+traefik.http.routers.wisecore-system.tls: "true"
+traefik.http.routers.wisecore-system.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:?Set the resolver already used by the app router}"
+
+traefik.http.middlewares.wisecore-system-https-redirect.redirectscheme.scheme: "https"
+traefik.http.middlewares.wisecore-system-https-redirect.redirectscheme.permanent: "true"
+
+traefik.http.middlewares.wisecore-system-security.headers.contenttypenosniff: "true"
+traefik.http.middlewares.wisecore-system-security.headers.framedeny: "true"
+traefik.http.middlewares.wisecore-system-security.headers.referrerpolicy: "strict-origin-when-cross-origin"
+traefik.http.middlewares.wisecore-system-security.headers.stsseconds: "31536000"
+traefik.http.middlewares.wisecore-system-security.headers.stsincludesubdomains: "false"
+traefik.http.middlewares.wisecore-system-security.headers.stspreload: "false"
+traefik.http.middlewares.wisecore-system-security.headers.forcestsheader: "true"

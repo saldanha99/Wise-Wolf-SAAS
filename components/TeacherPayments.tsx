@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
@@ -52,7 +52,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/transfer-teacher-pay`, {
+            const response = await fetch(`${FUNCTIONS_URL}/transfer-teacher-pay`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

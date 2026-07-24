@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.23.0";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -10,19 +10,27 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
+    if (req.method !== 'POST') return methodNotAllowed(corsHeaders);
+
+    const auth = await authorizeRequest(req, {
+        corsHeaders,
+        allowService: true,
+        allowedRoles: ['STUDENT', 'TEACHER', 'COORDINATOR', 'SCHOOL_ADMIN', 'SUPER_ADMIN'],
+    });
+    if (!auth.ok) return auth.response;
 
     try {
         const { sessionId } = await req.json();
 
-        if (!sessionId) {
-            throw new Error("Missing sessionId");
+        if (typeof sessionId !== 'string' || !sessionId.trim()) {
+            return new Response(JSON.stringify({ error: 'Missing sessionId' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
         }
 
-        // 1. Setup Clients
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-        const supabaseSharedKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? supabaseAnonKey; // Use service role if available for reliable updating
-        const supabaseClient = createClient(supabaseUrl, supabaseSharedKey);
+        // 1. Setup Client
+        const supabaseClient = auth.context.admin;
 
         const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
 
@@ -46,7 +54,34 @@ serve(async (req) => {
             .single();
 
         if (sessionError || !session) {
-            throw new Error(`Session not found: ${sessionError?.message}`);
+            return new Response(JSON.stringify({ error: 'Session not found' }), {
+                status: 404,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+        }
+
+        if (!auth.context.isService) {
+            const caller = auth.context.profile!;
+            let canEvaluate = caller.role === 'SUPER_ADMIN'
+                || (caller.role === 'STUDENT' && caller.id === session.student_id)
+                || (['COORDINATOR', 'SCHOOL_ADMIN'].includes(caller.role)
+                    && caller.tenant_id === session.tenant_id);
+
+            if (!canEvaluate && caller.role === 'TEACHER' && caller.tenant_id === session.tenant_id) {
+                const { data: student } = await supabaseClient
+                    .from('profiles')
+                    .select('professor_id, professor_id2')
+                    .eq('id', session.student_id)
+                    .maybeSingle();
+                canEvaluate = student?.professor_id === caller.id || student?.professor_id2 === caller.id;
+            }
+
+            if (!canEvaluate) {
+                return new Response(JSON.stringify({ error: 'Insufficient permissions for this session' }), {
+                    status: 403,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                });
+            }
         }
 
         // 3. Prepare Transcript for LLM

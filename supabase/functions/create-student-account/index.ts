@@ -1,96 +1,126 @@
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  authorizeRequest,
+  hasTenantAccess,
+  methodNotAllowed,
+} from "../_shared/request-auth.ts";
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 serve(async (req) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+
+  const auth = await authorizeRequest(req, {
+    corsHeaders,
+    allowedRoles: ["SCHOOL_ADMIN", "SUPER_ADMIN"],
+  });
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = await req.json();
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const tenantId = typeof body.tenantId === "string" ? body.tenantId.trim() : "";
+    const professorId = typeof body.professorId === "string" && body.professorId.trim()
+      ? body.professorId.trim()
+      : null;
+    const monthlyFee = body.monthlyFee === undefined || body.monthlyFee === ""
+      ? 0
+      : Number(body.monthlyFee);
+    const dueDay = body.dueDay === undefined || body.dueDay === ""
+      ? 10
+      : Number(body.dueDay);
+
+    if (!email || !name || !tenantId) {
+      return json({ error: "Name, Email and Tenant ID are required" }, 400);
+    }
+    if (!Number.isFinite(monthlyFee) || monthlyFee < 0) {
+      return json({ error: "Monthly fee is invalid" }, 400);
+    }
+    if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) {
+      return json({ error: "Due day must be between 1 and 31" }, 400);
+    }
+    if (!hasTenantAccess(auth.context, tenantId)) {
+      return json({ error: "Cannot create an account in another tenant" }, 403);
     }
 
-    try {
-        const supabaseClient = createClient(
-            // Supabase API URL - Env Var automatically set by Supabase Functions
-            Deno.env.get('SUPABASE_URL') ?? '',
-            // Supabase API ANON KEY - Env Var automatically set by Supabase Functions
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-            {
-                auth: {
-                    autoRefreshToken: false,
-                    persistSession: false
-                }
-            }
-        )
-
-        const { name, email, phone, professorId, tenantId, monthlyFee, dueDay } = await req.json()
-
-        // Validation
-        if (!email || !name || !tenantId) {
-            return new Response(
-                JSON.stringify({ error: 'Name, Email and Tenant ID are required' }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-            )
-        }
-
-        // 1. Create Auth User
-        console.log(`Creating student auth user for ${email} in tenant ${tenantId}...`);
-        const { data: authData, error: authError } = await supabaseClient.auth.admin.createUser({
-            email: email,
-            password: '123456', // Hardcoded default password as requested for initial setup
-            email_confirm: true,
-            user_metadata: { full_name: name, role: 'STUDENT', tenant_id: tenantId }
-        })
-
-        if (authError) {
-            console.error('Auth Create Error:', authError);
-            return new Response(
-                JSON.stringify({ error: authError.message }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-            )
-        }
-
-        const userId = authData.user.id;
-
-        // 2. Upsert Profile
-        console.log(`Upserting student profile for ${userId}...`);
-        const { error: profileError } = await supabaseClient.from('profiles').upsert({
-            id: userId,
-            full_name: name,
-            email: email,
-            role: 'STUDENT',
-            tenant_id: tenantId,
-            professor_id: professorId || null,
-            phone: phone,
-            monthly_fee: monthlyFee ? parseFloat(monthlyFee) : 0,
-            due_day: dueDay ? parseInt(dueDay) : 10,
-            status_financial: 'ACTIVE',
-            created_at: new Date().toISOString()
-        })
-
-        if (profileError) {
-            console.error('Profile Upsert Error:', profileError);
-            return new Response(
-                JSON.stringify({ error: 'Failed to create profile: ' + profileError.message }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-            )
-        }
-
-        return new Response(
-            JSON.stringify({
-                user: authData.user,
-                message: 'Student account created successfully'
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-        )
-
-    } catch (error) {
-        return new Response(
-            JSON.stringify({ error: error.message }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        )
+    const admin = auth.context.admin;
+    const { data: tenant, error: tenantError } = await admin
+      .from("tenants")
+      .select("id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (tenantError) {
+      console.error("Student account tenant lookup failed", { code: tenantError.code });
+      return json({ error: "Could not validate tenant" }, 500);
     }
-})
+    if (!tenant) return json({ error: "Tenant not found" }, 404);
+
+    if (professorId) {
+      const { data: professor, error: professorError } = await admin
+        .from("profiles")
+        .select("id, role, tenant_id")
+        .eq("id", professorId)
+        .maybeSingle();
+      if (professorError) {
+        console.error("Student account professor lookup failed", { code: professorError.code });
+        return json({ error: "Could not validate professor" }, 500);
+      }
+      if (!professor || professor.role !== "TEACHER" || professor.tenant_id !== tenantId) {
+        return json({ error: "Professor must be a teacher from the same tenant" }, 400);
+      }
+    }
+
+    const { data: authData, error: authError } = await admin.auth.admin.createUser({
+      email,
+      password: "123456",
+      email_confirm: true,
+      user_metadata: { full_name: name, role: "STUDENT", tenant_id: tenantId },
+    });
+    if (authError || !authData.user) {
+      return json({ error: authError?.message || "Failed to create user" }, 400);
+    }
+
+    const userId = authData.user.id;
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: userId,
+      full_name: name,
+      email,
+      role: "STUDENT",
+      tenant_id: tenantId,
+      professor_id: professorId,
+      phone: typeof body.phone === "string" ? body.phone.trim() : null,
+      monthly_fee: monthlyFee,
+      due_day: dueDay,
+      status_financial: "ACTIVE",
+      created_at: new Date().toISOString(),
+    });
+
+    if (profileError) {
+      console.error("Student profile creation failed", { code: profileError.code });
+      await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+      return json({ error: "Failed to create profile" }, 500);
+    }
+
+    return json({
+      user: authData.user,
+      message: "Student account created successfully",
+    });
+  } catch (error) {
+    console.error("Create student account failed", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+    return json({ error: "Invalid request" }, 400);
+  }
+});

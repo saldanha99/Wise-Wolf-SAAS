@@ -21,7 +21,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
 // Chave via env para permitir rotação sem novo deploy.
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
@@ -265,19 +265,9 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-// O gateway (verify_jwt=true desde a v3) já validou a ASSINATURA do JWT. Aqui basta
-// conferir o claim de role. Aceita igualdade textual com a env (compat) OU
-// role=service_role no payload — o cron manda o JWT service_role do Vault, que é
-// válido mas não é textualmente idêntico à env atual.
+// O runtime self-hosted não valida JWT globalmente; aceite somente a chave interna exata.
 function isServiceRole(bearer: string, serviceKey: string): boolean {
-  if (bearer && bearer === serviceKey) return true;
-  try {
-    const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(b64));
-    return payload?.role === "service_role";
-  } catch {
-    return false;
-  }
+  return Boolean(serviceKey && bearer === serviceKey);
 }
 
 serve(async (req) => {
@@ -299,9 +289,13 @@ serve(async (req) => {
       if (!isServiceRole(bearer, serviceKey)) return json({ error: "forbidden" }, 403);
       const { data: tenants } = await admin.from("tenants").select("id, ai_team_config").not("ai_team_config", "is", null);
       const result = { sent: 0, skipped: 0, failures: [] as string[] };
+      const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split("T")[0];
       for (const t of (tenants || [])) {
         const cfg = resolveConfig(t.ai_team_config);
         if (cfg.schedule !== "daily") { result.skipped++; continue; }
+        const { data: duplicate } = await admin.from("automation_sent").select("id")
+          .eq("kind", "SCHOOL_AI_BRIEFING").eq("subject_id", t.id).eq("ref_date", todayBRT).maybeSingle();
+        if (duplicate) { result.skipped++; continue; }
         // telefone do diretor: ownerWhatsapp configurado, senão o phone do admin do tenant
         let phone = (cfg.ownerWhatsapp || "").replace(/\D/g, "");
         const { data: adm } = await admin.from("profiles").select("phone, whatsapp_instance").eq("tenant_id", t.id).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "").limit(1).maybeSingle();
@@ -313,6 +307,7 @@ serve(async (req) => {
           const { secretary } = await runForTenant(admin, t.id, cfg, useAi);
           const resp = await sendWhats(instance, { number: phone, text: wa(secretary.markdown), delay: 800, linkPreview: false });
           if (!resp.ok) { result.failures.push(`${t.id}: evolution ${resp.status}`); continue; }
+          await admin.from("automation_sent").insert({ kind: "SCHOOL_AI_BRIEFING", subject_id: t.id, ref_date: todayBRT });
           result.sent++;
         } catch (e) { result.failures.push(`${t.id}: ${(e as Error).message}`); }
       }

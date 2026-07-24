@@ -5,6 +5,7 @@ import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants
 import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
+import { loadAppUser } from './lib/auth-user';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -71,6 +72,7 @@ const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
+const PublicTrialConfirmation = lazy(() => import('./components/PublicTrialConfirmation'));
 const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
@@ -124,6 +126,46 @@ const App: React.FC = () => {
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
+
+  // Restaura a sessão persistida pelo Supabase depois de refresh/reabertura da aba.
+  useEffect(() => {
+    let mounted = true;
+
+    const restoreSession = async () => {
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!session?.user) return;
+
+        const restoredUser = await loadAppUser(session.user.id);
+        if (!restoredUser) {
+          await supabase.auth.signOut();
+          return;
+        }
+
+        if (mounted) setUser(restoredUser);
+      } catch (error) {
+        console.error('Session restore error:', error);
+      } finally {
+        if (mounted) setIsRestoringSession(false);
+      }
+    };
+
+    void restoreSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT' && mounted) {
+        setUser(null);
+        setCurrentTenant(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Resolve tenant pelo hostname ao inicializar (antes do login)
   useEffect(() => {
@@ -145,7 +187,11 @@ const App: React.FC = () => {
     try {
       // 1. Setup Tenant Branding
       if (user.tenantId !== 'master') {
-        const { data: tenantData } = await supabase.from('tenants').select('*').eq('id', user.tenantId).single();
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('id, name, domain, branding, student_limit, teacher_limit, whatsapp_enabled, school_info')
+          .eq('id', user.tenantId)
+          .single();
         if (tenantData) {
           setCurrentTenant({
             id: tenantData.id,
@@ -154,8 +200,6 @@ const App: React.FC = () => {
             branding: tenantData.branding,
             studentLimit: tenantData.student_limit,
             teacherLimit: tenantData.teacher_limit,
-            whatsapp_api_url: tenantData.whatsapp_api_url,
-            whatsapp_api_key: tenantData.whatsapp_api_key,
             whatsapp_enabled: tenantData.whatsapp_enabled,
             school_info: tenantData.school_info ?? null,
           });
@@ -359,14 +403,25 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
-  const handleLogout = () => {
-    setUser(null);
-    setCurrentTenant(null);
-    setActiveTab('dashboard');
-    setIsSidebarOpen(false);
-    setExplorerInitialState(null);
-    document.documentElement.style.setProperty('--primary-color', '#002366');
-    document.documentElement.style.setProperty('--secondary-color', '#D32F2F');
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Mesmo sem rede, remove a sessão persistida deste navegador para que um
+      // refresh não autentique novamente o usuário que acabou de sair.
+      const { error: localError } = await supabase.auth.signOut({ scope: 'local' });
+      if (localError) console.error('Local logout error:', localError);
+    } finally {
+      setUser(null);
+      setCurrentTenant(null);
+      setActiveTab('dashboard');
+      setIsSidebarOpen(false);
+      setExplorerInitialState(null);
+      document.documentElement.style.setProperty('--primary-color', '#002366');
+      document.documentElement.style.setProperty('--secondary-color', '#D32F2F');
+    }
   };
 
   // --- ROUTING LOGIC (Simple Client-Side Router) ---
@@ -382,6 +437,19 @@ const App: React.FC = () => {
   if (path === '/book-interview') {
     const params = new URLSearchParams(window.location.search);
     return <BookInterview token={params.get('t')} />;
+  }
+
+  if (path === '/experimental') {
+    const params = new URLSearchParams(window.location.search);
+    let legacyOpportunityId: string | null = null;
+    const legacyData = params.get('data');
+    if (legacyData) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(legacyData))));
+        legacyOpportunityId = decoded?.opportunityId || null;
+      } catch { /* o componente exibirá link inválido */ }
+    }
+    return <PublicTrialConfirmation token={params.get('token')} legacyOpportunityId={legacyOpportunityId} />;
   }
 
   if (path === '/new-saas') {
@@ -467,6 +535,15 @@ const App: React.FC = () => {
     </Suspense>;
   }
   // --------------------------------------------------
+
+  if (isRestoringSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200" role="status" aria-live="polite">
+        <Loader2 className="animate-spin mr-3 text-blue-400" aria-hidden="true" />
+        Restaurando sessão...
+      </div>
+    );
+  }
 
   if (!user) {
     return <Login onLogin={setUser} />;

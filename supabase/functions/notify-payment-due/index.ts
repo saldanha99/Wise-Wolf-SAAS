@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 // Cron diário: avisa o aluno X dias antes do vencimento da mensalidade (WhatsApp).
 // Envia pela instância central da escola (admin do tenant). Idempotente via due_reminder_sent_at.
@@ -22,6 +23,8 @@ async function centralInstance(supabase: any, tenantId: string | null): Promise<
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authError = await authorizeAutomation(req, corsHeaders);
+  if (authError) return authError;
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 

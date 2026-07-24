@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { Smartphone, RefreshCw, LogOut, QrCode as QrIcon, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { whatsappService } from '../services/whatsappService';
 
 interface WhatsappManagerProps {
     role: 'SCHOOL_ADMIN' | 'TEACHER';
     userId: string;
 }
-
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const WhatsappManager: React.FC<WhatsappManagerProps> = ({ role, userId }) => {
     // Logic for Instance Name
@@ -21,23 +19,14 @@ const WhatsappManager: React.FC<WhatsappManagerProps> = ({ role, userId }) => {
     const [qrCode, setQrCode] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // Headers for API calls
-    const headers = {
-        'apikey': GLOBAL_API_KEY,
-        'Content-Type': 'application/json'
-    };
-
     const checkConnection = async () => {
         try {
-            const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { headers });
-
-            if (!res.ok) {
+            const res = await whatsappService.fetchConnectionState(undefined, instanceName);
+            if (!res.success) {
                 setStatusText('Desconectado');
                 return;
             }
-
-            const data = await res.json();
-            if (data?.instance?.state === 'open') {
+            if (res.state === 'open' || res.state === 'connected') {
                 setStatusText('Conectado');
                 setQrCode(null);
             } else {
@@ -56,20 +45,13 @@ const WhatsappManager: React.FC<WhatsappManagerProps> = ({ role, userId }) => {
             setLoading(true);
             setStatusText('Iniciando');
 
-            // Call connect endpoint
-            const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-                method: 'GET',
-                headers
-            });
+            const res = await whatsappService.connectInstance(undefined, instanceName);
+            if (!res.success) throw new Error(res.error || "Falha ao gerar QR Code");
 
-            if (!res.ok) throw new Error("Falha ao gerar QR Code");
-
-            const data = await res.json();
-
-            if (data?.base64) {
-                setQrCode(data.base64);
+            if (res.qrcode) {
+                setQrCode(res.qrcode);
                 setStatusText('Aguardando QR Code');
-            } else if (data?.instance?.state === 'open') {
+            } else if (res.status === 'connected') {
                 setStatusText('Conectado');
                 setQrCode(null);
                 alert("Instância já está conectada!");
@@ -89,10 +71,8 @@ const WhatsappManager: React.FC<WhatsappManagerProps> = ({ role, userId }) => {
 
         try {
             setLoading(true);
-            await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
-                method: 'DELETE',
-                headers
-            });
+            const result = await whatsappService.logoutInstance(undefined, instanceName);
+            if (!result.success) throw new Error(result.error || 'Falha ao desconectar.');
             setStatusText('Desconectado');
             setQrCode(null);
         } catch (error) {

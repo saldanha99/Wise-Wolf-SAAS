@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 
 // =====================================================
 // WEEKDAY CONFIG
@@ -83,17 +83,12 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
             const userInstance = user?.tenant?.whatsapp_instance;
             const instanceName = localInstance || userInstance || "wise wolf";
 
-            // DIRECT FETCH to bypass potential supabase-js issues
-            const PROJECT_REF = "dvalxbtngopxopzcbfdm"; // Taken from lib/supabase.ts
-            const FUNCTION_URL = `https://${PROJECT_REF}.supabase.co/functions/v1/broadcast-opportunity`;
-
-            // Hardcoded Anon Key (from lib/supabase.ts) to pass Gateway Check
-            const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || supabase['supabaseKey'];
+            const FUNCTION_URL = `${FUNCTIONS_URL}/broadcast-opportunity`;
 
             const response = await fetch(FUNCTION_URL, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${ANON_KEY}`, // Pass Gateway as Anon
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, // Pass Gateway as Anon
                     'x-user-token': session.access_token,  // Pass User for Logic
                     'Content-Type': 'application/json'
                 },

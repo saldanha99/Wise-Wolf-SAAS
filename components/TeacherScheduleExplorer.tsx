@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../constants';
 import { Teacher, Reschedule } from '../types';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -437,17 +437,20 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         }
 
         if (studentPhone) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Sessão expirada. Entre novamente.');
+
           const instanceName = selectedTeacher.tenantId === currentTenantId
             ? `prof-${selectedTeacher.name.split(' ')[0].toLowerCase()}-${selectedTeacher.id.substring(0, 4)}`
             : 'wise-wolf';
 
           const scheduleStr = data.schedule.map(s => `${s.day} às ${s.time}`).join(', ');
 
-          fetch('https://dvalxbtngopxopzcbfdm.supabase.co/functions/v1/send-class-notification', {
+          fetch(`${FUNCTIONS_URL}/send-class-notification`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+              'Authorization': `Bearer ${session.access_token}`
             },
             body: JSON.stringify({
               type: 'CONFIRMATION',

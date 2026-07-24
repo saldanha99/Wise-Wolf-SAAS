@@ -1,135 +1,195 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
-const EVOLUTION_API_TOKENS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  authorizeRequest,
+  methodNotAllowed,
+} from "../_shared/request-auth.ts";
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  "Access-Control-Allow-Origin": "https://wisewolflanguage.com.br",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+type ApplicationRow = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  whatsapp: string;
+  role: string | null;
+  preinterview_status: string | null;
+  welcome_notification_sent_at: string | null;
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeBrazilPhone(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
 }
 
 serve(async (req) => {
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+
+  const auth = await authorizeRequest(req, {
+    allowService: true,
+    corsHeaders,
+  });
+  if (!auth.ok) return auth.response;
+  if (!auth.context.isService) return json({ error: "Service access required" }, 403);
+
+  let claimedApplication: ApplicationRow | null = null;
+
+  try {
+    const payload = await req.json().catch(() => ({}));
+    if (!isUuid(payload?.application_id)) {
+      return json({ error: "application_id is required" }, 400);
     }
 
-    try {
-        const { whatsapp, name, tenant_id, role } = await req.json();
+    const selectColumns = "id, tenant_id, name, whatsapp, role, preinterview_status, welcome_notification_sent_at";
+    const { data: application, error: lookupError } = await auth.context.admin
+      .from("job_applications")
+      .select(selectColumns)
+      .eq("id", payload.application_id)
+      .maybeSingle();
 
-        if (!whatsapp || !name || !tenant_id) {
-            throw new Error("Missing required fields: whatsapp, name, tenant_id");
-        }
+    if (lookupError) {
+      console.error("HR welcome application lookup failed", { code: lookupError.code });
+      return json({ error: "Unable to load application" }, 503);
+    }
+    if (!application) return json({ error: "Application not found" }, 404);
+    if (application.welcome_notification_sent_at) {
+      return json({ success: true, already_processed: true });
+    }
 
-        // Vaga de professor recebe a triagem por IA (Rita). Vendedor/outros: welcome simples.
-        const isTeacher = !role || String(role).toLowerCase() === 'professor';
+    const claimedAt = new Date().toISOString();
+    const { data: claimed, error: claimError } = await auth.context.admin
+      .from("job_applications")
+      .update({ welcome_notification_sent_at: claimedAt })
+      .eq("id", application.id)
+      .is("welcome_notification_sent_at", null)
+      .select(selectColumns)
+      .maybeSingle();
 
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const supabase = createClient(supabaseUrl, supabaseKey);
+    if (claimError) {
+      console.error("HR welcome claim failed", { code: claimError.code });
+      return json({ error: "Unable to claim notification" }, 503);
+    }
+    if (!claimed) return json({ success: true, already_processed: true });
+    claimedApplication = claimed as ApplicationRow;
 
-        // Instância do diretor (mesma da recepção inbound)
-        let instanceName = '';
-        const { data: director } = await supabase
-            .from('profiles')
-            .select('whatsapp_instance')
-            .eq('tenant_id', tenant_id)
-            .in('role', ['SCHOOL_ADMIN', 'DIRECTOR', 'SUDO'])
-            .not('whatsapp_instance', 'is', null)
-            .neq('whatsapp_instance', '')
-            .limit(1)
-            .maybeSingle();
-        if (director?.whatsapp_instance) instanceName = director.whatsapp_instance;
+    const evolutionBase = (Deno.env.get("EVOLUTION_API_URL") ?? "https://api.2b.app.br")
+      .replace(/\/+$/, "");
+    const evolutionKey = Deno.env.get("EVOLUTION_API_KEY")?.trim() ?? "";
+    if (!evolutionKey) throw new Error("Evolution integration is unavailable");
 
-        if (!instanceName) {
-            const { data: instanceRow } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('tenant_id', tenant_id)
-                .eq('status', 'open')
-                .limit(1)
-                .maybeSingle();
-            if (instanceRow?.instance_name) instanceName = instanceRow.instance_name;
-        }
-        if (!instanceName) {
-            instanceName = 'wise-wolf';
-            console.warn(`[HR Welcome] No WhatsApp instance found for tenant ${tenant_id}, using fallback: ${instanceName}`);
-        }
+    const { data: director, error: directorError } = await auth.context.admin
+      .from("profiles")
+      .select("whatsapp_instance")
+      .eq("tenant_id", claimedApplication.tenant_id)
+      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
+      .not("whatsapp_instance", "is", null)
+      .neq("whatsapp_instance", "")
+      .limit(1)
+      .maybeSingle();
+    if (directorError) throw new Error("Director lookup failed");
 
-        // Telefone
-        let cleanPhone = whatsapp.replace(/\D/g, "");
-        if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = "55" + cleanPhone;
-        else if (cleanPhone.length > 11 && !cleanPhone.startsWith("55")) cleanPhone = "55" + cleanPhone;
+    let instanceName = director?.whatsapp_instance?.trim() ?? "";
+    if (!instanceName) {
+      const { data: instance, error: instanceError } = await auth.context.admin
+        .from("whatsapp_instances")
+        .select("instance_name")
+        .eq("tenant_id", claimedApplication.tenant_id)
+        .eq("status", "open")
+        .limit(1)
+        .maybeSingle();
+      if (instanceError) throw new Error("WhatsApp instance lookup failed");
+      instanceName = instance?.instance_name?.trim() ?? "";
+    }
+    if (!instanceName) throw new Error("WhatsApp instance is unavailable");
 
-        // Banco de Talentos (opcional)
-        let groupBlock = '';
-        try {
-            const { data: t } = await supabase.from('tenants').select('talent_group_link').eq('id', tenant_id).maybeSingle();
-            if (t?.talent_group_link) {
-                groupBlock = `\n\n🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*\n${t.talent_group_link}\n\nÉ por lá que as vagas abrem primeiro — quem está no grupo sai na frente!`;
-            }
-        } catch (_e) { /* sem grupo */ }
+    const phone = normalizeBrazilPhone(claimedApplication.whatsapp);
+    if (phone.length < 12) throw new Error("Application phone is invalid");
 
-        const firstName = String(name).trim().split(/\s+/)[0] || name;
+    const firstName = claimedApplication.name.trim().split(/\s+/)[0] || "Candidato";
+    const isTeacher = !claimedApplication.role ||
+      claimedApplication.role.toLowerCase() === "professor";
 
-        // Mensagem: professor -> convite pra iniciar a triagem (Rita); demais -> simples
-        const message = isTeacher
-            ? `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura para a vaga de *Professor(a) de Inglês* com sucesso! ✅\n\nPara dar continuidade, é bem rápido (5 a 10 min por aqui mesmo). Para começar sua triagem, responda esta mensagem com um *"Oi"*. 😊${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`
-            : `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá *${firstName}*! 👋\n\nRecebemos sua candidatura com sucesso! ✅\n\nNossa equipe irá analisar seu perfil e entraremos em contato em breve com os próximos passos.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`;
+    let groupBlock = "";
+    const { data: tenant } = await auth.context.admin
+      .from("tenants")
+      .select("talent_group_link")
+      .eq("id", claimedApplication.tenant_id)
+      .maybeSingle();
+    if (tenant?.talent_group_link) {
+      groupBlock = `\n\n🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*\n${tenant.talent_group_link}\n\nÉ por lá que as vagas abrem primeiro.`;
+    }
 
-        let response: Response | null = null;
-        let result: any = null;
-        for (const token of EVOLUTION_API_TOKENS) {
-            response = await fetch(`${EVOLUTION_API_BASE}/${instanceName}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": token },
-                body: JSON.stringify({
-                    number: cleanPhone,
-                    options: { delay: 1200, presence: "composing", linkPreview: false },
-                    textMessage: { text: message },
-                    text: message
-                })
-            });
-            result = await response.json().catch(() => ({}));
-            if (response.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
-        }
-        if (!response || !response.ok) {
-            console.error("[HR Welcome] Evolution API Error:", result);
-            throw new Error(`WhatsApp API Error: ${result?.message || JSON.stringify(result)}`);
-        }
+    const message = isTeacher
+      ? `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura para a vaga de *Professor(a) de Inglês* com sucesso. ✅\n\nPara iniciar sua triagem, responda esta mensagem com um *"Oi"*.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`
+      : `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura com sucesso. Nossa equipe analisará seu perfil e entrará em contato com os próximos passos.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`;
 
-        // Ativa a triagem por IA (Rita) para a candidatura de professor:
-        // a Rita só engaja quem tem preinterview_status != null no whatsapp-inbound.
-        if (isTeacher) {
-            try {
-                const { data: appRow } = await supabase
-                    .from('job_applications')
-                    .select('id, role')
-                    .eq('tenant_id', tenant_id)
-                    .eq('whatsapp', whatsapp)
-                    .is('preinterview_status', null)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (appRow?.id && (!appRow.role || String(appRow.role).toLowerCase() === 'professor')) {
-                    await supabase.from('job_applications')
-                        .update({ preinterview_status: 'SENT' })
-                        .eq('id', appRow.id);
-                }
-            } catch (e) { console.warn('[HR Welcome] activate Rita failed (non-blocking):', (e as Error).message); }
-        }
+    const response = await fetch(
+      `${evolutionBase}/message/sendText/${encodeURIComponent(instanceName)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": evolutionKey,
+        },
+        body: JSON.stringify({
+          number: phone,
+          options: { delay: 1200, presence: "composing", linkPreview: false },
+          textMessage: { text: message },
+          text: message,
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!response.ok) throw new Error(`Evolution request failed (${response.status})`);
 
-        console.log(`[HR Welcome] ✅ Message sent to ${cleanPhone} via ${instanceName} (teacher=${isTeacher})`);
-        return new Response(JSON.stringify({ success: true, instance: instanceName, teacher: isTeacher, result }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200,
-        });
-    } catch (error: any) {
-        console.error("[HR Welcome] Function Error:", error.message);
-        return new Response(JSON.stringify({ error: error.message }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
+    if (isTeacher && !claimedApplication.preinterview_status) {
+      const { error: updateError } = await auth.context.admin
+        .from("job_applications")
+        .update({
+          preinterview_status: "SENT",
+          preinterview_sent_at: new Date().toISOString(),
         })
+        .eq("id", claimedApplication.id)
+        .is("preinterview_status", null);
+      if (updateError) {
+        console.error("HR preinterview status update failed", { code: updateError.code });
+      }
     }
-})
+
+    console.log("HR welcome notification sent", {
+      application_id: claimedApplication.id,
+      tenant_id: claimedApplication.tenant_id,
+      teacher: isTeacher,
+    });
+    return json({ success: true });
+  } catch (error) {
+    if (claimedApplication) {
+      await auth.context.admin
+        .from("job_applications")
+        .update({ welcome_notification_sent_at: null })
+        .eq("id", claimedApplication.id)
+        .eq("welcome_notification_sent_at", claimedApplication.welcome_notification_sent_at);
+    }
+    console.error("HR welcome notification failed", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+    return json({ error: "Notification failed" }, 502);
+  }
+});

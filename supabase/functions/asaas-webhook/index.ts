@@ -1,8 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+    completeEnrollment,
+    markEnrollmentStage,
+} from "../_shared/enrollment-progress.ts";
 
 // EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
+
+type AsaasWebhookPayment = {
+    id: string;
+    customer: string;
+    status: string;
+    value?: number;
+    externalReference?: string | null;
+    description?: string | null;
+    dueDate?: string | null;
+    paymentDate?: string | null;
+    billingType?: string | null;
+    bankSlipUrl?: string | null;
+    invoiceUrl?: string | null;
+};
+
+type AsaasWebhookBody = {
+    event?: string;
+    payment?: AsaasWebhookPayment;
+};
 
 // Environment Variables
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
@@ -66,12 +89,12 @@ async function fetchComTimeout(url: string, init: RequestInit = {}, timeoutMs = 
 // Processa o evento do ASAAS. Roda em BACKGROUND (EdgeRuntime.waitUntil),
 // depois que o webhook já respondeu 200 — então NUNCA lança erro pro ASAAS,
 // apenas registra nos logs.
-async function processarPagamento(body: any): Promise<void> {
+async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     try {
         const { event, payment } = body;
 
         if (!event || !payment) {
-            console.warn("[Webhook] Ignorado: faltou event ou payment.", body);
+            console.warn("[Webhook] Ignorado: faltou event ou payment.");
             return;
         }
 
@@ -88,14 +111,14 @@ async function processarPagamento(body: any): Promise<void> {
         */
 
         // 1. Find Student
-        let studentId = null;
+        let studentId: string | null = null;
         // Basic UUID validation
         const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
         if (payment.externalReference && isValidUUID(payment.externalReference)) {
             studentId = payment.externalReference;
         } else if (payment.externalReference) {
-            console.warn(`⚠️ Invalid UUID in externalReference: '${payment.externalReference}'. Ignoring to prevent error.`);
+            console.warn("⚠️ externalReference não é UUID; identificação seguirá pelo customer.");
         }
 
         // If no external ref, lookup by Asaas Customer ID
@@ -110,7 +133,7 @@ async function processarPagamento(body: any): Promise<void> {
                 studentId = profile.id;
                 console.log(`✅ Student Identified via Customer ID: ${studentId}`);
             } else {
-                console.warn(`⚠️ Student NOT found for Customer ID: ${payment.customer}. Trying fallback by Email...`);
+                console.warn("⚠️ Perfil não encontrado pelo customer; tentando fallback legado.");
 
                 // Fallback: Fetch Customer from Asaas to get Email
                 if (ASAAS_ACCESS_TOKEN) {
@@ -122,22 +145,23 @@ async function processarPagamento(body: any): Promise<void> {
                         if (asaasRes.ok) {
                             const asaasCustomer = await asaasRes.json();
                             if (asaasCustomer.email) {
-                                console.log(`🔍 Looking for student with email: ${asaasCustomer.email}`);
                                 // IMPORTANT: 'profiles' must have 'email' column (added via migration)
                                 const { data: profileByEmail } = await supabase.from('profiles').select('id').eq('email', asaasCustomer.email).single();
 
                                 if (profileByEmail) {
                                     studentId = profileByEmail.id;
-                                    console.log(`✅ Student Identified via Email Fallback: ${studentId}`);
+                                    console.log("✅ Aluno identificado pelo fallback legado.");
 
                                     // Sync ID for future
                                     await supabase.from('profiles').update({ asaas_customer_id: payment.customer }).eq('id', studentId);
                                 } else {
-                                    console.warn(`❌ No profile found with email: ${asaasCustomer.email}`);
+                                    console.warn("❌ Nenhum perfil encontrado pelo fallback legado.");
                                 }
                             }
                         } else {
-                            console.error('❌ Failed to fetch Asaas Customer:', await asaasRes.text());
+                            console.error('❌ Falha ao consultar customer no Asaas:', {
+                                status: asaasRes.status,
+                            });
                         }
                     } catch (errFallback) {
                         console.error('❌ Error in Email Fallback:', errFallback);
@@ -177,7 +201,7 @@ async function processarPagamento(body: any): Promise<void> {
             else if (desc.includes('pro-rata') || desc.includes('proporcional')) paymentType = 'PRO_RATA';
             else if (desc.includes('reembolso') || desc.includes('refund')) paymentType = 'REFUND';
 
-            const paymentData: any = {
+            const paymentData: Record<string, unknown> = {
                 asaas_payment_id: payment.id,
                 value: payment.value,
                 status: payment.status, // CONFIRMED or RECEIVED
@@ -228,7 +252,7 @@ async function processarPagamento(body: any): Promise<void> {
                 // Fetch Profile Data needed for Welcome Logic & Cash Flow
                 const { data: profileData, error: profileFetchErr } = await supabase
                     .from('profiles')
-                    .select('tenant_id, contract_accepted, welcome_sent_at, phone, full_name, signed_document_url, class_frequency')
+                    .select('tenant_id, contract_accepted, welcome_sent_at, phone, full_name, signed_document_url, class_frequency, enrollment_payment_id, is_test_account')
                     .eq('id', studentId)
                     .single();
 
@@ -243,10 +267,78 @@ async function processarPagamento(body: any): Promise<void> {
                 if (profileError) console.error('❌ Error updating Profile status:', profileError);
                 else console.log('✅ Profile Financial Status set to ACTIVE');
 
+                // Uma matrícula em processamento só fecha quando o pagamento
+                // obrigatório correspondente (taxa ou serviço avulso) é confirmado.
+                // O webhook usa service_role e é a fonte autoritativa mesmo se o
+                // aluno fechar a página antes de clicar em "já paguei".
+                if (
+                    profileData &&
+                    (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED')
+                ) {
+                    try {
+                        const { data: processingOffer } = await supabase
+                            .from('offers')
+                            .select('id, metadata, processing_state')
+                            .eq('kind', 'ENROLLMENT')
+                            .eq('processing_by', studentId)
+                            .neq('processing_state', 'COMPLETED')
+                            .order('processing_updated_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (processingOffer) {
+                            const enrollmentPaymentId =
+                                profileData.enrollment_payment_id ||
+                                processingOffer.metadata?.enrollment_payment_id;
+                            const oneTimePaymentId =
+                                processingOffer.metadata?.one_time_payment_id;
+                            const isEnrollmentFee = enrollmentPaymentId === payment.id;
+                            const isOneTime = oneTimePaymentId === payment.id;
+
+                            if (isEnrollmentFee) {
+                                await supabase.from('profiles').update({
+                                    enrollment_fee_paid: true,
+                                }).eq('id', studentId).eq('enrollment_payment_id', payment.id);
+                            }
+
+                            if (isEnrollmentFee || isOneTime) {
+                                await markEnrollmentStage(
+                                    supabase,
+                                    processingOffer.id,
+                                    studentId,
+                                    'BILLING_READY',
+                                    {
+                                        metadata: isOneTime
+                                            ? { one_time_paid_at: new Date().toISOString() }
+                                            : { enrollment_fee_paid_at: new Date().toISOString() },
+                                    },
+                                );
+                                await completeEnrollment(
+                                    supabase,
+                                    processingOffer.id,
+                                    studentId,
+                                );
+                                console.log(`✅ Enrollment completed by paid webhook: ${processingOffer.id}`);
+                            }
+                        }
+                    } catch (completionError) {
+                        console.error('[Webhook] Enrollment completion failed:', {
+                            type: completionError instanceof Error
+                                ? completionError.name
+                                : 'UnknownError',
+                        });
+                    }
+                }
+
                 // --- CONFIRMAÇÃO DE PAGAMENTO VIA WHATSAPP ---
                 // Envia APENAS uma mensagem simples de confirmação, SEM links.
                 // A mensagem de Bem-vindo ao Império é disparada SOMENTE no fluxo de matrícula (PublicRegistration), NUNCA aqui.
-                if (profileData && profileData.phone && (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED')) {
+                if (
+                    profileData &&
+                    profileData.is_test_account !== true &&
+                    profileData.phone &&
+                    (event === 'PAYMENT_CONFIRMED' || event === 'PAYMENT_RECEIVED')
+                ) {
                     if (isAlreadyPaid) {
                         console.log(`ℹ️ [Webhook] Payment confirmation WhatsApp skipped (already paid): ${payment.id}`);
                     } else {
@@ -265,7 +357,7 @@ async function processarPagamento(body: any): Promise<void> {
                                 : '';
                             const confirmationMessage = `✅ *Pagamento confirmado${valorFormatado ? `, ${valorFormatado}` : ''}!*\nObrigado, ${studentName}. Seu acesso segue ativo. 🐺`;
 
-                            console.log(`Sending payment confirmation WhatsApp to ${cleanPhone}...`);
+                            console.log('Enviando confirmação de pagamento pelo canal central...');
 
                             const { data: centralInst } = await supabase.rpc('central_instance_for_tenant', { p_tenant: profileData.tenant_id });
                             const sendInstance = centralInst || 'wise-wolf';
@@ -290,7 +382,9 @@ async function processarPagamento(body: any): Promise<void> {
                             if (evoRes?.ok) {
                                 console.log('✅ Payment Confirmation WhatsApp Sent!');
                             } else {
-                                console.error('❌ Failed to send payment confirmation WhatsApp:', await evoRes?.text());
+                                console.error('❌ Falha ao enviar confirmação de pagamento:', {
+                                    status: evoRes?.status,
+                                });
                             }
                         } catch (whatsappErr) {
                             console.error('❌ Error in Payment Confirmation WhatsApp flow:', whatsappErr);
@@ -310,7 +404,7 @@ async function processarPagamento(body: any): Promise<void> {
         } else if (event === 'PAYMENT_OVERDUE') {
             console.log('⚠️ PAYMENT OVERDUE! Marking as overdue...');
 
-            const paymentData: any = {
+            const paymentData: Record<string, unknown> = {
                 asaas_payment_id: payment.id,
                 status: 'OVERDUE',
                 updated_at: new Date().toISOString()
@@ -337,7 +431,7 @@ async function processarPagamento(body: any): Promise<void> {
         else {
             console.log(`ℹ️ Generic Event: ${event}. Upserting info...`);
 
-            const paymentData: any = {
+            const paymentData: Record<string, unknown> = {
                 asaas_payment_id: payment.id,
                 value: payment.value,
                 status: payment.status,
@@ -365,8 +459,10 @@ async function processarPagamento(body: any): Promise<void> {
             if (upsertError) console.error("❌ Error generic upsert:", upsertError);
         }
 
-    } catch (err: any) {
-        console.error('❌ CRITICAL WEBHOOK ERROR (background):', err);
+    } catch (err: unknown) {
+        console.error('❌ CRITICAL WEBHOOK ERROR (background):', {
+            type: err instanceof Error ? err.name : 'UnknownError',
+        });
     }
 }
 
@@ -378,13 +474,13 @@ serve(async (req) => {
 
     // 1. Validação rápida (corpo + token) — tudo que precisa retornar erro HTTP
     //    pro ASAAS acontece AQUI, antes do ACK.
-    let body: any;
+    let body: AsaasWebhookBody;
     try {
         const reqText = await req.text();
         if (!reqText) {
             return new Response(JSON.stringify({ error: 'Empty body' }), { headers: corsHeaders, status: 400 });
         }
-        body = JSON.parse(reqText);
+        body = JSON.parse(reqText) as AsaasWebhookBody;
     } catch {
         return new Response(JSON.stringify({ error: 'Invalid JSON' }), { headers: corsHeaders, status: 400 });
     }

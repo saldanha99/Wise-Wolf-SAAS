@@ -87,7 +87,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                             <label className="text-xs font-bold text-brand-muted uppercase">Nome da Escola</label>
                             <input
                                 value={formData.schoolName}
-                                onChange={e => setFormData({ ...formData, schoolName: e.target.value, slug: generateSlug(e.target.value) })}
+                                onChange={e => setFormData({ ...formData, schoolName: e.target.value, slug: slugify(e.target.value) })}
                                 className="w-full bg-brand-surface-2 border-none rounded-xl px-4 py-3 font-bold outline-none"
                             />
                         </div>

@@ -35,10 +35,21 @@ const DirectorPendingCenter: React.FC<Props> = ({ onNavigate }) => {
 
   useEffect(() => {
     let active = true;
-    supabase.rpc('director_pending_counts').then(({ data }) => {
-      if (active && data && typeof data === 'object') setCounts(data as Record<string, number>);
-      if (active) setLoading(false);
-    }).catch(() => active && setLoading(false));
+
+    const loadCounts = async () => {
+      try {
+        const { data } = await supabase.rpc('director_pending_counts');
+        if (active && data && typeof data === 'object') {
+          setCounts(data as Record<string, number>);
+        }
+      } catch {
+        // Mantém o painel silencioso quando a contagem não estiver disponível.
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void loadCounts();
     return () => { active = false; };
   }, []);
 

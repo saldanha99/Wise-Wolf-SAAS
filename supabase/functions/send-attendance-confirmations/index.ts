@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 // Cron: envia o link de confirmação de presença ao ALUNO após a aula.
 // IMPORTANTE: envia pela INSTÂNCIA CENTRAL da escola (não a do professor),
@@ -34,6 +35,8 @@ async function resolveCentralInstance(supabase: any, tenantId: string | null): P
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authError = await authorizeAutomation(req, corsHeaders);
+  if (authError) return authError;
 
   try {
     if (!API_TOKEN) throw new Error("EVOLUTION_API_KEY não configurada");

@@ -70,11 +70,7 @@ async function claim(sb: any, kind: string, subjectId: string): Promise<boolean>
 }
 
 function isServiceRole(bearer: string, serviceKey: string): boolean {
-  if (bearer && bearer === serviceKey) return true;
-  try {
-    const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(b64))?.role === "service_role";
-  } catch { return false; }
+  return Boolean(serviceKey && bearer === serviceKey);
 }
 
 serve(async (req) => {
@@ -126,7 +122,14 @@ serve(async (req) => {
       if (log.created_at > oneHourAgo) continue; // dá 1h de folga antes de cutucar
 
       // Já existe proposta (link de matrícula) para essa oportunidade? Se sim, isso é problema B, não A.
-      const { data: existingLink } = await sb.from("enrollment_links").select("id").eq("opportunity_id", opp.id).limit(1).maybeSingle();
+      const { data: existingLink } = await sb
+        .from("enrollment_links")
+        .select("id")
+        .eq("opportunity_id", opp.id)
+        .eq("status", "PENDING")
+        .not("offer_id", "is", null)
+        .limit(1)
+        .maybeSingle();
       if (existingLink) continue;
 
       const phone = cleanPhone(opp.student_phone || "");
@@ -162,6 +165,7 @@ serve(async (req) => {
       .from("enrollment_links")
       .select("id, tenant_id, student_name, student_phone, link_url, created_at")
       .eq("status", "PENDING")
+      .not("offer_id", "is", null)
       .gte("created_at", thirtyDaysAgo);
 
     for (const link of (pendingLinks || [])) {

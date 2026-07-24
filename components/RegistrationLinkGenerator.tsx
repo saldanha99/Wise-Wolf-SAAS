@@ -80,6 +80,17 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         setMonthlyFee(price);
     }, [duration, frequency, isManualPrice, pricingMatrix]);
 
+    // Se qualquer termo mudar, o link exibido deixa de representar o formulário
+    // atual e precisa ser gerado novamente.
+    useEffect(() => {
+        setGeneratedLink('');
+        setCopied(false);
+    }, [
+        duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
+        selectedProfessor, selectedProfessor2, isDependent, studentPhone,
+        selectedGuardianId, scheduleSlots, startDate, enableProRata, billingStartMonth,
+    ]);
+
     // Update slots when frequency changes
     useEffect(() => {
         setScheduleSlots(prev => {
@@ -228,16 +239,17 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
         // Link assinado: grava o payload AUTORITATIVO (preço, cobrança, dados do
         // responsável) num offer server-side e leva só o offer_id no URL — assim o
-        // aluno não consegue editar o preço pelo link. Fallback para o base64 legado
-        // se a RPC falhar, para o gerador nunca travar.
+        // aluno não consegue editar o preço pelo link. Se a RPC falhar, nao geramos
+        // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
             const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', { p_payload: data });
             if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
         } catch (e) {
-            console.error('create_enrollment_offer falhou — usando link legado base64:', e);
-            const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-            setGeneratedLink(`${APP_BASE_URL}/matricula?data=${base64}`);
+            console.error('create_enrollment_offer falhou:', e);
+            setGeneratedLink('');
+            alert('Não foi possível gerar o link seguro de matrícula. Tente novamente.');
+            return;
         }
         setCopied(false);
     };

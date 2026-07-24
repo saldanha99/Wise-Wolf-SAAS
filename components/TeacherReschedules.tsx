@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import {
     Repeat,
     Settings,
@@ -84,13 +84,15 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                 ? `prof-${item.teacherName.toLowerCase().split(' ')[0]}-${tchProfile.id.substring(0, 4)}`
                 : 'wise-wolf';
 
-            const meetingLink = tchProfile?.meeting_url || "https://aluno.wisewolf.com.br";
+            const meetingLink = tchProfile?.meeting_url || "";
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error('Sessão expirada. Entre novamente.');
 
-            await fetch('https://dvalxbtngopxopzcbfdm.supabase.co/functions/v1/send-class-notification', {
+            await fetch(`${FUNCTIONS_URL}/send-class-notification`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+                    'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({
                     type: 'RESCHEDULE',

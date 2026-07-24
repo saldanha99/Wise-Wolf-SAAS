@@ -80,7 +80,7 @@ export async function resolveTenantFromHostname(): Promise<ResolvedTenant | null
         _cache = null;
     }
 
-    return _cache;
+    return _cache === false ? null : _cache;
 }
 
 /** Retorna a URL pública do tenant (subdomínio ou domínio próprio verificado). */

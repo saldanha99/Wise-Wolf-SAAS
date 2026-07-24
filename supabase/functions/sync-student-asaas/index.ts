@@ -1,292 +1,293 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  authorizePaymentTarget,
+  loadClaimedEnrollmentOffer,
+} from "../_shared/payment-auth.ts";
+import type { PaymentAdminClient } from "../_shared/payment-auth.ts";
+import {
+  markEnrollmentFailure,
+  markEnrollmentStage,
+} from "../_shared/enrollment-progress.ts";
 
-// Configuration with Fallback
-let ASAAS_URL = Deno.env.get('ASAAS_API_URL') || 'https://api-sandbox.asaas.com';
-
-// Sanitize URL: Remove trailing slash and version paths to get a clean base
-// Examples we want to handle:
-// https://sandbox.asaas.com/api/v3 -> https://sandbox.asaas.com
-// https://api-sandbox.asaas.com/v3 -> https://api-sandbox.asaas.com
-// https://api-sandbox.asaas.com -> https://api-sandbox.asaas.com
+let ASAAS_URL = Deno.env.get("ASAAS_API_URL") || "https://api-sandbox.asaas.com";
 ASAAS_URL = ASAAS_URL.replace(/\/+$/, "")
-    .replace(/\/v3$/, "")
-    .replace(/\/api\/v3$/, "")
-    .replace(/\/api$/, "");
+  .replace(/\/v3$/, "")
+  .replace(/\/api\/v3$/, "")
+  .replace(/\/api$/, "");
 
-const rawApiKey = Deno.env.get('ASAAS_API_KEY') || "";
-const rawAccessToken = Deno.env.get('ASAAS_ACCESS_TOKEN') || "";
-const API_KEY = rawApiKey.trim() || rawAccessToken.trim();
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const API_KEY = (
+  Deno.env.get("ASAAS_API_KEY") || Deno.env.get("ASAAS_ACCESS_TOKEN") || ""
+).trim();
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const json = (body: Record<string, unknown>, status = 200) => new Response(
+  JSON.stringify(body),
+  { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+);
+
+const digits = (value: unknown) => String(value || "").replace(/\D/g, "");
+const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+const numberValue = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+function asaasPathPrefix() {
+  return ASAAS_URL.includes("api-sandbox") || ASAAS_URL.includes("api.asaas.com")
+    ? "/v3"
+    : "/api/v3";
 }
 
 serve(async (req) => {
-    // 0. Handle CORS preflight - Global Check
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  let progressAdmin: PaymentAdminClient | null = null;
+  let progressOfferId = "";
+  let progressUserId = "";
+
+  try {
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    const userId = text(body?.user_id);
+    progressUserId = userId;
+    if (!body || !userId) return json({ success: false, error: "user_id_required" }, 400);
+
+    const authResult = await authorizePaymentTarget(req, userId, corsHeaders);
+    if (authResult.error) return authResult.error;
+    const authorization = authResult.authorization!;
+    progressAdmin = authorization.admin;
+
+    const profile = authorization.targetProfile;
+    const isSelfStudent = !authorization.isService &&
+      authorization.callerId === userId &&
+      authorization.callerProfile?.role === "STUDENT";
+    const offer = isSelfStudent
+      ? await loadClaimedEnrollmentOffer(authorization.admin, userId)
+      : null;
+    progressOfferId = offer?.id || "";
+
+    if (isSelfStudent && !offer) {
+      return json({ success: false, error: "enrollment_offer_required" }, 403);
     }
-
-    try {
-        console.log(`[Sync] Connecting to Asaas Base: ${ASAAS_URL}`);
-
-        if (!API_KEY) {
-            throw new Error("Missing Asaas API Key (ASAAS_API_KEY or ASAAS_ACCESS_TOKEN)");
-        }
-
-        const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
-
-        let body;
-        try {
-            body = await req.json();
-        } catch (e) {
-            console.error("[Sync] Failed to parse request body:", e);
-            throw new Error("Invalid Request Body: Failed to parse JSON");
-        }
-
-        // 1. Smart Field Mapping & Sanitization
-        const { user_id, name, email, cpf, phone, mobilePhone, postalCode, address, addressNumber,
-            // Extended profile fields (from PublicRegistration enrollment)
-            tenant_id, monthly_fee, due_day, class_frequency, professor_id, professor_id_2, classSchedule,
-            contract_accepted, documentation_status, signature_ip,
-            student_signature_url, signed_document_url, startDate,
-            // Matrícula de dependente: cobrança no CPF do responsável financeiro (guardian)
-            is_dependent, guardian_name, guardian_cpf, guardian_email, guardian_phone, guardian_id
-        } = body;
-
-        // Asaas requires 'mobilePhone'. We accept 'phone' or 'mobilePhone' from frontend.
-        const rawPhone = mobilePhone || phone;
-
-        const sanitizedCpf = cpf ? cpf.replace(/\D/g, '') : null;
-        const sanitizedGuardianCpf = guardian_cpf ? guardian_cpf.replace(/\D/g, '') : null;
-        const sanitizedPhone = rawPhone ? rawPhone.replace(/\D/g, '') : null;
-
-        // CPF usado para a cobrança no Asaas (cpfCnpj do customer):
-        // dependente cobra no CPF do responsável; aluno comum cobra no próprio CPF.
-        const billingCpf = is_dependent ? sanitizedGuardianCpf : sanitizedCpf;
-
-        if (!user_id) throw new Error('User ID is required');
-        if (is_dependent && !sanitizedGuardianCpf) {
-            return new Response(
-                JSON.stringify({ success: false, error: "CPF do responsável é obrigatório para matrícula de dependente." }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            );
-        }
-
-        // Validation limits
-        if (!sanitizedPhone || !email) {
-            console.error("[Sync] Validation Error:", { email, phone: sanitizedPhone });
-            return new Response(
-                JSON.stringify({
-                    success: false,
-                    error: "Telefone (Celular) e Email são obrigatórios."
-                }),
-                // Force 200 OK
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            );
-        }
-
-        // Determine correct path prefix
-        // api-sandbox.asaas.com uses /v3/customers
-        // sandbox.asaas.com uses /api/v3/customers
-        let pathPrefix = '/api/v3';
-        if (ASAAS_URL.includes('api-sandbox') || ASAAS_URL.includes('api.asaas.com')) {
-            pathPrefix = '/v3';
-        }
-
-        let asaasCustomerId: string | null = null;
-
-        // 2. CHECK EXISTING (Proactive Recovery)
-        // Dependente: NÃO reusa customer pelo CPF — o responsável já tem um customer
-        // com este CPF. Forçamos a criação de um novo customer (o Asaas permite
-        // múltiplos customers com o mesmo cpfCnpj) → assinatura distinta no mesmo CPF.
-        if (billingCpf && !is_dependent) {
-            const checkUrl = `${ASAAS_URL}${pathPrefix}/customers?cpfCnpj=${billingCpf}`;
-            console.log(`[Sync] Checking existence by CPF at: ${checkUrl}`);
-            const searchRes = await fetch(checkUrl, {
-                method: 'GET',
-                headers: { 'access_token': API_KEY }
-            });
-
-            if (searchRes.ok) {
-                const searchData = await searchRes.json();
-                if (searchData.data && searchData.data.length > 0) {
-                    asaasCustomerId = searchData.data[0].id;
-                    console.log(`[Sync] Found existing customer: ${asaasCustomerId}`);
-                }
-            } else {
-                console.warn(`[Sync] Failed to check existence: ${searchRes.status} ${searchRes.statusText}`);
-            }
-        }
-
-        // 3. CREATE IF NOT FOUND
-        if (!asaasCustomerId) {
-            const payload = {
-                name: name || 'Aluno sem nome',
-                cpfCnpj: billingCpf,
-                email: email,
-                mobilePhone: sanitizedPhone, // Explicitly mapped
-                externalReference: user_id,
-                notificationDisabled: false,
-                postalCode: postalCode,
-                address: address,
-                addressNumber: addressNumber
-            };
-
-            const targetUrl = `${ASAAS_URL}${pathPrefix}/customers`;
-            console.log(`[Sync] Creating new customer at: ${targetUrl}`, payload);
-
-            const createRes = await fetch(targetUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'access_token': API_KEY
-                },
-                body: JSON.stringify(payload)
-            });
-
-            // Safe parsing of Asaas response
-            let createData;
-            const createResText = await createRes.text();
-            try {
-                createData = JSON.parse(createResText);
-            } catch (e) {
-                console.error("[Sync] Non-JSON response from Asaas:", createResText);
-                throw new Error(`Erro na comunicação com Asaas (Status ${createRes.status}) na URL: ${targetUrl}. Detalhes: ${createResText}`);
-            }
-
-            if (createRes.ok && createData.id) {
-                asaasCustomerId = createData.id;
-                console.log(`[Sync] Customer created: ${asaasCustomerId}`);
-            } else {
-                console.error("[Sync] Asaas Creation Failed:", createData);
-
-                // CRITICAL: Return explicit error as 200 OK (Soft Error)
-                const firstError = createData.errors?.[0];
-                const errorMessage = firstError?.description || "Erro desconhecido ao cadastrar no Asaas.";
-
-                return new Response(
-                    JSON.stringify({
-                        success: false,
-                        error: errorMessage,
-                        asaasErrors: createData.errors || []
-                    }),
-                    // Force 200 OK
-                    { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-                );
-            }
-        }
-
-        // 4. UPDATE LOCAL DATABASE
-        if (asaasCustomerId) {
-            const profileUpdate: Record<string, any> = { asaas_customer_id: asaasCustomerId };
-
-            // Dependente: grava dados do responsável financeiro e NÃO escreve profiles.cpf
-            // (evita violar profiles_cpf_tenant_key, já que o CPF é o do responsável).
-            if (is_dependent) {
-                profileUpdate.guardian_cpf = sanitizedGuardianCpf;
-                if (guardian_name) profileUpdate.guardian_name = guardian_name;
-                if (guardian_email) profileUpdate.guardian_email = guardian_email;
-                if (guardian_phone) profileUpdate.guardian_phone = guardian_phone.replace(/\D/g, '');
-                if (guardian_id) profileUpdate.guardian_id = guardian_id;
-            }
-
-            // Add extended profile fields if provided (from enrollment flow)
-            if (cpf && !is_dependent) profileUpdate.cpf = sanitizedCpf;
-            if (phone || mobilePhone) profileUpdate.phone = sanitizedPhone;
-            if (postalCode) profileUpdate.postal_code = postalCode;
-            if (address) profileUpdate.address = address;
-            if (addressNumber) profileUpdate.address_number = addressNumber;
-            if (tenant_id) profileUpdate.tenant_id = tenant_id;
-            if (monthly_fee) profileUpdate.monthly_fee = monthly_fee;
-            if (due_day) profileUpdate.due_day = due_day;
-            if (class_frequency) profileUpdate.class_frequency = class_frequency;
-            if (professor_id) profileUpdate.professor_id = professor_id;
-            if (name) profileUpdate.full_name = name;
-            if (contract_accepted !== undefined) profileUpdate.contract_accepted = contract_accepted;
-            if (documentation_status) profileUpdate.documentation_status = documentation_status;
-            if (signature_ip) profileUpdate.signature_ip = signature_ip;
-            if (student_signature_url) profileUpdate.student_signature_url = student_signature_url;
-            if (signed_document_url) profileUpdate.signed_document_url = signed_document_url;
-            if (contract_accepted) {
-                profileUpdate.status_financial = 'PENDING';
-                profileUpdate.accepted_at = new Date().toISOString();
-                profileUpdate.role = 'STUDENT'; // Force role to STUDENT on enrollment
-            }
-
-            console.log(`[Sync] Updating profile with fields:`, Object.keys(profileUpdate));
-
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update(profileUpdate)
-                .eq('id', user_id);
-
-            if (updateError) {
-                console.error("[Sync] Failed to update profile:", updateError);
-            }
-
-            // Create bookings if classSchedule is provided
-            if (classSchedule && Array.isArray(classSchedule) && classSchedule.length > 0 && professor_id) {
-                const dayMap: Record<string, string> = {
-                    'monday': 'Segunda', 'tuesday': 'Terça', 'wednesday': 'Quarta',
-                    'thursday': 'Quinta', 'friday': 'Sexta', 'saturday': 'Sábado', 'sunday': 'Domingo'
-                };
-
-                const bookingsPayload = classSchedule.map((slot: any) => {
-                    const rawDay = slot.weekday || slot.day || '';
-                    const translatedDay = dayMap[String(rawDay).toLowerCase()] || rawDay;
-                    
-                    return {
-                        tenant_id: tenant_id || 'school-wise-wolf',
-                        teacher_id: professor_id,
-                        student_id: user_id,
-                        day_of_week: translatedDay,
-                        time_slot: slot.time,
-                        start_date: startDate || new Date().toISOString().split('T')[0]
-                    };
-                });
-
-                console.log(`[Sync] Creating ${bookingsPayload.length} bookings`);
-                const { error: bookingError } = await supabase.from('bookings').insert(bookingsPayload);
-                if (bookingError) {
-                    console.error("[Sync] Failed to create bookings:", bookingError);
-                } else {
-                    console.log(`[Sync] ✅ ${bookingsPayload.length} bookings created`);
-                }
-            }
-
-            return new Response(
-                JSON.stringify({ success: true, asaas_customer_id: asaasCustomerId }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-            );
-        }
-
-        // Fallback error - Force 200 OK
-        return new Response(
-            JSON.stringify({ success: false, error: "Falha interna: ID do Asaas não obtido." }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    if (!API_KEY) {
+      if (offer) {
+        await markEnrollmentFailure(
+          authorization.admin,
+          offer.id,
+          userId,
+          "asaas_not_configured",
+          "Integração financeira temporariamente indisponível.",
         );
-
-    } catch (error: any) {
-        // --- GLOBAL EXCEPTION HANDLER ---
-        console.error("[Sync] GLOBAL ERROR:", error);
-
-        // Force 200 OK with success: false (Soft Error) to bypass client strictness
-        return new Response(
-            JSON.stringify({
-                success: false,
-                error: `Erro Interno: ${error.message || 'Desconhecido'}`
-            }),
-            {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                // CRITICAL: Status 200 to prevent browser/client throwing "Bad Request" and hiding the body
-                status: 200
-            }
-        )
+      }
+      return json({ success: false, error: "asaas_not_configured" }, 503);
     }
-})
+
+    const offerPayload = offer?.payload || {};
+    const isDependent = offer
+      ? Boolean(offerPayload.isDependent)
+      : Boolean(body.is_dependent || profile.guardian_id || profile.guardian_cpf);
+
+    const tenantId = offer?.tenant_id || text(profile.tenant_id) || text(body.tenant_id);
+    const studentName = text(profile.full_name) || text(body.name);
+    const studentEmail = text(profile.email) || text(body.email);
+    const studentPhone = digits(profile.phone || body.phone || body.mobilePhone);
+
+    const guardianName = offer
+      ? text(offerPayload.guardianName)
+      : text(profile.guardian_name || body.guardian_name);
+    const guardianEmail = offer
+      ? text(offerPayload.guardianEmail)
+      : text(profile.guardian_email || body.guardian_email);
+    const guardianPhone = offer
+      ? digits(offerPayload.guardianPhone)
+      : digits(profile.guardian_phone || body.guardian_phone);
+    const guardianCpf = offer
+      ? digits(offerPayload.guardianCpf)
+      : digits(profile.guardian_cpf || body.guardian_cpf);
+
+    const billingName = isDependent ? guardianName : studentName;
+    const billingEmail = isDependent ? guardianEmail : studentEmail;
+    const billingPhone = isDependent ? guardianPhone : studentPhone;
+    const billingCpf = isDependent ? guardianCpf : digits(profile.cpf || body.cpf);
+
+    if (!billingName || !billingEmail || billingPhone.length < 10 || billingCpf.length !== 11) {
+      throw new Error("Nome, e-mail, telefone e CPF validos sao obrigatorios para a cobranca.");
+    }
+
+    const pathPrefix = asaasPathPrefix();
+    let asaasCustomerId = text(profile.asaas_customer_id) || null;
+
+    // Um retry recupera somente o customer desta identidade. Buscar apenas pelo
+    // primeiro CPF poderia ligar outro dependente/tenant ao perfil atual.
+    if (!asaasCustomerId) {
+      const searchRes = await fetch(
+        `${ASAAS_URL}${pathPrefix}/customers?cpfCnpj=${encodeURIComponent(billingCpf)}`,
+        { headers: { access_token: API_KEY } },
+      );
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const exactCustomer = (searchData.data || []).find(
+          (candidate: Record<string, unknown>) =>
+            candidate.deleted !== true && text(candidate.externalReference) === userId,
+        );
+        asaasCustomerId = text(exactCustomer?.id) || null;
+      }
+    }
+
+    if (!asaasCustomerId) {
+      const createRes = await fetch(`${ASAAS_URL}${pathPrefix}/customers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", access_token: API_KEY },
+        body: JSON.stringify({
+          name: billingName,
+          cpfCnpj: billingCpf,
+          email: billingEmail,
+          mobilePhone: billingPhone,
+          externalReference: userId,
+          // Fixtures E2E autorizadas nunca disparam comunicações do Asaas.
+          notificationDisabled: offerPayload.testMode === true,
+          postalCode: text(profile.postal_code || body.postalCode),
+          address: text(profile.address || body.address),
+          addressNumber: text(profile.address_number || body.addressNumber),
+        }),
+      });
+
+      const responseText = await createRes.text();
+      let createData: Record<string, unknown> = {};
+      try {
+        createData = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Asaas retornou ${createRes.status}`);
+      }
+
+      asaasCustomerId = text(createData.id) || null;
+      if (!createRes.ok || !asaasCustomerId) {
+        const errors = Array.isArray(createData.errors) ? createData.errors : [];
+        const firstError = errors[0] as { description?: string } | undefined;
+        throw new Error(
+          firstError?.description || "Nao foi possivel cadastrar o cliente no Asaas.",
+        );
+      }
+    }
+
+    const profileUpdate: Record<string, unknown> = { asaas_customer_id: asaasCustomerId };
+    if (offer) {
+      profileUpdate.role = "STUDENT";
+      profileUpdate.tenant_id = offer.tenant_id;
+      profileUpdate.monthly_fee = numberValue(offerPayload.value);
+      profileUpdate.due_day = numberValue(offerPayload.dueDay);
+      profileUpdate.class_frequency = `${numberValue(offerPayload.classesPerWeek) || 1}x`;
+      profileUpdate.professor_id = text(offerPayload.professorId) || null;
+      profileUpdate.professor_id2 = text(offerPayload.professorId2) || null;
+      profileUpdate.enrollment_fee = Number(offer.enrollment_fee || 0);
+      profileUpdate.guardian_id = isDependent ? text(offerPayload.guardianId) || null : null;
+      profileUpdate.guardian_name = isDependent ? guardianName || null : null;
+      profileUpdate.guardian_cpf = isDependent ? guardianCpf || null : null;
+      profileUpdate.guardian_email = isDependent ? guardianEmail || null : null;
+      profileUpdate.guardian_phone = isDependent ? guardianPhone || null : null;
+      profileUpdate.attendance_phone = isDependent ? digits(offerPayload.studentPhone) || null : null;
+      profileUpdate.start_date = text(offerPayload.startDate) || null;
+    }
+
+    const { error: updateError } = await authorization.admin
+      .from("profiles")
+      .update(profileUpdate)
+      .eq("id", userId);
+    if (updateError) throw new Error(`profile_update_failed: ${updateError.message}`);
+
+    // Agenda da oferta e idempotente: retries inserem apenas slots ausentes.
+    const schedule = offer
+      ? (Array.isArray(offerPayload.schedule) ? offerPayload.schedule : [])
+      : (Array.isArray(body.classSchedule) ? body.classSchedule : []);
+    const professorId = offer
+      ? text(offerPayload.professorId)
+      : text(profile.professor_id || body.professor_id);
+
+    if (schedule.length > 0 && professorId) {
+      const dayMap: Record<string, string> = {
+        monday: "Segunda",
+        tuesday: "Terca",
+        wednesday: "Quarta",
+        thursday: "Quinta",
+        friday: "Sexta",
+        saturday: "Sabado",
+        sunday: "Domingo",
+      };
+      const { data: existingBookings, error: bookingsError } = await authorization.admin
+        .from("bookings")
+        .select("teacher_id, day_of_week, time_slot")
+        .eq("student_id", userId);
+      if (bookingsError) throw new Error(`booking_lookup_failed: ${bookingsError.message}`);
+
+      const existing = new Set(
+        (existingBookings || []).map((booking: Record<string, unknown>) =>
+          `${booking.teacher_id}|${booking.day_of_week}|${booking.time_slot}`
+        ),
+      );
+      const rows = schedule.flatMap((rawSlot) => {
+        const slot = rawSlot as Record<string, unknown>;
+        const rawDay = text(slot.weekday || slot.day);
+        const day = dayMap[rawDay.toLowerCase()] || rawDay;
+        const time = text(slot.time);
+        const key = `${professorId}|${day}|${time}`;
+        if (!day || !time || existing.has(key)) return [];
+        existing.add(key);
+        return [{
+          tenant_id: tenantId,
+          teacher_id: professorId,
+          student_id: userId,
+          day_of_week: day,
+          time_slot: time,
+          start_date: offer ? text(offerPayload.startDate) || new Date().toISOString().slice(0, 10) : text(body.startDate) || new Date().toISOString().slice(0, 10),
+        }];
+      });
+
+      if (rows.length > 0) {
+        const { error: insertError } = await authorization.admin.from("bookings").insert(rows);
+        if (insertError) throw new Error(`booking_insert_failed: ${insertError.message}`);
+      }
+    }
+
+    if (offer) {
+      await markEnrollmentStage(
+        authorization.admin,
+        offer.id,
+        userId,
+        "CUSTOMER_READY",
+        { metadata: { asaas_customer_id: asaasCustomerId } },
+      );
+    }
+
+    return json({
+      success: true,
+      asaas_customer_id: asaasCustomerId,
+      processing_state: offer ? "CUSTOMER_READY" : null,
+      correlation_id: offer?.processing_correlation_id || null,
+    });
+  } catch (error) {
+    console.error("[sync-student-asaas]", {
+      type: error instanceof Error ? error.name : "UnknownError",
+    });
+    if (progressAdmin && progressOfferId && progressUserId) {
+      await markEnrollmentFailure(
+        progressAdmin,
+        progressOfferId,
+        progressUserId,
+        error instanceof Error && error.message.startsWith("booking_")
+          ? "booking_update_failed"
+          : error instanceof Error && error.message.startsWith("profile_")
+          ? "profile_update_failed"
+          : "customer_sync_failed",
+        error,
+      );
+    }
+    return json({
+      success: false,
+      error: error instanceof Error ? error.message : "Erro interno ao sincronizar aluno.",
+    });
+  }
+});

@@ -167,14 +167,18 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                             </div>
 
                             {/* Form */}
-                            <form onSubmit={handleSubmit} className="space-y-5">
+                            <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isLoading}>
                                 {error && (
                                     <motion.div
+                                        id="login-error"
+                                        role="alert"
+                                        aria-live="assertive"
+                                        aria-atomic="true"
                                         initial={{ opacity: 0, y: -10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-xs font-bold flex items-center justify-center gap-2"
                                     >
-                                        <ShieldCheck size={14} /> {error}
+                                        <ShieldCheck size={14} aria-hidden="true" /> {error}
                                     </motion.div>
                                 )}
 
@@ -189,6 +193,12 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                             <Mail className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'email' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
                                                 type="email"
+                                                name="email"
+                                                autoComplete="email"
+                                                aria-label="E-mail"
+                                                aria-invalid={Boolean(error)}
+                                                aria-describedby={error ? 'login-error' : undefined}
+                                                required
                                                 placeholder="E-mail corporativo"
                                                 value={email}
                                                 onChange={(e) => setEmail(e.target.value)}
@@ -209,6 +219,12 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                             <Lock className={`absolute left-4 w-4 h-4 transition-colors ${focusedInput === 'password' ? 'text-blue-400' : 'text-brand-muted'}`} />
                                             <Input
                                                 type={showPassword ? "text" : "password"}
+                                                name="password"
+                                                autoComplete="current-password"
+                                                aria-label="Senha"
+                                                aria-invalid={Boolean(error)}
+                                                aria-describedby={error ? 'login-error' : undefined}
+                                                required
                                                 placeholder="Senha de acesso"
                                                 value={password}
                                                 onChange={(e) => setPassword(e.target.value)}
@@ -219,6 +235,8 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                             <button
                                                 type="button"
                                                 onClick={() => setShowPassword(!showPassword)}
+                                                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                                aria-pressed={showPassword}
                                                 className="absolute right-3 p-1 hover:text-white text-brand-muted transition-colors"
                                             >
                                                 {showPassword ? <Eye size={16} /> : <EyeClosed size={16} />}
@@ -247,6 +265,7 @@ export function SignInCard2({ onLogin, isLoading, error }: SignInCard2Props) {
                                     whileTap={{ scale: 0.98 }}
                                     disabled={isLoading}
                                     type="submit"
+                                    aria-disabled={isLoading}
                                     className="w-full relative group/btn h-12 rounded-xl overflow-hidden"
                                 >
                                     <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-[#D32F2F] opacity-90 group-hover/btn:opacity-100 transition-opacity" />

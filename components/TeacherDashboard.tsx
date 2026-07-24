@@ -92,7 +92,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
     }
     setDispatching(prev => ({ ...prev, [key]: 'sending' }));
     try {
-      const classLink = aula.meet || user.meeting_link || 'https://aluno.wisewolf.com.br';
+      const classLink = aula.meet || user.meeting_link || '';
       const tpl = (teacherWa.template && teacherWa.template.trim()) ? teacherWa.template : DEFAULT_TEMPLATE;
       const message = renderTemplate(tpl, {
         student_name: (aula.name || '').split(' ')[0],

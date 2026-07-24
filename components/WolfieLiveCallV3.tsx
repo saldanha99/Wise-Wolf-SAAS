@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Mic, StopCircle, RefreshCw, MessageSquare, AlertCircle, Sparkles, Zap, Volume2, BookOpen, WifiOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { SUPABASE_URL, supabase } from '../lib/supabase';
 import { VoicePoweredOrb } from './VoicePoweredOrb';
 
 // ============================================================
@@ -8,7 +8,6 @@ import { VoicePoweredOrb } from './VoicePoweredOrb';
 // Real-time bidirectional audio. API key never leaves the server.
 // ============================================================
 
-const SUPABASE_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co';
 const PROXY_WS_URL = SUPABASE_URL.replace('https://', 'wss://') + '/functions/v1/wolfie-live-proxy';
 
 // AudioWorklet code runs in a separate thread — inlined as blob to avoid a .js file

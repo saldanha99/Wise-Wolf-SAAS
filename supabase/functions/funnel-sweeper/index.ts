@@ -113,11 +113,7 @@ function greetName(raw: string | null): string {
 }
 
 function isServiceRole(bearer: string, serviceKey: string): boolean {
-  if (bearer && bearer === serviceKey) return true;
-  try {
-    const b64 = bearer.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(b64))?.role === "service_role";
-  } catch { return false; }
+  return Boolean(serviceKey && bearer === serviceKey);
 }
 
 // Telefones dos professores ATIVOS de um tenant (cache por execução).

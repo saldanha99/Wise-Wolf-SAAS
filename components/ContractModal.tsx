@@ -27,6 +27,13 @@ interface ContractModalProps {
     subscriptionId?: string;
     school?: SchoolInfo;
     dependentName?: string;
+    enrollmentFee?: number;
+    proRataValue?: number;
+    dueToday?: number;
+    firstDueDate?: string;
+    processingStage?: 'IDLE' | 'ACCOUNT' | 'PROFILE' | 'CUSTOMER' | 'BILLING' | 'FINALIZING' | 'COMPLETE' | 'ERROR';
+    processingError?: string | null;
+    correlationId?: string;
 }
 
 const ContractModal: React.FC<ContractModalProps> = ({
@@ -42,9 +49,16 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
     // Floating Button State & Observer
     const signatureRef = useRef<HTMLDivElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const onCloseRef = useRef(onClose);
     const [isSignatureVisible, setIsSignatureVisible] = useState(false);
 
     useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    useEffect(() => {
+        if (!isOpen) return;
         const observer = new IntersectionObserver(
             ([entry]) => {
                 setIsSignatureVisible(entry.isIntersecting);
@@ -56,7 +70,55 @@ const ContractModal: React.FC<ContractModalProps> = ({
         return () => {
             if (signatureRef.current) observer.unobserve(signatureRef.current);
         };
-    }, []);
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setAccepted(false);
+            setTypedName('');
+            setIsValidSignature(false);
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const previousFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        dialogRef.current?.focus();
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && !loading) {
+                event.preventDefault();
+                onCloseRef.current();
+                return;
+            }
+            if (event.key !== 'Tab' || !dialogRef.current) return;
+
+            const focusable = Array.from(
+                dialogRef.current.querySelectorAll(
+                    'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                ) as NodeListOf<HTMLElement>
+            ).filter((element: HTMLElement) => !element.hasAttribute('aria-hidden'));
+            if (focusable.length === 0) return;
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            previousFocus?.focus();
+        };
+    }, [isOpen, loading]);
 
     const scrollToSignature = () => {
         signatureRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -80,15 +142,35 @@ const ContractModal: React.FC<ContractModalProps> = ({
         }
     };
 
+    const progressSteps = [
+        { key: 'ACCOUNT', label: 'Confirmando sua conta' },
+        { key: 'PROFILE', label: 'Registrando contrato' },
+        { key: 'CUSTOMER', label: 'Preparando dados financeiros' },
+        { key: 'BILLING', label: 'Criando cobrança' },
+        { key: 'FINALIZING', label: 'Confirmando matrícula' },
+    ];
+    const currentProgressIndex = progressSteps.findIndex(item => item.key === contractProps.processingStage);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-            <div className="bg-brand-surface rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] lg:h-[90vh] animate-in slide-in-from-bottom-5 duration-500 relative">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="contract-dialog-title"
+                tabIndex={-1}
+                className="bg-brand-surface rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] lg:h-[90vh] animate-in slide-in-from-bottom-5 duration-500 relative"
+            >
                 {/* Header */}
                 <div className="p-6 border-b border-brand-border bg-brand-surface-2 flex justify-between items-center shrink-0 rounded-t-3xl z-20">
-                    <h3 className="font-black text-brand-text text-lg flex items-center gap-2">
+                    <h3 id="contract-dialog-title" className="font-black text-brand-text text-lg flex items-center gap-2">
                         <ShieldCheck className="text-emerald-600" /> Assinatura Digital
                     </h3>
-                    <button onClick={onClose} className="text-brand-muted hover:text-brand-muted">
+                    <button
+                        onClick={onClose}
+                        disabled={loading}
+                        className="text-brand-muted hover:text-brand-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
                         <ArrowRight size={20} className="rotate-180" /> Voltar
                     </button>
                 </div>
@@ -124,6 +206,8 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     endDate={contractProps.endDate}
                                     dueDay={contractProps.dueDay}
                                     classFrequency={contractProps.classFrequency}
+                                    enrollmentFee={contractProps.enrollmentFee}
+                                    proRataValue={contractProps.proRataValue}
                                     acceptedAt={contractProps.acceptedAt}
                                     userIp={contractProps.userIp}
                                     subscriptionId={contractProps.subscriptionId}
@@ -137,6 +221,30 @@ const ContractModal: React.FC<ContractModalProps> = ({
                     {/* Right: Signature Actions */}
                     <div ref={signatureRef} className="w-full bg-brand-surface border-t border-brand-border p-6 flex flex-col gap-6 shrink-0 z-10 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] relative overflow-visible">
 
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900 max-w-3xl mx-auto w-full">
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-blue-600">Mensalidade</p>
+                                <p className="font-black">R$ {contractProps.planValue}</p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-blue-600">Total</p>
+                                <p className="font-black">R$ {contractProps.totalValue}</p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-blue-600">Taxa inicial</p>
+                                <p className="font-black">R$ {Number(contractProps.enrollmentFee || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-blue-600">1º vencimento</p>
+                                <p className="font-black">{contractProps.firstDueDate || contractProps.startDate}</p>
+                            </div>
+                            {Number(contractProps.proRataValue || 0) > 0 && (
+                                <p className="col-span-2 sm:col-span-4 text-[10px] text-blue-700">
+                                    Inclui valor proporcional inicial de R$ {Number(contractProps.proRataValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.
+                                </p>
+                            )}
+                        </div>
+
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-xs leading-relaxed max-w-3xl mx-auto w-full">
                             <p className="font-bold flex items-center gap-1 mb-1"><Lock size={12} /> Validade Jurídica</p>
                             Esta assinatura eletrônica possui plena validade jurídica conforme MP 2.200-2/2001. Seus dados de conexão (IP) e carimbo de tempo serão registrados para auditoria.
@@ -147,8 +255,17 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                 <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">
                                     Digite seu nome completo (exatamente como no cadastro)
                                 </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setTypedName(contractProps.studentName)}
+                                    disabled={loading}
+                                    className="mb-2 text-[10px] font-bold text-blue-700 hover:underline disabled:opacity-50"
+                                >
+                                    Usar o nome do cadastro
+                                </button>
                                 <input
                                     type="text"
+                                    disabled={loading}
                                     value={typedName}
                                     onChange={(e) => setTypedName(e.target.value)}
                                     placeholder={contractProps.studentName}
@@ -184,12 +301,51 @@ const ContractModal: React.FC<ContractModalProps> = ({
                             </div>
                         </div>
 
+                        {(loading || contractProps.processingError) && (
+                            <div
+                                className="max-w-3xl mx-auto w-full rounded-xl border border-brand-border bg-brand-surface-2 p-4"
+                                aria-live="polite"
+                                role="status"
+                            >
+                                {contractProps.processingError ? (
+                                    <div className="text-sm text-red-700">
+                                        <p className="font-bold mb-1">Não foi possível concluir agora</p>
+                                        <p>{contractProps.processingError}</p>
+                                        <p className="mt-2 text-xs">Você pode clicar novamente sem duplicar cadastro ou cobrança.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {progressSteps.map((item, index) => (
+                                            <div key={item.key} className="flex items-center gap-2 text-xs">
+                                                {index < currentProgressIndex ? (
+                                                    <ShieldCheck size={15} className="text-emerald-600" />
+                                                ) : index === currentProgressIndex ? (
+                                                    <Loader2 size={15} className="animate-spin text-blue-600" />
+                                                ) : (
+                                                    <span className="w-[15px] h-[15px] rounded-full border border-slate-300" />
+                                                )}
+                                                <span className={index <= currentProgressIndex ? 'font-bold text-brand-text' : 'text-brand-muted'}>
+                                                    {item.label}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {contractProps.correlationId && (
+                                    <p className="mt-3 text-[10px] text-brand-muted">
+                                        Protocolo: <span className="font-mono font-bold">{contractProps.correlationId.slice(0, 8).toUpperCase()}</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         <div className="mt-auto space-y-4 pt-4 border-t border-brand-border">
                             <label className="flex items-start gap-3 cursor-pointer select-none">
                                 <input
                                     type="checkbox"
                                     className="mt-1 w-5 h-5 accent-emerald-600 rounded-lg cursor-pointer shrink-0"
                                     checked={accepted}
+                                    disabled={loading}
                                     onChange={(e) => setAccepted(e.target.checked)}
                                 />
                                 <span className="text-xs text-brand-muted font-medium leading-relaxed">
@@ -217,6 +373,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                 <div className="lg:hidden fixed bottom-6 left-0 right-0 flex justify-center z-[60] animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
                     <button
                         onClick={scrollToSignature}
+                        disabled={loading}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-600/30 px-6 py-4 rounded-full font-bold flex items-center gap-2 pointer-events-auto"
                     >
                         <PenTool size={20} /> Assinar Digitalmente

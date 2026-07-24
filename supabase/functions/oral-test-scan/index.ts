@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 // ORAL-TEST-SCAN — detecta alunos no prazo do teste oral (~45 dias, periódico) e avisa
 // o diretor no WhatsApp. Roda via cron diário. Os painéis (admin/professor apto) leem a
@@ -9,7 +10,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // ou pela DIRETORIA — nunca pelo professor do próprio aluno. Não é pago (prof apto usa o
 // próprio horário já agendado = aula padrão).
 
-const SCAN_TOKEN = "wwlf-oral-7c3a91f5";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 const EVOLUTION_BASE = "https://api.2b.app.br";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
@@ -42,10 +46,11 @@ function pickOwner(rows: any[]): any | null {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { status: 200 });
+  if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
+  const authError = await authorizeAutomation(req, corsHeaders);
+  if (authError) return authError;
   try {
     const reqUrl = new URL(req.url);
-    if (reqUrl.searchParams.get("token") !== SCAN_TOKEN) return new Response("forbidden", { status: 403 });
     const dryrun = reqUrl.searchParams.get("dryrun") === "1";
 
     const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -111,9 +116,9 @@ serve(async (req) => {
       summary.push({ tenantId, detected, pending_new: due.length, sent, preview: dryrun ? msg : undefined });
     }
 
-    return new Response(JSON.stringify({ ok: true, dryrun, summary }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true, dryrun, summary }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("oral-test-scan error", e?.message);
-    return new Response(JSON.stringify({ ok: false, error: e?.message }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, error: e?.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

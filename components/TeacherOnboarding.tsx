@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { whatsappService } from '../services/whatsappService';
 import { User, Mail, Lock, Phone, Award, CheckCircle, AlertCircle, ArrowRight, Loader2, DollarSign, Camera, Link as LinkIcon, Briefcase, FileText } from 'lucide-react';
 import { TeacherContractDocument } from './TeacherContractDocument';
 
@@ -94,14 +93,17 @@ const TeacherOnboarding: React.FC = () => {
                 const el = document.getElementById('teacher-contract-print');
                 if (el) {
                     const html2pdf = (await import('html2pdf.js')).default;
-                    const dataUri: string = await html2pdf()
-                        .set({
+                    // O plugin aceita `pagebreak` em runtime, mas a declaração de tipos
+                    // publicada pelo pacote ainda não expõe essa opção.
+                    const pdfOptions = {
                             margin: 8,
                             image: { type: 'jpeg', quality: 0.85 },
                             html2canvas: { scale: 1.5, useCORS: true },
                             jsPDF: { unit: 'mm', format: 'a4' },
                             pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-                        })
+                        };
+                    const dataUri: string = await html2pdf()
+                        .set(pdfOptions as any)
                         .from(el)
                         .outputPdf('datauristring');
                     contractPdfBase64 = String(dataUri).split(',')[1] || null;
@@ -134,55 +136,9 @@ const TeacherOnboarding: React.FC = () => {
             if (fnError) throw new Error(fnError.message || "Erro ao conectar com o servidor.");
             if (data?.error) throw new Error(data.error);
 
-            const registeredUserId = data.userId;
-
-            // CONSUME OFFER (BLOQUEANTE): impede reuso do link de convite.
-            // Se falhar, aborta o cadastro antes de qualquer comunicação externa.
-            if (offerData._offerId) {
-                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: offerData._offerId });
-                if (consumeErr) {
-                    console.error('❌ consume_offer failed:', consumeErr);
-                    throw new Error('Este link de convite já foi utilizado ou expirou. Solicite um novo link à escola.');
-                }
-                console.log('✅ Offer consumed:', offerData._offerId);
-            }
-
-            // AUTOMATION: Send Welcome WhatsApp with Contract Link (non-blocking)
-            try {
-                if (offerData?.tenantId && registeredUserId) {
-                    console.log(`🚀 Iniciando disparo de boas-vindas para: ${phone}`);
-
-                    const { data: instanceName, error: rpcError } = await supabase.rpc('get_tenant_whatsapp_instance', {
-                        target_tenant_id: offerData.tenantId
-                    });
-
-                    if (instanceName && !rpcError) {
-                        const contractUrl = `https://system.wisewolflanguage.com.br/view-contract?id=${registeredUserId}`;
-
-                        const msg = `Olá ${name.split(' ')[0]}! Seja bem-vindo(a) à equipe! 🐺🚀\n\n` +
-                            `*Seus dados de acesso:*\n` +
-                            `📧 Login: ${email}\n` +
-                            `🔑 Senha: ${password}\n\n` +
-                            `📜 *Seu Contrato Assinado:* ${contractUrl}\n\n` +
-                            `Acesse o portal para completar seu perfil: https://system.wisewolflanguage.com.br`;
-
-                        const cleanPhone = phone.replace(/\D/g, '');
-                        console.log(`✅ Instância: ${instanceName} | Destinatário: ${cleanPhone}`);
-
-                        await whatsappService.sendText(
-                            offerData.tenantId,
-                            instanceName,
-                            cleanPhone,
-                            msg
-                        );
-                        console.log("✅ Boas-vindas enviadas com sucesso!");
-                    } else {
-                        console.error("❌ Erro ao buscar instância:", rpcError);
-                    }
-                }
-            } catch (autoErr) {
-                console.error("Erro na automação de boas-vindas:", autoErr);
-            }
+            // A função register-teacher já consome o convite e envia a mensagem
+            // server-side. Repetir o consumo aqui fazia a tela acusar erro depois
+            // de o professor já ter sido criado com sucesso.
 
             setStep('SUCCESS');
 

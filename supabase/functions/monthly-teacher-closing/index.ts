@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 // Fechamento dos professores + aviso WhatsApp.
 // - Cron dia 1º (06:30 UTC): gera os fechamentos do mês anterior e avisa cada professor.
@@ -29,6 +30,8 @@ function monthLabel(m: string) {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const authError = await authorizeAutomation(req, corsHeaders, { allowAdmin: true });
+  if (authError) return authError;
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
     const today = new Date().toISOString().split("T")[0];

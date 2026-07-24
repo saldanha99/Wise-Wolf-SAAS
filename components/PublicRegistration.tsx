@@ -1,34 +1,73 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
-import { whatsappService } from '../services/whatsappService';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
-import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, Loader2, QrCode, Barcode, CreditCard, ShieldCheck, Download, FileText, ArrowLeft } from 'lucide-react';
+import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, Loader2, QrCode, Barcode, CreditCard, ShieldCheck, Download, FileText, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import {
+    calculateEnrollmentQuote,
+    digitsOnly,
+    formatBrl,
+    formatCpf,
+    formatDateBr,
+    isValidBrazilianMobile,
+    isValidCardExpiry,
+    isValidCpf,
+    isValidCreditCardNumber,
+    isValidEmail,
+    normalizeEmail,
+} from '../lib/enrollment';
+
+type ProcessingStage =
+    | 'IDLE'
+    | 'ACCOUNT'
+    | 'PROFILE'
+    | 'CUSTOMER'
+    | 'BILLING'
+    | 'FINALIZING'
+    | 'COMPLETE'
+    | 'ERROR';
+
+const FieldError: React.FC<{ message?: string }> = ({ message }) => (
+    message
+        ? <p className="mt-1 text-xs font-semibold text-red-600" role="alert">{message}</p>
+        : null
+);
 
 const PublicRegistration: React.FC = () => {
     const [loading, setLoading] = useState(false);
+    const submitLockRef = useRef(false);
     // Steps: PAYMENT_SELECTION -> FORM -> ENROLLMENT -> ENROLLMENT_PAYMENT -> CONTRACT -> SUCCESS
     const [step, setStep] = useState<'PAYMENT_SELECTION' | 'FORM' | 'ENROLLMENT' | 'ENROLLMENT_PAYMENT' | 'CONTRACT' | 'SUCCESS'>('PAYMENT_SELECTION');
-    const [enrollmentPix, setEnrollmentPix] = useState<{ code: string; qrCode: string; paymentId: string } | null>(null);
+    const [enrollmentPix, setEnrollmentPix] = useState<{
+        code: string;
+        qrCode: string;
+        paymentId: string;
+        kind: 'ENROLLMENT_FEE' | 'ONE_TIME';
+        billingType: 'PIX' | 'BOLETO';
+        invoiceUrl?: string;
+        amount: number;
+    } | null>(null);
     const [checkingPayment, setCheckingPayment] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [processingStage, setProcessingStage] = useState<ProcessingStage>('IDLE');
+    const [correlationId, setCorrelationId] = useState<string>('');
+    const [resumeAuthenticated, setResumeAuthenticated] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [contractData, setContractData] = useState<any>(null);
     const [school, setSchool] = useState<SchoolInfo | null>(null);
     // Signature Data for PDF
     const [signatureData, setSignatureData] = useState<{ acceptedAt: string; ip: string; subId: string } | null>(null);
     const [signedPdfUrl, setSignedPdfUrl] = useState<string>('');
 
-    // Affiliate Ref
-    const [referrerTeacherId, setReferrerTeacherId] = useState<string | null>(null);
-    const [referrerStudentId, setReferrerStudentId] = useState<string | null>(null);
-
     // Form Fields
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [passwordConfirmation, setPasswordConfirmation] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [phone, setPhone] = useState(''); // WhatsApp
     const [cpf, setCpf] = useState('');
     const [postalCode, setPostalCode] = useState('');
@@ -45,6 +84,7 @@ const PublicRegistration: React.FC = () => {
     const [ccNumber, setCcNumber] = useState('');
     const [ccExpiry, setCcExpiry] = useState(''); // MM/YYYY
     const [ccCcv, setCcCcv] = useState('');
+    const quote = calculateEnrollmentQuote(contractData);
 
     // Matrícula de dependente: no contrato, o CONTRATANTE é o responsável financeiro
     // e o aluno (quem preenche o link) aparece como beneficiário.
@@ -52,6 +92,11 @@ const PublicRegistration: React.FC = () => {
     const contratanteName = isDependentLink ? (contractData?.guardianName || name) : name;
     const contratanteCpf = isDependentLink ? (contractData?.guardianCpf || '') : cpf;
     const beneficiaryName = isDependentLink ? name : undefined;
+    const contratanteEmail = isDependentLink ? (contractData?.guardianEmail || '') : email;
+    const contratantePhone = isDependentLink ? (contractData?.guardianPhone || phone) : phone;
+    const contratanteAddress = isDependentLink
+        ? `${contractData?.guardianAddress || address}, ${contractData?.guardianAddressNumber || addressNumber} - ${contractData?.guardianPostalCode || postalCode}`
+        : `${address}, ${addressNumber} - ${postalCode}`;
 
     // Contract Printing Logic
     const contractRef = useRef<HTMLDivElement>(null);
@@ -62,8 +107,7 @@ const PublicRegistration: React.FC = () => {
 
     // Calculate dynamic dates based on Due Day and optional Start Date
     const getContractDates = () => {
-        const dueDay = contractData?.dueDay || 10;
-        const duration = contractData?.planDuration || 12;
+        const duration = contractData?.planDuration ?? 12;
 
         let start: Date;
         
@@ -71,17 +115,13 @@ const PublicRegistration: React.FC = () => {
             // Use the specific start date provided in the link
             start = new Date(contractData.startDate + 'T12:00:00'); // Midday to avoid TZ issues
         } else {
-            start = new Date();
-            // If due day has passed or is today, start next month
-            if (start.getDate() >= dueDay) {
-                start.setMonth(start.getMonth() + 1);
-            }
-            // Handle edge cases like Feb 30th -> Mar 2nd automatically by JS
-            start.setDate(dueDay); // Bind to due day of current month/year
+            // A mesma data normalizada usada no resumo financeiro evita divergência
+            // em fevereiro e nos vencimentos 29/30/31.
+            start = new Date(`${quote.firstDueDate}T12:00:00`);
         }
 
         const end = new Date(start);
-        end.setMonth(start.getMonth() + (duration || 1));
+        end.setMonth(start.getMonth() + duration);
 
         return {
             startDate: start.toLocaleDateString('pt-BR'),
@@ -93,10 +133,6 @@ const PublicRegistration: React.FC = () => {
         // Decode Query Params
         const params = new URLSearchParams(window.location.search);
         const encodedData = params.get('data');
-        const ref = params.get('ref');
-        const refStudent = params.get('ref_student');
-        if (ref) setReferrerTeacherId(ref);
-        if (refStudent) setReferrerStudentId(refStudent);
 
         const offerId = params.get('offer');
 
@@ -108,8 +144,9 @@ const PublicRegistration: React.FC = () => {
                 classSchedule: data.classSchedule || data.schedule || [],
                 requiresEnrollment: data.requiresEnrollment !== false // default true
             });
-            // Dados da escola (cabeçalho/rodapé do contrato)
-            if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
+            // A oferta segura já inclui os dados jurídicos; links legados usam o fallback.
+            if (data._schoolInfo) setSchool(data._schoolInfo as SchoolInfo);
+            else if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
             // Matrícula vinculada: contrato/cobrança usa os dados do RESPONSÁVEL.
             if (data.isDependent) {
                 if (data.guardianPhone) setPhone(String(data.guardianPhone));
@@ -131,42 +168,206 @@ const PublicRegistration: React.FC = () => {
                     return;
                 }
                 hydrate(payload); // payload já traz _offerId → consume_offer roda no submit
+
+                // Se esta sessão já iniciou a oferta, restaura os dados e leva o
+                // aluno ao ponto correto sem persistir senha ou cartão.
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+
+                const { data: progress } = await supabase.rpc('get_enrollment_progress', {
+                    p_offer_id: offerId,
+                });
+                if (!progress?.success || progress.status === 'NOT_STARTED') return;
+
+                const saved = progress.profile || {};
+                setResumeAuthenticated(true);
+                setCorrelationId(String(progress.correlation_id || ''));
+                setName(String(saved.full_name || payload.studentName || ''));
+                setEmail(String(saved.email || session.user.email || ''));
+                setPhone(String(saved.phone || payload.studentPhone || ''));
+                if (saved.cpf) setCpf(formatCpf(String(saved.cpf)));
+                setPostalCode(String(saved.postal_code || ''));
+                setAddress(String(saved.address || ''));
+                setAddressNumber(String(saved.address_number || ''));
+                if (['PIX', 'BOLETO', 'CREDIT_CARD'].includes(progress.billing_type)) {
+                    setBillingType(progress.billing_type);
+                }
+
+                if (progress.status === 'COMPLETED') {
+                    setProcessingStage('COMPLETE');
+                    setStep('SUCCESS');
+                    return;
+                }
+
+                if (progress.status === 'AWAITING_PAYMENT') {
+                    try {
+                        if (Number(payload.enrollmentFee || 0) > 0) {
+                            const resumedPix = await asaasService.createEnrollmentPix();
+                            setEnrollmentPix({
+                                code: String(resumedPix.pixCode || ''),
+                                qrCode: String(resumedPix.qrCode || ''),
+                                paymentId: String(resumedPix.paymentId || ''),
+                                kind: 'ENROLLMENT_FEE',
+                                billingType: 'PIX',
+                                amount: Number(payload.enrollmentFee),
+                            });
+                        } else if (Number(payload.planDuration) === 0) {
+                            const resumedPayment = await asaasService.createSubscription({
+                                user_id: session.user.id,
+                                value: Number(payload.value),
+                                dueDay: Number(payload.dueDay),
+                                billingType: progress.billing_type || 'PIX',
+                                planDuration: 'ONE_TIME',
+                            });
+                            setEnrollmentPix({
+                                code: String(resumedPayment.pixCode || ''),
+                                qrCode: String(resumedPayment.qrCode || ''),
+                                paymentId: String(resumedPayment.payment_id || resumedPayment.id || ''),
+                                kind: 'ONE_TIME',
+                                billingType: progress.billing_type || 'PIX',
+                                invoiceUrl: resumedPayment.invoice_url || undefined,
+                                amount: Number(payload.value),
+                            });
+                        }
+                        setStep('ENROLLMENT_PAYMENT');
+                    } catch {
+                        console.error('Não foi possível restaurar a cobrança pendente.');
+                        setError('Sua matrícula foi salva. Não foi possível carregar a cobrança agora; tente novamente em alguns instantes.');
+                    }
+                    return;
+                }
+
+                setError(
+                    progress.status === 'FAILED_RETRYABLE'
+                        ? 'Sua matrícula foi salva até a última etapa concluída. Revise os dados e clique novamente para continuar.'
+                        : null
+                );
+                setStep('FORM');
             })();
             return;
         }
 
-        // Caminho legado (base64 no URL) — mantido p/ links antigos em circulação.
+        // Links antigos carregavam preco e cobranca em base64, portanto podiam ser
+        // alterados no navegador. Eles precisam ser regenerados pela escola.
         if (encodedData) {
-            try {
-                const jsonStr = decodeURIComponent(escape(atob(encodedData)));
-                hydrate(JSON.parse(jsonStr));
-            } catch (e) {
-                setError("Link de matrícula inválido ou expirado.");
-            }
+            setError("Este link de matrícula é antigo e precisa ser regenerado pela escola.");
         } else {
             setError("Link de matrícula inválido. Solicite um novo link à escola.");
         }
     }, []);
 
-    const handleRegister = async (signatureDataObj?: { type: 'DIGITAL' | 'UPLOAD_SIG' | 'UPLOAD_DOC', url?: string }) => {
-        if (!contractData) return;
-        setLoading(true);
-        setError(null);
+    const validateForm = () => {
+        const nextErrors: Record<string, string> = {};
+        const normalizedPhone = digitsOnly(phone);
+        const normalizedCep = digitsOnly(postalCode);
+
+        if (name.trim().split(/\s+/).length < 2) {
+            nextErrors.name = 'Informe nome e sobrenome.';
+        }
+        if (!contractData?.isDependent && !isValidCpf(cpf)) {
+            nextErrors.cpf = 'Informe um CPF válido.';
+        }
+        if (!contractData?.isDependent && !isValidBrazilianMobile(normalizedPhone)) {
+            nextErrors.phone = 'Informe um celular válido com DDD.';
+        }
+        if (!contractData?.isDependent && normalizedCep.length !== 8) {
+            nextErrors.postalCode = 'Informe um CEP com 8 números.';
+        }
+        if (!contractData?.isDependent && address.trim().length < 5) {
+            nextErrors.address = 'Informe o endereço completo.';
+        }
+        if (!contractData?.isDependent && !addressNumber.trim()) {
+            nextErrors.addressNumber = 'Informe o número.';
+        }
+        if (!isValidEmail(email)) {
+            nextErrors.email = 'Informe um e-mail válido.';
+        }
+        if (!resumeAuthenticated) {
+            if (password.length < 8) {
+                nextErrors.password = 'Use pelo menos 8 caracteres.';
+            }
+            if (password !== passwordConfirmation) {
+                nextErrors.passwordConfirmation = 'As senhas não são iguais.';
+            }
+        }
+
+        if (billingType === 'CREDIT_CARD') {
+            if (!isValidCreditCardNumber(ccNumber)) {
+                nextErrors.ccNumber = 'Confira o número do cartão.';
+            }
+            if (ccName.trim().split(/\s+/).length < 2) {
+                nextErrors.ccName = 'Informe o nome completo do titular.';
+            }
+            if (!isValidCardExpiry(ccExpiry)) {
+                nextErrors.ccExpiry = 'Informe uma validade futura no formato MM/AAAA.';
+            }
+            if (!/^\d{3,4}$/.test(digitsOnly(ccCcv))) {
+                nextErrors.ccCcv = 'Informe um código de segurança válido.';
+            }
+        }
+
+        setFieldErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
+
+    const sendCompletionNotifications = async (userId: string, enrollmentData: any) => {
+        if (enrollmentData?.testMode === true) return;
 
         try {
-            // BLOQUEANTE: consome a oferta ANTES de criar qualquer estado persistente.
-            // Se o link ja foi usado/expirou, abortamos antes de criar conta/cobrança.
-            if (contractData._offerId) {
-                const { error: consumeErr } = await supabase.rpc('consume_offer', { p_offer_id: contractData._offerId });
-                if (consumeErr) {
-                    console.error('❌ consume_offer failed:', consumeErr);
-                    throw new Error('Este link de matrícula já foi utilizado ou expirou. Solicite um novo link à escola.');
-                }
-                console.log('✅ Offer consumed:', contractData._offerId);
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const welcomeResponse = await fetch(`${FUNCTIONS_URL}/whatsapp-notificacao-matricula`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ student_id: userId })
+            });
+            const welcomeResult = await welcomeResponse.json().catch(() => ({}));
+            if (!welcomeResponse.ok) {
+                console.warn('Notificação de boas-vindas pendente:', welcomeResponse.status);
+                return;
             }
 
-            // Map numeric duration to Enum
-            const durationEnum = contractData.planDuration === 12 ? 'ANNUAL' : contractData.planDuration === 6 ? 'SEMESTER' : 'RECURRENT';
+            // O welcome é idempotente. Só o primeiro envio dispara também o aviso
+            // administrativo, evitando duplicidade em refresh/retry.
+            if (!welcomeResult?.skipped) {
+                await supabase.functions.invoke('whatsapp-notificacao-wise', {
+                    body: {
+                        type: 'DIRECTOR_NEW_CONTRACT',
+                        data: {
+                            student_name: name,
+                            class_frequency: `${enrollmentData.classesPerWeek}x`,
+                            tenant_id: enrollmentData.unitId
+                        }
+                    }
+                });
+            }
+        } catch {
+            console.warn('Matrícula concluída; comunicação será tentada novamente.');
+        }
+    };
+
+    const handleRegister = async (signatureDataObj?: {
+        type: 'DIGITAL' | 'UPLOAD_SIG' | 'UPLOAD_DOC',
+        url?: string,
+        typedName?: string,
+    }) => {
+        if (!contractData) return;
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
+        setLoading(true);
+        setError(null);
+        setProcessingStage('ACCOUNT');
+
+        try {
+            if (!contractData._offerId) {
+                throw new Error('Este link de matrícula é antigo e precisa ser regenerado pela escola.');
+            }
+
+            let enrollmentData = contractData;
 
             // Validate Credit Card if selected
             let creditCardData = null;
@@ -191,117 +392,136 @@ const PublicRegistration: React.FC = () => {
                 };
             }
 
-            console.log("🚀 Iniciando processo de matrícula...");
+            // 1. Cria a conta ou entra na conta informada no formulário.
+            // Nunca reutiliza silenciosamente uma sessão antiga de outra pessoa.
+            let userId: string | null = null;
+            const normalizedEmail = normalizeEmail(email);
+            setEmail(normalizedEmail);
 
-            // 1. Create Auth User OR Sign In if exists
-            let userId = null;
+            const signInEnrollmentUser = async () => {
+                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+                    email: normalizedEmail,
+                    password
+                });
+                if (signInError || !signInData.user || !signInData.session) {
+                    throw new Error('Este e-mail já está cadastrado ou aguarda confirmação. Verifique a senha/e-mail e tente novamente.');
+                }
+                return signInData.user.id;
+            };
 
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email,
-                password,
-                options: {
-                    data: { full_name: name, role: 'STUDENT', tenant_id: contractData.unitId }
+            let { data: currentSession } = await supabase.auth.getSession();
+            const currentEmail = normalizeEmail(currentSession.session?.user.email || '');
+            if (currentSession.session && currentEmail === normalizedEmail) {
+                userId = currentSession.session.user.id;
+                setResumeAuthenticated(true);
+            } else {
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                    email: normalizedEmail,
+                    password,
+                    options: {
+                        data: { full_name: name }
+                    }
+                });
+
+                if (authError) {
+                    if (authError.message.includes("already registered") || authError.message.includes("already exists")) {
+                        userId = await signInEnrollmentUser();
+                    } else {
+                        throw authError;
+                    }
+                } else {
+                    if (!authData.user) throw new Error("Erro ao criar usuário.");
+                    userId = authData.user.id;
+                    if (!authData.session) userId = await signInEnrollmentUser();
+                }
+            }
+
+            ({ data: currentSession } = await supabase.auth.getSession());
+            if (!currentSession.session || currentSession.session.user.id !== userId) {
+                userId = await signInEnrollmentUser();
+                ({ data: currentSession } = await supabase.auth.getSession());
+            }
+            if (!currentSession.session || currentSession.session.user.id !== userId) {
+                throw new Error('Não foi possível confirmar a conta desta matrícula. Entre novamente e tente de novo.');
+            }
+
+            setProcessingStage('PROFILE');
+            // Início atômico e retomável: grava perfil/aceite, mas ainda não fecha
+            // link, oportunidade, indicação ou comissão.
+            const { data: claimResult, error: claimError } = await supabase.rpc('begin_enrollment_offer', {
+                p_offer_id: contractData._offerId,
+                p_profile: {
+                    full_name: name,
+                    phone,
+                    cpf,
+                    postal_code: postalCode,
+                    address,
+                    address_number: addressNumber,
+                    typed_signature: signatureDataObj?.typedName || '',
+                    billing_type: billingType,
+                    student_signature_url: signatureDataObj?.type === 'UPLOAD_SIG' ? signatureDataObj.url : null,
+                    signed_document_url: signatureDataObj?.type === 'UPLOAD_DOC' ? signatureDataObj.url : null,
                 }
             });
 
-            if (authError) {
-                // Recover from "User already registered" by signing in
-                if (authError.message.includes("already registered") || authError.message.includes("already exists")) {
-                    console.warn("Usuário já existe. Tentando login para continuar cadastro...");
-                    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-                        email,
-                        password
-                    });
-
-                    if (signInError) throw new Error("Este e-mail já está cadastrado. tentei fazer login mas a senha não confere.");
-                    if (!signInData.user) throw new Error("Falha ao recuperar usuário existente.");
-
-                    userId = signInData.user.id;
-                } else {
-                    throw authError; // Real error
+            if (claimError || !claimResult?.success || !claimResult?.payload) {
+                console.error('Não foi possível iniciar ou retomar a oferta de matrícula.');
+                if (claimResult?.error === 'PROFILE_ROLE_NOT_ALLOWED') {
+                    throw new Error('Este e-mail pertence a uma conta da equipe. Use o e-mail pessoal do aluno para concluir a matrícula.');
                 }
-            } else {
-                if (!authData.user) throw new Error("Erro ao criar usuário.");
-                userId = authData.user.id;
+                if (claimResult?.error === 'INVALID_NAME') {
+                    throw new Error('Informe o nome completo do aluno.');
+                }
+                if (claimResult?.error === 'INVALID_PHONE') {
+                    throw new Error('Informe um WhatsApp válido com DDD.');
+                }
+                if (claimResult?.error === 'INVALID_CPF') {
+                    throw new Error('Informe um CPF válido com 11 dígitos.');
+                }
+                if (claimResult?.error === 'CPF_ALREADY_REGISTERED') {
+                    throw new Error('Este CPF já possui cadastro nesta escola. Entre com a conta existente ou fale com o suporte.');
+                }
+                if (claimResult?.error === 'INVALID_SIGNATURE') {
+                    throw new Error('A assinatura deve corresponder exatamente ao nome do contratante.');
+                }
+                if (claimResult?.error === 'OFFER_IN_PROGRESS') {
+                    throw new Error('Esta matrícula já foi iniciada por outra conta. Fale com a escola para recuperar o acesso.');
+                }
+                throw new Error('Não foi possível reservar este link. Ele pode estar expirado ou já concluído.');
             }
+            setCorrelationId(String(claimResult.correlation_id || ''));
+
+            enrollmentData = {
+                ...contractData,
+                ...claimResult.payload,
+                classSchedule: claimResult.payload.classSchedule || claimResult.payload.schedule || [],
+                requiresEnrollment: claimResult.payload.requiresEnrollment !== false,
+            };
+            setContractData(enrollmentData);
+
+            const durationEnum = enrollmentData.planDuration === 0
+                ? 'ONE_TIME'
+                : enrollmentData.planDuration === 12
+                    ? 'ANNUAL'
+                    : enrollmentData.planDuration === 6
+                        ? 'SEMESTER'
+                        : 'RECURRENT';
 
             // Matrícula de dependente: cobrança no CPF do responsável financeiro.
             // O aluno tem perfil/login próprios; profiles.cpf fica NULL e o CPF de
             // cobrança vai em guardian_cpf (não viola profiles_cpf_tenant_key).
-            const isDependent = !!contractData.isDependent;
-            const guardianCpf = isDependent ? String(contractData.guardianCpf || '').replace(/\D/g, '') : null;
-
-            // 2. Create Profile (with contract_accepted = true)
-            const profileData: any = {
-                id: userId,
-                email: email,
-                full_name: name,
-                role: 'STUDENT',
-                tenant_id: contractData.unitId,
-                phone: phone,
-                cpf: isDependent ? null : cpf.replace(/\D/g, ''),
-                postal_code: postalCode,
-                address: address,
-                address_number: addressNumber,
-                status_financial: 'PENDING',
-                monthly_fee: contractData.value,
-                due_day: contractData.dueDay,
-                module: 'General',
-                contract_accepted: true,
-                documentation_status: 'APPROVED',
-                accepted_at: new Date().toISOString(),
-                class_frequency: `${contractData.classesPerWeek}x`,
-                signature_ip: signatureDataObj?.type === 'DIGITAL' ? 'Via Web (Digital)' : `Via Web (${signatureDataObj?.type})`,
-                student_signature_url: signatureDataObj?.type === 'UPLOAD_SIG' ? signatureDataObj.url : null,
-                signed_document_url: signatureDataObj?.type === 'UPLOAD_DOC' ? signatureDataObj.url : null,
-                wise_wolf_signature_token: crypto.randomUUID(),
-                enrollment_fee: contractData.enrollmentFee || 0,
-                enrollment_fee_paid: (contractData.enrollmentFee || 0) > 0 ? true : false,
-                enrollment_payment_id: enrollmentPix?.paymentId || null
-                // TEMPORARY FIX: Removed professor_id_2 to avoid schema cache "not found" error
-            };
-
-            // Affiliate tracking — teacher referral
-            if (referrerTeacherId) {
-                profileData.referrer_teacher_id = referrerTeacherId;
-            }
-            // Affiliate tracking — student referral
-            if (referrerStudentId) {
-                profileData.referrer_student_id = referrerStudentId;
-            }
-
-            // Dependente: grava o responsável financeiro (contratante/cobrança)
-            if (isDependent) {
-                profileData.guardian_cpf = guardianCpf;
-                profileData.guardian_name = contractData.guardianName || null;
-                profileData.guardian_email = contractData.guardianEmail || null;
-                profileData.guardian_phone = contractData.guardianPhone ? String(contractData.guardianPhone).replace(/\D/g, '') : null;
-                profileData.guardian_id = contractData.guardianId || null;
-                // phone = responsável (cobrança). A CONFIRMAÇÃO DE AULA vai para quem assiste:
-                // o WhatsApp do próprio aluno (studentPhone), salvo em attendance_phone.
-                if (contractData.studentPhone) {
-                    profileData.attendance_phone = String(contractData.studentPhone).replace(/\D/g, '');
-                }
-            }
-
-            const { error: profileError } = await supabase.from('profiles').upsert(profileData);
-
-            if (profileError) throw profileError;
+            const isDependent = !!enrollmentData.isDependent;
+            const guardianCpf = isDependent ? String(enrollmentData.guardianCpf || '').replace(/\D/g, '') : null;
 
             // 2.1 AUTOMATIC SCHEDULING & PROFESSOR ASSIGNMENT
-            if (contractData.professorId) {
-                console.log("🚀 Professor associado:", contractData.professorId);
-                // B. Bookings and professor profile linking are now handled server-side by the sync-student-asaas edge function to bypass RLS
-            }
-            if (contractData.professorId2) {
-                console.log("🚀 Segundo Professor associado:", contractData.professorId2);
-            }
+            // Bookings e professores são associados no servidor durante o sync.
 
+            setProcessingStage('CUSTOMER');
             // 3. Sync with Asaas (+ full profile data via service role)
             const syncResponse = await asaasService.syncStudent({
                 user_id: userId,
                 name: name,
-                email: email,
+                email: normalizedEmail,
                 phone: phone,
                 cpf: isDependent ? '' : cpf.replace(/\D/g, ''),
                 postalCode: postalCode,
@@ -310,49 +530,48 @@ const PublicRegistration: React.FC = () => {
                 // Dependente: cobrança no CPF do responsável (cria customer ASAAS novo)
                 is_dependent: isDependent,
                 guardian_cpf: guardianCpf || undefined,
-                guardian_name: contractData.guardianName || undefined,
-                guardian_email: contractData.guardianEmail || undefined,
-                guardian_phone: contractData.guardianPhone || undefined,
-                guardian_id: contractData.guardianId || undefined,
+                guardian_name: enrollmentData.guardianName || undefined,
+                guardian_email: enrollmentData.guardianEmail || undefined,
+                guardian_phone: enrollmentData.guardianPhone || undefined,
+                guardian_id: enrollmentData.guardianId || undefined,
                 // Extended profile fields (saved server-side with service role, bypasses RLS)
-                tenant_id: contractData.unitId,
-                monthly_fee: contractData.value,
-                due_day: contractData.dueDay,
-                class_frequency: `${contractData.classesPerWeek}x`,
-                professor_id: contractData.professorId || null,
-                professor_id_2: contractData.professorId2 || null,
-                classSchedule: contractData.classSchedule || [],
+                tenant_id: enrollmentData.unitId,
+                monthly_fee: enrollmentData.value,
+                due_day: enrollmentData.dueDay,
+                class_frequency: `${enrollmentData.classesPerWeek}x`,
+                professor_id: enrollmentData.professorId || null,
+                professor_id_2: enrollmentData.professorId2 || null,
+                classSchedule: enrollmentData.classSchedule || [],
                 contract_accepted: true,
                 documentation_status: 'APPROVED',
                 signature_ip: signatureDataObj?.type === 'DIGITAL' ? 'Via Web (Digital)' : `Via Web (${signatureDataObj?.type})`,
                 student_signature_url: signatureDataObj?.type === 'UPLOAD_SIG' ? signatureDataObj.url : null,
                 signed_document_url: signatureDataObj?.type === 'UPLOAD_DOC' ? signatureDataObj.url : null,
-                startDate: contractData.startDate || null,
+                startDate: enrollmentData.startDate || null,
             });
 
-            console.log("🚀 Enviando pagamento para Asaas...");
-
+            setProcessingStage('BILLING');
             // 4. Create Subscription (THE MOMENT OF TRUTH)
             const response = await asaasService.createSubscription({
                 user_id: userId,
                 customer: syncResponse?.asaas_customer_id,
-                value: contractData.value,
-                dueDay: contractData.dueDay,
+                value: enrollmentData.value,
+                dueDay: enrollmentData.dueDay,
                 billingType: billingType,
                 planDuration: durationEnum,
                 // Passa o mês de início da cobrança (billingStartMonth) e pro-rata
                 // para que o Asaas calcule o nextDueDate correto
-                startDate: contractData.billingStartMonth || undefined,
-                proRata: contractData.enableProRata || false,
-                proRataValue: contractData.proRataValue || undefined,
+                startDate: enrollmentData.billingStartMonth || undefined,
+                proRata: enrollmentData.enableProRata || false,
+                proRataValue: enrollmentData.proRataValue || undefined,
                 creditCard: creditCardData,
                 creditCardHolderInfo: billingType === 'CREDIT_CARD' ? {
-                    name: isDependent ? (contractData.guardianName || name) : name,
-                    email: isDependent ? (contractData.guardianEmail || email) : email,
+                    name: isDependent ? (enrollmentData.guardianName || name) : name,
+                    email: isDependent ? (enrollmentData.guardianEmail || email) : email,
                     cpfCnpj: isDependent ? (guardianCpf || '') : cpf.replace(/\D/g, ''),
                     postalCode,
                     addressNumber,
-                    phone: (isDependent && contractData.guardianPhone ? String(contractData.guardianPhone) : phone).replace(/\D/g, '') // Asaas prefers numbers only
+                    phone: (isDependent && enrollmentData.guardianPhone ? String(enrollmentData.guardianPhone) : phone).replace(/\D/g, '') // Asaas prefers numbers only
                 } : undefined
             });
 
@@ -366,186 +585,70 @@ const PublicRegistration: React.FC = () => {
             }
 
             const confirmedSubId = response.id || response.subscription_id;
-            console.log("✅ ID Confirmado:", confirmedSubId);
-
-            // 4. Safety-net: Update profile with subscription data (edge function should have done this, but ensure it)
-            try {
-                await supabase.from('profiles').update({
-                    subscription_id: confirmedSubId,
-                    monthly_fee: contractData.value,
-                    due_day: contractData.dueDay,
-                    status_financial: 'ACTIVE',
-                }).eq('id', userId);
-                console.log("✅ Perfil atualizado com subscription_id:", confirmedSubId);
-            } catch (profileErr) {
-                console.error("⚠️ Erro ao atualizar perfil (não-bloqueante):", profileErr);
+            if (response.correlation_id) {
+                setCorrelationId(String(response.correlation_id));
             }
 
             // Save Signature Data for PDF
             setSignatureData({
                 acceptedAt: new Date().toISOString(),
-                ip: 'Via Web',
+                ip: 'Registrado no servidor',
                 subId: confirmedSubId
             });
-
-            try {
-                console.log("🚀 Invocando Edge Function de Boas-vindas (Via Fetch Robusto)...");
-                const SUPABASE_PROJECT_REF = 'dvalxbtngopxopzcbfdm';
-                const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YWx4YnRuZ29weG9wemNiZmRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5ODkwMTksImV4cCI6MjA4MjU2NTAxOX0.rrq_vbAub4GGIcZc9cpS-QxGFYQ3B0aeka2p4xiYKiE';
-
-                const response = await fetch(`https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/whatsapp-notificacao-matricula`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                    },
-                    body: JSON.stringify({
-                        phone: `55${phone.replace(/\D/g, '')}`,
-                        full_name: name,
-                        email: email,
-                        password: password,
-                        tenant_id: contractData.unitId,
-                        link_portal: 'https://system.wisewolflanguage.com.br'
-                    })
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(`Edge Function returned ${response.status}: ${errText}`);
-                }
-
-                console.log("✅ WhatsApp de Boas-vindas disparado com sucesso!");
-
-            } catch (waError) {
-                console.error("❌ Erro ao enviar WhatsApp de Boas-vindas:", waError);
-            }
-
-            // Notifica Diretor (Mantido para controle administrativo)
-            supabase.functions.invoke('whatsapp-notificacao-wise', {
-                body: {
-                    type: 'DIRECTOR_NEW_CONTRACT',
-                    data: {
-                        student_name: name,
-                        class_frequency: `${contractData.classesPerWeek}x`,
-                        tenant_id: contractData.unitId
-                    }
-                }
-            }).catch(e => console.warn("Supressed Director Notification Error:", e));
 
             if (signatureDataObj?.url) {
                 setSignedPdfUrl(signatureDataObj.url);
             }
 
-            // ===== VENDOR COMMISSION TRACKING =====
-            if (contractData.vendorId && userId) {
+            if (enrollmentData.requiresEnrollment !== false && enrollmentData.enrollmentFee > 0) {
                 try {
-                    const { data: vendorRate } = await supabase.rpc('get_vendor_commission_rate', { p_vendor: contractData.vendorId });
-
-                    const commissionAmount = (vendorRate as number) ?? 3000;
-
-                    await supabase.from('vendor_commissions').insert({
-                        vendor_id: contractData.vendorId,
-                        student_id: userId,
-                        amount_brl: commissionAmount,
-                        status: 'PENDING',
-                        tenant_id: contractData.unitId,
-                    });
-                } catch (commErr) {
-                    console.error('⚠️ Erro ao registrar comissão (não-bloqueante):', commErr);
-                }
-            }
-
-            // ===== REFERRAL INVITE CONVERSION =====
-            // Se o email bate com um referral_invite PENDING → marca como CONVERTED
-            try {
-                const { data: invite } = await supabase
-                    .from('referral_invites')
-                    .select('id, referrer_id')
-                    .eq('invitee_email', email.toLowerCase().trim())
-                    .eq('status', 'PENDING')
-                    .gt('expires_at', new Date().toISOString())
-                    .maybeSingle();
-
-                if (invite) {
-                    await supabase
-                        .from('referral_invites')
-                        .update({
-                            status: 'CONVERTED',
-                            converted_at: new Date().toISOString(),
-                            converted_student_id: userId,
-                        })
-                        .eq('id', invite.id);
-
-                    // Atualiza o perfil do aluno com o referrer_student_id
-                    await supabase
-                        .from('profiles')
-                        .update({ referrer_student_id: invite.referrer_id })
-                        .eq('id', userId);
-
-                    console.log('✅ Indicação convertida! Referrer:', invite.referrer_id);
-                }
-            } catch (refErr) {
-                console.error('⚠️ Erro ao converter indicação (não-bloqueante):', refErr);
-            }
-
-            // ===== OPPORTUNITY CONVERSION TRACKING =====
-            // If this link came from an experimental trial, mark the opportunity as WON
-            if (contractData.opportunityId && userId) {
-                try {
-                    console.log('📊 Atualizando funil: opportunity', contractData.opportunityId, '→ WON');
-
-                    // Update opportunity conversion status
-                    await supabase
-                        .from('opportunities')
-                        .update({
-                            conversion_status: 'WON',
-                            student_id: userId,
-                        })
-                        .eq('id', contractData.opportunityId);
-
-                    // Mark enrollment link as USED
-                    await supabase
-                        .from('enrollment_links')
-                        .update({
-                            status: 'USED',
-                            used_at: new Date().toISOString(),
-                        })
-                        .eq('opportunity_id', contractData.opportunityId)
-                        .eq('status', 'PENDING');
-
-                    console.log('✅ Funil atualizado com sucesso!');
-                } catch (funnelErr) {
-                    // Non-blocking — don't fail registration because of funnel tracking
-                    console.error('⚠️ Erro ao atualizar funil (não-bloqueante):', funnelErr);
-                }
-            }
-
-            if (contractData.requiresEnrollment !== false && contractData.enrollmentFee > 0) {
-                try {
-                    console.log("🚀 Gerando Pix de Matrícula Pós-Contrato...");
-                    const res = await asaasService.createEnrollmentPix(contractData.enrollmentFee, {
-                        name,
-                        email,
-                        cpfCnpj: cpf,
-                        phone
-                    });
+                    const res = await asaasService.createEnrollmentPix();
                     setEnrollmentPix({
                         code: res.pixCode,
                         qrCode: res.qrCode,
-                        paymentId: res.paymentId
+                        paymentId: res.paymentId,
+                        kind: 'ENROLLMENT_FEE',
+                        billingType: 'PIX',
+                        amount: Number(enrollmentData.enrollmentFee),
                     });
                     setStep('ENROLLMENT_PAYMENT');
-                } catch (pixErr) {
-                    console.error("⚠️ Erro ao gerar Pix (não-bloqueante p/ contrato):", pixErr);
-                    setStep('SUCCESS'); // Goes to success even if Pix fails to avoid blocking the contract
+                } catch {
+                    console.error("Não foi possível carregar o PIX da matrícula.");
+                    throw new Error('Seus dados e contrato foram salvos, mas não foi possível carregar o PIX agora. Clique novamente para continuar.');
                 }
+            } else if (durationEnum === 'ONE_TIME' && response.enrollment_complete !== true) {
+                const code = String(response.pixCode || '');
+                const qrCode = String(response.qrCode || '');
+                const invoiceUrl = String(response.invoice_url || '');
+
+                if (billingType === 'PIX' && !code && !qrCode && !invoiceUrl) {
+                    throw new Error('O pagamento foi criado, mas não foi possível carregar o PIX. Tente novamente.');
+                }
+                if (billingType === 'BOLETO' && !invoiceUrl) {
+                    throw new Error('O pagamento foi criado, mas não foi possível carregar o boleto. Tente novamente.');
+                }
+
+                setEnrollmentPix({
+                    code,
+                    qrCode,
+                    paymentId: confirmedSubId,
+                    kind: 'ONE_TIME',
+                    billingType,
+                    invoiceUrl,
+                    amount: Number(enrollmentData.value),
+                });
+                setStep('ENROLLMENT_PAYMENT');
             } else {
+                if (response.enrollment_complete !== true) {
+                    throw new Error('Sua cobrança foi criada e a conclusão está sendo confirmada. Clique novamente para consultar o andamento.');
+                }
+                setProcessingStage('FINALIZING');
+                await sendCompletionNotifications(userId, enrollmentData);
+                setProcessingStage('COMPLETE');
                 setStep('SUCCESS');
             }
 
         } catch (err: any) {
-            console.error("⛔ ERRO CAPTURADO:", err);
-
             let errorMessage = "Ocorreu um erro ao realizar sua matrícula.";
 
             // Extração de Erro Robusta
@@ -566,6 +669,16 @@ const PublicRegistration: React.FC = () => {
             if (errorMessage.includes("User already registered") || errorMessage.includes("already exists")) {
                 errorMessage = "Este e-mail já possui cadastro. Acesse sua conta ou recupere a senha.";
             }
+            if (errorMessage.includes('asaas_not_configured')) {
+                errorMessage = 'A integração financeira está temporariamente indisponível. Seus dados foram salvos; tente novamente em alguns instantes.';
+            }
+            if (
+                errorMessage.includes('Edge Function returned') ||
+                errorMessage.includes('non-2xx') ||
+                errorMessage.includes('Failed to send a request')
+            ) {
+                errorMessage = 'Não foi possível concluir a etapa financeira agora. Seus dados foram preservados e você pode tentar novamente sem refazer a matrícula.';
+            }
 
             // 2. Extração de erros aninhados do Asaas (JSON dentro de string)
             if (typeof errorMessage === 'string' && (errorMessage.includes('asaasErrors') || errorMessage.includes('{"error"'))) {
@@ -579,23 +692,38 @@ const PublicRegistration: React.FC = () => {
                             errorMessage = parsed.asaasErrors[0].description || "Erro no pagamento Asaas.";
                         }
                     }
-                } catch (e) {
-                    console.error("Falha ao fazer parse do erro interno:", e);
+                } catch {
+                    console.error("Falha ao interpretar a resposta segura da etapa financeira.");
                 }
             }
 
-            // Mostra o erro real
-            alert(`⛔ MENSAGEM DO SISTEMA:\n\n${errorMessage}`);
-            setError(errorMessage);
+            try {
+                const { data: progress } = await supabase.rpc('get_enrollment_progress', {
+                    p_offer_id: contractData._offerId,
+                });
+                if (progress?.success && progress.status !== 'NOT_STARTED') {
+                    setCorrelationId(String(progress.correlation_id || ''));
+                    if (!errorMessage.includes('salv')) {
+                        errorMessage = `Sua matrícula foi salva até a última etapa concluída. ${errorMessage}`;
+                    }
+                }
+            } catch {
+                // A mensagem original continua disponível mesmo se a consulta de
+                // retomada também estiver temporariamente indisponível.
+            }
 
-            // NÃO muda de tela. Fica aqui para permitr correção dos dados.
+            setProcessingStage('ERROR');
+            setError(errorMessage);
         } finally {
+            submitLockRef.current = false;
             setLoading(false);
         }
     };
 
     const handleFormSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!validateForm()) return;
+        setError(null);
         // If requires enrollment (non-avulso), show enrollment form first
         if (contractData?.requiresEnrollment) {
             setStep('ENROLLMENT');
@@ -613,27 +741,90 @@ const PublicRegistration: React.FC = () => {
         if (!enrollmentPix) return;
         setCheckingPayment(true);
         try {
-            const res = await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
-            if (res.success || res.status === 'RECEIVED' || res.status === 'CONFIRMED') {
-                // FIX: era setStep('CONTRACT') — isso reabria o modal de contrato já assinado,
-                // causando loop infinito (contrato → handleRegister → enrollment pix → contrato...).
-                // O contrato já foi assinado antes de chegar aqui; ir direto para SUCCESS.
+            const res = enrollmentPix.kind === 'ONE_TIME'
+                ? await (async () => {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) return { success: false };
+                    return asaasService.checkOneTimePayment(session.user.id);
+                })()
+                : await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
+            if (res?.paid === true || ['RECEIVED', 'CONFIRMED'].includes(res?.status)) {
+                const { data: { session } } = await supabase.auth.getSession();
+                setProcessingStage('FINALIZING');
+                if (session) await sendCompletionNotifications(session.user.id, contractData);
+                setProcessingStage('COMPLETE');
+                setError(null);
                 setStep('SUCCESS');
             } else {
-                alert("Pagamento ainda não identificado. Se você já pagou, aguarde alguns instantes.");
+                setError('Pagamento ainda não identificado. Se você já pagou, aguarde alguns instantes e consulte novamente.');
             }
-        } catch (e) {
-            // Fallback: if check fails, just try again
-            console.error(e);
+        } catch {
+            console.error('Falha temporária ao consultar o pagamento.');
+            setError('Não foi possível consultar o pagamento agora. Sua matrícula continua salva; tente novamente em instantes.');
         } finally {
             setCheckingPayment(false);
         }
     };
 
+    const renderFinancialSummary = () => (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-left space-y-2">
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-900">Resumo financeiro</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <span className="text-blue-700">
+                    {contractData?.planDuration === 0
+                        ? 'Pagamento único'
+                        : `${quote.installmentCount} mensalidades`}
+                </span>
+                <strong className="text-right text-blue-950">
+                    {contractData?.planDuration === 0
+                        ? formatBrl(quote.installmentValue)
+                        : `${quote.installmentCount} × ${formatBrl(quote.installmentValue)}`}
+                </strong>
+                {quote.enrollmentFee > 0 && (
+                    <>
+                        <span className="text-blue-700">Taxa de matrícula via PIX</span>
+                        <strong className="text-right text-blue-950">{formatBrl(quote.enrollmentFee)}</strong>
+                    </>
+                )}
+                {quote.proRataValue > 0 && (
+                    <>
+                        <span className="text-blue-700">Valor proporcional inicial</span>
+                        <strong className="text-right text-blue-950">{formatBrl(quote.proRataValue)}</strong>
+                    </>
+                )}
+                {contractData?.planDuration !== 0 && (
+                    <>
+                        <span className="text-blue-700">Primeiro vencimento</span>
+                        <strong className="text-right text-blue-950">{formatDateBr(quote.firstDueDate)}</strong>
+                    </>
+                )}
+                <span className="border-t border-blue-200 pt-2 font-bold text-blue-900">Total do contrato</span>
+                <strong className="border-t border-blue-200 pt-2 text-right text-blue-950">{formatBrl(quote.total)}</strong>
+            </div>
+            {quote.dueToday > 0 && (
+                <p className="text-[11px] text-blue-800 pt-1">
+                    Valor solicitado na conclusão de hoje: <strong>{formatBrl(quote.dueToday)}</strong>.
+                </p>
+            )}
+        </div>
+    );
+
     // ========== PAYMENT SELECTION STEP ==========
     if (step === 'PAYMENT_SELECTION') {
         if (!contractData && !error) {
             return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
+        }
+
+        if (!contractData && error) {
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4 font-sans">
+                    <div className="max-w-md w-full bg-brand-surface rounded-[2.5rem] shadow-2xl border border-white p-10 text-center">
+                        <AlertCircle className="text-red-500 mx-auto mb-5" size={48} />
+                        <h1 className="text-2xl font-black text-brand-text mb-3">Link indisponível</h1>
+                        <p className="text-sm text-brand-muted leading-relaxed">{error}</p>
+                    </div>
+                </div>
+            );
         }
 
         return (
@@ -647,12 +838,13 @@ const PublicRegistration: React.FC = () => {
                                 <div className="flex flex-col gap-2 items-center">
                                     <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
                                         <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
-                                            Plano {contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
+                                            Plano {contractData.planDuration === 0 ? 'Avulso' : contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
                                         </p>
                                     </div>
                                     <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
                                         <p className="text-sm font-black text-blue-900">
-                                            {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}/mês
+                                            {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}
+                                            {contractData.planDuration === 0 ? ' (pagamento único)' : '/mês'}
                                         </p>
                                     </div>
                                 </div>
@@ -675,6 +867,8 @@ const PublicRegistration: React.FC = () => {
                             <h2 className="text-xl font-black text-brand-text mb-2">Como você prefere pagar?</h2>
                             <p className="text-brand-muted text-sm">Selecione sua forma de pagamento para prosseguir com a matrícula.</p>
                         </div>
+
+                        <div className="mb-6">{renderFinancialSummary()}</div>
 
                         <div className="grid grid-cols-1 gap-4">
                             <button
@@ -740,19 +934,33 @@ const PublicRegistration: React.FC = () => {
                     <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
                         <div className="relative z-10 text-white">
                             <QrCode className="mx-auto mb-4" size={48} />
-                            <h1 className="text-2xl font-black uppercase tracking-tight">Taxa de Matrícula</h1>
+                            <h1 className="text-2xl font-black uppercase tracking-tight">
+                                {enrollmentPix?.kind === 'ONE_TIME' ? 'Pagamento da Aula Avulsa' : 'Taxa de Matrícula'}
+                            </h1>
                             <p className="text-blue-100/80 text-sm">Contrato Assinado com Sucesso! 📜</p>
-                            <p className="text-blue-100/60 text-[10px] mt-1 uppercase font-bold tracking-widest">Agora, pague a matrícula para garantir sua vaga</p>
+                            <p className="text-blue-100/60 text-[10px] mt-1 uppercase font-bold tracking-widest">
+                                {enrollmentPix?.kind === 'ONE_TIME'
+                                    ? 'Conclua o pagamento para confirmar a aula'
+                                    : 'Agora, pague a matrícula para garantir sua vaga'}
+                            </p>
                         </div>
                     </div>
 
                     <div className="p-8 text-center space-y-6">
+                        {error && (
+                            <div role="status" aria-live="polite" className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left flex gap-3">
+                                <AlertCircle className="text-amber-600 shrink-0" size={20} />
+                                <p className="text-sm font-semibold text-amber-800">{error}</p>
+                            </div>
+                        )}
                         <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl inline-block">
                             <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor a Pagar</p>
-                            <p className="text-3xl font-black text-emerald-700">R$ {contractData?.enrollmentFee?.toFixed(2)}</p>
+                            <p className="text-3xl font-black text-emerald-700">
+                                R$ {Number(enrollmentPix?.amount || 0).toFixed(2)}
+                            </p>
                         </div>
 
-                        {enrollmentPix?.qrCode ? (
+                        {enrollmentPix?.billingType === 'PIX' && enrollmentPix?.qrCode ? (
                             <div className="bg-brand-surface p-4 rounded-3xl border-4 border-slate-50 inline-block shadow-inner">
                                 <img 
                                     src={`data:image/png;base64,${enrollmentPix.qrCode}`} 
@@ -760,12 +968,21 @@ const PublicRegistration: React.FC = () => {
                                     className="w-64 h-64 mx-auto"
                                 />
                             </div>
-                        ) : (
+                        ) : enrollmentPix?.billingType === 'PIX' && !enrollmentPix?.invoiceUrl ? (
                             <div className="h-64 flex items-center justify-center">
                                 <Loader2 className="animate-spin text-slate-300" size={48} />
                             </div>
+                        ) : null}
+
+                        {enrollmentPix?.billingType === 'CREDIT_CARD' && (
+                            <div className="p-5 rounded-2xl border border-blue-200 bg-blue-50 text-blue-800">
+                                <CreditCard className="mx-auto mb-2" size={30} />
+                                <p className="font-bold">Pagamento enviado para confirmação</p>
+                                <p className="text-xs mt-1">A operadora pode levar alguns instantes para confirmar.</p>
+                            </div>
                         )}
 
+                        {enrollmentPix?.billingType === 'PIX' && enrollmentPix?.code && (
                         <div className="space-y-3">
                             <p className="text-xs font-bold text-brand-muted uppercase tracking-widest">Código Pix (Copia e Cola)</p>
                             <div className="flex gap-2">
@@ -787,6 +1004,18 @@ const PublicRegistration: React.FC = () => {
                                 </button>
                             </div>
                         </div>
+                        )}
+
+                        {enrollmentPix?.invoiceUrl && (
+                            <a
+                                href={enrollmentPix.invoiceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all"
+                            >
+                                {enrollmentPix.billingType === 'BOLETO' ? 'Abrir boleto' : 'Abrir página de pagamento'}
+                            </a>
+                        )}
 
                         <div className="pt-6 border-t border-brand-border flex flex-col gap-3">
                             <button
@@ -795,17 +1024,16 @@ const PublicRegistration: React.FC = () => {
                                 className="w-full py-4 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
                             >
                                 {checkingPayment ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                                Já realizei o pagamento
+                                Consultar confirmação
                             </button>
                             <p className="text-[10px] text-brand-muted font-bold uppercase tracking-tight">
                                 A confirmação pode levar até 30 segundos após o pagamento.
                             </p>
-                            <button 
-                                onClick={() => setStep('ENROLLMENT')}
-                                className="text-xs font-bold text-brand-muted hover:text-brand-muted transition-colors uppercase"
-                            >
-                                Corrigir dados da matrícula
-                            </button>
+                            {correlationId && (
+                                <p className="text-[10px] text-brand-muted">
+                                    Protocolo: <span className="font-mono font-bold">{correlationId.slice(0, 8).toUpperCase()}</span>
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -876,8 +1104,14 @@ const PublicRegistration: React.FC = () => {
                     </div>
                     <h2 className="text-2xl font-black text-brand-text mb-2">Matrícula Confirmada!</h2>
                     <p className="text-brand-muted mb-6">
-                        Seu acesso ao portal já foi criado. Verifique seu e-mail para confirmar a conta e acessar suas cobranças.
+                        Seu acesso ao portal foi criado e o fluxo financeiro foi confirmado.
                     </p>
+                    {correlationId && (
+                        <div className="mb-6 rounded-xl bg-brand-surface-2 border border-brand-border px-4 py-3">
+                            <p className="text-[10px] uppercase tracking-widest font-bold text-brand-muted">Protocolo da matrícula</p>
+                            <p className="font-mono font-black text-brand-text">{correlationId.slice(0, 8).toUpperCase()}</p>
+                        </div>
+                    )}
                     <div className="space-y-3">
                         <a href="/" className="block w-full px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20">
                             Acessar Portal
@@ -905,17 +1139,19 @@ const PublicRegistration: React.FC = () => {
                                 studentName={contratanteName}
                                 studentCPF={(contratanteCpf || '').replace(/\D/g, '')}
                                 dependentName={beneficiaryName}
-                                studentAddress={`${address}, ${addressNumber} - CEP: ${postalCode}`}
-                                studentEmail={email}
-                                studentPhone={phone}
-                                planName={`Plano ${contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}`}
+                                studentAddress={contratanteAddress}
+                                studentEmail={contratanteEmail}
+                                studentPhone={contratantePhone}
+                                planName={`Plano ${contractData.planDuration === 0 ? 'Avulso' : contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}`}
                                 planValue={Number(contractData.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                totalValue={(Number(contractData.value) * (contractData.planDuration || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                planDuration={contractData.planDuration || 1}
+                                totalValue={quote.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                planDuration={contractData.planDuration ?? 12}
                                 startDate={getContractDates().startDate}
                                 endDate={getContractDates().endDate}
                                 dueDay={contractData.dueDay || 10}
                                 classFrequency={contractData.classesPerWeek || 2}
+                                enrollmentFee={quote.enrollmentFee}
+                                proRataValue={quote.proRataValue}
                                 acceptedAt={signatureData?.acceptedAt}
                                 userIp={signatureData?.ip}
                                 subscriptionId={signatureData?.subId}
@@ -944,12 +1180,13 @@ const PublicRegistration: React.FC = () => {
                             <div className="flex flex-col gap-2 items-center">
                                 <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
                                     <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
-                                        Plano {contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
+                                        Plano {contractData.planDuration === 0 ? 'Avulso' : contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
                                     </p>
                                 </div>
                                 <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
                                     <p className="text-sm font-black text-blue-900">
-                                        {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}/mês
+                                        {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}
+                                        {contractData.planDuration === 0 ? ' (pagamento único)' : '/mês'}
                                     </p>
                                 </div>
                             </div>
@@ -968,7 +1205,8 @@ const PublicRegistration: React.FC = () => {
                         </div>
                     )}
 
-                    <form onSubmit={handleFormSubmit} className="space-y-6">
+                    <form onSubmit={handleFormSubmit} className="space-y-6" noValidate>
+                        {renderFinancialSummary()}
                         {/* 1. Payment Method Overview */}
                         <div className="space-y-3 relative">
                             <div className="flex items-center justify-between mb-2">
@@ -1012,53 +1250,68 @@ const PublicRegistration: React.FC = () => {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <input
-                                            required
-                                            type="tel"
-                                            inputMode="numeric"
-                                            autoComplete="cc-number"
-                                            placeholder="Número do Cartão"
-                                            value={ccNumber}
-                                            onChange={e => setCcNumber(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
-                                        />
-                                        <input
-                                            required
-                                            type="text"
-                                            autoComplete="cc-name"
-                                            placeholder="Nome Impresso no Cartão"
-                                            value={ccName}
-                                            onChange={e => setCcName(e.target.value)}
-                                            className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
-                                        />
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
                                             <input
-                                                required
-                                                type="text"
-                                                autoComplete="cc-exp"
-                                                placeholder="Validade (MM/AAAA)"
-                                                maxLength={7}
-                                                value={ccExpiry}
-                                                onChange={(e) => {
-                                                    let v = e.target.value.replace(/\D/g, '');
-                                                    if (v.length >= 2) {
-                                                        v = v.substring(0, 2) + '/' + v.substring(2, 6);
-                                                    }
-                                                    setCcExpiry(v);
-                                                }}
-                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
-                                            />
-                                            <input
-                                                required
                                                 type="tel"
                                                 inputMode="numeric"
-                                                autoComplete="cc-csc"
-                                                placeholder="CVV"
-                                                value={ccCcv}
-                                                onChange={e => setCcCcv(e.target.value)}
-                                                maxLength={4}
+                                                autoComplete="cc-number"
+                                                placeholder="Número do Cartão"
+                                                value={ccNumber}
+                                                onChange={e => {
+                                                    const value = digitsOnly(e.target.value).slice(0, 19);
+                                                    setCcNumber(value.replace(/(\d{4})(?=\d)/g, '$1 '));
+                                                }}
+                                                aria-invalid={Boolean(fieldErrors.ccNumber)}
                                                 className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
                                             />
+                                            <FieldError message={fieldErrors.ccNumber} />
+                                        </div>
+                                        <div>
+                                            <input
+                                                type="text"
+                                                autoComplete="cc-name"
+                                                placeholder="Nome Impresso no Cartão"
+                                                value={ccName}
+                                                onChange={e => setCcName(e.target.value)}
+                                                aria-invalid={Boolean(fieldErrors.ccName)}
+                                                className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                            />
+                                            <FieldError message={fieldErrors.ccName} />
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    autoComplete="cc-exp"
+                                                    placeholder="Validade (MM/AAAA)"
+                                                    maxLength={7}
+                                                    value={ccExpiry}
+                                                    onChange={(e) => {
+                                                        let v = e.target.value.replace(/\D/g, '');
+                                                        if (v.length >= 2) {
+                                                            v = v.substring(0, 2) + '/' + v.substring(2, 6);
+                                                        }
+                                                        setCcExpiry(v);
+                                                    }}
+                                                    aria-invalid={Boolean(fieldErrors.ccExpiry)}
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                />
+                                                <FieldError message={fieldErrors.ccExpiry} />
+                                            </div>
+                                            <div>
+                                                <input
+                                                    type="tel"
+                                                    inputMode="numeric"
+                                                    autoComplete="cc-csc"
+                                                    placeholder="CVV"
+                                                    value={ccCcv}
+                                                    onChange={e => setCcCcv(digitsOnly(e.target.value).slice(0, 4))}
+                                                    maxLength={4}
+                                                    aria-invalid={Boolean(fieldErrors.ccCcv)}
+                                                    className="w-full px-4 py-3 bg-brand-surface border border-brand-border rounded-xl text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-brand-muted"
+                                                />
+                                                <FieldError message={fieldErrors.ccCcv} />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1076,13 +1329,18 @@ const PublicRegistration: React.FC = () => {
                                 <User size={14} /> Dados Pessoais
                             </h3>
 
-                            <input
-                                required
-                                placeholder="Nome Completo"
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                            />
+                            <div>
+                                <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-name">Nome completo</label>
+                                <input
+                                    id="enrollment-name"
+                                    placeholder="Nome e sobrenome"
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    aria-invalid={Boolean(fieldErrors.name)}
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                />
+                                <FieldError message={fieldErrors.name} />
+                            </div>
 
                             {contractData?.isDependent ? (
                                 <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
@@ -1092,27 +1350,40 @@ const PublicRegistration: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <input
-                                        required
-                                        placeholder="CPF"
-                                        value={cpf}
-                                        onChange={e => setCpf(e.target.value)}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                    />
-                                    <input
-                                        required
-                                        placeholder="WhatsApp (com DDD)"
-                                        value={phone}
-                                        onChange={e => {
-                                            let v = e.target.value.replace(/\D/g, '');
-                                            // Mask: (XX) XXXXX-XXXX
-                                            if (v.length > 11) v = v.substring(0, 11);
-                                            if (v.length > 2) v = `(${v.substring(0, 2)}) ${v.substring(2)}`;
-                                            if (v.length > 10) v = `${v.substring(0, 10)}-${v.substring(10)}`;
-                                            setPhone(v);
-                                        }}
-                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                    />
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-cpf">CPF</label>
+                                        <input
+                                            id="enrollment-cpf"
+                                            inputMode="numeric"
+                                            autoComplete="off"
+                                            placeholder="000.000.000-00"
+                                            value={cpf}
+                                            onChange={e => setCpf(formatCpf(e.target.value))}
+                                            aria-invalid={Boolean(fieldErrors.cpf)}
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        />
+                                        <FieldError message={fieldErrors.cpf} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-phone">WhatsApp com DDD</label>
+                                        <input
+                                            id="enrollment-phone"
+                                            inputMode="tel"
+                                            autoComplete="tel"
+                                            placeholder="(00) 00000-0000"
+                                            value={phone}
+                                            onChange={e => {
+                                                let v = e.target.value.replace(/\D/g, '');
+                                                if (v.length > 11) v = v.substring(0, 11);
+                                                if (v.length > 2) v = `(${v.substring(0, 2)}) ${v.substring(2)}`;
+                                                if (v.length > 10) v = `${v.substring(0, 10)}-${v.substring(10)}`;
+                                                setPhone(v);
+                                            }}
+                                            aria-invalid={Boolean(fieldErrors.phone)}
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        />
+                                        <FieldError message={fieldErrors.phone} />
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1124,28 +1395,50 @@ const PublicRegistration: React.FC = () => {
                                 <MapPin size={14} /> Endereço
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <input
-                                    required
-                                    placeholder="CEP"
-                                    value={postalCode}
-                                    onChange={e => setPostalCode(e.target.value)}
-                                    className="col-span-1 w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                />
-                                <input
-                                    required
-                                    placeholder="Número"
-                                    value={addressNumber}
-                                    onChange={e => setAddressNumber(e.target.value)}
-                                    className="col-span-2 w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                                />
+                                <div className="col-span-1">
+                                    <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-cep">CEP</label>
+                                    <input
+                                        id="enrollment-cep"
+                                        inputMode="numeric"
+                                        autoComplete="postal-code"
+                                        placeholder="00000-000"
+                                        value={postalCode}
+                                        onChange={e => {
+                                            const value = digitsOnly(e.target.value).slice(0, 8);
+                                            setPostalCode(value.length > 5 ? `${value.slice(0, 5)}-${value.slice(5)}` : value);
+                                        }}
+                                        aria-invalid={Boolean(fieldErrors.postalCode)}
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    />
+                                    <FieldError message={fieldErrors.postalCode} />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-number">Número</label>
+                                    <input
+                                        id="enrollment-number"
+                                        autoComplete="address-line2"
+                                        placeholder="Número ou S/N"
+                                        value={addressNumber}
+                                        onChange={e => setAddressNumber(e.target.value)}
+                                        aria-invalid={Boolean(fieldErrors.addressNumber)}
+                                        className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                    />
+                                    <FieldError message={fieldErrors.addressNumber} />
+                                </div>
                             </div>
-                            <input
-                                required
-                                placeholder="Endereço Completo (Rua, Bairro...)"
-                                value={address}
-                                onChange={e => setAddress(e.target.value)}
-                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                            />
+                            <div>
+                                <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-address">Endereço completo</label>
+                                <input
+                                    id="enrollment-address"
+                                    autoComplete="street-address"
+                                    placeholder="Rua, bairro e cidade"
+                                    value={address}
+                                    onChange={e => setAddress(e.target.value)}
+                                    aria-invalid={Boolean(fieldErrors.address)}
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                />
+                                <FieldError message={fieldErrors.address} />
+                            </div>
                         </div>
                         )}
 
@@ -1154,22 +1447,68 @@ const PublicRegistration: React.FC = () => {
                             <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
                                 <Lock size={14} /> Acesso ao Portal
                             </h3>
-                            <input
-                                type="email"
-                                required
-                                placeholder="Seu melhor e-mail"
-                                value={email}
-                                onChange={e => setEmail(e.target.value)}
-                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                            />
-                            <input
-                                type="password"
-                                required
-                                placeholder="Crie uma senha"
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
-                            />
+                            <div>
+                                <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-email">E-mail de acesso</label>
+                                <input
+                                    id="enrollment-email"
+                                    type="email"
+                                    autoComplete="email"
+                                    placeholder="voce@exemplo.com"
+                                    value={email}
+                                    readOnly={resumeAuthenticated}
+                                    onChange={e => setEmail(e.target.value)}
+                                    aria-invalid={Boolean(fieldErrors.email)}
+                                    className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted read-only:opacity-70"
+                                />
+                                <FieldError message={fieldErrors.email} />
+                            </div>
+                            {resumeAuthenticated ? (
+                                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+                                    <CheckCircle size={18} className="shrink-0 mt-0.5" />
+                                    <p className="text-xs font-semibold">Conta confirmada. Você continuará exatamente da etapa salva.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-password">Crie uma senha</label>
+                                        <div className="relative">
+                                            <input
+                                                id="enrollment-password"
+                                                type={showPassword ? 'text' : 'password'}
+                                                autoComplete="new-password"
+                                                placeholder="Mínimo de 8 caracteres"
+                                                value={password}
+                                                onChange={e => setPassword(e.target.value)}
+                                                aria-invalid={Boolean(fieldErrors.password)}
+                                                className="w-full px-5 py-4 pr-12 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(value => !value)}
+                                                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-muted"
+                                            >
+                                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                        <FieldError message={fieldErrors.password} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-password-confirmation">Confirme a senha</label>
+                                        <input
+                                            id="enrollment-password-confirmation"
+                                            type={showPassword ? 'text' : 'password'}
+                                            autoComplete="new-password"
+                                            placeholder="Digite novamente"
+                                            value={passwordConfirmation}
+                                            onChange={e => setPasswordConfirmation(e.target.value)}
+                                            aria-invalid={Boolean(fieldErrors.passwordConfirmation)}
+                                            className="w-full px-5 py-4 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text focus:ring-2 focus:ring-[#002366] outline-none transition-all placeholder:text-brand-muted"
+                                        />
+                                        <FieldError message={fieldErrors.passwordConfirmation} />
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <button
@@ -1177,11 +1516,11 @@ const PublicRegistration: React.FC = () => {
                             disabled={loading}
                             className="w-full py-5 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2 mt-6 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            {loading ? <Loader2 className="animate-spin" /> : <>Confirmar Matrícula <ArrowRight size={18} /></>}
+                            {loading ? <Loader2 className="animate-spin" /> : <>Revisar e assinar <ArrowRight size={18} /></>}
                         </button>
 
                         <p className="text-center text-[10px] text-brand-muted font-medium">
-                            Ao clicar em Confirmar, você aceita os termos de serviço e a política de privacidade da escola.
+                            Na próxima etapa você poderá ler o contrato antes de assinar.
                         </p>
                     </form>
                 </div>
@@ -1197,18 +1536,25 @@ const PublicRegistration: React.FC = () => {
                     studentName={contratanteName.toUpperCase()}
                     studentCPF={contratanteCpf}
                     dependentName={beneficiaryName}
-                    studentAddress={`${address}, ${addressNumber} - ${postalCode}`}
-                    studentEmail={email}
-                    studentPhone={phone}
-                    planName={contractData.planDuration === 12 ? 'Plano Anual' : contractData.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
+                    studentAddress={contratanteAddress}
+                    studentEmail={contratanteEmail}
+                    studentPhone={contratantePhone}
+                    planName={contractData.planDuration === 0 ? 'Plano Avulso' : contractData.planDuration === 12 ? 'Plano Anual' : contractData.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
                     planValue={Number(contractData.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    totalValue={(Number(contractData.value || 0) * (contractData.planDuration || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    totalValue={quote.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     planDuration={contractData.planDuration ?? 12}
                     startDate={getContractDates().startDate}
                     endDate={getContractDates().endDate}
                     dueDay={contractData.dueDay || 10}
                     classFrequency={contractData.classesPerWeek || 2}
                     school={school || undefined}
+                    enrollmentFee={quote.enrollmentFee}
+                    proRataValue={quote.proRataValue}
+                    dueToday={quote.dueToday}
+                    firstDueDate={formatDateBr(quote.firstDueDate)}
+                    processingStage={processingStage}
+                    processingError={error}
+                    correlationId={correlationId}
                 />
             )}
 
@@ -1219,17 +1565,19 @@ const PublicRegistration: React.FC = () => {
                         studentName={contratanteName.toUpperCase()}
                         studentCPF={contratanteCpf}
                         dependentName={beneficiaryName}
-                        studentAddress={`${address}, ${addressNumber} - ${postalCode}`}
-                        studentEmail={email}
-                        studentPhone={phone}
-                        planName={contractData?.planDuration === 12 ? 'Plano Anual' : contractData?.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
+                        studentAddress={contratanteAddress}
+                        studentEmail={contratanteEmail}
+                        studentPhone={contratantePhone}
+                        planName={contractData?.planDuration === 0 ? 'Plano Avulso' : contractData?.planDuration === 12 ? 'Plano Anual' : contractData?.planDuration === 6 ? 'Plano Semestral' : 'Plano Mensal'}
                         planValue={Number(contractData?.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        totalValue={(Number(contractData?.value || 0) * (contractData?.planDuration || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        totalValue={quote.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         planDuration={contractData?.planDuration ?? 12}
                         startDate={getContractDates().startDate}
                         endDate={getContractDates().endDate}
                         dueDay={contractData?.dueDay || 10}
                         classFrequency={contractData?.classesPerWeek || 2}
+                        enrollmentFee={quote.enrollmentFee}
+                        proRataValue={quote.proRataValue}
                         acceptedAt={signatureData?.acceptedAt}
                         userIp={signatureData?.ip}
                         subscriptionId={signatureData?.subId}

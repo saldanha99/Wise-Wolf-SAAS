@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Users, Save, Loader, AlertCircle } from 'lucide-react';
+import { whatsappService } from '../services/whatsappService';
+import { Users, Save, Loader } from 'lucide-react';
 
 interface GroupSelectorProps {
     user: any;
@@ -10,9 +11,6 @@ interface GroupSelectorProps {
     description?: string;
     dbColumn?: string;
 }
-
-const EVOLUTION_API_URL = "https://api.2b.app.br";
-const GLOBAL_API_KEY = "8828462c98512411df3acfe3df4e48a1";
 
 const GroupSelector: React.FC<GroupSelectorProps> = ({
     user,
@@ -53,28 +51,10 @@ const GroupSelector: React.FC<GroupSelectorProps> = ({
     const fetchGroups = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`, {
-                method: 'GET',
-                headers: {
-                    'apikey': GLOBAL_API_KEY,
-                    'Content-Type': 'application/json'
-                }
-            });
+            const result = await whatsappService.fetchGroups(undefined, instanceName);
+            if (!result.success) throw new Error(result.error || 'Falha ao carregar grupos.');
 
-            const data = await response.json();
-            // ... parsing logic same as before ...
-            let groupsList: any[] = [];
-            if (Array.isArray(data)) {
-                groupsList = data;
-            } else if (data && Array.isArray(data.groups)) {
-                groupsList = data.groups;
-            } else if (data && Array.isArray(data.data)) {
-                groupsList = data.data;
-            } else if (data && typeof data === 'object') {
-                groupsList = Object.values(data).filter((item: any) => item && item.id && item.subject);
-            }
-
-            const validGroups = groupsList
+            const validGroups = result.groups
                 .filter(g => g && g.id && g.subject)
                 .sort((a, b) => a.subject.localeCompare(b.subject));
 

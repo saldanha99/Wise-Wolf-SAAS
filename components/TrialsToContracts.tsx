@@ -181,6 +181,16 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setMonthlyFee(price);
     }, [duration, frequency, isManualPrice, pricingMatrix]);
 
+    // Evita copiar um link antigo depois de alterar preço, plano ou agenda.
+    useEffect(() => {
+        setGeneratedLink('');
+        setCopied(false);
+    }, [
+        wizardOpp?.id, duration, frequency, dueDay, monthlyFee,
+        chargeEnrollmentFee, enrollmentFee, selectedProfessor,
+        classSchedule, enableProRata, billingStartMonth,
+    ]);
+
     // Auto-resize schedule slots based on frequency
     useEffect(() => {
         setClassSchedule(prev => {
@@ -240,6 +250,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 .from('enrollment_links')
                 .select('*')
                 .in('opportunity_id', oppIds)
+                .eq('status', 'PENDING')
                 .order('created_at', { ascending: false });
 
             const linkMap: Record<string, EnrollmentLink> = {};
@@ -526,37 +537,25 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 opportunityId: wizardOpp.id,
                 studentName: wizardOpp.student_name,
                 studentPhone: wizardOpp.student_phone,
+                // Usado apenas pela RPC para salvar a URL completa que será enviada
+                // nos lembretes. A RPC remove este campo do payload público.
+                _linkOrigin: APP_BASE_URL,
                 // Schedule normalizado (compatível com RegistrationLinkGenerator)
                 schedule: normalizedSchedule.length > 0 ? normalizedSchedule : null,
             };
 
-            const jsonStr = JSON.stringify(data);
-            const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-            const linkToken = `trial_${wizardOpp.id}_${Date.now()}`;
-            const url = `${APP_BASE_URL}/matricula?data=${base64}`;
-
-            // Save to enrollment_links
-            const { error: linkErr } = await supabase
-                .from('enrollment_links')
-                .insert({
-                    tenant_id: tenantId,
-                    opportunity_id: wizardOpp.id,
-                    link_token: linkToken,
-                    link_url: url,
-                    student_name: wizardOpp.student_name,
-                    student_phone: wizardOpp.student_phone,
-                    professor_id: selectedProfessor || null,
-                    plan_duration: duration,
-                    classes_per_week: frequency,
-                    monthly_fee: monthlyFee,
-                    due_day: dueDay,
-                    status: 'PENDING',
-                });
-
-            if (linkErr) {
-                console.error('Enrollment link error:', linkErr);
-                throw new Error('Erro ao salvar link: ' + linkErr.message);
+            // O PublicRegistration só aceita ofertas autoritativas salvas no banco.
+            // O formato legado ?data= era rejeitado (e permitia adulterar preço).
+            const { data: offerId, error: offerErr } = await supabase.rpc(
+                'create_enrollment_offer',
+                { p_payload: data }
+            );
+            if (offerErr || !offerId) {
+                console.error('create_enrollment_offer failed:', offerErr);
+                throw new Error('Não foi possível gerar a oferta segura de matrícula.');
             }
+
+            const url = `${APP_BASE_URL}/matricula?offer=${offerId}`;
 
             setGeneratedLink(url);
 

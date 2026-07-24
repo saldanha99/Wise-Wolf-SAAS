@@ -1,14 +1,17 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Config
-const SUPABASE_URL = 'https://dvalxbtngopxopzcbfdm.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YWx4YnRuZ29weG9wemNiZmRtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk4OTAxOSwiZXhwIjoyMDgyNTY1MDE5fQ.nnDE2JPlrWgAwGXbkDXHc315pKUiMGNv2-dad2IY3TY';
-// Note: We need SERVICE_ROLE_KEY to delete users if RLS prevents it, but ANON might work if policies allow.
-// Actually, usually delete requires admin rights. I'll check if I have the service key in env or just use what I have.
-// In previous steps, I used the key from the file I assumed was service role or capable.
-// The key above seems to be the ANON key (usually starts with eyJ and has "role":"anon").
-// Attempting with the key I have. If it fails, I'll ask for service key or try to find it.
+function requireEnv(name) {
+    const value = process.env[name]?.trim();
+    if (!value) {
+        throw new Error(`Missing required environment variable: ${name}`);
+    }
+    return value;
+}
+
+// Administrative scripts must fail closed. Never add key or URL fallbacks here.
+const SUPABASE_URL = requireEnv('SUPABASE_URL');
+const SUPABASE_KEY = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

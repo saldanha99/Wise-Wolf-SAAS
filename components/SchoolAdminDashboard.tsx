@@ -37,9 +37,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
     payroll: 0,
     activeStudents: 0,
     totalLeads: 0,
-    successRate: 0,
-    presencialRevenue: 0,
-    onlineRevenue: 0
+    successRate: 0
   });
 
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
@@ -63,7 +61,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       // 1. Fetch Students (MRR Forecast & Active Count)
       const { data: students } = await supabase
         .from('profiles')
-        .select('id, monthly_fee, status_financial, modality')
+        .select('id, monthly_fee, status_financial')
         .eq('tenant_id', tenantId)
         .eq('role', 'STUDENT');
 
@@ -118,14 +116,6 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       const overdueCount = (paymentsForPending || []).filter(p => p.status === 'OVERDUE').length;
 
       const ticketAvg = activeStudents > 0 ? realRevenue / activeStudents : 0;
-
-      // Presencial vs Online Estimates (using Real Revenue ratio)
-      const presencialCount = studentList.filter(s => s.modality === 'PRESENCIAL').length;
-      const onlineCount = studentList.filter(s => s.modality === 'ONLINE').length;
-      const totalModality = presencialCount + onlineCount || 1;
-
-      const presencialRevenue = (presencialCount / totalModality) * realRevenue;
-      const onlineRevenue = (onlineCount / totalModality) * realRevenue;
 
       // 3. Fetch Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
       const { data: teachersData } = await supabase.rpc('get_tenant_teacher_pay');
@@ -192,9 +182,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
         payroll,
         activeStudents,
         totalLeads: leadsCount || 0,
-        successRate,
-        presencialRevenue,
-        onlineRevenue
+        successRate
       });
 
     } catch (e) {
@@ -359,7 +347,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h3 className="text-brand-text font-bold text-sm">Fluxo Financeiro</h3>
-                    <p className="text-brand-muted text-xs mt-0.5">Visão geral de receitas (Presencial x Online)</p>
+                    <p className="text-brand-muted text-xs mt-0.5">Entradas recebidas e previsão contratada</p>
                   </div>
                   <div className="flex items-center gap-2 bg-brand-surface-2 border border-brand-border rounded-lg px-2.5 py-1.5">
                     <Calendar size={14} className="text-brand-muted" />
@@ -371,20 +359,20 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                 <div className="flex items-center gap-8 mb-8">
                   <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-400" />
-                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Presencial (Prop.)</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Recebido no mês</span>
                     </div>
                     <span className="text-brand-text text-xl font-bold leading-tight">
-                      R$ {stats.presencialRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                      R$ {stats.realRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div className="bg-brand-surface-2 rounded-xl p-3 border border-brand-border flex-1">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-purple-400" />
-                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">Online (Prop.)</span>
+                      <span className="w-2 h-2 rounded-full bg-blue-400" />
+                      <span className="text-brand-muted text-[10px] uppercase tracking-wider">MRR contratado</span>
                     </div>
                     <span className="text-brand-text text-xl font-bold leading-tight">
-                      R$ {stats.onlineRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                      R$ {stats.mrrForecast.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
                     </span>
                   </div>
                 </div>
