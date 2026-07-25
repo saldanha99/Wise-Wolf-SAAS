@@ -17,9 +17,19 @@ const jsonResponse = (
   });
 
 const hasUsefulContent = (
-  log: { content?: string | null; performance_notes?: string | null },
+  log: {
+    content?: string | null;
+    notes?: string | null;
+    observations?: string | null;
+    student_difficulties?: string | null;
+  },
 ): boolean =>
-  Boolean(log.content?.trim() || log.performance_notes?.trim());
+  Boolean(
+    log.content?.trim() ||
+      log.notes?.trim() ||
+      log.observations?.trim() ||
+      log.student_difficulties?.trim(),
+  );
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -119,7 +129,9 @@ serve(async (req) => {
 
     const { data: logs, error: logsError } = await supabaseClient
       .from("class_logs")
-      .select("content, performance_notes, created_at")
+      .select(
+        "content, notes, observations, student_difficulties, created_at",
+      )
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
       .limit(10);
@@ -156,8 +168,11 @@ serve(async (req) => {
       : "gemini-3.6-flash";
     const logsText = usefulLogs.map((log) => {
       const content = log.content?.trim() || "Aula registrada";
-      const notes = log.performance_notes?.trim() ||
-        "Sem observações adicionais";
+      const notes = [
+        log.notes?.trim(),
+        log.observations?.trim(),
+        log.student_difficulties?.trim(),
+      ].filter(Boolean).join(" · ") || "Sem observações adicionais";
       return `- ${content}: ${notes}`;
     }).join("\n");
     const prompt =
