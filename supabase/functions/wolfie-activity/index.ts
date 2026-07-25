@@ -148,8 +148,8 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIO_BASE64_LENGTH = Math.ceil(MAX_AUDIO_BYTES / 3) * 4;
 const MAX_TEXT_LENGTH = 12_000;
-const AI_DEADLINE_MS = 36_000;
-const AI_ATTEMPT_MS = 14_000;
+const AI_DEADLINE_MS = 38_000;
+const AI_ATTEMPT_MS = 30_000;
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",
   "google/gemini-3.6-flash",
