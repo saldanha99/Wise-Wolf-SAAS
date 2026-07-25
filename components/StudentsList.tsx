@@ -76,8 +76,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         .select('student_id, teacher_id, start_date, day_of_week, time_slot, teacher:teacher_id(id, full_name)')
         .eq('tenant_id', tenantId);
 
-      console.log('Bookings Data:', bookingsData);
-
       if (studentsData) {
         const mappedStudents = studentsData.map(s => {
           // Normalize IDs to string for comparison safety
