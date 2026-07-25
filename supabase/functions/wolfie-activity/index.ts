@@ -372,6 +372,11 @@ function providerFinishReason(payload: unknown): string {
     : "";
 }
 
+function providerErrorCode(payload: unknown): string {
+  if (!isJsonObject(payload) || !isJsonObject(payload.error)) return "";
+  return boundedString(payload.error.code, 80) || "provider_error";
+}
+
 async function callOpenRouterJson(
   apiKey: string,
   taskPrompt: string,
@@ -410,7 +415,7 @@ Return only one valid JSON object matching the exact requested schema. No markdo
                 content: `<activity_task>\n${taskPrompt}\n</activity_task>`,
               },
             ],
-            max_tokens: 5_200,
+            max_tokens: 3_600,
             temperature: 0.2,
             response_format: { type: "json_object" },
           }),
@@ -435,6 +440,10 @@ Return only one valid JSON object matching the exact requested schema. No markdo
         model,
         finishReason: providerFinishReason(payload) || "unknown",
         contentLength: text?.length ?? 0,
+        errorCode: providerErrorCode(payload) || "none",
+        payloadKeys: isJsonObject(payload)
+          ? Object.keys(payload).slice(0, 8)
+          : [],
       });
     } catch (error) {
       const timedOut = error instanceof DOMException &&
