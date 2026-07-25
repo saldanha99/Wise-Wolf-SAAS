@@ -529,7 +529,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             </div>
           </div>
           <div className="h-72 w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={100}>
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={0}
+              minHeight={0}
+              debounce={100}
+              initialDimension={{ width: 800, height: 288 }}
+            >
               <LineChart data={chartData.length > 0 ? chartData : [{ name: '...', aulas: 0 }]}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" className="dark:stroke-slate-800" />
                 <XAxis

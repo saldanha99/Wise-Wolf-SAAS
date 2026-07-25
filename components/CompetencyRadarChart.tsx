@@ -71,7 +71,14 @@ const CompetencyRadarChart: React.FC<CompetencyRadarChartProps> = ({ currentData
             </div>
 
             <div className="h-72 sm:h-80 w-full min-w-0 relative z-10">
-                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={100}>
+                <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={0}
+                    debounce={100}
+                    initialDimension={{ width: 480, height: 288 }}
+                >
                     <RadarChart cx="50%" cy="50%" outerRadius="62%" data={chartData} margin={{ top: 12, right: 20, bottom: 12, left: 20 }}>
                         <PolarGrid stroke="#e2e8f0" strokeDasharray="3 3" className="dark:opacity-10" />
                         <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
