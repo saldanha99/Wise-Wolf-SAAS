@@ -58,9 +58,11 @@ const rubricLabels: Record<keyof EvaluationRubric, string> = {
 function ScoreHero({
   score,
   xp,
+  label = 'de 100',
 }: {
   score: number;
   xp?: number;
+  label?: string;
 }) {
   const normalizedScore = Math.max(0, Math.min(100, Math.round(score)));
   return (
@@ -82,7 +84,7 @@ function ScoreHero({
               {normalizedScore}
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-brand-muted">
-              de 100
+              {label}
             </span>
           </div>
         </div>
@@ -100,7 +102,16 @@ function ScoreHero({
 }
 
 function QuizSummary({ result }: { result: QuizResult }) {
-  const mistakes = result.details.filter((detail) => !detail.correct);
+  const firstAttemptMistakes = result.details.filter(
+    (detail) => !detail.correct,
+  );
+  const masteryCount =
+    result.masteryCount ??
+    result.details.filter((detail) => detail.mastered ?? detail.correct).length;
+  const masteredAfterRetry = result.details.filter(
+    (detail) => detail.masteredAfterRetry,
+  ).length;
+  const unresolved = result.total - masteryCount;
   return (
     <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -109,44 +120,67 @@ function QuizSummary({ result }: { result: QuizResult }) {
             Seu desempenho
           </p>
           <h3 className="mt-2 text-xl font-black text-brand-text">
-            {result.correctCount} de {result.total} situações dominadas
+            {result.correctCount} de {result.total} na primeira tentativa
           </h3>
+          <p className="mt-1 text-sm leading-6 text-brand-muted">
+            Domínio após as reformulações: {masteryCount} de {result.total}.
+          </p>
         </div>
         <span className="rounded-full bg-brand-surface-2 px-3 py-1.5 text-xs font-bold text-brand-muted">
-          {mistakes.length === 0
-            ? 'Nenhum ponto frágil'
-            : `${mistakes.length} ${mistakes.length === 1 ? 'ponto para rever' : 'pontos para rever'}`}
+          {unresolved === 0
+            ? masteredAfterRetry > 0
+              ? `${masteredAfterRetry} ${masteredAfterRetry === 1 ? 'ajuste dominado' : 'ajustes dominados'} após retry`
+              : 'Domínio direto, sem retry'
+            : `${unresolved} ${unresolved === 1 ? 'ponto ainda frágil' : 'pontos ainda frágeis'}`}
         </span>
       </div>
 
-      {mistakes.length ? (
+      {firstAttemptMistakes.length ? (
         <div className="mt-5 space-y-3">
-          {mistakes.map((detail, index) => (
-            <article
-              key={`${detail.id}-${index}`}
-              className="rounded-2xl border border-brand-border bg-brand-bg p-4"
-            >
-              <div className="flex items-center gap-2 text-sm font-black text-brand-text">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-surface-2 text-xs text-brand-accent">
-                  {index + 1}
-                </span>
-                {detail.term || 'Revise esta escolha'}
-                {detail.translation ? (
-                  <span className="font-normal text-brand-muted">
-                    · {detail.translation}
+          {firstAttemptMistakes.map((detail, index) => {
+            const mastered = detail.mastered ?? detail.correct;
+            return (
+              <article
+                key={`${detail.id}-${index}`}
+                className={`rounded-2xl border p-4 ${
+                  mastered
+                    ? 'border-green-300 bg-green-50 dark:border-green-900/60 dark:bg-green-950/20'
+                    : 'border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2 text-sm font-black text-brand-text">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-surface-2 text-xs text-brand-accent">
+                    {index + 1}
                   </span>
-                ) : null}
-              </div>
-              <p className="mt-2 text-sm leading-6 text-brand-muted">
-                {detail.explanationPt}
-              </p>
-              {detail.example ? (
-                <p className="mt-2 rounded-xl bg-brand-surface-2 p-3 text-sm italic leading-6 text-brand-text">
-                  “{detail.example}”
+                  {detail.term || 'Revise esta escolha'}
+                  {detail.translation ? (
+                    <span className="font-normal text-brand-muted">
+                      · {detail.translation}
+                    </span>
+                  ) : null}
+                  <span
+                    className={`ml-auto rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${
+                      mastered
+                        ? 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                    }`}
+                  >
+                    {mastered
+                      ? 'Dominado após retry'
+                      : 'Ainda precisa praticar'}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-brand-muted">
+                  {detail.explanationPt}
                 </p>
-              ) : null}
-            </article>
-          ))}
+                {detail.example ? (
+                  <p className="mt-2 rounded-xl bg-brand-surface-2 p-3 text-sm italic leading-6 text-brand-text">
+                    “{detail.example}”
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-green-300 bg-green-50 p-4 dark:border-green-900/60 dark:bg-green-950/20">
@@ -393,7 +427,11 @@ export function WolfieActivitySummary({
               <div className="mx-auto mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent">
                 <Trophy size={24} aria-hidden="true" />
               </div>
-              <ScoreHero score={result.score} xp={result.xpEarned} />
+              <ScoreHero
+                score={result.score}
+                xp={result.xpEarned}
+                label={isQuizResult(result) ? '1ª tentativa' : 'de 100'}
+              />
               <div className="mt-5 border-t border-brand-border pt-4 text-center">
                 <p className="text-xs font-black uppercase tracking-wider text-brand-accent">
                   {subject.shortTitle} · {session.cefr_level}

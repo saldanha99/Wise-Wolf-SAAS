@@ -10,6 +10,13 @@ interface WolfieTutorProps {
     user: any;
     voiceMode?: boolean; // If true, starts directly in voice mode (used by WolfieLiveCall wrapper)
     topic?: string;
+    experienceMode?: string;
+    correctionMode?: string;
+    languageMode?: string;
+    difficulty?: string;
+    scenario?: string | Record<string, unknown>;
+    studentGoal?: string;
+    targetSkill?: string;
     onClose?: () => void;
 }
 
@@ -17,6 +24,21 @@ interface CorrectionData {
     original: string;
     corrected: string;
     explanation_pt: string;
+    naturalVersion?: string;
+    priority?: 'low' | 'medium' | 'high';
+    usefulChunk?: string;
+    retryRequired?: boolean;
+}
+
+interface TurnGuidance {
+    currentStage: string;
+    strengths: string[];
+    priorities: string[];
+    nextAction: string;
+    needsExternalVerification: boolean;
+    verificationReason: string;
+    retryRequired: boolean;
+    sessionScore: number | null;
 }
 
 interface VocabTerm {
@@ -52,6 +74,136 @@ interface Message {
 
 type CallState = 'IDLE' | 'LISTENING' | 'THINKING' | 'SPEAKING';
 
+const EMPTY_TURN_GUIDANCE: TurnGuidance = {
+    currentStage: '',
+    strengths: [],
+    priorities: [],
+    nextAction: '',
+    needsExternalVerification: false,
+    verificationReason: '',
+    retryRequired: false,
+    sessionScore: null,
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+
+const firstString = (
+    record: Record<string, unknown>,
+    ...keys: string[]
+): string => {
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return '';
+};
+
+const firstBoolean = (
+    record: Record<string, unknown>,
+    ...keys: string[]
+): boolean => {
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === 'boolean') return value;
+        if (value === 'true' || value === 1) return true;
+    }
+    return false;
+};
+
+const firstStringArray = (
+    record: Record<string, unknown>,
+    ...keys: string[]
+): string[] => {
+    for (const key of keys) {
+        const value = record[key];
+        if (Array.isArray(value)) {
+            return value
+                .filter((item): item is string => typeof item === 'string')
+                .map(item => item.trim())
+                .filter(Boolean);
+        }
+        if (typeof value === 'string' && value.trim()) return [value.trim()];
+    }
+    return [];
+};
+
+const firstNumber = (
+    record: Record<string, unknown>,
+    ...keys: string[]
+): number | null => {
+    for (const key of keys) {
+        const value = record[key];
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return null;
+};
+
+const normalizeCorrection = (value: unknown): CorrectionData | null => {
+    const raw = asRecord(value);
+    const original = firstString(raw, 'original', 'originalText', 'original_text');
+    const corrected = firstString(raw, 'corrected', 'correctedText', 'corrected_text');
+    const explanation = firstString(
+        raw,
+        'explanation_pt',
+        'explanationPt',
+        'explanation',
+    );
+    const naturalVersion = firstString(
+        raw,
+        'naturalVersion',
+        'natural_version',
+        'naturalSentence',
+        'natural_sentence',
+    );
+    const priorityValue = firstString(raw, 'priority').toLowerCase();
+    const priority =
+        priorityValue === 'low' ||
+        priorityValue === 'medium' ||
+        priorityValue === 'high'
+            ? priorityValue
+            : undefined;
+    const usefulChunk = firstString(
+        raw,
+        'usefulChunk',
+        'useful_chunk',
+        'chunk',
+    );
+    const retryRequired = firstBoolean(
+        raw,
+        'retryRequired',
+        'retry_required',
+        'requiresRetry',
+        'requires_retry',
+    );
+
+    if (!original && !corrected && !explanation && !naturalVersion) return null;
+    return {
+        original,
+        corrected: corrected || naturalVersion,
+        explanation_pt: explanation,
+        naturalVersion: naturalVersion || undefined,
+        priority,
+        usefulChunk: usefulChunk || undefined,
+        retryRequired,
+    };
+};
+
+const normalizeCorrections = (
+    payload: Record<string, unknown>,
+): CorrectionData[] => {
+    const rawCorrections = Array.isArray(payload.corrections)
+        ? payload.corrections
+        : payload.correction
+            ? [payload.correction]
+            : [];
+    return rawCorrections
+        .map(normalizeCorrection)
+        .filter((item): item is CorrectionData => Boolean(item));
+};
+
 const IS_IOS = typeof navigator !== 'undefined' && (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -82,6 +234,9 @@ function getTTSSpeed(level: string): number {
 }
 
 type SpeechLanguage = 'pt' | 'en';
+type RecognitionLanguage = 'pt-BR' | 'en-US';
+
+const defaultRecognitionLanguage = (): RecognitionLanguage => 'en-US';
 
 const PORTUGUESE_MARKERS = new Set([
     'a', 'agora', 'ainda', 'aqui', 'as', 'com', 'como', 'da', 'das', 'de', 'do', 'dos',
@@ -111,6 +266,27 @@ function detectSpeechLanguage(text: string, fallback: SpeechLanguage = 'en'): Sp
     if (portugueseScore > englishScore) return 'pt';
     if (englishScore > portugueseScore) return 'en';
     return fallback;
+}
+
+function normalizedSpeechLanguage(
+    value: unknown,
+    fallback: SpeechLanguage,
+): SpeechLanguage {
+    if (typeof value !== 'string') return fallback;
+    const normalized = value.trim().toLocaleLowerCase('en-US');
+    if (normalized === 'pt' || normalized === 'pt-br' || normalized === 'portuguese') {
+        return 'pt';
+    }
+    if (normalized === 'en' || normalized === 'en-us' || normalized === 'english') {
+        return 'en';
+    }
+    return fallback;
+}
+
+interface WolfieBrainInput {
+    message?: string;
+    audioBase64?: string;
+    studentLanguage?: SpeechLanguage;
 }
 
 // ============================================================
@@ -169,7 +345,19 @@ const InlineQuiz: React.FC<{ quiz: QuizData }> = ({ quiz }) => {
 // ============================================================
 // MAIN COMPONENT — UNIFIED VOICE + TEXT
 // ============================================================
-const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topic: initialTopic, onClose }) => {
+const WolfieTutor: React.FC<WolfieTutorProps> = ({
+    user,
+    voiceMode = false,
+    topic: initialTopic,
+    experienceMode,
+    correctionMode,
+    languageMode,
+    difficulty,
+    scenario,
+    studentGoal,
+    targetSkill,
+    onClose,
+}) => {
     // --- Core State ---
     const [state, setState] = useState<CallState>('IDLE');
     const [messages, setMessages] = useState<Message[]>([]);
@@ -188,15 +376,29 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const [autoSpeakEnabled, setAutoSpeakEnabled] = useState(true);
     const [showTextInput, setShowTextInput] = useState(!voiceMode);
     const [showTranscript, setShowTranscript] = useState(false);
+    const [restartNonce, setRestartNonce] = useState(0);
+    const [isRestarting, setIsRestarting] = useState(false);
+    const [audioGestureReady, setAudioGestureReady] = useState(
+        () => !IS_IOS || !voiceMode,
+    );
+    const [recognitionLanguage, setRecognitionLanguage] =
+        useState<RecognitionLanguage>(() =>
+            defaultRecognitionLanguage(),
+        );
 
     // --- Overlay Cards (from agents) ---
     const [correction, setCorrection] = useState<CorrectionData | null>(null);
     const [translation, setTranslation] = useState<string | null>(null);
+    const [assistantLanguage, setAssistantLanguage] =
+        useState<SpeechLanguage>('en');
     const [vocabulary, setVocabulary] = useState<VocabData | null>(null);
     const [quiz, setQuiz] = useState<QuizData | null>(null);
+    const [turnGuidance, setTurnGuidance] = useState<TurnGuidance>(
+        EMPTY_TURN_GUIDANCE,
+    );
 
     // --- Session Timer ---
-    const [sessionStart] = useState<Date>(new Date());
+    const [sessionStart, setSessionStart] = useState<Date>(new Date());
     const [elapsed, setElapsed] = useState(0);
     const MAX_SESSION_MINUTES = 120; // 2h — antes era 30, encerrava antes da hora
 
@@ -205,12 +407,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
     // --- Refs ---
     const recognitionRef = useRef<any>(null);          // Web Speech API recognition
+    const recognitionLanguageRef = useRef<RecognitionLanguage>(
+        defaultRecognitionLanguage(),
+    );
     const isProcessingRef = useRef(false);             // Previne chamadas duplicadas ao wolfie-brain
+    const requestVersionRef = useRef(0);               // Invalida respostas antigas após fechar/reiniciar
+    const ttsRequestVersionRef = useRef(0);            // Impede áudio antigo após interrupções ou nova fala
     const recordingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Timeout do delay anti-eco
     const finalTranscriptRef = useRef<string>('');     // Acumula transcript enquanto segura o orb
     const englishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
     const lastSpokenTextRef = useRef<string>('');
+    const lastSpokenLanguageRef = useRef<SpeechLanguage>('en');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);      // fallback HTMLAudioElement (desktop)
     const audioCtxRef = useRef<AudioContext | null>(null);       // AudioContext — funciona em iOS após unlock
@@ -221,9 +429,68 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // iOS: elemento HTMLAudio "pré-desbloqueado" durante o toque — pode ser
     // re-usado com outro src em callbacks async (Apple documenta este padrão)
     const preUnlockedAudioRef = useRef<HTMLAudioElement | null>(null);
+    const audioStreamRef = useRef<MediaStream | null>(null);
+    const audioStreamRequestRef = useRef<Promise<MediaStream> | null>(null);
+    const audioStreamRequestVersionRef = useRef(0);
+    const isMountedRef = useRef(true);
     const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // só para visualização do orb
 
     const studentLevel = user.levelBadge || 'A1';
+
+    const releaseAudioStream = useCallback(() => {
+        audioStreamRequestVersionRef.current += 1;
+        audioStreamRequestRef.current = null;
+        const stream = audioStreamRef.current;
+        audioStreamRef.current = null;
+        stream?.getTracks().forEach(track => track.stop());
+        if (isMountedRef.current) setAudioStream(null);
+    }, []);
+
+    const ensureAudioStream = useCallback(() => {
+        if (
+            typeof navigator === 'undefined' ||
+            audioStreamRef.current ||
+            audioStreamRequestRef.current
+        ) {
+            return;
+        }
+
+        const mediaDevices = navigator.mediaDevices;
+        if (!mediaDevices?.getUserMedia) {
+            console.warn('Orb audio stream unavailable (orb ficará estático)');
+            return;
+        }
+
+        const request = mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        });
+        const requestVersion = ++audioStreamRequestVersionRef.current;
+        audioStreamRequestRef.current = request;
+        void request
+            .then(stream => {
+                if (
+                    !isMountedRef.current ||
+                    requestVersion !== audioStreamRequestVersionRef.current
+                ) {
+                    stream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+                audioStreamRef.current = stream;
+                setAudioStream(stream);
+            })
+            .catch(err => {
+                console.warn('Orb audio stream denied (orb ficará estático):', err);
+            })
+            .finally(() => {
+                if (audioStreamRequestRef.current === request) {
+                    audioStreamRequestRef.current = null;
+                }
+            });
+    }, []);
 
     // ============================================================
     // EFFECTS
@@ -276,7 +543,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             const enVoice = pickBestEnglish(voices);
             if (enVoice) {
                 englishVoiceRef.current = enVoice;
-                console.log('🎙️ EN voice selecionada:', enVoice.name, '|', enVoice.lang, '| remote:', enVoice.localService === false);
             }
 
             // ── Português BR ──
@@ -293,7 +559,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             if (!ptVoice) ptVoice = portugueseVoices[0] || null;
             if (ptVoice) {
                 ptBrVoiceRef.current = ptVoice;
-                console.log('🎙️ PT voice:', ptVoice.name, ptVoice.lang);
             }
         };
 
@@ -302,19 +567,39 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         return () => { window.speechSynthesis.onvoiceschanged = null; };
     }, []);
 
-    // Inicializa stream de áudio apenas para visualização do orb (não para transcrição)
+    // O stream visual do orb só é solicitado no primeiro gesto de gravação.
+    // Este efeito cuida apenas do ciclo de vida e da liberação do microfone.
     useEffect(() => {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => setAudioStream(stream))
-            .catch(err => console.warn('Orb audio stream denied (orb ficará estático):', err));
+        isMountedRef.current = true;
 
         return () => {
+            isMountedRef.current = false;
+            requestVersionRef.current += 1;
+            ttsRequestVersionRef.current += 1;
+            isProcessingRef.current = false;
             stopSpeaking();
             stopIOSKeepAlive();
-            recognitionRef.current?.abort();
-            setAudioStream(prev => { prev?.getTracks().forEach(t => t.stop()); return null; });
+            if (recordingDelayRef.current) {
+                clearTimeout(recordingDelayRef.current);
+                recordingDelayRef.current = null;
+            }
+            const recognition = recognitionRef.current;
+            recognitionRef.current = null;
+            if (recognition) {
+                recognition.onresult = null;
+                recognition.onerror = null;
+                recognition.onend = null;
+                try { recognition.abort(); } catch (_) {}
+            }
+            releaseAudioStream();
         };
     }, []);
+
+    useEffect(() => {
+        const nextLanguage = defaultRecognitionLanguage();
+        recognitionLanguageRef.current = nextLanguage;
+        setRecognitionLanguage(nextLanguage);
+    }, [languageMode]);
 
     // Session timer
     useEffect(() => {
@@ -331,66 +616,213 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
     // Carrega histórico da última sessão do aluno (persiste entre logins)
     useEffect(() => {
+        let cancelled = false;
         const loadLastSession = async () => {
             if (!user?.id) {
-                setIsLoadingHistory(false);
-                return;
-            }
-            // Uma atividade escolhida deve sempre abrir uma sessão nova e fiel ao
-            // tema atual. A memória pedagógica continua vindo do wolfie-brain,
-            // mas o histórico de outro tema não pode ser reaproveitado aqui.
-            if (initialTopic) {
-                setIsLoadingHistory(false);
+                if (!cancelled) setIsLoadingHistory(false);
                 return;
             }
             try {
-                // 1. Pega a sessão mais recente do aluno
-                const { data: lastSession } = await supabase
+                // Com um briefing explícito, retoma somente uma sessão ativa com
+                // o mesmo tema e a mesma configuração pedagógica. Nunca injeta
+                // turnos de outro assunto na experiência recém-escolhida.
+                let sessionQuery = supabase
                     .from('wolfie_sessions')
-                    .select('id, topic, started_at')
+                    .select('id, topic, started_at, last_activity_at, scenario_status, finished_at, student_level, experience_mode, correction_mode, language_mode, difficulty, scenario_context, student_goal, target_skill, current_stage')
                     .eq('student_id', user.id)
+                    .is('finished_at', null)
+                    .in('scenario_status', ['active', 'awaiting_retry']);
+
+                if (initialTopic) {
+                    sessionQuery = sessionQuery
+                        .eq('topic', initialTopic)
+                        .eq('student_level', studentLevel);
+                    if (experienceMode) {
+                        sessionQuery = sessionQuery.eq(
+                            'experience_mode',
+                            experienceMode,
+                        );
+                    }
+                    if (correctionMode) {
+                        sessionQuery = sessionQuery.eq(
+                            'correction_mode',
+                            correctionMode,
+                        );
+                    }
+                    if (languageMode) {
+                        sessionQuery = sessionQuery.eq(
+                            'language_mode',
+                            languageMode,
+                        );
+                    }
+                    if (difficulty) {
+                        sessionQuery = sessionQuery.eq('difficulty', difficulty);
+                    }
+                    const expectedScenario =
+                        typeof scenario === 'string'
+                            ? scenario.trim().slice(0, 4_000)
+                            : scenario
+                                ? JSON.stringify(scenario).slice(0, 4_000)
+                                : '';
+                    if (expectedScenario) {
+                        sessionQuery = sessionQuery.eq(
+                            'scenario_context',
+                            expectedScenario,
+                        );
+                    }
+                    const expectedGoal = studentGoal?.trim().slice(0, 1_000);
+                    if (expectedGoal) {
+                        sessionQuery = sessionQuery.eq(
+                            'student_goal',
+                            expectedGoal,
+                        );
+                    }
+                    const expectedSkill = targetSkill?.trim().slice(0, 160);
+                    if (expectedSkill) {
+                        sessionQuery = sessionQuery.eq(
+                            'target_skill',
+                            expectedSkill,
+                        );
+                    }
+                }
+
+                const { data: lastSession } = await sessionQuery
+                    .order('last_activity_at', { ascending: false })
                     .order('started_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
 
                 if (!lastSession) {
-                    setIsLoadingHistory(false);
                     return;
                 }
 
                 // 2. Pega os últimos 20 turnos dessa sessão
-                const { data: turns } = await supabase
+                const { data: recentTurns } = await supabase
                     .from('wolfie_turns')
-                    .select('id, speaker, content, turn_index, created_at')
+                    .select('id, speaker, content, turn_index, created_at, structured_payload, requires_retry, stage, language_code')
                     .eq('session_id', lastSession.id)
-                    .order('turn_index', { ascending: true })
+                    .order('turn_index', { ascending: false })
                     .limit(20);
 
+                if (cancelled) return;
+                const turns = [...(recentTurns ?? [])].reverse();
+                setConversationId(lastSession.id);
                 if (turns && turns.length > 0) {
-                    const restored: Message[] = turns.map((t: any) => ({
-                        id: t.id,
-                        role: t.speaker === 'student' ? 'user' : 'assistant',
-                        content: t.content || '',
-                        timestamp: new Date(t.created_at),
-                    }));
+                    const restored: Message[] = turns.map((t: any) => {
+                        const payload = asRecord(t.structured_payload);
+                        const restoredCorrection =
+                            t.speaker === 'student'
+                                ? null
+                                : normalizeCorrections(payload)[0] ?? null;
+                        return {
+                            id: t.id,
+                            role: t.speaker === 'student' ? 'user' : 'assistant',
+                            content: t.content || '',
+                            timestamp: new Date(t.created_at),
+                            correction: restoredCorrection,
+                            translation:
+                                firstString(payload, 'translation') || null,
+                        };
+                    });
                     setMessages(restored);
-                    setConversationId(lastSession.id);
                     setTurnCount(Math.floor(turns.length / 2));
                     if (lastSession.topic && !initialTopic) {
                         setTopic(lastSession.topic);
                         setHasSelectedTopic(true);
                     }
-                    console.log(`[WolfieTutor] Histórico restaurado: ${turns.length} turnos da sessão ${lastSession.id}`);
+                }
+
+                if (lastSession.scenario_status === 'awaiting_retry') {
+                    const latestWolfieTurn = [...turns]
+                        .reverse()
+                        .find((turn: any) => turn.speaker !== 'student');
+                    const retryPayload = asRecord(
+                        latestWolfieTurn?.structured_payload,
+                    );
+                    const retryCorrections = normalizeCorrections(retryPayload);
+                    const retryCorrection = retryCorrections[0] ?? null;
+                    const retryText = latestWolfieTurn?.content || '';
+
+                    setCorrection(retryCorrection);
+                    setTranslation(
+                        firstString(retryPayload, 'translation') || null,
+                    );
+                    setAssistantLanguage(
+                        normalizedSpeechLanguage(
+                            firstString(
+                                retryPayload,
+                                'assistantLanguage',
+                                'assistant_language',
+                            ) || latestWolfieTurn?.language_code,
+                            detectSpeechLanguage(retryText, 'en'),
+                        ),
+                    );
+                    setTurnGuidance({
+                        currentStage:
+                            firstString(
+                                retryPayload,
+                                'currentStage',
+                                'current_stage',
+                                'stage',
+                            ) || lastSession.current_stage || 'retry',
+                        strengths: firstStringArray(
+                            retryPayload,
+                            'studentStrengths',
+                            'student_strengths',
+                            'strengths',
+                        ),
+                        priorities: firstStringArray(
+                            retryPayload,
+                            'studentPriorities',
+                            'student_priorities',
+                            'priorities',
+                        ),
+                        nextAction: firstString(
+                            retryPayload,
+                            'nextAction',
+                            'next_action',
+                        ),
+                        needsExternalVerification: firstBoolean(
+                            retryPayload,
+                            'needsExternalVerification',
+                            'needs_external_verification',
+                        ),
+                        verificationReason: firstString(
+                            retryPayload,
+                            'verificationReason',
+                            'verification_reason',
+                        ),
+                        retryRequired: true,
+                        sessionScore: firstNumber(
+                            retryPayload,
+                            'sessionScore',
+                            'session_score',
+                        ),
+                    });
                 }
             } catch (err) {
                 console.error('[WolfieTutor] Erro ao carregar histórico:', err);
             } finally {
-                setIsLoadingHistory(false);
+                if (!cancelled) setIsLoadingHistory(false);
             }
         };
+        setIsLoadingHistory(true);
         loadLastSession();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.id]);
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        user?.id,
+        initialTopic,
+        studentLevel,
+        experienceMode,
+        correctionMode,
+        languageMode,
+        difficulty,
+        scenario,
+        studentGoal,
+        targetSkill,
+    ]);
 
     // Auto-scroll messages
     useEffect(() => {
@@ -488,19 +920,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 src.start(0); // 1 sample de silêncio — iOS não suspende contexto ativo
             } catch (_) {}
         }, 500);
-        console.log('[iOS] AudioContext keepalive iniciado');
     }, []);
 
     const stopIOSKeepAlive = useCallback(() => {
         if (iosKeepAliveRef.current) {
             clearInterval(iosKeepAliveRef.current);
             iosKeepAliveRef.current = null;
-            console.log('[iOS] AudioContext keepalive parado');
         }
+    }, []);
+
+    const invalidatePendingTTS = useCallback(() => {
+        ttsRequestVersionRef.current += 1;
     }, []);
 
     /** Para a voz (AudioContext + HTMLAudio + Web Speech) e limpa o estado */
     const stopSpeaking = useCallback(() => {
+        invalidatePendingTTS();
         // Para AudioContext source (iOS + desktop)
         if (audioSourceRef.current) {
             try { audioSourceRef.current.stop(); } catch (_) {}
@@ -516,7 +951,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         window.speechSynthesis.cancel();
         setState(prev => prev === 'SPEAKING' ? 'IDLE' : prev);
         setSubtitle('');
-    }, []);
+    }, [invalidatePendingTTS]);
 
     /** Prepara texto para soar natural no TTS — remove markdown e adiciona pausas */
     const prepareForTTS = (raw: string): string => raw
@@ -536,13 +971,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
      * Fallback: Web Speech API (local, sem qualidade neural)
      * Usado quando o edge function wolfie-tts falha.
      */
-    const speakWebSpeech = useCallback((text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+    const speakWebSpeech = useCallback((
+        text: string,
+        speed?: number,
+        forceLang?: 'en' | 'pt',
+        requestVersion = ttsRequestVersionRef.current,
+    ) => {
+        const isCurrent = () =>
+            requestVersion === ttsRequestVersionRef.current;
+        if (!isCurrent()) return;
         const lang = forceLang ?? 'en'; // sempre inglês por padrão
         const clean = prepareForTTS(text);
         const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
 
         let idx = 0;
         const speakNext = () => {
+            if (!isCurrent()) return;
             if (idx >= sentences.length) {
                 setState('IDLE');
                 setSubtitle('');
@@ -553,8 +997,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
             const utterance = new SpeechSynthesisUtterance(sentence);
 
-            if (lang === 'pt' && ptBrVoiceRef.current) {
-                utterance.voice = ptBrVoiceRef.current;
+            if (lang === 'pt') {
+                if (ptBrVoiceRef.current) {
+                    utterance.voice = ptBrVoiceRef.current;
+                }
                 utterance.lang = 'pt-BR';
                 utterance.rate = speed ?? 1.0;
                 utterance.pitch = 1.05;
@@ -570,9 +1016,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             }
 
             utterance.volume = 1.0;
-            utterance.onend = speakNext;
-            utterance.onerror = () => { setState('IDLE'); setSubtitle(''); };
-            window.speechSynthesis.speak(utterance);
+            utterance.onend = () => {
+                if (isCurrent()) speakNext();
+            };
+            utterance.onerror = () => {
+                if (!isCurrent()) return;
+                setState('IDLE');
+                setSubtitle('');
+            };
+            if (isCurrent()) window.speechSynthesis.speak(utterance);
         };
 
         window.speechSynthesis.cancel();
@@ -581,16 +1033,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
     /**
      * Fala usando Microsoft Neural TTS via edge function wolfie-tts.
-     * Vozes: en-US-JennyNeural (inglês) | pt-BR-FranciscaNeural (português)
-     * Qualidade humana, sem API key, sem custo.
+     * Vozes: en-US-JennyNeural (inglês) | pt-BR-ThalitaNeural (português).
+     * Fala neural com fallback automático para Web Speech API.
      * Fallback automático para Web Speech API em caso de falha.
      */
     const speak = useCallback(async (text: string, speed?: number, forceLang?: 'en' | 'pt') => {
+        const requestVersion = ++ttsRequestVersionRef.current;
+        const isCurrent = () =>
+            requestVersion === ttsRequestVersionRef.current;
         setState('SPEAKING');
         setSubtitle(text);
         lastSpokenTextRef.current = text;
 
         const lang = forceLang ?? 'en';
+        lastSpokenLanguageRef.current = lang;
         const voice = lang === 'pt' ? 'pt-BR-ThalitaNeural' : 'en-US-JennyNeural';
         const rate = speed ?? (lang === 'pt' ? 1.0 : getTTSSpeed(studentLevel));
 
@@ -611,6 +1067,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 body: { text, voice, speed: rate }
             });
 
+            if (!isCurrent()) return;
             if (fnError || !data?.audio) {
                 throw new Error(fnError?.message || 'wolfie-tts sem áudio');
             }
@@ -640,13 +1097,32 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         const blobUrl = URL.createObjectURL(blob);
                         preAudio.volume = 1.0;
                         preAudio.src = blobUrl;
-                        preAudio.onended = () => { URL.revokeObjectURL(blobUrl); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                        preAudio.onended = () => {
+                            URL.revokeObjectURL(blobUrl);
+                            if (audioRef.current === preAudio) {
+                                audioRef.current = null;
+                            }
+                            if (!isCurrent()) return;
+                            setState('IDLE');
+                            setSubtitle('');
+                        };
                         preAudio.onerror = () => { URL.revokeObjectURL(blobUrl); };
-                        await preAudio.play();
                         audioRef.current = preAudio;
-                        console.log(`🎙️ iOS HTMLAudio (pré-ativado): ${voice}`);
+                        await preAudio.play();
+                        if (!isCurrent()) {
+                            preAudio.pause();
+                            preAudio.src = '';
+                            URL.revokeObjectURL(blobUrl);
+                            if (audioRef.current === preAudio) {
+                                audioRef.current = null;
+                            }
+                        }
                         return;
                     } catch (e1: any) {
+                        if (audioRef.current === preAudio) {
+                            audioRef.current = null;
+                        }
+                        if (!isCurrent()) return;
                         showIOSDebug(`HTMLAudio blob: ${e1?.message ?? e1}`);
                     }
 
@@ -654,12 +1130,29 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     try {
                         preAudio.src = `data:audio/mpeg;base64,${rawBase64}`;
                         preAudio.volume = 1.0;
-                        preAudio.onended = () => { audioRef.current = null; setState('IDLE'); setSubtitle(''); };
-                        await preAudio.play();
+                        preAudio.onended = () => {
+                            if (audioRef.current === preAudio) {
+                                audioRef.current = null;
+                            }
+                            if (!isCurrent()) return;
+                            setState('IDLE');
+                            setSubtitle('');
+                        };
                         audioRef.current = preAudio;
-                        console.log(`🎙️ iOS HTMLAudio (data URI): ${voice}`);
+                        await preAudio.play();
+                        if (!isCurrent()) {
+                            preAudio.pause();
+                            preAudio.src = '';
+                            if (audioRef.current === preAudio) {
+                                audioRef.current = null;
+                            }
+                        }
                         return;
                     } catch (e1b: any) {
+                        if (audioRef.current === preAudio) {
+                            audioRef.current = null;
+                        }
+                        if (!isCurrent()) return;
                         showIOSDebug(`HTMLAudio dataURI: ${e1b?.message ?? e1b}`);
                     }
                 } else {
@@ -670,17 +1163,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 const ctx = audioCtxRef.current;
                 if (ctx && ctx.state !== 'closed') {
                     if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (_) {} }
+                    if (!isCurrent()) return;
                     try {
                         const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+                        if (!isCurrent()) return;
                         const source = ctx.createBufferSource();
                         source.buffer = audioBuffer;
                         source.connect(ctx.destination);
-                        source.onended = () => { audioSourceRef.current = null; setState('IDLE'); setSubtitle(''); };
+                        source.onended = () => {
+                            if (audioSourceRef.current === source) {
+                                audioSourceRef.current = null;
+                            }
+                            if (!isCurrent()) return;
+                            setState('IDLE');
+                            setSubtitle('');
+                        };
                         audioSourceRef.current = source;
-                        source.start(0);
-                        console.log(`🎙️ iOS AudioContext: ${voice} | ctx: ${ctx.state}`);
+                        if (isCurrent()) source.start(0);
                         return;
                     } catch (e2: any) {
+                        if (!isCurrent()) return;
                         showIOSDebug(`AudioContext: ${e2?.message ?? e2} (ctx=${ctx.state})`);
                     }
                 } else {
@@ -689,7 +1191,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
                 // ── iOS 3: Web Speech API (último recurso) ──
                 showIOSDebug('fallback Web Speech');
-                speakWebSpeech(text, rate, lang);
+                speakWebSpeech(text, rate, lang, requestVersion);
                 return;
             }
 
@@ -697,18 +1199,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             const ctx = audioCtxRef.current;
             if (ctx && ctx.state !== 'closed') {
                 if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (_) {} }
+                if (!isCurrent()) return;
                 try {
                     const audioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+                    if (!isCurrent()) return;
                     stopIOSKeepAlive();
                     const source = ctx.createBufferSource();
                     source.buffer = audioBuffer;
                     source.connect(ctx.destination);
-                    source.onended = () => { audioSourceRef.current = null; setState('IDLE'); setSubtitle(''); };
+                    source.onended = () => {
+                        if (audioSourceRef.current === source) {
+                            audioSourceRef.current = null;
+                        }
+                        if (!isCurrent()) return;
+                        setState('IDLE');
+                        setSubtitle('');
+                    };
                     audioSourceRef.current = source;
-                    source.start(0);
-                    console.log(`🎙️ Neural TTS (AudioContext): ${voice} | speed: ${rate}`);
+                    if (isCurrent()) source.start(0);
                     return;
                 } catch (decodeErr) {
+                    if (!isCurrent()) return;
                     console.warn('[WolfieTutor] AudioContext decode falhou:', decodeErr);
                     stopIOSKeepAlive();
                 }
@@ -722,34 +1233,52 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 const url = URL.createObjectURL(blob);
                 const audio = new Audio(url);
                 audioRef.current = audio;
-                audio.onended = () => { URL.revokeObjectURL(url); audioRef.current = null; setState('IDLE'); setSubtitle(''); };
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    if (audioRef.current === audio) audioRef.current = null;
+                    if (!isCurrent()) return;
+                    setState('IDLE');
+                    setSubtitle('');
+                };
                 audio.onerror = () => {
-                    URL.revokeObjectURL(url); audioRef.current = null;
-                    speakWebSpeech(text, rate, lang);
+                    URL.revokeObjectURL(url);
+                    if (audioRef.current === audio) audioRef.current = null;
+                    if (!isCurrent()) return;
+                    speakWebSpeech(text, rate, lang, requestVersion);
                 };
                 try {
                     await audio.play();
-                    console.log(`🎙️ Neural TTS (HTMLAudio): ${voice} | speed: ${rate}`);
+                    if (!isCurrent()) {
+                        audio.pause();
+                        audio.src = '';
+                        URL.revokeObjectURL(url);
+                        if (audioRef.current === audio) audioRef.current = null;
+                    }
                     return;
                 } catch (_) {
-                    speakWebSpeech(text, rate, lang);
+                    if (!isCurrent()) return;
+                    speakWebSpeech(text, rate, lang, requestVersion);
                     return;
                 }
             }
 
         } catch (err: any) {
+            if (!isCurrent()) return;
             const errMsg = err?.message ?? String(err);
             console.warn('[WolfieTutor] wolfie-tts erro:', errMsg);
             stopIOSKeepAlive();
-            speakWebSpeech(text, speed, lang);
+            speakWebSpeech(text, speed, lang, requestVersion);
         }
     }, [studentLevel, speakWebSpeech, stopIOSKeepAlive]);
 
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
             stopSpeaking();
-            const replayLanguage = detectSpeechLanguage(lastSpokenTextRef.current);
-            void speak(lastSpokenTextRef.current, 0.88, replayLanguage);
+            void speak(
+                lastSpokenTextRef.current,
+                0.88,
+                lastSpokenLanguageRef.current,
+            );
         }
     };
 
@@ -760,6 +1289,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // Permite iniciar em IDLE ou SPEAKING (interrompe o Wolfie)
         if (state !== 'IDLE' && state !== 'SPEAKING') return;
         if (isProcessingRef.current) return;
+
+        // Qualquer TTS ainda baixando pertence ao turno anterior e não pode
+        // começar a tocar depois que o microfone foi aberto.
+        invalidatePendingTTS();
+
+        // Solicita o microfone somente dentro do gesto explícito do aluno.
+        ensureAudioStream();
 
         // ── Desbloqueia AudioContext no iOS (DEVE ser no handler de toque) ──
         unlockAudio();
@@ -784,6 +1320,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         const SpeechRec = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
         if (!SpeechRec) {
+            releaseAudioStream();
+            stopIOSKeepAlive();
             setError('Reconhecimento de voz não suportado. Use o campo de texto.');
             setTimeout(() => setError(null), 5000);
             setShowTextInput(true);
@@ -792,6 +1330,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
         // Aguarda 400ms para o speaker parar fisicamente antes de ligar o mic
         recordingDelayRef.current = setTimeout(() => {
+            recordingDelayRef.current = null;
             if (recognitionRef.current) {
                 recognitionRef.current.onresult = null;
                 recognitionRef.current.onerror = null;
@@ -803,8 +1342,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             finalTranscriptRef.current = '';
 
             const recognition = new SpeechRec();
-            // pt-BR: entende português E inglês falado por brasileiros
-            recognition.lang = 'pt-BR';
+            const captureLanguage = recognitionLanguageRef.current;
+            // Um único modelo acústico por tentativa evita mutilar o outro idioma.
+            recognition.lang = captureLanguage;
             // continuous = true: NÃO corta enquanto o usuário segura o orb
             recognition.continuous = true;
             // interimResults = true: mostra legenda em tempo real enquanto fala
@@ -829,6 +1369,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             };
 
             recognition.onerror = (event: any) => {
+                releaseAudioStream();
+                recognitionRef.current = null;
+                stopIOSKeepAlive();
                 // 'aborted' é silencioso (usuário soltou antes do delay)
                 if (event.error !== 'aborted') {
                     const msgs: Record<string, string> = {
@@ -847,9 +1390,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             recognition.onend = () => {
                 // Chamado quando stop() é acionado pelo mouseup/touchend
                 const transcript = finalTranscriptRef.current.trim();
+                releaseAudioStream();
+                recognitionRef.current = null;
                 setSubtitle('');
 
                 if (!transcript) {
+                    stopIOSKeepAlive();
                     setState('IDLE');
                     if (!isProcessingRef.current) {
                         setError('Não ouvi nada — segure o orb e fale');
@@ -864,15 +1410,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     return;
                 }
 
-                console.log('🎤 Transcrito:', transcript);
                 const newUserMsg: Message = { id: crypto.randomUUID(), role: 'user', content: transcript, timestamp: new Date() };
                 setMessages(prev => [...prev, newUserMsg]);
                 setState('THINKING');
-                sendToWolfieBrain({ message: transcript });
+                sendToWolfieBrain({
+                    message: transcript,
+                    studentLanguage:
+                        captureLanguage === 'pt-BR' ? 'pt' : 'en',
+                });
             };
 
-            recognition.start();
-            setState('LISTENING');
+            try {
+                recognition.start();
+                setState('LISTENING');
+            } catch (_) {
+                recognitionRef.current = null;
+                releaseAudioStream();
+                stopIOSKeepAlive();
+                setState('IDLE');
+                setError('Não foi possível iniciar o microfone. Tente novamente.');
+                setTimeout(() => setError(null), 4000);
+            }
         }, 400);
     };
 
@@ -880,8 +1438,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         if (recordingDelayRef.current) {
             clearTimeout(recordingDelayRef.current);
             recordingDelayRef.current = null;
+            releaseAudioStream();
+            stopIOSKeepAlive();
+            setState('IDLE');
+            return;
         }
-        if (state !== 'LISTENING') return;
+        if (!recognitionRef.current) {
+            releaseAudioStream();
+            stopIOSKeepAlive();
+            return;
+        }
         // iOS: re-bloqueia AudioContext no touchEnd — momento mais próximo do speak()
         // Isso garante que o AudioContext permanece "running" durante o fetch assíncrono
         if (IS_IOS) unlockAudio();
@@ -904,21 +1470,39 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         await sendToWolfieBrain({ message: text });
     };
 
-    const sendToWolfieBrain = async (input: { message?: string; audioBase64?: string }) => {
+    const sendToWolfieBrain = async (input: WolfieBrainInput) => {
         if (isProcessingRef.current) {
             console.warn('[Wolfie] sendToWolfieBrain ignorado — já está processando');
             return;
         }
         isProcessingRef.current = true;
+        const requestVersion = ++requestVersionRef.current;
 
         // ── Detecta idioma do input para resposta bilíngue ──
         // Se o aluno falou PT → Wolfie responde em PT (FranciscaNeural)
         // Se falou EN → Wolfie responde em EN (JennyNeural)
-        const studentLang: SpeechLanguage = detectSpeechLanguage(input.message || '', 'en');
+        const studentLang: SpeechLanguage =
+            input.studentLanguage ??
+            detectSpeechLanguage(input.message || '', 'en');
 
         try {
             const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Wolfie'}: ${m.content}`).join('\n');
-            const fullContext = context ? `MISSION CONTEXT: ${context}\n\nCONVERSATION HISTORY:\n${history}` : history;
+            const scenarioSummary =
+                typeof scenario === 'string'
+                    ? scenario
+                    : scenario
+                        ? JSON.stringify(scenario)
+                        : '';
+            const missionContext = [
+                context,
+                scenarioSummary ? `SCENARIO: ${scenarioSummary}` : '',
+                studentGoal ? `STUDENT GOAL: ${studentGoal}` : '',
+                targetSkill ? `TARGET SKILL: ${targetSkill}` : '',
+                difficulty ? `DIFFICULTY: ${difficulty}` : '',
+            ].filter(Boolean).join('\n');
+            const fullContext = missionContext
+                ? `MISSION CONTEXT:\n${missionContext}\n\nCONVERSATION HISTORY:\n${history}`
+                : history;
 
             const modeMap: Record<string, string> = {
                 'interview': 'job_interview', 'job': 'job_interview',
@@ -933,6 +1517,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     ...input,
                     studentLevel,
                     topic,
+                    experienceMode,
+                    correctionMode,
+                    languageMode,
+                    difficulty,
+                    scenario,
+                    studentGoal,
+                    targetSkill,
                     previousContext: fullContext,
                     // Quando aluno fala PT, desativa tradução (já está em PT)
                     translationEnabled: studentLang === 'pt' ? false : translationEnabled,
@@ -946,36 +1537,128 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 }
             });
 
+            if (requestVersion !== requestVersionRef.current) return;
+
             if (supabaseError || data?.error) {
                 throw new Error(data?.error || supabaseError?.message || 'Unknown error');
             }
 
-            const chatText = data.chatResponse || data.aiText || '';
+            const rootPayload = asRecord(data);
+            const structuredPayload = asRecord(
+                rootPayload.structuredPayload ??
+                rootPayload.structured_payload ??
+                rootPayload.structured ??
+                rootPayload.output,
+            );
+            const responsePayload = {
+                ...rootPayload,
+                ...structuredPayload,
+            };
+            const chatText = firstString(
+                responsePayload,
+                'chatResponse',
+                'aiText',
+                'assistantMessage',
+                'assistant_message',
+            );
+            const responseLang = normalizedSpeechLanguage(
+                firstString(
+                    responsePayload,
+                    'assistantLanguage',
+                    'assistant_language',
+                ),
+                detectSpeechLanguage(chatText, studentLang),
+            );
+            const nextCorrections = normalizeCorrections(responsePayload);
+            const nextCorrection = nextCorrections[0] ?? null;
+            const nextTranslation = firstString(responsePayload, 'translation') || null;
+            const nextCurrentStage = firstString(
+                responsePayload,
+                'currentStage',
+                'current_stage',
+                'stage',
+            );
+            const nextStrengths = firstStringArray(
+                responsePayload,
+                'studentStrengths',
+                'student_strengths',
+                'strengths',
+            );
+            const nextPriorities = firstStringArray(
+                responsePayload,
+                'studentPriorities',
+                'student_priorities',
+                'priorities',
+            );
+            const nextAction = firstString(
+                responsePayload,
+                'nextAction',
+                'next_action',
+            );
+            const needsExternalVerification = firstBoolean(
+                responsePayload,
+                'needsExternalVerification',
+                'needs_external_verification',
+            );
+            const verificationReason = firstString(
+                responsePayload,
+                'verificationReason',
+                'verification_reason',
+            );
+            const sessionScore = firstNumber(
+                responsePayload,
+                'sessionScore',
+                'session_score',
+            );
+            const retryRequired =
+                firstBoolean(
+                    responsePayload,
+                    'retryRequired',
+                    'retry_required',
+                    'requiresRetry',
+                    'requires_retry',
+                ) ||
+                nextCorrections.some(item => item.retryRequired);
 
             const aiMessage: Message = {
                 id: crypto.randomUUID(),
                 role: 'assistant',
                 content: chatText,
                 timestamp: new Date(),
-                correction: data.correction || null,
-                translation: data.translation || null,
-                vocabulary: data.vocabulary || null,
-                quiz: data.quiz || null,
+                correction: nextCorrection,
+                translation: nextTranslation,
+                vocabulary: responsePayload.vocabulary as VocabData || null,
+                quiz: responsePayload.quiz as QuizData || null,
             };
 
             setMessages(prev => [...prev, aiMessage]);
             setTurnCount(prev => prev + 1);
-            if (data.conversationId) setConversationId(data.conversationId);
+            const nextConversationId = firstString(
+                responsePayload,
+                'conversationId',
+                'conversation_id',
+            );
+            if (nextConversationId) setConversationId(nextConversationId);
 
-            if (data.correction) setCorrection(data.correction);
-            if (data.translation) setTranslation(data.translation);
-            if (data.vocabulary?.keyTerms?.length > 0) setVocabulary(data.vocabulary);
-            if (data.quiz) setQuiz(data.quiz);
+            setCorrection(nextCorrection);
+            setTranslation(nextTranslation);
+            setAssistantLanguage(responseLang);
+            const nextVocabulary = responsePayload.vocabulary as VocabData | undefined;
+            setVocabulary(nextVocabulary?.keyTerms?.length ? nextVocabulary : null);
+            setQuiz(responsePayload.quiz as QuizData || null);
+            setTurnGuidance({
+                currentStage: nextCurrentStage,
+                strengths: nextStrengths,
+                priorities: nextPriorities,
+                nextAction,
+                needsExternalVerification,
+                verificationReason,
+                retryRequired,
+                sessionScore,
+            });
 
-            // Auto-speak: usa o idioma da RESPOSTA (não do input do aluno)
-            // Isso evita pronuncia americanizada quando Wolfie responde em PT
-            // mas o input do aluno estava em EN (ou vazio no primeiro turno)
-            const responseLang: SpeechLanguage = detectSpeechLanguage(chatText, studentLang);
+            // O backend informa explicitamente o idioma desta fala. A heurística
+            // acima existe apenas para compatibilidade durante a implantação.
             if (autoSpeakEnabled && chatText) {
                 void speak(chatText, undefined, responseLang);
             } else {
@@ -983,23 +1666,122 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             }
 
         } catch (err: any) {
+            if (requestVersion !== requestVersionRef.current) return;
             console.error('Wolfie Brain Error:', err);
             setError(err.message || 'Erro de conexão');
             setState('IDLE');
             setTimeout(() => setError(null), 5000);
         } finally {
             // Libera o lock sempre — seja sucesso ou erro
-            isProcessingRef.current = false;
+            if (requestVersion === requestVersionRef.current) {
+                isProcessingRef.current = false;
+            }
         }
     };
 
     // Auto-start first turn when mode is selected
     useEffect(() => {
-        if (hasSelectedTopic && messages.length === 0 && state === 'IDLE') {
+        if (
+            hasSelectedTopic &&
+            !isLoadingHistory &&
+            audioGestureReady &&
+            messages.length === 0 &&
+            state === 'IDLE'
+        ) {
             setState('THINKING');
             sendToWolfieBrain({});
         }
-    }, [hasSelectedTopic, messages.length]);
+    }, [
+        hasSelectedTopic,
+        isLoadingHistory,
+        audioGestureReady,
+        messages.length,
+        restartNonce,
+    ]);
+
+    const invalidatePendingRequest = () => {
+        requestVersionRef.current += 1;
+        isProcessingRef.current = false;
+    };
+
+    const abortRecognition = () => {
+        if (recordingDelayRef.current) {
+            clearTimeout(recordingDelayRef.current);
+            recordingDelayRef.current = null;
+        }
+        const recognition = recognitionRef.current;
+        recognitionRef.current = null;
+        if (recognition) {
+            recognition.onresult = null;
+            recognition.onerror = null;
+            recognition.onend = null;
+            try { recognition.abort(); } catch (_) {}
+        }
+        releaseAudioStream();
+        stopIOSKeepAlive();
+    };
+
+    const handleClose = () => {
+        invalidatePendingRequest();
+        stopSpeaking();
+        abortRecognition();
+        onClose?.();
+    };
+
+    const restartConversation = async () => {
+        if (isRestarting || state === 'THINKING' || state === 'LISTENING') return;
+        if (!confirm(`Reiniciar a conversa mantendo o tema atual: "${topic}"?`)) return;
+        const sessionToAbandon = conversationId;
+
+        invalidatePendingRequest();
+        stopSpeaking();
+        abortRecognition();
+        setError(null);
+        setIsRestarting(true);
+
+        try {
+            // A sessão precisa ser encerrada no servidor antes de o ID local ser
+            // removido; caso contrário, um reload retomaria a conversa antiga.
+            if (sessionToAbandon) {
+                const { data, error: abandonError } =
+                    await supabase.functions.invoke('wolfie-brain', {
+                        body: {
+                            action: 'abandon',
+                            conversationId: sessionToAbandon,
+                        },
+                    });
+                if (abandonError || data?.success !== true) {
+                    throw new Error(
+                        data?.error ||
+                        abandonError?.message ||
+                        'ABANDON_CONVERSATION_FAILED',
+                    );
+                }
+            }
+
+            setState('IDLE');
+            setMessages([]);
+            setConversationId(null);
+            setTurnCount(0);
+            setCorrection(null);
+            setTranslation(null);
+            setVocabulary(null);
+            setQuiz(null);
+            setTurnGuidance(EMPTY_TURN_GUIDANCE);
+            setSubtitle('');
+            setSessionStart(new Date());
+            setElapsed(0);
+            setRestartNonce(current => current + 1);
+        } catch (cause) {
+            console.error('[WolfieTutor] Erro ao encerrar conversa:', cause);
+            setState('IDLE');
+            setError(
+                'Não consegui encerrar esta conversa agora. Seu histórico foi mantido; tente novamente em instantes.',
+            );
+        } finally {
+            setIsRestarting(false);
+        }
+    };
 
     // ============================================================
     // VISUAL HELPERS
@@ -1031,6 +1813,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const handleModeSelection = (mode: 'voice' | 'text') => {
         // Desbloqueia AudioContext no iOS — esse clique é o primeiro gesto do usuário
         unlockAudio();
+        setAudioGestureReady(true);
 
         setTopic('Conversa Livre');
         setContext('');
@@ -1040,6 +1823,59 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // Se escolheu voz, podemos até já acionar o áudio, ou deixar ele apertar. 
         // Vamos deixar ele apertar o orb, já avisamos no prompt o que fazer.
     };
+
+    const normalizedStage = turnGuidance.currentStage.trim().toLowerCase();
+    const showSessionScore =
+        turnGuidance.sessionScore !== null &&
+        (normalizedStage === 'report' || normalizedStage === 'completed');
+    const normalizedSessionScore = turnGuidance.sessionScore === null
+        ? 0
+        : Math.max(0, Math.min(100, Math.round(turnGuidance.sessionScore)));
+    const translationLanguage: SpeechLanguage =
+        assistantLanguage === 'en' ? 'pt' : 'en';
+
+    // iOS exige um gesto dentro deste componente antes do primeiro áudio.
+    // Sem esta tela, a saudação automática chega antes do unlock e fica muda.
+    if (hasSelectedTopic && !audioGestureReady) {
+        return (
+            <div className="fixed inset-0 z-[200] grid place-items-center overflow-hidden bg-slate-950 p-6 font-sans">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,_#1e3a8a_0%,_#020617_62%)]" />
+                {onClose && (
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        aria-label="Fechar Wolfie Tutor"
+                        className="absolute right-5 top-5 z-20 rounded-full border border-white/10 bg-white/5 p-3 text-white/70"
+                    >
+                        <X size={20} />
+                    </button>
+                )}
+                <div className="relative z-10 max-w-md text-center">
+                    <span className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/20 text-indigo-300">
+                        <Volume2 size={30} aria-hidden="true" />
+                    </span>
+                    <h1 className="mt-6 text-3xl font-black text-white">
+                        Pronto para conversar?
+                    </h1>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">
+                        Toque abaixo para liberar a voz do Wolfie e começar no tema “{topic}”.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            unlockAudio();
+                            startIOSKeepAlive();
+                            setAudioGestureReady(true);
+                        }}
+                        className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-indigo-500 px-6 py-3 text-sm font-black text-white shadow-xl transition active:scale-95"
+                    >
+                        <Volume2 size={18} aria-hidden="true" />
+                        Iniciar conversa por voz
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // ============================================================
     // ENTRY SCREEN — CHOOSE MODE
@@ -1055,7 +1891,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                 </div>
 
                 {onClose && (
-                    <button onClick={onClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
+                    <button onClick={handleClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
                         <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                     </button>
                 )}
@@ -1064,10 +1900,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     <div className="mb-8 sm:mb-12">
                         <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 mb-4 sm:mb-6">
                             <BrainCircuit size={14} />
-                            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Wolfie AI (Powered by Gemini)</span>
+                            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Wolfie AI · Wise Wolf</span>
                         </div>
                         <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-indigo-300 drop-shadow-2xl mb-4 sm:mb-6">
-                            Olá, {user?.full_name?.split(' ')[0] || 'Aluno'}!
+                            Olá, {(user?.full_name || user?.name)?.split(' ')[0] || 'Aluno'}!
                         </h1>
                         <p className="text-slate-400 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed">
                             Como você prefere praticar o seu inglês hoje?
@@ -1123,7 +1959,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
 
             {/* CLOSE BUTTON */}
             {onClose && (
-                <button onClick={onClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
+                <button onClick={handleClose} aria-label="Fechar Wolfie Tutor" className="absolute top-4 right-4 sm:top-6 sm:right-6 p-3 rounded-full bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-all z-50 backdrop-blur-xl border border-white/10 hover:scale-110 active:scale-95 group">
                     <X size={20} className="group-hover:rotate-90 transition-transform duration-300" />
                 </button>
             )}
@@ -1154,6 +1990,33 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     <div className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
                         {studentLevel}
                     </div>
+                    {/* Idioma do reconhecimento — cada tentativa usa um único modelo acústico */}
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setRecognitionLanguage(current => {
+                                const next =
+                                    current === 'en-US' ? 'pt-BR' : 'en-US';
+                                recognitionLanguageRef.current = next;
+                                return next;
+                            })
+                        }
+                        disabled={state === 'LISTENING' || state === 'THINKING'}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-violet-200 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                            recognitionLanguage === 'en-US'
+                                ? 'Microfone ouvindo inglês americano. Clique para mudar para português do Brasil.'
+                                : 'Microfone ouvindo português do Brasil. Clique para mudar para inglês americano.'
+                        }
+                        aria-label={
+                            recognitionLanguage === 'en-US'
+                                ? 'Idioma do microfone: inglês americano'
+                                : 'Idioma do microfone: português do Brasil'
+                        }
+                    >
+                        <Mic size={11} aria-hidden="true" />
+                        MIC {recognitionLanguage === 'en-US' ? 'EN' : 'PT'}
+                    </button>
                     {/* Translation Toggle */}
                     <button
                         onClick={() => setTranslationEnabled(p => !p)}
@@ -1189,25 +2052,44 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                     </button>
                     {/* Nova Conversa — reseta sessão (cria nova session_id no banco no próximo turno) */}
                     <button
-                        onClick={() => {
-                            if (!confirm(`Reiniciar a conversa mantendo o tema atual: "${topic}"?`)) return;
-                            stopSpeaking();
-                            setMessages([]);
-                            setConversationId(null);
-                            setTurnCount(0);
-                            setCorrection(null);
-                            setTranslation(null);
-                            setVocabulary(null);
-                            setQuiz(null);
-                            setError(null);
-                            setSubtitle('');
-                        }}
-                        className="px-2.5 py-1.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-bold uppercase tracking-wider hover:bg-fuchsia-500/25 transition-all"
-                        title="Reiniciar mantendo o mesmo tema"
+                        onClick={restartConversation}
+                        disabled={
+                            isRestarting ||
+                            state === 'THINKING' ||
+                            state === 'LISTENING'
+                        }
+                        className="px-2.5 py-1.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-bold uppercase tracking-wider hover:bg-fuchsia-500/25 transition-all disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                            state === 'THINKING' || state === 'LISTENING'
+                                ? 'Aguarde este turno terminar para iniciar uma nova conversa'
+                                : 'Reiniciar mantendo o mesmo tema'
+                        }
                     >
-                        Nova
+                        {isRestarting ? 'Encerrando…' : 'Nova'}
                     </button>
                 </div>
+
+                {turnGuidance.currentStage && (
+                    <div className="max-w-[min(34rem,calc(100vw-2rem))] truncate rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-200" title={turnGuidance.currentStage}>
+                        Etapa atual: {turnGuidance.currentStage}
+                    </div>
+                )}
+
+                {turnGuidance.retryRequired && (
+                    <div
+                        className="flex max-w-[min(38rem,calc(100vw-2rem))] items-center gap-2 rounded-2xl border border-amber-400/40 bg-amber-950/90 px-4 py-2 text-left text-[11px] font-semibold leading-4 text-amber-100 shadow-xl backdrop-blur-xl"
+                        role="status"
+                        aria-live="assertive"
+                    >
+                        <RotateCcw size={14} className="shrink-0 text-amber-300" aria-hidden="true" />
+                        <span>
+                            <strong className="block uppercase tracking-wider text-amber-300">
+                                Nova tentativa necessária
+                            </strong>
+                            {turnGuidance.nextAction || 'Repita sua resposta usando a correção antes de avançar.'}
+                        </span>
+                    </div>
+                )}
 
                 {/* Idle Hint */}
                 {state === 'IDLE' && (
@@ -1301,10 +2183,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             )}
 
             {/* ============================================================ */}
-            {/* CORRECTION FEEDBACK CARD (Bottom Left) */}
+            {/* STRUCTURED FEEDBACK CARD (Bottom Left) */}
             {/* ============================================================ */}
-            {correction && (
-                <div className="absolute bottom-6 left-4 right-4 md:right-auto md:left-8 md:w-[420px] z-40 animate-in slide-in-from-bottom-10 fade-in duration-500">
+            {(correction ||
+                turnGuidance.strengths.length > 0 ||
+                turnGuidance.priorities.length > 0 ||
+                turnGuidance.nextAction ||
+                turnGuidance.needsExternalVerification ||
+                turnGuidance.retryRequired ||
+                showSessionScore) && (
+                <div className={`absolute ${showTextInput ? 'bottom-24' : 'bottom-6'} left-4 right-4 md:right-auto md:left-8 md:w-[440px] z-40 max-h-[58vh] overflow-y-auto animate-in slide-in-from-bottom-10 fade-in duration-500`}>
                     <div className="bg-slate-900/90 backdrop-blur-3xl border border-slate-700/80 p-5 rounded-[1.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden group hover:bg-slate-800/95 transition-colors">
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-80" />
                         <div className="flex flex-col gap-3 relative z-10">
@@ -1313,29 +2201,169 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                                     <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
                                         <Zap size={14} fill="currentColor" />
                                     </div>
-                                    <h4 className="text-white font-black text-[10px] uppercase tracking-widest">Correção</h4>
-                                </div>
-                                <button onClick={() => setCorrection(null)} aria-label="Fechar correção" className="text-slate-400 hover:text-white transition-colors bg-white/5 p-1.5 rounded-full">
-                                    <X size={12} />
-                                </button>
-                            </div>
-                            <div className="space-y-2">
-                                {correction.original && (
-                                    <div className="bg-red-950/30 rounded-xl p-3 border border-red-500/10">
-                                        <span className="text-[9px] text-red-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
-                                            <X size={10} strokeWidth={3} /> Como você disse
+                                    <h4 className="text-white font-black text-[10px] uppercase tracking-widest">
+                                        Feedback da rodada
+                                    </h4>
+                                    {correction?.priority && (
+                                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+                                            correction.priority === 'high'
+                                                ? 'bg-red-500/20 text-red-300'
+                                                : correction.priority === 'medium'
+                                                    ? 'bg-amber-500/20 text-amber-300'
+                                                    : 'bg-sky-500/20 text-sky-300'
+                                        }`}>
+                                            Prioridade {correction.priority === 'high' ? 'alta' : correction.priority === 'medium' ? 'média' : 'baixa'}
                                         </span>
-                                        <p className="text-sm font-medium text-white/50 line-through decoration-red-500/50">{correction.original}</p>
-                                    </div>
-                                )}
-                                <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20">
-                                    <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
-                                        <CheckCircle2 size={10} strokeWidth={3} /> Forma Correta
-                                    </span>
-                                    <p className="text-base font-black text-emerald-300">"{correction.corrected}"</p>
+                                    )}
                                 </div>
-                                <p className="text-xs text-slate-300 leading-relaxed font-medium">{correction.explanation_pt}</p>
+                                {!turnGuidance.retryRequired && (
+                                    <button
+                                        onClick={() => {
+                                            setCorrection(null);
+                                            setTurnGuidance(current => ({
+                                                ...EMPTY_TURN_GUIDANCE,
+                                                currentStage: current.currentStage,
+                                            }));
+                                        }}
+                                        aria-label="Fechar feedback"
+                                        className="text-slate-400 hover:text-white transition-colors bg-white/5 p-1.5 rounded-full"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
                             </div>
+
+                            {showSessionScore && (
+                                <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-cyan-300">
+                                                Resultado desta sessão
+                                            </p>
+                                            <p className="mt-1 text-xs leading-5 text-slate-200">
+                                                Pontuação de prática, não uma nota oficial de nível ou exame.
+                                            </p>
+                                        </div>
+                                        <span className="shrink-0 text-3xl font-black text-cyan-200">
+                                            {normalizedSessionScore}
+                                            <span className="text-xs text-cyan-300/70">/100</span>
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-950/50">
+                                        <div
+                                            className="h-full rounded-full bg-cyan-400 transition-[width]"
+                                            style={{ width: `${normalizedSessionScore}%` }}
+                                            aria-hidden="true"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {correction && (
+                                <div className="space-y-2">
+                                    {correction.original && (
+                                        <div className="bg-red-950/30 rounded-xl p-3 border border-red-500/10">
+                                            <span className="text-[9px] text-red-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                                                <X size={10} strokeWidth={3} /> Como você disse
+                                            </span>
+                                            <p className="text-sm font-medium text-white/50 line-through decoration-red-500/50">{correction.original}</p>
+                                        </div>
+                                    )}
+                                    {correction.corrected && (
+                                        <div className="bg-emerald-500/10 rounded-xl p-3 border border-emerald-500/20">
+                                            <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1 mb-1">
+                                                <CheckCircle2 size={10} strokeWidth={3} /> Forma correta
+                                            </span>
+                                            <p className="text-base font-black text-emerald-300">"{correction.corrected}"</p>
+                                        </div>
+                                    )}
+                                    {correction.naturalVersion && correction.naturalVersion !== correction.corrected && (
+                                        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3">
+                                            <span className="text-[9px] font-bold uppercase tracking-widest text-cyan-300">
+                                                Versão mais natural
+                                            </span>
+                                            <p className="mt-1 text-sm font-bold leading-relaxed text-cyan-100">
+                                                "{correction.naturalVersion}"
+                                            </p>
+                                        </div>
+                                    )}
+                                    {correction.explanation_pt && (
+                                        <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                                            {correction.explanation_pt}
+                                        </p>
+                                    )}
+                                    {correction.usefulChunk && (
+                                        <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-200">
+                                            <span className="font-black uppercase tracking-wider text-indigo-300">
+                                                Chunk útil
+                                            </span>
+                                            <span className="ml-2">{correction.usefulChunk}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {(turnGuidance.strengths.length > 0 || turnGuidance.priorities.length > 0) && (
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    {turnGuidance.strengths.length > 0 && (
+                                        <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+                                                O que funcionou
+                                            </p>
+                                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-200">
+                                                {turnGuidance.strengths.map((strength, index) => (
+                                                    <li key={`${strength}-${index}`}>• {strength}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                    {turnGuidance.priorities.length > 0 && (
+                                        <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-300">
+                                                Prioridades
+                                            </p>
+                                            <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-200">
+                                                {turnGuidance.priorities.map((priority, index) => (
+                                                    <li key={`${priority}-${index}`}>• {priority}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {turnGuidance.nextAction && (
+                                <div className={`rounded-xl border p-3 ${
+                                    turnGuidance.retryRequired
+                                        ? 'border-amber-400/30 bg-amber-500/10'
+                                        : 'border-fuchsia-500/20 bg-fuchsia-500/10'
+                                }`}>
+                                    <p className={`text-[9px] font-black uppercase tracking-widest ${
+                                        turnGuidance.retryRequired ? 'text-amber-300' : 'text-fuchsia-300'
+                                    }`}>
+                                        {turnGuidance.retryRequired ? 'Nova tentativa' : 'Próxima ação'}
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-100">
+                                        {turnGuidance.nextAction}
+                                    </p>
+                                </div>
+                            )}
+
+                            {turnGuidance.needsExternalVerification && (
+                                <div className="rounded-xl border border-amber-400/30 bg-amber-950/40 p-3 text-xs leading-5 text-amber-100" role="note">
+                                    <strong className="block text-amber-300">
+                                        Esta informação precisa ser confirmada
+                                    </strong>
+                                    {turnGuidance.verificationReason ||
+                                        'Consulte uma fonte oficial ou atual antes de usar este ponto como fato.'}
+                                </div>
+                            )}
+
+                            {turnGuidance.retryRequired && !turnGuidance.nextAction && (
+                                <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs font-semibold leading-5 text-amber-100">
+                                    Repita sua resposta usando a correção antes de avançar.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1349,17 +2377,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             <div className="flex items-center gap-2 text-sky-400">
                                 <Languages size={12} />
                                 <span className="text-[9px] uppercase font-bold tracking-wider">
-                                    {detectSpeechLanguage(translation, 'pt') === 'pt' ? 'Tradução 🇧🇷' : 'Versão em inglês 🇺🇸'}
+                                    {translationLanguage === 'pt' ? 'Tradução 🇧🇷' : 'Versão em inglês 🇺🇸'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1">
                                 {/* Botão: ouvir tradução em voz PT-BR */}
                                 <button
                                     onClick={() => {
-                                        const translationLanguage = detectSpeechLanguage(translation, 'pt');
                                         void speak(translation, 1.0, translationLanguage);
                                     }}
-                                    title={detectSpeechLanguage(translation, 'pt') === 'pt' ? 'Ouvir em português BR' : 'Ouvir em inglês americano'}
+                                    title={translationLanguage === 'pt' ? 'Ouvir em português BR' : 'Ouvir em inglês americano'}
                                     className="p-1 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-400/10 transition-colors"
                                 >
                                     <Volume2 size={12} />

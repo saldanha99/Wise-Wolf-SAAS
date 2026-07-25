@@ -146,6 +146,7 @@ npm run typecheck
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
+  supabase/functions/wolfie-tts/index.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts
 npm run build
@@ -155,9 +156,11 @@ find dist -type f -exec chmod 0644 {} +
 MIGRATION_RELATIVES=(
   "supabase/migrations/20260725022832_wolfie_immersive_ecosystem.sql"
   "supabase/migrations/20260725030016_verified_legacy_xp_awards.sql"
+  "supabase/migrations/20260725162301_wolfie_pedagogical_conversation_sessions.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
+TTS_FUNCTION_RELATIVE="supabase/functions/wolfie-tts"
 PEDAGOGICAL_FUNCTION_RELATIVE="supabase/functions/submit-quiz"
 CONTEXT_FUNCTION_RELATIVE="supabase/functions/student-context"
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
@@ -168,6 +171,8 @@ done
 [[ -s "$FUNCTION_RELATIVE/index.ts" ]] || die "função Wolfie ausente"
 [[ -s "$CONVERSATION_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de conversa do Wolfie ausente"
+[[ -s "$TTS_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "função de voz do Wolfie ausente"
 [[ -s "$PEDAGOGICAL_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de avaliação pedagógica ausente"
 [[ -s "$CONTEXT_FUNCTION_RELATIVE/index.ts" ]] ||
@@ -198,6 +203,7 @@ mkdir -p -- \
   "$release_dir/frontend-dist" \
   "$release_dir/functions/wolfie-activity" \
   "$release_dir/functions/wolfie-brain" \
+  "$release_dir/functions/wolfie-tts" \
   "$release_dir/functions/submit-quiz" \
   "$release_dir/functions/student-context" \
   "$release_dir/functions/_shared" \
@@ -210,6 +216,8 @@ rsync -a --delete -- "$FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-activity/"
 rsync -a --delete -- "$CONVERSATION_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-brain/"
+rsync -a --delete -- "$TTS_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-tts/"
 rsync -a --delete -- "$PEDAGOGICAL_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/submit-quiz/"
 rsync -a --delete -- "$CONTEXT_FUNCTION_RELATIVE/" \
@@ -266,6 +274,7 @@ marker_dir="$releases_dir/.migration-checksums"
 frontend_swapped=0
 function_swapped=0
 conversation_function_swapped=0
+tts_function_swapped=0
 pedagogical_function_swapped=0
 context_function_swapped=0
 shared_swapped=0
@@ -300,6 +309,15 @@ restore_previous_release() {
     fi
     if [[ -d "$backup_dir/wolfie-brain" ]]; then
       mv -- "$backup_dir/wolfie-brain" "$functions_dir/wolfie-brain"
+    fi
+  fi
+  if [[ "$tts_function_swapped" = "1" ]]; then
+    if [[ -d "$functions_dir/wolfie-tts" ]]; then
+      mv -- "$functions_dir/wolfie-tts" \
+        "$backup_dir/failed-wolfie-tts"
+    fi
+    if [[ -d "$backup_dir/wolfie-tts" ]]; then
+      mv -- "$backup_dir/wolfie-tts" "$functions_dir/wolfie-tts"
     fi
   fi
   if [[ "$pedagogical_function_swapped" = "1" ]]; then
@@ -341,6 +359,7 @@ mkdir -p -- "$backup_dir" "$marker_dir"
 [[ -d "$release_dir/frontend-dist" ]]
 [[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
 [[ -s "$release_dir/functions/wolfie-brain/index.ts" ]]
+[[ -s "$release_dir/functions/wolfie-tts/index.ts" ]]
 [[ -s "$release_dir/functions/submit-quiz/index.ts" ]]
 [[ -s "$release_dir/functions/student-context/index.ts" ]]
 [[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
@@ -375,6 +394,21 @@ for migration_path in "${migration_files[@]}"; do
 done
 
 if ((${#unapplied_migrations[@]} > 0)); then
+  database_backup_tmp="$backup_dir/postgres-before-migration.dump.tmp"
+  database_backup="$backup_dir/postgres-before-migration.dump"
+  echo "== Backup do banco antes das migrations =="
+  docker exec supabase-db pg_dump \
+    -U supabase_admin \
+    -d postgres \
+    --format=custom \
+    --no-owner \
+    --no-privileges \
+    > "$database_backup_tmp"
+  [[ -s "$database_backup_tmp" ]]
+  docker exec -i supabase-db pg_restore --list \
+    < "$database_backup_tmp" >/dev/null
+  mv -- "$database_backup_tmp" "$database_backup"
+
   for migration_path in "${unapplied_migrations[@]}"; do
     sed -n '1,$p' "$migration_path"
     printf '\n'
@@ -405,6 +439,13 @@ fi
 conversation_function_swapped=1
 cp -a -- "$release_dir/functions/wolfie-brain" \
   "$functions_dir/wolfie-brain"
+
+if [[ -d "$functions_dir/wolfie-tts" ]]; then
+  mv -- "$functions_dir/wolfie-tts" "$backup_dir/wolfie-tts"
+fi
+tts_function_swapped=1
+cp -a -- "$release_dir/functions/wolfie-tts" \
+  "$functions_dir/wolfie-tts"
 
 if [[ -d "$functions_dir/submit-quiz" ]]; then
   mv -- "$functions_dir/submit-quiz" "$backup_dir/submit-quiz"
@@ -472,6 +513,12 @@ wait_for_http_status 401 "autenticação da conversa do Wolfie" \
   -X POST "$api_url/functions/v1/wolfie-brain" \
   -H 'Content-Type: application/json' \
   --data '{"message":"Hello"}'
+wait_for_http_status 200 "preflight da voz do Wolfie" \
+  -X OPTIONS "$api_url/functions/v1/wolfie-tts"
+wait_for_http_status 401 "autenticação da voz do Wolfie" \
+  -X POST "$api_url/functions/v1/wolfie-tts" \
+  -H 'Content-Type: application/json' \
+  --data '{"text":"Hello"}'
 wait_for_http_status 200 "preflight do quiz pedagógico" \
   -X OPTIONS "$api_url/functions/v1/submit-quiz"
 wait_for_http_status 401 "autenticação do quiz pedagógico" \

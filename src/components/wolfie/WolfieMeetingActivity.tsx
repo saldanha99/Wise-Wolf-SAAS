@@ -55,6 +55,37 @@ import { SECTOR_OPTIONS } from './catalog';
 type MeetingStage = 'construction' | 'memorization' | 'readaptation';
 type ResponseMode = 'text' | 'voice';
 
+const resumedReadaptationAttempt = (
+  session: WolfieActivitySession,
+): { result: WolfieActivityResult; mode: ResponseMode; attemptId: string } | null => {
+  const snapshot = session.report_json?.latestAttempt;
+  const feedback = snapshot?.feedbackPayload;
+  if (
+    session.phase !== 'readaptation' ||
+    session.status !== 'AWAITING_RETRY' ||
+    snapshot?.requiresRetry !== true ||
+    !snapshot.attemptId ||
+    !feedback ||
+    !['readaptation', 'readaptation_speech'].includes(snapshot.stepKey ?? '')
+  ) {
+    return null;
+  }
+
+  return {
+    result: {
+      ...feedback,
+      score: snapshot.score ?? 0,
+      attemptId: snapshot.attemptId,
+      attemptNumber: snapshot.attemptNumber,
+      parentAttemptId: snapshot.parentAttemptId,
+      requiresRetry: true,
+      retryCompleted: snapshot.retryCompleted,
+    } as WolfieActivityResult,
+    mode: snapshot.modality === 'voice' ? 'voice' : 'text',
+    attemptId: snapshot.attemptId,
+  };
+};
+
 interface WolfieMeetingActivityProps {
   session: WolfieActivitySession;
   onSessionChange: (session: WolfieActivitySession) => void;
@@ -185,17 +216,27 @@ function SectionEvaluation({
 }) {
   return (
     <div
-      className="mt-5 rounded-2xl border border-green-300 bg-green-50 p-4 dark:border-green-900/60 dark:bg-green-950/20"
+      className={`mt-5 rounded-2xl border p-4 ${
+        evaluation.requiresRetry
+          ? 'border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20'
+          : 'border-green-300 bg-green-50 dark:border-green-900/60 dark:bg-green-950/20'
+      }`}
       aria-live="polite"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 font-black text-brand-text">
           <CheckCircle2
             size={20}
-            className="text-green-600 dark:text-green-400"
+            className={
+              evaluation.requiresRetry
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-green-600 dark:text-green-400'
+            }
             aria-hidden="true"
           />
-          Bloco refinado
+          {evaluation.requiresRetry
+            ? 'Aplique o feedback antes de avançar'
+            : 'Bloco refinado'}
         </div>
         <span className="rounded-full bg-brand-surface px-3 py-1 text-xs font-black text-brand-accent">
           {evaluation.score}/100
@@ -225,11 +266,13 @@ function SectionEvaluation({
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <button type="button" onClick={onRewrite} className={secondaryButton}>
           <RotateCcw size={16} aria-hidden="true" />
-          Reescrever
+          {evaluation.requiresRetry ? 'Fazer nova tentativa' : 'Reescrever'}
         </button>
         <button type="button" onClick={onUseNatural} className={primaryButton}>
           <Check size={16} aria-hidden="true" />
-          Usar versão natural
+          {evaluation.requiresRetry
+            ? 'Usar como base e reformular'
+            : 'Usar versão natural'}
         </button>
       </div>
     </div>
@@ -243,6 +286,7 @@ export function WolfieMeetingActivity({
   onExit,
   onConversation,
 }: WolfieMeetingActivityProps) {
+  const resumedReadaptation = resumedReadaptationAttempt(session);
   const initialStage: MeetingStage =
     session.phase === 'readaptation'
       ? 'readaptation'
@@ -258,7 +302,10 @@ export function WolfieMeetingActivity({
   const sections = constructionSession.activity_content.sections ?? [];
   const [currentSectionIndex, setCurrentSectionIndex] = useState(() => {
     const firstIncomplete = sections.findIndex(
-      (section) => !constructionSession.learner_state.sections?.[section.key],
+      (section) => {
+        const saved = constructionSession.learner_state.sections?.[section.key];
+        return !saved || saved.requiresRetry === true;
+      },
     );
     return firstIncomplete >= 0
       ? firstIncomplete
@@ -286,11 +333,20 @@ export function WolfieMeetingActivity({
     confidence:
       constructionSession.learner_state.memorization?.confidence ?? 50,
   }));
-  const [responseMode, setResponseMode] = useState<ResponseMode>('text');
+  const [responseMode, setResponseMode] = useState<ResponseMode>(
+    resumedReadaptation?.mode ?? 'text',
+  );
   const [readaptationSector, setReadaptationSector] = useState(
     constructionSession.sector ?? SECTOR_OPTIONS[0]?.id ?? '',
   );
   const [readaptationText, setReadaptationText] = useState('');
+  const [readaptationRetryResult, setReadaptationRetryResult] =
+    useState<WolfieActivityResult | null>(
+      resumedReadaptation?.result ?? null,
+    );
+  const [readaptationRetryMode, setReadaptationRetryMode] =
+    useState<ResponseMode | null>(resumedReadaptation?.mode ?? null);
+  const [audioResetKey, setAudioResetKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const stageHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -299,6 +355,9 @@ export function WolfieMeetingActivity({
     Partial<
       Record<MeetingSection['key'], { text: string; requestKey: string }>
     >
+  >({});
+  const sectionRetryParents = useRef<
+    Partial<Record<MeetingSection['key'], string>>
   >({});
   const constructionFinalRequest = useRef<{
     text: string;
@@ -309,13 +368,19 @@ export function WolfieMeetingActivity({
     text: string;
     requestKey: string;
   } | null>(null);
+  const readaptationRetryParent = useRef(
+    resumedReadaptation?.attemptId ?? '',
+  );
 
   const currentSection = sections[currentSectionIndex];
   const currentEvaluation = currentSection
     ? evaluations[currentSection.key]
     : undefined;
   const completedSectionCount = sections.filter(
-    (section) => evaluations[section.key],
+    (section) => {
+      const evaluation = evaluations[section.key];
+      return evaluation && !evaluation.requiresRetry;
+    },
   ).length;
 
   const polishedSections = useMemo(
@@ -410,18 +475,27 @@ export function WolfieMeetingActivity({
         modality: 'text',
         requestKey:
           sectionRequests.current[currentSection.key]?.requestKey,
+        parentAttemptId:
+          sectionRetryParents.current[currentSection.key],
       });
       const evaluation: MeetingSectionState = {
         original: text,
         corrected: result.correctedText || text,
         naturalVersion: result.naturalVersion || result.correctedText || text,
         score: result.score,
+        attemptId: result.attemptId,
+        requiresRetry: result.requiresRetry === true,
+        retryCompleted: result.retryCompleted,
+        parentAttemptId: result.parentAttemptId,
         savedAt: new Date().toISOString(),
       };
       setEvaluations((current) => ({
         ...current,
         [currentSection.key]: evaluation,
       }));
+      if (!result.requiresRetry) {
+        delete sectionRetryParents.current[currentSection.key];
+      }
       delete sectionRequests.current[currentSection.key];
     } catch (cause) {
       setError(
@@ -541,7 +615,16 @@ export function WolfieMeetingActivity({
         complete: true,
         modality: 'text',
         requestKey: readaptationTextRequest.current.requestKey,
+        parentAttemptId: readaptationRetryParent.current || undefined,
       });
+      if (result.requiresRetry) {
+        setReadaptationRetryResult(result);
+        setReadaptationRetryMode('text');
+        readaptationRetryParent.current = result.attemptId ?? '';
+        setReadaptationText('');
+        readaptationTextRequest.current = null;
+        return;
+      }
       onComplete(result, readaptationSession);
     } catch (cause) {
       setError(
@@ -569,7 +652,15 @@ export function WolfieMeetingActivity({
         stepKey: 'final_speech',
         complete: true,
         requestKey: payload.requestKey,
+        parentAttemptId: readaptationRetryParent.current || undefined,
       });
+      if (result.requiresRetry) {
+        setReadaptationRetryResult(result);
+        setReadaptationRetryMode('voice');
+        readaptationRetryParent.current = result.attemptId ?? '';
+        setAudioResetKey((current) => current + 1);
+        return;
+      }
       onComplete(result, readaptationSession);
     } catch (cause) {
       setError(
@@ -696,14 +787,32 @@ export function WolfieMeetingActivity({
               {currentEvaluation ? (
                 <SectionEvaluation
                   evaluation={currentEvaluation}
-                  onUseNatural={() =>
+                  onUseNatural={() => {
                     setSectionInputs((current) => ({
                       ...current,
                       [currentSection.key]:
                         currentEvaluation.naturalVersion,
-                    }))
-                  }
+                    }));
+                    if (currentEvaluation.requiresRetry) {
+                      if (currentEvaluation.attemptId) {
+                        sectionRetryParents.current[currentSection.key] =
+                          currentEvaluation.attemptId;
+                      }
+                      setEvaluations((current) => {
+                        const next = { ...current };
+                        delete next[currentSection.key];
+                        return next;
+                      });
+                    }
+                  }}
                   onRewrite={() => {
+                    if (
+                      currentEvaluation.requiresRetry &&
+                      currentEvaluation.attemptId
+                    ) {
+                      sectionRetryParents.current[currentSection.key] =
+                        currentEvaluation.attemptId;
+                    }
                     setEvaluations((current) => {
                       const next = { ...current };
                       delete next[currentSection.key];
@@ -735,26 +844,32 @@ export function WolfieMeetingActivity({
                   Voltar um bloco
                 </button>
                 {currentEvaluation ? (
-                  <button
-                    type="button"
-                    onClick={continueConstruction}
-                    disabled={busy}
-                    className={primaryButton}
-                  >
-                    {busy ? (
-                      <BusyLabel>Consolidando roteiro…</BusyLabel>
-                    ) : currentSectionIndex === sections.length - 1 ? (
-                      <>
-                        Ir para memorização
-                        <Brain size={18} aria-hidden="true" />
-                      </>
-                    ) : (
-                      <>
-                        Próximo bloco
-                        <ChevronRight size={18} aria-hidden="true" />
-                      </>
-                    )}
-                  </button>
+                  currentEvaluation.requiresRetry ? (
+                    <p className="max-w-sm text-right text-sm font-bold leading-6 text-amber-700 dark:text-amber-300">
+                      Faça a nova tentativa acima para liberar o próximo bloco.
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={continueConstruction}
+                      disabled={busy}
+                      className={primaryButton}
+                    >
+                      {busy ? (
+                        <BusyLabel>Consolidando roteiro…</BusyLabel>
+                      ) : currentSectionIndex === sections.length - 1 ? (
+                        <>
+                          Ir para memorização
+                          <Brain size={18} aria-hidden="true" />
+                        </>
+                      ) : (
+                        <>
+                          Próximo bloco
+                          <ChevronRight size={18} aria-hidden="true" />
+                        </>
+                      )}
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"
@@ -789,7 +904,10 @@ export function WolfieMeetingActivity({
               </h2>
               <ol className="mt-3 space-y-2">
                 {sections.map((section, index) => {
-                  const complete = Boolean(evaluations[section.key]);
+                  const complete = Boolean(
+                    evaluations[section.key] &&
+                      !evaluations[section.key]?.requiresRetry,
+                  );
                   const current = index === currentSectionIndex;
                   return (
                     <li key={section.key}>
@@ -798,7 +916,9 @@ export function WolfieMeetingActivity({
                         onClick={() => setCurrentSectionIndex(index)}
                         disabled={
                           index > currentSectionIndex &&
-                          !evaluations[sections[index - 1]?.key]
+                          (!evaluations[sections[index - 1]?.key] ||
+                            evaluations[sections[index - 1]?.key]
+                              ?.requiresRetry === true)
                         }
                         aria-current={current ? 'step' : undefined}
                         className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold ${
@@ -1110,11 +1230,15 @@ export function WolfieMeetingActivity({
                   role="tab"
                   aria-selected={responseMode === 'text'}
                   onClick={() => setResponseMode('text')}
+                  disabled={Boolean(
+                    readaptationRetryMode &&
+                      readaptationRetryMode !== 'text',
+                  )}
                   className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
                     responseMode === 'text'
                       ? 'bg-brand-surface text-brand-accent shadow-sm'
                       : 'text-brand-muted'
-                  } ${focusRing}`}
+                  } disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
                 >
                   <FileText size={17} aria-hidden="true" />
                   Texto
@@ -1124,16 +1248,53 @@ export function WolfieMeetingActivity({
                   role="tab"
                   aria-selected={responseMode === 'voice'}
                   onClick={() => setResponseMode('voice')}
+                  disabled={Boolean(
+                    readaptationRetryMode &&
+                      readaptationRetryMode !== 'voice',
+                  )}
                   className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
                     responseMode === 'voice'
                       ? 'bg-brand-surface text-brand-accent shadow-sm'
                       : 'text-brand-muted'
-                  } ${focusRing}`}
+                  } disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
                 >
                   <Mic size={17} aria-hidden="true" />
                   Áudio
                 </button>
               </div>
+
+              {readaptationRetryResult ? (
+                <section className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-black text-amber-900 dark:text-amber-200">
+                      Nova tentativa necessária
+                    </p>
+                    <span className="rounded-full bg-brand-surface px-3 py-1 text-xs font-black text-brand-accent">
+                      {readaptationRetryResult.score}/100
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-brand-muted">
+                    {readaptationRetryResult.retryPrompt ||
+                      readaptationRetryResult.readinessMessage ||
+                      'Aplique o feedback e tente novamente antes de concluir.'}
+                  </p>
+                  {'priorities' in readaptationRetryResult &&
+                  readaptationRetryResult.priorities?.length ? (
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-brand-text">
+                      {readaptationRetryResult.priorities.map((priority) => (
+                        <li key={priority} className="flex gap-2">
+                          <Target
+                            size={16}
+                            className="mt-1 shrink-0 text-brand-accent"
+                            aria-hidden="true"
+                          />
+                          {priority}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              ) : null}
 
               {responseMode === 'text' ? (
                 <form onSubmit={submitReadaptationText} className="mt-5">
@@ -1184,7 +1345,9 @@ export function WolfieMeetingActivity({
                       ) : (
                         <>
                           <Send size={18} aria-hidden="true" />
-                          Avaliar minha reunião
+                          {readaptationRetryResult
+                            ? 'Enviar nova tentativa'
+                            : 'Avaliar minha reunião'}
                         </>
                       )}
                     </button>
@@ -1195,6 +1358,7 @@ export function WolfieMeetingActivity({
                   <WolfieAudioRecorder
                     busy={busy}
                     onAnalyze={submitReadaptationAudio}
+                    resetKey={audioResetKey}
                   />
                   {error ? (
                     <div className="mt-5">

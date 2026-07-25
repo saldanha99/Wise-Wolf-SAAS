@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+
 /**
  * wolfie-tts v9 — Text-to-Speech via Google Translate TTS
  *
@@ -10,6 +12,10 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  authorizeRequest,
+  methodNotAllowed,
+} from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,19 +95,29 @@ function uint8ToBase64(bytes: Uint8Array): string {
  * pt-BR-ThalitaNeural → pt-BR
  * en-US-JennyNeural  → en-US
  */
-function voiceToLocale(voice: string): string {
+function voiceToLocale(voice: unknown): string {
+  if (typeof voice !== "string") return "en-US";
   const m = voice.match(/^([a-z]{2}-[A-Z]{2})/);
-  return m ? m[1] : "en-US";
+  return m?.[1] === "pt-BR" ? "pt-BR" : "en-US";
+}
+
+function normalizeSpeed(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1;
+  return Math.max(0.24, Math.min(1, value));
 }
 
 /**
  * Busca TTS para um único chunk de texto.
  * Retorna Uint8Array com o MP3.
  */
-async function fetchTTSChunk(text: string, locale: string): Promise<Uint8Array> {
+async function fetchTTSChunk(
+  text: string,
+  locale: string,
+  speed: number,
+): Promise<Uint8Array> {
   const url =
     `https://translate.google.com/translate_tts` +
-    `?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${locale}&client=gtx&ttsspeed=1`;
+    `?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${locale}&client=gtx&ttsspeed=${speed.toFixed(2)}`;
 
   const resp = await fetch(url, {
     headers: {
@@ -128,9 +144,16 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
 
   try {
-    const { text, voice = "en-US-JennyNeural" } = await req.json();
+    const auth = await authorizeRequest(req, {
+      allowService: false,
+      corsHeaders,
+    });
+    if (auth.ok === false) return auth.response;
+
+    const { text, voice = "en-US-JennyNeural", speed } = await req.json();
 
     if (!text || typeof text !== "string") {
       return new Response(JSON.stringify({ error: "text is required" }), {
@@ -141,13 +164,14 @@ serve(async (req) => {
 
     const cleaned = cleanText(text).slice(0, 1000);
     const locale = voiceToLocale(voice);
+    const normalizedSpeed = normalizeSpeed(speed);
     const chunks = splitText(cleaned, 180);
 
-    console.log(`[wolfie-tts] voice=${voice} locale=${locale} chunks=${chunks.length} totalChars=${cleaned.length}`);
+    console.log(`[wolfie-tts] locale=${locale} speed=${normalizedSpeed} chunks=${chunks.length} totalChars=${cleaned.length}`);
 
     // Busca todos os chunks em paralelo (mais rápido que sequencial)
     const audioArrays = await Promise.all(
-      chunks.map(chunk => fetchTTSChunk(chunk, locale))
+      chunks.map(chunk => fetchTTSChunk(chunk, locale, normalizedSpeed))
     );
 
     // Concatena os chunks de MP3

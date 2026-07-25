@@ -17,6 +17,53 @@ export type ActivityPhase =
   | 'readaptation';
 export type ActivityModality = 'text' | 'voice' | 'mixed';
 
+export type WolfieExperienceMode =
+  | 'free_conversation'
+  | 'guided_lesson'
+  | 'roleplay'
+  | 'presentation'
+  | 'global_meeting'
+  | 'interview'
+  | 'exam'
+  | 'writing'
+  | 'pronunciation'
+  | 'vocabulary'
+  | 'storytelling'
+  | 'child_mission'
+  | 'teen_challenge'
+  | 'examiner'
+  | 'fluency'
+  | 'emergency';
+
+export type WolfieCorrectionMode =
+  | 'immediate'
+  | 'end'
+  | 'selective'
+  | 'examiner';
+
+export type WolfieLanguageMode =
+  | 'pt_support'
+  | 'bilingual'
+  | 'immersive'
+  | 'english_rescue';
+
+export type WolfieDifficulty =
+  | 'supportive'
+  | 'balanced'
+  | 'challenging'
+  | 'adaptive';
+
+export interface WolfieConversationBrief {
+  topic: string;
+  scenario: string;
+  studentGoal: string;
+  targetSkill: string;
+  experienceMode: WolfieExperienceMode;
+  correctionMode: WolfieCorrectionMode;
+  languageMode: WolfieLanguageMode;
+  difficulty: WolfieDifficulty;
+}
+
 export interface VocabularyItem {
   term: string;
   translation: string;
@@ -81,12 +128,39 @@ export interface MeetingSectionState {
   corrected: string;
   naturalVersion: string;
   score: number;
+  attemptId?: string;
+  requiresRetry?: boolean;
+  retryCompleted?: boolean;
+  parentAttemptId?: string | null;
   savedAt?: string;
 }
 
 export interface WolfieLearnerState {
   sections?: Partial<Record<MeetingSection['key'], MeetingSectionState>>;
   memorization?: MemorizationState;
+  quizAnswers?: Record<string, AnswerFeedback & {
+    savedAt?: string;
+    score?: number;
+  }>;
+  [key: string]: unknown;
+}
+
+export interface WolfieActivityAttemptSnapshot {
+  attemptId?: string | null;
+  attemptNumber?: number;
+  stepKey?: string;
+  modality?: ActivityModality;
+  score?: number;
+  requiresRetry?: boolean;
+  retryCompleted?: boolean;
+  parentAttemptId?: string | null;
+  responsePayload?: Record<string, unknown>;
+  feedbackPayload?: Record<string, unknown>;
+  recordedAt?: string;
+}
+
+export interface WolfieActivityReport {
+  latestAttempt?: WolfieActivityAttemptSnapshot;
   [key: string]: unknown;
 }
 
@@ -102,12 +176,17 @@ export interface WolfieActivitySession {
   status:
     | 'IN_PROGRESS'
     | 'EVALUATING'
+    | 'AWAITING_RETRY'
     | 'COMPLETED'
     | 'ABANDONED'
     | 'FAILED';
   source_session_id: string | null;
   activity_content: WolfieActivityContent;
   learner_state: WolfieLearnerState;
+  current_stage?: string;
+  report_json?: WolfieActivityReport;
+  required_retry_count?: number;
+  completed_retry_count?: number;
   reused_terms: string[];
   introduced_terms: string[];
   score: number | null;
@@ -122,6 +201,11 @@ export interface WolfieActivitySession {
 export interface AttemptMeta {
   alreadyCompleted?: boolean;
   attemptNumber?: number;
+  attemptId?: string;
+  parentAttemptId?: string | null;
+  requiresRetry?: boolean;
+  retryCompleted?: boolean;
+  retryPrompt?: string;
   xpEarned?: number;
   leveledUp?: boolean;
   newLevel?: number;
@@ -138,13 +222,24 @@ export interface AnswerFeedback {
   definitionPt?: string;
   example?: string;
   locked?: boolean;
+  attemptId?: string;
+  attemptNumber?: number;
+  requiresRetry?: boolean;
+  retryCompleted?: boolean;
+  parentAttemptId?: string | null;
 }
 
 export interface QuizResultDetail {
   id: string;
   selectedIndex: number;
+  initialSelectedIndex?: number;
   correctIndex: number;
+  /** Whether the learner answered correctly on the first attempt. */
   correct: boolean;
+  /** Whether the learner ultimately answered correctly, including retries. */
+  mastered?: boolean;
+  masteredAfterRetry?: boolean;
+  attemptCount?: number;
   explanationPt: string;
   term?: string;
   translation?: string;
@@ -153,8 +248,10 @@ export interface QuizResultDetail {
 }
 
 export interface QuizResult extends AttemptMeta {
+  /** Score based only on first attempts, so retries never inflate the grade. */
   score: number;
   correctCount: number;
+  masteryCount?: number;
   total: number;
   details: QuizResultDetail[];
   readinessMessage: string;
@@ -258,13 +355,26 @@ export interface WolfieSelection {
 export interface WolfieUserSummary {
   id?: string;
   name?: string;
+  full_name?: string;
   module?: string;
+  occupation?: string;
+  studentCategory?: string;
+  student_category?: string;
+  interests?: string[];
+  preferredTopics?: string[];
+  preferred_topics?: string[];
   wolfieSettings?: {
     goal?: string;
     level?: CefrLevel;
+    correctionStrictness?: 1 | 2 | 3;
+    preferredCorrectionMode?: WolfieCorrectionMode;
+    preferredLanguageMode?: WolfieLanguageMode;
   };
+  wolfie_settings?: WolfieUserSummary['wolfieSettings'];
   englishFor?: string;
+  english_for?: string;
   shortTermGoal?: string;
+  short_term_goal?: string;
 }
 
 export const isQuizResult = (

@@ -53,6 +53,7 @@ interface ActivitySession {
   status:
     | "IN_PROGRESS"
     | "EVALUATING"
+    | "AWAITING_RETRY"
     | "COMPLETED"
     | "FAILED"
     | "ABANDONED";
@@ -65,6 +66,8 @@ interface ActivitySession {
   xp_earned: number;
   duration_seconds: number;
   attempt_count: number;
+  required_retry_count?: number;
+  completed_retry_count?: number;
   test_fixture: boolean;
   started_at: string;
   completed_at: string | null;
@@ -124,6 +127,13 @@ const SECTORS = new Set([
   "logistics",
   "information_technology",
   "tax",
+  "beauty_cosmetics_perfumery",
+  "retail_wholesale",
+  "food_beverage",
+  "veterinary_pet",
+  "tourism_hospitality",
+  "sales_expansion",
+  "projects_operations",
 ]);
 const MEETING_SECTION_KEYS = [
   "opening",
@@ -148,6 +158,7 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIO_BASE64_LENGTH = Math.ceil(MAX_AUDIO_BYTES / 3) * 4;
 const MAX_TEXT_LENGTH = 12_000;
+const RETRY_RECOMMENDED_SCORE = 75;
 const AI_DEADLINE_MS = 38_000;
 const AI_ATTEMPT_MS = 30_000;
 const DEFAULT_MODELS = [
@@ -1709,6 +1720,138 @@ const SECTOR_LABELS: Record<string, string> = {
   logistics: "Logística",
   information_technology: "TI",
   tax: "Fiscal",
+  beauty_cosmetics_perfumery: "Beleza / Cosméticos / Perfumaria",
+  retail_wholesale: "Varejo / Atacado",
+  food_beverage: "Alimentos / Bebidas",
+  veterinary_pet: "Veterinária / Mercado Animal",
+  tourism_hospitality: "Turismo / Hospitalidade",
+  sales_expansion: "Vendas / Expansão Internacional",
+  projects_operations: "Projetos / Operações",
+};
+
+const SECTOR_FALLBACK_SCENARIOS: Record<
+  string,
+  {
+    title: string;
+    role: string;
+    company: string;
+    objective: string;
+    constraint: string;
+    readaptationConstraint: string;
+  }
+> = {
+  pharma_health: {
+    title: "Quality deviation review",
+    role: "Quality project lead",
+    company: "A multinational healthcare company",
+    objective: "Explain a quality deviation and align a corrective action plan.",
+    constraint: "The regulatory submission date cannot move.",
+    readaptationConstraint: "A new laboratory result changed the risk assessment this morning.",
+  },
+  manufacturing_foundry: {
+    title: "Production capacity and defect review",
+    role: "Operations lead",
+    company: "A global manufacturing group",
+    objective: "Explain the production gap and agree on a safe recovery plan.",
+    constraint: "The plan cannot compromise worker safety or product quality.",
+    readaptationConstraint: "A critical machine became unavailable before the meeting.",
+  },
+  banking_finance: {
+    title: "Portfolio risk review",
+    role: "Financial planning lead",
+    company: "An international financial institution",
+    objective: "Present the risk change and recommend a decision to leadership.",
+    constraint: "Every proposal must stay within the approved compliance policy.",
+    readaptationConstraint: "The market moved sharply after the original analysis was completed.",
+  },
+  technology_ai: {
+    title: "AI product rollout decision",
+    role: "Product lead",
+    company: "A global technology company",
+    objective: "Explain a rollout issue, compare options and align the next release step.",
+    constraint: "Customer data and security requirements cannot be relaxed.",
+    readaptationConstraint: "A strategic customer reported an unexpected failure in production.",
+  },
+  logistics: {
+    title: "International delivery disruption",
+    role: "Logistics coordinator",
+    company: "A multinational distribution company",
+    objective: "Explain the disruption and secure agreement on a revised delivery plan.",
+    constraint: "The solution must control extra freight cost.",
+    readaptationConstraint: "The alternative route was suspended shortly before the meeting.",
+  },
+  information_technology: {
+    title: "Critical system migration update",
+    role: "IT project lead",
+    company: "A multinational services company",
+    objective: "Present the migration risk and align a safe implementation decision.",
+    constraint: "The approved maintenance window cannot be extended.",
+    readaptationConstraint: "A security dependency failed its final validation.",
+  },
+  tax: {
+    title: "Cross-border tax deadline review",
+    role: "Tax project lead",
+    company: "A multinational group",
+    objective: "Explain a filing discrepancy and agree on owners and deadlines.",
+    constraint: "The statutory filing deadline cannot move.",
+    readaptationConstraint: "An auditor requested new supporting documents today.",
+  },
+  beauty_cosmetics_perfumery: {
+    title: "International fragrance launch",
+    role: "Brand launch lead",
+    company: "A global beauty company",
+    objective: "Present the product positioning and align the distributor on launch actions.",
+    constraint: "The approved formula and launch claim cannot be changed.",
+    readaptationConstraint: "The packaging supplier reported a delay before the market launch.",
+  },
+  retail_wholesale: {
+    title: "Seasonal campaign stock review",
+    role: "Commercial operations lead",
+    company: "An international retail group",
+    objective: "Explain the stock risk and agree on a channel allocation plan.",
+    constraint: "The campaign date and margin target must be preserved.",
+    readaptationConstraint: "A key supplier cut the confirmed volume after the plan was approved.",
+  },
+  food_beverage: {
+    title: "New market product launch",
+    role: "International category lead",
+    company: "A global food and beverage company",
+    objective: "Present the product, address buyer concerns and secure the next commercial step.",
+    constraint: "The product specification and food-safety requirements are fixed.",
+    readaptationConstraint: "The distributor requested a different pack size and launch volume.",
+  },
+  veterinary_pet: {
+    title: "Animal health portfolio introduction",
+    role: "Technical commercial lead",
+    company: "An international animal health company",
+    objective: "Explain the portfolio value and align a technical training plan with a partner.",
+    constraint: "All clinical claims must remain within the approved documentation.",
+    readaptationConstraint: "The partner raised a new technical objection from its veterinary team.",
+  },
+  tourism_hospitality: {
+    title: "International guest experience review",
+    role: "Hospitality operations manager",
+    company: "A global hospitality group",
+    objective: "Explain a service issue and align corrective actions with the regional team.",
+    constraint: "The confirmed group reservation cannot be cancelled.",
+    readaptationConstraint: "The client added accessibility needs shortly before arrival.",
+  },
+  sales_expansion: {
+    title: "International distributor negotiation",
+    role: "Business development lead",
+    company: "A company entering a new international market",
+    objective: "Present the offer, handle objections and secure a concrete next meeting.",
+    constraint: "Price floor and brand positioning cannot be compromised.",
+    readaptationConstraint: "The distributor requested exclusivity and a faster launch schedule.",
+  },
+  projects_operations: {
+    title: "Global project milestone review",
+    role: "Program manager",
+    company: "A multinational operations team",
+    objective: "Explain a milestone risk and align owners, dates and mitigation actions.",
+    constraint: "The approved budget cannot increase.",
+    readaptationConstraint: "A key stakeholder changed the requirement before the meeting.",
+  },
 };
 
 function fallbackMeeting(
@@ -1718,6 +1861,8 @@ function fallbackMeeting(
 ): JsonObject {
   const vocabulary = levelVocabulary(level);
   const sectorLabel = SECTOR_LABELS[sector] ?? "Tecnologia / IA";
+  const sectorScenario = SECTOR_FALLBACK_SCENARIOS[sector] ??
+    SECTOR_FALLBACK_SCENARIOS.technology_ai;
   const isReadaptation = phase === "readaptation";
   return {
     title: isReadaptation
@@ -1731,16 +1876,14 @@ function fallbackMeeting(
       : "Construa um bloco por vez. O Wolfie corrige antes de você avançar.",
     scenario: {
       title: isReadaptation
-        ? "Unexpected scope change"
-        : "Quarterly delivery review",
-      role: "Project lead",
-      company: "A multinational company",
-      objective: isReadaptation
-        ? "Explain a new constraint and align the team on a revised decision."
-        : "Present the current issue, propose a solution and confirm next steps.",
+        ? `${sectorScenario.title} — changed conditions`
+        : sectorScenario.title,
+      role: sectorScenario.role,
+      company: sectorScenario.company,
+      objective: sectorScenario.objective,
       constraint: isReadaptation
-        ? "A key stakeholder changed the requirement 24 hours before the meeting."
-        : "The solution must not increase the approved budget.",
+        ? sectorScenario.readaptationConstraint
+        : sectorScenario.constraint,
       sector: sectorLabel,
     },
     sections: [
@@ -2293,6 +2436,10 @@ function normalizeEvaluation(value: JsonObject): JsonObject {
   if (!correctedText || !naturalVersion || !explanationPt) {
     throw new HttpError(502, "AI_EVALUATION_INVALID");
   }
+  const requiresRetry = score < 60 ||
+    (typeof value.requiresRetry === "boolean"
+      ? value.requiresRetry
+      : score < RETRY_RECOMMENDED_SCORE);
   return {
     score,
     correctedText,
@@ -2301,6 +2448,14 @@ function normalizeEvaluation(value: JsonObject): JsonObject {
     strengths: boundedStringArray(value.strengths, 5, 500),
     priorities: boundedStringArray(value.priorities, 5, 500),
     readinessMessage: boundedString(value.readinessMessage, 1_000),
+    requiresRetry,
+    retryPrompt: boundedString(
+      value.retryPrompt,
+      1_000,
+      requiresRetry
+        ? "Faça uma nova tentativa aplicando a correção antes de avançar."
+        : "",
+    ),
     rubric,
   };
 }
@@ -2316,6 +2471,8 @@ function fixtureEvaluation(text: string, level: CefrLevel): JsonObject {
     strengths: ["A resposta segue a tarefa proposta."],
     priorities: ["Revise clareza e naturalidade antes da versão final."],
     readinessMessage: "Fluxo de teste concluído sem chamar serviços externos.",
+    requiresRetry: false,
+    retryPrompt: "",
     rubric: {
       taskCompletion: score,
       structure: score,
@@ -2353,6 +2510,8 @@ Exact schema:
   "strengths": ["specific strength"],
   "priorities": ["one or two next priorities"],
   "readinessMessage": "competency-based message in PT-BR",
+  "requiresRetry": true,
+  "retryPrompt": "short PT-BR instruction for the learner's required new attempt, or empty when no retry is needed",
   "rubric": {
     "taskCompletion": 0,
     "structure": 0,
@@ -2394,6 +2553,10 @@ function normalizeSpeechEvaluation(value: JsonObject): JsonObject {
   if (!transcript || !correctedTranscript) {
     throw new HttpError(502, "SPEECH_ANALYSIS_INVALID");
   }
+  const requiresRetry = overall < 60 ||
+    (typeof value.requiresRetry === "boolean"
+      ? value.requiresRetry
+      : overall < RETRY_RECOMMENDED_SCORE);
   return {
     score: overall,
     transcript,
@@ -2402,6 +2565,14 @@ function normalizeSpeechEvaluation(value: JsonObject): JsonObject {
     intonation: normalizeSection("intonation"),
     naturalness: normalizeSection("naturalness"),
     readinessMessage: boundedString(value.readinessMessage, 1_000),
+    requiresRetry,
+    retryPrompt: boundedString(
+      value.retryPrompt,
+      1_000,
+      requiresRetry
+        ? "Grave uma nova tentativa aplicando as orientações antes de avançar."
+        : "",
+    ),
   };
 }
 
@@ -2540,6 +2711,113 @@ async function recordAttempt(
   return data;
 }
 
+function attemptLogicalStep(attempt: JsonObject): string {
+  const response = isJsonObject(attempt.response_payload)
+    ? attempt.response_payload
+    : isJsonObject(attempt.responsePayload)
+    ? attempt.responsePayload
+    : {};
+  return boundedString(
+    response.logicalStepKey,
+    120,
+    boundedString(attempt.step_key ?? attempt.stepKey, 120),
+  );
+}
+
+function parseParentAttemptId(body: JsonObject): string | null {
+  const raw = body.parentAttemptId ?? body.parent_attempt_id;
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string" || !UUID_PATTERN.test(raw)) {
+    throw new HttpError(400, "INVALID_PARENT_ATTEMPT_ID");
+  }
+  return raw;
+}
+
+interface RetryContext {
+  parent: JsonObject | null;
+  pending: JsonObject[];
+}
+
+async function resolveRetryContext(
+  admin: any,
+  session: ActivitySession,
+  body: JsonObject,
+  logicalStepKey: string,
+  requireSolePending = false,
+): Promise<RetryContext> {
+  const requestedParentId = parseParentAttemptId(body);
+  const { data, error } = await admin
+    .from("wolfie_activity_attempts")
+    .select(
+      "id, attempt_number, step_key, response_payload, feedback_payload, requires_retry, retry_completed",
+    )
+    .eq("session_id", session.id)
+    .eq("requires_retry", true)
+    .eq("retry_completed", false)
+    .order("attempt_number", { ascending: false })
+    .limit(500);
+  if (error) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
+  const pending = (data ?? []).filter(isJsonObject);
+  let parent: JsonObject | null = null;
+  if (requestedParentId) {
+    parent = pending.find((attempt) => attempt.id === requestedParentId) ?? null;
+    if (!parent) throw new HttpError(409, "PARENT_ATTEMPT_NOT_RETRYABLE");
+    if (attemptLogicalStep(parent) !== logicalStepKey) {
+      throw new HttpError(409, "PARENT_ATTEMPT_STEP_MISMATCH");
+    }
+  } else {
+    parent = pending.find((attempt) =>
+      attemptLogicalStep(attempt) === logicalStepKey
+    ) ?? null;
+  }
+
+  if (!parent && pending.length > 0) {
+    throw new HttpError(409, "RETRY_REQUIRED");
+  }
+  if (
+    requireSolePending &&
+    pending.some((attempt) => attempt.id !== parent?.id)
+  ) {
+    throw new HttpError(409, "RETRY_REQUIRED");
+  }
+  return { parent, pending };
+}
+
+function retryFeedback(
+  feedback: JsonObject,
+  parent: JsonObject | null,
+  requiresRetry: boolean,
+): JsonObject {
+  const parentAttemptId = typeof parent?.id === "string" ? parent.id : null;
+  return {
+    ...feedback,
+    requiresRetry,
+    retryCompleted: parentAttemptId !== null && !requiresRetry,
+    parentAttemptId,
+    retryPrompt: boundedString(
+      feedback.retryPrompt,
+      1_000,
+      requiresRetry
+        ? "Faça uma nova tentativa aplicando a correção antes de avançar."
+        : "",
+    ),
+  };
+}
+
+function retryResponsePayload(
+  payload: JsonObject,
+  logicalStepKey: string,
+  parent: JsonObject | null,
+): JsonObject {
+  const parentAttemptId = typeof parent?.id === "string" ? parent.id : null;
+  return {
+    ...payload,
+    logicalStepKey,
+    attemptKind: parentAttemptId ? "retry" : "initial",
+    parentAttemptId,
+  };
+}
+
 async function loadAttemptByRequestKey(
   admin: any,
   session: ActivitySession,
@@ -2548,7 +2826,7 @@ async function loadAttemptByRequestKey(
   const { data, error } = await admin
     .from("wolfie_activity_attempts")
     .select(
-      "attempt_number, step_key, response_payload, feedback_payload, score, completes_session",
+      "id, attempt_number, step_key, response_payload, feedback_payload, score, completes_session, attempt_kind, parent_attempt_id, requires_retry, retry_completed",
     )
     .eq("session_id", session.id)
     .eq("request_key", requestKey)
@@ -2566,10 +2844,28 @@ function persistedAttemptResult(
     : isJsonObject(attempt.feedbackPayload)
     ? attempt.feedbackPayload
     : {};
+  const attemptKind = attempt.attempt_kind ?? attempt.attemptKind;
+  const rawRequiresRetry = typeof attempt.requires_retry === "boolean"
+    ? attempt.requires_retry
+    : typeof attempt.requiresRetry === "boolean"
+    ? attempt.requiresRetry
+    : feedback.requiresRetry === true;
+  const retryCompleted = attempt.retry_completed === true ||
+    attempt.retryCompleted === true ||
+    feedback.retryCompleted === true ||
+    (attemptKind === "retry" && !rawRequiresRetry);
+  const requiresRetry = rawRequiresRetry && !retryCompleted;
   return {
     ...feedback,
     score: typeof attempt.score === "number" ? attempt.score : feedback.score,
+    attemptId: attempt.id ?? attempt.attemptId ?? null,
     attemptNumber: attempt.attempt_number ?? attempt.attemptNumber ?? null,
+    requiresRetry,
+    retryCompleted,
+    parentAttemptId: attempt.parent_attempt_id ??
+      attempt.parentAttemptId ??
+      feedback.parentAttemptId ??
+      null,
     alreadyProcessed: true,
     ...extra,
   };
@@ -2803,6 +3099,7 @@ async function handleOverview(
   const resumableSessions = sessions
     .filter((session: JsonObject) =>
       session.status === "IN_PROGRESS" ||
+      session.status === "AWAITING_RETRY" ||
       (
         session.subject === "global_meetings" &&
         session.phase === "construction" &&
@@ -3081,6 +3378,31 @@ async function handleSubmitQuiz(
   body: JsonObject,
 ): Promise<Response> {
   const requestKey = parseRequestKey(body.requestKey);
+  const processedAttempt = await loadAttemptByRequestKey(
+    admin,
+    session,
+    requestKey,
+  );
+  if (processedAttempt) {
+    return jsonResponse(200, {
+      result: persistedAttemptResult(processedAttempt, {
+        xpEarned: processedAttempt.completes_session === true
+          ? session.xp_earned
+          : 0,
+        leveledUp: false,
+        newLevel: null,
+      }),
+    });
+  }
+  if (session.status === "COMPLETED") {
+    return jsonResponse(200, {
+      result: {
+        alreadyCompleted: true,
+        score: session.score,
+        xpEarned: session.xp_earned,
+      },
+    });
+  }
   const { data: keyRow, error: keyError } = await admin
     .from("wolfie_activity_keys")
     .select("answer_key")
@@ -3095,38 +3417,74 @@ async function handleSubmitQuiz(
   if (keyQuestions.length === 0) {
     throw new HttpError(503, "ANSWER_KEY_INVALID");
   }
-  const { data: attemptRows, error: attemptsError } = await admin
-    .from("wolfie_activity_attempts")
-    .select("step_key, response_payload")
-    .eq("session_id", session.id)
-    .order("created_at", { ascending: true })
-    .limit(30);
-  if (attemptsError) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
-  const lockedAnswers = new Map<string, number>();
-  for (const rawAttempt of attemptRows ?? []) {
+  // PostgREST installations commonly cap a single response at 1,000 rows.
+  // Page deterministically so a learner can keep retrying without losing the
+  // first-attempt score or the eventual mastery evidence at finalization.
+  const attemptRows: JsonObject[] = [];
+  const attemptPageSize = 1_000;
+  for (let offset = 0;; offset += attemptPageSize) {
+    const { data, error } = await admin
+      .from("wolfie_activity_attempts")
+      .select(
+        "id, attempt_number, step_key, response_payload, feedback_payload, requires_retry, retry_completed",
+      )
+      .eq("session_id", session.id)
+      .order("attempt_number", { ascending: true })
+      .range(offset, offset + attemptPageSize - 1);
+    if (error) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
+    const page = (data ?? []).filter(isJsonObject);
+    attemptRows.push(...page);
+    if ((data ?? []).length < attemptPageSize) break;
+  }
+  if (
+    attemptRows.some((attempt: JsonObject) =>
+      attempt.requires_retry === true && attempt.retry_completed !== true
+    )
+  ) {
+    throw new HttpError(409, "RETRY_REQUIRED");
+  }
+  if (
+    session.status !== "IN_PROGRESS" &&
+    session.status !== "AWAITING_RETRY"
+  ) {
+    throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
+  }
+  const answerHistory = new Map<string, number[]>();
+  for (const rawAttempt of attemptRows) {
     const attempt = rawAttempt as JsonObject;
-    const stepKey = boundedString(attempt.step_key, 140);
-    if (!stepKey.startsWith("quiz:")) continue;
     const response = isJsonObject(attempt.response_payload)
       ? attempt.response_payload
       : {};
+    const stepKey = attemptLogicalStep(attempt);
+    if (!stepKey.startsWith("quiz:")) continue;
     const selectedIndex = Number(response.selectedIndex);
     if (Number.isInteger(selectedIndex)) {
-      lockedAnswers.set(stepKey.slice(5), selectedIndex);
+      const questionId = stepKey.slice(5);
+      const history = answerHistory.get(questionId) ?? [];
+      history.push(selectedIndex);
+      answerHistory.set(questionId, history);
     }
   }
   const details = keyQuestions.map((question: JsonObject, index: number) => {
     const id = boundedString(question.id, 80, `q${index + 1}`);
     const correctIndex = Number(question.correctIndex);
-    const selectedIndex = lockedAnswers.get(id);
+    const selections = answerHistory.get(id) ?? [];
+    const selectedIndex = selections.at(-1);
     if (selectedIndex === undefined) {
       throw new HttpError(409, "QUIZ_NOT_FULLY_ANSWERED");
     }
+    const initialSelectedIndex = selections[0];
+    const firstAttemptCorrect = initialSelectedIndex === correctIndex;
+    const mastered = selectedIndex === correctIndex;
     return {
       id,
       selectedIndex,
+      initialSelectedIndex,
       correctIndex,
-      correct: selectedIndex === correctIndex,
+      correct: firstAttemptCorrect,
+      mastered,
+      masteredAfterRetry: !firstAttemptCorrect && mastered,
+      attemptCount: selections.length,
       explanationPt: boundedString(question.explanationPt, 1_000),
       term: boundedString(question.term, 120),
       translation: boundedString(question.translation, 240),
@@ -3135,13 +3493,19 @@ async function handleSubmitQuiz(
     };
   });
   const correctCount = details.filter((detail) => detail.correct).length;
+  const masteryCount = details.filter((detail) => detail.mastered).length;
   const score = Math.round((correctCount / details.length) * 100);
   const feedback: JsonObject = {
     score,
     correctCount,
+    masteryCount,
     total: details.length,
     details,
-    readinessMessage: score >= 85
+    readinessMessage: masteryCount === details.length && correctCount < masteryCount
+      ? `Você corrigiu ${masteryCount - correctCount} ${
+        masteryCount - correctCount === 1 ? "ponto" : "pontos"
+      } nesta rodada. Repita em outro contexto para transformar o ajuste em resposta automática.`
+      : score >= 85
       ? "Você já consegue reconhecer este conteúdo em situações reais."
       : score >= 60
       ? "Você está no caminho certo; refaça os itens frágeis para ganhar segurança."
@@ -3161,8 +3525,12 @@ async function handleSubmitQuiz(
     admin,
     session,
     requestKey,
-    { answeredQuestionIds: details.map((detail) => detail.id) },
-    feedback,
+    retryResponsePayload(
+      { answeredQuestionIds: details.map((detail) => detail.id) },
+      "quiz",
+      null,
+    ),
+    retryFeedback(feedback, null, false),
     score,
     duration,
     "quiz",
@@ -3174,22 +3542,38 @@ async function handleSubmitQuiz(
     result.alreadyCompleted !== true &&
     result.alreadyProcessed !== true
   ) {
-    await Promise.all(details.map((detail) => {
-      if (!detail.term) return Promise.resolve();
-      return updateRepertoire(
-        admin,
-        session,
-        {
-          term: detail.term,
-          translation: detail.translation,
-          definitionPt: detail.definitionPt,
-          example: detail.example,
-        },
-        detail.correct ? "ANSWERED_CORRECTLY" : "ANSWERED_INCORRECTLY",
-        `quiz:${session.id}:${detail.id}:${
-          detail.correct ? "correct" : "incorrect"
-        }:${normalizeTermKey(detail.term)}`,
-      );
+    await Promise.all(details.flatMap((detail) => {
+      if (!detail.term) return [];
+      const item = {
+        term: detail.term,
+        translation: detail.translation,
+        definitionPt: detail.definitionPt,
+        example: detail.example,
+      };
+      const events: Promise<void>[] = [];
+      if (!detail.correct) {
+        events.push(updateRepertoire(
+          admin,
+          session,
+          item,
+          "ANSWERED_INCORRECTLY",
+          `quiz:${session.id}:${detail.id}:incorrect:${
+            normalizeTermKey(detail.term)
+          }`,
+        ));
+      }
+      if (detail.mastered) {
+        events.push(updateRepertoire(
+          admin,
+          session,
+          item,
+          "ANSWERED_CORRECTLY",
+          `quiz:${session.id}:${detail.id}:correct:${
+            normalizeTermKey(detail.term)
+          }`,
+        ));
+      }
+      return events;
     }));
   }
   return jsonResponse(200, { result: { ...feedback, ...result } });
@@ -3218,6 +3602,36 @@ async function handleCheckAnswer(
   ) {
     throw new HttpError(400, "INVALID_ANSWER");
   }
+  const processedAttempt = await loadAttemptByRequestKey(
+    admin,
+    session,
+    requestKey,
+  );
+  if (processedAttempt) {
+    return jsonResponse(200, {
+      result: persistedAttemptResult(processedAttempt, {
+        locked: !(
+          processedAttempt.requires_retry === true &&
+          processedAttempt.retry_completed !== true
+        ),
+      }),
+    });
+  }
+  if (session.status === "COMPLETED") {
+    return jsonResponse(200, {
+      result: {
+        alreadyCompleted: true,
+        score: session.score,
+        xpEarned: session.xp_earned,
+      },
+    });
+  }
+  if (
+    session.status !== "IN_PROGRESS" &&
+    session.status !== "AWAITING_RETRY"
+  ) {
+    throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
+  }
 
   const safeQuestions = Array.isArray(session.activity_content.questions)
     ? session.activity_content.questions.filter(isJsonObject)
@@ -3233,25 +3647,45 @@ async function handleCheckAnswer(
   }
 
   const stepKey = `quiz:${questionId}`;
-  const { data: existingAttempt, error: existingError } = await admin
+  const { data: latestAttemptRow, error: attemptsError } = await admin
     .from("wolfie_activity_attempts")
-    .select("response_payload, feedback_payload")
+    .select(
+      "id, attempt_number, step_key, response_payload, feedback_payload, score, completes_session, attempt_kind, parent_attempt_id, requires_retry, retry_completed",
+    )
     .eq("session_id", session.id)
     .eq("step_key", stepKey)
+    .order("attempt_number", { ascending: false })
+    .limit(1)
     .maybeSingle();
-  if (existingError) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
-  if (existingAttempt) {
+  if (attemptsError) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
+  const latestAttempt = latestAttemptRow && isJsonObject(latestAttemptRow)
+    ? latestAttemptRow
+    : null;
+  if (
+    latestAttempt &&
+    !(
+      latestAttempt.requires_retry === true &&
+      latestAttempt.retry_completed !== true
+    )
+  ) {
     return jsonResponse(200, {
-      result: {
-        ...(isJsonObject(existingAttempt.feedback_payload)
-          ? existingAttempt.feedback_payload
-          : {}),
+      result: persistedAttemptResult(latestAttempt, {
         locked: true,
-      },
+      }),
     });
   }
-  if (session.status !== "IN_PROGRESS") {
-    throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
+  const retryContext = await resolveRetryContext(
+    admin,
+    session,
+    body,
+    stepKey,
+  );
+  if (latestAttempt && !retryContext.parent) {
+    return jsonResponse(200, {
+      result: persistedAttemptResult(latestAttempt, {
+        locked: true,
+      }),
+    });
   }
 
   const { data: keyRow, error: keyError } = await admin
@@ -3278,47 +3712,45 @@ async function handleCheckAnswer(
   ) {
     throw new HttpError(503, "ANSWER_KEY_INVALID");
   }
-  const feedback: JsonObject = {
+  const correct = selectedIndex === correctIndex;
+  const feedback = retryFeedback({
     questionId,
     selectedIndex,
     correctIndex,
-    correct: selectedIndex === correctIndex,
+    correct,
     explanationPt: boundedString(keyQuestion.explanationPt, 1_000),
     term: boundedString(keyQuestion.term, 120),
     translation: boundedString(keyQuestion.translation, 240),
     definitionPt: boundedString(keyQuestion.definitionPt, 500),
     example: boundedString(keyQuestion.example, 500),
-  };
-  await recordAttempt(
+    retryPrompt: correct
+      ? ""
+      : "Escolha novamente aplicando a explicação antes de avançar.",
+  }, retryContext.parent, !correct);
+  const result = await recordAttempt(
     admin,
     session,
     requestKey,
-    { questionId, selectedIndex },
+    retryResponsePayload(
+      { questionId, selectedIndex },
+      stepKey,
+      retryContext.parent,
+    ),
     feedback,
-    selectedIndex === correctIndex ? 100 : 0,
+    correct ? 100 : 0,
     0,
     stepKey,
     "text",
     false,
   );
-
-  // A concurrent request may have won the unique quiz-step lock. Always return
-  // the attempt that was actually persisted, never the losing response.
-  const { data: lockedAttempt, error: lockedError } = await admin
-    .from("wolfie_activity_attempts")
-    .select("feedback_payload")
-    .eq("session_id", session.id)
-    .eq("step_key", stepKey)
-    .single();
-  if (lockedError || !lockedAttempt) {
-    throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
-  }
   return jsonResponse(200, {
     result: {
-      ...(isJsonObject(lockedAttempt.feedback_payload)
-        ? lockedAttempt.feedback_payload
-        : feedback),
-      locked: true,
+      ...feedback,
+      ...result,
+      locked: correct,
+      requiresRetry: !correct,
+      retryCompleted: retryContext.parent !== null && correct,
+      parentAttemptId: retryContext.parent?.id ?? null,
     },
   });
 }
@@ -3460,13 +3892,20 @@ async function handleSubmitText(
       },
     });
   }
-  if (session.status !== "IN_PROGRESS") {
+  if (
+    session.status !== "IN_PROGRESS" &&
+    session.status !== "AWAITING_RETRY"
+  ) {
     throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
   }
   const responses = isJsonObject(body.responses) ? body.responses : {};
   const text = boundedString(responses.text, MAX_TEXT_LENGTH);
   if (text.length < 3) throw new HttpError(400, "RESPONSE_TOO_SHORT");
-  let stepKey = boundedString(body.stepKey, 120);
+  const requestedStepKey = boundedString(body.stepKey, 120);
+  const explicitlyPartialWriting = session.subject === "writing" &&
+    requestedStepKey === "writing" &&
+    body.complete === false;
+  let stepKey = requestedStepKey;
   let complete = true;
   if (session.subject === "global_meetings") {
     if (session.phase === "construction") {
@@ -3497,8 +3936,18 @@ async function handleSubmitText(
       throw new HttpError(400, "INVALID_MEETING_STEP");
     }
   } else {
-    stepKey = "final";
+    stepKey = session.subject === "writing" && requestedStepKey === "writing"
+      ? "writing"
+      : "final";
+    complete = !explicitlyPartialWriting;
   }
+  const retryContext = await resolveRetryContext(
+    admin,
+    session,
+    body,
+    stepKey,
+    complete,
+  );
   if (!profile.is_test_account) {
     await assertEvaluationRateLimit(admin, session);
   }
@@ -3543,6 +3992,20 @@ async function handleSubmitText(
       );
     }
     const score = Number(evaluation.score);
+    // Each construction block has already passed its own calibrated retry
+    // gate. The final combined script is a consolidation record, not a second
+    // hidden gate with no dedicated editing surface in the learner journey.
+    const isConstructionConsolidation =
+      session.subject === "global_meetings" &&
+      session.phase === "construction" &&
+      stepKey === "construction_complete";
+    const requiresRetry = explicitlyPartialWriting ||
+      (!isConstructionConsolidation && evaluation.requiresRetry === true);
+    const feedback = retryFeedback(
+      evaluation,
+      retryContext.parent,
+      requiresRetry,
+    );
     const duration = Math.max(
       0,
       Math.min(86_400, Math.round(Number(body.durationSeconds) || 0)),
@@ -3552,13 +4015,17 @@ async function handleSubmitText(
       admin,
       session,
       requestKey,
-      { text },
-      evaluation,
+      retryResponsePayload(
+        { text, completeWhenReady: complete },
+        stepKey,
+        retryContext.parent,
+      ),
+      feedback,
       score,
       duration,
       stepKey || "final",
       modality,
-      complete,
+      complete && !requiresRetry,
     );
 
     if (
@@ -3596,7 +4063,7 @@ async function handleSubmitText(
     return jsonResponse(200, {
       result: result.alreadyProcessed === true
         ? persistedAttemptResult(result)
-        : { ...evaluation, ...result },
+        : { ...feedback, ...result },
     });
   } catch (error) {
     await finishAiRequest(
@@ -3694,7 +4161,10 @@ async function handleAnalyzeSpeech(
       },
     });
   }
-  if (session.status !== "IN_PROGRESS") {
+  if (
+    session.status !== "IN_PROGRESS" &&
+    session.status !== "AWAITING_RETRY"
+  ) {
     throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
   }
   let speechStepKey = "final_speech";
@@ -3712,6 +4182,13 @@ async function handleAnalyzeSpeech(
     }
     speechStepKey = meetingFinalStepKey(session, "voice");
   }
+  const retryContext = await resolveRetryContext(
+    admin,
+    session,
+    body,
+    speechStepKey,
+    true,
+  );
   const rawAudio = boundedString(
     body.audioBase64,
     MAX_AUDIO_BASE64_LENGTH + 100,
@@ -3786,6 +4263,8 @@ async function handleAnalyzeSpeech(
         },
         readinessMessage:
           "Fluxo de áudio testado sem enviar dados a um provedor externo.",
+        requiresRetry: false,
+        retryPrompt: "",
       };
     } else {
       const prompt =
@@ -3818,7 +4297,9 @@ Exact JSON schema:
     "observations": ["specific observation"],
     "tipPt": "concrete connected-speech tip"
   },
-  "readinessMessage": "competency-based PT-BR message"
+  "readinessMessage": "competency-based PT-BR message",
+  "requiresRetry": true,
+  "retryPrompt": "short PT-BR instruction for the learner's required new recording, or empty when no retry is needed"
 }
 All scores are integers 0-100.`;
       evaluation = normalizeSpeechEvaluation(
@@ -3827,6 +4308,12 @@ All scores are integers 0-100.`;
     }
 
     const score = Number(evaluation.score);
+    const requiresRetry = evaluation.requiresRetry === true;
+    const feedback = retryFeedback(
+      evaluation,
+      retryContext.parent,
+      requiresRetry,
+    );
     const duration = Math.max(
       0,
       Math.min(86_400, Math.round(Number(body.durationSeconds) || 0)),
@@ -3835,13 +4322,17 @@ All scores are integers 0-100.`;
       admin,
       session,
       requestKey,
-      { audioAnalyzed: true, mimeType },
-      evaluation,
+      retryResponsePayload(
+        { audioAnalyzed: true, mimeType, completeWhenReady: true },
+        speechStepKey,
+        retryContext.parent,
+      ),
+      feedback,
       score,
       duration,
       speechStepKey,
       "voice",
-      true,
+      !requiresRetry,
     );
     if (
       result.alreadyCompleted !== true &&
@@ -3881,7 +4372,7 @@ All scores are integers 0-100.`;
     return jsonResponse(200, {
       result: result.alreadyProcessed === true
         ? persistedAttemptResult(result)
-        : { ...evaluation, ...result },
+        : { ...feedback, ...result },
     });
   } catch (error) {
     await finishAiRequest(
@@ -3975,13 +4466,29 @@ serve(async (req) => {
     if (action === "abandon") {
       const abandonableStatuses = session.subject === "global_meetings" &&
           session.phase === "construction"
-        ? ["IN_PROGRESS", "COMPLETED"]
-        : ["IN_PROGRESS"];
-      await auth.context.admin.from("wolfie_activity_sessions")
+        ? ["IN_PROGRESS", "AWAITING_RETRY", "COMPLETED"]
+        : ["IN_PROGRESS", "AWAITING_RETRY"];
+      if (!abandonableStatuses.includes(session.status)) {
+        throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
+      }
+      const { data: abandonedSession, error: abandonError } = await auth.context
+        .admin.from("wolfie_activity_sessions")
         .update({ status: "ABANDONED" })
         .eq("id", session.id)
         .eq("student_id", session.student_id)
-        .in("status", abandonableStatuses);
+        .eq("tenant_id", session.tenant_id)
+        .in("status", abandonableStatuses)
+        .select("id")
+        .maybeSingle();
+      if (abandonError) {
+        console.error("[wolfie-activity] session abandon failed", {
+          type: abandonError.code ?? "DatabaseError",
+        });
+        throw new HttpError(503, "SESSION_UPDATE_FAILED");
+      }
+      if (!abandonedSession || abandonedSession.id !== session.id) {
+        throw new HttpError(409, "SESSION_NOT_IN_PROGRESS");
+      }
       return jsonResponse(200, { ok: true });
     }
     throw new HttpError(400, "INVALID_ACTION");

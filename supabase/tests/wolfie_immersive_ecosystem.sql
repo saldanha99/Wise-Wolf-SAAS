@@ -352,17 +352,17 @@ select pg_temp.assert_true(
   (
     public.record_wolfie_activity_attempt(
       :'quiz_session_id',
-      '20000000-0000-4000-8000-000000000002',
-      '{"questionId":"q1","selectedIndex":1}',
-      '{"correct":false}',
-      0,
+      '20000000-0000-4000-8000-000000000001',
+      '{"questionId":"q1","selectedIndex":0}',
+      '{"correct":true}',
+      100,
       1,
       'quiz:q1',
       'text',
       false
-    ) ->> 'stepAlreadyAnswered'
+    ) ->> 'alreadyProcessed'
   )::boolean,
-  'second answer for the same quiz step must be locked'
+  'replaying the same quiz request must be idempotent'
 );
 select pg_temp.assert_true(
   (
@@ -373,6 +373,264 @@ select pg_temp.assert_true(
   ),
   'quiz answer lock must persist exactly one attempt'
 );
+
+insert into public.wolfie_sessions (
+  id,
+  tenant_id,
+  student_id,
+  topic,
+  mode,
+  student_level,
+  retry_count
+) values (
+  '50000000-0000-4000-8000-000000000001',
+  'wolfie-fixture-a',
+  '00000000-0000-4000-8000-000000000101',
+  'Retry constraint regression',
+  'fluency',
+  'B1',
+  501
+);
+select pg_temp.assert_true(
+  (
+    select retry_count = 501
+      from public.wolfie_sessions
+     where id = '50000000-0000-4000-8000-000000000001'
+  ),
+  'conversation retry_count must support values above 500'
+);
+
+select public.create_wolfie_activity_session(
+  '00000000-0000-4000-8000-000000000101',
+  'vocabulary',
+  'B1',
+  null,
+  'standard',
+  'text',
+  null,
+  '10000000-0000-4000-8000-000000000008',
+  '{
+    "title":"Retry lineage regression",
+    "questions":[
+      {"id":"q1","prompt":"Choose","options":["a","b"]},
+      {"id":"q2","prompt":"Continue","options":["a","b"]}
+    ]
+  }',
+  '{"questions":[]}',
+  '{}',
+  '{}'
+);
+
+do $$
+declare
+  v_session_id uuid;
+  v_initial jsonb;
+  v_retry jsonb;
+  v_replay jsonb;
+  v_parent_attempt_id uuid;
+  v_retry_attempt_id uuid;
+begin
+  select id
+    into v_session_id
+    from public.wolfie_activity_sessions
+   where request_key = '10000000-0000-4000-8000-000000000008';
+
+  v_initial := public.record_wolfie_activity_attempt(
+    v_session_id,
+    '20000000-0000-4000-8000-000000000007',
+    '{
+      "attemptKind":"initial",
+      "logicalStepKey":"quiz:q1",
+      "questionId":"q1",
+      "selectedIndex":1
+    }',
+    '{
+      "correct":false,
+      "requiresRetry":true,
+      "retryPrompt":"Try the same question again.",
+      "priorities":["word choice"]
+    }',
+    25,
+    4,
+    'quiz:q1',
+    'text',
+    false
+  );
+  v_parent_attempt_id := (v_initial ->> 'attemptId')::uuid;
+
+  perform pg_temp.assert_true(
+    not (v_initial ->> 'alreadyProcessed')::boolean
+      and (v_initial ->> 'requiresRetry')::boolean
+      and not (v_initial ->> 'retryCompleted')::boolean,
+    'an insufficient initial attempt must require retry'
+  );
+
+  begin
+    perform public.record_wolfie_activity_attempt(
+      v_session_id,
+      '20000000-0000-4000-8000-000000000008',
+      '{
+        "attemptKind":"initial",
+        "logicalStepKey":"quiz:q2",
+        "questionId":"q2",
+        "selectedIndex":0
+      }',
+      '{"correct":true,"requiresRetry":false}',
+      100,
+      5,
+      'quiz:q2',
+      'text',
+      false
+    );
+    raise exception 'unexpected_success_with_pending_retry';
+  exception
+    when others then
+      if sqlerrm <> 'retry_required' then
+        raise;
+      end if;
+  end;
+
+  begin
+    perform public.record_wolfie_activity_attempt(
+      v_session_id,
+      '20000000-0000-4000-8000-000000000009',
+      '{
+        "attemptKind":"retry",
+        "logicalStepKey":"quiz:q1",
+        "questionId":"q1",
+        "selectedIndex":0
+      }',
+      '{"correct":true,"requiresRetry":false}',
+      100,
+      5,
+      'quiz:q1',
+      'text',
+      false
+    );
+    raise exception 'unexpected_success_without_parent';
+  exception
+    when others then
+      if sqlerrm <> 'parent_attempt_required' then
+        raise;
+      end if;
+  end;
+
+  v_retry := public.record_wolfie_activity_attempt(
+    v_session_id,
+    '20000000-0000-4000-8000-000000000010',
+    pg_catalog.jsonb_build_object(
+      'attemptKind', 'retry',
+      'logicalStepKey', 'quiz:q1',
+      'parentAttemptId', v_parent_attempt_id,
+      'questionId', 'q1',
+      'selectedIndex', 0
+    ),
+    '{
+      "correct":true,
+      "requiresRetry":false,
+      "strengths":["word choice corrected"]
+    }',
+    100,
+    7,
+    'quiz:q1',
+    'text',
+    false
+  );
+  v_retry_attempt_id := (v_retry ->> 'attemptId')::uuid;
+
+  perform pg_temp.assert_true(
+    not (v_retry ->> 'alreadyProcessed')::boolean
+      and not (v_retry ->> 'requiresRetry')::boolean
+      and (v_retry ->> 'retryCompleted')::boolean
+      and (v_retry ->> 'parentAttemptId')::uuid = v_parent_attempt_id,
+    'a valid retry must close its parent attempt'
+  );
+
+  v_replay := public.record_wolfie_activity_attempt(
+    v_session_id,
+    '20000000-0000-4000-8000-000000000007',
+    '{
+      "attemptKind":"initial",
+      "logicalStepKey":"quiz:q1",
+      "questionId":"q1",
+      "selectedIndex":1
+    }',
+    '{"correct":false,"requiresRetry":true}',
+    25,
+    4,
+    'quiz:q1',
+    'text',
+    false
+  );
+
+  perform pg_temp.assert_true(
+    (v_replay ->> 'alreadyProcessed')::boolean
+      and not (v_replay ->> 'requiresRetry')::boolean
+      and (v_replay ->> 'retryCompleted')::boolean
+      and not (
+        v_replay -> 'feedbackPayload' ->> 'requiresRetry'
+      )::boolean
+      and (
+        v_replay -> 'feedbackPayload' ->> 'retryCompleted'
+      )::boolean,
+    'replaying the original attempt must not reopen a completed retry'
+  );
+
+  perform pg_temp.assert_true(
+    (
+      select count(*) = 2
+        from public.wolfie_activity_attempts
+       where session_id = v_session_id
+    ),
+    'retry replay and rejected attempts must not add attempt rows'
+  );
+  perform pg_temp.assert_true(
+    exists (
+      select 1
+        from public.wolfie_activity_attempts
+       where id = v_parent_attempt_id
+         and attempt_kind = 'initial'
+         and requires_retry
+         and retry_completed
+         and retry_completed_by_attempt_id = v_retry_attempt_id
+    ) and exists (
+      select 1
+        from public.wolfie_activity_attempts
+       where id = v_retry_attempt_id
+         and attempt_kind = 'retry'
+         and parent_attempt_id = v_parent_attempt_id
+         and not requires_retry
+    ),
+    'retry attempts must preserve bidirectional lineage'
+  );
+  perform pg_temp.assert_true(
+    (
+      select required_retry_count = 1
+        and completed_retry_count = 1
+        and attempt_count = 2
+        and status = 'IN_PROGRESS'
+        and current_stage = 'practice'
+        and report_json #>> '{latestAttempt,attemptId}' =
+          v_retry_attempt_id::text
+        and report_json #>> '{latestAttempt,parentAttemptId}' =
+          v_parent_attempt_id::text
+        and report_json #>> '{latestAttempt,attemptNumber}' = '2'
+        and report_json #>> '{latestAttempt,stepKey}' = 'quiz:q1'
+        and report_json #>> '{latestAttempt,modality}' = 'text'
+        and report_json #>> '{latestAttempt,score}' = '100'
+        and report_json #>> '{latestAttempt,requiresRetry}' = 'false'
+        and report_json #>> '{latestAttempt,retryCompleted}' = 'true'
+        and report_json #>>
+          '{latestAttempt,responsePayload,attemptKind}' = 'retry'
+        and report_json #>>
+          '{latestAttempt,feedbackPayload,correct}' = 'true'
+        from public.wolfie_activity_sessions
+       where id = v_session_id
+    ),
+    'session counters and report_json.latestAttempt must track the retry'
+  );
+end;
+$$;
 
 update public.profiles
    set xp = 0,

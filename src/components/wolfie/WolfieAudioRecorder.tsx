@@ -32,6 +32,8 @@ export interface RecordedAudioPayload {
 interface WolfieAudioRecorderProps {
   onAnalyze: (payload: RecordedAudioPayload) => Promise<void>;
   busy: boolean;
+  /** Changes when the parent requires a genuinely new recording. */
+  resetKey?: string | number;
 }
 
 const formatDuration = (seconds: number) => {
@@ -71,6 +73,7 @@ const chooseMimeType = (): string | undefined => {
 export function WolfieAudioRecorder({
   onAnalyze,
   busy,
+  resetKey,
 }: WolfieAudioRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -138,6 +141,13 @@ export function WolfieAudioRecorder({
     recordingRequestKeyRef.current = '';
     setError('');
   };
+
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    discardRecording();
+    // resetKey is the event; recorder internals are intentionally not deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
 
   const stopRecording = () => {
     const recorder = recorderRef.current;

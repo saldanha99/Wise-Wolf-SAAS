@@ -54,6 +54,12 @@ export interface WolfieSettings {
   goal?: string;
   level?: CefrLevel;
   correctionStrictness?: 1 | 2 | 3;
+  preferredCorrectionMode?: 'immediate' | 'end' | 'selective' | 'examiner';
+  preferredLanguageMode?:
+    | 'pt_support'
+    | 'bilingual'
+    | 'immersive'
+    | 'english_rescue';
   dailyGoalMinutes?: number;
   completedAt?: string;
 }
@@ -77,6 +83,9 @@ export interface User {
   is_trainer?: boolean;
   wolfieSettings?: WolfieSettings;
   englishFor?: string;
+  occupation?: string;
+  studentCategory?: string;
+  interests?: string[];
   preferredTopics?: string[];
   shortTermGoal?: string;
 }

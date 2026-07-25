@@ -77,6 +77,12 @@ const ERROR_MESSAGES: Record<string, string> = {
     'O Wolfie não conseguiu interpretar essa gravação com segurança. Grave novamente em um lugar mais silencioso.',
   AI_EVALUATION_INVALID:
     'A correção não ficou confiável. Envie novamente para o Wolfie reavaliar.',
+  RETRY_REQUIRED:
+    'Existe uma nova tentativa pendente. Aplique o feedback anterior antes de avançar.',
+  PARENT_ATTEMPT_NOT_RETRYABLE:
+    'Esta correção já foi aplicada. Retome a etapa atual para continuar.',
+  PARENT_ATTEMPT_STEP_MISMATCH:
+    'A nova tentativa pertence a outra etapa. Retome o feedback pendente antes de continuar.',
   LISTENING_AUDIO_UNAVAILABLE:
     'O áudio desta atividade não ficou pronto. Tente novamente.',
   LISTENING_AUDIO_NOT_AVAILABLE:
@@ -232,6 +238,7 @@ export async function checkWolfieAnswer(
   questionId: string,
   selectedIndex: number,
   requestKey = createWolfieRequestKey(),
+  parentAttemptId?: string,
 ): Promise<AnswerFeedback> {
   const response = await invokeWolfie<{ result: AnswerFeedback }>({
     action: 'check_answer',
@@ -239,6 +246,7 @@ export async function checkWolfieAnswer(
     questionId,
     selectedIndex,
     requestKey,
+    parentAttemptId,
   });
   return response.result;
 }
@@ -265,6 +273,7 @@ export interface SubmitTextInput {
   complete?: boolean;
   modality?: ActivityModality;
   requestKey?: string;
+  parentAttemptId?: string;
 }
 
 export async function submitWolfieText(
@@ -279,6 +288,7 @@ export async function submitWolfieText(
     stepKey: input.stepKey,
     complete: input.complete ?? true,
     modality: input.modality ?? 'text',
+    parentAttemptId: input.parentAttemptId,
   });
   return response.result;
 }
@@ -305,6 +315,7 @@ export interface AnalyzeSpeechInput {
   stepKey?: string;
   complete?: boolean;
   requestKey?: string;
+  parentAttemptId?: string;
 }
 
 export async function analyzeWolfieSpeech(
@@ -319,6 +330,7 @@ export async function analyzeWolfieSpeech(
     durationSeconds: input.durationSeconds,
     stepKey: input.stepKey ?? 'speech',
     complete: input.complete ?? true,
+    parentAttemptId: input.parentAttemptId,
   });
   return response.result;
 }

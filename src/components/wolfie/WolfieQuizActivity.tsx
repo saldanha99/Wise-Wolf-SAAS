@@ -42,6 +42,55 @@ interface WolfieQuizActivityProps {
   onConversation: () => void;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const savedQuizFeedback = (
+  value: unknown,
+  questionId: string,
+): AnswerFeedback | null => {
+  if (!isRecord(value)) return null;
+  const selectedIndex = Number(value.selectedIndex);
+  const correctIndex = Number(value.correctIndex);
+  if (!Number.isInteger(selectedIndex) || !Number.isInteger(correctIndex)) {
+    return null;
+  }
+  const text = (key: string) =>
+    typeof value[key] === 'string' ? String(value[key]) : undefined;
+  const attemptId = text('attemptId');
+  const parentAttemptId = text('parentAttemptId');
+  const rawAttemptNumber = value.attemptNumber;
+  const attemptNumber =
+    (typeof rawAttemptNumber === 'number' ||
+      typeof rawAttemptNumber === 'string') &&
+    Number.isInteger(Number(rawAttemptNumber))
+      ? Number(rawAttemptNumber)
+      : undefined;
+  return {
+    questionId:
+      typeof value.questionId === 'string' && value.questionId
+        ? value.questionId
+        : questionId,
+    selectedIndex,
+    correctIndex,
+    correct:
+      typeof value.correct === 'boolean'
+        ? value.correct
+        : selectedIndex === correctIndex,
+    explanationPt: text('explanationPt') ?? '',
+    term: text('term'),
+    translation: text('translation'),
+    definitionPt: text('definitionPt'),
+    example: text('example'),
+    locked: value.locked === true,
+    attemptId,
+    attemptNumber,
+    requiresRetry: value.requiresRetry === true,
+    retryCompleted: value.retryCompleted === true,
+    parentAttemptId: parentAttemptId ?? null,
+  };
+};
+
 function ListeningPlayer({
   sessionId,
   onListened,
@@ -147,13 +196,34 @@ export function WolfieQuizActivity({
   onConversation,
 }: WolfieQuizActivityProps) {
   const questions = session.activity_content.questions ?? [];
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const persistedAnswers = questions.map((question) =>
+    savedQuizFeedback(
+      session.learner_state.quizAnswers?.[question.id],
+      question.id,
+    ),
+  );
+  const resumedIndex = persistedAnswers.findIndex(
+    (item) => !item || item.requiresRetry === true || !item.correct,
+  );
+  const [currentIndex, setCurrentIndex] = useState(() =>
+    resumedIndex >= 0
+      ? resumedIndex
+      : Math.max(0, questions.length - 1),
+  );
   const [answers, setAnswers] = useState<number[]>(() =>
-    Array(questions.length).fill(-1),
+    persistedAnswers.map((item) => item?.selectedIndex ?? -1),
   );
   const [feedback, setFeedback] = useState<
     Partial<Record<number, AnswerFeedback>>
-  >({});
+  >(() =>
+    persistedAnswers.reduce<Partial<Record<number, AnswerFeedback>>>(
+      (result, item, index) => {
+        if (item) result[index] = item;
+        return result;
+      },
+      {},
+    ),
+  );
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hasListened, setHasListened] = useState(
@@ -163,6 +233,14 @@ export function WolfieQuizActivity({
   const startedAt = useRef(Date.now());
   const questionHeadingRef = useRef<HTMLHeadingElement>(null);
   const answerRequestKeys = useRef<Record<string, string>>({});
+  const retryParentAttempts = useRef<Record<string, string>>(
+    persistedAnswers.reduce<Record<string, string>>((result, item) => {
+      if (item?.requiresRetry && item.attemptId) {
+        result[item.questionId] = item.attemptId;
+      }
+      return result;
+    }, {}),
+  );
   const submitRequestKey = useRef('');
 
   const question = questions[currentIndex];
@@ -219,6 +297,7 @@ export function WolfieQuizActivity({
         answerRequestKeys.current[question.id] ||
           (answerRequestKeys.current[question.id] =
             createWolfieRequestKey()),
+        retryParentAttempts.current[question.id],
       );
       nextAnswers[currentIndex] = result.selectedIndex;
       setAnswers(nextAnswers);
@@ -232,6 +311,26 @@ export function WolfieQuizActivity({
     } finally {
       setChecking(false);
     }
+  };
+
+  const retryCurrentQuestion = () => {
+    if (!question || !currentFeedback || currentFeedback.correct) return;
+    if (currentFeedback.attemptId) {
+      retryParentAttempts.current[question.id] = currentFeedback.attemptId;
+    }
+    delete answerRequestKeys.current[question.id];
+    setAnswers((current) => {
+      const next = [...current];
+      next[currentIndex] = -1;
+      return next;
+    });
+    setFeedback((current) => {
+      const next = { ...current };
+      delete next[currentIndex];
+      return next;
+    });
+    setError('');
+    questionHeadingRef.current?.focus();
   };
 
   const finishQuiz = async () => {
@@ -476,26 +575,37 @@ export function WolfieQuizActivity({
 
             {currentFeedback ? (
               <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
-                  onClick={continueQuiz}
-                  disabled={submitting}
-                  className={primaryButton}
-                >
-                  {submitting ? (
-                    <BusyLabel>Calculando sua prontidão…</BusyLabel>
-                  ) : currentIndex === questions.length - 1 ? (
-                    <>
-                      Ver meu resultado
-                      <CheckCircle2 size={18} aria-hidden="true" />
-                    </>
-                  ) : (
-                    <>
-                      Próxima situação
-                      <ChevronRight size={18} aria-hidden="true" />
-                    </>
-                  )}
-                </button>
+                {currentFeedback.correct ? (
+                  <button
+                    type="button"
+                    onClick={continueQuiz}
+                    disabled={submitting}
+                    className={primaryButton}
+                  >
+                    {submitting ? (
+                      <BusyLabel>Calculando sua prontidão…</BusyLabel>
+                    ) : currentIndex === questions.length - 1 ? (
+                      <>
+                        Ver meu resultado
+                        <CheckCircle2 size={18} aria-hidden="true" />
+                      </>
+                    ) : (
+                      <>
+                        Próxima situação
+                        <ChevronRight size={18} aria-hidden="true" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={retryCurrentQuestion}
+                    className={primaryButton}
+                  >
+                    Tentar novamente
+                    <ChevronRight size={18} aria-hidden="true" />
+                  </button>
+                )}
               </div>
             ) : null}
           </section>

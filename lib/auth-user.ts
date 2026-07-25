@@ -31,6 +31,13 @@ export async function mapProfileToAppUser(profile: ProfileRecord): Promise<User>
         is_trainer: profile.is_trainer,
         wolfieSettings: profile.wolfie_settings || undefined,
         englishFor: profile.english_for || undefined,
+        occupation: profile.occupation || undefined,
+        studentCategory: profile.student_category || undefined,
+        interests: Array.isArray(profile.interests)
+            ? profile.interests
+            : typeof profile.interests === 'string' && profile.interests.trim()
+                ? profile.interests.split(',').map((item: string) => item.trim()).filter(Boolean)
+                : undefined,
         preferredTopics: Array.isArray(profile.preferred_topics) ? profile.preferred_topics : undefined,
         shortTermGoal: profile.short_term_goal || undefined,
     };

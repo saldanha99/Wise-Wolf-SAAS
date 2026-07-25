@@ -40,6 +40,11 @@ import {
 } from './catalog';
 import type {
   CefrLevel,
+  WolfieConversationBrief,
+  WolfieCorrectionMode,
+  WolfieDifficulty,
+  WolfieExperienceMode,
+  WolfieLanguageMode,
   WolfieActivityResult,
   WolfieActivitySession,
   WolfieOverview,
@@ -49,6 +54,7 @@ import type {
 } from './types';
 import {
   focusRing,
+  inputClass,
   InlineError,
   primaryButton,
   secondaryButton,
@@ -58,6 +64,7 @@ import { WolfieWritingActivity } from './WolfieWritingActivity';
 import { WolfieMeetingActivity } from './WolfieMeetingActivity';
 import { WolfieActivitySummary } from './WolfieActivitySummary';
 import { WolfieRepertoire } from './WolfieRepertoire';
+import { supabase } from '../../../lib/supabase';
 
 const WolfieConversationTutor = React.lazy(
   () => import('../../../components/WolfieTutor'),
@@ -68,6 +75,7 @@ type FlowView =
   | 'level'
   | 'sector'
   | 'mode'
+  | 'conversation_setup'
   | 'loading'
   | 'activity'
   | 'summary'
@@ -90,10 +98,150 @@ const loadingMessages = [
   'Preparando uma situação que parece real…',
 ];
 
+const EXPERIENCE_OPTIONS: Array<{
+  id: WolfieExperienceMode;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: 'free_conversation',
+    title: 'Conversa livre',
+    description: 'Converse com naturalidade sem perder o objetivo pedagógico.',
+  },
+  {
+    id: 'guided_lesson',
+    title: 'Aula guiada',
+    description: 'Aprenda uma ideia, pratique e use em uma situação nova.',
+  },
+  {
+    id: 'roleplay',
+    title: 'Simulação real',
+    description: 'O Wolfie assume um personagem e reage às suas decisões.',
+  },
+  {
+    id: 'presentation',
+    title: 'Apresentação',
+    description: 'Construa a mensagem, pratique e responda perguntas.',
+  },
+  {
+    id: 'global_meeting',
+    title: 'Reunião',
+    description: 'Conduza uma conversa profissional com objetivo e pressão.',
+  },
+  {
+    id: 'interview',
+    title: 'Entrevista',
+    description: 'Responda como candidato e receba aprofundamentos reais.',
+  },
+  {
+    id: 'exam',
+    title: 'Preparação para prova',
+    description: 'Treine tarefas, tempo e critérios de uma avaliação oral.',
+  },
+  {
+    id: 'writing',
+    title: 'Writing falado',
+    description: 'Organize ideias oralmente antes de produzir o texto.',
+  },
+  {
+    id: 'pronunciation',
+    title: 'Pronúncia',
+    description:
+      'Pratique frases, ritmo e clareza em contexto; a avaliação dos sons exige uma atividade com gravação.',
+  },
+  {
+    id: 'vocabulary',
+    title: 'Vocabulário ativo',
+    description: 'Transforme repertório conhecido em fala espontânea.',
+  },
+  {
+    id: 'storytelling',
+    title: 'Storytelling',
+    description: 'Conte uma história com contexto, ação e reflexão.',
+  },
+  {
+    id: 'child_mission',
+    title: 'Missão infantil',
+    description: 'Aprenda por desafio, imaginação e pequenas conquistas.',
+  },
+  {
+    id: 'teen_challenge',
+    title: 'Desafio teen',
+    description: 'Converse sobre temas atuais com missão e progressão.',
+  },
+  {
+    id: 'examiner',
+    title: 'Examinador',
+    description: 'Receba perguntas objetivas e um parecer ao final.',
+  },
+  {
+    id: 'fluency',
+    title: 'Fluência',
+    description: 'Sustente a conversa com menos pausas e mais naturalidade.',
+  },
+  {
+    id: 'emergency',
+    title: 'Preparação urgente',
+    description: 'Vá direto ao essencial para uma situação próxima.',
+  },
+];
+
+const CORRECTION_OPTIONS: Array<{
+  id: WolfieCorrectionMode;
+  title: string;
+}> = [
+  { id: 'immediate', title: 'Na hora' },
+  { id: 'end', title: 'Ao final' },
+  { id: 'selective', title: 'Só o essencial' },
+  { id: 'examiner', title: 'Modo examinador' },
+];
+
+const LANGUAGE_OPTIONS: Array<{
+  id: WolfieLanguageMode;
+  title: string;
+}> = [
+  { id: 'pt_support', title: 'Português de apoio' },
+  { id: 'bilingual', title: 'Bilíngue' },
+  { id: 'immersive', title: 'Inglês imersivo' },
+  { id: 'english_rescue', title: 'Inglês com resgate' },
+];
+
+const DIFFICULTY_OPTIONS: Array<{
+  id: WolfieDifficulty;
+  title: string;
+}> = [
+  { id: 'supportive', title: 'Com bastante apoio' },
+  { id: 'balanced', title: 'Equilibrada' },
+  { id: 'challenging', title: 'Desafiadora' },
+  { id: 'adaptive', title: 'Adaptativa' },
+];
+
 const guessProfileLevel = (module?: string): CefrLevel | null => {
   if (!module) return null;
   const match = module.toUpperCase().match(/\b(A1|A2|B1|B2|C1|C2)\b/);
   return match ? (match[1] as CefrLevel) : null;
+};
+
+const defaultExperienceForSubject = (
+  subject: WolfieSubject,
+): WolfieExperienceMode => {
+  if (subject === 'global_meetings') return 'global_meeting';
+  if (subject === 'writing') return 'writing';
+  if (subject === 'vocabulary') return 'vocabulary';
+  if (subject === 'listening') return 'roleplay';
+  return 'guided_lesson';
+};
+
+const subjectForExperience = (
+  experience: WolfieExperienceMode,
+): WolfieSubject => {
+  if (experience === 'global_meeting' || experience === 'presentation') {
+    return 'global_meetings';
+  }
+  if (experience === 'writing') return 'writing';
+  if (experience === 'vocabulary') return 'vocabulary';
+  if (experience === 'pronunciation') return 'listening';
+  return 'grammar';
 };
 
 const conversationTopicForSession = (
@@ -123,7 +271,7 @@ function JourneySteps({
       ? 0
       : view === 'level' || view === 'sector'
         ? 1
-        : view === 'mode'
+        : view === 'mode' || view === 'conversation_setup'
           ? 2
           : 3;
   const steps = ['Assunto', 'Nível', 'Formato', 'Prática'];
@@ -223,6 +371,21 @@ interface WolfiePracticeFlowProps {
   user: WolfieUserSummary;
 }
 
+interface ResumableConversation {
+  id: string;
+  topic: string;
+  student_level: CefrLevel;
+  experience_mode: WolfieExperienceMode;
+  correction_mode: WolfieCorrectionMode;
+  language_mode: WolfieLanguageMode;
+  difficulty: WolfieDifficulty;
+  scenario_context: string | null;
+  student_goal: string | null;
+  target_skill: string | null;
+  scenario_status: 'active' | 'awaiting_retry';
+  last_activity_at: string;
+}
+
 export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   const [view, setView] = useState<FlowView>('subject');
   const [selectedSubject, setSelectedSubject] =
@@ -240,7 +403,12 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState('');
   const [endingSessionId, setEndingSessionId] = useState('');
-  const [conversationTopic, setConversationTopic] = useState('');
+  const [resumableConversation, setResumableConversation] =
+    useState<ResumableConversation | null>(null);
+  const [conversationBrief, setConversationBrief] =
+    useState<WolfieConversationBrief | null>(null);
+  const [conversationDraft, setConversationDraft] =
+    useState<WolfieConversationBrief | null>(null);
   const [repertoireReturn, setRepertoireReturn] =
     useState<'subject' | 'summary'>('subject');
   const mainHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -248,18 +416,40 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     signature: string;
     requestKey: string;
   } | null>(null);
+  const wolfieSettings = user.wolfieSettings ?? user.wolfie_settings;
   const profileLevel = useMemo(
-    () => user.wolfieSettings?.level ?? guessProfileLevel(user.module),
-    [user.module, user.wolfieSettings?.level],
+    () => wolfieSettings?.level ?? guessProfileLevel(user.module),
+    [user.module, wolfieSettings?.level],
   );
-  const firstName = user.name?.trim().split(/\s+/)[0] || 'aluno';
+  const firstName =
+    (user.name ?? user.full_name)?.trim().split(/\s+/)[0] || 'aluno';
 
   const loadOverview = useCallback(async (showLoading = false) => {
     if (showLoading) setOverviewLoading(true);
     setOverviewError('');
     try {
-      const nextOverview = await getWolfieOverview();
+      const conversationRequest = user.id
+        ? supabase
+            .from('wolfie_sessions')
+            .select(
+              'id, topic, student_level, experience_mode, correction_mode, language_mode, difficulty, scenario_context, student_goal, target_skill, scenario_status, last_activity_at',
+            )
+            .eq('student_id', user.id)
+            .is('finished_at', null)
+            .in('scenario_status', ['active', 'awaiting_retry'])
+            .order('last_activity_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null });
+      const [nextOverview, conversationResult] = await Promise.all([
+        getWolfieOverview(),
+        conversationRequest,
+      ]);
+      if (conversationResult.error) throw conversationResult.error;
       setOverview(nextOverview);
+      setResumableConversation(
+        (conversationResult.data as ResumableConversation | null) ?? null,
+      );
     } catch (cause) {
       setOverviewError(
         cause instanceof Error
@@ -269,7 +459,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     } finally {
       if (showLoading) setOverviewLoading(false);
     }
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     void loadOverview(false);
@@ -281,6 +471,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       view === 'level' ||
       view === 'sector' ||
       view === 'mode' ||
+      view === 'conversation_setup' ||
       view === 'generation_error'
     ) {
       mainHeadingRef.current?.focus();
@@ -359,6 +550,79 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     };
   };
 
+  const buildConversationBrief = (
+    nextSelection: WolfieSelection,
+  ): WolfieConversationBrief => {
+    const subject = getSubjectOption(nextSelection.subject);
+    const sector = getSectorOption(nextSelection.sector);
+    const savedGoal =
+      user.shortTermGoal ??
+      user.short_term_goal ??
+      wolfieSettings?.goal ??
+      user.englishFor ??
+      user.english_for ??
+      '';
+    const interests =
+      user.preferredTopics ??
+      user.preferred_topics ??
+      user.interests ??
+      [];
+    const studentCategory =
+      user.studentCategory ?? user.student_category ?? '';
+    const personalContext = [
+      user.occupation ? `Profissão: ${user.occupation}.` : '',
+      studentCategory
+        ? `Perfil: ${studentCategory}.`
+        : '',
+      interests.length ? `Interesses: ${interests.slice(0, 4).join(', ')}.` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const languageMode =
+      wolfieSettings?.preferredLanguageMode ??
+      (nextSelection.level === 'A1' || nextSelection.level === 'A2'
+        ? 'pt_support'
+        : nextSelection.level === 'B1' || nextSelection.level === 'B2'
+          ? 'bilingual'
+          : 'immersive');
+    const correctionMode =
+      wolfieSettings?.preferredCorrectionMode ??
+      (wolfieSettings?.correctionStrictness === 3
+        ? 'immediate'
+        : wolfieSettings?.correctionStrictness === 1
+          ? 'selective'
+          : 'selective');
+    const scenario = [
+      sector
+        ? `${sector.title}: ${sector.context}`
+        : `${subject.title}: ${subject.description}`,
+      personalContext,
+      savedGoal ? `Meta já conhecida: ${savedGoal}.` : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      topic: [
+        subject.title,
+        `nível ${nextSelection.level}`,
+        sector?.title,
+      ]
+        .filter(Boolean)
+        .join(' — ')
+        .slice(0, 160),
+      scenario: scenario.slice(0, 1_200),
+      studentGoal: (savedGoal || subject.outcome).slice(0, 320),
+      targetSkill: subject.outcome.slice(0, 240),
+      experienceMode: defaultExperienceForSubject(nextSelection.subject),
+      correctionMode,
+      languageMode,
+      difficulty: 'adaptive',
+    };
+  };
+
   const beginWrittenPractice = () => {
     const nextSelection = selectedPractice();
     if (nextSelection) void startActivity(nextSelection);
@@ -367,19 +631,47 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   const beginConversation = () => {
     const nextSelection = selectedPractice();
     if (!nextSelection) return;
-    const subject = getSubjectOption(nextSelection.subject);
-    const sector = getSectorOption(nextSelection.sector);
-    setConversationTopic(
-      [
-        subject.title,
-        `nível ${nextSelection.level}`,
-        sector?.title,
-      ].filter(Boolean).join(' — ').slice(0, 160),
-    );
+    setConversationDraft(buildConversationBrief(nextSelection));
+    setView('conversation_setup');
   };
 
   const beginSessionConversation = (session: WolfieActivitySession) => {
-    setConversationTopic(conversationTopicForSession(session));
+    const base = buildConversationBrief({
+      subject: session.subject,
+      level: session.cefr_level,
+      sector: session.sector ?? undefined,
+    });
+    const content = session.activity_content;
+    const scenario = content.scenario
+      ? [
+          `${content.scenario.title}.`,
+          `Você é ${content.scenario.role} na ${content.scenario.company}.`,
+          `Objetivo: ${content.scenario.objective}.`,
+          `Restrição: ${content.scenario.constraint}.`,
+        ].join(' ')
+      : [
+          content.context,
+          content.prompt,
+          content.instructionsPt,
+        ]
+          .filter(Boolean)
+          .join(' ');
+    setConversationBrief({
+      ...base,
+      topic: conversationTopicForSession(session),
+      scenario: (scenario || base.scenario).slice(0, 1_200),
+      studentGoal: (content.readinessGoal || base.studentGoal).slice(0, 320),
+      targetSkill: [
+        base.targetSkill,
+        content.targetVocabulary
+          ?.slice(0, 8)
+          .map((item) => item.term)
+          .join(', '),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+        .slice(0, 320),
+    });
   };
 
   const completeActivity = (
@@ -417,6 +709,21 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     setView('activity');
   };
 
+  const resumeConversation = (session: ResumableConversation) => {
+    setSelectedSubject(subjectForExperience(session.experience_mode));
+    setSelectedLevel(session.student_level);
+    setConversationBrief({
+      topic: session.topic,
+      scenario: session.scenario_context ?? '',
+      studentGoal: session.student_goal ?? '',
+      targetSkill: session.target_skill ?? '',
+      experienceMode: session.experience_mode,
+      correctionMode: session.correction_mode,
+      languageMode: session.language_mode,
+      difficulty: session.difficulty,
+    });
+  };
+
   const endSavedSession = async (sessionId: string) => {
     if (endingSessionId) return;
     setEndingSessionId(sessionId);
@@ -435,6 +742,36 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     }
   };
 
+  const endSavedConversation = async (conversationId: string) => {
+    if (endingSessionId) return;
+    setEndingSessionId(conversationId);
+    setOverviewError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('wolfie-brain', {
+        body: { action: 'abandon', conversationId },
+      });
+      if (error || data?.success !== true) {
+        throw new Error(
+          data?.error ||
+            error?.message ||
+            'Não foi possível encerrar esta conversa.',
+        );
+      }
+      setResumableConversation((current) =>
+        current?.id === conversationId ? null : current,
+      );
+      await loadOverview(false);
+    } catch (cause) {
+      setOverviewError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível encerrar esta conversa.',
+      );
+    } finally {
+      setEndingSessionId('');
+    }
+  };
+
   const exitActivity = () => {
     setActiveSession(null);
     setCompletedSession(null);
@@ -443,6 +780,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     setSelectedSubject(null);
     setSelectedLevel(null);
     setSelectedSector('');
+    setConversationBrief(null);
+    setConversationDraft(null);
     setView('subject');
     void loadOverview(false);
   };
@@ -455,6 +794,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     setSelectedSubject(null);
     setSelectedLevel(null);
     setSelectedSector('');
+    setConversationBrief(null);
+    setConversationDraft(null);
     setGenerationError('');
     setView('subject');
   };
@@ -466,7 +807,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   };
 
   const conversationOverlay =
-    conversationTopic && selectedLevel ? (
+    conversationBrief && selectedLevel ? (
       <React.Suspense
         fallback={
           <LoadingExperience
@@ -477,13 +818,20 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       >
         <WolfieConversationTutor
           user={{
-            id: user.id,
+            ...user,
             levelBadge: selectedLevel,
           }}
           voiceMode
-          topic={conversationTopic}
+          topic={conversationBrief.topic}
+          experienceMode={conversationBrief.experienceMode}
+          correctionMode={conversationBrief.correctionMode}
+          languageMode={conversationBrief.languageMode}
+          difficulty={conversationBrief.difficulty}
+          scenario={conversationBrief.scenario}
+          studentGoal={conversationBrief.studentGoal}
+          targetSkill={conversationBrief.targetSkill}
           onClose={() => {
-            setConversationTopic('');
+            setConversationBrief(null);
             void loadOverview(false);
           }}
         />
@@ -654,7 +1002,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
             </div>
           ) : null}
 
-          {overview?.resumableSessions?.length ? (
+          {resumableConversation || overview?.resumableSessions?.length ? (
             <section
               className="mt-7 rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-6"
               aria-labelledby="wolfie-continue-title"
@@ -677,7 +1025,58 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                 </div>
               </div>
               <div className="mt-5 grid gap-3 lg:grid-cols-2">
-                {overview.resumableSessions.map((savedSession) => {
+                {resumableConversation ? (
+                  <article className="rounded-2xl border border-brand-border bg-brand-bg p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-brand-accent">
+                          Conversa real · {resumableConversation.student_level}
+                        </p>
+                        <h3 className="mt-2 font-black text-brand-text">
+                          {resumableConversation.topic}
+                        </h3>
+                        <p className="mt-1 text-xs text-brand-muted">
+                          {resumableConversation.scenario_status ===
+                          'awaiting_retry'
+                            ? 'Reformulação pendente'
+                            : 'Conversa em andamento'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          resumeConversation(resumableConversation)
+                        }
+                        className={primaryButton}
+                      >
+                        <Mic size={16} aria-hidden="true" />
+                        Continuar conversa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void endSavedConversation(resumableConversation.id)
+                        }
+                        disabled={Boolean(endingSessionId)}
+                        className={secondaryButton}
+                      >
+                        {endingSessionId === resumableConversation.id ? (
+                          <Loader2
+                            size={16}
+                            className="animate-spin"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Trash2 size={16} aria-hidden="true" />
+                        )}
+                        Encerrar
+                      </button>
+                    </div>
+                  </article>
+                ) : null}
+                {(overview?.resumableSessions ?? []).map((savedSession) => {
                   const option = getSubjectOption(savedSession.subject);
                   const isMemorization =
                     savedSession.subject === 'global_meetings' &&
@@ -1028,8 +1427,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                 Conversa real
               </h2>
               <p className="mt-2 flex-1 text-sm leading-6 text-brand-muted">
-                Fale com o Wolfie em tempo real, treine espontaneidade,
-                pronúncia e naturalidade dentro do assunto escolhido.
+                Fale com o Wolfie em tempo real e treine espontaneidade,
+                fluidez e naturalidade dentro do assunto escolhido.
               </p>
               <span className="mt-5 inline-flex items-center gap-2 text-sm font-black text-brand-accent">
                 Iniciar conversa
@@ -1041,6 +1440,299 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
               </span>
             </button>
           </section>
+        </main>
+      ) : null}
+
+      {view === 'conversation_setup' &&
+      selectedSubject &&
+      selectedLevel &&
+      conversationDraft ? (
+        <main className="mx-auto max-w-6xl px-4 py-7 sm:px-7 sm:py-10">
+          <button
+            type="button"
+            onClick={() => setView('mode')}
+            className={`inline-flex items-center gap-2 text-sm font-bold text-brand-muted hover:text-brand-accent ${focusRing}`}
+          >
+            <ArrowLeft size={17} aria-hidden="true" />
+            Voltar aos formatos
+          </button>
+
+          <div className="mt-6 max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-accent">
+              Conversa real · {selectedLevel}
+            </p>
+            <h1
+              ref={mainHeadingRef}
+              tabIndex={-1}
+              className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+            >
+              Transforme o tema em uma situação de verdade
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-brand-muted">
+              O Wolfie já vai entrar sabendo o assunto, seu objetivo e o papel
+              que deve interpretar. Você pode ajustar só o que quiser.
+            </p>
+          </div>
+
+          <form
+            className="mt-8 space-y-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const normalized: WolfieConversationBrief = {
+                ...conversationDraft,
+                topic: conversationDraft.topic.trim().slice(0, 160),
+                scenario: conversationDraft.scenario.trim().slice(0, 1_200),
+                studentGoal: conversationDraft.studentGoal
+                  .trim()
+                  .slice(0, 320),
+                targetSkill: conversationDraft.targetSkill
+                  .trim()
+                  .slice(0, 320),
+              };
+              setConversationBrief(normalized);
+              setView('mode');
+            }}
+          >
+            <section className="grid gap-4 rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm md:grid-cols-2 sm:p-6">
+              <label className="block md:col-span-2">
+                <span className="text-sm font-black text-brand-text">
+                  Assunto da conversa
+                </span>
+                <input
+                  value={conversationDraft.topic}
+                  onChange={(event) =>
+                    setConversationDraft((current) =>
+                      current
+                        ? { ...current, topic: event.target.value }
+                        : current,
+                    )
+                  }
+                  maxLength={160}
+                  className={`${inputClass} mt-2`}
+                  placeholder="Ex.: alinhar um atraso com um cliente"
+                  required
+                />
+              </label>
+
+              <label className="block md:col-span-2">
+                <span className="text-sm font-black text-brand-text">
+                  Situação real
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-brand-muted">
+                  Diga quem participa, o que aconteceu e qual decisão precisa
+                  sair da conversa.
+                </span>
+                <textarea
+                  value={conversationDraft.scenario}
+                  onChange={(event) =>
+                    setConversationDraft((current) =>
+                      current
+                        ? { ...current, scenario: event.target.value }
+                        : current,
+                    )
+                  }
+                  maxLength={1_200}
+                  rows={4}
+                  className={`${inputClass} mt-2 resize-y`}
+                  placeholder="Ex.: você precisa negociar um novo prazo com um gestor americano sem comprometer a qualidade."
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-black text-brand-text">
+                  Quero sair pronto para…
+                </span>
+                <input
+                  value={conversationDraft.studentGoal}
+                  onChange={(event) =>
+                    setConversationDraft((current) =>
+                      current
+                        ? { ...current, studentGoal: event.target.value }
+                        : current,
+                    )
+                  }
+                  maxLength={320}
+                  className={`${inputClass} mt-2`}
+                  placeholder="Ex.: explicar o problema e propor próximos passos"
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-black text-brand-text">
+                  Habilidade em foco
+                </span>
+                <input
+                  value={conversationDraft.targetSkill}
+                  onChange={(event) =>
+                    setConversationDraft((current) =>
+                      current
+                        ? { ...current, targetSkill: event.target.value }
+                        : current,
+                    )
+                  }
+                  maxLength={320}
+                  className={`${inputClass} mt-2`}
+                  placeholder="Ex.: naturalidade, negociação e vocabulário"
+                  required
+                />
+              </label>
+            </section>
+
+            <fieldset>
+              <legend className="text-lg font-black text-brand-text">
+                Escolha a experiência
+              </legend>
+              <p className="mt-1 text-sm leading-6 text-brand-muted">
+                A conversa muda de comportamento, não só de título.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {EXPERIENCE_OPTIONS.map((option) => {
+                  const selected =
+                    conversationDraft.experienceMode === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setConversationDraft((current) =>
+                          current
+                            ? { ...current, experienceMode: option.id }
+                            : current,
+                        )
+                      }
+                      className={`min-h-32 rounded-2xl border p-4 text-left transition ${
+                        selected
+                          ? 'border-brand-accent bg-brand-surface-2 shadow-sm'
+                          : 'border-brand-border bg-brand-surface hover:border-brand-accent'
+                      } ${focusRing}`}
+                    >
+                      <span className="block text-sm font-black text-brand-text">
+                        {option.title}
+                      </span>
+                      <span className="mt-2 block text-xs leading-5 text-brand-muted">
+                        {option.description}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <div className="grid gap-5 lg:grid-cols-3">
+              <fieldset className="rounded-3xl border border-brand-border bg-brand-surface p-5">
+                <legend className="px-1 text-sm font-black text-brand-text">
+                  Quando corrigir
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {CORRECTION_OPTIONS.map((option) => {
+                    const selected =
+                      conversationDraft.correctionMode === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() =>
+                          setConversationDraft((current) =>
+                            current
+                              ? { ...current, correctionMode: option.id }
+                              : current,
+                          )
+                        }
+                        className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                          selected
+                            ? 'border-brand-accent bg-brand-accent text-white'
+                            : 'border-brand-border bg-brand-bg text-brand-muted hover:border-brand-accent'
+                        } ${focusRing}`}
+                      >
+                        {option.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <fieldset className="rounded-3xl border border-brand-border bg-brand-surface p-5">
+                <legend className="px-1 text-sm font-black text-brand-text">
+                  Idioma e apoio
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {LANGUAGE_OPTIONS.map((option) => {
+                    const selected =
+                      conversationDraft.languageMode === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() =>
+                          setConversationDraft((current) =>
+                            current
+                              ? { ...current, languageMode: option.id }
+                              : current,
+                          )
+                        }
+                        className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                          selected
+                            ? 'border-brand-accent bg-brand-accent text-white'
+                            : 'border-brand-border bg-brand-bg text-brand-muted hover:border-brand-accent'
+                        } ${focusRing}`}
+                      >
+                        {option.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <fieldset className="rounded-3xl border border-brand-border bg-brand-surface p-5">
+                <legend className="px-1 text-sm font-black text-brand-text">
+                  Nível de desafio
+                </legend>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {DIFFICULTY_OPTIONS.map((option) => {
+                    const selected =
+                      conversationDraft.difficulty === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() =>
+                          setConversationDraft((current) =>
+                            current
+                              ? { ...current, difficulty: option.id }
+                              : current,
+                          )
+                        }
+                        className={`rounded-full border px-3 py-2 text-xs font-bold transition ${
+                          selected
+                            ? 'border-brand-accent bg-brand-accent text-white'
+                            : 'border-brand-border bg-brand-bg text-brand-muted hover:border-brand-accent'
+                        } ${focusRing}`}
+                      >
+                        {option.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-2xl text-xs leading-5 text-brand-muted">
+                A conversa seguirá o ciclo praticar → corrigir → reformular →
+                repetir → improvisar em um novo cenário.
+              </p>
+              <button type="submit" className={`${primaryButton} shrink-0`}>
+                <Mic size={18} aria-hidden="true" />
+                Entrar na conversa
+              </button>
+            </div>
+          </form>
         </main>
       ) : null}
 

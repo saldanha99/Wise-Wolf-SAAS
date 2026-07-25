@@ -150,6 +150,41 @@ export const SECTOR_OPTIONS: SectorOption[] = [
     title: 'Fiscal',
     context: 'Prazos, auditoria, conformidade e impactos tributários.',
   },
+  {
+    id: 'beauty_cosmetics_perfumery',
+    title: 'Beleza / Cosméticos / Perfumaria',
+    context: 'Produtos, ingredientes, lançamentos, treinamento e distribuição.',
+  },
+  {
+    id: 'retail_wholesale',
+    title: 'Varejo / Atacado',
+    context: 'Compras, estoque, margem, fornecedores e expansão de canais.',
+  },
+  {
+    id: 'food_beverage',
+    title: 'Alimentos / Bebidas',
+    context: 'Portfólio, sabores, embalagem, compradores e entrada em mercado.',
+  },
+  {
+    id: 'veterinary_pet',
+    title: 'Veterinária / Mercado Animal',
+    context: 'Saúde animal, produtos técnicos, clínicas e parcerias comerciais.',
+  },
+  {
+    id: 'tourism_hospitality',
+    title: 'Turismo / Hospitalidade',
+    context: 'Atendimento, reservas, eventos, parceiros e hóspedes internacionais.',
+  },
+  {
+    id: 'sales_expansion',
+    title: 'Vendas / Expansão Internacional',
+    context: 'Pitch, negociação, distribuição, objeções e entrada em novos mercados.',
+  },
+  {
+    id: 'projects_operations',
+    title: 'Projetos / Operações',
+    context: 'Stakeholders, riscos, indicadores, implantação e melhoria de processos.',
+  },
 ];
 
 export const getSubjectOption = (subject: WolfieSubject): SubjectOption =>
