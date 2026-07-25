@@ -1161,6 +1161,8 @@ const App: React.FC = () => {
                       'pedagogical': 'Pedagógico',
                       'materials': 'Materiais',
                       'financial': 'Financeiro',
+                      'ai-tutor': 'Wolfie Tutor',
+                      'practice': 'Praticar',
                       'automation': 'Automação',
                       'evolution': 'Evolução',
                       'teachers': 'Professores',
