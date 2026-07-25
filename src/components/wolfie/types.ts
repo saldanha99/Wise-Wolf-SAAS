@@ -259,6 +259,12 @@ export interface WolfieUserSummary {
   id?: string;
   name?: string;
   module?: string;
+  wolfieSettings?: {
+    goal?: string;
+    level?: CefrLevel;
+  };
+  englishFor?: string;
+  shortTermGoal?: string;
 }
 
 export const isQuizResult = (

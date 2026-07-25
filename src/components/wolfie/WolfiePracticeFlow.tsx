@@ -17,6 +17,7 @@ import {
   Headphones,
   Languages,
   Loader2,
+  Mic,
   PenLine,
   Play,
   Sparkles,
@@ -34,6 +35,7 @@ import {
   LEVEL_OPTIONS,
   SECTOR_OPTIONS,
   SUBJECT_OPTIONS,
+  getSectorOption,
   getSubjectOption,
 } from './catalog';
 import type {
@@ -57,10 +59,16 @@ import { WolfieMeetingActivity } from './WolfieMeetingActivity';
 import { WolfieActivitySummary } from './WolfieActivitySummary';
 import { WolfieRepertoire } from './WolfieRepertoire';
 
+const WolfieConversationTutor = React.lazy(
+  () => import('../../../components/WolfieTutor'),
+);
+
 type FlowView =
   | 'subject'
   | 'level'
   | 'sector'
+  | 'mode'
+  | 'conversation'
   | 'loading'
   | 'activity'
   | 'summary'
@@ -99,8 +107,10 @@ function JourneySteps({
       ? 0
       : view === 'level' || view === 'sector'
         ? 1
-        : 2;
-  const steps = ['Assunto', 'Nível', 'Atividade'];
+        : view === 'mode'
+          ? 2
+          : 3;
+  const steps = ['Assunto', 'Nível', 'Formato', 'Prática'];
   return (
     <nav
       className="border-b border-brand-border bg-brand-surface px-4 py-3 sm:px-7"
@@ -222,8 +232,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     requestKey: string;
   } | null>(null);
   const profileLevel = useMemo(
-    () => guessProfileLevel(user.module),
-    [user.module],
+    () => user.wolfieSettings?.level ?? guessProfileLevel(user.module),
+    [user.module, user.wolfieSettings?.level],
   );
   const firstName = user.name?.trim().split(/\s+/)[0] || 'aluno';
 
@@ -253,6 +263,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       view === 'subject' ||
       view === 'level' ||
       view === 'sector' ||
+      view === 'mode' ||
       view === 'generation_error'
     ) {
       mainHeadingRef.current?.focus();
@@ -271,7 +282,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     try {
       const signature = JSON.stringify(nextSelection);
       const requestKey =
-        retry && generationRequest.current?.signature === signature
+        !retry && generationRequest.current?.signature === signature
           ? generationRequest.current.requestKey
           : createWolfieRequestKey();
       generationRequest.current = { signature, requestKey };
@@ -283,8 +294,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
           nextSelection.subject === 'global_meetings'
             ? 'construction'
             : 'standard',
-        modality:
-          nextSelection.subject === 'global_meetings' ? 'mixed' : 'text',
+        modality: 'text',
         requestKey,
       });
       generationRequest.current = null;
@@ -314,16 +324,31 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       setView('sector');
       return;
     }
-    void startActivity({ subject: selectedSubject, level });
+    setView('mode');
   };
 
-  const beginMeeting = () => {
+  const continueMeeting = () => {
     if (!selectedSubject || !selectedLevel || !selectedSector) return;
-    void startActivity({
+    setView('mode');
+  };
+
+  const selectedPractice = (): WolfieSelection | null => {
+    if (!selectedSubject || !selectedLevel) return null;
+    if (selectedSubject === 'global_meetings' && !selectedSector) return null;
+    return {
       subject: selectedSubject,
       level: selectedLevel,
-      sector: selectedSector,
-    });
+      sector: selectedSector || undefined,
+    };
+  };
+
+  const beginWrittenPractice = () => {
+    const nextSelection = selectedPractice();
+    if (nextSelection) void startActivity(nextSelection);
+  };
+
+  const beginConversation = () => {
+    if (selectedPractice()) setView('conversation');
   };
 
   const completeActivity = (
@@ -408,6 +433,43 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     setView('repertoire');
     void loadOverview(true);
   };
+
+  if (
+    view === 'conversation' &&
+    selectedSubject &&
+    selectedLevel
+  ) {
+    const subject = getSubjectOption(selectedSubject);
+    const sector = getSectorOption(selectedSector);
+    const topic = [
+      subject.title,
+      `nível ${selectedLevel}`,
+      sector?.title,
+    ].filter(Boolean).join(' — ');
+    return (
+      <React.Suspense
+        fallback={
+          <LoadingExperience
+            subject={selectedSubject}
+            level={selectedLevel}
+          />
+        }
+      >
+        <WolfieConversationTutor
+          user={{
+            id: user.id,
+            levelBadge: selectedLevel,
+          }}
+          voiceMode
+          topic={topic}
+          onClose={() => {
+            setView('mode');
+            void loadOverview(false);
+          }}
+        />
+      </React.Suspense>
+    );
+  }
 
   if (view === 'activity' && activeSession) {
     if (
@@ -842,14 +904,105 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
           <div className="mt-7 flex justify-end">
             <button
               type="button"
-              onClick={beginMeeting}
+              onClick={continueMeeting}
               disabled={!selectedSector}
               className={primaryButton}
             >
-              Construir minha reunião
+              Continuar
               <ArrowRight size={18} aria-hidden="true" />
             </button>
           </div>
+        </main>
+      ) : null}
+
+      {view === 'mode' && selectedSubject && selectedLevel ? (
+        <main className="mx-auto max-w-5xl px-4 py-7 sm:px-7 sm:py-10">
+          <button
+            type="button"
+            onClick={() =>
+              setView(
+                selectedSubject === 'global_meetings' ? 'sector' : 'level',
+              )
+            }
+            className={`inline-flex items-center gap-2 text-sm font-bold text-brand-muted hover:text-brand-accent ${focusRing}`}
+          >
+            <ArrowLeft size={17} aria-hidden="true" />
+            Voltar
+          </button>
+          <div className="mt-6 max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-brand-accent">
+              {getSubjectOption(selectedSubject).shortTitle} · {selectedLevel}
+              {getSectorOption(selectedSector)
+                ? ` · ${getSectorOption(selectedSector)?.title}`
+                : ''}
+            </p>
+            <h1
+              ref={mainHeadingRef}
+              tabIndex={-1}
+              className="mt-3 text-3xl font-black tracking-tight text-brand-text outline-none sm:text-4xl"
+            >
+              Como você quer praticar?
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-brand-muted">
+              Você pode construir a resposta com calma por escrito ou treinar
+              uma conversa real com o Wolfie usando sua voz.
+            </p>
+          </div>
+
+          <section
+            className="mt-8 grid gap-4 md:grid-cols-2"
+            aria-label="Formatos da prática"
+          >
+            <button
+              type="button"
+              onClick={beginWrittenPractice}
+              className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
+            >
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent transition group-hover:bg-brand-accent group-hover:text-white">
+                <PenLine size={25} aria-hidden="true" />
+              </span>
+              <h2 className="mt-6 text-xl font-black text-brand-text">
+                Por escrita
+              </h2>
+              <p className="mt-2 flex-1 text-sm leading-6 text-brand-muted">
+                Faça a atividade no seu ritmo, escreva suas respostas e receba
+                correções calibradas ao seu nível.
+              </p>
+              <span className="mt-5 inline-flex items-center gap-2 text-sm font-black text-brand-accent">
+                Começar por escrita
+                <ArrowRight
+                  size={17}
+                  className="transition-transform group-hover:translate-x-1"
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={beginConversation}
+              className={`group flex min-h-64 flex-col rounded-3xl border border-brand-border bg-brand-surface p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-accent hover:shadow-md ${focusRing}`}
+            >
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-surface-2 text-brand-accent transition group-hover:bg-brand-accent group-hover:text-white">
+                <Mic size={25} aria-hidden="true" />
+              </span>
+              <h2 className="mt-6 text-xl font-black text-brand-text">
+                Conversa real
+              </h2>
+              <p className="mt-2 flex-1 text-sm leading-6 text-brand-muted">
+                Fale com o Wolfie em tempo real, treine espontaneidade,
+                pronúncia e naturalidade dentro do assunto escolhido.
+              </p>
+              <span className="mt-5 inline-flex items-center gap-2 text-sm font-black text-brand-accent">
+                Iniciar conversa
+                <ArrowRight
+                  size={17}
+                  className="transition-transform group-hover:translate-x-1"
+                  aria-hidden="true"
+                />
+              </span>
+            </button>
+          </section>
         </main>
       ) : null}
 

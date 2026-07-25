@@ -209,7 +209,7 @@ export async function generateWolfieActivity(
   const response = await invokeWolfie<{
     session: WolfieActivitySession;
     idempotent: boolean;
-    source?: 'ai' | 'test_fixture';
+    source?: 'ai' | 'fallback' | 'test_fixture';
   }>({
     action: 'generate',
     subject: input.subject,

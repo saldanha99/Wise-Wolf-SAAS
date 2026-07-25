@@ -148,8 +148,8 @@ const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIO_BASE64_LENGTH = Math.ceil(MAX_AUDIO_BYTES / 3) * 4;
 const MAX_TEXT_LENGTH = 12_000;
-const AI_DEADLINE_MS = 28_000;
-const AI_ATTEMPT_MS = 10_000;
+const AI_DEADLINE_MS = 36_000;
+const AI_ATTEMPT_MS = 14_000;
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",
   "google/gemini-3.6-flash",
@@ -248,24 +248,95 @@ async function readJsonObject(req: Request): Promise<JsonObject> {
 }
 
 function extractJsonObject(text: string): JsonObject | null {
-  let cleaned = text.trim();
+  let cleaned = text.replace(/^\uFEFF/, "").trim();
   if (cleaned.startsWith("```")) {
     cleaned = cleaned
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/```\s*$/, "")
       .trim();
   }
+
   const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let end = -1;
+  for (let index = start; index < cleaned.length; index += 1) {
+    const char = cleaned[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        end = index;
+        break;
+      }
+    }
+  }
+  if (end <= start) return null;
+
   cleaned = cleaned.slice(start, end + 1);
   if (cleaned.length > 80_000) return null;
-  try {
-    const parsed: unknown = JSON.parse(cleaned);
-    return isJsonObject(parsed) ? parsed : null;
-  } catch {
-    return null;
+
+  const escapeControlsInStrings = (value: string): string => {
+    let result = "";
+    let quoted = false;
+    let isEscaped = false;
+    for (const char of value) {
+      if (quoted && !isEscaped) {
+        if (char === "\n") {
+          result += "\\n";
+          continue;
+        }
+        if (char === "\r") {
+          result += "\\r";
+          continue;
+        }
+        if (char === "\t") {
+          result += "\\t";
+          continue;
+        }
+      }
+      result += char;
+      if (char === '"' && !isEscaped) quoted = !quoted;
+      if (char === "\\" && !isEscaped) {
+        isEscaped = true;
+      } else {
+        isEscaped = false;
+      }
+    }
+    return result;
+  };
+
+  const candidates = [
+    cleaned,
+    cleaned.replace(/,\s*([}\]])/g, "$1"),
+    escapeControlsInStrings(cleaned),
+    escapeControlsInStrings(cleaned).replace(/,\s*([}\]])/g, "$1"),
+  ];
+  for (const candidate of Array.from(new Set(candidates))) {
+    try {
+      const parsed: unknown = JSON.parse(candidate);
+      if (isJsonObject(parsed)) return parsed;
+    } catch {
+      // Try the next safe repair. The original provider output is never logged.
+    }
   }
+  return null;
 }
 
 function providerModels(): string[] {
@@ -291,6 +362,14 @@ function providerText(payload: unknown): string | null {
     .filter(Boolean)
     .join("\n");
   return text || null;
+}
+
+function providerFinishReason(payload: unknown): string {
+  if (!isJsonObject(payload) || !Array.isArray(payload.choices)) return "";
+  const choice = payload.choices[0];
+  return isJsonObject(choice)
+    ? boundedString(choice.finish_reason, 80)
+    : "";
 }
 
 async function callOpenRouterJson(
@@ -331,7 +410,9 @@ Return only one valid JSON object matching the exact requested schema. No markdo
                 content: `<activity_task>\n${taskPrompt}\n</activity_task>`,
               },
             ],
-            max_tokens: 3_600,
+            max_tokens: 5_200,
+            temperature: 0.2,
+            response_format: { type: "json_object" },
           }),
           signal: AbortSignal.timeout(
             Math.min(AI_ATTEMPT_MS, remaining),
@@ -352,6 +433,8 @@ Return only one valid JSON object matching the exact requested schema. No markdo
       if (parsed) return parsed;
       console.warn("[wolfie-activity] provider returned invalid JSON", {
         model,
+        finishReason: providerFinishReason(payload) || "unknown",
+        contentLength: text?.length ?? 0,
       });
     } catch (error) {
       const timedOut = error instanceof DOMException &&
@@ -2863,7 +2946,9 @@ async function handleGenerate(
 
   try {
     let generated: JsonObject;
+    let generationSource: "ai" | "fallback" | "test_fixture";
     if (profile.is_test_account) {
+      generationSource = "test_fixture";
       generated = subject === "global_meetings"
         ? fallbackMeeting(level, sector, phase)
         : subject === "writing"
@@ -2871,19 +2956,39 @@ async function handleGenerate(
         : fallbackQuiz(subject, level);
     } else {
       const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
-      if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
-      generated = await callOpenRouterJson(
-        apiKey,
-        activityPrompt(
-          subject,
-          level,
-          profile,
-          repertoire,
-          sector || null,
-          phase,
-          previousScenario,
-        ),
-      );
+      try {
+        if (!apiKey) throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
+        generated = await callOpenRouterJson(
+          apiKey,
+          activityPrompt(
+            subject,
+            level,
+            profile,
+            repertoire,
+            sector || null,
+            phase,
+            previousScenario,
+          ),
+        );
+        generationSource = "ai";
+      } catch (error) {
+        if (
+          !(error instanceof HttpError) ||
+          error.code !== "AI_PROVIDER_UNAVAILABLE"
+        ) {
+          throw error;
+        }
+        console.warn(
+          "[wolfie-activity] using curriculum fallback after provider failure",
+          { subject, level },
+        );
+        generationSource = "fallback";
+        generated = subject === "global_meetings"
+          ? fallbackMeeting(level, sector, phase)
+          : subject === "writing"
+          ? fallbackWriting(level)
+          : fallbackQuiz(subject, level);
+      }
     }
 
     const normalized = enforceCrossModuleReuse(
@@ -2940,12 +3045,12 @@ async function handleGenerate(
       requestKey,
       aiClaim.leaseToken,
       "COMPLETED",
-      { sessionId: session.id },
+      { sessionId: session.id, source: generationSource },
     );
     return jsonResponse(201, {
       session,
       idempotent: false,
-      source: profile.is_test_account ? "test_fixture" : "ai",
+      source: generationSource,
     });
   } catch (error) {
     await finishAiRequest(
