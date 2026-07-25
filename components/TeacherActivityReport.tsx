@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { X, Loader2, FileDown, Printer } from 'lucide-react';
+import { X, Loader2, Printer } from 'lucide-react';
 
 interface Props { teacherId: string; editable?: boolean; onClose: () => void; }
 
@@ -14,6 +14,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [notes, setNotes] = useState('');
+  const [printError, setPrintError] = useState('');
 
   const load = async (m: string) => {
     setLoading(true);
@@ -28,14 +29,22 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
   const fmt = (x?: string) => x ? new Date(x + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
   const monthLabel = (m: string) => { const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); };
   const monthOpts = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return d.toISOString().slice(0, 7); });
+  const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }[character] || character));
 
   const generatePDF = () => {
     if (!data) return;
+    setPrintError('');
     const t = data.teacher; const tot = data.totals || {};
     const rows = (data.lessons || []).map((l: any) => `<tr>
-      <td>${fmt(l.date)}</td><td>${l.student || '—'}</td><td>${PRESENCE_PT[l.presence] || l.presence}${l.subtype ? ' · ' + l.subtype : ''}</td>
-      <td>${(l.content || '').replace(/</g, '&lt;')}</td><td style="text-align:right">${l.paid ? money(l.value) : '—'}</td></tr>`).join('');
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório ${t.name} ${monthLabel(month)}</title>
+      <td>${escapeHtml(fmt(l.date))}</td><td>${escapeHtml(l.student || '—')}</td><td>${escapeHtml(PRESENCE_PT[l.presence] || l.presence)}${l.subtype ? ` · ${escapeHtml(l.subtype)}` : ''}</td>
+      <td>${escapeHtml(l.content || '')}</td><td style="text-align:right">${escapeHtml(l.paid ? money(l.value) : '—')}</td></tr>`).join('');
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório ${escapeHtml(t.name)} ${escapeHtml(monthLabel(month))}</title>
     <style>
       *{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a}
       body{padding:32px;max-width:800px;margin:0 auto}
@@ -50,8 +59,8 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
       .notes{white-space:pre-wrap;font-size:12px;color:#334155}
       @media print{body{padding:0}}
     </style></head><body>
-      <h1>Relatório de Atividades — ${t.name}</h1>
-      <div class="sub">${data.school || 'Escola'} · Competência: <b>${monthLabel(month)}</b></div>
+      <h1>Relatório de Atividades — ${escapeHtml(t.name)}</h1>
+      <div class="sub">${escapeHtml(data.school || 'Escola')} · Competência: <b>${escapeHtml(monthLabel(month))}</b></div>
       <div class="box grid">
         <div><div class="lbl">Aulas realizadas</div><div class="kpi">${tot.completed || 0}</div></div>
         <div><div class="lbl">Faltas do aluno</div><div class="kpi">${tot.student_absences || 0}</div></div>
@@ -61,12 +70,53 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
       </div>
       <table><thead><tr><th>Data</th><th>Aluno</th><th>Status</th><th>Conteúdo</th><th style="text-align:right">Valor</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8">Sem aulas no período</td></tr>'}</tbody></table>
-      ${notes ? `<div class="box"><div class="lbl">Observações</div><div class="notes">${notes.replace(/</g, '&lt;')}</div></div>` : ''}
-      <div class="box"><div class="lbl">Pagamento</div><div class="sub">Valor/aula: ${money(t.hourly_rate)} · PIX: ${t.pix || '—'}</div></div>
-      <p style="font-size:10px;color:#94a3b8;margin-top:24px">Gerado por Wise Wolf em ${new Date().toLocaleString('pt-BR')}</p>
+      ${notes ? `<div class="box"><div class="lbl">Observações</div><div class="notes">${escapeHtml(notes)}</div></div>` : ''}
+      <div class="box"><div class="lbl">Pagamento</div><div class="sub">Valor/aula: ${escapeHtml(money(t.hourly_rate))} · PIX: ${escapeHtml(t.pix || '—')}</div></div>
+      <p style="font-size:10px;color:#94a3b8;margin-top:24px">Gerado por Wise Wolf em ${escapeHtml(new Date().toLocaleString('pt-BR'))}</p>
     </body></html>`;
-    const w = window.open('', '_blank');
-    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400); }
+
+    const frame = document.createElement('iframe');
+    frame.setAttribute('title', 'Impressão do relatório do professor');
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '1px';
+    frame.style.height = '1px';
+    frame.style.border = '0';
+    frame.style.opacity = '0';
+    frame.style.pointerEvents = 'none';
+    document.body.appendChild(frame);
+
+    const printWindow = frame.contentWindow;
+    const printDocument = frame.contentDocument;
+    if (!printWindow || !printDocument) {
+      frame.remove();
+      setPrintError('Não foi possível preparar o relatório. Tente novamente.');
+      return;
+    }
+
+    let cleanupTimer: number | undefined;
+    const cleanup = () => {
+      if (cleanupTimer) window.clearTimeout(cleanupTimer);
+      printWindow.onafterprint = null;
+      frame.remove();
+    };
+
+    printWindow.onafterprint = cleanup;
+    printDocument.open();
+    printDocument.write(html);
+    printDocument.close();
+
+    window.setTimeout(() => {
+      try {
+        printWindow.focus();
+        cleanupTimer = window.setTimeout(cleanup, 60_000);
+        printWindow.print();
+      } catch {
+        cleanup();
+        setPrintError('Não foi possível abrir a impressão. Verifique as permissões do navegador.');
+      }
+    }, 100);
   };
 
   const saveNotes = async () => {
@@ -128,6 +178,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
             <button onClick={generatePDF} className="w-full py-3 bg-tenant-primary text-white rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2">
               <Printer size={16} /> Gerar PDF {editable ? '(para enviar)' : ''}
             </button>
+            {printError && <p role="alert" className="text-center text-xs font-bold text-red-600">{printError}</p>}
           </div>
         )}
       </div>

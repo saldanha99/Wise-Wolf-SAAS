@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Mic,
     LayoutDashboard,
@@ -88,6 +88,30 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const menuScrollRef = useRef<HTMLDivElement>(null);
     const returnFocusRef = useRef<HTMLElement | null>(null);
 
+    const getMenuButtons = useCallback((): HTMLElement[] => {
+        const scroller = menuScrollRef.current;
+        if (!scroller) return [];
+
+        return Array.from(
+            scroller.querySelectorAll<HTMLElement>('[data-sidebar-menu-item="true"]')
+        );
+    }, []);
+
+    const ensureMenuItemVisible = useCallback((item: HTMLElement | null) => {
+        const scroller = menuScrollRef.current;
+        if (!scroller || !item || !scroller.contains(item)) return;
+
+        const scrollerRect = scroller.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const scrollPadding = 8;
+
+        if (itemRect.top < scrollerRect.top + scrollPadding) {
+            scroller.scrollTop += itemRect.top - scrollerRect.top - scrollPadding;
+        } else if (itemRect.bottom > scrollerRect.bottom - scrollPadding) {
+            scroller.scrollTop += itemRect.bottom - scrollerRect.bottom + scrollPadding;
+        }
+    }, []);
+
     useEffect(() => {
         const media = window.matchMedia('(max-width: 1023px)');
         const handleChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
@@ -107,13 +131,11 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         const previousBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
 
-        if (menuScrollRef.current) menuScrollRef.current.scrollTop = 0;
-
         const focusFrame = window.requestAnimationFrame(() => {
             const activeItem = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
-            const firstItem = navRef.current?.querySelector<HTMLElement>('[data-sidebar-focusable="true"]');
+            const firstItem = getMenuButtons()[0];
             const target = activeItem || firstItem;
-            target?.scrollIntoView({ block: 'nearest' });
+            ensureMenuItemVisible(target ?? null);
             target?.focus();
         });
 
@@ -126,9 +148,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
             if (event.key !== 'Tab' || !navRef.current) return;
 
-            const focusable = Array.from(
+            const focusable = (Array.from(
                 navRef.current.querySelectorAll<HTMLElement>('[data-sidebar-focusable="true"]:not([disabled])')
-            ) as HTMLElement[];
+            ) as HTMLElement[]).filter((element) => element.getClientRects().length > 0);
             if (focusable.length === 0) return;
 
             const first = focusable[0];
@@ -150,7 +172,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
             document.body.style.overflow = previousBodyOverflow;
             window.requestAnimationFrame(() => returnFocusRef.current?.focus());
         };
-    }, [isMobile, isOpen, setIsOpen]);
+    }, [ensureMenuItemVisible, getMenuButtons, isMobile, isOpen, setIsOpen]);
 
     const teacherMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -259,6 +281,45 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const expanded = isMobile || !isCollapsed;
     const drawerHidden = isMobile && !isOpen;
 
+    useEffect(() => {
+        if (drawerHidden) return;
+
+        const focusFrame = window.requestAnimationFrame(() => {
+            const activeItem = getMenuButtons().find(
+                (item) => item.dataset.sidebarItemId === activeTab
+            );
+            ensureMenuItemVisible(activeItem ?? null);
+        });
+
+        return () => window.cancelAnimationFrame(focusFrame);
+    }, [activeTab, drawerHidden, ensureMenuItemVisible, expanded, getMenuButtons]);
+
+    const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+
+        const currentItem = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>('[data-sidebar-menu-item="true"]')
+            : null;
+        if (!currentItem) return;
+
+        const items = getMenuButtons().filter((item) => item.getClientRects().length > 0);
+        const currentIndex = items.indexOf(currentItem);
+        if (currentIndex < 0 || items.length === 0) return;
+
+        event.preventDefault();
+
+        const nextIndex = event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+                ? items.length - 1
+                : event.key === 'ArrowDown'
+                    ? Math.min(currentIndex + 1, items.length - 1)
+                    : Math.max(currentIndex - 1, 0);
+        const nextItem = items[nextIndex];
+        ensureMenuItemVisible(nextItem);
+        nextItem.focus();
+    };
+
     return (
         <>
             <div
@@ -274,11 +335,11 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 aria-hidden={drawerHidden || undefined}
                 inert={drawerHidden || undefined}
                 className={`
-          fixed lg:relative inset-y-0 left-0 z-[100] h-dvh min-h-0 shrink-0
+          fixed inset-y-0 left-0 lg:sticky lg:top-0 lg:left-auto z-[100] h-dvh min-h-0 shrink-0
           transition-all duration-300 ease-in-out bg-brand-surface border-r border-brand-border
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${expanded ? 'w-64' : 'w-20'}
-          p-3 flex flex-col overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.2)]
+          p-3 grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.2)]
         `}
             >
                 <div className="flex-none mb-3 pb-3">
@@ -328,7 +389,10 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
                 <div
                     ref={menuScrollRef}
-                    className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pr-1"
+                    aria-label="Seções do sistema"
+                    className="min-h-0 space-y-1 overflow-y-auto overscroll-contain scroll-py-2 pb-2 pr-1 [scrollbar-gutter:stable]"
+                    data-sidebar-scroll-region="true"
+                    onKeyDown={handleMenuKeyDown}
                 >
                     {menuItems.map((item, idx) => {
                         // Cabeçalho de seção: aparece quando a seção muda (só em menus agrupados)
@@ -357,66 +421,72 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                     }}
                                     open={expanded}
                                     notifs={badge}
+                                    onFocus={ensureMenuItemVisible}
                                 />
                             </React.Fragment>
                         );
                     })}
                 </div>
 
-                <div className="flex-none border-t border-brand-border pt-3 mt-3 space-y-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:pb-0">
-                    {expanded && (
-                        <div className="px-3 py-2 text-[10px] font-black text-brand-muted uppercase tracking-widest">
-                            Conta
-                        </div>
-                    )}
-                    <Option
-                        Icon={Settings}
-                        title="Meu Perfil"
-                        selected={activeTab}
-                        itemId={'profile'}
-                        setSelected={(id: string) => {
-                            setActiveTab(id);
-                            if (window.innerWidth < 1024) setIsOpen(false);
-                        }}
-                        open={expanded}
-                    />
+                <div
+                    className="relative z-10 mt-3 border-t border-brand-border bg-brand-surface pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:pb-0"
+                    data-sidebar-footer="true"
+                >
+                    <div className="space-y-1">
+                        {expanded && (
+                            <div className="px-3 py-2 text-[10px] font-black text-brand-muted uppercase tracking-widest">
+                                Conta
+                            </div>
+                        )}
+                        <Option
+                            Icon={Settings}
+                            title="Meu Perfil"
+                            selected={activeTab}
+                            itemId={'profile'}
+                            setSelected={(id: string) => {
+                                setActiveTab(id);
+                                if (window.innerWidth < 1024) setIsOpen(false);
+                            }}
+                            open={expanded}
+                        />
+                        <button
+                            type="button"
+                            onClick={onLogout}
+                            className="relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 hover:bg-red-500/10"
+                            aria-label="Sair"
+                            title={!expanded ? 'Sair' : undefined}
+                            data-sidebar-focusable="true"
+                        >
+                            <div className="grid h-full w-12 place-content-center">
+                                <LogOut className="h-5 w-5" aria-hidden="true" />
+                            </div>
+                            {expanded && <span className="text-sm font-bold">Sair</span>}
+                        </button>
+                    </div>
+
                     <button
                         type="button"
-                        onClick={onLogout}
-                        className="relative flex h-11 w-full items-center rounded-xl transition-all duration-200 text-red-500 hover:bg-red-500/10"
-                        aria-label="Sair"
-                        title={!expanded ? 'Sair' : undefined}
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="hidden lg:flex mt-2 w-full border-t border-brand-border transition-colors hover:bg-brand-surface-2 items-center rounded-b-xl px-1 py-2"
+                        aria-label={expanded ? 'Recolher menu' : 'Expandir menu'}
+                        aria-expanded={expanded}
+                        title={!expanded ? 'Expandir menu' : undefined}
                         data-sidebar-focusable="true"
                     >
-                        <div className="grid h-full w-12 place-content-center">
-                            <LogOut className="h-5 w-5" aria-hidden="true" />
+                        <div className="grid size-10 place-content-center">
+                            <ChevronsRight
+                                aria-hidden="true"
+                                className={`h-5 w-5 transition-transform duration-300 text-brand-muted ${!expanded ? "rotate-180" : ""
+                                    }`}
+                            />
                         </div>
-                        {expanded && <span className="text-sm font-bold">Sair</span>}
+                        {expanded && (
+                            <span className="text-sm font-bold text-brand-muted ml-2">
+                                Recolher
+                            </span>
+                        )}
                     </button>
                 </div>
-
-                <button
-                    type="button"
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="hidden lg:flex flex-none mt-2 border-t border-brand-border transition-colors hover:bg-brand-surface-2 items-center rounded-b-xl px-1 py-2"
-                    aria-label={expanded ? 'Recolher menu' : 'Expandir menu'}
-                    aria-expanded={expanded}
-                    title={!expanded ? 'Expandir menu' : undefined}
-                    data-sidebar-focusable="true"
-                >
-                    <div className="grid size-10 place-content-center">
-                        <ChevronsRight
-                            aria-hidden="true"
-                            className={`h-5 w-5 transition-transform duration-300 text-brand-muted ${!expanded ? "rotate-180" : ""
-                                }`}
-                        />
-                    </div>
-                    {expanded && (
-                        <span className="text-sm font-bold text-brand-muted ml-2">
-                            Recolher
-                        </span>
-                    )}
-                </button>
             </nav>
         </>
     );
@@ -430,9 +500,10 @@ interface OptionProps {
     itemId: string;
     open: boolean;
     notifs?: number | string;
+    onFocus?: (item: HTMLElement) => void;
 }
 
-const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: OptionProps) => {
+const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs, onFocus }: OptionProps) => {
     const isSelected = selected === itemId;
     const hasNotification = typeof notifs === 'number' ? notifs > 0 : Boolean(notifs);
     const accessibleLabel = typeof notifs === 'number' && notifs > 0
@@ -453,6 +524,9 @@ const Option = ({ Icon, title, selected, setSelected, itemId, open, notifs }: Op
             aria-label={accessibleLabel}
             aria-current={isSelected ? 'page' : undefined}
             data-sidebar-focusable="true"
+            data-sidebar-item-id={itemId}
+            data-sidebar-menu-item={itemId === 'profile' ? undefined : 'true'}
+            onFocus={(event) => onFocus?.(event.currentTarget)}
         >
             <div className="grid h-full w-12 place-content-center relative">
                 <Icon
