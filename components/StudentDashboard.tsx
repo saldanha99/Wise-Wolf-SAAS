@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Video, BookOpen, Clock, Star, TrendingUp, Sparkles, Download, CreditCard, ChevronRight, CheckCircle, RefreshCw, Target, Zap, Award, Medal, MessageSquareText, FileText, X, AlertCircle } from 'lucide-react';
 import { getPedagogicalSuggestion } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
-import StudentOnboarding from './StudentOnboarding';
+import StudentOnboarding, { hasCompletedStudentOnboardingThisSession } from './StudentOnboarding';
 import ContractView from './ContractView';
 import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
@@ -43,14 +43,18 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [contractDownloadFn, setContractDownloadFn] = useState<(() => Promise<void>) | null>(null);
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
-  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(
+    () => hasCompletedStudentOnboardingThisSession(user.id),
+  );
   const [showAllHistory, setShowAllHistory] = useState(false);
   const contractDialogRef = useRef<HTMLDivElement>(null);
+  const contractTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // No mobile baixa direto; no desktop abre modal
-  const handleContractClick = async () => {
+  const handleContractClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     // Abre o modal em qualquer dispositivo — mais confiável que tentar gerar
     // PDF via html2pdf em mobile (iOS/Android bloqueiam com frequência).
+    contractTriggerRef.current = event.currentTarget;
     setShowContract(true);
   };
 
@@ -130,16 +134,19 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   }, [nextClass]);
 
   useEffect(() => {
+    setOnboardingDone(hasCompletedStudentOnboardingThisSession(user.id));
+  }, [user.id]);
+
+  useLayoutEffect(() => {
     if (!showContract) return;
     const previousOverflow = document.body.style.overflow;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = contractTriggerRef.current
+      || (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null);
     document.body.style.overflow = 'hidden';
 
-    const focusFrame = window.requestAnimationFrame(() => {
-      const dialog = contractDialogRef.current;
-      const initialFocus = dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]');
-      (initialFocus || dialog)?.focus();
-    });
+    const dialog = contractDialogRef.current;
+    const initialFocus = dialog?.querySelector<HTMLElement>('[data-dialog-initial-focus="true"]');
+    (initialFocus || dialog)?.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const dialog = contractDialogRef.current;
@@ -176,10 +183,11 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
+      if (previousFocus?.isConnected) {
+        previousFocus.focus({ preventScroll: true });
+      }
     };
   }, [showContract]);
 

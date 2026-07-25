@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, MessageSquare, HelpCircle, Mic, Sparkles, CheckCircle, RefreshCw, Zap, Lock } from 'lucide-react';
+import { BookOpen, MessageSquare, HelpCircle, Mic, Sparkles, CheckCircle, RefreshCw, Zap, Lock, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { generateActivities } from '../services/geminiService';
+import { ActivityGenerationError, generateActivities } from '../services/geminiService';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 
@@ -29,6 +29,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
     const [generating, setGenerating] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
     const [completing, setCompleting] = useState<string | null>(null);
+    const [generationError, setGenerationError] = useState('');
 
     useEffect(() => {
         if (userId) fetchActivities();
@@ -60,7 +61,9 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
     };
 
     const generateNew = async () => {
+        if (generating) return;
         setGenerating(true);
+        setGenerationError('');
         try {
             // Fetch profile + wolf intelligence
             const [profileRes, wolfRes] = await Promise.all([
@@ -71,7 +74,8 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
             const profile: Record<string, any> = profileRes.data || {};
             const wolf = wolfRes.data || undefined;
 
-            const generated = await generateActivities(profile, wolf);
+            const generatedResult = await generateActivities(profile, wolf);
+            const generated = generatedResult.activities;
 
             if (generated.length > 0) {
                 const toInsert = generated.map(a => ({
@@ -84,21 +88,29 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                     difficulty: a.difficulty,
                     xp_reward: a.xp_reward,
                     status: 'PENDING',
-                    generated_by_ai: true,
+                    generated_by_ai: generatedResult.source === 'ai',
                     category: profile.english_for || null,
                 }));
 
-                const { data: inserted } = await supabase
+                const { data: inserted, error: insertError } = await supabase
                     .from('student_activities')
                     .insert(toInsert)
                     .select();
+                if (insertError) throw insertError;
 
                 if (inserted) {
                     setActivities(prev => [...inserted, ...prev].slice(0, 8));
                 }
             }
         } catch (err) {
-            console.error('generateNew error:', err);
+            const activityError = err instanceof ActivityGenerationError ? err : null;
+            setGenerationError(
+                activityError?.message
+                || 'Não foi possível salvar as novas atividades. Tente novamente.',
+            );
+            console.error('generateNew error', {
+                code: activityError?.code || 'ACTIVITY_SAVE_FAILED',
+            });
         } finally {
             setGenerating(false);
         }
@@ -186,7 +198,26 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                     </div>
                 )}
 
-                {pending.length === 0 && !generating && (
+                {generationError && !generating && (
+                    <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-200">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                            <div className="min-w-0">
+                                <p className="text-sm font-black">As atividades não carregaram desta vez.</p>
+                                <p className="mt-1 text-xs font-medium">{generationError}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => void generateNew()}
+                                    className="mt-3 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
+                                >
+                                    Tentar novamente
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {pending.length === 0 && !generating && !generationError && (
                     <div className="text-center py-8 text-slate-400">
                         <CheckCircle size={32} className="mx-auto mb-3 text-emerald-400" />
                         <p className="text-sm font-bold">Todas as atividades concluídas!</p>

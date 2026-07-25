@@ -1,3 +1,8 @@
+import {
+    FunctionsFetchError,
+    FunctionsHttpError,
+    FunctionsRelayError,
+} from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 export interface GeneratedActivity {
@@ -8,6 +13,163 @@ export interface GeneratedActivity {
     difficulty: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
     xp_reward: number;
 }
+
+export interface GeneratedActivitiesResult {
+    activities: GeneratedActivity[];
+    source: 'ai' | 'test_fixture_fallback';
+}
+
+export class ActivityGenerationError extends Error {
+    readonly code: string;
+    readonly retryable: boolean;
+    readonly status?: number;
+
+    constructor(
+        message: string,
+        details: { code: string; retryable: boolean; status?: number },
+    ) {
+        super(message);
+        this.name = 'ActivityGenerationError';
+        this.code = details.code;
+        this.retryable = details.retryable;
+        this.status = details.status;
+    }
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+const ACTIVITY_TYPES = new Set<GeneratedActivity['type']>([
+    'reading',
+    'grammar',
+    'quiz',
+    'conversation',
+]);
+const ACTIVITY_DIFFICULTIES = new Set<GeneratedActivity['difficulty']>([
+    'BEGINNER',
+    'INTERMEDIATE',
+    'ADVANCED',
+]);
+const RETRYABLE_FUNCTION_STATUSES = new Set([408, 425, 429]);
+const ACTIVITY_GENERATION_ATTEMPTS = 2;
+
+const asRecord = (value: unknown): UnknownRecord | null => (
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? value as UnknownRecord
+        : null
+);
+
+const extractActivityArray = (value: unknown): GeneratedActivity[] | null => {
+    const record = asRecord(value);
+    const candidate = Array.isArray(value)
+        ? value
+        : Array.isArray(record?.activities)
+            ? record.activities
+            : null;
+    if (!candidate || candidate.length < 4) return null;
+
+    const parsed: GeneratedActivity[] = [];
+    for (const item of candidate.slice(0, 4)) {
+        const activity = asRecord(item);
+        const type = typeof activity?.type === 'string'
+            ? activity.type as GeneratedActivity['type']
+            : null;
+        const difficulty = typeof activity?.difficulty === 'string'
+            ? activity.difficulty as GeneratedActivity['difficulty']
+            : null;
+        const title = typeof activity?.title === 'string' ? activity.title.trim() : '';
+        const description = typeof activity?.description === 'string' ? activity.description.trim() : '';
+        const content = typeof activity?.content === 'string' ? activity.content.trim() : '';
+        const xpReward = typeof activity?.xp_reward === 'number' ? activity.xp_reward : Number.NaN;
+
+        if (
+            !type
+            || !ACTIVITY_TYPES.has(type)
+            || !difficulty
+            || !ACTIVITY_DIFFICULTIES.has(difficulty)
+            || !title
+            || !description
+            || !content
+            || !Number.isFinite(xpReward)
+        ) {
+            return null;
+        }
+
+        parsed.push({
+            type,
+            title,
+            description,
+            content,
+            difficulty,
+            xp_reward: Math.min(150, Math.max(30, Math.round(xpReward))),
+        });
+    }
+    return parsed;
+};
+
+const parseActivitiesResponse = (payload: unknown): GeneratedActivity[] | null => {
+    const response = asRecord(payload);
+    const directResult = extractActivityArray(response?.result);
+    if (directResult) return directResult;
+
+    for (const rawCandidate of [response?.result, response?.raw, response?.aiText, payload]) {
+        if (typeof rawCandidate !== 'string') {
+            const parsedCandidate = extractActivityArray(rawCandidate);
+            if (parsedCandidate) return parsedCandidate;
+            continue;
+        }
+
+        const firstBracket = rawCandidate.indexOf('[');
+        const lastBracket = rawCandidate.lastIndexOf(']');
+        if (firstBracket < 0 || lastBracket <= firstBracket) continue;
+        try {
+            const parsedJson: unknown = JSON.parse(rawCandidate.slice(firstBracket, lastBracket + 1));
+            const parsedCandidate = extractActivityArray(parsedJson);
+            if (parsedCandidate) return parsedCandidate;
+        } catch {
+            // Uma resposta truncada ou com JSON inválido pode ser transitória.
+        }
+    }
+    return null;
+};
+
+const functionErrorStatus = (error: FunctionsHttpError): number | undefined => {
+    const context = asRecord(error.context);
+    return typeof context?.status === 'number' ? context.status : undefined;
+};
+
+const normalizeActivityGenerationError = (error: unknown): ActivityGenerationError => {
+    if (error instanceof ActivityGenerationError) return error;
+    if (error instanceof FunctionsFetchError || error instanceof FunctionsRelayError) {
+        return new ActivityGenerationError(
+            'Não foi possível conectar ao gerador de atividades. Tente novamente.',
+            { code: 'ACTIVITY_GENERATOR_UNREACHABLE', retryable: true },
+        );
+    }
+    if (error instanceof FunctionsHttpError) {
+        const status = functionErrorStatus(error);
+        const retryable = status === undefined
+            || RETRYABLE_FUNCTION_STATUSES.has(status)
+            || status >= 500;
+        return new ActivityGenerationError(
+            retryable
+                ? 'O gerador de atividades está temporariamente indisponível. Tente novamente.'
+                : 'Não foi possível gerar atividades para esta conta.',
+            {
+                code: retryable ? 'ACTIVITY_GENERATOR_UNAVAILABLE' : 'ACTIVITY_GENERATION_REJECTED',
+                retryable,
+                status,
+            },
+        );
+    }
+    return new ActivityGenerationError(
+        'Não foi possível gerar atividades agora. Tente novamente.',
+        { code: 'ACTIVITY_GENERATION_FAILED', retryable: false },
+    );
+};
+
+const waitBeforeActivityRetry = (): Promise<void> => (
+    new Promise(resolve => window.setTimeout(resolve, 350))
+);
 
 export const generateActivities = async (profile: {
     english_for?: string;
@@ -21,25 +183,24 @@ export const generateActivities = async (profile: {
     accumulated_context?: string;
     weak_points?: string[];
     recommended_approach?: string;
-}): Promise<GeneratedActivity[]> => {
-    try {
-        const profileSummary = [
-            profile.english_for && `Objetivo: ${profile.english_for}`,
-            profile.student_category && `Perfil: ${profile.student_category}`,
-            profile.personality && `Estilo: ${profile.personality}`,
-            profile.preferred_topics?.length && `Tópicos preferidos: ${profile.preferred_topics.join(', ')}`,
-            profile.avoided_topics?.length && `Evitar: ${profile.avoided_topics.join(', ')}`,
-            profile.short_term_goal && `Meta curto prazo: ${profile.short_term_goal}`,
-            profile.module && `Nível atual: ${profile.module}`,
-        ].filter(Boolean).join('\n');
+}): Promise<GeneratedActivitiesResult> => {
+    const profileSummary = [
+        profile.english_for && `Objetivo: ${profile.english_for}`,
+        profile.student_category && `Perfil: ${profile.student_category}`,
+        profile.personality && `Estilo: ${profile.personality}`,
+        profile.preferred_topics?.length && `Tópicos preferidos: ${profile.preferred_topics.join(', ')}`,
+        profile.avoided_topics?.length && `Evitar: ${profile.avoided_topics.join(', ')}`,
+        profile.short_term_goal && `Meta curto prazo: ${profile.short_term_goal}`,
+        profile.module && `Nível atual: ${profile.module}`,
+    ].filter(Boolean).join('\n');
 
-        const wolfSummary = wolfIntelligence ? [
-            wolfIntelligence.accumulated_context && `Contexto acumulado: ${wolfIntelligence.accumulated_context}`,
-            wolfIntelligence.weak_points?.length && `Pontos a melhorar: ${wolfIntelligence.weak_points.join(', ')}`,
-            wolfIntelligence.recommended_approach && `Abordagem recomendada: ${wolfIntelligence.recommended_approach}`,
-        ].filter(Boolean).join('\n') : '';
+    const wolfSummary = wolfIntelligence ? [
+        wolfIntelligence.accumulated_context && `Contexto acumulado: ${wolfIntelligence.accumulated_context}`,
+        wolfIntelligence.weak_points?.length && `Pontos a melhorar: ${wolfIntelligence.weak_points.join(', ')}`,
+        wolfIntelligence.recommended_approach && `Abordagem recomendada: ${wolfIntelligence.recommended_approach}`,
+    ].filter(Boolean).join('\n') : '';
 
-        const prompt = `Você é um especialista em pedagogia de inglês. Com base no perfil do aluno abaixo, gere EXATAMENTE 4 atividades complementares personalizadas em formato JSON.
+    const prompt = `Você é um especialista em pedagogia de inglês. Com base no perfil do aluno abaixo, gere EXATAMENTE 4 atividades complementares personalizadas em formato JSON.
 
 PERFIL DO ALUNO:
 ${profileSummary}
@@ -57,27 +218,44 @@ Retorne APENAS um array JSON válido com 4 objetos, cada um com os campos:
 As atividades devem ser 100% alinhadas com o perfil, variadas nos tipos e práticas para fazer sozinho.
 Responda APENAS com o JSON, sem markdown, sem explicação.`;
 
-        // Usa a edge function dedicada de geração de conteúdo (JSON estrito),
-        // NÃO o wolfie-brain (tutor conversacional, que embrulha tudo no schema da persona).
+    let lastError: ActivityGenerationError | null = null;
+    for (let attempt = 0; attempt < ACTIVITY_GENERATION_ATTEMPTS; attempt += 1) {
         const { data, error } = await supabase.functions.invoke('pedagogical-content', {
             body: { prompt, studentLevel: profile.module || 'B1' }
         });
 
-        if (error) throw error;
+        if (!error && asRecord(data)?.skipped === 'test_fixture') {
+            return {
+                activities: getFallbackActivities(
+                    profile.english_for || 'Inglês Geral / Conversação',
+                    profile.module || 'B1',
+                ),
+                source: 'test_fixture_fallback',
+            };
+        }
 
-        // A função devolve o array já parseado em `result`; raw é o fallback.
-        if (Array.isArray(data?.result)) return (data.result as GeneratedActivity[]).slice(0, 4);
-        const rawText = data?.raw || data?.aiText || '';
-        const match = rawText.match(/\[[\s\S]*\]/);
-        if (!match) throw new Error('No JSON array in response');
-
-        const activities: GeneratedActivity[] = JSON.parse(match[0]);
-        return activities.slice(0, 4);
-    } catch (err) {
-        console.error('generateActivities error:', err);
-        // Fallback activities based on english_for
-        return getFallbackActivities(profile.english_for || 'Inglês Geral / Conversação', profile.module || 'B1');
+        try {
+            if (error) throw error;
+            const activities = parseActivitiesResponse(data);
+            if (!activities) {
+                throw new ActivityGenerationError(
+                    'O gerador devolveu uma resposta incompleta. Tente novamente.',
+                    { code: 'INVALID_ACTIVITY_RESPONSE', retryable: true },
+                );
+            }
+            return { activities, source: 'ai' };
+        } catch (generationError) {
+            lastError = normalizeActivityGenerationError(generationError);
+            const hasAnotherAttempt = attempt + 1 < ACTIVITY_GENERATION_ATTEMPTS;
+            if (!lastError.retryable || !hasAnotherAttempt) throw lastError;
+            await waitBeforeActivityRetry();
+        }
     }
+
+    throw lastError || new ActivityGenerationError(
+        'Não foi possível gerar atividades agora. Tente novamente.',
+        { code: 'ACTIVITY_GENERATION_FAILED', retryable: false },
+    );
 };
 
 const getFallbackActivities = (englishFor: string, level: string): GeneratedActivity[] => {
