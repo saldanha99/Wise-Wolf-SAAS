@@ -73,12 +73,44 @@ declare global {
 // ============================================================
 function getTTSSpeed(level: string): number {
     switch (level) {
-        case 'A1': return 0.80;
-        case 'A2': return 0.85;
-        case 'B1': return 0.92;
-        case 'B2': return 0.95;
+        case 'A1': return 0.92;
+        case 'A2': return 0.95;
+        case 'B1': return 0.98;
+        case 'B2': return 1.0;
         default: return 1.0; // C1, C2
     }
+}
+
+type SpeechLanguage = 'pt' | 'en';
+
+const PORTUGUESE_MARKERS = new Set([
+    'a', 'agora', 'ainda', 'aqui', 'as', 'com', 'como', 'da', 'das', 'de', 'do', 'dos',
+    'e', 'ela', 'ele', 'em', 'então', 'essa', 'esse', 'está', 'eu', 'inglês', 'isso',
+    'mas', 'me', 'meu', 'minha', 'não', 'o', 'oi', 'os', 'ou', 'para', 'por', 'porque',
+    'que', 'se', 'seu', 'sua', 'também', 'tem', 'uma', 'um', 'você', 'vocês',
+]);
+
+const ENGLISH_MARKERS = new Set([
+    'a', 'about', 'am', 'an', 'and', 'are', 'as', 'at', 'be', 'because', 'but', 'can',
+    'do', 'for', 'from', 'have', 'how', 'i', 'in', 'is', 'it', 'like', 'my', 'of', 'on',
+    'or', 'so', 'that', 'the', 'this', 'to', 'want', 'we', 'what', 'when', 'with', 'you',
+    'your',
+]);
+
+function detectSpeechLanguage(text: string, fallback: SpeechLanguage = 'en'): SpeechLanguage {
+    const normalized = text.toLocaleLowerCase('pt-BR');
+    const words = normalized.match(/[\p{L}']+/gu) || [];
+    let portugueseScore = /[áàâãéêíóôõúç]/i.test(text) ? 3 : 0;
+    let englishScore = 0;
+
+    for (const word of words) {
+        if (PORTUGUESE_MARKERS.has(word)) portugueseScore += 1;
+        if (ENGLISH_MARKERS.has(word)) englishScore += 1;
+    }
+
+    if (portugueseScore > englishScore) return 'pt';
+    if (englishScore > portugueseScore) return 'en';
+    return fallback;
 }
 
 // ============================================================
@@ -209,7 +241,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             // Prioridade 3: Google US English (servidor Google, boa qualidade)
             // Prioridade 4: vozes offline decentes
             const pickBestEnglish = (list: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null => {
-                const en = list.filter(v => v.lang.startsWith('en'));
+                const allEnglish = list.filter(v => v.lang.startsWith('en'));
+                const americanEnglish = allEnglish.filter(v => v.lang.toLowerCase().startsWith('en-us'));
+                const en = americanEnglish.length > 0 ? americanEnglish : allEnglish;
 
                 // Tier 1 — Microsoft Neural Online (Windows Chrome/Edge)
                 const msNatural = en.find(v =>
@@ -246,13 +280,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             }
 
             // ── Português BR ──
+            const ptBrVoices = voices.filter(v => v.lang.toLowerCase().startsWith('pt-br'));
+            const portugueseVoices = ptBrVoices.length > 0
+                ? ptBrVoices
+                : voices.filter(v => v.lang.toLowerCase().startsWith('pt'));
             const preferredPt = ['Luciana', 'Felipe', 'Google português do Brasil', 'Google português', 'pt-BR'];
             let ptVoice: SpeechSynthesisVoice | null = null;
             for (const name of preferredPt) {
-                ptVoice = voices.find(v => v.name.includes(name) || v.lang === name) || null;
+                ptVoice = portugueseVoices.find(v => v.name.includes(name) || v.lang === name) || null;
                 if (ptVoice) break;
             }
-            if (!ptVoice) ptVoice = voices.find(v => v.lang.startsWith('pt')) || null;
+            if (!ptVoice) ptVoice = portugueseVoices[0] || null;
             if (ptVoice) {
                 ptBrVoiceRef.current = ptVoice;
                 console.log('🎙️ PT voice:', ptVoice.name, ptVoice.lang);
@@ -295,6 +333,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     useEffect(() => {
         const loadLastSession = async () => {
             if (!user?.id) {
+                setIsLoadingHistory(false);
+                return;
+            }
+            // Uma atividade escolhida deve sempre abrir uma sessão nova e fiel ao
+            // tema atual. A memória pedagógica continua vindo do wolfie-brain,
+            // mas o histórico de outro tema não pode ser reaproveitado aqui.
+            if (initialTopic) {
                 setIsLoadingHistory(false);
                 return;
             }
@@ -355,16 +400,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     // ============================================================
     // TTS FUNCTIONS
     // ============================================================
-
-    // Detecção heurística de texto em português
-    const isPortugueseText = (text: string): boolean => {
-        const ptWords = ['você', 'não', 'para', 'com', 'está', 'são', 'mas', 'uma', 'esse',
-            'isso', 'então', 'porque', 'agora', 'olá', 'oi ', 'sou ', 'meu ', 'sua ',
-            'nosso', 'tudo', 'aqui', 'ainda', 'tentar', 'arquivo', 'recebido', 'aluno',
-            'escola', 'inglês', 'parece', 'quer ', 'novo?', 'de novo'];
-        const lower = text.toLowerCase();
-        return ptWords.filter(w => lower.includes(w)).length >= 2;
-    };
 
     /**
      * Desbloqueia áudio para iOS Safari — DEVE ser chamado dentro de um
@@ -713,7 +748,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
     const slowReplay = () => {
         if (lastSpokenTextRef.current) {
             stopSpeaking();
-            void speak(lastSpokenTextRef.current, 0.75);
+            const replayLanguage = detectSpeechLanguage(lastSpokenTextRef.current);
+            void speak(lastSpokenTextRef.current, 0.88, replayLanguage);
         }
     };
 
@@ -878,7 +914,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
         // ── Detecta idioma do input para resposta bilíngue ──
         // Se o aluno falou PT → Wolfie responde em PT (FranciscaNeural)
         // Se falou EN → Wolfie responde em EN (JennyNeural)
-        const studentLang: 'pt' | 'en' = isPortugueseText(input.message || '') ? 'pt' : 'en';
+        const studentLang: SpeechLanguage = detectSpeechLanguage(input.message || '', 'en');
 
         try {
             const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'Student' : 'Wolfie'}: ${m.content}`).join('\n');
@@ -939,7 +975,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
             // Auto-speak: usa o idioma da RESPOSTA (não do input do aluno)
             // Isso evita pronuncia americanizada quando Wolfie responde em PT
             // mas o input do aluno estava em EN (ou vazio no primeiro turno)
-            const responseLang: 'pt' | 'en' = isPortugueseText(chatText) ? 'pt' : 'en';
+            const responseLang: SpeechLanguage = detectSpeechLanguage(chatText, studentLang);
             if (autoSpeakEnabled && chatText) {
                 void speak(chatText, undefined, responseLang);
             } else {
@@ -1101,6 +1137,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             state === 'SPEAKING' ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.8)]' :
                                 'bg-indigo-500'}`} />
                     <span className="text-[10px] font-bold text-white/90 tracking-[0.2em] uppercase">{getStatusLabel()}</span>
+                    <span
+                        className="hidden sm:block max-w-[220px] truncate border-l border-white/10 pl-3 text-[10px] font-semibold text-cyan-200/80"
+                        title={`Tema mantido: ${topic}`}
+                    >
+                        Tema: {topic}
+                    </span>
                 </div>
 
                 {/* Timer + Level + Controls */}
@@ -1141,14 +1183,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         onClick={slowReplay}
                         disabled={!lastSpokenTextRef.current}
                         className="p-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30"
-                        title="Repetir devagar (0.7x)"
+                        title="Repetir devagar (0.88x)"
                     >
                         <RotateCcw size={12} />
                     </button>
                     {/* Nova Conversa — reseta sessão (cria nova session_id no banco no próximo turno) */}
                     <button
                         onClick={() => {
-                            if (!confirm('Iniciar uma nova conversa? O histórico atual ficará salvo, mas será iniciado um novo papo do zero.')) return;
+                            if (!confirm(`Reiniciar a conversa mantendo o tema atual: "${topic}"?`)) return;
                             stopSpeaking();
                             setMessages([]);
                             setConversationId(null);
@@ -1161,7 +1203,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                             setSubtitle('');
                         }}
                         className="px-2.5 py-1.5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/30 text-fuchsia-300 text-[10px] font-bold uppercase tracking-wider hover:bg-fuchsia-500/25 transition-all"
-                        title="Iniciar uma nova conversa do zero"
+                        title="Reiniciar mantendo o mesmo tema"
                     >
                         Nova
                     </button>
@@ -1306,13 +1348,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({ user, voiceMode = false, topi
                         <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2 text-sky-400">
                                 <Languages size={12} />
-                                <span className="text-[9px] uppercase font-bold tracking-wider">Tradução 🇧🇷</span>
+                                <span className="text-[9px] uppercase font-bold tracking-wider">
+                                    {detectSpeechLanguage(translation, 'pt') === 'pt' ? 'Tradução 🇧🇷' : 'Versão em inglês 🇺🇸'}
+                                </span>
                             </div>
                             <div className="flex items-center gap-1">
                                 {/* Botão: ouvir tradução em voz PT-BR */}
                                 <button
-                                    onClick={() => void speak(translation, 1.0, 'pt')}
-                                    title="Ouvir em português BR"
+                                    onClick={() => {
+                                        const translationLanguage = detectSpeechLanguage(translation, 'pt');
+                                        void speak(translation, 1.0, translationLanguage);
+                                    }}
+                                    title={detectSpeechLanguage(translation, 'pt') === 'pt' ? 'Ouvir em português BR' : 'Ouvir em inglês americano'}
                                     className="p-1 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-400/10 transition-colors"
                                 >
                                     <Volume2 size={12} />
