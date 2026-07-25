@@ -145,6 +145,7 @@ echo "== Validação local =="
 npm run typecheck
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \
+  supabase/functions/wolfie-brain/index.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts
 npm run build
@@ -156,6 +157,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260725030016_verified_legacy_xp_awards.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
+CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
 PEDAGOGICAL_FUNCTION_RELATIVE="supabase/functions/submit-quiz"
 CONTEXT_FUNCTION_RELATIVE="supabase/functions/student-context"
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
@@ -164,6 +166,8 @@ for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
     die "migration ausente: $migration_relative"
 done
 [[ -s "$FUNCTION_RELATIVE/index.ts" ]] || die "função Wolfie ausente"
+[[ -s "$CONVERSATION_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "função de conversa do Wolfie ausente"
 [[ -s "$PEDAGOGICAL_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de avaliação pedagógica ausente"
 [[ -s "$CONTEXT_FUNCTION_RELATIVE/index.ts" ]] ||
@@ -193,6 +197,7 @@ release_dir=$1
 mkdir -p -- \
   "$release_dir/frontend-dist" \
   "$release_dir/functions/wolfie-activity" \
+  "$release_dir/functions/wolfie-brain" \
   "$release_dir/functions/submit-quiz" \
   "$release_dir/functions/student-context" \
   "$release_dir/functions/_shared" \
@@ -203,6 +208,8 @@ rsync -a --delete -- dist/ \
   "$DEPLOY_SSH_HOST:$remote_release/frontend-dist/"
 rsync -a --delete -- "$FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-activity/"
+rsync -a --delete -- "$CONVERSATION_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-brain/"
 rsync -a --delete -- "$PEDAGOGICAL_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/submit-quiz/"
 rsync -a --delete -- "$CONTEXT_FUNCTION_RELATIVE/" \
@@ -258,6 +265,7 @@ backup_dir="$backups_dir/release-$release_id"
 marker_dir="$releases_dir/.migration-checksums"
 frontend_swapped=0
 function_swapped=0
+conversation_function_swapped=0
 pedagogical_function_swapped=0
 context_function_swapped=0
 shared_swapped=0
@@ -283,6 +291,15 @@ restore_previous_release() {
     fi
     if [[ -d "$backup_dir/wolfie-activity" ]]; then
       mv -- "$backup_dir/wolfie-activity" "$functions_dir/wolfie-activity"
+    fi
+  fi
+  if [[ "$conversation_function_swapped" = "1" ]]; then
+    if [[ -d "$functions_dir/wolfie-brain" ]]; then
+      mv -- "$functions_dir/wolfie-brain" \
+        "$backup_dir/failed-wolfie-brain"
+    fi
+    if [[ -d "$backup_dir/wolfie-brain" ]]; then
+      mv -- "$backup_dir/wolfie-brain" "$functions_dir/wolfie-brain"
     fi
   fi
   if [[ "$pedagogical_function_swapped" = "1" ]]; then
@@ -323,6 +340,7 @@ trap restore_previous_release ERR
 mkdir -p -- "$backup_dir" "$marker_dir"
 [[ -d "$release_dir/frontend-dist" ]]
 [[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
+[[ -s "$release_dir/functions/wolfie-brain/index.ts" ]]
 [[ -s "$release_dir/functions/submit-quiz/index.ts" ]]
 [[ -s "$release_dir/functions/student-context/index.ts" ]]
 [[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
@@ -380,6 +398,13 @@ fi
 function_swapped=1
 cp -a -- "$release_dir/functions/wolfie-activity" \
   "$functions_dir/wolfie-activity"
+
+if [[ -d "$functions_dir/wolfie-brain" ]]; then
+  mv -- "$functions_dir/wolfie-brain" "$backup_dir/wolfie-brain"
+fi
+conversation_function_swapped=1
+cp -a -- "$release_dir/functions/wolfie-brain" \
+  "$functions_dir/wolfie-brain"
 
 if [[ -d "$functions_dir/submit-quiz" ]]; then
   mv -- "$functions_dir/submit-quiz" "$backup_dir/submit-quiz"
@@ -441,6 +466,12 @@ wait_for_http_status 401 "autenticação do Wolfie" \
   -X POST "$api_url/functions/v1/wolfie-activity" \
   -H 'Content-Type: application/json' \
   --data '{"action":"overview"}'
+wait_for_http_status 200 "preflight da conversa do Wolfie" \
+  -X OPTIONS "$api_url/functions/v1/wolfie-brain"
+wait_for_http_status 401 "autenticação da conversa do Wolfie" \
+  -X POST "$api_url/functions/v1/wolfie-brain" \
+  -H 'Content-Type: application/json' \
+  --data '{"message":"Hello"}'
 wait_for_http_status 200 "preflight do quiz pedagógico" \
   -X OPTIONS "$api_url/functions/v1/submit-quiz"
 wait_for_http_status 401 "autenticação do quiz pedagógico" \

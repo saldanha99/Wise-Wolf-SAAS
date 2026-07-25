@@ -94,8 +94,8 @@ const MAX_REQUEST_BYTES = 7 * 1024 * 1024;
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_CONTEXT_LENGTH = 12_000;
 const MAX_AUDIO_BASE64_LENGTH = 6_750_000;
-const OPENROUTER_DEADLINE_MS = 22_000;
-const OPENROUTER_ATTEMPT_MS = 8_000;
+const OPENROUTER_DEADLINE_MS = 30_000;
+const OPENROUTER_ATTEMPT_MS = 12_000;
 const SETTLED_PAYMENT_STATUSES = new Set([
     'RECEIVED',
     'CONFIRMED',
@@ -505,25 +505,95 @@ function extractOpenRouterText(value: unknown): string | null {
 }
 
 function extractJsonObject(text: string): JsonObject | null {
-    let cleaned = text.trim();
+    let cleaned = text.replace(/^\uFEFF/, '').trim();
     if (cleaned.startsWith('```')) {
         cleaned = cleaned
             .replace(/^```(?:json)?\s*/i, '')
             .replace(/```\s*$/, '')
             .trim();
     }
+
     const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    if (firstBrace < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let lastBrace = -1;
+    for (let index = firstBrace; index < cleaned.length; index += 1) {
+        const char = cleaned[index];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (char === '"') {
+            inString = true;
+        } else if (char === '{') {
+            depth += 1;
+        } else if (char === '}') {
+            depth -= 1;
+            if (depth === 0) {
+                lastBrace = index;
+                break;
+            }
+        }
     }
-    if (cleaned.length === 0 || cleaned.length > 30_000) return null;
-    try {
-        const parsed: unknown = JSON.parse(cleaned);
-        return isJsonObject(parsed) ? parsed : null;
-    } catch {
-        return null;
+    if (lastBrace <= firstBrace) return null;
+
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+    if (cleaned.length > 30_000) return null;
+
+    const escapeControlsInStrings = (value: string): string => {
+        let result = '';
+        let quoted = false;
+        let isEscaped = false;
+        for (const char of value) {
+            if (quoted && !isEscaped) {
+                if (char === '\n') {
+                    result += '\\n';
+                    continue;
+                }
+                if (char === '\r') {
+                    result += '\\r';
+                    continue;
+                }
+                if (char === '\t') {
+                    result += '\\t';
+                    continue;
+                }
+            }
+            result += char;
+            if (char === '"' && !isEscaped) quoted = !quoted;
+            if (char === '\\' && !isEscaped) {
+                isEscaped = true;
+            } else {
+                isEscaped = false;
+            }
+        }
+        return result;
+    };
+
+    const candidates = [
+        cleaned,
+        cleaned.replace(/,\s*([}\]])/g, '$1'),
+        escapeControlsInStrings(cleaned),
+        escapeControlsInStrings(cleaned).replace(/,\s*([}\]])/g, '$1'),
+    ];
+    for (const candidate of [...new Set(candidates)]) {
+        try {
+            const parsed: unknown = JSON.parse(candidate);
+            if (isJsonObject(parsed)) return parsed;
+        } catch {
+            // Keep trying safe repairs without logging student/provider content.
+        }
     }
+    return null;
 }
 
 async function callOpenRouter(
@@ -550,7 +620,9 @@ async function callOpenRouter(
                     { role: 'system', content: finalSystemPrompt },
                     { role: 'user', content: finalUserMessage },
                 ],
-                max_tokens: 1_200,
+                max_tokens: 1_800,
+                temperature: 0.3,
+                response_format: { type: 'json_object' },
             };
 
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -756,7 +828,7 @@ serve(async (req) => {
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select(
-                'id, role, tenant_id, full_name, goal, english_for, short_term_goal, preferred_topics, avoided_topics, is_test_account',
+                'id, role, tenant_id, full_name, wolfie_settings, english_for, short_term_goal, preferred_topics, avoided_topics, is_test_account',
             )
             .eq('id', userData.user.id)
             .maybeSingle();
@@ -948,6 +1020,9 @@ serve(async (req) => {
                 explanation: correction.explanation_pt,
             })),
         };
+        const wolfieSettings = isJsonObject(profile.wolfie_settings)
+            ? profile.wolfie_settings
+            : {};
 
         if (input.message || input.hasAudio) {
             const { error: studentTurnError } = await supabase
@@ -977,7 +1052,7 @@ serve(async (req) => {
         const systemPrompt = buildSystemPrompt(
             input.config,
             profile.full_name,
-            profile.goal,
+            boundedString(wolfieSettings.goal, 500),
             wolfMemory,
             input.studentLanguage,
         );
