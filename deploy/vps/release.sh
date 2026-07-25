@@ -31,7 +31,7 @@ require_command() {
     die "comando obrigatório ausente: $1"
 }
 
-for command_name in git npm npx ssh rsync curl shasum mktemp; do
+for command_name in git npm npx ssh rsync curl shasum mktemp find; do
   require_command "$command_name"
 done
 
@@ -148,6 +148,8 @@ npx --yes deno check --no-lock \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts
 npm run build
+find dist -type d -exec chmod 0755 {} +
+find dist -type f -exec chmod 0644 {} +
 
 MIGRATION_RELATIVES=(
   "supabase/migrations/20260725022832_wolfie_immersive_ecosystem.sql"
