@@ -39,6 +39,7 @@ interface WolfieQuizActivityProps {
   session: WolfieActivitySession;
   onComplete: (result: QuizResult) => void;
   onExit: () => void;
+  onConversation: () => void;
 }
 
 function ListeningPlayer({
@@ -143,6 +144,7 @@ export function WolfieQuizActivity({
   session,
   onComplete,
   onExit,
+  onConversation,
 }: WolfieQuizActivityProps) {
   const questions = session.activity_content.questions ?? [];
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -271,6 +273,7 @@ export function WolfieQuizActivity({
           session={session}
           kicker={subject.shortTitle}
           onBack={onExit}
+          onConversation={onConversation}
         />
         <div className="mx-auto max-w-3xl px-4 py-10">
           <InlineError
@@ -288,6 +291,7 @@ export function WolfieQuizActivity({
         kicker={subject.shortTitle}
         progress={progress}
         onBack={onExit}
+        onConversation={onConversation}
       />
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-7 lg:grid-cols-[minmax(0,1fr)_19rem] lg:py-8">

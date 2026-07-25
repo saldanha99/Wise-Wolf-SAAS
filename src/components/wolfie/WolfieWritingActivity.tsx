@@ -23,12 +23,14 @@ interface WolfieWritingActivityProps {
   session: WolfieActivitySession;
   onComplete: (result: TextEvaluationResult) => void;
   onExit: () => void;
+  onConversation: () => void;
 }
 
 export function WolfieWritingActivity({
   session,
   onComplete,
   onExit,
+  onConversation,
 }: WolfieWritingActivityProps) {
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +86,7 @@ export function WolfieWritingActivity({
         session={session}
         kicker="Writing"
         onBack={onExit}
+        onConversation={onConversation}
       />
 
       <main className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-7 lg:grid-cols-[minmax(0,1fr)_19rem] lg:py-8">

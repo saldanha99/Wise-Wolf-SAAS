@@ -4,6 +4,7 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  Mic,
   RefreshCw,
   Sparkles,
   Target,
@@ -34,6 +35,7 @@ interface WolfieActivitySummaryProps {
   onRetry: () => void;
   onNewActivity: () => void;
   onOpenRepertoire: () => void;
+  onConversation: () => void;
 }
 
 const scoreMessage = (score: number) => {
@@ -377,6 +379,7 @@ export function WolfieActivitySummary({
   onRetry,
   onNewActivity,
   onOpenRepertoire,
+  onConversation,
 }: WolfieActivitySummaryProps) {
   const subject = getSubjectOption(session.subject);
   const level = getLevelOption(session.cefr_level);
@@ -435,11 +438,19 @@ export function WolfieActivitySummary({
                 Repetir cria segurança; trocar de módulo faz o repertório
                 reaparecer em um novo contexto.
               </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <button
+                  type="button"
+                  onClick={onConversation}
+                  className={primaryButton}
+                >
+                  <Mic size={17} aria-hidden="true" />
+                  Conversar sobre este tema
+                </button>
                 <button
                   type="button"
                   onClick={onRetry}
-                  className={primaryButton}
+                  className={secondaryButton}
                 >
                   <RefreshCw size={17} aria-hidden="true" />
                   Repetir atividade

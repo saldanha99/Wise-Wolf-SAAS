@@ -63,6 +63,7 @@ interface WolfieMeetingActivityProps {
     completedSession: WolfieActivitySession,
   ) => void;
   onExit: () => void;
+  onConversation: () => void;
 }
 
 const meetingStageLabels: Array<{
@@ -240,6 +241,7 @@ export function WolfieMeetingActivity({
   onSessionChange,
   onComplete,
   onExit,
+  onConversation,
 }: WolfieMeetingActivityProps) {
   const initialStage: MeetingStage =
     session.phase === 'readaptation'
@@ -595,6 +597,7 @@ export function WolfieMeetingActivity({
           session={constructionSession}
           kicker="Reuniões globais"
           onBack={() => void saveAndExit()}
+          onConversation={onConversation}
         />
         <div className="mx-auto max-w-3xl px-4 py-10">
           <InlineError
@@ -616,6 +619,7 @@ export function WolfieMeetingActivity({
             : undefined
         }
         onBack={() => void saveAndExit()}
+        onConversation={onConversation}
       />
       <MeetingJourneyProgress stage={stage} />
 

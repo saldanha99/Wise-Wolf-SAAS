@@ -68,7 +68,6 @@ type FlowView =
   | 'level'
   | 'sector'
   | 'mode'
-  | 'conversation'
   | 'loading'
   | 'activity'
   | 'summary'
@@ -95,6 +94,23 @@ const guessProfileLevel = (module?: string): CefrLevel | null => {
   if (!module) return null;
   const match = module.toUpperCase().match(/\b(A1|A2|B1|B2|C1|C2)\b/);
   return match ? (match[1] as CefrLevel) : null;
+};
+
+const conversationTopicForSession = (
+  session: WolfieActivitySession,
+): string => {
+  const content = session.activity_content;
+  const focus = content.scenario
+    ? `${content.scenario.objective}. Papel: ${content.scenario.role}`
+    : content.prompt ||
+      content.context ||
+      content.readinessGoal ||
+      content.questions?.[0]?.prompt ||
+      '';
+  return `${content.title || getSubjectOption(session.subject).title} — ${focus} — nível ${session.cefr_level}`
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
 };
 
 function JourneySteps({
@@ -224,6 +240,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState('');
   const [endingSessionId, setEndingSessionId] = useState('');
+  const [conversationTopic, setConversationTopic] = useState('');
   const [repertoireReturn, setRepertoireReturn] =
     useState<'subject' | 'summary'>('subject');
   const mainHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -348,7 +365,21 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   };
 
   const beginConversation = () => {
-    if (selectedPractice()) setView('conversation');
+    const nextSelection = selectedPractice();
+    if (!nextSelection) return;
+    const subject = getSubjectOption(nextSelection.subject);
+    const sector = getSectorOption(nextSelection.sector);
+    setConversationTopic(
+      [
+        subject.title,
+        `nível ${nextSelection.level}`,
+        sector?.title,
+      ].filter(Boolean).join(' — ').slice(0, 160),
+    );
+  };
+
+  const beginSessionConversation = (session: WolfieActivitySession) => {
+    setConversationTopic(conversationTopicForSession(session));
   };
 
   const completeActivity = (
@@ -434,19 +465,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
     void loadOverview(true);
   };
 
-  if (
-    view === 'conversation' &&
-    selectedSubject &&
-    selectedLevel
-  ) {
-    const subject = getSubjectOption(selectedSubject);
-    const sector = getSectorOption(selectedSector);
-    const topic = [
-      subject.title,
-      `nível ${selectedLevel}`,
-      sector?.title,
-    ].filter(Boolean).join(' — ');
-    return (
+  const conversationOverlay =
+    conversationTopic && selectedLevel ? (
       <React.Suspense
         fallback={
           <LoadingExperience
@@ -461,15 +481,14 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
             levelBadge: selectedLevel,
           }}
           voiceMode
-          topic={topic}
+          topic={conversationTopic}
           onClose={() => {
-            setView('mode');
+            setConversationTopic('');
             void loadOverview(false);
           }}
         />
       </React.Suspense>
-    );
-  }
+    ) : null;
 
   if (view === 'activity' && activeSession) {
     if (
@@ -479,45 +498,63 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       activeSession.subject === 'reading'
     ) {
       return (
-        <WolfieQuizActivity
-          session={activeSession}
-          onComplete={(nextResult) => completeActivity(nextResult)}
-          onExit={exitActivity}
-        />
+        <>
+          <WolfieQuizActivity
+            session={activeSession}
+            onComplete={(nextResult) => completeActivity(nextResult)}
+            onExit={exitActivity}
+            onConversation={() => beginSessionConversation(activeSession)}
+          />
+          {conversationOverlay}
+        </>
       );
     }
 
     if (activeSession.subject === 'writing') {
       return (
-        <WolfieWritingActivity
-          session={activeSession}
-          onComplete={(nextResult) => completeActivity(nextResult)}
-          onExit={exitActivity}
-        />
+        <>
+          <WolfieWritingActivity
+            session={activeSession}
+            onComplete={(nextResult) => completeActivity(nextResult)}
+            onExit={exitActivity}
+            onConversation={() => beginSessionConversation(activeSession)}
+          />
+          {conversationOverlay}
+        </>
       );
     }
 
     return (
-      <WolfieMeetingActivity
-        session={activeSession}
-        onSessionChange={setActiveSession}
-        onComplete={(nextResult, nextSession) =>
-          completeActivity(nextResult, nextSession)
-        }
-        onExit={exitActivity}
-      />
+      <>
+        <WolfieMeetingActivity
+          session={activeSession}
+          onSessionChange={setActiveSession}
+          onComplete={(nextResult, nextSession) =>
+            completeActivity(nextResult, nextSession)
+          }
+          onExit={exitActivity}
+          onConversation={() => beginSessionConversation(activeSession)}
+        />
+        {conversationOverlay}
+      </>
     );
   }
 
   if (view === 'summary' && completedSession && result && selection) {
     return (
-      <WolfieActivitySummary
-        session={completedSession}
-        result={result}
-        onRetry={() => void startActivity(selection)}
-        onNewActivity={resetToSubject}
-        onOpenRepertoire={() => openRepertoire('summary')}
-      />
+      <>
+        <WolfieActivitySummary
+          session={completedSession}
+          result={result}
+          onRetry={() => void startActivity(selection)}
+          onNewActivity={resetToSubject}
+          onOpenRepertoire={() => openRepertoire('summary')}
+          onConversation={() =>
+            beginSessionConversation(completedSession)
+          }
+        />
+        {conversationOverlay}
+      </>
     );
   }
 
@@ -541,7 +578,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   }
 
   return (
-    <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-sm">
+    <>
+      <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-sm">
       <header className="bg-brand-surface px-4 py-5 sm:px-7">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1048,6 +1086,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
           </div>
         </main>
       ) : null}
-    </div>
+      </div>
+      {conversationOverlay}
+    </>
   );
 }

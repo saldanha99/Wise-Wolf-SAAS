@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   Loader2,
+  Mic,
   Sparkles,
   Target,
 } from 'lucide-react';
@@ -55,11 +56,13 @@ export function ActivityHeader({
   kicker,
   progress,
   onBack,
+  onConversation,
 }: {
   session: WolfieActivitySession;
   kicker: string;
   progress?: string;
   onBack?: () => void;
+  onConversation?: () => void;
 }) {
   const subject = getSubjectOption(session.subject);
   return (
@@ -93,6 +96,16 @@ export function ActivityHeader({
           <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
             {session.activity_content.instructionsPt}
           </p>
+          {onConversation ? (
+            <button
+              type="button"
+              onClick={onConversation}
+              className={`${secondaryButton} mt-4 w-full sm:w-auto`}
+            >
+              <Mic size={18} aria-hidden="true" />
+              Conversar em tempo real sobre este tema
+            </button>
+          ) : null}
         </div>
       </div>
     </header>
