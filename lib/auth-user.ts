@@ -29,6 +29,10 @@ export async function mapProfileToAppUser(profile: ProfileRecord): Promise<User>
         contract_accepted: profile.contract_accepted,
         accepted_at: profile.accepted_at,
         is_trainer: profile.is_trainer,
+        wolfieSettings: profile.wolfie_settings || undefined,
+        englishFor: profile.english_for || undefined,
+        preferredTopics: Array.isArray(profile.preferred_topics) ? profile.preferred_topics : undefined,
+        shortTermGoal: profile.short_term_goal || undefined,
     };
 }
 

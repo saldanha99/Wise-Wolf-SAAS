@@ -74,7 +74,6 @@ const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
 const PublicTrialConfirmation = lazy(() => import('./components/PublicTrialConfirmation'));
-const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
 const StudentOpportunitiesBoard = lazy(() => import('./components/StudentOpportunitiesBoard'));
@@ -1053,7 +1052,7 @@ const App: React.FC = () => {
       'automations': <AutomationPanel user={user} tenantId={currentTenant?.id} />,
       'material-approvals': <MaterialApprovals user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
-      'practice': <StudentPracticeHub userId={user.id} tenantId={currentTenant?.id} wolfieConfig={(user as any).wolfie_settings} />,
+      'practice': <StudentPracticeHub userId={user.id} tenantId={currentTenant?.id} wolfieConfig={user.wolfieSettings} />,
       'wolfie-lab': <WolfieLab tenantId={currentTenant?.id} />,
       'trials': <TrialsToContracts tenantId={currentTenant?.id} user={user} />,
       'hr': <HRModule user={user} tenantId={currentTenant?.id} />,

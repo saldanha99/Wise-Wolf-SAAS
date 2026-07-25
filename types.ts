@@ -48,6 +48,16 @@ export interface Tenant {
   } | null;
 }
 
+export type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+export interface WolfieSettings {
+  goal?: string;
+  level?: CefrLevel;
+  correctionStrictness?: 1 | 2 | 3;
+  dailyGoalMinutes?: number;
+  completedAt?: string;
+}
+
 export interface User {
   id: string;
   tenantId: string; // Made strict (NOT NULL in DB)
@@ -65,6 +75,10 @@ export interface User {
   contract_accepted?: boolean;
   accepted_at?: string;
   is_trainer?: boolean;
+  wolfieSettings?: WolfieSettings;
+  englishFor?: string;
+  preferredTopics?: string[];
+  shortTermGoal?: string;
 }
 
 export interface Lesson {

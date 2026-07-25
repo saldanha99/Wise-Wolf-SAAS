@@ -172,13 +172,9 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
             }
 
             // Award XP proporcional ao score
-            const xpEarned = Math.round((activity.xp_reward || 30) * (score / 100));
+            let xpEarned = 0;
             let leveledUp = false;
             let newLevel = 0;
-            if (xpEarned > 0) {
-                const result = await gamificationService.addXP(userId, xpEarned);
-                if (result?.leveledUp) { leveledUp = true; newLevel = result.newLevel; }
-            }
 
             // Atualiza a ofensiva (streak) — conta o dia de prática
             await gamificationService.updateStreak(userId).catch(() => {});
@@ -318,13 +314,19 @@ const VictoryScreen: React.FC<{
                     <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Acertos</p>
                     <p className="text-2xl font-black text-emerald-600">{score}%</p>
                 </div>
-                {/* XP */}
-                <div className="rounded-2xl border-2 border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-5 py-3 min-w-[96px]">
-                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1">
-                        <Zap size={11} /> XP
-                    </p>
-                    <p className="text-2xl font-black text-amber-600">+{xpEarned}</p>
-                </div>
+                {xpEarned > 0 ? (
+                    <div className="rounded-2xl border-2 border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-5 py-3 min-w-[96px]">
+                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center justify-center gap-1">
+                            <Zap size={11} /> XP
+                        </p>
+                        <p className="text-2xl font-black text-amber-600">+{xpEarned}</p>
+                    </div>
+                ) : (
+                    <div className="rounded-2xl border-2 border-violet-200 dark:border-violet-900/40 bg-violet-50 dark:bg-violet-900/10 px-5 py-3 min-w-[112px]">
+                        <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">Prática</p>
+                        <p className="text-sm font-black text-violet-600 mt-1">Concluída</p>
+                    </div>
+                )}
             </div>
 
             <button

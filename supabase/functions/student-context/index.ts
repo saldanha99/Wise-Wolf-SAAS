@@ -32,6 +32,10 @@ const profileColumns = [
   "status_financial",
   "paid_through",
   "prepaid_months",
+  "wolfie_settings",
+  "english_for",
+  "preferred_topics",
+  "short_term_goal",
   "is_test_account",
 ].join(",");
 
@@ -59,6 +63,10 @@ interface StudentProfile {
   status_financial: string | null;
   paid_through: string | null;
   prepaid_months: number | null;
+  wolfie_settings: Record<string, unknown> | null;
+  english_for: string | null;
+  preferred_topics: string[] | null;
+  short_term_goal: string | null;
   is_test_account: boolean | null;
 }
 
@@ -273,7 +281,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", user.id)
       .maybeSingle();
     const profile = singleRelation(
-      rawProfile as StudentProfile | StudentProfile[] | null,
+      rawProfile as unknown as StudentProfile | StudentProfile[] | null,
     );
 
     if (profileError) {

@@ -3,7 +3,6 @@ import { Book, Lock, CheckCircle, Play, Star, Sparkles, Layers } from 'lucide-re
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
-import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
 import { PEDAGOGICAL_BOOKS, PEDAGOGICAL_EVALUATIONS } from '../constants';
 
@@ -17,6 +16,8 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
     const [showEval, setShowEval] = useState(false);
     const [evalScore, setEvalScore] = useState<number | null>(null);
+    const [evalXpEarned, setEvalXpEarned] = useState(0);
+    const [evalPassed, setEvalPassed] = useState<boolean | null>(null);
 
     // Derived from Context
     const profile = studentContext?.profile;
@@ -29,13 +30,8 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
 
     // No useEffect needed for profile fetch anymore!
 
-    const handleAccessBook = async (url: string) => {
+    const handleAccessBook = (url: string) => {
         window.open(url, '_blank');
-        const result = await gamificationService.addXP(user.id, 15);
-        if (result?.leveledUp) {
-            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-        }
-        refresh(); // Update global context
     };
 
     const currentModule = profile?.module || 'A1';
@@ -73,6 +69,8 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             if (error) throw error;
 
             setEvalScore(data.score); // Backend score
+            setEvalXpEarned(Number(data.xpEarned ?? 0));
+            setEvalPassed(data.passed === true);
             setIsFinished(true);
 
             if (data.passed) {
@@ -93,6 +91,8 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
     const resetQuiz = () => {
         setShowEval(false);
         setEvalScore(null);
+        setEvalXpEarned(0);
+        setEvalPassed(null);
         setCurrentQuestionIndex(0);
         setSelectedOption(null);
         setAnswers([]);
@@ -262,15 +262,34 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                 </>
                             ) : (
                                 <div className="text-center py-10">
-                                    <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 ${
+                                        evalPassed
+                                            ? 'bg-emerald-100 text-emerald-600'
+                                            : 'bg-amber-100 text-amber-600'
+                                    }`}>
                                         <CheckCircle size={48} />
                                     </div>
                                     <h2 className="text-4xl font-black text-brand-text mb-2">{evalScore}/{questions.length}</h2>
                                     <p className="text-brand-muted mb-8 uppercase text-xs font-black tracking-widest">Resultado do Exame {currentPartKey}</p>
 
-                                    <div className="bg-emerald-50 dark:bg-emerald-900/10 p-6 rounded-2xl text-emerald-600 font-bold text-sm mb-8 leading-relaxed">
-                                        Exame concluído com sucesso! Você ganhou {(evalScore || 0) * 20} XP extras.
-                                        Seu professor já pode visualizar seu desempenho.
+                                    <div className={`p-6 rounded-2xl font-bold text-sm mb-8 leading-relaxed ${
+                                        evalPassed
+                                            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/10'
+                                            : 'bg-amber-50 text-amber-700 dark:bg-amber-900/10 dark:text-amber-300'
+                                    }`}>
+                                        {evalPassed ? (
+                                            <>
+                                                Exame concluído com sucesso!
+                                                {evalXpEarned > 0 ? ` Você ganhou ${evalXpEarned} XP.` : ''}
+                                                {' '}Seu professor já pode visualizar seu desempenho.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Você ainda não atingiu os 70% necessários.
+                                                Revise este conteúdo e tente novamente quando se sentir pronto.
+                                                {' '}Seu desempenho ficou registrado.
+                                            </>
+                                        )}
                                     </div>
 
                                     <button

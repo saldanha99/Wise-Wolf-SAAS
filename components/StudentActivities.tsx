@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, MessageSquare, HelpCircle, Mic, Sparkles, CheckCircle, RefreshCw, Zap, Lock, AlertCircle } from 'lucide-react';
+import { BookOpen, MessageSquare, HelpCircle, Mic, Sparkles, CheckCircle, RefreshCw, Lock, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ActivityGenerationError, generateActivities } from '../services/geminiService';
-import { gamificationService } from '../services/gamificationService';
-import confetti from 'canvas-confetti';
 
 interface StudentActivitiesProps {
     userId: string;
@@ -124,11 +122,6 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                 .from('student_activities')
                 .update({ status: 'COMPLETED', completed_at: new Date().toISOString() })
                 .eq('id', activity.id);
-
-            const result = await gamificationService.addXP(userId, activity.xp_reward || 50);
-            if (result?.leveledUp) {
-                confetti({ particleCount: 120, spread: 60, origin: { y: 0.6 }, colors: ['#7c3aed', '#3b82f6', '#10b981'] });
-            }
 
             setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, status: 'COMPLETED' } : a));
             setExpanded(null);
@@ -255,8 +248,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                                 </div>
                                 <div className="shrink-0 flex items-center gap-2">
                                     <div className="flex items-center gap-1 px-2 py-1 bg-white/70 dark:bg-slate-800/70 rounded-lg">
-                                        <Zap size={10} className="text-amber-500" />
-                                        <span className="text-[10px] font-black text-amber-600">+{activity.xp_reward} XP</span>
+                                        <span className="text-[10px] font-black text-slate-500">Prática livre</span>
                                     </div>
                                 </div>
                             </button>
@@ -275,7 +267,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                                         {completing === activity.id ? (
                                             <><RefreshCw size={14} className="animate-spin" /> Registrando...</>
                                         ) : (
-                                            <><CheckCircle size={14} /> Marcar como Concluída (+{activity.xp_reward} XP)</>
+                                            <><CheckCircle size={14} /> Marcar como concluída</>
                                         )}
                                     </button>
                                 </div>
@@ -301,7 +293,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-xs font-bold text-slate-600 dark:text-slate-400 truncate">{activity.title}</p>
-                                            <p className="text-[9px] text-slate-400">+{activity.xp_reward} XP ganhos</p>
+                                            <p className="text-[9px] text-slate-400">Prática registrada</p>
                                         </div>
                                         <Lock size={12} className="text-slate-300 shrink-0" />
                                     </div>

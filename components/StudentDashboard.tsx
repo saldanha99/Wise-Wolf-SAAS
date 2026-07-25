@@ -196,7 +196,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       const { error } = await supabase.from('class_logs').update({ student_confirmed: true }).eq('id', logId);
       if (error) throw error;
 
-      const result = await gamificationService.addXP(user.id, 100);
+      const result = await gamificationService.awardVerifiedXP('CLASS_LOG_CONFIRM', logId);
       if (result?.leveledUp) {
         confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#002366', '#D32F2F', '#FFD700'] });
       }

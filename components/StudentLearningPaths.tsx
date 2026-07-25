@@ -354,6 +354,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                         const done = p?.status === 'COMPLETED';
                                         const isCurrent = flatIdx === currentIdx;
                                         const locked = !done && !isCurrent && flatIdx > currentIdx;
+                                        const awardsVerifiedXp = ['quiz', 'grammar_drill'].includes(a.type) && a.xp_reward > 0;
                                         const offset = ZIGZAG[globalNodeIdx % ZIGZAG.length];
                                         globalNodeIdx++;
 
@@ -415,7 +416,8 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                                     </p>
                                                     {!locked && (
                                                         <p className="text-[9px] text-slate-400 mt-0.5">
-                                                            {a.xp_reward} XP{done && p?.score != null ? ` · ${p.score}%` : ''}
+                                                            {awardsVerifiedXp ? `${a.xp_reward} XP` : 'Prática'}
+                                                            {done && p?.score != null ? ` · ${p.score}%` : ''}
                                                         </p>
                                                     )}
                                                 </div>

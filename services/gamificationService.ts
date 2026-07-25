@@ -1,52 +1,29 @@
 import { supabase } from '../lib/supabase';
 
+export type VerifiedXpSource =
+    | 'CLASS_LOG_CONFIRM';
+
 export const gamificationService = {
     /**
-     * Adds XP to a user and handles leveling up
+     * Awards XP only after Postgres verifies the owned, completed source.
+     * Amounts, daily caps and idempotency are authoritative on the server.
      */
-    async addXP(userId: string, amount: number) {
+    async awardVerifiedXP(sourceType: VerifiedXpSource, sourceId: string) {
         try {
-            // 1. Get current stats
-            const { data: profile, error: fetchError } = await supabase
-                .from('profiles')
-                .select('xp, level')
-                .eq('id', userId)
-                .single();
-
-            if (fetchError) throw fetchError;
-
-            const currentXP = profile.xp || 0;
-            const currentLevel = profile.level || 1;
-            const newXP = currentXP + amount;
-
-            // Simple leveling logic: Level = floor(XP / 1000) + 1
-            const newLevel = Math.floor(newXP / 1000) + 1;
-
-            // XP diário (meta) — reseta por dia de calendário
-            const hoje = new Date();
-            const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-            const { data: dxp } = await supabase
-                .from('profiles').select('daily_xp, daily_xp_date').eq('id', userId).maybeSingle();
-            const mesmoData = dxp?.daily_xp_date && String(dxp.daily_xp_date).slice(0, 10) === hojeStr;
-            const novoDailyXP = (mesmoData ? (dxp?.daily_xp || 0) : 0) + amount;
-
-            // 2. Update profile
-            const { error: updateError } = await supabase
-                .from('profiles')
-                .update({
-                    xp: newXP,
-                    level: newLevel,
-                    last_activity: new Date().toISOString(),
-                    daily_xp: novoDailyXP,
-                    daily_xp_date: hojeStr,
-                })
-                .eq('id', userId);
-
-            if (updateError) throw updateError;
-
-            return { newXP, newLevel, leveledUp: newLevel > currentLevel, dailyXP: novoDailyXP };
+            const { data, error } = await supabase.rpc('award_verified_student_xp', {
+                p_source_type: sourceType,
+                p_source_id: sourceId,
+            });
+            if (error) throw error;
+            return {
+                newXP: Number(data?.newXP ?? 0),
+                newLevel: Number(data?.newLevel ?? 1),
+                leveledUp: data?.leveledUp === true,
+                xpEarned: Number(data?.xpEarned ?? 0),
+                alreadyAwarded: data?.alreadyAwarded === true,
+            };
         } catch (err) {
-            console.error('Error adding XP:', err);
+            console.error('Verified XP award failed:', err);
             return null;
         }
     },
