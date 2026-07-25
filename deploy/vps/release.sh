@@ -410,38 +410,45 @@ cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   docker compose up -d --force-recreate frontend
 )
 
-curl -fsS --max-time 30 "$public_url/" >/dev/null
-options_status="$(
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-    -X OPTIONS "$api_url/functions/v1/wolfie-activity"
-)"
-[[ "$options_status" = "200" ]]
-unauthenticated_status="$(
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-    -X POST "$api_url/functions/v1/wolfie-activity" \
-    -H 'Content-Type: application/json' \
-    --data '{"action":"overview"}'
-)"
-[[ "$unauthenticated_status" = "401" ]]
-quiz_options_status="$(
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-    -X OPTIONS "$api_url/functions/v1/submit-quiz"
-)"
-[[ "$quiz_options_status" = "200" ]]
-quiz_unauthenticated_status="$(
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-    -X POST "$api_url/functions/v1/submit-quiz" \
-    -H 'Content-Type: application/json' \
-    --data '{"bookPart":"A1-1","answers":[]}'
-)"
-[[ "$quiz_unauthenticated_status" = "401" ]]
-context_unauthenticated_status="$(
-  curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
-    -X POST "$api_url/functions/v1/student-context" \
-    -H 'Content-Type: application/json' \
-    --data '{}'
-)"
-[[ "$context_unauthenticated_status" = "401" ]]
+wait_for_http_status() {
+  local expected_status=$1
+  local check_name=$2
+  local actual_status=
+  local attempt
+  shift 2
+
+  for attempt in {1..20}; do
+    actual_status="$(
+      curl -s -o /dev/null -w '%{http_code}' \
+        --connect-timeout 5 --max-time 15 "$@" || true
+    )"
+    if [[ "$actual_status" = "$expected_status" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "ERRO: $check_name retornou ${actual_status:-sem resposta}; esperado $expected_status." >&2
+  return 1
+}
+
+wait_for_http_status 200 "frontend público" "$public_url/"
+wait_for_http_status 200 "preflight do Wolfie" \
+  -X OPTIONS "$api_url/functions/v1/wolfie-activity"
+wait_for_http_status 401 "autenticação do Wolfie" \
+  -X POST "$api_url/functions/v1/wolfie-activity" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"overview"}'
+wait_for_http_status 200 "preflight do quiz pedagógico" \
+  -X OPTIONS "$api_url/functions/v1/submit-quiz"
+wait_for_http_status 401 "autenticação do quiz pedagógico" \
+  -X POST "$api_url/functions/v1/submit-quiz" \
+  -H 'Content-Type: application/json' \
+  --data '{"bookPart":"A1-1","answers":[]}'
+wait_for_http_status 401 "autenticação do contexto do aluno" \
+  -X POST "$api_url/functions/v1/student-context" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
 
 printf '%s\n' "$release_id" > "$releases_dir/current"
 trap - ERR
