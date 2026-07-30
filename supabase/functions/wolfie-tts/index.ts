@@ -1,14 +1,10 @@
 /// <reference lib="deno.ns" />
 
 /**
- * wolfie-tts v9 — Text-to-Speech via Google Translate TTS
+ * Wolfie TTS
  *
- * Usa o endpoint não-oficial do Google Translate TTS.
- * Sem API key, sem WebSocket, simples HTTPS GET.
- * Retorna audio/mpeg (MP3). Testado e funcionando via curl.
- *
- * Limite: ~200 chars por request — textos maiores são divididos
- * em sentenças e os chunks concatenados.
+ * Fallback oficial para os fluxos que ainda não estiverem em uma sessão
+ * speech-to-speech da Realtime API. A chave permanente nunca sai do servidor.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -19,126 +15,73 @@ import {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
-// User-Agent de browser real — Google bloqueia UA de servidor/bot
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const OPENAI_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
+const DEFAULT_MODEL = "gpt-4o-mini-tts";
+const MAX_REQUEST_BYTES = 32_000;
+const ALLOWED_VOICES = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "cedar",
+  "coral",
+  "echo",
+  "fable",
+  "marin",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 
-// Remove markdown e prepara texto para TTS
-function cleanText(text: string): string {
-  return text
+const cleanText = (text: string): string =>
+  text
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
     .replace(/`(.*?)`/g, "$1")
     .replace(/#{1,6}\s/g, "")
     .replace(/\[(.*?)\]\(.*?\)/g, "$1")
     .replace(/---+/g, ".")
-    .replace(/\n{2,}/g, " ")
-    .replace(/\n/g, " ")
-    .replace(/\s{2,}/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-}
 
-/**
- * Divide texto em chunks de até maxLen chars,
- * quebrando apenas em limites de sentença/vírgula/espaço.
- */
-function splitText(text: string, maxLen = 180): string[] {
-  if (text.length <= maxLen) return [text];
-
-  const chunks: string[] = [];
-  let remaining = text.trim();
-
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLen) {
-      chunks.push(remaining);
-      break;
-    }
-
-    // Tenta quebrar na última pontuação dentro do limite
-    let cutAt = -1;
-    const slice = remaining.slice(0, maxLen);
-
-    // Ordem de preferência: . ! ? , ; " ' espaço
-    for (const sep of [".", "!", "?", ",", ";", " "]) {
-      const idx = slice.lastIndexOf(sep);
-      if (idx > 0) {
-        cutAt = idx + 1;
-        break;
-      }
-    }
-
-    if (cutAt <= 0) cutAt = maxLen; // fallback: corta no limite duro
-
-    chunks.push(remaining.slice(0, cutAt).trim());
-    remaining = remaining.slice(cutAt).trim();
+const uint8ToBase64 = (bytes: Uint8Array): string => {
+  const chunkSize = 8192;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
   }
+  return btoa(binary);
+};
 
-  return chunks.filter(c => c.length > 0);
-}
-
-/**
- * Converte Uint8Array para base64 em chunks (evita stack overflow em buffers grandes).
- */
-function uint8ToBase64(bytes: Uint8Array): string {
-  const CHUNK = 8192;
-  let str = "";
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    str += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(str);
-}
-
-/**
- * Extrai o locale (tl) a partir do nome da voz Microsoft Edge.
- * pt-BR-ThalitaNeural → pt-BR
- * en-US-JennyNeural  → en-US
- */
-function voiceToLocale(voice: unknown): string {
-  if (typeof voice !== "string") return "en-US";
-  const m = voice.match(/^([a-z]{2}-[A-Z]{2})/);
-  return m?.[1] === "pt-BR" ? "pt-BR" : "en-US";
-}
-
-function normalizeSpeed(value: unknown): number {
+const normalizeSpeed = (value: unknown): number => {
   if (typeof value !== "number" || !Number.isFinite(value)) return 1;
-  return Math.max(0.24, Math.min(1, value));
-}
+  return Math.max(0.25, Math.min(4, value));
+};
 
-/**
- * Busca TTS para um único chunk de texto.
- * Retorna Uint8Array com o MP3.
- */
-async function fetchTTSChunk(
-  text: string,
-  locale: string,
-  speed: number,
-): Promise<Uint8Array> {
-  const url =
-    `https://translate.google.com/translate_tts` +
-    `?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${locale}&client=gtx&ttsspeed=${speed.toFixed(2)}`;
+const inferLanguage = (voice: unknown): "pt" | "en" =>
+  typeof voice === "string" && voice.toLocaleLowerCase().startsWith("pt")
+    ? "pt"
+    : "en";
 
-  const resp = await fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      "Accept": "audio/mpeg, audio/*, */*",
-      "Referer": "https://translate.google.com/",
-    },
-  });
+const resolveVoice = (language: "pt" | "en"): string => {
+  const configured = (
+    language === "pt"
+      ? Deno.env.get("WOLFIE_TTS_VOICE_PT")
+      : Deno.env.get("WOLFIE_TTS_VOICE_EN")
+  )?.trim().toLocaleLowerCase();
 
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Google TTS ${resp.status}: ${body.slice(0, 120)}`);
-  }
+  return configured && ALLOWED_VOICES.has(configured) ? configured : "marin";
+};
 
-  const buf = await resp.arrayBuffer();
-  if (buf.byteLength < 50) {
-    throw new Error(`Google TTS retornou áudio muito pequeno (${buf.byteLength} bytes)`);
-  }
-
-  return new Uint8Array(buf);
-}
+const speakingInstructions = (language: "pt" | "en"): string =>
+  language === "pt"
+    ? "Fale em português brasileiro natural, acolhedor e claro. Preserve exatamente nomes próprios, cidades, estados e números. Não acrescente nem corrija conteúdo."
+    : "Speak in natural, warm, clear English for a language learner. Preserve proper names, Brazilian place names, and numbers exactly. Do not add or correct content.";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -149,55 +92,129 @@ serve(async (req) => {
   try {
     const auth = await authorizeRequest(req, {
       allowService: false,
+      allowedRoles: ["STUDENT"],
       corsHeaders,
     });
     if (auth.ok === false) return auth.response;
 
-    const { text, voice = "en-US-JennyNeural", speed } = await req.json();
+    const apiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({
+          error: "WOLFIE_TTS_UNAVAILABLE",
+          fallback: "browser_speech",
+        }),
+        {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
 
-    if (!text || typeof text !== "string") {
+    const declaredLength = Number(req.headers.get("content-length") ?? "0");
+    if (
+      Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES
+    ) {
+      return new Response(JSON.stringify({ error: "PAYLOAD_TOO_LARGE" }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+      return new Response(JSON.stringify({ error: "PAYLOAD_TOO_LARGE" }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    let body: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(rawBody);
+      body = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, unknown>
+        : {};
+    } catch {
+      body = {};
+    }
+    const text = typeof body?.text === "string" ? cleanText(body.text) : "";
+    if (!text) {
       return new Response(JSON.stringify({ error: "text is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const cleaned = cleanText(text).slice(0, 1000);
-    const locale = voiceToLocale(voice);
-    const normalizedSpeed = normalizeSpeed(speed);
-    const chunks = splitText(cleaned, 180);
+    const language = inferLanguage(body.voice);
+    const voice = resolveVoice(language);
+    const model = Deno.env.get("WOLFIE_TTS_MODEL")?.trim() || DEFAULT_MODEL;
+    const speed = normalizeSpeed(body.speed);
 
-    console.log(`[wolfie-tts] locale=${locale} speed=${normalizedSpeed} chunks=${chunks.length} totalChars=${cleaned.length}`);
+    const response = await fetch(OPENAI_SPEECH_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        voice,
+        input: text.slice(0, 4096),
+        instructions: speakingInstructions(language),
+        response_format: "mp3",
+        speed,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
 
-    // Busca todos os chunks em paralelo (mais rápido que sequencial)
-    const audioArrays = await Promise.all(
-      chunks.map(chunk => fetchTTSChunk(chunk, locale, normalizedSpeed))
-    );
-
-    // Concatena os chunks de MP3
-    const totalBytes = audioArrays.reduce((sum, a) => sum + a.length, 0);
-    const merged = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of audioArrays) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
+    if (!response.ok) {
+      const requestId = response.headers.get("x-request-id");
+      await response.body?.cancel().catch(() => undefined);
+      console.error("[wolfie-tts] OpenAI error", {
+        status: response.status,
+        requestId,
+      });
+      return new Response(
+        JSON.stringify({
+          error: "WOLFIE_TTS_PROVIDER_ERROR",
+          fallback: "browser_speech",
+          requestId,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    console.log(`[wolfie-tts] Áudio final: ${totalBytes} bytes`);
-
-    const base64 = uint8ToBase64(merged);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength < 50) {
+      throw new Error("WOLFIE_TTS_EMPTY_AUDIO");
+    }
 
     return new Response(
-      JSON.stringify({ audio: base64, format: "mp3" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        audio: uint8ToBase64(bytes),
+        format: "mp3",
+        model,
+        voice,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
-
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[wolfie-tts] Error:", message);
     return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        error: "WOLFIE_TTS_FAILED",
+        fallback: "browser_speech",
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
