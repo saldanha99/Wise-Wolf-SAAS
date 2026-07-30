@@ -309,6 +309,36 @@ async function ensureDocument({
   return { created: true, documentId };
 }
 
+async function verifyRetrieval(
+  supabase,
+  tenantId,
+  knowledgeBaseId,
+  queryEmbedding,
+) {
+  const matches = await supabase("rpc/match_wise_wolf_knowledge", {
+    method: "POST",
+    expected: [200],
+    body: {
+      p_tenant_id: tenantId,
+      p_knowledge_base_id: knowledgeBaseId,
+      p_query_embedding: queryEmbedding,
+      p_match_count: 3,
+      p_min_similarity: 0.8,
+    },
+  });
+  const bestMatch = Array.isArray(matches) ? matches[0] : null;
+  if (
+    !bestMatch ||
+    typeof bestMatch.content !== "string" ||
+    bestMatch.content.length < 100 ||
+    typeof bestMatch.similarity !== "number" ||
+    bestMatch.similarity < 0.8 ||
+    bestMatch.metadata?.scope !== PURPOSE
+  ) {
+    throw new Error(`Busca vetorial do Wolfie falhou no tenant ${tenantId}.`);
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const markdown = await readFile(options.corpus, "utf8");
@@ -341,6 +371,7 @@ async function main() {
     sections.map((section) => section.content),
   );
   let createdDocuments = 0;
+  let verifiedBases = 0;
   for (const tenant of tenants) {
     const knowledgeBase = await ensureKnowledgeBase(
       supabase,
@@ -356,6 +387,13 @@ async function main() {
       embeddings,
     });
     if (result.created) createdDocuments += 1;
+    await verifyRetrieval(
+      supabase,
+      tenant.id,
+      knowledgeBase.id,
+      embeddings[0],
+    );
+    verifiedBases += 1;
   }
 
   const activeBases = await supabase(
@@ -371,14 +409,17 @@ async function main() {
   if (
     activeBases.length < tenants.length ||
     readyDocuments.length < tenants.length ||
-    chunks.length < expectedChunks
+    chunks.length < expectedChunks ||
+    verifiedBases !== tenants.length
   ) {
     throw new Error("A verificação final da RAG não cobriu todos os tenants.");
   }
   process.stdout.write(
     `RAG Wolfie pronta: ${activeBases.length} bases ativas, ${
       readyDocuments.length
-    } documentos, ${chunks.length} chunks, ${createdDocuments} novos.\n`,
+    } documentos, ${chunks.length} chunks, ${verifiedBases} buscas vetoriais, ${
+      createdDocuments
+    } novos.\n`,
   );
 }
 
