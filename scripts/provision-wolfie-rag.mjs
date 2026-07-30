@@ -160,7 +160,7 @@ async function createEmbeddings(apiKey, model, inputs) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://system.wisewolflanguage.com.br",
-        "X-Title": "Wise Wolf — Wolfie Tutor RAG",
+        "X-Title": "Wise Wolf - Wolfie Tutor RAG",
       },
       body: { model, input: inputs },
     },
