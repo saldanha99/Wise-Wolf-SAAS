@@ -25,6 +25,11 @@ import {
   uniqueTranscriptAlternatives,
 } from "../lib/wolfieVoiceSafety";
 import {
+  classifyWolfieLearnerTurn,
+  inferWolfieSocialTurnLanguage,
+  isPedagogicallySubstantiveTurn,
+} from "../supabase/functions/wolfie-brain/turn-policy";
+import {
   useWolfieRealtime,
   type WolfieRealtimeCompletedTurn,
 } from "../src/services/useWolfieRealtime";
@@ -125,6 +130,25 @@ const EMPTY_TURN_GUIDANCE: TurnGuidance = {
   verificationReason: "",
   retryRequired: false,
   sessionScore: null,
+};
+
+type WolfieLearnerTurnKind = ReturnType<typeof classifyWolfieLearnerTurn>;
+
+const resolveWolfieLearnerTurnKind = (
+  value: string,
+  fallback: WolfieLearnerTurnKind,
+): WolfieLearnerTurnKind => {
+  switch (value.trim().toLocaleLowerCase("en-US")) {
+    case "opening":
+    case "greeting":
+    case "noise":
+    case "substantive":
+      return value.trim().toLocaleLowerCase(
+        "en-US",
+      ) as WolfieLearnerTurnKind;
+    default:
+      return fallback;
+  }
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -615,6 +639,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
   const studentLevel = user.levelBadge || "A1";
   const isRealtimeMode = voiceTransport === "realtime";
+  const activePedagogicalTask = [
+    topic,
+    targetSkill,
+  ].filter(Boolean).join("\n");
 
   const handleRealtimeTurnComplete = useCallback(
     (turn: WolfieRealtimeCompletedTurn) => {
@@ -637,7 +665,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           timestamp,
         },
       ]);
-      setTurnCount((current) => current + 1);
+      if (
+        isPedagogicallySubstantiveTurn(
+          classifyWolfieLearnerTurn(
+            turn.userTranscript,
+            turn.inputMethod === "audio_transcription",
+          ),
+          activePedagogicalTask,
+        )
+      ) {
+        setTurnCount((current) => current + 1);
+      }
       setAssistantLanguage(
         detectSpeechLanguage(turn.assistantTranscript, "en"),
       );
@@ -731,6 +769,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     },
     [
       correctionMode,
+      activePedagogicalTask,
       difficulty,
       experienceAudiences,
       experienceId,
@@ -1260,6 +1299,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           .order("turn_index", { ascending: false })
           .limit(20);
 
+        const { data: activeRetryCorrection } =
+          lastSession.scenario_status === "awaiting_retry"
+            ? await supabase
+              .from("wolfie_corrections")
+              .select(
+                "wrong_sentence, correct_sentence, natural_sentence, explanation_pt, priority",
+              )
+              .eq("session_id", lastSession.id)
+              .eq("status", "active")
+              .eq("requires_retry", true)
+              .eq("retry_completed", false)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            : { data: null };
+
         if (cancelled) return;
         const turns = [...(recentTurns ?? [])].reverse();
         setConversationId(lastSession.id);
@@ -1279,7 +1334,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             };
           });
           setMessages(restored);
-          setTurnCount(Math.floor(turns.length / 2));
+          setTurnCount(
+            turns.filter((turn: any) => {
+              if (turn.speaker !== "student") return false;
+              const payload = asRecord(turn.structured_payload);
+              const persistedKind = firstString(
+                payload,
+                "learnerTurnKind",
+                "learner_turn_kind",
+              );
+              const kind = persistedKind
+                ? resolveWolfieLearnerTurnKind(
+                  persistedKind,
+                  classifyWolfieLearnerTurn(turn.content),
+                )
+                : classifyWolfieLearnerTurn(turn.content);
+              return isPedagogicallySubstantiveTurn(
+                kind,
+                activePedagogicalTask,
+              );
+            }).length,
+          );
           if (lastSession.topic && !initialTopic) {
             setTopic(lastSession.topic);
             setHasSelectedTopic(true);
@@ -1290,12 +1365,53 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           const latestWolfieTurn = [...turns]
             .reverse()
             .find((turn: any) => turn.speaker !== "student");
+          const retryWolfieTurn = [...turns]
+            .reverse()
+            .find((turn: any) =>
+              turn.speaker !== "student" &&
+              normalizeCorrections(asRecord(turn.structured_payload)).length > 0
+            );
           const retryPayload = asRecord(
-            latestWolfieTurn?.structured_payload,
+            retryWolfieTurn?.structured_payload ??
+              latestWolfieTurn?.structured_payload,
           );
           const retryCorrections = normalizeCorrections(retryPayload);
-          const retryCorrection = retryCorrections[0] ?? null;
-          const retryText = latestWolfieTurn?.content || "";
+          const pendingRetryPayload = asRecord(activeRetryCorrection);
+          const pendingRetryOriginal = firstString(
+            pendingRetryPayload,
+            "wrong_sentence",
+          );
+          const pendingRetryCorrected = firstString(
+            pendingRetryPayload,
+            "correct_sentence",
+          );
+          const pendingRetryPriority = firstString(
+            pendingRetryPayload,
+            "priority",
+          );
+          const retryCorrection: CorrectionData | null =
+            pendingRetryOriginal && pendingRetryCorrected
+              ? {
+                original: pendingRetryOriginal,
+                corrected: pendingRetryCorrected,
+                naturalVersion: firstString(
+                  pendingRetryPayload,
+                  "natural_sentence",
+                ) || pendingRetryCorrected,
+                explanation_pt: firstString(
+                  pendingRetryPayload,
+                  "explanation_pt",
+                ),
+                priority: ["low", "medium", "high"].includes(
+                    pendingRetryPriority,
+                  )
+                  ? pendingRetryPriority as CorrectionData["priority"]
+                  : "medium",
+                retryRequired: true,
+              }
+              : retryCorrections[0] ?? null;
+          const retryText = retryWolfieTurn?.content ||
+            latestWolfieTurn?.content || "";
 
           setCorrection(retryCorrection);
           setTranslation(
@@ -2033,10 +2149,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     window.speechSynthesis.cancel();
     setState("IDLE");
     setSubtitle("");
-    setCorrection(null);
     setTranslation(null);
     setVocabulary(null);
     setQuiz(null);
+    if (!turnGuidance.retryRequired) {
+      setCorrection(null);
+      setTurnGuidance((current) => ({
+        ...EMPTY_TURN_GUIDANCE,
+        currentStage: current.currentStage,
+      }));
+    }
     setError(null);
 
     const SpeechRec = (window as any).webkitSpeechRecognition ||
@@ -2250,10 +2372,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     setInputText("");
     setState("THINKING");
     stopSpeaking();
-    setCorrection(null);
     setTranslation(null);
     setVocabulary(null);
     setQuiz(null);
+    if (!turnGuidance.retryRequired) {
+      setCorrection(null);
+      setTurnGuidance((current) => ({
+        ...EMPTY_TURN_GUIDANCE,
+        currentStage: current.currentStage,
+      }));
+    }
 
     // Add user message to chat
     const newUserMsg: Message = {
@@ -2279,7 +2407,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     // Se o aluno falou PT → Wolfie responde em PT (FranciscaNeural)
     // Se falou EN → Wolfie responde em EN (JennyNeural)
     const studentLang: SpeechLanguage = input.studentLanguage ??
+      inferWolfieSocialTurnLanguage(input.message) ??
       detectSpeechLanguage(input.message || "", "en");
+    const localLearnerTurnKind = classifyWolfieLearnerTurn(
+      input.message,
+      Boolean(input.audioBase64),
+    );
+    const localTurnIsSubstantive = isPedagogicallySubstantiveTurn(
+      localLearnerTurnKind,
+      activePedagogicalTask,
+    );
 
     try {
       const history = messages.slice(-6).map((m) =>
@@ -2321,6 +2458,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         {
           body: {
             ...input,
+            learnerTurnKind: localLearnerTurnKind,
             studentLevel,
             topic,
             experienceMode,
@@ -2338,7 +2476,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             translationEnabled: studentLang === "pt"
               ? false
               : translationEnabled,
-            vocabularyEnabled: true,
+            vocabularyEnabled: localTurnIsSubstantive,
             mode,
             correctionStrictness:
               mode === "exam_prep" || mode === "grammar_focus" ? 3 : 1,
@@ -2369,6 +2507,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         ...rootPayload,
         ...structuredPayload,
       };
+      const learnerTurnKind = resolveWolfieLearnerTurnKind(
+        firstString(
+          responsePayload,
+          "learnerTurnKind",
+          "learner_turn_kind",
+        ),
+        localLearnerTurnKind,
+      );
+      const suppressPedagogy = !isPedagogicallySubstantiveTurn(
+        learnerTurnKind,
+        activePedagogicalTask,
+      );
+      const suppressTranslation = learnerTurnKind === "greeting" ||
+        learnerTurnKind === "noise";
       const chatText = firstString(
         responsePayload,
         "chatResponse",
@@ -2384,56 +2536,80 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         ),
         detectSpeechLanguage(chatText, studentLang),
       );
-      const nextCorrections = normalizeCorrections(responsePayload);
+      const nextCorrections = suppressPedagogy
+        ? []
+        : normalizeCorrections(responsePayload);
       const nextCorrection = nextCorrections[0] ?? null;
-      const nextTranslation = firstString(responsePayload, "translation") ||
-        null;
+      const nextTranslation = suppressTranslation
+        ? null
+        : firstString(responsePayload, "translation") || null;
       const nextCurrentStage = firstString(
         responsePayload,
         "currentStage",
         "current_stage",
         "stage",
       );
-      const nextStrengths = firstStringArray(
-        responsePayload,
-        "studentStrengths",
-        "student_strengths",
-        "strengths",
-      );
-      const nextPriorities = firstStringArray(
-        responsePayload,
-        "studentPriorities",
-        "student_priorities",
-        "priorities",
-      );
-      const nextAction = firstString(
-        responsePayload,
-        "nextAction",
-        "next_action",
-      );
-      const needsExternalVerification = firstBoolean(
-        responsePayload,
-        "needsExternalVerification",
-        "needs_external_verification",
-      );
-      const verificationReason = firstString(
-        responsePayload,
-        "verificationReason",
-        "verification_reason",
-      );
-      const sessionScore = firstNumber(
-        responsePayload,
-        "sessionScore",
-        "session_score",
-      );
-      const retryRequired = firstBoolean(
+      const nextStrengths = suppressPedagogy
+        ? []
+        : firstStringArray(
+          responsePayload,
+          "studentStrengths",
+          "student_strengths",
+          "strengths",
+        );
+      const nextPriorities = suppressPedagogy
+        ? []
+        : firstStringArray(
+          responsePayload,
+          "studentPriorities",
+          "student_priorities",
+          "priorities",
+        );
+      const nextAction = suppressPedagogy
+        ? ""
+        : firstString(
+          responsePayload,
+          "nextAction",
+          "next_action",
+        );
+      const needsExternalVerification = suppressPedagogy
+        ? false
+        : firstBoolean(
+          responsePayload,
+          "needsExternalVerification",
+          "needs_external_verification",
+        );
+      const verificationReason = suppressPedagogy
+        ? ""
+        : firstString(
+          responsePayload,
+          "verificationReason",
+          "verification_reason",
+        );
+      const sessionScore = suppressPedagogy
+        ? null
+        : firstNumber(
+          responsePayload,
+          "sessionScore",
+          "session_score",
+        );
+      const responseRequiresRetry = firstBoolean(
         responsePayload,
         "retryRequired",
         "retry_required",
         "requiresRetry",
         "requires_retry",
-      ) ||
-        nextCorrections.some((item) => item.retryRequired);
+      );
+      const retryRequired = suppressPedagogy
+        ? responseRequiresRetry
+        : responseRequiresRetry ||
+          nextCorrections.some((item) => item.retryRequired);
+      const nextVocabulary = suppressPedagogy
+        ? null
+        : (responsePayload.vocabulary as VocabData | undefined) ?? null;
+      const nextQuiz = suppressPedagogy
+        ? null
+        : (responsePayload.quiz as QuizData | undefined) ?? null;
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
@@ -2442,12 +2618,19 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         timestamp: new Date(),
         correction: nextCorrection,
         translation: nextTranslation,
-        vocabulary: responsePayload.vocabulary as VocabData || null,
-        quiz: responsePayload.quiz as QuizData || null,
+        vocabulary: nextVocabulary || null,
+        quiz: nextQuiz,
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-      setTurnCount((prev) => prev + 1);
+      if (
+        isPedagogicallySubstantiveTurn(
+          learnerTurnKind,
+          activePedagogicalTask,
+        )
+      ) {
+        setTurnCount((prev) => prev + 1);
+      }
       const nextConversationId = firstString(
         responsePayload,
         "conversationId",
@@ -2455,24 +2638,37 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       );
       if (nextConversationId) setConversationId(nextConversationId);
 
-      setCorrection(nextCorrection);
+      setCorrection((current) =>
+        suppressPedagogy && retryRequired ? current : nextCorrection
+      );
       setTranslation(nextTranslation);
       setAssistantLanguage(responseLang);
-      const nextVocabulary = responsePayload.vocabulary as
-        | VocabData
-        | undefined;
       setVocabulary(nextVocabulary?.keyTerms?.length ? nextVocabulary : null);
-      setQuiz(responsePayload.quiz as QuizData || null);
-      setTurnGuidance({
-        currentStage: nextCurrentStage,
-        strengths: nextStrengths,
-        priorities: nextPriorities,
-        nextAction,
-        needsExternalVerification,
-        verificationReason,
-        retryRequired,
-        sessionScore,
-      });
+      setQuiz(nextQuiz);
+      setTurnGuidance((current) =>
+        suppressPedagogy
+          ? retryRequired
+            ? {
+              ...current,
+              currentStage: current.currentStage || nextCurrentStage || "retry",
+              retryRequired: true,
+            }
+            : {
+              ...EMPTY_TURN_GUIDANCE,
+              currentStage: current.currentStage ||
+                (learnerTurnKind === "opening" ? nextCurrentStage : ""),
+            }
+          : {
+            currentStage: nextCurrentStage,
+            strengths: nextStrengths,
+            priorities: nextPriorities,
+            nextAction,
+            needsExternalVerification,
+            verificationReason,
+            retryRequired,
+            sessionScore,
+          }
+      );
 
       // O backend informa explicitamente o idioma desta fala. A heurística
       // acima existe apenas para compatibilidade durante a implantação.

@@ -5,6 +5,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 // deno-lint-ignore no-import-prefix
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { WOLFIE_REALTIME_SOCIAL_TURN_POLICY } from "./social-turn-policy.ts";
 
 const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
@@ -566,6 +567,8 @@ The interface language is ${interfaceLanguage}. Prefer English practice; use bri
 - Let the learner finish. Do not lecture, enumerate rules, or repeat information unnecessarily.
 - Treat interruptions as normal; stop promptly and continue from the learner's latest words.
 - Correct selectively. Preserve the learner's intended meaning and every name, place, number, and personal fact.
+
+${WOLFIE_REALTIME_SOCIAL_TURN_POLICY}
 
 # UNCLEAR AUDIO — MANDATORY
 - When audio is unclear, incomplete, noisy, or low-confidence, do not guess, infer a place/name, correct the supposed fact, or call it wrong.

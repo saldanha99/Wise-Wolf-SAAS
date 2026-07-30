@@ -13,6 +13,13 @@ import {
   type StoredLearnerFact,
   transcriptionNeedsFactConfirmation,
 } from "./factual-integrity.ts";
+import {
+  classifyWolfieLearnerTurn,
+  inferWolfieSocialTurnLanguage,
+  isPedagogicallySubstantiveTurn,
+  suppressWolfiePedagogicalEvidence,
+  type WolfieLearnerTurnKind,
+} from "./turn-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -167,6 +174,7 @@ interface ProfileUpdates {
 interface AgentResponse {
   chatResponse: string;
   assistant_message: string;
+  learnerTurnKind: WolfieLearnerTurnKind;
   message_type: MessageType;
   current_stage: PedagogicalStage;
   scenario_status: ScenarioStatus;
@@ -2483,7 +2491,7 @@ function normalizeAgentPayload(
   assistantLanguage: AssistantLanguage,
 ): Omit<
   AgentResponse,
-  "conversationId" | "configUsed"
+  "conversationId" | "configUsed" | "learnerTurnKind"
 > {
   const chatResponse = boundedString(
     value.assistant_message ?? value.chatResponse,
@@ -3336,6 +3344,10 @@ serve(async (req) => {
         chatResponse: "Interação de IA suprimida para esta conta de teste.",
         assistant_message:
           "Interação de IA suprimida para esta conta de teste.",
+        learnerTurnKind: classifyWolfieLearnerTurn(
+          input.message,
+          input.hasAudio,
+        ),
         message_type: "instruction",
         current_stage: "discovery",
         scenario_status: "active",
@@ -3997,6 +4009,23 @@ serve(async (req) => {
       }
       sessionId = newSession.id;
     }
+    const learnerTurnKind = classifyWolfieLearnerTurn(
+      input.message,
+      input.hasAudio,
+    );
+    const activePedagogicalTask = [
+      effectiveConfig.topic,
+      effectiveConfig.targetSkill,
+    ].filter(Boolean).join("\n");
+    const pedagogicallySubstantiveTurn = isPedagogicallySubstantiveTurn(
+      learnerTurnKind,
+      activePedagogicalTask,
+    );
+    const skipProviderForLearnerTurn = !pedagogicallySubstantiveTurn &&
+      (
+        learnerTurnKind === "greeting" ||
+        learnerTurnKind === "noise"
+      );
 
     const [
       wolfIntelResult,
@@ -4226,13 +4255,15 @@ serve(async (req) => {
       })),
       facts: activeLearnerFacts,
     };
-    wolfMemory.knowledge_chunks = await retrieveWolfieKnowledge(
-      supabase,
-      openRouterKey,
-      profile.tenant_id,
-      (knowledgeBaseResult.data ?? null) as WolfieKnowledgeBaseRow | null,
-      `${effectiveConfig.topic}\n${effectiveConfig.targetSkill}\n${input.message}`,
-    );
+    wolfMemory.knowledge_chunks = skipProviderForLearnerTurn
+      ? []
+      : await retrieveWolfieKnowledge(
+        supabase,
+        openRouterKey,
+        profile.tenant_id,
+        (knowledgeBaseResult.data ?? null) as WolfieKnowledgeBaseRow | null,
+        `${effectiveConfig.topic}\n${effectiveConfig.targetSkill}\n${input.message}`,
+      );
 
     const repertoireTerms = (repertoireResult.data ?? [])
       .map((item) => boundedString(item.term, 160))
@@ -4467,12 +4498,16 @@ serve(async (req) => {
             message_type: "instruction",
             stage: currentStage,
             structured_payload: {
+              learnerTurnKind,
               studentLanguage: input.studentLanguage ?? null,
               hasAudio: input.hasAudio,
               isSpeechDerivedTranscript,
               transcriptConfirmed: input.transcriptConfirmed,
-              eligibleForFactExtraction: !isSpeechDerivedTranscript ||
-                input.transcriptConfirmed,
+              eligibleForFactExtraction: pedagogicallySubstantiveTurn &&
+                (
+                  !isSpeechDerivedTranscript ||
+                  input.transcriptConfirmed
+                ),
               pendingRetry: Boolean(pendingRetry),
             },
             requires_retry: Boolean(pendingRetry),
@@ -4493,6 +4528,146 @@ serve(async (req) => {
       }
       studentTurn = createdStudentTurn;
       nextTurnIndex += 1;
+    }
+
+    const persistNonEvidenceResponse = async (
+      response: ReturnType<typeof normalizeAgentPayload>,
+    ): Promise<Response> => {
+      const structuredPayload: JsonObject = {
+        learnerTurnKind,
+        assistant_message: response.assistant_message,
+        assistant_language: response.assistant_language,
+        message_type: response.message_type,
+        current_stage: response.current_stage,
+        scenario_status: response.scenario_status,
+        correction: null,
+        corrections: [],
+        pronunciation: null,
+        translation: response.translation,
+        vocabulary: null,
+        quiz: null,
+        new_vocabulary: [],
+        student_strengths: [],
+        student_priorities: [],
+        next_action: "",
+        profile_updates: {},
+        session_score: null,
+        needs_external_verification: false,
+        verification_reason: null,
+        requires_retry: response.requires_retry,
+        retry_completed: false,
+      };
+      const { data: createdWolfieTurn, error: wolfieTurnError } = await supabase
+        .from("wolfie_turns")
+        .insert({
+          session_id: sessionId,
+          speaker: "wolfie",
+          content: response.chatResponse,
+          turn_index: nextTurnIndex,
+          message_type: response.message_type,
+          stage: response.current_stage,
+          structured_payload: structuredPayload,
+          requires_retry: response.requires_retry,
+          language_code: response.assistant_language,
+          speech_metrics: {},
+        })
+        .select("id")
+        .maybeSingle();
+      if (wolfieTurnError || !createdWolfieTurn) {
+        logDatabaseError("wolfie_turn_create", wolfieTurnError);
+        await failCurrentExchange("wolfie_turn_create");
+        throw new HttpError(503, "SERVICE_UNAVAILABLE");
+      }
+      wolfieTurn = createdWolfieTurn;
+
+      const activityAt = now.toISOString();
+      const { data: touchedSession, error: sessionTouchError } = await supabase
+        .from("wolfie_sessions")
+        .update({
+          current_stage: response.current_stage,
+          scenario_status: response.scenario_status,
+          scenario_step: stageNumber(response.current_stage),
+          last_activity_at: activityAt,
+          updated_at: activityAt,
+        })
+        .eq("id", sessionId)
+        .eq("student_id", profile.id)
+        .eq("tenant_id", profile.tenant_id)
+        .select("id")
+        .maybeSingle();
+      if (sessionTouchError || !touchedSession) {
+        logDatabaseError("session_activity_update", sessionTouchError);
+        await failCurrentExchange("session_activity_update");
+        throw new HttpError(503, "SERVICE_UNAVAILABLE");
+      }
+
+      const agentResponse: AgentResponse = {
+        ...response,
+        learnerTurnKind,
+        conversationId: sessionId,
+        configUsed: effectiveConfig,
+      };
+      return jsonResponse(200, {
+        ...agentResponse,
+        aiText: agentResponse.chatResponse,
+      });
+    };
+
+    if (skipProviderForLearnerTurn) {
+      const assistantLanguage = languageCode(
+        learnerTurnKind === "greeting"
+          ? inferWolfieSocialTurnLanguage(input.message) ??
+            input.studentLanguage
+          : input.studentLanguage,
+      );
+      const isPortuguese = assistantLanguage === "pt-BR";
+      const retryPending = Boolean(pendingRetry);
+      const hasPriorWolfiePrompt = serverHistory.some((turn) =>
+        turn.role === "wolfie"
+      );
+      const responseMessage = retryPending
+        ? isPortuguese
+          ? "Ainda há uma nova tentativa pendente. Tente novamente usando o feedback anterior."
+          : "There is still a retry pending. Please try again using the previous feedback."
+        : learnerTurnKind === "greeting"
+        ? isPortuguese
+          ? hasPriorWolfiePrompt
+            ? "Olá! Estou pronto para praticar com você. Quando quiser, responda à atividade."
+            : `Olá! Estou pronto para praticar com você. Vamos começar por “${effectiveConfig.topic}”: o que você diria primeiro?`
+          : hasPriorWolfiePrompt
+          ? "Hello! I'm ready to practice with you. When you're ready, respond to the activity."
+          : `Hello! I'm ready to practice with you. Let's start with “${effectiveConfig.topic}”: what would you say first?`
+        : isPortuguese
+        ? "Não consegui identificar uma resposta completa. Quando estiver pronto, tente novamente."
+        : "I couldn't identify a complete response. When you're ready, please try again.";
+      const deterministicResponse: ReturnType<typeof normalizeAgentPayload> = {
+        chatResponse: responseMessage,
+        assistant_message: responseMessage,
+        message_type: "instruction",
+        current_stage: retryPending ? "retry" : currentStage,
+        scenario_status: retryPending
+          ? "awaiting_retry"
+          : currentScenarioStatus,
+        assistant_language: assistantLanguage,
+        transcribedText: isSpeechDerivedTranscript ? input.message : null,
+        correction: null,
+        corrections: [],
+        pronunciation: null,
+        translation: null,
+        vocabulary: null,
+        quiz: null,
+        new_vocabulary: [],
+        student_strengths: [],
+        student_priorities: [],
+        next_action: "",
+        profile_updates: {},
+        session_score: null,
+        needs_external_verification: false,
+        verification_reason: null,
+        requires_retry: retryPending,
+        retry_completed: false,
+      };
+      return await persistNonEvidenceResponse(deterministicResponse);
     }
 
     const rawTrustedHistory = serverHistory.length
@@ -4520,7 +4695,7 @@ serve(async (req) => {
     const userEnvelope = {
       conversation_history: trustedHistory,
       current_learner_input: currentLearnerInput,
-      input_was_audio_transcription: input.hasAudio,
+      input_was_audio_transcription: isSpeechDerivedTranscript,
       previous_session_summary: youthScopedSession
         ? {}
         : effectiveConfig.previousSessionSummary ||
@@ -4543,7 +4718,7 @@ serve(async (req) => {
         openRouterKey,
         systemPrompt,
         JSON.stringify(userEnvelope),
-        input.hasAudio,
+        isSpeechDerivedTranscript,
         defaultAssistantLanguage(
           effectiveConfig,
           input.studentLanguage,
@@ -4571,6 +4746,20 @@ serve(async (req) => {
       effectiveConfig,
       profileIsKids,
     );
+    if (learnerTurnKind === "opening") {
+      const retryPending = Boolean(pendingRetry);
+      normalized = suppressWolfiePedagogicalEvidence(normalized, {
+        currentStage,
+        scenarioStatus: currentScenarioStatus,
+        pendingRetry: retryPending,
+        preserveTranslation: true,
+      });
+      normalized = {
+        ...normalized,
+        message_type: "question",
+      };
+      return await persistNonEvidenceResponse(normalized);
+    }
     if (transcriptionRequiresConfirmation) {
       const confirmationPrompt = input.studentLanguage === "pt"
         ? `Eu ouvi “${input.message}”. Está correto? Você pode confirmar ou editar antes de continuarmos.`
@@ -4682,6 +4871,7 @@ serve(async (req) => {
     );
 
     const structuredPayload: JsonObject = {
+      learnerTurnKind,
       assistant_message: normalized.assistant_message,
       assistant_language: normalized.assistant_language,
       message_type: normalized.message_type,
@@ -5499,6 +5689,7 @@ serve(async (req) => {
     }
 
     if (
+      pedagogicallySubstantiveTurn &&
       input.message &&
       (!isSpeechDerivedTranscript || input.transcriptConfirmed)
     ) {
@@ -5517,6 +5708,7 @@ serve(async (req) => {
 
     const agentResponse: AgentResponse = {
       ...normalized,
+      learnerTurnKind,
       conversationId: sessionId,
       configUsed: effectiveConfig,
     };

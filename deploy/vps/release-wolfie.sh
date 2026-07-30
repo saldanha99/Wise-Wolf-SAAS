@@ -174,6 +174,7 @@ npm run typecheck
 npx --yes deno test --no-lock \
   supabase/functions/wolfie-activity/personalization.test.ts \
   supabase/functions/wolfie-brain/factual-integrity.test.ts \
+  supabase/functions/wolfie-brain/turn-policy.test.ts \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts
 npx --yes deno check --no-lock \

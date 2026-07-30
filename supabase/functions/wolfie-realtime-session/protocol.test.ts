@@ -8,10 +8,29 @@ import {
   type WolfieRealtimeProtocolState,
   WolfieRealtimeTurnAssembler,
 } from "../../../src/services/wolfieRealtimeProtocol.ts";
+import { WOLFIE_REALTIME_SOCIAL_TURN_POLICY } from "./social-turn-policy.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+Deno.test("Realtime prompt treats isolated greetings as social, not pedagogical evidence", () => {
+  for (
+    const requiredRule of [
+      "not an exercise answer or pedagogical attempt",
+      "Do not evaluate, correct, praise task performance",
+      "without implying that they already did",
+      "both a greeting and a substantive answer",
+      "explicitly asks the learner to practice, say, write, or use a greeting",
+      "another character greets the learner is not this exception",
+    ]
+  ) {
+    assert(
+      WOLFIE_REALTIME_SOCIAL_TURN_POLICY.includes(requiredRule),
+      `missing social-turn rule: ${requiredRule}`,
+    );
+  }
+});
 
 Deno.test("Realtime parser rejects invalid or untyped messages", () => {
   assert(
