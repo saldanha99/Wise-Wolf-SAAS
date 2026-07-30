@@ -249,7 +249,8 @@ ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_FUNCTIONS_DIR" \
   "$DEPLOY_SUPABASE_DIR" \
   "$DEPLOY_PUBLIC_URL" \
-  "$DEPLOY_API_URL" <<'REMOTE'
+  "$DEPLOY_API_URL" \
+  "$VITE_SUPABASE_ANON_KEY" <<'REMOTE'
 set -Eeuo pipefail
 umask 077
 
@@ -263,6 +264,7 @@ functions_dir=$7
 supabase_dir=$8
 public_url=$9
 api_url=${10}
+anon_key=${11}
 
 for remote_path in \
   "$release_dir" "$app_dir" "$compose_dir" "$releases_dir" \
@@ -270,6 +272,7 @@ for remote_path in \
   [[ "$remote_path" == /opt/wisewolf/* ]]
 done
 [[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]]
+[[ ${#anon_key} -ge 20 ]]
 
 exec 9>"$releases_dir/.deploy.lock"
 flock -n 9 || {
@@ -440,7 +443,8 @@ mascot_size="$(
 )"
 [[ "$mascot_size" =~ ^[0-9]+$ && "$mascot_size" -gt 10000 ]]
 
-wait_for_http_status 200 "saúde do Auth" "$api_url/auth/v1/health"
+wait_for_http_status 200 "saúde do Auth" \
+  -H "apikey: $anon_key" "$api_url/auth/v1/health"
 wait_for_http_status 200 "preflight de atividades" \
   -X OPTIONS "$api_url/functions/v1/wolfie-activity"
 wait_for_http_status 401 "autenticação de atividades" \
