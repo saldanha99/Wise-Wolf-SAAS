@@ -66,7 +66,7 @@ import {
   WolfieDiscoveryHome,
 } from "./WolfieDiscoveryHome";
 import { WolfieQuickStartCard } from "./WolfieQuickStartCard";
-import { buildQuickStartPlan } from "./quickStart";
+import { buildQuickStartPlan, type WolfieAssignment } from "./quickStart";
 import { supabase } from "../../../lib/supabase";
 
 const WolfieConversationTutor = React.lazy(
@@ -419,10 +419,30 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
       (option) => option.id === selectedExperience.experienceMode,
     )
     : EXPERIENCE_OPTIONS;
+  const [assignment, setAssignment] = useState<WolfieAssignment | null>(null);
+
+  // Tarefa prescrita pelo professor: é o empurrão externo que faltava.
+  useEffect(() => {
+    let alive = true;
+    void supabase.rpc("my_wolfie_assignment").then(({ data, error }) => {
+      if (!alive || error) return;
+      const row = data as Record<string, unknown> | null;
+      if (row?.has) {
+        setAssignment({
+          id: String(row.id),
+          topic: String(row.topic ?? ""),
+          note: (row.note as string) ?? null,
+          teacher_name: (row.teacher_name as string) ?? null,
+        });
+      }
+    });
+    return () => { alive = false; };
+  }, []);
+
   // Ponto de partida derivado do que já sabemos do aluno.
   const quickStartPlan = useMemo(
-    () => buildQuickStartPlan(user, overview),
-    [overview, user],
+    () => buildQuickStartPlan(user, overview, undefined, assignment),
+    [assignment, overview, user],
   );
   const firstName = (user.name ?? user.full_name)?.trim().split(/\s+/)[0] ||
     "aluno";
@@ -1091,7 +1111,15 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                   firstName={firstName}
                   plan={quickStartPlan}
                   busy={view === "loading"}
-                  onStart={() => void startActivity(quickStartPlan.selection)}
+                  onStart={() => {
+                    if (quickStartPlan.assignmentId) {
+                      void supabase.rpc("advance_wolfie_assignment", {
+                        p_id: quickStartPlan.assignmentId,
+                        p_status: "STARTED",
+                      });
+                    }
+                    void startActivity(quickStartPlan.selection);
+                  }}
                   onBrowse={() =>
                     document
                       .getElementById("wolfie-universes")

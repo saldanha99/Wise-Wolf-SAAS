@@ -6,6 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
+import { WolfieAssignButton } from './WolfieAssignButton';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
 import TeacherTurboCard from './TeacherTurboCard';
@@ -264,6 +265,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
         .map(b => ({
           name: (b.student as any)?.full_name || 'Desconhecido',
+          studentId: (b.student as any)?.id || null,
           time: b.time_slot,
           module: (b.student as any)?.module || 'N/A',
           img: (b.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(b.student as any)?.full_name}`,
@@ -651,6 +653,13 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                           <><Send size={14} /> Disparar</>
                         )}
                       </button>
+                    )}
+                    {aula.studentId && (
+                      <WolfieAssignButton
+                        studentId={aula.studentId}
+                        studentName={aula.name}
+                        compact
+                      />
                     )}
                     {aula.meet && (
                       <a

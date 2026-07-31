@@ -103,3 +103,34 @@ Deno.test("histórico só com conversas não quebra a escolha", () => {
   } as never, null);
   assert(plano.selection.level === "A1", "cai para o nível conhecido do aluno");
 });
+
+Deno.test("tarefa do professor vira o ponto de partida, acima do histórico", async () => {
+  const { buildQuickStartPlan } = await import(
+    "../../src/components/wolfie/quickStart.ts"
+  );
+  const plano = buildQuickStartPlan(
+    { module: "B1" },
+    { recentSessions: [{ subject: "vocabulary", cefr_level: "B1" }] } as never,
+    null,
+    { id: "a1", topic: "Falar sobre o fim de semana", teacher_name: "Mateus Silva" },
+  );
+  assert(plano.assignmentId === "a1", "precisa carregar o id para fechar o laço");
+  assert(
+    plano.selection.sector === "Falar sobre o fim de semana",
+    "o tema pedido pelo professor precisa chegar à prática",
+  );
+  assert(
+    plano.reason.includes("Mateus"),
+    "o aluno precisa saber QUEM pediu — é o que dá peso à tarefa",
+  );
+  assert(plano.label === "Fazer a tarefa", `rótulo inesperado: ${plano.label}`);
+});
+
+Deno.test("sem tarefa, o comportamento anterior é preservado", async () => {
+  const { buildQuickStartPlan } = await import(
+    "../../src/components/wolfie/quickStart.ts"
+  );
+  const plano = buildQuickStartPlan({ module: "B1" }, null, null, null);
+  assert(!plano.assignmentId, "sem tarefa não deve haver assignmentId");
+  assert(plano.selection.level === "B1", "mantém o nível conhecido");
+});

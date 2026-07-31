@@ -66,7 +66,16 @@ export function lastMeaningfulSession(
   return null;
 }
 
+export interface WolfieAssignment {
+  id: string;
+  topic: string;
+  note?: string | null;
+  teacher_name?: string | null;
+}
+
 export interface QuickStartPlan {
+  /** Preenchido quando a prática nasce de uma tarefa do professor. */
+  assignmentId?: string;
   selection: WolfieSelection;
   /** Rótulo curto para o botão, no idioma do aluno. */
   label: string;
@@ -84,9 +93,28 @@ export function buildQuickStartPlan(
   user: WolfieUserSummary | null,
   overview: WolfieOverview | null,
   estimatedLevel?: unknown,
+  assignment?: WolfieAssignment | null,
 ): QuickStartPlan {
   const { level, known } = resolveKnownLevel(estimatedLevel, user?.module);
   const previous = lastMeaningfulSession(overview);
+
+  // A tarefa do professor vence tudo: é o único empurrão que vem de fora e
+  // ataca o motivo real de o Wolfie ser pouco usado — ninguém pedir.
+  if (assignment?.topic) {
+    return {
+      assignmentId: assignment.id,
+      selection: {
+        subject: FALLBACK_SUBJECT,
+        level: previous?.cefr_level ?? level,
+        sector: assignment.topic,
+      },
+      label: "Fazer a tarefa",
+      reason: assignment.teacher_name
+        ? `${assignment.teacher_name.split(" ")[0]} pediu: ${assignment.topic}`
+        : `Tarefa do professor: ${assignment.topic}`,
+      levelKnown: true,
+    };
+  }
 
   if (previous) {
     return {
