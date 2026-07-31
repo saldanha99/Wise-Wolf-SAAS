@@ -56,6 +56,7 @@ const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoar
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
+const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
 const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
 const StudentMaterials = lazy(() => import('./components/StudentMaterials'));
@@ -145,6 +146,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'student-payments', label: 'Mensalidades dos Alunos', group: 'Financeiro' },
     { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
+    { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
     { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
     { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
@@ -183,8 +185,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
   ],
   [UserRole.STUDENT]: [
     { tab: 'dashboard', label: 'Meu Portal', group: 'Aluno', keywords: 'início dashboard' },
-    { tab: 'ai-tutor', label: 'Wolfie Tutor', group: 'Aluno' },
-    { tab: 'practice', label: 'Praticar', group: 'Aluno' },
+    { tab: 'ai-tutor', label: 'Praticar com o Wolfie', group: 'Aluno' },
+    { tab: 'practice', label: 'Minhas Trilhas', group: 'Aluno' },
     { tab: 'schedule', label: 'Aulas', group: 'Aluno' },
     { tab: 'meeting_links', label: 'Links', group: 'Aluno' },
     { tab: 'materials', label: 'Materiais', group: 'Aluno' },
@@ -976,7 +978,7 @@ const App: React.FC = () => {
         'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
         'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
         'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'financial',
+        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'ai-costs', 'financial',
         'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
         'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
       ];
@@ -1115,6 +1117,7 @@ const App: React.FC = () => {
       'vendors-mgmt': <VendorManagement user={user} tenantId={currentTenant?.id} />,
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
+      'ai-costs': <AiCostPanel />,
       'automations': <AutomationPanel user={user} tenantId={currentTenant?.id} />,
       'material-approvals': <MaterialApprovals user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,
@@ -1229,8 +1232,8 @@ const App: React.FC = () => {
                       'pedagogical': 'Pedagógico',
                       'materials': 'Materiais',
                       'financial': 'Financeiro',
-                      'ai-tutor': 'Wolfie Tutor',
-                      'practice': 'Praticar',
+                      'ai-tutor': 'Praticar com o Wolfie',
+                      'practice': 'Minhas Trilhas',
                       'automation': 'Automação',
                       'evolution': 'Evolução',
                       'teachers': 'Professores',

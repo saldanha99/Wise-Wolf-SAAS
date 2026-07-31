@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Bot,
     Mic,
     LayoutDashboard,
     BookOpen,
@@ -226,8 +227,10 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     const studentMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Meu Portal', icon: LayoutDashboard },
-        { id: 'ai-tutor', label: 'Wolfie Tutor', icon: Sparkles, badge: 'NOVO' as any },
-        { id: 'practice', label: 'Praticar', icon: Target },
+        // Nomes explícitos: "Wolfie Tutor" x "Praticar" não diziam ao aluno qual
+        // era a prática livre e qual era a trilha do professor.
+        { id: 'ai-tutor', label: 'Praticar com o Wolfie', icon: Sparkles, badge: 'NOVO' as any },
+        { id: 'practice', label: 'Minhas Trilhas', icon: Target },
         { id: 'schedule', label: 'Aulas', icon: Calendar },
         { id: 'meeting_links', label: 'Links', icon: Video },
         { id: 'materials', label: 'Materiais', icon: Book },
@@ -265,6 +268,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'student-payments', label: 'Mensalidades (Alunos)', icon: CreditCard, section: 'Financeiro' },
         { id: 'payments', label: 'Repasse a Profs', icon: DollarSign, section: 'Financeiro' },
         { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet, section: 'Financeiro' },
+        { id: 'ai-costs', label: 'Custo de IA', icon: Bot },
         { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },
         // ── Crescimento ──
         { id: 'crm', label: 'CRM & Funil', icon: Users, section: 'Crescimento' },

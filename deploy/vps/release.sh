@@ -189,6 +189,7 @@ VITE_WOLFIE_REALTIME_ENABLED="${VITE_WOLFIE_REALTIME_ENABLED:-true}"
 
 echo "== Validação local =="
 npm run typecheck
+npm test
 npx --yes deno test --no-lock \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
