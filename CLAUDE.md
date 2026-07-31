@@ -6,11 +6,27 @@ Guia técnico para o Claude Code neste projeto.
 
 ## Stack do Projeto
 
-- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui
-- **Backend:** Supabase (Postgres + Edge Functions em Deno)
-- **IA:** Gemini (wolfie-brain), Google Translate TTS (wolfie-tts)
+> ⚠️ **NÃO usamos a nuvem da Supabase.** Tudo roda na VPS própria
+> (`187.127.46.251`, host SSH `wisewolf-vps`). O que roda lá é a **stack Supabase
+> self-hosted** — não é PostgreSQL puro. Confundir as duas coisas leva a desligar
+> container achando que é sobra, ou a tentar deploy pelo caminho errado.
+
+- **Frontend:** **Vite** + React + TypeScript + Tailwind CSS (`vite build`).
+  Não é Next.js — não existe `next.config.*` nem App Router. `App.tsx` na raiz.
+- **Backend (VPS):** `supabase-db` (**Postgres 17.6**) · `supabase-rest`
+  (PostgREST) · `supabase-auth` (GoTrue) · `supabase-kong` (gateway) ·
+  `supabase-edge-functions` (**Deno**) · `supabase-storage` · `supabase-studio`
+- **IA:** OpenAI Realtime (`wolfie-realtime-session`), OpenRouter
+  (`wolfie-brain`, `pedagogical-content`, `lesson-planner`), Google Translate TTS
+  (`wolfie-tts`)
 - **Pagamentos:** Asaas
-- **Deploy:** Vercel (frontend) + Supabase (edge functions)
+- **Deploy:** VPS própria — frontend servido por **nginx** em
+  `system.wisewolflanguage.com.br`; API em `api.wisewolflanguage.com.br`
+
+**Guarda-corpo no código:** `lib/supabase.ts` **lança erro** se
+`VITE_SUPABASE_URL` terminar em `.supabase.co` — um build apontado para a nuvem
+falha antes de autenticar. O `vercel.json` na raiz é resíduo: a produção não
+passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
 
 ---
 
@@ -370,9 +386,39 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 
 - TypeScript estrito (sem `any`)
 - Comentários em português
-- Deploy automático via Vercel (push para `main`)
-- Edge functions: deploy manual via `supabase functions deploy` ou MCP Supabase
 - **Dados sensíveis da Wise Wolf** (CNPJ, email, telefone, endereço) **NUNCA no código** — apenas em variáveis de ambiente ou formulários preenchidos pelo usuário
+
+### Deploy — caminho real (VPS, não Vercel/Supabase cloud)
+
+❌ **Não existe** deploy automático por push, nem `supabase functions deploy`,
+nem MCP da Supabase. Nada disso chega na produção.
+
+✅ **Release completo:** `deploy/vps/release.sh` — roda `npm run typecheck`,
+`deno test` e `deno check`, builda o frontend, faz `rsync` para
+`/opt/wisewolf/releases/<timestamp>-<commit>/`, promove e roda smoke test.
+Cada função é copiada com `rsync -a` da **pasta inteira** — arquivo novo dentro
+do diretório da function vai junto sem precisar registrar em lista.
+
+✅ **Hotfix de uma edge function** (sem subir frontend — útil quando a árvore
+tem mudanças de outras frentes que não podem ir junto):
+
+```bash
+scp supabase/functions/<fn>/*.ts \
+  wisewolf-vps:/opt/wisewolf/supabase-docker/volumes/functions/<fn>/
+ssh wisewolf-vps 'docker restart supabase-edge-functions'
+```
+
+Faça backup antes (`cp -a` do diretório em `/opt/wisewolf/backup-<fn>-<data>`).
+
+**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) —
+nunca no Git nem no chat. Testes que precisam de chave (OpenAI etc.) devem rodar
+**dentro da VPS**, lendo do `.env`, para a chave não entrar no contexto.
+
+**Diagnóstico:** `ssh wisewolf-vps 'docker logs --timestamps
+supabase-edge-functions --since 30m'`. Banco: `docker exec supabase-db psql -U
+postgres`. Compare o horário do erro com
+`docker inspect -f '{{.State.StartedAt}}' supabase-edge-functions` antes de
+concluir que um erro é posterior ao deploy.
 
 
 ---
