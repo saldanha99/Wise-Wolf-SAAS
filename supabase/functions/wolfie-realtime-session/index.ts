@@ -7,6 +7,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
 import { buildRealtimeCallForm } from "./realtime-call-form.ts";
+import { buildSafetyIdentifier } from "./safety-identifier.ts";
 import { WOLFIE_REALTIME_SOCIAL_TURN_POLICY } from "./social-turn-policy.ts";
 
 const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
@@ -188,20 +189,14 @@ function configuredIdentifier(
   return pattern.test(configured) ? configured : fallback;
 }
 
-async function safetyIdentifier(
+function safetyIdentifier(
   tenantId: string,
   userId: string,
 ): Promise<string> {
   const salt = Deno.env.get("OPENAI_SAFETY_SALT")?.trim() ||
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
     "wise-wolf-realtime";
-  const bytes = new TextEncoder().encode(`${salt}:${tenantId}:${userId}`);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const hex = Array.from(
-    new Uint8Array(digest),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `ww_${hex}`;
+  return buildSafetyIdentifier(salt, tenantId, userId);
 }
 
 async function loadStudentContext(

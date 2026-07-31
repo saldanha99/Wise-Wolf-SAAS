@@ -10,6 +10,10 @@ import {
 } from "../../../src/services/wolfieRealtimeProtocol.ts";
 import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
 import { buildRealtimeCallForm } from "./realtime-call-form.ts";
+import {
+  buildSafetyIdentifier,
+  OPENAI_SAFETY_IDENTIFIER_MAX_LENGTH,
+} from "./safety-identifier.ts";
 import { WOLFIE_REALTIME_SOCIAL_TURN_POLICY } from "./social-turn-policy.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -349,4 +353,40 @@ Deno.test("Turn assembler never reuses a cancelled response input", () => {
     next.length === 1 && next[0].input.key === "item_next",
     "the next response must pair only with the next input",
   );
+});
+
+Deno.test("safety identifier stays inside the OpenAI 64-character limit", async () => {
+  // 67 caracteres (`ww_` + digest hex completo) faziam a OpenAI responder 400
+  // `invalid_value`, o que virava 502 e jogava o aluno no modo clássico.
+  const identifier = await buildSafetyIdentifier(
+    "salt-longo-de-servico".repeat(8),
+    "school-wise-wolf",
+    "11111111-2222-3333-4444-555555555555",
+  );
+  assert(
+    identifier.length <= OPENAI_SAFETY_IDENTIFIER_MAX_LENGTH,
+    `safety identifier excedeu ${OPENAI_SAFETY_IDENTIFIER_MAX_LENGTH}: ${identifier.length}`,
+  );
+  assert(
+    /^ww_[0-9a-f]{32}$/.test(identifier),
+    `formato inesperado do safety identifier: ${identifier}`,
+  );
+});
+
+Deno.test("safety identifier is stable and separates tenants and learners", async () => {
+  const first = await buildSafetyIdentifier("salt", "tenant-a", "student-a");
+  const repeated = await buildSafetyIdentifier("salt", "tenant-a", "student-a");
+  const otherTenant = await buildSafetyIdentifier(
+    "salt",
+    "tenant-b",
+    "student-a",
+  );
+  const otherStudent = await buildSafetyIdentifier(
+    "salt",
+    "tenant-a",
+    "student-b",
+  );
+  assert(first === repeated, "o identificador deve ser estável");
+  assert(first !== otherTenant, "tenants diferentes devem gerar ids distintos");
+  assert(first !== otherStudent, "alunos diferentes devem gerar ids distintos");
 });
