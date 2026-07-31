@@ -21,6 +21,15 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
+  decodeBase64Audio,
+  getTTSSpeed,
+  IS_IOS,
+  prepareForTTS,
+  resolveTtsVoice,
+  SILENT_WAV,
+  splitSpeechSentences,
+} from "../lib/wolfieAudio";
+import {
   shouldConfirmVoiceTranscript,
   uniqueTranscriptAlternatives,
 } from "../lib/wolfieVoiceSafety";
@@ -283,16 +292,6 @@ const normalizeCorrections = (
     .filter((item): item is CorrectionData => Boolean(item));
 };
 
-const IS_IOS = typeof navigator !== "undefined" && (
-  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-);
-
-// WAV mínimo válido (44 bytes, 0 samples, 8000Hz mono 8-bit).
-// Usado para "pré-ativar" HTMLAudioElement no iOS — play() com src válido
-// registra a gesture no elemento; play() com src vazio não funciona.
-const SILENT_WAV =
-  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
 declare global {
   interface Window {
@@ -300,23 +299,6 @@ declare global {
   }
 }
 
-// ============================================================
-// TTS SPEED CONFIG BY LEVEL (E-Bot style)
-// ============================================================
-function getTTSSpeed(level: string): number {
-  switch (level) {
-    case "A1":
-      return 0.92;
-    case "A2":
-      return 0.95;
-    case "B1":
-      return 0.98;
-    case "B2":
-      return 1.0;
-    default:
-      return 1.0; // C1, C2
-  }
-}
 
 type SpeechLanguage = WolfieLearnerLanguage;
 type TtsLanguage = SpeechLanguage | "mixed";
@@ -1634,20 +1616,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     setSubtitle("");
   }, [invalidatePendingTTS, stopOutputMeter]);
 
-  /** Prepara texto para soar natural no TTS — remove markdown e adiciona pausas */
-  const prepareForTTS = (raw: string): string =>
-    raw
-      .replace(/\*\*(.*?)\*\*/g, "$1") // bold → texto puro
-      .replace(/\*(.*?)\*/g, "$1") // itálico → texto puro
-      .replace(/`(.*?)`/g, "$1") // code → texto puro
-      .replace(/#{1,6}\s+/g, "") // headings
-      .replace(/\[(.*?)\]\(.*?\)/g, "$1") // links → só o label
-      .replace(/---+/g, ".") // separadores → ponto
-      .replace(/\n{2,}/g, ", ") // parágrafos → pausa curta
-      .replace(/\n/g, " ") // linha única → espaço
-      .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → palavras separadas
-      .replace(/\s{2,}/g, " ") // espaços duplos
-      .trim();
 
   /**
    * Fallback: Web Speech API (local, sem qualidade neural)
@@ -1663,19 +1631,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     const isCurrent = () => requestVersion === ttsRequestVersionRef.current;
     if (!isCurrent()) return;
     const fallbackLanguage: SpeechLanguage = forceLang === "pt" ? "pt" : "en";
-    const sourceSegments = segments?.length
-      ? segments
-      : [{ text, language: fallbackLanguage }];
-    const sentences = sourceSegments.flatMap((segment) => {
-      const clean = prepareForTTS(segment.text);
-      const parts = clean.match(/[^.!?]+(?:[.!?]+|$)/g) || [clean];
-      return parts
-        .map((sentence) => ({
-          sentence: sentence.trim(),
-          language: segment.language,
-        }))
-        .filter((item) => item.sentence);
-    });
+    const sentences = splitSpeechSentences(text, segments, fallbackLanguage);
 
     let idx = 0;
     const speakNext = () => {
@@ -1756,11 +1712,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       const lang = forceLang ?? "en";
       lastSpokenLanguageRef.current = lang;
       lastSpokenSegmentsRef.current = segments?.length ? segments : null;
-      const voice = lang === "pt"
-        ? "pt-BR-ThalitaNeural"
-        : lang === "mixed"
-        ? "auto-Bilingual"
-        : "en-US-JennyNeural";
+      const voice = resolveTtsVoice(lang);
       const rate = speed ??
         (lang === "en" ? getTTSSpeed(studentLevel) : 1.0);
 
@@ -1807,9 +1759,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
         // Decodifica base64 → ArrayBuffer
         const rawBase64 = data.audio; // guardamos para data URI fallback
-        const binary = atob(rawBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const bytes = decodeBase64Audio(rawBase64);
 
         // ── iOS: tenta TODAS as abordagens em sequência ──
         if (IS_IOS) {
