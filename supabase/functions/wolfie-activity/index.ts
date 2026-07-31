@@ -2,6 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   activityMatchesExperience,
   type ActivityPersonalizationContext,
@@ -404,6 +405,8 @@ function providerErrorCode(payload: unknown): string {
 async function callOpenRouterJson(
   apiKey: string,
   taskPrompt: string,
+  // Sink de custo: quem chama é que tem tenant/usuário em escopo.
+  onUsage?: (model: string, payload: unknown) => void,
 ): Promise<JsonObject> {
   const deadline = Date.now() + AI_DEADLINE_MS;
   const systemPrompt =
@@ -458,6 +461,8 @@ Return only one valid JSON object matching the exact requested schema. No markdo
         continue;
       }
       const payload: unknown = await response.json().catch(() => null);
+      // Antes de qualquer descarte: tentativa inválida também é cobrada.
+      onUsage?.(model, payload);
       const text = providerText(payload);
       const parsed = text ? extractJsonObject(text) : null;
       if (parsed) return parsed;
@@ -3496,6 +3501,14 @@ async function handleGenerate(
             experienceContext,
             personalization,
           ),
+          (model, payload) =>
+            void recordAiUsage(admin, {
+              tenantId: profile.tenant_id ?? null,
+              userId: profile.id ?? null,
+              feature: "wolfie_activity",
+              model,
+              usage: parseAiUsage(payload),
+            }),
         );
         generationSource = "ai";
       } catch (error) {
@@ -4225,6 +4238,14 @@ async function handleSubmitText(
         await callOpenRouterJson(
           apiKey,
           evaluationPrompt(session, text, stepKey),
+          (model, payload) =>
+            void recordAiUsage(admin, {
+              tenantId: profile.tenant_id ?? null,
+              userId: profile.id ?? null,
+              feature: "wolfie_activity_eval",
+              model,
+              usage: parseAiUsage(payload),
+            }),
         ),
       );
     }
