@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { localMonth, monthRange } from '../lib/dateUtils';
 import { Download, Search, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
 const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const [payments, setPayments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+    // localMonth (não toISOString): depois das 21h do último dia o mês pularia para o seguinte
+    const [month, setMonth] = useState(localMonth());
     const [statusFilter, setStatusFilter] = useState('ALL');
 
     const fetchPayments = async () => {
@@ -24,18 +26,14 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 .eq('profiles.tenant_id', tenantId)
                 .order('due_date', { ascending: false });
 
-            // Month Filter (by due_date or payment_date)
-            // Ideally we filter by the selected month. Let's use due_date for reference.
-            const startOfMonth = `${month}-01`;
-            const endOfMonth = `${month}-31`; // Loose, date logic handles it
-
-            // Or better logic:
-            const nextMonth = new Date(month);
-            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            // Filtro do mês por due_date, janela [dia 1, dia 1 do mês seguinte).
+            // O cálculo antigo (new Date(month) + setMonth) escorregava no fuso: escondia
+            // as mensalidades que vencem no dia 31 e puxava as do dia 1º do mês seguinte.
+            const { start, endExclusive } = monthRange(month);
 
             query = query
-                .gte('due_date', startOfMonth)
-                .lt('due_date', nextMonth.toISOString().slice(0, 10));
+                .gte('due_date', start)
+                .lt('due_date', endExclusive);
 
             if (statusFilter !== 'ALL') {
                 query = query.eq('status', statusFilter);

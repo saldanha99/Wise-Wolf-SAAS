@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
+import { localMonth } from '../lib/dateUtils';
 import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
@@ -9,7 +10,7 @@ interface InvoiceManagerProps {
 }
 
 const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [selectedMonth, setSelectedMonth] = useState(localMonth()); // YYYY-MM
     const [invoices, setInvoices] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');

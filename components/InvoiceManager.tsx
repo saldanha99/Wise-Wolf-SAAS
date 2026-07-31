@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { localMonth } from '../lib/dateUtils';
 import { FileText, Download, Search, CheckCircle, XCircle, Clock, Calendar, Users, Filter, ChevronRight, DollarSign } from 'lucide-react';
 
 interface InvoiceManagerProps {
@@ -9,7 +10,7 @@ interface InvoiceManagerProps {
 const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const [loading, setLoading] = useState(true);
     const [invoices, setInvoices] = useState<any[]>([]);
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+    const [selectedMonth, setSelectedMonth] = useState(localMonth()); // YYYY-MM
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDENTE' | 'CONFIRMADO' | 'PAGO' | 'CONTESTADO'>('ALL');
 

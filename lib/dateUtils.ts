@@ -9,6 +9,36 @@ export const localYMD = (d: Date): string => {
     return `${y}-${m}-${day}`;
 };
 
+// Mês local (YYYY-MM). Mesmo motivo do localYMD: depois das 21h no Brasil o
+// toISOString() já está no dia seguinte — e no ÚLTIMO dia do mês isso vira o mês
+// seguinte, fazendo o fechamento apontar para o mês errado justamente na noite em
+// que o professor fecha.
+export const localMonth = (d: Date = new Date()): string => localYMD(d).slice(0, 7);
+
+// Janela [start, endExclusive) de um mês YYYY-MM, em aritmética de string pura.
+// NUNCA use new Date('2026-07') + setMonth() para isso: '2026-07' é lido como UTC,
+// no fuso do Brasil cai em 30/06 21h e o setMonth() erra o limite — ora cortando o
+// último dia do mês (aulas do dia 31 sumiam do fechamento), ora incluindo os
+// primeiros dias do mês seguinte (aula contada em dois meses).
+export const monthRange = (month: string): { start: string; endExclusive: string } => {
+    const [y, m] = month.split('-').map(Number);
+    const nextY = m === 12 ? y + 1 : y;
+    const nextM = m === 12 ? 1 : m + 1;
+    return {
+        start: `${month}-01`,
+        endExclusive: `${nextY}-${String(nextM).padStart(2, '0')}-01`,
+    };
+};
+
+// Últimos n meses (YYYY-MM), do atual para trás. Não use setMonth(-i) sobre a data
+// de hoje: no dia 31 o "mês anterior" estoura para o mês seguinte (31/07 → 31/06 →
+// 01/07) e a lista repete um mês e pula outro — bem no dia do fechamento.
+export const recentMonths = (n: number, from: Date = new Date()): string[] => {
+    const y = from.getFullYear();
+    const m = from.getMonth(); // 0-11
+    return Array.from({ length: n }, (_, i) => localMonth(new Date(y, m - i, 1)));
+};
+
 export const isBusinessDay = (date: Date): boolean => {
     const day = date.getDay();
     // 0 = Sunday, 6 = Saturday

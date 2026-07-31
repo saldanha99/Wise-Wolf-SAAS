@@ -20,11 +20,17 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
   const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [isBulkRegularizing, setIsBulkRegularizing] = useState(false);
 
+  // Mesmo fallback do LessonLauncher: sem tenant resolvido a tela ficava carregando
+  // para sempre em vez de mostrar as aulas pendentes.
+  const effectiveTenantId = tenantId || user?.tenantId;
+
   useEffect(() => {
-    if (user && tenantId) {
+    if (user && effectiveTenantId) {
       fetchPendingLessons();
+    } else if (user) {
+      setLoading(false); // sem tenant: mostra a tela vazia em vez de girar para sempre
     }
-  }, [user, tenantId]);
+  }, [user, effectiveTenantId]);
 
   const fetchPendingLessons = async () => {
     setLoading(true);
@@ -58,7 +64,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
           .select('id, time_slot, start_date, student:student_id(id, full_name, module)')
           .eq('teacher_id', user.id)
           .eq('day_of_week', dayName)
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', effectiveTenantId);
 
         if (bookings) {
           bookings.forEach(b => {
@@ -85,7 +91,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
           .select('id, time, student:student_id(id, full_name, module)')
           .eq('teacher_id', user.id)
           .eq('date', dateStr)
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', effectiveTenantId);
 
         if (reschedules) {
           reschedules.forEach(r => {
@@ -111,7 +117,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         .from('class_logs')
         .select('booking_id, reschedule_id, student_id, class_date')
         .eq('teacher_id', user.id)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', effectiveTenantId)
         .gte('class_date', localYMD(startDate))
         .lte('class_date', localYMD(endDate));
 
@@ -184,7 +190,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
         let finalPresence = data.type || 'COMPLETED';
 
         return {
-          tenant_id: tenantId,
+          tenant_id: effectiveTenantId,
           teacher_id: user.id,
           student_id: lesson.studentId,
           booking_id: lesson.type === 'REGULAR' ? lesson.bookingId : null,
@@ -236,7 +242,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
           if (!countError && (count || 0) < 5) {
             await supabase.from('reschedules').insert([{
-              tenant_id: tenantId,
+              tenant_id: effectiveTenantId,
               teacher_id: user.id,
               student_id: a.student_id,
               original_booking_id: a.booking_id,

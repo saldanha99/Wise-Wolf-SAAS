@@ -4,6 +4,7 @@ import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, 
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { localMonth } from '../lib/dateUtils';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
@@ -336,15 +337,16 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       const isFirstDays = now.getDate() <= 5;
 
       if (isLastDay || isFirstDays) {
+        // localMonth (NUNCA toISOString): o professor fecha o mês à noite e, depois das
+        // 21h do dia 31, o UTC já está no mês seguinte — o modal abria o mês errado
+        // (agosto no dia 31/07) e o fechamento de julho nunca era confirmado.
         let targetMonth = '';
         if (isLastDay) {
           // It is TODAY, the last day
-          targetMonth = now.toISOString().substring(0, 7);
+          targetMonth = localMonth(now);
         } else {
           // It is the start of next month, closing the previous one
-          const prev = new Date(now);
-          prev.setMonth(prev.getMonth() - 1);
-          targetMonth = prev.toISOString().substring(0, 7);
+          targetMonth = localMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
         }
 
         // Check database for status

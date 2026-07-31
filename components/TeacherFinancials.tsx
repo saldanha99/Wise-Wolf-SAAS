@@ -16,6 +16,7 @@ import {
     FileDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { localMonth, monthRange } from '../lib/dateUtils';
 import { User } from '../types';
 import TeacherActivityReport from './TeacherActivityReport';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
@@ -28,7 +29,7 @@ interface TeacherFinancialsProps {
 
 const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, viewOnly = false }) => {
     const [loading, setLoading] = useState(true);
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [selectedMonth, setSelectedMonth] = useState(localMonth());
     const [lessons, setLessons] = useState<any[]>([]);
     const [closing, setClosing] = useState<any>(null); // { status, admin_notes, id, total_value }
     const [isContesting, setIsContesting] = useState(false);
@@ -50,11 +51,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const fetchFinancials = async () => {
         setLoading(true);
         try {
-            const start = `${selectedMonth}-01`;
-            // Calculate end as first day of next month
-            const nextMonth = new Date(selectedMonth + '-02');
-            nextMonth.setMonth(nextMonth.getMonth() + 1);
-            const end = nextMonth.toISOString().slice(0, 10);
+            // Janela [dia 1, dia 1 do mês seguinte). O cálculo antigo com new Date()+
+            // setMonth() escorregava no fuso e trazia o dia 1º do mês SEGUINTE para dentro
+            // da lista — a mesma aula aparecia em dois meses e não batia com o total oficial.
+            const { start, endExclusive: end } = monthRange(selectedMonth);
 
             // 1. Fetch Lessons
             const { data: logs, error: logsError } = await supabase
@@ -173,7 +173,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             // fechamento do admin com um cálculo local divergente (era a origem das contestações)
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
-                tenant_id: tenantId,
+                // tenant_id é NOT NULL: fallback no perfil evita quebrar o envio do
+                // fechamento se o tenant não tiver sido resolvido no App.
+                tenant_id: tenantId || user.tenantId,
                 month_year: selectedMonth,
                 total_lessons: officialLessons(),
                 total_amount: officialTotal(),
@@ -200,7 +202,9 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         try {
             const { error } = await supabase.from('teacher_closings').upsert({
                 teacher_id: user.id,
-                tenant_id: tenantId,
+                // tenant_id é NOT NULL: fallback no perfil evita quebrar o envio do
+                // fechamento se o tenant não tiver sido resolvido no App.
+                tenant_id: tenantId || user.tenantId,
                 month_year: selectedMonth,
                 total_lessons: officialLessons(),
                 total_amount: officialTotal(),

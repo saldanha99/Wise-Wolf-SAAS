@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { localMonth, recentMonths } from '../lib/dateUtils';
 import { TrendingUp, TrendingDown, Wallet, Clock, RefreshCw, ArrowDownCircle, ArrowUpCircle, AlertTriangle, Gauge } from 'lucide-react';
 import { User as UserType } from '../types';
 
@@ -8,7 +9,7 @@ interface Props { user: UserType; tenantId?: string; }
 const CashflowPanel: React.FC<Props> = ({ tenantId }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState<string>(localMonth());
 
   const load = async (m: string) => {
     setLoading(true);
@@ -27,7 +28,7 @@ const CashflowPanel: React.FC<Props> = ({ tenantId }) => {
   const maxSerie = Math.max(1, ...serie.map((s: any) => Number(s.entradas || 0)));
 
   // opções de mês (últimos 6)
-  const monthOpts = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return d.toISOString().slice(0, 7); });
+  const monthOpts = recentMonths(6);
 
   return (
     <div className="space-y-6">

@@ -14,6 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { localMonth } from '../lib/dateUtils';
 import { UserRole, PresenceStatus } from '../types';
 
 interface FinancialReportProps {
@@ -34,7 +35,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
   });
   const [teachersFinancials, setTeachersFinancials] = useState<any[]>([]);
   const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(localMonth());
 
   const fetchFinancialData = async () => {
     if (!tenantId) return;

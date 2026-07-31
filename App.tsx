@@ -57,6 +57,7 @@ const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
+const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
 const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
 const StudentMaterials = lazy(() => import('./components/StudentMaterials'));
@@ -147,6 +148,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
+    { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
     { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
     { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
@@ -479,6 +481,21 @@ const App: React.FC = () => {
             school_info: resolvedTenantData.school_info ?? null,
           });
           document.title = `${resolvedTenantData.name} - Portal EduCore`;
+        } else {
+          // Rede de segurança: se o tenant não vier (RPC indisponível, permissão nova,
+          // rede), NUNCA deixe currentTenant nulo — o id do tenant é a chave que as telas
+          // usam para gravar (class_logs, teacher_closings). Sem ele, o Lançamento de Aulas
+          // ficava carregando para sempre e o Fechamento do professor quebrava em
+          // "null value in column tenant_id". Perde-se só o branding, não a operação.
+          const fallbackBranding = applyTenantBranding(undefined, undefined);
+          setCurrentTenant(prev => prev ?? {
+            id: user.tenantId,
+            name: hostnameTenant?.name || '',
+            domain: '',
+            branding: { logoUrl: '', faviconUrl: '', ...fallbackBranding },
+            studentLimit: 0,
+            teacherLimit: 0,
+          });
         }
       }
 
@@ -978,7 +995,7 @@ const App: React.FC = () => {
         'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
         'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
         'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'ai-costs', 'financial',
+        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'ai-costs', 'verify-rooms', 'financial',
         'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
         'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
       ];
@@ -1118,6 +1135,7 @@ const App: React.FC = () => {
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
+      'verify-rooms': <MeetingLinkVerifier />,
       'automations': <AutomationPanel user={user} tenantId={currentTenant?.id} />,
       'material-approvals': <MaterialApprovals user={user} tenantId={currentTenant?.id} />,
       'ai-tutor': <StudentAITutor user={user} />,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { localMonth, recentMonths } from '../lib/dateUtils';
 import { X, Loader2, Printer } from 'lucide-react';
 
 interface Props { teacherId: string; editable?: boolean; onClose: () => void; }
@@ -10,7 +11,7 @@ const PRESENCE_PT: Record<string, string> = {
 };
 
 const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, onClose }) => {
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState<string>(localMonth());
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [notes, setNotes] = useState('');
@@ -28,7 +29,7 @@ const TeacherActivityReport: React.FC<Props> = ({ teacherId, editable = false, o
   const money = (v: any) => `R$ ${Number(v || 0).toFixed(2).replace('.', ',')}`;
   const fmt = (x?: string) => x ? new Date(x + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
   const monthLabel = (m: string) => { const [y, mo] = m.split('-'); return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); };
-  const monthOpts = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return d.toISOString().slice(0, 7); });
+  const monthOpts = recentMonths(6);
   const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
     '<': '&lt;',

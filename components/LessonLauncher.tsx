@@ -21,15 +21,26 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
   const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
   const [dupNotice, setDupNotice] = useState<string | null>(null); // aviso quando uma aula já estava lançada (não duplicada)
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // A escola do professor vem do próprio perfil quando o App não resolveu o tenant.
+  // Sem este fallback a tela ficava PARADA no "Sincronizando Agenda..." para sempre —
+  // foi assim que uma mudança de permissão em `tenants` derrubou o lançamento de aulas
+  // de todos os professores sem nenhum erro visível.
+  const effectiveTenantId = tenantId || user?.tenantId;
 
   useEffect(() => {
-    if (user && tenantId) {
+    if (user && effectiveTenantId) {
       fetchTodaySchedule();
+    } else if (user) {
+      setLoading(false);
+      setLoadError('Não conseguimos identificar sua escola nesta sessão. Recarregue a página (ou saia e entre de novo) — se continuar assim, avise a direção.');
     }
-  }, [user, tenantId]);
+  }, [user, effectiveTenantId]);
 
   const fetchTodaySchedule = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
       const today = new Date();
@@ -59,7 +70,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .from('opportunities')
         .select('trial_appointment_id')
         .eq('winner_teacher_id', user.id)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', effectiveTenantId)
         .not('trial_appointment_id', 'is', null);
 
       const trialApptIds = teacherOpps?.map((o: any) => o.trial_appointment_id).filter(Boolean) || [];
@@ -234,11 +245,14 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       setTodayLessons(allLessons
         .sort((a, b) => a.isLate === b.isLate ? 0 : a.isLate ? 1 : -1)
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching today schedule:', err);
       // Limpa o estado para evitar que aulas "fantasma" (stale) fiquem visíveis
       // após um erro, o que causava relançamentos duplicados.
       setTodayLessons([]);
+      // Erro visível: "sem aulas hoje" escondia falha de carregamento e o professor
+      // achava que não tinha nada para lançar.
+      setLoadError(err?.message || 'Não foi possível carregar sua agenda agora.');
     } finally {
       setLoading(false);
     }
@@ -259,7 +273,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const isTrial = String(bookingId).startsWith('trial-');
 
         return {
-          tenant_id: tenantId,
+          tenant_id: effectiveTenantId,
           teacher_id: user.id,
           student_id: item.studentId || null,
           booking_id: (!isReschedule && !isTrial) ? bookingId : null,
@@ -327,13 +341,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               await supabase.from('crm_leads')
                 .update({ status: 'TRIAL_DONE' })
                 .eq('student_id', entry.student_id)
-                .eq('tenant_id', tenantId);
+                .eq('tenant_id', effectiveTenantId);
             } else if (item?.leadPhone) {
               // Update by phone if no student_id
               await supabase.from('crm_leads')
                 .update({ status: 'TRIAL_DONE' })
                 .eq('phone', item.leadPhone)
-                .eq('tenant_id', tenantId);
+                .eq('tenant_id', effectiveTenantId);
             }
           }
         }
@@ -370,7 +384,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
             if (!countError && canCreate) {
               await supabase.from('reschedules').insert([{
-                tenant_id: tenantId,
+                tenant_id: effectiveTenantId,
                 teacher_id: user.id,
                 student_id: a.student_id,
                 original_booking_id: a.booking_id,
@@ -391,7 +405,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         // Auditoria leve (best-effort, nunca quebra o fluxo): registra a tentativa barrada.
         try {
           await supabase.from('debug_logs').insert([{
-            message: `[LessonLauncher] ${blockedDuplicates} lançamento(s) duplicado(s) barrado(s) — prof ${user.id} / tenant ${tenantId}`
+            message: `[LessonLauncher] ${blockedDuplicates} lançamento(s) duplicado(s) barrado(s) — prof ${user.id} / tenant ${effectiveTenantId}`
           }]);
         } catch (_) { /* ignora: o console.warn já registrou */ }
       }
@@ -447,6 +461,21 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           <div className="flex flex-col items-center justify-center h-64 text-brand-muted">
             <RefreshCw className="animate-spin mb-4" size={32} />
             <p className="text-sm font-bold uppercase tracking-widest">Sincronizando Agenda...</p>
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center p-16 bg-brand-surface rounded-[3rem] border border-dashed border-red-300 dark:border-red-800/50 text-center">
+            <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center text-red-500 mb-5">
+              <AlertCircle size={32} />
+            </div>
+            <h4 className="text-xl font-black text-brand-text tracking-tight">Não deu para carregar sua agenda</h4>
+            <p className="text-sm text-brand-muted mt-2 font-medium max-w-md">{loadError}</p>
+            <p className="text-xs text-brand-muted mt-3 font-medium">Nenhuma aula foi perdida — assim que a tela carregar, as aulas atrasadas continuam aqui para lançar.</p>
+            <button
+              onClick={fetchTodaySchedule}
+              className="mt-6 px-6 py-3 bg-tenant-primary text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"
+            >
+              <RefreshCw size={14} /> Tentar de novo
+            </button>
           </div>
         ) : todayLessons.length > 0 ? (
           <div className="space-y-4">
