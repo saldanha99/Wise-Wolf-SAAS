@@ -38,3 +38,18 @@ supabase/.temp/
 
 # Documentos com dados pessoais de alunos NÃO entram no repo (LGPD)
 /*.pdf
+
+# Exportações e prévias do importador pedagógico permanecem locais.
+/.wise-wolf-import/
+
+# Artefatos binários de QA (54 MB em screenshots, vídeos e PDFs).
+# Os relatórios .md ficam versionados; as evidências visuais não — inchariam
+# o repositório permanentemente, já que o Git nunca esquece um binário.
+qa-*/**/*.png
+qa-*/**/*.webm
+qa-*/**/*.mp4
+qa-*/**/*.pdf
+docs/qa/**/*.png
+docs/qa/**/*.webm
+docs/qa/**/*.mp4
+docs/qa/**/*.pdf
