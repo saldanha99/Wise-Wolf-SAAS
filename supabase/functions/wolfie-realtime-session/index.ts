@@ -332,6 +332,29 @@ async function loadStudentContext(
   };
 }
 
+/**
+ * Cota mensal de consumo. Vem desligada por padrão: a RPC responde
+ * `allowed: true` quando o tenant não configurou nada, e também quando a
+ * própria contabilidade falha — problema de métrica não pode impedir a aula.
+ */
+async function checkRealtimeQuota(
+  db: SupabaseClient,
+  tenantId: string,
+  studentId: string,
+): Promise<"allowed" | "quota_exceeded"> {
+  const { data, error } = await db.rpc("wolfie_realtime_quota_status", {
+    p_tenant_id: tenantId,
+    p_student_id: studentId,
+  });
+  if (error) {
+    console.error("Wolfie Realtime quota lookup failed", { code: error.code });
+    return "allowed";
+  }
+  return isRecord(data) && data.allowed === false
+    ? "quota_exceeded"
+    : "allowed";
+}
+
 async function checkRealtimeAccess(
   db: SupabaseClient,
   tenantId: string,
@@ -846,6 +869,16 @@ serve(async (req) => {
       402,
       "PAYMENT_REQUIRED",
       "Regularize a situação da matrícula para usar o modo em tempo real.",
+    );
+  }
+
+  // Estourou a cota do mês: o aluno NÃO fica sem aula, cai para o modo
+  // clássico (TTS gratuito). `fallback: true` é o que sinaliza isso ao cliente.
+  if (await checkRealtimeQuota(auth.context.admin, tenantId, userId) === "quota_exceeded") {
+    return fallbackResponse(
+      429,
+      "REALTIME_QUOTA_EXCEEDED",
+      "Você atingiu o limite de conversa ao vivo deste mês. Continue praticando no modo clássico.",
     );
   }
 

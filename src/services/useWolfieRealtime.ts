@@ -21,6 +21,13 @@ const SESSION_SETUP_TIMEOUT_MS = 25_000;
 const TRANSPORT_READY_TIMEOUT_MS = 12_000;
 const DISCONNECTED_GRACE_MS = 5_000;
 const MAX_TEXT_INPUT_LENGTH = 4_000;
+// Custo: a OpenAI cobra pela conversa acumulada a cada turno. Sem teto, um
+// aluno esquecido com a aba aberta queima dinheiro sozinho. Estes são os
+// freios do cliente; a cota mensal é verificada no servidor.
+const MAX_SESSION_DURATION_MS = 10 * 60_000;
+const SESSION_WARNING_BEFORE_MS = 2 * 60_000;
+// Silêncio absoluto: ninguém falando e o Wolfie sem responder.
+const IDLE_TIMEOUT_MS = 90_000;
 
 export type WolfieRealtimeFallbackReason =
   | "disabled"
@@ -29,7 +36,10 @@ export type WolfieRealtimeFallbackReason =
   | "authentication_required"
   | "microphone_unavailable"
   | "service_unavailable"
-  | "connection_failed";
+  | "connection_failed"
+  | "session_limit_reached"
+  | "idle_timeout"
+  | "quota_exceeded";
 
 export interface WolfieRealtimeOptions {
   /**
@@ -52,6 +62,8 @@ export interface WolfieRealtimeOptions {
    * transcript form a turn. The consumer may decide whether to persist it.
    */
   onTurnComplete?: (turn: WolfieRealtimeCompletedTurn) => void;
+  /** Avisa que faltam N minutos para o teto de duração da sessão. */
+  onSessionWarning?: (minutesLeft: number) => void;
 }
 
 export interface WolfieRealtimeCompletedTurn {
@@ -396,6 +408,9 @@ export function useWolfieRealtime(
   const activeInputItemIdRef = useRef("");
   const activeResponseIdRef = useRef("");
   const realtimeUsageRef = useRef(new Map<string, WolfieRealtimeUsage>());
+  const sessionLimitTimerRef = useRef<number | null>(null);
+  const sessionWarningTimerRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<number | null>(null);
   latestOptionsRef.current = options;
 
   const publishCompletedTurns = useCallback((
@@ -416,6 +431,17 @@ export function useWolfieRealtime(
       realtimeUsageRef.current.delete(pair.responseId);
       if (mountedRef.current) setLastCompletedTurn(turn);
       latestOptionsRef.current.onTurnComplete?.(turn);
+    }
+  }, []);
+
+  const clearCostTimers = useCallback(() => {
+    for (
+      const ref of [sessionLimitTimerRef, sessionWarningTimerRef, idleTimerRef]
+    ) {
+      if (ref.current !== null) {
+        window.clearTimeout(ref.current);
+        ref.current = null;
+      }
     }
   }, []);
 
@@ -449,6 +475,7 @@ export function useWolfieRealtime(
     connectionAttemptRef.current += 1;
     setupAbortRef.current?.abort();
     setupAbortRef.current = null;
+    clearCostTimers();
     if (disconnectedTimeoutRef.current !== null) {
       window.clearTimeout(disconnectedTimeoutRef.current);
       disconnectedTimeoutRef.current = null;
@@ -493,7 +520,7 @@ export function useWolfieRealtime(
       setFallbackReason(null);
       setMutedState(false);
     }
-  }, [resetTurnPairing, stopMeters]);
+  }, [clearCostTimers, resetTurnPairing, stopMeters]);
 
   const markFallback = useCallback((
     reason: WolfieRealtimeFallbackReason,
@@ -507,6 +534,46 @@ export function useWolfieRealtime(
     latestOptionsRef.current.onFallback?.(reason, message);
     return { ok: false, fallback: true, reason, message };
   }, [cleanupResources]);
+
+  /**
+   * Reinicia a contagem de ociosidade. Chamado quando há atividade real —
+   * aluno falando ou Wolfie respondendo. Uma aba aberta e silenciosa não
+   * conta como atividade: é exatamente o caso que queremos encerrar.
+   */
+  const touchActivity = useCallback(() => {
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+    }
+    idleTimerRef.current = window.setTimeout(() => {
+      idleTimerRef.current = null;
+      if (!mountedRef.current) return;
+      markFallback(
+        "idle_timeout",
+        "Encerramos a conversa ao vivo por inatividade. Toque para começar de novo.",
+      );
+    }, IDLE_TIMEOUT_MS);
+  }, [markFallback]);
+
+  const startCostTimers = useCallback(() => {
+    clearCostTimers();
+    sessionWarningTimerRef.current = window.setTimeout(() => {
+      sessionWarningTimerRef.current = null;
+      if (!mountedRef.current) return;
+      latestOptionsRef.current.onSessionWarning?.(
+        Math.round(SESSION_WARNING_BEFORE_MS / 60_000),
+      );
+    }, Math.max(0, MAX_SESSION_DURATION_MS - SESSION_WARNING_BEFORE_MS));
+
+    sessionLimitTimerRef.current = window.setTimeout(() => {
+      sessionLimitTimerRef.current = null;
+      if (!mountedRef.current) return;
+      markFallback(
+        "session_limit_reached",
+        "A conversa ao vivo chegou ao tempo máximo. Continue no modo clássico ou inicie outra.",
+      );
+    }, MAX_SESSION_DURATION_MS);
+    touchActivity();
+  }, [clearCostTimers, markFallback, touchActivity]);
 
   const startMeters = useCallback((
     microphone: MediaStream,
@@ -597,6 +664,7 @@ export function useWolfieRealtime(
     if (!event) return;
 
     if (event.type === "input_audio_buffer.speech_started") {
+      touchActivity();
       activeInputItemIdRef.current = realtimeInputItemId(event);
     } else if (event.type === "input_audio_buffer.committed") {
       const itemId = realtimeInputItemId(
@@ -674,6 +742,7 @@ export function useWolfieRealtime(
       );
       if (itemId) inputDraftsRef.current.delete(itemId);
     } else if (event.type === "response.created") {
+      touchActivity();
       const responseId = realtimeResponseId(event);
       activeResponseIdRef.current = responseId;
       if (responseId) {
@@ -750,7 +819,7 @@ export function useWolfieRealtime(
 
     dispatch({ type: "server.event", event });
     latestOptionsRef.current.onEvent?.(event);
-  }, [publishCompletedTurns]);
+  }, [publishCompletedTurns, touchActivity]);
 
   const connect = useCallback(async (): Promise<
     WolfieRealtimeConnectResult
@@ -1019,6 +1088,9 @@ export function useWolfieRealtime(
       }
       connectingRef.current = false;
       dispatch({ type: "local.phase", phase: "connected" });
+      // A conversa (e a cobrança) só começa aqui: os freios de duração e
+      // ociosidade valem a partir da conexão de fato, não da tentativa.
+      startCostTimers();
       return { ok: true, fallback: false };
     } catch (error) {
       if (
@@ -1051,6 +1123,7 @@ export function useWolfieRealtime(
     cleanupResources,
     handleServerEvent,
     markFallback,
+    startCostTimers,
     startMeters,
   ]);
 
