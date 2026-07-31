@@ -1,4 +1,7 @@
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,9 +13,19 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+
+  const auth = await authorizeRequest(req, { corsHeaders, allowService: true });
+  if (auth.ok === false) return auth.response;
+  if (!auth.context.isService) {
+    return new Response(JSON.stringify({ error: "Service authentication required" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
-    const { phone, message, instanceName, apiKey, serverUrl } = await req.json();
+    const { phone, message, instanceName } = await req.json();
 
     if (!phone || !message) {
       return new Response(JSON.stringify({ error: "phone and message are required" }), {
@@ -21,10 +34,15 @@ serve(async (req) => {
       });
     }
 
-    // Use provided values or fallback to env
-    const evolutionUrl = serverUrl || Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
-    const evolutionApiKey = apiKey || Deno.env.get("EVOLUTION_API_KEY") || "";
+    const evolutionUrl = (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "");
+    const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
     const instance = instanceName || Deno.env.get("EVOLUTION_INSTANCE_NAME") || "";
+    if (!evolutionApiKey || !instance) {
+      return new Response(JSON.stringify({ error: "WhatsApp is unavailable" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Format phone: ensure 55 prefix
     let formattedPhone = phone.replace(/\D/g, "");
@@ -32,9 +50,7 @@ serve(async (req) => {
       formattedPhone = "55" + formattedPhone;
     }
 
-    console.log(`Sending WhatsApp to ${formattedPhone} via instance ${instance}`);
-
-    const response = await fetch(`${evolutionUrl}/message/sendText/${instance}`, {
+    const response = await fetch(`${evolutionUrl}/message/sendText/${encodeURIComponent(instance)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -54,8 +70,6 @@ serve(async (req) => {
     });
 
     const data = await response.json();
-    console.log("Evolution API response:", JSON.stringify(data));
-
     return new Response(JSON.stringify({ success: response.ok, data }), {
       status: response.ok ? 200 : 502,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

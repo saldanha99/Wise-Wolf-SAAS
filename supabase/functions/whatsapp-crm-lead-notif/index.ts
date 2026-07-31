@@ -3,6 +3,11 @@ import {
   authorizeRequest,
   methodNotAllowed,
 } from "../_shared/request-auth.ts";
+import {
+  evaluateCommercialSuppression,
+  loadCommercialContactFacts,
+  reconcileSuppressedLead,
+} from "../_shared/commercial-contact-policy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://wisewolflanguage.com.br",
@@ -18,6 +23,7 @@ type LeadRow = {
   email: string | null;
   source: string | null;
   notification_sent_at: string | null;
+  status: string | null;
 };
 
 function json(body: unknown, status = 200): Response {
@@ -46,7 +52,7 @@ serve(async (req) => {
     allowService: true,
     corsHeaders,
   });
-  if (!auth.ok) return auth.response;
+  if (auth.ok === false) return auth.response;
   if (!auth.context.isService) return json({ error: "Service access required" }, 403);
 
   let claimedLead: LeadRow | null = null;
@@ -57,7 +63,7 @@ serve(async (req) => {
 
     const { data: lead, error: leadError } = await auth.context.admin
       .from("crm_leads")
-      .select("id, tenant_id, name, phone, email, source, notification_sent_at")
+      .select("id, tenant_id, name, phone, email, source, notification_sent_at, status")
       .eq("id", payload.lead_id)
       .maybeSingle();
 
@@ -68,13 +74,25 @@ serve(async (req) => {
     if (!lead) return json({ error: "Lead not found" }, 404);
     if (lead.notification_sent_at) return json({ success: true, already_processed: true });
 
+    const facts = await loadCommercialContactFacts(auth.context.admin, lead.tenant_id);
+    const suppression = evaluateCommercialSuppression({
+      tenantId: lead.tenant_id,
+      phone: lead.phone,
+      email: lead.email,
+      leadStatus: lead.status,
+    }, facts);
+    if (suppression.suppressed) {
+      await reconcileSuppressedLead(auth.context.admin, lead.id, suppression);
+      return json({ success: true, suppressed: "existing_student" });
+    }
+
     const claimedAt = new Date().toISOString();
     const { data: claimed, error: claimError } = await auth.context.admin
       .from("crm_leads")
       .update({ notification_sent_at: claimedAt })
       .eq("id", lead.id)
       .is("notification_sent_at", null)
-      .select("id, tenant_id, name, phone, email, source, notification_sent_at")
+      .select("id, tenant_id, name, phone, email, source, notification_sent_at, status")
       .maybeSingle();
 
     if (claimError) {

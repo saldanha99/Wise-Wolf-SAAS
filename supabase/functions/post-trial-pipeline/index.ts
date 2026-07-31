@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evaluateCommercialSuppression,
+  loadCommercialContactFacts,
+} from "../_shared/commercial-contact-policy.ts";
 
 // POST-TRIAL-PIPELINE — cron a cada 30 min. Ataca o vazamento entre "aula experimental dada"
 // e "matrícula": achado da auditoria — 9 trials realizados ficavam parados sem proposta
@@ -81,7 +85,7 @@ serve(async (req) => {
     if (!isServiceRole(bearer, serviceKey)) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
     const sb = createClient(url, serviceKey);
 
-    const result = { nudges: 0, director_alerts: 0, escalations: 0, link_reminders: 0, failures: [] as string[] };
+    const result = { nudges: 0, director_alerts: 0, escalations: 0, link_reminders: 0, suppressed_contracted: 0, failures: [] as string[] };
 
     const { data: admins } = await sb.from("profiles")
       .select("tenant_id, phone, whatsapp_instance")
@@ -89,6 +93,11 @@ serve(async (req) => {
     const byTenant: Record<string, { instance: string; ownerPhone: string }> = {};
     for (const a of (admins || [])) {
       if (!byTenant[a.tenant_id]) byTenant[a.tenant_id] = { instance: a.whatsapp_instance, ownerPhone: cleanPhone(a.phone || "") };
+    }
+    const commercialFacts = new Map<string, any>();
+    for (const tenantId of Object.keys(byTenant)) {
+      try { commercialFacts.set(tenantId, await loadCommercialContactFacts(sb, tenantId)); }
+      catch (e) { result.failures.push(`commercial_state ${tenantId}: ${(e as Error).message}`); }
     }
 
     // ===================== A) EXPERIMENTAL SEM PROPOSTA =====================
@@ -108,6 +117,12 @@ serve(async (req) => {
       if (looksFake(opp.student_phone || "", opp.student_name || "")) continue;
       const t = byTenant[opp.tenant_id];
       if (!t) continue;
+      const facts = commercialFacts.get(opp.tenant_id);
+      if (!facts) continue;
+      const suppression = evaluateCommercialSuppression({
+        tenantId: opp.tenant_id, phone: opp.student_phone, opportunityId: opp.id,
+      }, facts);
+      if (suppression.suppressed) { result.suppressed_contracted++; continue; }
 
       // A aula foi realmente dada? (class_log COMPLETED com subtype experimental, ligado ao appointment)
       const { data: log } = await sb.from("class_logs")
@@ -121,12 +136,13 @@ serve(async (req) => {
       if (!log?.created_at) continue; // aula ainda não aconteceu/lançada
       if (log.created_at > oneHourAgo) continue; // dá 1h de folga antes de cutucar
 
-      // Já existe proposta (link de matrícula) para essa oportunidade? Se sim, isso é problema B, não A.
+      // Qualquer proposta ainda ativa ou concluída prova que a proposta existe. Antes,
+      // USED desaparecia desta consulta e era interpretado incorretamente como "sem proposta".
       const { data: existingLink } = await sb
         .from("enrollment_links")
-        .select("id")
+        .select("id, status")
         .eq("opportunity_id", opp.id)
-        .eq("status", "PENDING")
+        .in("status", ["PENDING", "PROCESSING", "USED"])
         .not("offer_id", "is", null)
         .limit(1)
         .maybeSingle();
@@ -172,6 +188,12 @@ serve(async (req) => {
       if (looksFake(link.student_phone || "", link.student_name || "")) continue;
       const t = byTenant[link.tenant_id];
       if (!t) continue;
+      const facts = commercialFacts.get(link.tenant_id);
+      if (!facts) continue;
+      const suppression = evaluateCommercialSuppression({
+        tenantId: link.tenant_id, phone: link.student_phone,
+      }, facts);
+      if (suppression.suppressed) { result.suppressed_contracted++; continue; }
       const phone = cleanPhone(link.student_phone || "");
       if (phone.length < 12) continue;
       const ageMs = Date.now() - new Date(link.created_at).getTime();

@@ -1,9 +1,12 @@
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   authorizeRequest,
   hasTenantAccess,
   methodNotAllowed,
 } from "../_shared/request-auth.ts";
+import { secureInitialPassword, sendAccountActivation } from "../_shared/account-invite.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,7 +28,7 @@ serve(async (req) => {
     corsHeaders,
     allowedRoles: ["SCHOOL_ADMIN", "SUPER_ADMIN"],
   });
-  if (!auth.ok) return auth.response;
+  if (auth.ok === false) return auth.response;
 
   try {
     const body = await req.json();
@@ -84,7 +87,7 @@ serve(async (req) => {
 
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
-      password: "123456",
+      password: secureInitialPassword(),
       email_confirm: true,
       user_metadata: { full_name: name, role: "STUDENT", tenant_id: tenantId },
     });
@@ -110,12 +113,32 @@ serve(async (req) => {
     if (profileError) {
       console.error("Student profile creation failed", { code: profileError.code });
       await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+      if (profileError.message?.includes("tenant_student_limit_reached")) {
+        return json({
+          error: "O limite de alunos do plano foi atingido. Faça upgrade para adicionar novas matrículas.",
+          code: "STUDENT_LIMIT_REACHED",
+        }, 409);
+      }
       return json({ error: "Failed to create profile" }, 500);
+    }
+
+    try {
+      await sendAccountActivation(admin, {
+        email,
+        name,
+        accountLabel: "aluno",
+      });
+    } catch (activationError) {
+      console.error("Student activation delivery failed", {
+        message: activationError instanceof Error ? activationError.message : "unknown error",
+      });
+      await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+      return json({ error: "Could not deliver the secure activation email" }, 502);
     }
 
     return json({
       user: authData.user,
-      message: "Student account created successfully",
+      message: "Student account created and activation email sent",
     });
   } catch (error) {
     console.error("Create student account failed", {

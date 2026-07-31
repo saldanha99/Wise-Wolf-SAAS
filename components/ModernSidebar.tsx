@@ -39,7 +39,12 @@ import {
     ShieldAlert,
     X
 } from 'lucide-react';
-import { Tenant, User as UserType, UserRole } from '../types';
+import {
+    Tenant,
+    TenantMembershipOption,
+    User as UserType,
+    UserRole,
+} from '../types';
 
 interface ModernSidebarProps {
     tenant: Tenant;
@@ -55,6 +60,8 @@ interface ModernSidebarProps {
     theme: 'light' | 'dark';
     toggleTheme: () => void;
     pendingCounts?: Record<string, number>; // contadores de pendência por área (badges)
+    tenantMemberships?: TenantMembershipOption[];
+    onTenantSwitch?: (tenantId: string) => Promise<void>;
 }
 
 interface MenuItem {
@@ -79,7 +86,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     setIsCollapsed,
     theme,
     toggleTheme,
-    pendingCounts = {}
+    pendingCounts = {},
+    tenantMemberships = [],
+    onTenantSwitch,
 }) => {
     const [isMobile, setIsMobile] = useState(() =>
         typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
@@ -87,6 +96,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const navRef = useRef<HTMLElement>(null);
     const menuScrollRef = useRef<HTMLDivElement>(null);
     const returnFocusRef = useRef<HTMLElement | null>(null);
+    const tenantMenuRef = useRef<HTMLDivElement>(null);
+    const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
+    const [switchingTenantId, setSwitchingTenantId] = useState<string | null>(null);
 
     const getMenuButtons = useCallback((): HTMLElement[] => {
         const scroller = menuScrollRef.current;
@@ -173,6 +185,21 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
             window.requestAnimationFrame(() => returnFocusRef.current?.focus());
         };
     }, [ensureMenuItemVisible, getMenuButtons, isMobile, isOpen, setIsOpen]);
+
+    useEffect(() => {
+        if (!tenantMenuOpen) return;
+        const closeOnOutsideClick = (event: MouseEvent) => {
+            if (
+                tenantMenuRef.current &&
+                event.target instanceof Node &&
+                !tenantMenuRef.current.contains(event.target)
+            ) {
+                setTenantMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', closeOnOutsideClick);
+        return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+    }, [tenantMenuOpen]);
 
     const teacherMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -342,8 +369,20 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
           p-3 grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden shadow-[4px_0_24px_rgba(0,0,0,0.2)]
         `}
             >
-                <div className="flex-none mb-3 pb-3">
-                    <div className={`flex items-center ${expanded ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 transition-colors hover:bg-brand-surface-2`}>
+                <div ref={tenantMenuRef} className="relative flex-none mb-3 pb-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (expanded && tenantMemberships.length > 1) {
+                                setTenantMenuOpen((open) => !open);
+                            }
+                        }}
+                        className={`flex w-full items-center ${expanded ? 'justify-start px-2' : 'justify-center'} rounded-xl py-2 text-left transition-colors hover:bg-brand-surface-2`}
+                        aria-label={tenantMemberships.length > 1 ? 'Selecionar instituição' : tenant.name}
+                        aria-haspopup={tenantMemberships.length > 1 ? 'listbox' : undefined}
+                        aria-expanded={tenantMemberships.length > 1 ? tenantMenuOpen : undefined}
+                        data-sidebar-focusable="true"
+                    >
                         <div className="flex items-center gap-3 w-full">
                             {user.role === UserRole.SUPER_ADMIN ? (
                                 <div className="grid size-10 shrink-0 place-content-center rounded-xl bg-gradient-to-br from-brand-accent to-brand-accent-hover shadow-lg text-white">
@@ -367,24 +406,88 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                         {user.role === UserRole.SUPER_ADMIN ? 'EduCore SaaS' : tenant.name}
                                     </h3>
                                     <span className="block text-[10px] uppercase font-black tracking-widest text-brand-muted truncate">
-                                        {user.role.replace('_', ' ')}
+                                        {tenantMemberships.length > 1 ? 'Trocar instituição' : user.role.replace('_', ' ')}
                                     </span>
                                 </div>
                             )}
 
-                            {isMobile && (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsOpen(false)}
-                                    className="ml-auto grid size-10 shrink-0 place-content-center rounded-xl text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text"
-                                    aria-label="Fechar menu"
-                                    data-sidebar-focusable="true"
-                                >
-                                    <X size={20} aria-hidden="true" />
-                                </button>
+                            {expanded && tenantMemberships.length > 1 && (
+                                <ChevronDown
+                                    size={17}
+                                    aria-hidden="true"
+                                    className={`ml-auto shrink-0 text-brand-muted transition-transform ${tenantMenuOpen ? 'rotate-180' : ''}`}
+                                />
                             )}
                         </div>
-                    </div>
+                    </button>
+
+                    {isMobile && (
+                        <button
+                            type="button"
+                            onClick={() => setIsOpen(false)}
+                            className="absolute right-0 top-2 grid size-10 shrink-0 place-content-center rounded-xl text-brand-muted hover:bg-brand-surface-2 hover:text-brand-text"
+                            aria-label="Fechar menu"
+                            data-sidebar-focusable="true"
+                        >
+                            <X size={20} aria-hidden="true" />
+                        </button>
+                    )}
+
+                    {expanded && tenantMenuOpen && tenantMemberships.length > 1 && (
+                        <div
+                            role="listbox"
+                            aria-label="Instituições disponíveis"
+                            className="absolute left-0 right-0 top-full z-50 mt-1 rounded-2xl border border-brand-border bg-brand-surface p-2 shadow-2xl"
+                        >
+                            <div className="px-2 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.18em] text-brand-muted">
+                                Seu ambiente
+                            </div>
+                            <div className="max-h-60 space-y-1 overflow-y-auto">
+                                {tenantMemberships.map((membership) => (
+                                    <button
+                                        key={membership.tenant_id}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={membership.is_active}
+                                        disabled={membership.is_active || Boolean(switchingTenantId)}
+                                        onClick={async () => {
+                                            if (!onTenantSwitch || membership.is_active) return;
+                                            setSwitchingTenantId(membership.tenant_id);
+                                            try {
+                                                await onTenantSwitch(membership.tenant_id);
+                                                setTenantMenuOpen(false);
+                                                if (isMobile) setIsOpen(false);
+                                            } finally {
+                                                setSwitchingTenantId(null);
+                                            }
+                                        }}
+                                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                                            membership.is_active
+                                                ? 'bg-brand-accent/10 text-brand-accent'
+                                                : 'text-brand-text hover:bg-brand-surface-2'
+                                        } disabled:cursor-default`}
+                                    >
+                                        <div className="grid size-9 shrink-0 place-content-center rounded-xl bg-brand-surface-2">
+                                            {switchingTenantId === membership.tenant_id
+                                                ? <span className="size-4 animate-spin rounded-full border-2 border-brand-muted border-t-brand-accent" />
+                                                : <School size={17} aria-hidden="true" />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <span className="block truncate text-xs font-black">
+                                                {membership.tenant_name}
+                                            </span>
+                                            <span className="block truncate text-[9px] font-bold uppercase tracking-wider text-brand-muted">
+                                                {membership.role.replace('_', ' ')}
+                                            </span>
+                                        </div>
+                                        {membership.is_active && (
+                                            <CheckCircle size={16} aria-hidden="true" />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div

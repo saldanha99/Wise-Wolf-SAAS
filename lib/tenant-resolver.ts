@@ -54,28 +54,16 @@ export async function resolveTenantFromHostname(): Promise<ResolvedTenant | null
     }
 
     try {
-        // Subdomínio Wise Wolf: joao.wisewolflanguage.com.br
-        if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
-            const slug = hostname.slice(0, hostname.length - BASE_DOMAIN.length - 1);
-            if (slug) {
-                const { data } = await supabase
-                    .from('tenants')
-                    .select('id, name, slug, custom_domain, custom_domain_verified, branding, school_info')
-                    .eq('slug', slug)
-                    .maybeSingle();
-                _cache = (data as ResolvedTenant) ?? null;
-                return _cache;
-            }
-        }
+        // A resolução pré-login passa por uma RPC que devolve somente branding
+        // público. A tabela tenants contém credenciais e nunca deve ser exposta
+        // diretamente ao papel anônimo.
+        const { data, error } = await supabase.rpc('resolve_public_tenant', {
+            p_hostname: hostname,
+        });
+        if (error) throw error;
 
-        // Domínio próprio: portal.escoladojoao.com.br
-        const { data } = await supabase
-            .from('tenants')
-            .select('id, name, slug, custom_domain, custom_domain_verified, branding, school_info')
-            .eq('custom_domain', hostname)
-            .maybeSingle();
-
-        _cache = (data as ResolvedTenant) ?? null;
+        const tenant = Array.isArray(data) ? data[0] : data;
+        _cache = (tenant as ResolvedTenant | undefined) ?? null;
     } catch {
         _cache = null;
     }

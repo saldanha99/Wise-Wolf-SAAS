@@ -17,7 +17,7 @@ const ROLE_LABEL: Record<Role, string> = {
   atendente: 'Atendente (comercial + SDR)',
   estagiario: 'Coordenação Pedagógica',
   financeiro: 'Financeiro',
-  rh: 'RH / Recrutamento (Rita)',
+  rh: 'RH / Recrutamento (Michelle)',
 };
 const ROLE_ORDER: Role[] = ['secretaria', 'atendente', 'estagiario', 'financeiro', 'rh'];
 
@@ -83,7 +83,7 @@ const AiTeamPanel: React.FC<Props> = ({ tenantId }) => {
           <div className="w-10 h-10 bg-tenant-primary/10 rounded-xl flex items-center justify-center"><Bot size={20} className="text-tenant-primary" /></div>
           <div>
             <h2 className="text-2xl font-black text-brand-text">Equipe de IA</h2>
-            <p className="text-brand-muted text-sm">5 funcionários virtuais que monitoram a escola e te avisam todo dia no WhatsApp — a atendente e a Rita também conversam com leads e candidatos 24/7.</p>
+            <p className="text-brand-muted text-sm">5 funcionários virtuais que monitoram a escola e te avisam todo dia no WhatsApp — a atendente e a Michelle também conversam com leads e candidatos 24/7.</p>
           </div>
         </div>
         <button onClick={() => run(true)} disabled={running}

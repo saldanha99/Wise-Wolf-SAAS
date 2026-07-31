@@ -1,23 +1,23 @@
-
 export enum UserRole {
-  SUPER_ADMIN = 'SUPER_ADMIN',
-  SCHOOL_ADMIN = 'SCHOOL_ADMIN',
-  TEACHER = 'TEACHER',
-  STUDENT = 'STUDENT',
-  SALESPERSON = 'SALESPERSON'
+  SUPER_ADMIN = "SUPER_ADMIN",
+  SCHOOL_ADMIN = "SCHOOL_ADMIN",
+  TEACHER = "TEACHER",
+  STUDENT = "STUDENT",
+  SALESPERSON = "SALESPERSON",
+  NON_STUDENT = "NON_STUDENT",
 }
 
 export enum PresenceStatus {
-  PRESENT = 'PRESENÇA',
-  ABSENT_JUSTIFIED = 'FALTA_JUSTIFICADA',
-  ABSENT = 'FALTA_NÃO_JUSTIFICADA'
+  PRESENT = "PRESENÇA",
+  ABSENT_JUSTIFIED = "FALTA_JUSTIFICADA",
+  ABSENT = "FALTA_NÃO_JUSTIFICADA",
 }
 
 export enum PaymentStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  PAID = 'PAID',
-  REJECTED = 'REJECTED'
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  PAID = "PAID",
+  REJECTED = "REJECTED",
 }
 
 export interface BrandingSettings {
@@ -48,18 +48,28 @@ export interface Tenant {
   } | null;
 }
 
-export type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+export interface TenantMembershipOption {
+  tenant_id: string;
+  tenant_name: string;
+  domain?: string | null;
+  branding?: Partial<BrandingSettings> | null;
+  role: UserRole;
+  is_primary: boolean;
+  is_active: boolean;
+}
+
+export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 export interface WolfieSettings {
   goal?: string;
   level?: CefrLevel;
   correctionStrictness?: 1 | 2 | 3;
-  preferredCorrectionMode?: 'immediate' | 'end' | 'selective' | 'examiner';
+  preferredCorrectionMode?: "immediate" | "end" | "selective" | "examiner";
   preferredLanguageMode?:
-    | 'pt_support'
-    | 'bilingual'
-    | 'immersive'
-    | 'english_rescue';
+    | "pt_support"
+    | "bilingual"
+    | "immersive"
+    | "english_rescue";
   dailyGoalMinutes?: number;
   completedAt?: string;
 }
@@ -85,6 +95,7 @@ export interface User {
   englishFor?: string;
   occupation?: string;
   studentCategory?: string;
+  isKids?: boolean;
   interests?: string[];
   preferredTopics?: string[];
   shortTermGoal?: string;
@@ -103,7 +114,7 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   price: number;
-  interval: 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'ANNUAL';
+  interval: "MONTHLY" | "QUARTERLY" | "SEMIANNUAL" | "ANNUAL";
   features: string[];
 }
 
@@ -134,8 +145,8 @@ export interface Teacher {
   classesCount: number;
   retention: string;
   tpi: number;
-  status: 'Ativo' | 'Férias' | 'Inativo';
-  lifecycle_status?: 'active' | 'suspended' | 'offboarded';
+  status: "Ativo" | "Férias" | "Inativo";
+  lifecycle_status?: "active" | "suspended" | "offboarded";
   occupancy: number;
 }
 
@@ -150,12 +161,12 @@ export interface Vendor {
 }
 
 export type ClosingStatus =
-  | 'PENDENTE' // Legacy/Initial
-  | 'WAITING_PAYMENT'
-  | 'PAID_WAITING_NF'
-  | 'UNDER_REVIEW'
-  | 'COMPLETED'
-  | 'REJECTED';
+  | "PENDENTE" // Legacy/Initial
+  | "WAITING_PAYMENT"
+  | "PAID_WAITING_NF"
+  | "UNDER_REVIEW"
+  | "COMPLETED"
+  | "REJECTED";
 
 export interface TeacherClosing {
   id: string;
@@ -179,7 +190,12 @@ export interface Reschedule {
   teacherId: number;
 }
 
-export type JobStatus = 'Novo' | 'Em Análise' | 'Entrevistado' | 'Contratado' | 'Rejeitado';
+export type JobStatus =
+  | "Novo"
+  | "Em Análise"
+  | "Entrevistado"
+  | "Contratado"
+  | "Rejeitado";
 
 export interface JobApplication {
   id: string;
@@ -193,9 +209,9 @@ export interface JobApplication {
   ai_score?: number | null;
   ai_summary?: string | null;
   ai_flags?: { red_flags?: string[]; pontos_fortes?: string[] } | null;
-  ai_recommendation?: 'ENTREVISTAR' | 'TALVEZ' | 'RECUSAR' | null;
+  ai_recommendation?: "ENTREVISTAR" | "TALVEZ" | "RECUSAR" | null;
   ai_screened_at?: string | null;
-  preinterview_status?: 'SENT' | 'IN_PROGRESS' | 'DONE' | null;
+  preinterview_status?: "SENT" | "IN_PROGRESS" | "DONE" | null;
   preinterview_answers?: Record<string, string | number> | null;
   interview_slot?: string | null;
 }

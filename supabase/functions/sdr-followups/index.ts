@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evaluateCommercialSuppression,
+  loadCommercialContactFacts,
+  reconcileSuppressedLead,
+} from "../_shared/commercial-contact-policy.ts";
 
 // SDR-FOLLOWUPS — cron horário (09h-19h BRT). Sem IA: templates determinísticos.
 // 1) Follow-up de lead que não respondeu à atendente (máx 2 toques, ~20h de espaço)
@@ -72,7 +77,7 @@ serve(async (req) => {
     const hourBRT = nowBRT().getUTCHours();
     if (hourBRT < 9 || hourBRT >= 20) return new Response(JSON.stringify({ ok: true, skipped: "fora do horário" }), { status: 200 });
 
-    const result = { followups: 0, preinterview_reminders: 0, interview_reminders: 0, skipped_candidates: 0, failures: [] as string[] };
+    const result = { followups: 0, preinterview_reminders: 0, interview_reminders: 0, skipped_candidates: 0, skipped_contracted: 0, failures: [] as string[] };
 
     const { data: admins } = await sb.from("profiles").select("tenant_id, phone, whatsapp_instance").in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
     const byTenant: Record<string, { instance: string; ownerPhone: string }> = {};
@@ -82,6 +87,11 @@ serve(async (req) => {
 
     const { data: tenants } = await sb.from("tenants").select("id, ai_team_config");
     const cfgOf = (t: string) => (tenants || []).find((x: any) => x.id === t)?.ai_team_config || {};
+    const commercialFacts = new Map<string, any>();
+    for (const tenantId of Object.keys(byTenant)) {
+      try { commercialFacts.set(tenantId, await loadCommercialContactFacts(sb, tenantId)); }
+      catch (e) { result.failures.push(`commercial_state ${tenantId}: ${(e as Error).message}`); }
+    }
 
     // TRAVA: telefones que pertencem a CANDIDATOS (qualquer vaga) — nunca recebem SDR.
     const { data: allApps } = await sb.from("job_applications").select("tenant_id, whatsapp");
@@ -97,6 +107,16 @@ serve(async (req) => {
       if (lead.last_inbound_at && lead.last_inbound_at > lead.last_outbound_at) continue;
       const t = byTenant[lead.tenant_id];
       if (!t || cfgOf(lead.tenant_id)?.sdr?.enabled === false) continue;
+      const facts = commercialFacts.get(lead.tenant_id);
+      if (!facts) continue; // fail closed: sem fonte de verdade, não envia venda
+      const suppression = evaluateCommercialSuppression({
+        tenantId: lead.tenant_id, phone: lead.phone, leadStatus: lead.status,
+      }, facts);
+      if (suppression.suppressed) {
+        await reconcileSuppressedLead(sb, lead.id, suppression);
+        result.skipped_contracted++;
+        continue;
+      }
       // TRAVA: se o telefone é de um candidato (professor/vendedor), não cutuca como lead.
       if (isCandidatePhone(lead.tenant_id, lead.phone || "")) { result.skipped_candidates++; continue; }
       if (await alreadySent(sb, "SDR_FOLLOWUP", String(lead.id))) continue;

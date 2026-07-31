@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evaluateCommercialSuppression,
+  loadCommercialContactFacts,
+  reconcileSuppressedLead,
+} from "../_shared/commercial-contact-policy.ts";
 
 // FUNNEL-SWEEPER — cron a cada 15 min. Três varreduras anti-vazamento do funil de alunos:
 //
@@ -9,7 +14,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // B) ESCALONAMENTO DE CLAIM: oportunidade TRIAL OPEN sem aceite. >20min re-envia aos
 //    professores ATIVOS (individual); >60min alerta ao diretor.
 // C) EXPIRAÇÃO: OPEN >48h ou slot no passado → LOST (silencioso).
-// D) CONVITE DE ENTREVISTA (RH): aprovados pela Rita recebem link de agendamento + follow-ups.
+// D) CONVITE DE ENTREVISTA (RH): aprovados pela Michelle recebem link de agendamento + follow-ups.
 //
 // Dedupe: automation_sent com verificação "ever" — cada lead/opp recebe cada tipo UMA vez.
 
@@ -143,7 +148,7 @@ serve(async (req) => {
     const businessHours = hourBRT >= 9 && hourBRT < 20;
 
     const result = {
-      first_touch: 0, first_touch_skipped: 0,
+      first_touch: 0, first_touch_skipped: 0, first_touch_suppressed: 0,
       rebroadcasts: 0, director_alerts: 0,
       interview_invites: 0, interview_followups: 0,
       expired: 0, failures: [] as string[],
@@ -164,6 +169,11 @@ serve(async (req) => {
 
     const { data: tenants } = await sb.from("tenants").select("id, ai_team_config");
     const cfgOf = (t: string) => (tenants || []).find((x: any) => x.id === t)?.ai_team_config || {};
+    const commercialFacts = new Map<string, any>();
+    for (const tenantId of Object.keys(byTenant)) {
+      try { commercialFacts.set(tenantId, await loadCommercialContactFacts(sb, tenantId)); }
+      catch (e) { result.failures.push(`commercial_state ${tenantId}: ${(e as Error).message}`); }
+    }
 
     const { data: allApps } = await sb.from("job_applications").select("tenant_id, whatsapp");
     const isCandidatePhone = (tenantId: string, phone: string) =>
@@ -188,6 +198,16 @@ serve(async (req) => {
         const t = byTenant[lead.tenant_id];
         const cfg = cfgOf(lead.tenant_id);
         if (!t || cfg?.sdr?.enabled === false || cfg?.sdr?.first_touch === false) continue;
+        const facts = commercialFacts.get(lead.tenant_id);
+        if (!facts) { result.first_touch_skipped++; continue; }
+        const suppression = evaluateCommercialSuppression({
+          tenantId: lead.tenant_id, phone: lead.phone, leadStatus: lead.status,
+        }, facts);
+        if (suppression.suppressed) {
+          await reconcileSuppressedLead(sb, lead.id, suppression);
+          result.first_touch_suppressed++;
+          continue;
+        }
         const phone = cleanPhone(lead.phone || "");
         if (phone.length < 12) { result.first_touch_skipped++; continue; }
         if (isCandidatePhone(lead.tenant_id, lead.phone || "")) { result.first_touch_skipped++; continue; }

@@ -3,7 +3,14 @@ import { createPortal } from 'react-dom';
 import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
-import { UserRole, Tenant, User, Teacher, Reschedule } from './types';
+import {
+  UserRole,
+  Tenant,
+  TenantMembershipOption,
+  User,
+  Teacher,
+  Reschedule,
+} from './types';
 import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loader2 } from 'lucide-react';
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
@@ -195,6 +202,9 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'vendor_commissions', label: 'Minhas Comissões', group: 'Vendas' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
+  [UserRole.NON_STUDENT]: [
+    { tab: 'hub', label: 'Wise Wolf Hub', group: 'Hub' },
+  ],
 };
 
 const NOTIFICATION_ITEMS: { key: string; label: string; tab: string }[] = [
@@ -212,6 +222,7 @@ const normalizeSearchText = (value: string) =>
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
+  const [tenantMemberships, setTenantMemberships] = useState<TenantMembershipOption[]>([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Desktop
@@ -274,6 +285,10 @@ const App: React.FC = () => {
   useEffect(() => {
     setSearchActiveIndex(0);
   }, [searchQuery, user?.role]);
+
+  useEffect(() => {
+    if (user?.role === UserRole.NON_STUDENT) window.location.replace('/hub');
+  }, [user?.role]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -389,6 +404,7 @@ const App: React.FC = () => {
       if (event === 'SIGNED_OUT' && mounted) {
         setUser(null);
         setCurrentTenant(null);
+        setTenantMemberships([]);
         setPendingCounts({});
         setPendingLessonsCount(0);
         setTeachers([]);
@@ -424,29 +440,43 @@ const App: React.FC = () => {
     if (!user || !user.tenantId) return;
     setIsLoading(true);
     try {
+      const { data: membershipsData, error: membershipsError } = await supabase
+        .rpc('get_my_tenant_memberships');
+      if (membershipsError) throw membershipsError;
+      setTenantMemberships(
+        ((membershipsData || []) as any[]).map((membership) => ({
+          tenant_id: membership.tenant_id,
+          tenant_name: membership.tenant_name,
+          domain: membership.domain,
+          branding: membership.branding,
+          role: membership.role as UserRole,
+          is_primary: Boolean(membership.is_primary),
+          is_active: Boolean(membership.is_active),
+        })),
+      );
+
       // 1. Setup Tenant Branding
       if (user.tenantId !== 'master') {
         const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('id, name, domain, branding, student_limit, teacher_limit, whatsapp_enabled, school_info')
-          .eq('id', user.tenantId)
-          .single();
-        if (tenantData) {
+          .rpc('get_my_tenant_config')
+          .maybeSingle();
+        const resolvedTenantData = tenantData as any;
+        if (resolvedTenantData) {
           const safeBranding = applyTenantBranding(
-            tenantData.branding?.primaryColor,
-            tenantData.branding?.secondaryColor,
+            resolvedTenantData.branding?.primaryColor,
+            resolvedTenantData.branding?.secondaryColor,
           );
           setCurrentTenant({
-            id: tenantData.id,
-            name: tenantData.name,
-            domain: tenantData.domain,
-            branding: { ...tenantData.branding, ...safeBranding },
-            studentLimit: tenantData.student_limit,
-            teacherLimit: tenantData.teacher_limit,
-            whatsapp_enabled: tenantData.whatsapp_enabled,
-            school_info: tenantData.school_info ?? null,
+            id: resolvedTenantData.id,
+            name: resolvedTenantData.name,
+            domain: resolvedTenantData.domain,
+            branding: { ...resolvedTenantData.branding, ...safeBranding },
+            studentLimit: resolvedTenantData.student_limit,
+            teacherLimit: resolvedTenantData.teacher_limit,
+            whatsapp_enabled: resolvedTenantData.whatsapp_enabled,
+            school_info: resolvedTenantData.school_info ?? null,
           });
-          document.title = `${tenantData.name} - Portal EduCore`;
+          document.title = `${resolvedTenantData.name} - Portal EduCore`;
         }
       }
 
@@ -844,6 +874,15 @@ const App: React.FC = () => {
     return <Login onLogin={setUser} />;
   }
 
+  if (user.role === UserRole.NON_STUDENT) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200" role="status">
+        <Loader2 className="animate-spin mr-3 text-violet-400" aria-hidden="true" />
+        Abrindo o Wise Wolf Hub...
+      </div>
+    );
+  }
+
   // --- FINANCIAL LOCK MOVED TO ProtectedRoute.tsx ---
 
   const handleUpdateTenant = (newBranding: any) => {
@@ -857,6 +896,33 @@ const App: React.FC = () => {
         branding: { ...newBranding, ...safeBranding },
       });
     }
+  };
+
+  const handleTenantSwitch = async (tenantId: string) => {
+    if (!user || tenantId === user.tenantId) return;
+    const { error } = await supabase.rpc('switch_my_tenant', {
+      p_tenant_id: tenantId,
+    });
+    if (error) {
+      console.error('Tenant switch failed:', { code: error.code });
+      window.alert('Não foi possível trocar de instituição. Atualize a página e tente novamente.');
+      return;
+    }
+
+    const switchedUser = await loadAppUser(user.id);
+    if (!switchedUser) {
+      await supabase.auth.signOut();
+      return;
+    }
+
+    setActiveTab('dashboard');
+    setCurrentTenant(null);
+    setPendingCounts({});
+    setPendingLessonsCount(0);
+    setTeachers([]);
+    setStudents([]);
+    setReschedules([]);
+    setUser(switchedUser);
   };
 
   const renderContent = () => {
@@ -1112,6 +1178,8 @@ const App: React.FC = () => {
           setIsCollapsed={setIsSidebarCollapsed}
           theme={theme}
           toggleTheme={toggleTheme}
+          tenantMemberships={tenantMemberships}
+          onTenantSwitch={handleTenantSwitch}
         />
 
         <main

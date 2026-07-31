@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  evaluateCommercialSuppression,
+  loadCommercialContactFacts,
+  reconcileSuppressedLead,
+} from "../_shared/commercial-contact-policy.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
 // v13 — HANDOFF HUMANO: quando o humano responde manualmente para um lead OU candidato,
@@ -69,6 +74,13 @@ function normalizePhone(raw: string): string | null {
   if (!p) return null;
   if (!p.startsWith("55") && (p.length === 10 || p.length === 11)) p = "55" + p;
   return p.length >= 12 ? p : null;
+}
+
+function greetName(raw: string | null): string {
+  const first = (raw || "").trim().split(/\s+/)[0] || "";
+  return /^[A-Za-zÀ-ÖØ-öø-ÿ]{2,20}$/.test(first)
+    ? first.charAt(0).toUpperCase() + first.slice(1)
+    : "";
 }
 
 const GEMINI_KEY = (Deno.env.get("GEMINI_API_KEY") ?? "").trim();
@@ -328,6 +340,20 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   }
   if (!lead) return;
 
+  // Contrato/perfil são a fonte de verdade. Um cartão de CRM desatualizado nunca
+  // pode recolocar aluno contratado no fluxo de venda.
+  const commercialFacts = await loadCommercialContactFacts(sb, tenantId);
+  const suppression = evaluateCommercialSuppression({
+    tenantId, phone, leadStatus: lead.status,
+  }, commercialFacts);
+  if (suppression.suppressed) {
+    await reconcileSuppressedLead(sb, lead.id, suppression);
+    await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia/áudio]" : text, {
+      lead_id: lead.id, msg_id: msgId, skipped: suppression.reason,
+    });
+    return;
+  }
+
   const hist = await history(sb, tenantId, phone, "sdr");
   await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia/áudio]" : text, { lead_id: lead.id, msg_id: msgId });
   await sb.from("crm_leads").update({ last_inbound_at: new Date().toISOString(), ai_handled: true }).eq("id", lead.id);
@@ -558,8 +584,38 @@ serve(async (req) => {
         continue;
       }
 
-      const { data: profs } = await sb.from("profiles").select("id, phone").eq("tenant_id", tenantId).not("phone", "is", null).neq("phone", "");
-      if ((profs || []).some((p: any) => phonesMatch(p.phone, phone))) continue;
+      const { data: knownProfiles } = await sb.from("profiles")
+        .select("id, phone, role, full_name, contract_accepted")
+        .eq("tenant_id", tenantId).not("phone", "is", null).neq("phone", "");
+      const knownProfile = (knownProfiles || []).find((profile: any) => phonesMatch(profile.phone, phone));
+      if (knownProfile) {
+        const isContractedStudent = String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
+          knownProfile.contract_accepted === true;
+        if (isContractedStudent) {
+          await logMsg(sb, tenantId, phone, "support", "in", isMedia ? "[mídia]" : text, {
+            student_id: knownProfile.id, msg_id: msgId, routed: "existing_student",
+          });
+          const since = new Date(Date.now() - 4 * 3600000).toISOString();
+          const { count: recentSupport } = await sb.from("ai_wa_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenantId).eq("phone", phone).eq("agent", "support")
+            .eq("direction", "out").gte("created_at", since);
+          if (!rateLimited && (recentSupport ?? 0) === 0) {
+            const first = greetName(knownProfile.full_name);
+            const reply = `Oi${first ? ", " + first : ""}! Identifiquei que você já é aluno(a) da Wise Wolf 😊 Vou encaminhar sua mensagem para a equipe responsável — não precisa preencher nada de matrícula novamente.`;
+            if (await sendWhats(instance, phone, reply)) {
+              await logMsg(sb, tenantId, phone, "support", "out", reply, {
+                student_id: knownProfile.id, kind: "existing_student_handoff",
+              });
+            }
+            const adm = await adminProfile(sb, tenantId);
+            if (adm.ownerPhone) {
+              await sendWhats(instance, adm.ownerPhone, `🎓 *Atendimento de aluno:* ${knownProfile.full_name || phone} enviou uma mensagem no WhatsApp central.\n\n“${(isMedia ? "[mídia]" : text).slice(0, 300)}”\n\nA IA comercial foi bloqueada e o contato foi encaminhado para atendimento humano.`);
+            }
+          }
+        }
+        continue;
+      }
 
       if (cfg?.sdr?.enabled === false || rateLimited) {
         await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia]" : text, { skipped: rateLimited ? "rate_limit" : "disabled", msg_id: msgId });

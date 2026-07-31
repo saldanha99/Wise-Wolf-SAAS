@@ -176,8 +176,9 @@ serve(async (req) => {
 
     const profileUpdate: Record<string, unknown> = { asaas_customer_id: asaasCustomerId };
     if (offer) {
-      profileUpdate.role = "STUDENT";
-      profileUpdate.tenant_id = offer.tenant_id;
+      // begin_enrollment_offer is the authoritative writer for role/tenant_id.
+      // Repeating those unchanged columns here needlessly fires membership and
+      // commercial triggers during the financial sync.
       profileUpdate.monthly_fee = numberValue(offerPayload.value);
       profileUpdate.due_day = numberValue(offerPayload.dueDay);
       profileUpdate.class_frequency = `${numberValue(offerPayload.classesPerWeek) || 1}x`;

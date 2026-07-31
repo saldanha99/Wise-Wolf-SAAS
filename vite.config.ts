@@ -33,9 +33,12 @@ export default defineConfig(({ command, mode }) => {
         if (!isSecure && !isLocalHttp) {
           throw new Error('protocolo inseguro');
         }
+        if (supabaseUrl.hostname.endsWith('.supabase.co')) {
+          throw new Error('Supabase hospedado não é um destino permitido');
+        }
       } catch {
         throw new Error(
-          '[Build bloqueado] VITE_SUPABASE_URL não contém uma URL pública válida.',
+          '[Build bloqueado] VITE_SUPABASE_URL deve apontar para a API própria da VPS.',
         );
       }
     }

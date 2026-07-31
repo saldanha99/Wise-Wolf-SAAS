@@ -16,14 +16,13 @@ export async function getSchoolInfo(tenantId?: string | null): Promise<SchoolInf
 
     try {
         const { data } = await supabase
-            .from('tenants')
-            .select('school_info')
-            .eq('id', tenantId)
-            .single();
+            .rpc('get_my_tenant_config')
+            .maybeSingle();
 
+        const tenantConfig = data as { school_info?: SchoolInfo | null } | null;
         const info: SchoolInfo | null =
-            data?.school_info && Object.keys(data.school_info).length > 0
-                ? (data.school_info as SchoolInfo)
+            tenantConfig?.school_info && Object.keys(tenantConfig.school_info).length > 0
+                ? tenantConfig.school_info
                 : null;
 
         cache.set(tenantId, info);

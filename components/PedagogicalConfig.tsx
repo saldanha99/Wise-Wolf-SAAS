@@ -197,6 +197,26 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       }) || [];
 
       setMaterials(visibleMaterials);
+
+      // Auto-recuperação: se uma publicação anterior falhou por indisponibilidade
+      // temporária, a própria tela administrativa tenta novamente sem duplicar itens.
+      const recoverableIds = visibleMaterials
+        .filter(m => {
+          const syncPending = ['PENDING', 'FAILED'].includes(m.hub_sync_status);
+          const sameTenant = String(m.tenant_id) === String(targetTenant);
+          const canRetry = user.role === UserRole.SUPER_ADMIN ||
+            (sameTenant && (user.role === UserRole.SCHOOL_ADMIN || m.uploaded_by === user.id));
+          return (m.approval_status || 'APPROVED') === 'APPROVED' && syncPending && canRetry;
+        })
+        .slice(0, 10)
+        .map(m => m.id);
+      if (recoverableIds.length > 0) {
+        void supabase.functions.invoke('sync-hub-material', {
+          body: { materialIds: recoverableIds },
+        }).then(({ error: syncError }) => {
+          if (syncError) console.warn('A recuperação automática de materiais do Hub ficará para a próxima tentativa.', syncError);
+        });
+      }
     } catch (err) {
       console.error(err);
     }
@@ -252,10 +272,23 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         throw new Error(`Erro de Banco de Dados: ${error.message} (${error.code})`);
       }
 
+      let hubSyncPending = false;
+      if (approvalStatus === 'APPROVED') {
+        const { data: syncResult, error: syncError } = await supabase.functions.invoke('sync-hub-material', {
+          body: { materialId: data.id },
+        });
+        hubSyncPending = Boolean(syncError || syncResult?.ok === false);
+        if (hubSyncPending) {
+          console.warn('Material salvo; sincronização com o Hub ficará pendente.', syncError || syncResult);
+        }
+      }
+
       setMaterials(prev => [data, ...prev]);
       alert(approvalStatus === 'PENDING'
-        ? '✅ Material enviado para aprovação do diretor. Assim que for aprovado, entra no banco de materiais.'
-        : 'Material salvo com sucesso!');
+        ? '✅ Material enviado para aprovação do diretor. Depois da aprovação, ele entra automaticamente na Biblioteca do Hub.'
+        : hubSyncPending
+          ? '✅ Material salvo. A cópia para a Biblioteca do Hub ficou na fila e poderá ser reprocessada.'
+          : '✅ Material salvo e publicado na Biblioteca do Hub!');
       setNewMaterial(m => ({ title: '', level: m.level, type: 'PDF', file: null, url: '', category: 'General', niche: m.niche, collection_id: m.collection_id, part_number: m.part_number !== '' ? String(Number(m.part_number) + 1) : '' }));
     } catch (err: any) {
       console.error('Upload Error Details:', err);

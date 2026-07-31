@@ -8,8 +8,10 @@
  * Retry schedule: 30s → 2min → 10min → 1h → DLQ
  */
 
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -33,6 +35,16 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
+    if (req.method !== 'POST') return methodNotAllowed(corsHeaders);
+
+    const auth = await authorizeRequest(req, { corsHeaders, allowService: true });
+    if (auth.ok === false) return auth.response;
+    if (!auth.context.isService) {
+        return new Response(JSON.stringify({ error: 'Service authentication required' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
 
     const t0 = Date.now();
     let processed = 0;
@@ -41,11 +53,7 @@ serve(async (req) => {
     let dlq = 0;
 
     try {
-        const supabaseAdmin = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-            { auth: { autoRefreshToken: false, persistSession: false } }
-        );
+        const supabaseAdmin = auth.context.admin;
 
         // ── FETCH PENDING MESSAGES ────────────────────────────────────
         // Using raw SQL for FOR UPDATE SKIP LOCKED

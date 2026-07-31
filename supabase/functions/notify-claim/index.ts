@@ -1,5 +1,7 @@
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { authorizeRequest, hasTenantAccess, methodNotAllowed } from "../_shared/request-auth.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -45,19 +47,16 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
+    if (req.method !== 'POST') return methodNotAllowed(corsHeaders)
+
+    const auth = await authorizeRequest(req, {
+        corsHeaders,
+        allowedRoles: ['TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN'],
+    })
+    if (auth.ok === false) return auth.response
 
     try {
-        // 1. CLIENTE SUPABASE ADMIN (Bypass RLS)
-        const supabaseAdmin = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-            {
-                auth: {
-                    autoRefreshToken: false,
-                    persistSession: false
-                }
-            }
-        )
+        const supabaseAdmin = auth.context.admin
 
         // 2. INPUTS
         const { professorName, studentName, dateFormatted, directorGroupId, opportunityId } = await req.json()
@@ -73,12 +72,28 @@ serve(async (req) => {
         // Buscamos user_id E tenant_id
         const { data: opp, error: oppError } = await supabaseAdmin
             .from('opportunities')
-            .select('user_id, tenant_id, student_phone')
+            .select('user_id, tenant_id, student_phone, winner_teacher_id')
             .eq('id', opportunityId)
             .single();
 
         if (oppError || !opp) {
             throw new Error(`Erro ao buscar Opportunity: ${oppError?.message || 'Not found'}`);
+        }
+
+        if (!hasTenantAccess(auth.context, opp.tenant_id)) {
+            return new Response(JSON.stringify({ error: 'Opportunity belongs to another tenant' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+        }
+        if (
+            auth.context.profile?.role === 'TEACHER'
+            && opp.winner_teacher_id !== auth.context.userId
+        ) {
+            return new Response(JSON.stringify({ error: 'Opportunity was not claimed by this teacher' }), {
+                status: 403,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
         }
 
         const ownerId = opp.user_id;

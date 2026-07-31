@@ -8,7 +8,7 @@ interface Lead {
     name: string;
     email: string;
     phone: string;
-    status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'TRIAL_DONE' | 'CONVERTED' | 'LOST';
+    status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'TRIAL_DONE' | 'WON' | 'LOST';
     created_at: string;
     notes?: string;
     scheduled_at?: string;
@@ -91,7 +91,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             return;
         }
 
-        if (newStatus === 'CONVERTED') {
+        if (newStatus === 'WON') {
             const lead = leads.find(l => l.id === id);
             if (lead) setConvertingLead(lead);
             return;
@@ -246,7 +246,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
         { id: 'CONTACTED', label: 'AGENDAMENTO EM ABERTO', color: 'bg-yellow-500', count: leads.filter(l => l.status === 'CONTACTED').length },
         { id: 'SCHEDULED', label: 'AULA EXPERIMENTAL', color: 'bg-purple-500', count: leads.filter(l => l.status === 'SCHEDULED').length },
         { id: 'TRIAL_DONE', label: 'PÓS-AULA (FEEDBACK)', color: 'bg-orange-500', count: leads.filter(l => l.status === 'TRIAL_DONE').length },
-        { id: 'CONVERTED', label: 'MATRICULADOS', color: 'bg-green-500', count: leads.filter(l => l.status === 'CONVERTED').length },
+        { id: 'WON', label: 'MATRICULADOS', color: 'bg-green-500', count: leads.filter(l => l.status === 'WON').length },
         { id: 'LOST', label: 'PERDIDOS', color: 'bg-red-500', count: leads.filter(l => l.status === 'LOST').length },
     ];
 
@@ -373,7 +373,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                         ) : col.id === 'TRIAL_DONE' ? (
                                             <div className="flex gap-2 w-full">
                                                 <button
-                                                    onClick={() => updateStatus(lead.id, 'CONVERTED')}
+                                                    onClick={() => updateStatus(lead.id, 'WON')}
                                                     className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg text-xs font-bold hover:bg-green-100 transition-colors"
                                                 >
                                                     <CheckCircle size={12} /> Matricular

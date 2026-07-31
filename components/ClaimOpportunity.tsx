@@ -343,8 +343,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId }) => {
                 const notifyResponse = await fetch(FUNCTION_URL, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                        'x-user-token': accessToken,
+                        'Authorization': `Bearer ${accessToken}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({

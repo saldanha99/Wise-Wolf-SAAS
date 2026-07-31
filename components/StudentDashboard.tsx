@@ -95,13 +95,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
         // 1. Teacher Name (if next class exists and unknown)
         if (studentContext.nextClass?.teacher_id && !assignedTeacher) {
-          const { data } = await supabase.from('profiles').select('id, full_name, phone, avatar_url').eq('id', studentContext.nextClass.teacher_id).single();
-          if (data) setAssignedTeacher(data);
+          const { data } = await supabase.rpc('get_my_teacher_directory');
+          const teacher = (data || []).find((item: any) => item.id === studentContext.nextClass?.teacher_id);
+          if (teacher) setAssignedTeacher(teacher);
         }
 
         // 2. Leaderboard
         if (effectiveTenantId && leaderboard.length === 0) {
-          const { data: lb } = await supabase.from('profiles').select('full_name, xp').eq('role', 'STUDENT').eq('tenant_id', effectiveTenantId).order('xp', { ascending: false }).limit(5);
+          const { data: lb } = await supabase.rpc('get_my_tenant_leaderboard', { p_limit: 5 });
           if (lb) setLeaderboard(lb);
         }
 

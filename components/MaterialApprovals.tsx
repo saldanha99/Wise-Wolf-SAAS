@@ -25,9 +25,24 @@ const MaterialApprovals: React.FC<Props> = () => {
     }
     setBusy(id);
     const { data: res, error } = await supabase.rpc('review_material', { p_id: id, p_approve: approve, p_reason: reason });
+    if (error || res?.ok === false) {
+      setBusy(null);
+      alert('Erro ao revisar material.');
+      return;
+    }
+    if (approve) {
+      const { data: syncResult, error: syncError } = await supabase.functions.invoke('sync-hub-material', {
+        body: { materialId: id },
+      });
+      if (syncError || syncResult?.ok === false) {
+        console.warn('Material aprovado; sincronização com o Hub ficará pendente.', syncError || syncResult);
+        alert('✅ Material aprovado. A cópia para a Biblioteca do Hub ficou na fila e poderá ser reprocessada.');
+      } else {
+        alert('✅ Material aprovado e publicado na Biblioteca do Hub!');
+      }
+    }
     setBusy(null);
-    if (error || res?.ok === false) { alert('Erro ao revisar material.'); return; }
-    load();
+    await load();
   };
 
   const fmt = (x?: string) => x ? new Date(x).toLocaleDateString('pt-BR') : '';

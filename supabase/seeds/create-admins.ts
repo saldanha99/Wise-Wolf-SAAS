@@ -1,7 +1,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dvalxbtngopxopzcbfdm.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://api.wisewolflanguage.com.br';
+if (new URL(supabaseUrl).hostname.endsWith('.supabase.co')) {
+    throw new Error('Hosted Supabase is not an allowed seed target.');
+}
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseServiceKey) {

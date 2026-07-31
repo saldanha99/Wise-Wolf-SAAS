@@ -1,8 +1,15 @@
 
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const EVOLUTION_BASE_URL = "https://api.2b.app.br";
 const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 interface RequestBody {
     student_name: string;
@@ -14,11 +21,15 @@ interface RequestBody {
 serve(async (req) => {
     // CORS Headers
     if (req.method === "OPTIONS") {
-        return new Response("ok", {
-            headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-            },
+        return new Response("ok", { headers: corsHeaders });
+    }
+    if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+    const auth = await authorizeRequest(req, { corsHeaders, allowService: true });
+    if (auth.ok === false) return auth.response;
+    if (!auth.context.isService) {
+        return new Response(JSON.stringify({ error: "Service authentication required" }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     }
 
@@ -77,14 +88,14 @@ Seu contrato de ${class_frequency}x na semana foi assinado com sucesso.
         console.log("Success:", data);
 
         return new Response(JSON.stringify(data), {
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
     } catch (error: any) {
         console.error("Edge Function Error:", error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 400,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     }
 });

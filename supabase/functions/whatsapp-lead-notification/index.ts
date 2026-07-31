@@ -1,5 +1,7 @@
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts"
 
 const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') || "https://api.2b.app.br";
 const EVOLUTION_API_TOKEN = Deno.env.get('EVOLUTION_API_KEY') || "";
@@ -16,6 +18,15 @@ serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
+    if (req.method !== 'POST') return methodNotAllowed(corsHeaders)
+    const auth = await authorizeRequest(req, { corsHeaders, allowService: true })
+    if (auth.ok === false) return auth.response
+    if (!auth.context.isService) {
+        return new Response(JSON.stringify({ error: 'Service authentication required' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+    }
 
     try {
         const { name, email, phone, source, notes, tenant_id, school_name } = await req.json();
@@ -24,10 +35,7 @@ serve(async (req) => {
             throw new Error("Missing required fields: phone, name, tenant_id");
         }
 
-        // 1. Initialize Supabase Admin Client
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        const supabase = auth.context.admin;
 
         // 2. Fetch Director's WhatsApp Instance + Group Config
         let instanceName = '';

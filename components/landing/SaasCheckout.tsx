@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Loader2, ArrowRight, Check, Building2, User, Mail, Phone, FileText, MapPin, CreditCard, Smartphone, Barcode, Copy, Sparkles, Shield, Lock, AlertCircle, ChevronLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -15,6 +15,53 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<any>(null);
+    const [idempotencyKey] = useState(() => crypto.randomUUID());
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        const previouslyFocused = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return;
+            }
+            if (event.key !== 'Tab' || !dialogRef.current) return;
+            const focusable = (Array.from(
+                dialogRef.current.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+            ) as HTMLElement[]).filter((element) => element.getClientRects().length > 0);
+            if (focusable.length === 0) {
+                event.preventDefault();
+                closeButtonRef.current?.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.cancelAnimationFrame(focusFrame);
+            document.removeEventListener('keydown', handleKeyDown);
+            document.body.style.overflow = previousOverflow;
+            window.requestAnimationFrame(() => previouslyFocused?.focus());
+        };
+    }, [onClose]);
 
     const [form, setForm] = useState({
         school_name: '',
@@ -87,6 +134,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                 plan_id: plan.id,
                 billing_cycle: yearly ? 'YEARLY' : 'MONTHLY',
                 billing_type: form.billing_type,
+                idempotency_key: idempotencyKey,
                 postalCode: form.postalCode,
                 address: form.address,
                 addressNumber: form.addressNumber,
@@ -115,23 +163,28 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-            <div className="bg-slate-900 border border-white/10 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        <div
+            className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="saas-checkout-title"
+        >
+            <div ref={dialogRef} className="bg-slate-900 border border-white/10 rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
 
                 {/* HEADER */}
                 <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
                         {step !== 'INFO' && step !== 'SUCCESS' && (
-                            <button onClick={() => setStep('INFO')} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400">
+                            <button onClick={() => setStep('INFO')} aria-label="Voltar para os dados da escola" className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400">
                                 <ChevronLeft size={16} />
                             </button>
                         )}
                         <div>
                             <p className="text-[10px] uppercase tracking-widest text-violet-400 font-bold">{step === 'SUCCESS' ? 'Sucesso!' : 'Contratando'}</p>
-                            <p className="text-base font-black text-white">Plano {plan.name} · {yearly ? 'Anual' : 'Mensal'}</p>
+                            <p id="saas-checkout-title" className="text-base font-black text-white">Plano {plan.name} · {yearly ? 'Anual' : 'Mensal'}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl text-slate-400">
+                    <button ref={closeButtonRef} onClick={onClose} aria-label="Fechar checkout" className="p-2 hover:bg-white/10 rounded-xl text-slate-400">
                         <X size={18} />
                     </button>
                 </div>
@@ -316,8 +369,10 @@ const StepSuccess: React.FC<{ result: any; plan: any }> = ({ result, plan }) => 
                     <Check size={36} className="text-white" />
                 </div>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Bem-vindo ao Wise Wolf! 🐺</h2>
-            <p className="text-slate-400 mb-6">Seu trial de 14 dias começou. Você tem acesso completo agora.</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-white mb-2">Sua contratação foi registrada</h2>
+            <p className="text-slate-400 mb-6">
+                Assim que o pagamento for confirmado, sua escola será criada automaticamente.
+            </p>
 
             {result?.pix?.qr_code && (
                 <div className="bg-white rounded-2xl p-4 mb-4 inline-block">
@@ -348,14 +403,15 @@ const StepSuccess: React.FC<{ result: any; plan: any }> = ({ result, plan }) => 
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 text-left mb-6">
                 <p className="text-xs text-slate-300 font-bold mb-2">📬 Próximos passos:</p>
                 <ul className="text-xs text-slate-400 space-y-1">
-                    <li>• Enviamos o link de acesso por e-mail</li>
-                    <li>• Trial completo até <b className="text-white">{result?.trial_ends_at && new Date(result.trial_ends_at).toLocaleDateString('pt-BR')}</b></li>
-                    <li>• Nossa equipe vai te ligar nas próximas 24h para onboarding</li>
+                    <li>• Conclua o pagamento pela opção escolhida</li>
+                    <li>• O Asaas confirma o pagamento com segurança</li>
+                    <li>• Você recebe por e-mail o link para definir sua senha</li>
+                    <li>• Nossa equipe acompanha o início da sua operação</li>
                 </ul>
             </div>
 
             <a href="/" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110">
-                <Sparkles size={14} /> Acessar a plataforma
+                <Sparkles size={14} /> Ir para o login
             </a>
         </div>
     );

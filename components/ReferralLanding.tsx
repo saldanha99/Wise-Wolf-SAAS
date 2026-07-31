@@ -57,50 +57,18 @@ const ReferralLanding: React.FC = () => {
         setLoading(true);
 
         try {
-            // Verifica se o email já foi cadastrado como indicado
-            const { data: existing } = await supabase
-                .from('referral_invites')
-                .select('id, status')
-                .eq('invitee_email', email.toLowerCase().trim())
-                .eq('referrer_id', referrerId)
-                .maybeSingle();
-
-            if (existing) {
-                if (existing.status === 'CONVERTED') {
-                    setAlreadyRegistered(true);
-                    setSuccess(true);
-                    return;
-                }
-                // Já existe invite PENDING — atualiza dados
-                await supabase
-                    .from('referral_invites')
-                    .update({
-                        invitee_name: name.trim(),
-                        invitee_phone: phone.replace(/\D/g, ''),
-                        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                    })
-                    .eq('id', existing.id);
-            } else {
-                const { error: insertErr } = await supabase
-                    .from('referral_invites')
-                    .insert({
-                        referrer_id: referrerId,
-                        invitee_name: name.trim(),
-                        invitee_email: email.toLowerCase().trim(),
-                        invitee_phone: phone.replace(/\D/g, ''),
-                    });
-
-                if (insertErr) throw new Error(insertErr.message);
-            }
-
-            // Disparo automático de WhatsApp de boas-vindas (não-bloqueante)
-            supabase.functions.invoke('referral-welcome', {
+            // O cadastro e a notificação acontecem juntos no servidor, com
+            // validação do indicador e limite antiabuso.
+            const { data, error: submitError } = await supabase.functions.invoke('referral-welcome', {
                 body: {
                     invitee_name: name.trim(),
+                    invitee_email: email.toLowerCase().trim(),
                     invitee_phone: phone.replace(/\D/g, ''),
                     referrer_id: referrerId,
                 }
-            }).catch(e => console.warn('referral-welcome disparo:', e));
+            });
+            if (submitError) throw submitError;
+            if (data?.already_registered) setAlreadyRegistered(true);
 
             setSuccess(true);
         } catch (err: any) {
