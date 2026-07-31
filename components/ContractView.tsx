@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { contractReferenceDate, formatContractPeriod } from '../lib/contractDates';
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { AlertCircle, Download, FileText, Loader2, RefreshCw } from 'lucide-react';
@@ -189,15 +190,9 @@ const ContractView: React.FC<ContractViewProps> = ({
     if (profile.module?.includes('Semestral') || profile.fidelity_plan === 'SEMESTER') { duration = 6; planName = 'Plano Semestral'; }
     else if (profile.module?.includes('Anual') || profile.fidelity_plan === 'ANNUAL') { duration = 12; planName = 'Plano Anual'; }
 
-    const enrollmentDate = new Date(profile.created_at || new Date());
+    const enrollmentDate = contractReferenceDate(profile.created_at);
     const dueDay = profile.due_day || 1;
-    let startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth(), dueDay);
-    if (enrollmentDate.getDate() > dueDay) {
-        startDateObj = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth() + 1, dueDay);
-    }
-    const endDateObj = new Date(startDateObj.getFullYear(), startDateObj.getMonth() + duration, dueDay);
-    const startDate = startDateObj.toLocaleDateString('pt-BR');
-    const endDate = endDateObj.toLocaleDateString('pt-BR');
+    const { startDate, endDate } = formatContractPeriod(enrollmentDate, dueDay, duration);
     const monthlyFee = Number(profile.monthly_fee || 0);
     const totalValue = (monthlyFee * duration).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 

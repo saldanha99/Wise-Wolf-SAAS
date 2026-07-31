@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
+import { contractReferenceDate, formatContractPeriod } from '../lib/contractDates';
 import { CheckCircle, XCircle, FileText, Image, ExternalLink, Search, Loader2, AlertCircle, Eye, X, Download } from 'lucide-react';
 import { ContractDocument } from './ContractDocument'; // Import the document component
 
@@ -265,13 +266,12 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
         s.student_email?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     const selectedContractProps = selectedStudent ? (() => {
-        const enrollmentDate = new Date(selectedStudent.accepted_at);
+        // accepted_at é NULO enquanto o aluno não assinou. `new Date(null)` vira
+        // o epoch — e no fuso de Brasília isso é 31/12/1969, o que empurrava a
+        // vigência para "10/01/1970 a 10/01/1971" no contrato impresso.
+        const enrollmentDate = contractReferenceDate(selectedStudent.accepted_at);
         const dueDay = selectedStudent.due_day || 1;
-        let startDate = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth(), dueDay);
-        if (enrollmentDate.getDate() > dueDay) {
-            startDate = new Date(enrollmentDate.getFullYear(), enrollmentDate.getMonth() + 1, dueDay);
-        }
-        const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 12, dueDay);
+        const { startDate, endDate } = formatContractPeriod(enrollmentDate, dueDay, 12);
         const monthlyFee = Number(String(selectedStudent.plan_value || '0').replace(/\./g, '').replace(',', '.'));
         return {
             studentName: selectedStudent.student_name,
@@ -283,8 +283,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
             planValue: selectedStudent.plan_value || '0,00',
             totalValue: (monthlyFee * 12).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
             planDuration: 12,
-            startDate: startDate.toLocaleDateString('pt-BR'),
-            endDate: endDate.toLocaleDateString('pt-BR'),
+            startDate,
+            endDate,
             dueDay,
             classFrequency: selectedStudent.class_frequency ? parseInt(String(selectedStudent.class_frequency), 10) : 2,
             acceptedAt: selectedStudent.accepted_at,
