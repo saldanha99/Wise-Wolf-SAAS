@@ -48,6 +48,7 @@ import {
 } from "../src/services/useWolfieRealtime";
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
+import { WolfieLiveBalance } from "./WolfieLiveBalance";
 
 // ============================================================
 // TYPES
@@ -3103,7 +3104,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     }`;
   };
 
-  const handleModeSelection = (mode: "voice" | "text") => {
+  /**
+   * Duas imersões distintas, não um modo com toggle escondido:
+   *
+   * - "free"  → prática livre (escrita e voz clássica). Custa quase nada e é
+   *             ilimitada; é onde o aluno deve poder ficar à vontade.
+   * - "live"  → chamada ao vivo speech-to-speech. É a cara, medida em minutos.
+   *
+   * O aluno precisa saber em qual está ANTES de entrar — antes, o ao vivo era
+   * um botãozinho dentro do modo voz, e ninguém percebia o que estava gastando.
+   */
+  const handleModeSelection = (mode: "voice" | "text" | "live") => {
     // Desbloqueia AudioContext no iOS — esse clique é o primeiro gesto do usuário
     unlockAudio();
     setAudioGestureReady(true);
@@ -3112,10 +3123,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     setContext("");
     setShowTextInput(mode === "text");
     setVoiceTransport(
-      mode === "voice"
-        ? WOLFIE_REALTIME_ENABLED
-          ? "realtime"
-          : "classic"
+      mode === "live"
+        ? "realtime"
+        : mode === "voice"
+        ? "classic"
         : "text",
     );
     setHasSelectedTopic(true);
@@ -3220,46 +3231,75 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl mx-auto">
-            {/* Voice Mode */}
-            <button
-              onClick={() => handleModeSelection("voice")}
-              className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-indigo-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-indigo-500 transition-all duration-300">
-                <Mic
-                  size={24}
-                  className="sm:w-8 sm:h-8 text-indigo-400 group-hover:text-white transition-colors"
-                />
-              </div>
-              <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">
-                Por Voz
-              </h3>
-              <p className="text-slate-400 text-xs sm:text-sm hidden sm:block">
-                Pratique com conversas em tempo real usando o microfone.
-              </p>
-            </button>
+          {/* ── PRÁTICA LIVRE — ilimitada, custa quase nada ── */}
+          <div className="w-full max-w-3xl mx-auto">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 text-left">
+              Prática livre · ilimitada
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <button
+                onClick={() => handleModeSelection("voice")}
+                className="group relative p-4 sm:p-6 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all overflow-hidden flex flex-col items-center text-center"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-indigo-500 transition-all">
+                  <Mic size={22} className="text-indigo-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">Falar</h3>
+                <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
+                  Você fala, o Wolfie responde por voz e texto.
+                </p>
+              </button>
 
-            {/* Text Mode */}
-            <button
-              onClick={() => handleModeSelection("text")}
-              className="group relative p-5 sm:p-8 rounded-2xl sm:rounded-3xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all duration-300 overflow-hidden flex flex-col items-center text-center"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-emerald-500/20 flex items-center justify-center mb-3 sm:mb-6 group-hover:scale-110 group-hover:bg-emerald-500 transition-all duration-300">
-                <MessageSquare
-                  size={24}
-                  className="sm:w-8 sm:h-8 text-emerald-400 group-hover:text-white transition-colors"
-                />
-              </div>
-              <h3 className="text-base sm:text-2xl font-bold text-white mb-1 sm:mb-3">
-                Por Texto
-              </h3>
-              <p className="text-slate-400 text-xs sm:text-sm hidden sm:block">
-                Pratique a escrita através do chat interativo do Wolfie.
-              </p>
-            </button>
+              <button
+                onClick={() => handleModeSelection("text")}
+                className="group relative p-4 sm:p-6 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-slate-700/80 hover:bg-slate-800/90 active:scale-95 transition-all overflow-hidden flex flex-col items-center text-center"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-emerald-500 transition-all">
+                  <MessageSquare size={22} className="text-emerald-400 group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">Escrever</h3>
+                <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
+                  Converse por escrito, no seu ritmo.
+                </p>
+              </button>
+            </div>
+
+            {/* ── CHAMADA AO VIVO — premium, medida em minutos ── */}
+            {WOLFIE_REALTIME_ENABLED && (
+              <>
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/80 mb-3 mt-7 text-left">
+                  Chamada ao vivo · premium
+                </p>
+                <button
+                  onClick={() => handleModeSelection("live")}
+                  className="group relative w-full p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-slate-900/80 to-slate-900/80 backdrop-blur-xl border border-amber-500/30 hover:border-amber-400/60 active:scale-[0.99] transition-all overflow-hidden flex items-center gap-4 text-left"
+                >
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-full bg-amber-500/20 flex items-center justify-center group-hover:bg-amber-500 transition-all">
+                    <Radio size={22} className="text-amber-300 group-hover:text-white transition-colors" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm sm:text-lg font-bold text-white">
+                        Conversa ao vivo
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-[9px] font-black text-amber-300 uppercase tracking-wider">
+                        Premium
+                      </span>
+                    </div>
+                    <p className="text-slate-400 text-[11px] sm:text-xs mt-0.5">
+                      Fala natural, sem esperar: o Wolfie ouve e responde enquanto você fala.
+                    </p>
+                    {/* Saldo à vista ANTES de entrar — o aluno não pode descobrir
+                        o limite só quando for cortado no meio da conversa. */}
+                    <div className="mt-2">
+                      <WolfieLiveBalance compact />
+                    </div>
+                  </div>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
