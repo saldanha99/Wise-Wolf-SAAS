@@ -261,6 +261,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260730020238_fix_tenant_membership_upsert_cardinality.sql"
   "supabase/migrations/20260730022012_enforce_vps_only_runtime_endpoints.sql"
   "supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
+  "supabase/migrations/20260731230000_settle_unlogged_confirmed_classes.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

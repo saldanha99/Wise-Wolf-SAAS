@@ -34,9 +34,33 @@ const RESPONSE_LABEL: Record<string, string> = {
   STUDENT_SELF_ABSENT: 'Aluno diz: eu que faltei',
 };
 
+// Aula que o aluno confirmou e o professor NUNCA lançou. Sem lançamento não há
+// pagamento, e depois de 45 dias a aula some da tela do professor — ficava órfã
+// para sempre. Aqui a direção regulariza a partir da confirmação do aluno.
+interface UnloggedClass {
+  id: string;
+  student_name: string | null;
+  class_date: string;
+  class_time: string | null;
+  student_response: string;
+  valor: number;
+}
+interface UnloggedTeacher {
+  teacher_id: string;
+  teacher_name: string;
+  aulas: number;
+  valor: number;
+  mais_antiga: string;
+  classes: UnloggedClass[];
+}
+
 const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
   const [conflicts, setConflicts] = useState<Conf[]>([]);
   const [alerts, setAlerts] = useState<Conf[]>([]);
+  const [unlogged, setUnlogged] = useState<UnloggedTeacher[]>([]);
+  const [unloggedTotal, setUnloggedTotal] = useState({ aulas: 0, valor: 0 });
+  const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
+  const [settling, setSettling] = useState<string | null>(null);
   const [stats, setStats] = useState({ pending: 0, confirmed: 0, conflict: 0 });
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState<string | null>(null);
@@ -83,12 +107,53 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
         else if (r.status === 'CONFLICT') counts.conflict++;
       });
       setStats(counts);
+
+      // Aulas que o aluno confirmou e ninguém lançou (por professor)
+      const { data: unl } = await supabase.rpc('list_unlogged_confirmed_classes', { p_days: 180 });
+      const payload = unl as any;
+      if (payload?.ok) {
+        setUnlogged((payload.teachers || []) as UnloggedTeacher[]);
+        setUnloggedTotal({ aulas: Number(payload.total) || 0, valor: Number(payload.valor_total) || 0 });
+      }
     } catch (e) {
       console.error('Erro ao carregar disputas:', e);
     } finally {
       setLoading(false);
     }
   }, [tenantId]);
+
+  const money = (v: number) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+  // Lança (e portanto PAGA) as aulas escolhidas, uma a uma. A RPC é idempotente:
+  // se a aula já tiver lançamento, ela devolve "ja_lancado" e não duplica.
+  const settle = async (items: UnloggedClass[], teacherName: string, pay: boolean) => {
+    const total = items.reduce((s, i) => s + Number(i.valor || 0), 0);
+    const acao = pay
+      ? `LANÇAR e pagar ${items.length} aula(s) de ${teacherName} — ${money(total)}`
+      : `DESCARTAR ${items.length} aula(s) de ${teacherName} (não serão pagas)`;
+    if (!confirm(`${acao}.\n\nIsso usa a confirmação que o próprio aluno deu. Confirmar?`)) return;
+
+    setSettling(items.length === 1 ? items[0].id : teacherName);
+    try {
+      let ok = 0; let já = 0;
+      for (const item of items) {
+        const { data, error } = await supabase.rpc('settle_confirmed_class', {
+          p_confirmation_id: item.id,
+          p_pay: pay,
+        });
+        if (error) throw error;
+        if ((data as any)?.already) já++;
+        else if ((data as any)?.ok) ok++;
+        else throw new Error((data as any)?.error || 'falha ao regularizar');
+      }
+      alert(`${ok} aula(s) regularizada(s)${já ? ` · ${já} já estavam lançadas` : ''}.`);
+      await load();
+    } catch (e: any) {
+      alert(`Erro ao regularizar: ${e.message}`);
+    } finally {
+      setSettling(null);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -145,6 +210,82 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
           <p className="text-2xl font-black text-brand-text">{stats.conflict}</p>
         </div>
       </div>
+
+      {/* Aulas confirmadas pelo aluno que nunca foram lançadas */}
+      {unlogged.length > 0 && (
+        <div className="bg-brand-surface border border-amber-300 dark:border-amber-800/50 rounded-2xl p-5">
+          <h3 className="text-sm font-bold text-brand-text mb-1 flex items-center gap-2">
+            <Clock size={16} className="text-amber-600" /> Aulas confirmadas pelo aluno e não lançadas
+            <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full">{unloggedTotal.aulas}</span>
+          </h3>
+          <p className="text-xs text-brand-muted mb-4">
+            O aluno respondeu que a aula aconteceu, mas o professor nunca lançou — então <strong>ninguém foi pago por ela</strong>.
+            Depois de 45 dias a aula some da tela do professor; aqui você regulariza pela confirmação do aluno.
+            Passivo estimado: <strong>{money(unloggedTotal.valor)}</strong>.
+          </p>
+
+          <div className="space-y-3">
+            {unlogged.map(t => (
+              <div key={t.teacher_id} className="border border-brand-border rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between gap-3 flex-wrap p-4 bg-amber-50/50 dark:bg-amber-900/10">
+                  <button
+                    onClick={() => setExpandedTeacher(expandedTeacher === t.teacher_id ? null : t.teacher_id)}
+                    className="min-w-0 text-left"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-bold text-brand-text">
+                      <UserIcon size={14} className="text-brand-muted" /> {t.teacher_name}
+                    </div>
+                    <p className="text-xs text-brand-muted mt-0.5">
+                      {t.aulas} aula(s) · {money(t.valor)} · desde {fmtDate(t.mais_antiga)} ·{' '}
+                      <span className="underline">{expandedTeacher === t.teacher_id ? 'ocultar' : 'ver aulas'}</span>
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => settle(t.classes, t.teacher_name, true)}
+                    disabled={settling !== null}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-50"
+                  >
+                    {settling === t.teacher_name ? 'Lançando…' : `Lançar todas e pagar (${money(t.valor)})`}
+                  </button>
+                </div>
+
+                {expandedTeacher === t.teacher_id && (
+                  <div className="divide-y divide-brand-border">
+                    {t.classes.map(c => (
+                      <div key={c.id} className="flex items-center justify-between gap-3 flex-wrap px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-brand-text">
+                            {fmtDate(c.class_date)}{c.class_time ? ` às ${String(c.class_time).slice(0, 5)}` : ''} · aluno {c.student_name || '—'}
+                          </p>
+                          <p className="text-[11px] text-brand-muted mt-0.5">
+                            {RESPONSE_LABEL[c.student_response] || c.student_response} · {money(c.valor)}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => settle([c], t.teacher_name, true)}
+                            disabled={settling !== null}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold disabled:opacity-50"
+                          >
+                            {settling === c.id ? '…' : 'Lançar e pagar'}
+                          </button>
+                          <button
+                            onClick={() => settle([c], t.teacher_name, false)}
+                            disabled={settling !== null}
+                            className="px-3 py-1.5 rounded-lg border border-brand-border text-brand-muted text-[11px] font-bold disabled:opacity-50"
+                          >
+                            Descartar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Lista de conflitos */}
       <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
