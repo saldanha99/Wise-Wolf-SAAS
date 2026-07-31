@@ -16,7 +16,16 @@ const DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const DEFAULT_VOICE = "marin";
 const MAX_SDP_BYTES = 256_000;
-const MAX_PROMPT_BYTES = 24_000;
+// Custo: as instruções são reenviadas como input a CADA resposta do modelo.
+// O piso das políticas de segurança é ~2.000 caracteres; o resto era contexto
+// variável (RAG, memórias, fatos) que inflava a conta sem ganho proporcional.
+const MAX_PROMPT_BYTES = 12_000;
+// A conversa inteira é recobrada como input a cada turno, então o custo cresce
+// ao quadrado da duração. `retention_ratio` faz a OpenAI podar o histórico e
+// mantém o gasto próximo de linear numa conversa longa.
+const CONTEXT_RETENTION_RATIO = 0.6;
+const MAX_KNOWLEDGE_MATCHES = 4;
+const MAX_KNOWLEDGE_CONTENT_CHARS = 600;
 const REALTIME_SETUP_DEADLINE_MS = 22_000;
 const EMBEDDING_STEP_TIMEOUT_MS = 5_000;
 const REALTIME_CALL_MIN_BUDGET_MS = 2_500;
@@ -268,13 +277,13 @@ async function loadStudentContext(
       "fact_type,subject_key,value,confirmed_at,updated_at",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
       .eq("status", "active").eq("verification_status", "confirmed")
-      .order("updated_at", { ascending: false }).limit(12),
+      .order("updated_at", { ascending: false }).limit(8),
     db.from("wolfie_memory_items").select(
       "kind,memory_key,content,confidence,occurrence_count,last_seen_at,expires_at",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
       .eq("status", "active").eq("sensitive", false)
       .neq("kind", "personal_story")
-      .order("last_seen_at", { ascending: false }).limit(12),
+      .order("last_seen_at", { ascending: false }).limit(6),
     db.from("ai_knowledge_bases").select(
       "id,embedding_model,embedding_dimensions,retrieval_config",
     ).eq("tenant_id", tenantId).eq("purpose", "WOLFIE_TUTOR")
@@ -406,8 +415,8 @@ async function retrieveKnowledge(
   const config = isRecord(base.retrieval_config) ? base.retrieval_config : {};
   const configuredCount = Number(config.match_count);
   const matchCount = Number.isFinite(configuredCount)
-    ? Math.max(1, Math.min(8, Math.trunc(configuredCount)))
-    : 5;
+    ? Math.max(1, Math.min(MAX_KNOWLEDGE_MATCHES, Math.trunc(configuredCount)))
+    : 3;
   const configuredSimilarity = Number(config.min_similarity);
   const minSimilarity = Number.isFinite(configuredSimilarity)
     ? Math.max(0.2, Math.min(0.95, configuredSimilarity))
@@ -477,7 +486,7 @@ async function retrieveKnowledge(
       .filter(isRecord)
       .map((row: KnowledgeMatch) => ({
         title: boundedText(row.title, 180) || "Material pedagógico",
-        content: boundedText(row.content, 1_200),
+        content: boundedText(row.content, MAX_KNOWLEDGE_CONTENT_CHARS),
         similarity: typeof row.similarity === "number" ? row.similarity : 0,
       }))
       .filter((row) => row.content)
@@ -699,6 +708,12 @@ function openAiSession(
     instructions,
     reasoning: { effort: "low" },
     max_output_tokens: 512,
+    // Sem isto o histórico inteiro é recobrado como input a cada turno e a
+    // conta cresce ao quadrado da duração da conversa.
+    truncation: {
+      type: "retention_ratio",
+      retention_ratio: CONTEXT_RETENTION_RATIO,
+    },
     audio: {
       input: {
         transcription: {
@@ -709,7 +724,9 @@ function openAiSession(
         noise_reduction: { type: "near_field" },
         turn_detection: {
           type: "semantic_vad",
-          eagerness: "high",
+          // "high" respondia a quase qualquer ruído e gerava turnos pagos que
+          // o aluno nunca pediu. "medium" ainda deixa a conversa fluida.
+          eagerness: "medium",
           create_response: true,
           interrupt_response: true,
         },

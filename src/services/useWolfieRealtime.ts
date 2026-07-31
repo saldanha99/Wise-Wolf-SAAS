@@ -3,6 +3,7 @@ import { FUNCTIONS_URL, supabase, SUPABASE_ANON_KEY } from "../../lib/supabase";
 import {
   estimateRoughAsrConfidence,
   extractWolfieRealtimeResponseTranscript,
+  extractWolfieRealtimeUsage,
   initialWolfieRealtimeProtocolState,
   parseWolfieRealtimeServerEvent,
   reduceWolfieRealtimeProtocol,
@@ -12,6 +13,7 @@ import {
   type WolfieRealtimeServerEvent,
   WolfieRealtimeTurnAssembler,
   type WolfieRealtimeTurnPair,
+  type WolfieRealtimeUsage,
 } from "./wolfieRealtimeProtocol";
 
 const DEFAULT_FUNCTION_URL = `${FUNCTIONS_URL}/wolfie-realtime-session`;
@@ -64,6 +66,8 @@ export interface WolfieRealtimeCompletedTurn {
   asrConfidence: number | null;
   transcriptIsRoughGuide: true;
   completedAt: string;
+  /** Consumo cobrado neste turno; null quando a OpenAI não reportou. */
+  usage: WolfieRealtimeUsage | null;
 }
 
 export interface WolfieRealtimeConnectResult {
@@ -391,6 +395,7 @@ export function useWolfieRealtime(
   const inputDraftsRef = useRef(new Map<string, InputTranscriptDraft>());
   const activeInputItemIdRef = useRef("");
   const activeResponseIdRef = useRef("");
+  const realtimeUsageRef = useRef(new Map<string, WolfieRealtimeUsage>());
   latestOptionsRef.current = options;
 
   const publishCompletedTurns = useCallback((
@@ -406,7 +411,9 @@ export function useWolfieRealtime(
         asrConfidence: pair.input.asrConfidence,
         transcriptIsRoughGuide: true,
         completedAt: new Date().toISOString(),
+        usage: realtimeUsageRef.current.get(pair.responseId) ?? null,
       };
+      realtimeUsageRef.current.delete(pair.responseId);
       if (mountedRef.current) setLastCompletedTurn(turn);
       latestOptionsRef.current.onTurnComplete?.(turn);
     }
@@ -416,6 +423,7 @@ export function useWolfieRealtime(
     turnAssemblerRef.current.reset();
     committedInputIdsRef.current.clear();
     inputDraftsRef.current.clear();
+    realtimeUsageRef.current.clear();
     activeInputItemIdRef.current = "";
     activeResponseIdRef.current = "";
   }, []);
@@ -709,6 +717,12 @@ export function useWolfieRealtime(
         event,
         activeResponseIdRef.current,
       );
+      // Grava o consumo ANTES de finishResponse: é ele que publica o turno,
+      // e o turno já precisa sair com o custo anexado.
+      const usage = extractWolfieRealtimeUsage(event);
+      if (responseId && usage) {
+        realtimeUsageRef.current.set(responseId, usage);
+      }
       if (responseId) {
         publishCompletedTurns(
           turnAssemblerRef.current.finishResponse(

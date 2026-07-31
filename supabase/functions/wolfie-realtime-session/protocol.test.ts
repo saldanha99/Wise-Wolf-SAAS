@@ -2,6 +2,7 @@
 
 import {
   estimateRoughAsrConfidence,
+  extractWolfieRealtimeUsage,
   initialWolfieRealtimeProtocolState,
   parseWolfieRealtimeServerEvent,
   reduceWolfieRealtimeProtocol,
@@ -389,4 +390,52 @@ Deno.test("safety identifier is stable and separates tenants and learners", asyn
   assert(first === repeated, "o identificador deve ser estável");
   assert(first !== otherTenant, "tenants diferentes devem gerar ids distintos");
   assert(first !== otherStudent, "alunos diferentes devem gerar ids distintos");
+});
+
+Deno.test("usage do response.done separa áudio, texto e cache", () => {
+  const usage = extractWolfieRealtimeUsage({
+    type: "response.done",
+    response: {
+      id: "resp_1",
+      usage: {
+        total_tokens: 1500,
+        input_tokens: 1200,
+        output_tokens: 300,
+        input_token_details: {
+          text_tokens: 200,
+          audio_tokens: 1000,
+          cached_tokens: 800,
+        },
+        output_token_details: { text_tokens: 40, audio_tokens: 260 },
+      },
+    },
+  });
+  assert(usage !== null, "usage precisa ser extraído");
+  assert(usage.totalTokens === 1500, `total errado: ${usage.totalTokens}`);
+  // Áudio é a categoria cara: precisa ficar separada do texto para o relatório.
+  assert(
+    usage.inputAudioTokens === 1000 && usage.outputAudioTokens === 260,
+    "tokens de áudio precisam ser isolados",
+  );
+  assert(usage.cachedTokens === 800, "cache precisa ser contabilizado");
+});
+
+Deno.test("usage ausente ou inválido não quebra nem inventa número", () => {
+  assert(
+    extractWolfieRealtimeUsage({ type: "response.done", response: {} }) === null,
+    "sem usage deve retornar null, não zero",
+  );
+  assert(
+    extractWolfieRealtimeUsage({ type: "response.done" }) === null,
+    "sem response deve retornar null",
+  );
+  const negativo = extractWolfieRealtimeUsage({
+    type: "response.done",
+    response: { usage: { total_tokens: -5, input_tokens: "abc" } },
+  });
+  assert(negativo !== null, "usage presente deve ser lido");
+  assert(
+    negativo.totalTokens === 0 && negativo.inputTokens === 0,
+    "valores inválidos viram 0, nunca NaN ou negativo",
+  );
 });

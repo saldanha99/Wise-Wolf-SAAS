@@ -666,6 +666,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 inputMethod: turn.inputMethod,
                 asrConfidence: turn.asrConfidence,
                 transcriptIsRoughGuide: true,
+                // Consumo cobrado pela OpenAI neste turno — base do relatório
+                // de custo por aluno e, depois, da cota mensal.
+                usage: turn.usage,
                 studentLevel,
                 topic,
                 experienceMode,

@@ -175,6 +175,57 @@ export function extractWolfieRealtimeResponseTranscript(
   return fragments.join(" ").replace(/\s+/g, " ").trim().slice(0, 8_000);
 }
 
+/**
+ * Consumo cobrado pela OpenAI naquele turno. Áudio custa muito mais que texto,
+ * e `cachedTokens` é a parcela do contexto que veio do cache (mais barata), por
+ * isso cada categoria é guardada separada em vez de só o total.
+ */
+export interface WolfieRealtimeUsage {
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  inputTextTokens: number;
+  inputAudioTokens: number;
+  outputTextTokens: number;
+  outputAudioTokens: number;
+  cachedTokens: number;
+}
+
+const usageNumber = (source: Record<string, unknown> | null, key: string) => {
+  const value = source?.[key];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : 0;
+};
+
+/**
+ * Lê `response.usage` do evento `response.done`. Sem isto não há como saber
+ * quanto uma conversa custou — nem aplicar cota por aluno.
+ */
+export function extractWolfieRealtimeUsage(
+  event: WolfieRealtimeServerEvent,
+): WolfieRealtimeUsage | null {
+  const usage = asRecord(asRecord(event.response)?.usage);
+  if (!usage) return null;
+
+  const inputDetails = asRecord(usage.input_token_details);
+  const outputDetails = asRecord(usage.output_token_details);
+  const cachedDetails = asRecord(inputDetails?.cached_tokens_details);
+
+  return {
+    totalTokens: usageNumber(usage, "total_tokens"),
+    inputTokens: usageNumber(usage, "input_tokens"),
+    outputTokens: usageNumber(usage, "output_tokens"),
+    inputTextTokens: usageNumber(inputDetails, "text_tokens"),
+    inputAudioTokens: usageNumber(inputDetails, "audio_tokens"),
+    outputTextTokens: usageNumber(outputDetails, "text_tokens"),
+    outputAudioTokens: usageNumber(outputDetails, "audio_tokens"),
+    cachedTokens: usageNumber(inputDetails, "cached_tokens") ||
+      usageNumber(cachedDetails, "text_tokens") +
+        usageNumber(cachedDetails, "audio_tokens"),
+  };
+}
+
 export type WolfieRealtimeTurnInputMethod = "audio_transcription" | "text";
 
 export interface WolfieRealtimeTurnInput {

@@ -262,6 +262,8 @@ interface WolfieRequest {
   inputMethod: string;
   asrConfidence: number | null;
   transcriptIsRoughGuide: boolean;
+  /** Consumo do turno no Realtime; ausente no modo clássico. */
+  usage: Record<string, unknown> | null;
   config: WolfieConfig;
 }
 
@@ -1005,6 +1007,9 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
     "transcriptIsRoughGuide",
     rawAction === "record_realtime_turn",
   );
+  // Métrica de custo é best-effort: um payload malformado é descartado em
+  // silêncio em vez de rejeitar o turno e perder a fala do aluno.
+  const usage = isJsonObject(body.usage) ? body.usage : null;
   if (rawAction === "record_realtime_turn") {
     if (!UUID_PATTERN.test(clientTurnId)) {
       throw new HttpError(400, "INVALID_CLIENT_TURN_ID");
@@ -1152,6 +1157,7 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
     inputMethod,
     asrConfidence,
     transcriptIsRoughGuide,
+    usage,
     config: {
       topic,
       studentLevel: rawLevel as WolfieConfig["studentLevel"],
@@ -3929,6 +3935,22 @@ serve(async (req) => {
           recordExchangeError,
         );
         throw new HttpError(503, "SERVICE_UNAVAILABLE");
+      }
+
+      // Consumo é observabilidade de custo, não parte da aula: se falhar,
+      // registramos e seguimos. Nunca derrubar o turno do aluno por métrica.
+      if (isJsonObject(input.usage)) {
+        const { error: usageError } = await supabase.rpc(
+          "record_wolfie_realtime_usage",
+          {
+            p_session_id: realtimeSessionId,
+            p_client_turn_id: input.clientTurnId,
+            p_usage: input.usage,
+          },
+        );
+        if (usageError) {
+          logDatabaseError("realtime_usage_record", usageError);
+        }
       }
 
       return jsonResponse(200, {
