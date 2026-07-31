@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
+import { safeMeetingLink } from '../lib/meetingLink';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
@@ -270,10 +271,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           guardianId = guardianProfile?.id || null;
         }
 
-        // Gera meeting link padrão
-        const chars = 'abcdefghijklmnopqrstuvwxyz';
-        const rnd = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-        const meetingLink = formData.meeting_link || `https://meet.google.com/${rnd(3)}-${rnd(4)}-${rnd(3)}`;
+        // NÃO inventamos link de reunião. O gerador anterior criava códigos
+        // aleatórios do Meet que não correspondiam a sala nenhuma — quem
+        // clicasse recebia "código inválido" do Google, e ninguém ficava
+        // sabendo. Sem link informado, o campo fica vazio e a interface avisa.
+        const meetingLink = safeMeetingLink(formData.meeting_link);
 
         // Cria ou atualiza o perfil (com TODOS os dados)
         const profilePayload: any = {

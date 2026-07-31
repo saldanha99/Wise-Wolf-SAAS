@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Search, ExternalLink, Copy, CheckCircle, Smartphone, Monitor, Shield, Zap, RefreshCw, Edit2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { safeMeetingLink } from '../lib/meetingLink';
 import { User as UserType, UserRole } from '../types';
 
 interface MeetingLinksViewProps {
@@ -9,15 +10,7 @@ interface MeetingLinksViewProps {
     tenantId?: string;
 }
 
-const safeMeetingLink = (value?: string | null): string | null => {
-    if (!value) return null;
-    try {
-        const url = new URL(value.trim());
-        return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-    } catch {
-        return null;
-    }
-};
+
 
 const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) => {
     const [loading, setLoading] = useState(true);
@@ -117,7 +110,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
         if (!editingStudent) return;
         const normalizedLink = newLink.trim() ? safeMeetingLink(newLink) : null;
         if (newLink.trim() && !normalizedLink) {
-            alert('Informe um link válido começando com https:// ou http://.');
+            alert('Link inválido. Cole o endereço real da sala (Meet, Zoom, Teams). Não invente um código — um link morto é pior que nenhum link.');
             return;
         }
         setIsSaving(true);
