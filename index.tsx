@@ -2,6 +2,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import HubApp from './components/hub/HubApp';
+import ResetPassword from './components/ResetPassword';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -9,8 +11,14 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/';
+const RootApp = normalizedPath === '/hub' || normalizedPath.startsWith('/hub/')
+  ? HubApp
+  : normalizedPath === '/reset-password'
+    ? ResetPassword
+    : App;
 root.render(
   <React.StrictMode>
-    <App />
+    <RootApp />
   </React.StrictMode>
 );
