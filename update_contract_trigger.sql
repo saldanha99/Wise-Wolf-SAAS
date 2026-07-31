@@ -15,7 +15,7 @@ BEGIN
 
         -- Disparo para a Nova Edge Function
         PERFORM net.http_post(
-            url := 'https://dvalxbtngopxopzcbfdm.supabase.co/functions/v1/whatsapp-notificacao-matricula',
+            url := 'https://api.wisewolflanguage.com.br/functions/v1/whatsapp-notificacao-matricula',
             headers := jsonb_build_object(
                 'Content-Type', 'application/json',
                 'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)

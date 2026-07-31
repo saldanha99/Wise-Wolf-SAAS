@@ -144,7 +144,7 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 -- 
 --             -- DISPARO COM A VARIÁVEL CORRIGIDA (v_student_phone)
 --             PERFORM net.http_post(
---                 url := 'https://dvalxbtngopxzcbfdm.supabase.co/functions/v1/whatsapp-wise-wolf',
+--                 url := 'https://api.wisewolflanguage.com.br/functions/v1/whatsapp-wise-wolf',
 --                 headers := jsonb_build_object(
 --                     'Content-Type', 'application/json',
 --                     'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
@@ -176,7 +176,7 @@ BEGIN
         VALUES (NEW.id, NEW.phone, 'CONTRACT_SIGNED', 'QUEUED');
 
         PERFORM net.http_post(
-            url := 'https://dvalxbtngopxopzcbfdm.supabase.co/functions/v1/send-contract-confirmation',
+            url := 'https://api.wisewolflanguage.com.br/functions/v1/send-contract-confirmation',
             headers := '{"Content-Type": "application/json", "Authorization": "Bearer <SUPABASE_ANON_KEY>"}',
             body := jsonb_build_object(
                 'student_name', NEW.full_name,

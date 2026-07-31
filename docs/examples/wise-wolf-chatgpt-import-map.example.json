@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "conversations": [
+    {
+      "conversation_id": "replace-with-chatgpt-conversation-id",
+      "scope": "WISE_WOLF",
+      "destination": "student_memory",
+      "tenant_id": "replace-with-tenant-id",
+      "student_id": "00000000-0000-4000-8000-000000000001",
+      "approved_for_import": true,
+      "pii_reviewed": true,
+      "redact_terms": [
+        "Nome do aluno",
+        "Nome do professor",
+        "Nome da empresa do aluno"
+      ]
+    },
+    {
+      "exact_title": "Título exato do projeto pedagógico reutilizável",
+      "scope": "WISE_WOLF",
+      "destination": "knowledge",
+      "tenant_id": "replace-with-tenant-id",
+      "knowledge_base_id": "00000000-0000-4000-8000-000000000002",
+      "title": "Estrutura de aula comunicativa de 30 minutos",
+      "approved_for_import": true,
+      "approved_for_reuse": true,
+      "pii_reviewed": true,
+      "redact_terms": [
+        "Nome do aluno",
+        "Nome do professor"
+      ],
+      "attributes": {
+        "level": "B1",
+        "age_group": "adult",
+        "topic": "professional communication",
+        "material_type": "lesson_framework",
+        "skill": "speaking",
+        "language": "bilingual"
+      }
+    },
+    {
+      "conversation_id": "replace-with-non-wise-wolf-conversation-id",
+      "destination": "exclude",
+      "reason": "Assunto pessoal ou externo à Wise Wolf"
+    }
+  ]
+}

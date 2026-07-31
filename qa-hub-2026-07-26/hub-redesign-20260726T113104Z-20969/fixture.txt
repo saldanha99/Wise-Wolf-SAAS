@@ -1,0 +1,3 @@
+RUN_ID=hub-redesign-20260726T113104Z-20969
+TEST_EMAIL=hub-redesign-20260726T113104Z-20969@example.invalid
+USER_ID=cabc617f-83e3-44a8-b5cb-ff8b2df4d07c
