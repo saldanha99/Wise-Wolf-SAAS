@@ -1,63 +1,66 @@
 export const WOLFIE_SUBJECTS = [
-  'vocabulary',
-  'grammar',
-  'listening',
-  'reading',
-  'writing',
-  'global_meetings',
+  "vocabulary",
+  "grammar",
+  "listening",
+  "reading",
+  "writing",
+  "global_meetings",
 ] as const;
 
 export type WolfieSubject = (typeof WOLFIE_SUBJECTS)[number];
-export type QuizSubject = Exclude<WolfieSubject, 'writing' | 'global_meetings'>;
-export type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+export type QuizSubject = Exclude<WolfieSubject, "writing" | "global_meetings">;
+export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type ActivityPhase =
-  | 'standard'
-  | 'construction'
-  | 'memorization'
-  | 'readaptation';
-export type ActivityModality = 'text' | 'voice' | 'mixed';
+  | "standard"
+  | "construction"
+  | "memorization"
+  | "readaptation";
+export type ActivityModality = "text" | "voice" | "mixed";
 
 export type WolfieExperienceMode =
-  | 'free_conversation'
-  | 'guided_lesson'
-  | 'roleplay'
-  | 'presentation'
-  | 'global_meeting'
-  | 'interview'
-  | 'exam'
-  | 'writing'
-  | 'pronunciation'
-  | 'vocabulary'
-  | 'storytelling'
-  | 'child_mission'
-  | 'teen_challenge'
-  | 'examiner'
-  | 'fluency'
-  | 'emergency';
+  | "free_conversation"
+  | "guided_lesson"
+  | "roleplay"
+  | "presentation"
+  | "global_meeting"
+  | "interview"
+  | "exam"
+  | "writing"
+  | "pronunciation"
+  | "vocabulary"
+  | "storytelling"
+  | "child_mission"
+  | "teen_challenge"
+  | "examiner"
+  | "fluency"
+  | "emergency";
 
 export type WolfieCorrectionMode =
-  | 'immediate'
-  | 'end'
-  | 'selective'
-  | 'examiner';
+  | "immediate"
+  | "end"
+  | "selective"
+  | "examiner";
 
 export type WolfieLanguageMode =
-  | 'pt_support'
-  | 'bilingual'
-  | 'immersive'
-  | 'english_rescue';
+  | "pt_support"
+  | "bilingual"
+  | "immersive"
+  | "english_rescue";
 
 export type WolfieDifficulty =
-  | 'supportive'
-  | 'balanced'
-  | 'challenging'
-  | 'adaptive';
+  | "supportive"
+  | "balanced"
+  | "challenging"
+  | "adaptive";
 
 export interface WolfieConversationBrief {
   topic: string;
   scenario: string;
   studentGoal: string;
   targetSkill: string;
+  experienceId?: string;
+  experienceUniverse?: string;
+  experienceAudiences?: string[];
   experienceMode: WolfieExperienceMode;
   correctionMode: WolfieCorrectionMode;
   languageMode: WolfieLanguageMode;
@@ -88,12 +91,12 @@ export interface MeetingScenario {
 
 export interface MeetingSection {
   key:
-    | 'opening'
-    | 'context'
-    | 'data'
-    | 'proposal'
-    | 'next_steps'
-    | 'closing';
+    | "opening"
+    | "context"
+    | "data"
+    | "proposal"
+    | "next_steps"
+    | "closing";
   title: string;
   objective: string;
   coachTipPt: string;
@@ -115,6 +118,15 @@ export interface WolfieActivityContent {
   scenario?: MeetingScenario;
   sections?: MeetingSection[];
   readaptationRules?: string[];
+  experience?: {
+    id: string;
+    title: string;
+    description?: string;
+    universeId: string;
+    experienceMode: WolfieExperienceMode;
+    audiences: string[];
+    realWorldGoal: string;
+  };
 }
 
 export interface MemorizationState {
@@ -136,12 +148,15 @@ export interface MeetingSectionState {
 }
 
 export interface WolfieLearnerState {
-  sections?: Partial<Record<MeetingSection['key'], MeetingSectionState>>;
+  sections?: Partial<Record<MeetingSection["key"], MeetingSectionState>>;
   memorization?: MemorizationState;
-  quizAnswers?: Record<string, AnswerFeedback & {
-    savedAt?: string;
-    score?: number;
-  }>;
+  quizAnswers?: Record<
+    string,
+    AnswerFeedback & {
+      savedAt?: string;
+      score?: number;
+    }
+  >;
   [key: string]: unknown;
 }
 
@@ -174,12 +189,12 @@ export interface WolfieActivitySession {
   phase: ActivityPhase;
   modality: ActivityModality;
   status:
-    | 'IN_PROGRESS'
-    | 'EVALUATING'
-    | 'AWAITING_RETRY'
-    | 'COMPLETED'
-    | 'ABANDONED'
-    | 'FAILED';
+    | "IN_PROGRESS"
+    | "EVALUATING"
+    | "AWAITING_RETRY"
+    | "COMPLETED"
+    | "ABANDONED"
+    | "FAILED";
   source_session_id: string | null;
   activity_content: WolfieActivityContent;
   learner_state: WolfieLearnerState;
@@ -301,18 +316,18 @@ export type WolfieActivityResult =
   | SpeechEvaluationResult;
 
 export interface SubjectProgress {
-  subject: WolfieSubject | 'conversation';
+  subject: WolfieSubject | "conversation";
   completed: number;
   averageScore: number | null;
 }
 
 export interface WolfieRecentSession {
   id: string;
-  subject: WolfieSubject | 'conversation';
+  subject: WolfieSubject | "conversation";
   cefr_level: CefrLevel;
   sector: string | null;
-  phase: ActivityPhase | 'conversation';
-  status: WolfieActivitySession['status'];
+  phase: ActivityPhase | "conversation";
+  status: WolfieActivitySession["status"];
   score: number | null;
   xp_earned: number;
   attempt_count: number;
@@ -327,7 +342,7 @@ export interface RepertoireItem {
   definition_pt: string;
   example_sentence: string;
   cefr_level: CefrLevel;
-  source_subject: WolfieSubject | 'conversation';
+  source_subject: WolfieSubject | "conversation";
   sector: string | null;
   mastery_score: number;
   next_review_at: string | null;
@@ -350,6 +365,14 @@ export interface WolfieSelection {
   subject: WolfieSubject;
   level: CefrLevel;
   sector?: string;
+  experienceId?: string;
+  experienceTitle?: string;
+  experienceContext?: string;
+  experienceDescription?: string;
+  experienceUniverse?: string;
+  experienceAudiences?: string[];
+  realWorldGoal?: string;
+  experienceMode?: WolfieExperienceMode;
 }
 
 export interface WolfieUserSummary {
@@ -360,6 +383,8 @@ export interface WolfieUserSummary {
   occupation?: string;
   studentCategory?: string;
   student_category?: string;
+  isKids?: boolean;
+  is_kids?: boolean;
   interests?: string[];
   preferredTopics?: string[];
   preferred_topics?: string[];
@@ -370,7 +395,7 @@ export interface WolfieUserSummary {
     preferredCorrectionMode?: WolfieCorrectionMode;
     preferredLanguageMode?: WolfieLanguageMode;
   };
-  wolfie_settings?: WolfieUserSummary['wolfieSettings'];
+  wolfie_settings?: WolfieUserSummary["wolfieSettings"];
   englishFor?: string;
   english_for?: string;
   shortTermGoal?: string;
@@ -379,8 +404,8 @@ export interface WolfieUserSummary {
 
 export const isQuizResult = (
   result: WolfieActivityResult,
-): result is QuizResult => 'correctCount' in result;
+): result is QuizResult => "correctCount" in result;
 
 export const isSpeechResult = (
   result: WolfieActivityResult,
-): result is SpeechEvaluationResult => 'pronunciation' in result;
+): result is SpeechEvaluationResult => "pronunciation" in result;
