@@ -196,6 +196,7 @@ npx --yes deno test --no-lock \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
   scripts/tests/contract-dates.test.ts \
+  scripts/tests/ai-usage.test.ts \
   scripts/tests/wolfie-experience-catalog.test.ts
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \

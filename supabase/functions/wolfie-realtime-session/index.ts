@@ -342,7 +342,9 @@ async function checkRealtimeQuota(
   tenantId: string,
   studentId: string,
 ): Promise<"allowed" | "quota_exceeded"> {
-  const { data, error } = await db.rpc("wolfie_realtime_quota_status", {
+  // Saldo de MINUTOS do plano do aluno. Mede só a voz ao vivo — os modos por
+  // escrita não passam por aqui e nunca são bloqueados.
+  const { data, error } = await db.rpc("wolfie_live_balance", {
     p_tenant_id: tenantId,
     p_student_id: studentId,
   });
@@ -878,7 +880,7 @@ serve(async (req) => {
     return fallbackResponse(
       429,
       "REALTIME_QUOTA_EXCEEDED",
-      "Você atingiu o limite de conversa ao vivo deste mês. Continue praticando no modo clássico.",
+      "Seus minutos de conversa ao vivo deste mês acabaram. Continue praticando à vontade no modo clássico, ou amplie seu plano para liberar mais minutos.",
     );
   }
 

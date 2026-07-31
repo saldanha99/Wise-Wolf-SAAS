@@ -411,6 +411,7 @@ export function useWolfieRealtime(
   const sessionLimitTimerRef = useRef<number | null>(null);
   const sessionWarningTimerRef = useRef<number | null>(null);
   const idleTimerRef = useRef<number | null>(null);
+  const sessionStartedAtRef = useRef<number | null>(null);
   latestOptionsRef.current = options;
 
   const publishCompletedTurns = useCallback((
@@ -432,6 +433,25 @@ export function useWolfieRealtime(
       if (mountedRef.current) setLastCompletedTurn(turn);
       latestOptionsRef.current.onTurnComplete?.(turn);
     }
+  }, []);
+
+  /**
+   * Debita os minutos consumidos ao encerrar. Roda em qualquer saída — teto,
+   * ociosidade, queda ou desligar manual — senão a sessão que cai sem avisar
+   * seria gratuita e a cota nunca fecharia.
+   */
+  const settleLiveSeconds = useCallback(() => {
+    const startedAt = sessionStartedAtRef.current;
+    sessionStartedAtRef.current = null;
+    if (!startedAt) return;
+    const seconds = Math.round((Date.now() - startedAt) / 1000);
+    if (seconds <= 0) return;
+    void supabase.rpc("record_wolfie_live_seconds", {
+      p_session_id: null,
+      p_seconds: seconds,
+    }).then(({ error }) => {
+      if (error) console.warn("[wolfie] minutos ao vivo não registrados");
+    });
   }, []);
 
   const clearCostTimers = useCallback(() => {
@@ -475,6 +495,7 @@ export function useWolfieRealtime(
     connectionAttemptRef.current += 1;
     setupAbortRef.current?.abort();
     setupAbortRef.current = null;
+    settleLiveSeconds();
     clearCostTimers();
     if (disconnectedTimeoutRef.current !== null) {
       window.clearTimeout(disconnectedTimeoutRef.current);
@@ -520,7 +541,7 @@ export function useWolfieRealtime(
       setFallbackReason(null);
       setMutedState(false);
     }
-  }, [clearCostTimers, resetTurnPairing, stopMeters]);
+  }, [clearCostTimers, resetTurnPairing, settleLiveSeconds, stopMeters]);
 
   const markFallback = useCallback((
     reason: WolfieRealtimeFallbackReason,
@@ -556,6 +577,7 @@ export function useWolfieRealtime(
 
   const startCostTimers = useCallback(() => {
     clearCostTimers();
+    sessionStartedAtRef.current = Date.now();
     sessionWarningTimerRef.current = window.setTimeout(() => {
       sessionWarningTimerRef.current = null;
       if (!mountedRef.current) return;

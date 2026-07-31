@@ -2,6 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { type AiUsageTokens, parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   correctionLocksRetry,
   correctionPreservesFactualIntegrity,
@@ -1895,6 +1896,12 @@ interface OpenRouterResult {
   payload: JsonObject;
   model: string;
   assistantLanguage: AssistantLanguage;
+  /**
+   * Consumo somado de TODAS as tentativas, não só da que deu certo: um modelo
+   * que devolve conteúdo inutilizável é cobrado do mesmo jeito, e ignorá-lo
+   * esconderia justamente o custo do retrabalho.
+   */
+  usageByModel: Array<{ model: string; usage: AiUsageTokens }>;
 }
 
 const PORTUGUESE_SPEECH_MARKERS = new Set([
@@ -2179,6 +2186,7 @@ async function callOpenRouter(
 ): Promise<OpenRouterResult> {
   const deadline = Date.now() + OPENROUTER_DEADLINE_MS;
   let providerReturnedInvalidContent = false;
+  const usageByModel: Array<{ model: string; usage: AiUsageTokens }> = [];
   const finalSystemPrompt =
     `${systemPrompt}\n\nCRITICAL: Return only one valid JSON object. No markdown, explanations, or surrounding text.`;
   const finalUserMessage = hasAudio
@@ -2234,6 +2242,11 @@ async function callOpenRouter(
         console.warn("[wolfie] AI provider returned invalid JSON", { model });
         continue;
       }
+
+      // Antes de qualquer `continue`: tokens são cobrados mesmo quando a
+      // resposta é descartada adiante por conteúdo inválido.
+      const attemptUsage = parseAiUsage(providerPayload);
+      if (attemptUsage) usageByModel.push({ model, usage: attemptUsage });
 
       const providerText = extractOpenRouterText(providerPayload);
       const parsed = providerText ? extractJsonObject(providerText) : null;
@@ -2291,6 +2304,7 @@ async function callOpenRouter(
         payload: parsed,
         model,
         assistantLanguage,
+        usageByModel,
       };
     } catch (error) {
       const timedOut = error instanceof DOMException &&
@@ -4941,6 +4955,20 @@ serve(async (req) => {
       await failCurrentExchange("ai_provider");
       throw error;
     }
+
+    // Custo do modo Clássico. Uma linha por modelo tentado — inclusive os que
+    // falharam, que foram cobrados igual. Nunca bloqueia a resposta do aluno.
+    for (const attempt of providerResult.usageByModel) {
+      await recordAiUsage(supabase, {
+        tenantId: profile.tenant_id ?? null,
+        userId: profile.id ?? null,
+        feature: "wolfie_brain",
+        provider: "openrouter",
+        model: attempt.model,
+        usage: attempt.usage,
+      });
+    }
+
     let normalized: ReturnType<typeof normalizeAgentPayload>;
     try {
       normalized = normalizeAgentPayload(
