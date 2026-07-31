@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Release isolada do Wolfie Tutor para a VPS de produção.
-# Publica somente frontend, quatro funções Wolfie e a migration factual.
+# Publica frontend, quatro funções Wolfie, autenticação compartilhada e a
+# migration factual.
 set -Eeuo pipefail
 umask 077
 
@@ -172,7 +173,10 @@ echo "== Validação do artefato Wolfie =="
 npm ci
 npm run typecheck
 npx --yes deno test --no-lock \
+  supabase/functions/_shared/request-auth.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
+  supabase/functions/wolfie-brain/adaptive-language-policy.test.ts \
+  supabase/functions/wolfie-brain/audio-input.test.ts \
   supabase/functions/wolfie-brain/factual-integrity.test.ts \
   supabase/functions/wolfie-brain/turn-policy.test.ts \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
@@ -187,30 +191,49 @@ npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
 
-MIGRATION_RELATIVE="supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
-DATABASE_TEST_RELATIVE="supabase/tests/wolfie_factual_memory_and_rag.sql"
+MIGRATIONS=(
+  "supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
+  "supabase/migrations/20260731023000_harden_tenant_membership_roles.sql"
+)
+DATABASE_TESTS=(
+  "supabase/tests/wolfie_factual_memory_and_rag.sql"
+  "supabase/tests/tenant_membership_role_hardening.sql"
+)
 FUNCTIONS=(
   wolfie-activity
   wolfie-brain
   wolfie-realtime-session
   wolfie-tts
 )
+SHARED_FUNCTION_FILES=(
+  request-auth.ts
+)
 
-[[ -s "$MIGRATION_RELATIVE" ]] || die "migration Wolfie ausente"
-[[ -s "$DATABASE_TEST_RELATIVE" ]] || die "teste SQL Wolfie ausente"
+for migration_path in "${MIGRATIONS[@]}"; do
+  [[ -s "$migration_path" ]] || die "migration ausente: $migration_path"
+  migration_file="$(basename -- "$migration_path")"
+  migration_checksum="$(
+    shasum -a 256 "$migration_path" | awk '{print $1}'
+  )"
+  [[ "$migration_file" =~ ^[0-9]{14}_[A-Za-z0-9_]+\.sql$ ]] ||
+    die "nome de migration inválido: $migration_file"
+  [[ "$migration_checksum" =~ ^[a-f0-9]{64}$ ]] ||
+    die "checksum de migration inválido: $migration_file"
+done
+for database_test in "${DATABASE_TESTS[@]}"; do
+  [[ -s "$database_test" ]] || die "teste SQL ausente: $database_test"
+done
 for function_name in "${FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função ausente: $function_name"
 done
+for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
+  [[ -s "supabase/functions/_shared/$shared_file" ]] ||
+    die "dependência compartilhada ausente: $shared_file"
+done
 
 git_sha="$(git rev-parse --short=12 HEAD)"
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${git_sha}"
-migration_file="$(basename -- "$MIGRATION_RELATIVE")"
-migration_checksum="$(shasum -a 256 "$MIGRATION_RELATIVE" | awk '{print $1}')"
-[[ "$migration_file" =~ ^[0-9]{14}_[A-Za-z0-9_]+\.sql$ ]] ||
-  die "nome de migration inválido: $migration_file"
-[[ "$migration_checksum" =~ ^[a-f0-9]{64}$ ]] ||
-  die "checksum de migration inválido"
 remote_release="$DEPLOY_RELEASES_DIR/$release_id"
 
 echo "== Preparação da release Wolfie $release_id =="
@@ -224,6 +247,7 @@ mkdir -p -- \
   "$release_dir/functions/wolfie-brain" \
   "$release_dir/functions/wolfie-realtime-session" \
   "$release_dir/functions/wolfie-tts" \
+  "$release_dir/functions/_shared" \
   "$release_dir/migrations" \
   "$release_dir/tests"
 REMOTE
@@ -234,10 +258,18 @@ for function_name in "${FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
 done
-rsync -a -- "$MIGRATION_RELATIVE" \
-  "$DEPLOY_SSH_HOST:$remote_release/migrations/$migration_file"
-rsync -a -- "$DATABASE_TEST_RELATIVE" \
-  "$DEPLOY_SSH_HOST:$remote_release/tests/wolfie_factual_memory_and_rag.sql"
+for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
+  rsync -a -- "supabase/functions/_shared/$shared_file" \
+    "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/$shared_file"
+done
+for migration_path in "${MIGRATIONS[@]}"; do
+  rsync -a -- "$migration_path" \
+    "$DEPLOY_SSH_HOST:$remote_release/migrations/$(basename -- "$migration_path")"
+done
+for database_test in "${DATABASE_TESTS[@]}"; do
+  rsync -a -- "$database_test" \
+    "$DEPLOY_SSH_HOST:$remote_release/tests/$(basename -- "$database_test")"
+done
 
 echo "== Ativação, verificação e rollback automático =="
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
@@ -284,6 +316,7 @@ flock -n 9 || {
 backup_dir="$backups_dir/release-$release_id"
 marker_dir="$releases_dir/.migration-checksums"
 frontend_swapped=0
+shared_dependency_swapped=0
 swapped_functions=()
 
 restore_previous_release() {
@@ -311,6 +344,14 @@ restore_previous_release() {
       fi
     done
   fi
+  if [[ "$shared_dependency_swapped" = "1" ]]; then
+    cp -a -- "$functions_dir/_shared/request-auth.ts" \
+      "$backup_dir/failed-request-auth.ts"
+    cp -a -- "$backup_dir/request-auth.ts" \
+      "$functions_dir/_shared/.request-auth.ts.rollback"
+    mv -f -- "$functions_dir/_shared/.request-auth.ts.rollback" \
+      "$functions_dir/_shared/request-auth.ts"
+  fi
 
   (
     cd "$supabase_dir" &&
@@ -330,27 +371,50 @@ for function_name in \
   wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
+[[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
+[[ -s "$functions_dir/_shared/request-auth.ts" ]]
 
-migration_path="$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
-database_test="$release_dir/tests/wolfie_factual_memory_and_rag.sql"
-[[ -s "$migration_path" ]]
-[[ -s "$database_test" ]]
-migration_version=20260730193415
-migration_checksum="$(sha256sum "$migration_path" | awk '{print $1}')"
-existing_marker="$(
-  find "$marker_dir" -maxdepth 1 -type f \
-    -name "${migration_version}-*.sha256" -print -quit
-)"
-expected_marker="$marker_dir/${migration_version}-${migration_checksum}.sha256"
-if [[ -n "$existing_marker" && "$existing_marker" != "$expected_marker" ]]; then
-  echo "ERRO: migration Wolfie já aplicada com checksum diferente." >&2
-  exit 1
-fi
+migration_versions=(
+  20260730193415
+  20260731023000
+)
+migration_paths=(
+  "$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
+  "$release_dir/migrations/20260731023000_harden_tenant_membership_roles.sql"
+)
+database_tests=(
+  "$release_dir/tests/wolfie_factual_memory_and_rag.sql"
+  "$release_dir/tests/tenant_membership_role_hardening.sql"
+)
+expected_markers=()
+database_migration_pending=0
+for index in "${!migration_paths[@]}"; do
+  migration_path="${migration_paths[$index]}"
+  migration_version="${migration_versions[$index]}"
+  [[ -s "$migration_path" ]]
+  migration_checksum="$(sha256sum "$migration_path" | awk '{print $1}')"
+  existing_marker="$(
+    find "$marker_dir" -maxdepth 1 -type f \
+      -name "${migration_version}-*.sha256" -print -quit
+  )"
+  expected_marker="$marker_dir/${migration_version}-${migration_checksum}.sha256"
+  if [[ -n "$existing_marker" && "$existing_marker" != "$expected_marker" ]]; then
+    echo "ERRO: migration $migration_version já aplicada com checksum diferente." >&2
+    exit 1
+  fi
+  expected_markers+=("$expected_marker")
+  if [[ ! -f "$expected_marker" ]]; then
+    database_migration_pending=1
+  fi
+done
+for database_test in "${database_tests[@]}"; do
+  [[ -s "$database_test" ]]
+done
 
-if [[ ! -f "$expected_marker" ]]; then
+if [[ "$database_migration_pending" = "1" ]]; then
   database_backup_tmp="$backup_dir/postgres-before-wolfie.dump.tmp"
   database_backup="$backup_dir/postgres-before-wolfie.dump"
-  echo "== Backup PostgreSQL anterior à migration Wolfie =="
+  echo "== Backup PostgreSQL anterior às migrations da release =="
   docker exec supabase-db pg_dump \
     -U supabase_admin \
     -d postgres \
@@ -363,16 +427,26 @@ if [[ ! -f "$expected_marker" ]]; then
     < "$database_backup_tmp" >/dev/null
   mv -- "$database_backup_tmp" "$database_backup"
 
-  docker exec -i supabase-db \
-    psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -1 \
-    < "$migration_path"
-  printf '%s\n' "$migration_checksum" > "$expected_marker"
 fi
 
-echo "== Teste SQL transacional de fatos, RLS e retry =="
-docker exec -i supabase-db \
-  psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
-  < "$database_test"
+for index in "${!migration_paths[@]}"; do
+  expected_marker="${expected_markers[$index]}"
+  if [[ ! -f "$expected_marker" ]]; then
+    migration_path="${migration_paths[$index]}"
+    migration_checksum="$(sha256sum "$migration_path" | awk '{print $1}')"
+    docker exec -i supabase-db \
+      psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -1 \
+      < "$migration_path"
+    printf '%s\n' "$migration_checksum" > "$expected_marker"
+  fi
+done
+
+echo "== Testes SQL transacionais de fatos, RLS, retry e memberships =="
+for database_test in "${database_tests[@]}"; do
+  docker exec -i supabase-db \
+    psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+    < "$database_test"
+done
 
 if [[ -d "$app_dir/dist" ]]; then
   mv -- "$app_dir/dist" "$backup_dir/frontend-dist"
@@ -389,6 +463,17 @@ for function_name in \
   cp -a -- "$release_dir/functions/$function_name" \
     "$functions_dir/$function_name"
 done
+
+cp -a -- "$functions_dir/_shared/request-auth.ts" \
+  "$backup_dir/request-auth.ts"
+cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
+  "$functions_dir/_shared/.request-auth.ts.release-$release_id"
+mv -f -- "$functions_dir/_shared/.request-auth.ts.release-$release_id" \
+  "$functions_dir/_shared/request-auth.ts"
+shared_dependency_swapped=1
+cmp -s \
+  "$release_dir/functions/_shared/request-auth.ts" \
+  "$functions_dir/_shared/request-auth.ts"
 
 (
   cd "$supabase_dir"

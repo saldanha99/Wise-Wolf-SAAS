@@ -25,6 +25,10 @@ import {
   uniqueTranscriptAlternatives,
 } from "../lib/wolfieVoiceSafety";
 import {
+  resolveWolfieLearnerLanguage,
+  type WolfieLearnerLanguage,
+} from "../supabase/functions/wolfie-brain/adaptive-language-policy";
+import {
   classifyWolfieLearnerTurn,
   inferWolfieSocialTurnLanguage,
   isPedagogicallySubstantiveTurn,
@@ -314,117 +318,47 @@ function getTTSSpeed(level: string): number {
   }
 }
 
-type SpeechLanguage = "pt" | "en";
-type RecognitionLanguage = "pt-BR" | "en-US";
+type SpeechLanguage = WolfieLearnerLanguage;
+type TtsLanguage = SpeechLanguage | "mixed";
 
-const defaultRecognitionLanguage = (): RecognitionLanguage => "en-US";
+const WOLFIE_BRAIN_TIMEOUT_MS = 40_000;
+const WOLFIE_TRANSCRIPTION_TIMEOUT_MS = 25_000;
+const WOLFIE_TTS_TIMEOUT_MS = 15_000;
+const MAX_CLASSIC_RECORDING_BYTES = 4_900_000;
+const MAX_CLASSIC_RECORDING_MS = 90_000;
 
-const PORTUGUESE_MARKERS = new Set([
-  "a",
-  "agora",
-  "ainda",
-  "aqui",
-  "as",
-  "com",
-  "como",
-  "da",
-  "das",
-  "de",
-  "do",
-  "dos",
-  "e",
-  "ela",
-  "ele",
-  "em",
-  "então",
-  "essa",
-  "esse",
-  "está",
-  "eu",
-  "inglês",
-  "isso",
-  "mas",
-  "me",
-  "meu",
-  "minha",
-  "não",
-  "o",
-  "oi",
-  "os",
-  "ou",
-  "para",
-  "por",
-  "porque",
-  "que",
-  "se",
-  "seu",
-  "sua",
-  "também",
-  "tem",
-  "uma",
-  "um",
-  "você",
-  "vocês",
-]);
+const classicRecorderMimeType = (): string | undefined => {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return undefined;
+  }
+  return [
+    "audio/webm;codecs=opus",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+    "audio/webm",
+  ].find((mimeType) => MediaRecorder.isTypeSupported(mimeType));
+};
 
-const ENGLISH_MARKERS = new Set([
-  "a",
-  "about",
-  "am",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
-  "because",
-  "but",
-  "can",
-  "do",
-  "for",
-  "from",
-  "have",
-  "how",
-  "i",
-  "in",
-  "is",
-  "it",
-  "like",
-  "my",
-  "of",
-  "on",
-  "or",
-  "so",
-  "that",
-  "the",
-  "this",
-  "to",
-  "want",
-  "we",
-  "what",
-  "when",
-  "with",
-  "you",
-  "your",
-]);
+const audioBlobToBase64 = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("AUDIO_READ_FAILED"));
+    reader.onload = () => {
+      const value = typeof reader.result === "string" ? reader.result : "";
+      const separator = value.indexOf(",");
+      resolve(separator >= 0 ? value.slice(separator + 1) : value);
+    };
+    reader.readAsDataURL(blob);
+  });
 
 function detectSpeechLanguage(
   text: string,
   fallback: SpeechLanguage = "en",
 ): SpeechLanguage {
-  const normalized = text.toLocaleLowerCase("pt-BR");
-  const words = normalized.match(/[\p{L}']+/gu) || [];
-  let portugueseScore = /[áàâãéêíóôõúç]/i.test(text) ? 3 : 0;
-  let englishScore = 0;
-
-  for (const word of words) {
-    if (PORTUGUESE_MARKERS.has(word)) portugueseScore += 1;
-    if (ENGLISH_MARKERS.has(word)) englishScore += 1;
-  }
-
-  if (portugueseScore > englishScore) return "pt";
-  if (englishScore > portugueseScore) return "en";
-  return fallback;
+  return resolveWolfieLearnerLanguage(text, fallback);
 }
 
 function normalizedSpeechLanguage(
@@ -452,6 +386,7 @@ interface WolfieBrainInput {
   studentLanguage?: SpeechLanguage;
   transcriptionConfidence?: number | null;
   transcriptionAlternatives?: string[];
+  speechDerivedTranscript?: boolean;
   transcriptConfirmed?: boolean;
 }
 
@@ -462,6 +397,11 @@ interface PendingTranscriptReview {
   studentLanguage: SpeechLanguage;
   source?: "classic" | "realtime";
   clientTurnId?: string;
+}
+
+interface SpeechSegment {
+  text: string;
+  language: SpeechLanguage;
 }
 
 // ============================================================
@@ -573,9 +513,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [voiceTransport, setVoiceTransport] = useState<VoiceTransport>(
     () => voiceMode && WOLFIE_REALTIME_ENABLED ? "realtime" : "text",
   );
-  const [recognitionLanguage, setRecognitionLanguage] = useState<
-    RecognitionLanguage
-  >(() => defaultRecognitionLanguage());
 
   // --- Overlay Cards (from agents) ---
   const [correction, setCorrection] = useState<CorrectionData | null>(null);
@@ -598,10 +535,19 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
   // --- Refs ---
-  const recognitionRef = useRef<any>(null); // Web Speech API recognition
-  const recognitionLanguageRef = useRef<RecognitionLanguage>(
-    defaultRecognitionLanguage(),
+  const recognitionRef = useRef<any>(null); // fallback local Web Speech API
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderChunksRef = useRef<Blob[]>([]);
+  const mediaRecorderStartedAtRef = useRef(0);
+  const mediaRecorderMimeTypeRef = useRef("audio/webm");
+  const recordingAttemptRef = useRef(0);
+  const recordingMaxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
   );
+  const brainRequestAbortRef = useRef<AbortController | null>(null);
+  const transcriptionAbortRef = useRef<AbortController | null>(null);
+  const ttsRequestAbortRef = useRef<AbortController | null>(null);
+  const lastLearnerLanguageRef = useRef<SpeechLanguage>("en");
   const isProcessingRef = useRef(false); // Previne chamadas duplicadas ao wolfie-brain
   const requestVersionRef = useRef(0); // Invalida respostas antigas após fechar/reiniciar
   const ttsRequestVersionRef = useRef(0); // Impede áudio antigo após interrupções ou nova fala
@@ -612,7 +558,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const englishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const ptBrVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
   const lastSpokenTextRef = useRef<string>("");
-  const lastSpokenLanguageRef = useRef<SpeechLanguage>("en");
+  const lastSpokenLanguageRef = useRef<TtsLanguage>("en");
+  const lastSpokenSegmentsRef = useRef<SpeechSegment[] | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null); // fallback HTMLAudioElement (desktop)
   const audioCtxRef = useRef<AudioContext | null>(null); // AudioContext — funciona em iOS após unlock
@@ -928,19 +875,21 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     if (isMountedRef.current) setAudioStream(null);
   }, []);
 
-  const ensureAudioStream = useCallback(() => {
-    if (
-      typeof navigator === "undefined" ||
-      audioStreamRef.current ||
-      audioStreamRequestRef.current
-    ) {
-      return;
+  const ensureAudioStream = useCallback(async (): Promise<MediaStream | null> => {
+    if (typeof navigator === "undefined") return null;
+    if (audioStreamRef.current) return audioStreamRef.current;
+    if (audioStreamRequestRef.current) {
+      try {
+        return await audioStreamRequestRef.current;
+      } catch {
+        return null;
+      }
     }
 
     const mediaDevices = navigator.mediaDevices;
     if (!mediaDevices?.getUserMedia) {
       console.warn("Mascot audio stream unavailable (avatar ficará estático)");
-      return;
+      return null;
     }
 
     const request = mediaDevices.getUserMedia({
@@ -952,26 +901,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     });
     const requestVersion = ++audioStreamRequestVersionRef.current;
     audioStreamRequestRef.current = request;
-    void request
-      .then((stream) => {
-        if (
-          !isMountedRef.current ||
-          requestVersion !== audioStreamRequestVersionRef.current
-        ) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        audioStreamRef.current = stream;
-        setAudioStream(stream);
-      })
-      .catch((err) => {
-        console.warn("Mascot audio stream denied (avatar ficará estático):", err);
-      })
-      .finally(() => {
-        if (audioStreamRequestRef.current === request) {
-          audioStreamRequestRef.current = null;
-        }
-      });
+    try {
+      const stream = await request;
+      if (
+        !isMountedRef.current ||
+        requestVersion !== audioStreamRequestVersionRef.current
+      ) {
+        stream.getTracks().forEach((track) => track.stop());
+        return null;
+      }
+      audioStreamRef.current = stream;
+      setAudioStream(stream);
+      return stream;
+    } catch (err) {
+      console.warn("Mascot audio stream denied (avatar ficará estático):", err);
+      return null;
+    } finally {
+      if (audioStreamRequestRef.current === request) {
+        audioStreamRequestRef.current = null;
+      }
+    }
   }, []);
 
   // ============================================================
@@ -1166,12 +1115,32 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       isMountedRef.current = false;
       requestVersionRef.current += 1;
       ttsRequestVersionRef.current += 1;
+      recordingAttemptRef.current += 1;
       isProcessingRef.current = false;
+      brainRequestAbortRef.current?.abort();
+      brainRequestAbortRef.current = null;
+      transcriptionAbortRef.current?.abort();
+      transcriptionAbortRef.current = null;
       stopSpeaking();
       stopIOSKeepAlive();
       if (recordingDelayRef.current) {
         clearTimeout(recordingDelayRef.current);
         recordingDelayRef.current = null;
+      }
+      if (recordingMaxDurationRef.current) {
+        clearTimeout(recordingMaxDurationRef.current);
+        recordingMaxDurationRef.current = null;
+      }
+      const recorder = mediaRecorderRef.current;
+      mediaRecorderRef.current = null;
+      mediaRecorderChunksRef.current = [];
+      if (recorder && recorder.state !== "inactive") {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.onerror = null;
+        try {
+          recorder.stop();
+        } catch (_) {}
       }
       const recognition = recognitionRef.current;
       recognitionRef.current = null;
@@ -1186,12 +1155,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       releaseAudioStream();
     };
   }, []);
-
-  useEffect(() => {
-    const nextLanguage = defaultRecognitionLanguage();
-    recognitionLanguageRef.current = nextLanguage;
-    setRecognitionLanguage(nextLanguage);
-  }, [languageMode]);
 
   // Session timer
   useEffect(() => {
@@ -1644,6 +1607,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   /** Para a voz (AudioContext + HTMLAudio + Web Speech) e limpa o estado */
   const stopSpeaking = useCallback(() => {
     invalidatePendingTTS();
+    ttsRequestAbortRef.current?.abort();
+    ttsRequestAbortRef.current = null;
     stopOutputMeter();
     // Para AudioContext source (iOS + desktop)
     if (audioSourceRef.current) {
@@ -1688,14 +1653,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const speakWebSpeech = useCallback((
     text: string,
     speed?: number,
-    forceLang?: "en" | "pt",
+    forceLang?: TtsLanguage,
     requestVersion = ttsRequestVersionRef.current,
+    segments?: SpeechSegment[],
   ) => {
     const isCurrent = () => requestVersion === ttsRequestVersionRef.current;
     if (!isCurrent()) return;
-    const lang = forceLang ?? "en"; // sempre inglês por padrão
-    const clean = prepareForTTS(text);
-    const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+    const fallbackLanguage: SpeechLanguage = forceLang === "pt" ? "pt" : "en";
+    const sourceSegments = segments?.length
+      ? segments
+      : [{ text, language: fallbackLanguage }];
+    const sentences = sourceSegments.flatMap((segment) => {
+      const clean = prepareForTTS(segment.text);
+      const parts = clean.match(/[^.!?]+(?:[.!?]+|$)/g) || [clean];
+      return parts
+        .map((sentence) => ({
+          sentence: sentence.trim(),
+          language: segment.language,
+        }))
+        .filter((item) => item.sentence);
+    });
 
     let idx = 0;
     const speakNext = () => {
@@ -1705,11 +1682,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         setSubtitle("");
         return;
       }
-      const sentence = sentences[idx++].trim();
-      if (!sentence) {
-        speakNext();
-        return;
-      }
+      const item = sentences[idx++];
+      const sentence = item.sentence;
+      const lang = item.language;
 
       const utterance = new SpeechSynthesisUtterance(sentence);
 
@@ -1756,17 +1731,35 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
    * Web Speech permanece como último recurso local.
    */
   const speak = useCallback(
-    async (text: string, speed?: number, forceLang?: "en" | "pt") => {
+    async (
+      text: string,
+      speed?: number,
+      forceLang?: TtsLanguage,
+      segments?: SpeechSegment[],
+    ) => {
       const requestVersion = ++ttsRequestVersionRef.current;
       const isCurrent = () => requestVersion === ttsRequestVersionRef.current;
+      const speechText = segments?.length
+        ? segments.map((segment) =>
+          `${segment.language === "pt" ? "Português" : "English"}: ${
+            prepareForTTS(segment.text)
+          }`
+        ).join("\n")
+        : text;
       setState("SYNTHESIZING");
-      setSubtitle(text);
+      setSubtitle(speechText);
       lastSpokenTextRef.current = text;
 
       const lang = forceLang ?? "en";
       lastSpokenLanguageRef.current = lang;
-      const voice = lang === "pt" ? "pt-BR-ThalitaNeural" : "en-US-JennyNeural";
-      const rate = speed ?? (lang === "pt" ? 1.0 : getTTSSpeed(studentLevel));
+      lastSpokenSegmentsRef.current = segments?.length ? segments : null;
+      const voice = lang === "pt"
+        ? "pt-BR-ThalitaNeural"
+        : lang === "mixed"
+        ? "auto-Bilingual"
+        : "en-US-JennyNeural";
+      const rate = speed ??
+        (lang === "en" ? getTTSSpeed(studentLevel) : 1.0);
 
       // Para qualquer áudio anterior
       if (audioSourceRef.current) {
@@ -1783,12 +1776,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       window.speechSynthesis.cancel();
 
       try {
+        ttsRequestAbortRef.current?.abort();
+        const controller = new AbortController();
+        ttsRequestAbortRef.current = controller;
         const { data, error: fnError } = await supabase.functions.invoke(
           "wolfie-tts",
           {
-            body: { text, voice, speed: rate },
+            body: {
+              text: speechText,
+              voice,
+              language: lang,
+              speed: rate,
+              segments,
+            },
+            signal: controller.signal,
+            timeout: WOLFIE_TTS_TIMEOUT_MS,
           },
         );
+        if (ttsRequestAbortRef.current === controller) {
+          ttsRequestAbortRef.current = null;
+        }
 
         if (!isCurrent()) return;
         if (fnError || !data?.audio) {
@@ -1932,7 +1939,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
           // ── iOS 3: Web Speech API (último recurso) ──
           showIOSDebug("fallback Web Speech");
-          speakWebSpeech(text, rate, lang, requestVersion);
+          speakWebSpeech(speechText, rate, lang, requestVersion, segments);
           return;
         }
 
@@ -1999,7 +2006,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             URL.revokeObjectURL(url);
             if (audioRef.current === audio) audioRef.current = null;
             if (!isCurrent()) return;
-            speakWebSpeech(text, rate, lang, requestVersion);
+            speakWebSpeech(speechText, rate, lang, requestVersion, segments);
           };
           try {
             await audio.play();
@@ -2013,7 +2020,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             return;
           } catch (_) {
             if (!isCurrent()) return;
-            speakWebSpeech(text, rate, lang, requestVersion);
+            speakWebSpeech(speechText, rate, lang, requestVersion, segments);
             return;
           }
         }
@@ -2022,7 +2029,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         const errMsg = err?.message ?? String(err);
         console.warn("[WolfieTutor] wolfie-tts erro:", errMsg);
         stopIOSKeepAlive();
-        speakWebSpeech(text, speed, lang, requestVersion);
+        ttsRequestAbortRef.current = null;
+        speakWebSpeech(
+          speechText,
+          speed,
+          lang,
+          requestVersion,
+          segments,
+        );
       }
     },
     [
@@ -2041,6 +2055,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         lastSpokenTextRef.current,
         0.88,
         lastSpokenLanguageRef.current,
+        lastSpokenSegmentsRef.current ?? undefined,
       );
     }
   };
@@ -2067,6 +2082,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   };
 
   const useClassicVoice = () => {
+    invalidatePendingRequest();
+    abortRecognition();
     realtime.disconnect();
     setVoiceTransport("classic");
     setState("IDLE");
@@ -2075,6 +2092,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   };
 
   const useRealtimeVoice = () => {
+    invalidatePendingRequest();
     abortRecognition();
     stopSpeaking();
     setVoiceTransport("realtime");
@@ -2104,12 +2122,118 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       studentLanguage: review.studentLanguage,
       transcriptionConfidence: review.confidence,
       transcriptionAlternatives: review.alternatives,
+      speechDerivedTranscript: true,
       transcriptConfirmed,
     });
   };
 
+  const submitClassicAudioBlob = async (
+    blob: Blob,
+    recordingAttempt: number,
+  ) => {
+    if (
+      recordingAttempt !== recordingAttemptRef.current ||
+      !isMountedRef.current
+    ) return;
+
+    if (blob.size < 200) {
+      stopIOSKeepAlive();
+      setState("IDLE");
+      setSubtitle("");
+      setError("Não ouvi nada — segure o mascote e fale");
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    if (blob.size > MAX_CLASSIC_RECORDING_BYTES) {
+      stopIOSKeepAlive();
+      setState("IDLE");
+      setSubtitle("");
+      setError("O áudio ficou muito longo. Tente uma resposta mais curta.");
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+
+    setState("THINKING");
+    setSubtitle("Reconhecendo português e inglês...");
+    try {
+      const audioBase64 = await audioBlobToBase64(blob);
+      if (recordingAttempt !== recordingAttemptRef.current) return;
+
+      transcriptionAbortRef.current?.abort();
+      const controller = new AbortController();
+      transcriptionAbortRef.current = controller;
+      const { data, error: transcriptionError } = await supabase.functions
+        .invoke("wolfie-brain", {
+          body: {
+            action: "transcribe_audio",
+            audioBase64,
+            audioMimeType: blob.type || mediaRecorderMimeTypeRef.current,
+          },
+          signal: controller.signal,
+          timeout: WOLFIE_TRANSCRIPTION_TIMEOUT_MS,
+        });
+      if (transcriptionAbortRef.current === controller) {
+        transcriptionAbortRef.current = null;
+      }
+      if (
+        recordingAttempt !== recordingAttemptRef.current ||
+        !isMountedRef.current
+      ) return;
+
+      const payload = asRecord(data);
+      const transcript = firstString(
+        payload,
+        "transcribedText",
+        "transcript",
+        "text",
+      );
+      if (transcriptionError || payload.error || !transcript) {
+        throw new Error(
+          firstString(payload, "error", "code") ||
+            transcriptionError?.message ||
+            "AUDIO_NOT_UNDERSTOOD",
+        );
+      }
+      const studentLanguage = normalizedSpeechLanguage(
+        firstString(payload, "detectedLanguage", "language"),
+        detectSpeechLanguage(transcript, lastLearnerLanguageRef.current),
+      );
+      lastLearnerLanguageRef.current = studentLanguage;
+      const review: PendingTranscriptReview = {
+        transcript,
+        alternatives: [],
+        confidence: null,
+        studentLanguage,
+        source: "classic",
+      };
+
+      if (shouldConfirmVoiceTranscript(review)) {
+        stopIOSKeepAlive();
+        setPendingTranscriptReview(review);
+        setState("IDLE");
+        setSubtitle("");
+        return;
+      }
+      submitVoiceTranscript(review);
+    } catch (cause) {
+      if (recordingAttempt !== recordingAttemptRef.current) return;
+      transcriptionAbortRef.current = null;
+      stopIOSKeepAlive();
+      setState("IDLE");
+      setSubtitle("");
+      const name = cause instanceof Error ? cause.name : "";
+      setError(
+        name === "AbortError"
+          ? "A transcrição demorou mais que o esperado. Tente novamente."
+          : "Não consegui entender o áudio agora. Tente novamente.",
+      );
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
   // ============================================================
-  // VOICE INPUT — Web Speech API (hold to speak, bilingual PT+EN)
+  // VOICE INPUT — MediaRecorder + multilingual server ASR.
+  // Web Speech remains only as a compatibility fallback.
   // ============================================================
   const startRecording = () => {
     // Permite iniciar em IDLE ou SPEAKING (interrompe o Wolfie)
@@ -2125,8 +2249,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     // começar a tocar depois que o microfone foi aberto.
     invalidatePendingTTS();
 
+    const recordingAttempt = ++recordingAttemptRef.current;
     // Solicita o microfone somente dentro do gesto explícito do aluno.
-    ensureAudioStream();
+    const streamPromise = ensureAudioStream();
 
     // ── Desbloqueia AudioContext no iOS (DEVE ser no handler de toque) ──
     unlockAudio();
@@ -2161,169 +2286,203 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     }
     setError(null);
 
-    const SpeechRec = (window as any).webkitSpeechRecognition ||
-      (window as any).SpeechRecognition;
-    if (!SpeechRec) {
-      releaseAudioStream();
-      stopIOSKeepAlive();
-      setError("Reconhecimento de voz não suportado. Use o campo de texto.");
-      setTimeout(() => setError(null), 5000);
-      setShowTextInput(true);
-      return;
-    }
-
     // Aguarda 400ms para o speaker parar fisicamente antes de ligar o mic
     recordingDelayRef.current = setTimeout(() => {
       recordingDelayRef.current = null;
-      if (recognitionRef.current) {
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.onend = null;
-        try {
-          recognitionRef.current.abort();
-        } catch (_) {}
-        recognitionRef.current = null;
-      }
-
-      finalTranscriptRef.current = "";
-      transcriptAlternativesRef.current = [];
-      transcriptConfidenceRef.current = null;
-
-      const recognition = new SpeechRec();
-      const captureLanguage = recognitionLanguageRef.current;
-      // Um único modelo acústico por tentativa evita mutilar o outro idioma.
-      recognition.lang = captureLanguage;
-      // continuous = true: NÃO corta enquanto o usuário segura o mascote
-      recognition.continuous = true;
-      // interimResults = true: mostra legenda em tempo real enquanto fala
-      recognition.interimResults = true;
-      recognition.maxAlternatives = 5;
-      recognitionRef.current = recognition;
-
-      recognition.onresult = (event: any) => {
-        // Acumula todo texto final + exibe interim como legenda ao vivo
-        let finalText = "";
-        let interimText = "";
-        const finalResults: any[] = [];
-        for (let i = 0; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalText += event.results[i][0].transcript + " ";
-            finalResults.push(event.results[i]);
-          } else {
-            interimText += event.results[i][0].transcript;
-          }
+      void (async () => {
+        const stream = await streamPromise;
+        if (recordingAttempt !== recordingAttemptRef.current) {
+          stream?.getTracks().forEach((track) => track.stop());
+          return;
         }
-        finalTranscriptRef.current = finalText.trim();
 
-        if (finalResults.length > 0) {
-          const candidateCount = Math.min(
-            5,
-            Math.max(...finalResults.map((result) => result.length || 1)),
-          );
-          const alternatives: string[] = [];
-          for (let rank = 0; rank < candidateCount; rank++) {
-            const candidate = finalResults
-              .map((result) =>
-                (result[Math.min(rank, result.length - 1)]?.transcript || "")
-                  .trim()
-              )
-              .filter(Boolean)
-              .join(" ")
-              .trim();
-            if (candidate) alternatives.push(candidate);
-          }
-          transcriptAlternativesRef.current = uniqueTranscriptAlternatives(
-            finalTranscriptRef.current,
-            alternatives,
-          );
+        const preferredMimeType = classicRecorderMimeType();
+        if (stream && typeof MediaRecorder !== "undefined") {
+          try {
+            const recorder = preferredMimeType
+              ? new MediaRecorder(stream, {
+                mimeType: preferredMimeType,
+                audioBitsPerSecond: 64_000,
+              })
+              : new MediaRecorder(stream, { audioBitsPerSecond: 64_000 });
+            mediaRecorderRef.current = recorder;
+            mediaRecorderChunksRef.current = [];
+            mediaRecorderStartedAtRef.current = Date.now();
+            mediaRecorderMimeTypeRef.current = recorder.mimeType ||
+              preferredMimeType ||
+              "audio/webm";
 
-          const confidenceValues = finalResults
-            .map((result) => result[0]?.confidence)
-            .filter((value): value is number =>
-              typeof value === "number" && Number.isFinite(value) && value > 0
+            recorder.ondataavailable = (event) => {
+              if (event.data.size > 0) {
+                mediaRecorderChunksRef.current.push(event.data);
+              }
+            };
+            recorder.onerror = () => {
+              recordingAttemptRef.current += 1;
+              mediaRecorderRef.current = null;
+              releaseAudioStream();
+              stopIOSKeepAlive();
+              setState("IDLE");
+              setSubtitle("");
+              setError("O microfone falhou. Tente novamente.");
+              setTimeout(() => setError(null), 4000);
+            };
+            recorder.onstop = () => {
+              if (recordingMaxDurationRef.current) {
+                clearTimeout(recordingMaxDurationRef.current);
+                recordingMaxDurationRef.current = null;
+              }
+              if (mediaRecorderRef.current === recorder) {
+                mediaRecorderRef.current = null;
+              }
+              const chunks = mediaRecorderChunksRef.current;
+              mediaRecorderChunksRef.current = [];
+              const mimeType = recorder.mimeType ||
+                mediaRecorderMimeTypeRef.current;
+              releaseAudioStream();
+              const blob = new Blob(chunks, { type: mimeType });
+              void submitClassicAudioBlob(blob, recordingAttempt);
+            };
+            recorder.start(250);
+            recordingMaxDurationRef.current = setTimeout(() => {
+              if (recorder.state !== "inactive") recorder.stop();
+            }, MAX_CLASSIC_RECORDING_MS);
+            setState("LISTENING");
+            setSubtitle("Ouvindo automaticamente em PT e EN...");
+            return;
+          } catch (recorderError) {
+            console.warn(
+              "[WolfieTutor] MediaRecorder indisponível:",
+              recorderError,
             );
-          transcriptConfidenceRef.current = confidenceValues.length
-            ? confidenceValues.reduce((sum, value) => sum + value, 0) /
-              confidenceValues.length
-            : null;
-        }
-        // Mostra o que já reconheceu como legenda (feedback visual ao vivo)
-        setSubtitle(interimText || finalText.trim());
-      };
-
-      recognition.onerror = (event: any) => {
-        releaseAudioStream();
-        recognitionRef.current = null;
-        stopIOSKeepAlive();
-        // 'aborted' é silencioso (usuário soltou antes do delay)
-        if (event.error !== "aborted") {
-          const msgs: Record<string, string> = {
-            "no-speech": "Não ouvi nada — segure e fale mais perto",
-            "audio-capture": "Microfone não encontrado",
-            "not-allowed": "Permissão do microfone negada",
-            "network": "Erro de rede no reconhecimento de voz",
-          };
-          const msg = msgs[event.error] ?? `Erro: ${event.error}`;
-          if (msg) {
-            setError(msg);
-            setTimeout(() => setError(null), 4000);
+            releaseAudioStream();
           }
         }
-        setState("IDLE");
-        setSubtitle("");
-      };
 
-      recognition.onend = () => {
-        // Chamado quando stop() é acionado pelo mouseup/touchend
-        const transcript = finalTranscriptRef.current.trim();
-        releaseAudioStream();
-        recognitionRef.current = null;
-        setSubtitle("");
-
-        if (!transcript) {
+        // Compatibilidade para navegadores antigos. O idioma da fala é
+        // inferido do texto; nunca é derivado de um botão PT/EN.
+        if (stream) releaseAudioStream();
+        const SpeechRec = (window as any).webkitSpeechRecognition ||
+          (window as any).SpeechRecognition;
+        if (!SpeechRec) {
           stopIOSKeepAlive();
+          setError("Reconhecimento de voz não suportado. Use o campo de texto.");
+          setTimeout(() => setError(null), 5000);
+          setShowTextInput(true);
           setState("IDLE");
-          if (!isProcessingRef.current) {
-            setError("Não ouvi nada — segure o mascote e fale");
-            setTimeout(() => setError(null), 3000);
+          return;
+        }
+
+        finalTranscriptRef.current = "";
+        transcriptAlternativesRef.current = [];
+        transcriptConfidenceRef.current = null;
+        const recognition = new SpeechRec();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 5;
+        recognitionRef.current = recognition;
+
+        recognition.onresult = (event: any) => {
+          let finalText = "";
+          let interimText = "";
+          const finalResults: any[] = [];
+          for (let index = 0; index < event.results.length; index++) {
+            if (event.results[index].isFinal) {
+              finalText += `${event.results[index][0].transcript} `;
+              finalResults.push(event.results[index]);
+            } else {
+              interimText += event.results[index][0].transcript;
+            }
           }
-          return;
-        }
-
-        if (isProcessingRef.current) {
-          console.warn("🎤 Resultado ignorado — já processando outro");
-          setState("IDLE");
-          return;
-        }
-
-        const review: PendingTranscriptReview = {
-          transcript,
-          alternatives: transcriptAlternativesRef.current,
-          confidence: transcriptConfidenceRef.current,
-          studentLanguage: captureLanguage === "pt-BR" ? "pt" : "en",
+          finalTranscriptRef.current = finalText.trim();
+          if (finalResults.length > 0) {
+            const alternatives = finalResults.flatMap((result) =>
+              Array.from(result).slice(0, 5).map((candidate: any) =>
+                String(candidate?.transcript ?? "").trim()
+              )
+            );
+            transcriptAlternativesRef.current = uniqueTranscriptAlternatives(
+              finalTranscriptRef.current,
+              alternatives,
+            );
+            const confidences = finalResults
+              .map((result) => result[0]?.confidence)
+              .filter((value): value is number =>
+                typeof value === "number" && Number.isFinite(value) &&
+                value > 0
+              );
+            transcriptConfidenceRef.current = confidences.length
+              ? confidences.reduce((sum, value) => sum + value, 0) /
+                confidences.length
+              : null;
+          }
+          setSubtitle(interimText || finalText.trim());
         };
 
-        if (shouldConfirmVoiceTranscript(review)) {
+        recognition.onerror = (event: any) => {
+          recognitionRef.current = null;
+          recognition.onend = null;
+          finalTranscriptRef.current = "";
           stopIOSKeepAlive();
-          setPendingTranscriptReview(review);
+          if (event.error !== "aborted") {
+            const messagesByError: Record<string, string> = {
+              "no-speech": "Não ouvi nada — segure e fale mais perto",
+              "audio-capture": "Microfone não encontrado",
+              "not-allowed": "Permissão do microfone negada",
+              "network": "Erro de rede no reconhecimento de voz",
+            };
+            setError(
+              messagesByError[event.error] ?? "O microfone falhou. Tente novamente.",
+            );
+            setTimeout(() => setError(null), 4000);
+          }
           setState("IDLE");
-          return;
+          setSubtitle("");
+        };
+
+        recognition.onend = () => {
+          const transcript = finalTranscriptRef.current.trim();
+          recognitionRef.current = null;
+          setSubtitle("");
+          if (!transcript) {
+            stopIOSKeepAlive();
+            setState("IDLE");
+            setError("Não ouvi nada — segure o mascote e fale");
+            setTimeout(() => setError(null), 3000);
+            return;
+          }
+          const studentLanguage = detectSpeechLanguage(
+            transcript,
+            lastLearnerLanguageRef.current,
+          );
+          lastLearnerLanguageRef.current = studentLanguage;
+          const review: PendingTranscriptReview = {
+            transcript,
+            alternatives: transcriptAlternativesRef.current,
+            confidence: transcriptConfidenceRef.current,
+            studentLanguage,
+            source: "classic",
+          };
+          if (shouldConfirmVoiceTranscript(review)) {
+            stopIOSKeepAlive();
+            setPendingTranscriptReview(review);
+            setState("IDLE");
+            return;
+          }
+          submitVoiceTranscript(review);
+        };
+
+        try {
+          recognition.start();
+          setState("LISTENING");
+        } catch {
+          recognitionRef.current = null;
+          stopIOSKeepAlive();
+          setState("IDLE");
+          setError("Não foi possível iniciar o microfone. Tente novamente.");
+          setTimeout(() => setError(null), 4000);
         }
-
-        submitVoiceTranscript(review);
-      };
-
-      try {
-        recognition.start();
-        setState("LISTENING");
-      } catch (_) {
-        recognitionRef.current = null;
-        releaseAudioStream();
-        stopIOSKeepAlive();
-        setState("IDLE");
-        setError("Não foi possível iniciar o microfone. Tente novamente.");
-        setTimeout(() => setError(null), 4000);
-      }
+      })();
     }, 400);
   };
 
@@ -2331,21 +2490,43 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     if (recordingDelayRef.current) {
       clearTimeout(recordingDelayRef.current);
       recordingDelayRef.current = null;
+      recordingAttemptRef.current += 1;
       releaseAudioStream();
       stopIOSKeepAlive();
       setState("IDLE");
       return;
     }
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      if (IS_IOS) unlockAudio();
+      try {
+        recorder.stop();
+      } catch {
+        mediaRecorderRef.current = null;
+        releaseAudioStream();
+        stopIOSKeepAlive();
+        setState("IDLE");
+      }
+      return;
+    }
     if (!recognitionRef.current) {
+      recordingAttemptRef.current += 1;
       releaseAudioStream();
       stopIOSKeepAlive();
+      setState("IDLE");
       return;
     }
     // iOS: re-bloqueia AudioContext no touchEnd — momento mais próximo do speak()
     // Isso garante que o AudioContext permanece "running" durante o fetch assíncrono
     if (IS_IOS) unlockAudio();
     // stop() termina a sessão → dispara onend com o transcript acumulado
-    recognitionRef.current?.stop();
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      recognitionRef.current = null;
+      stopIOSKeepAlive();
+      setState("IDLE");
+    }
   };
 
   const sendMessage = async (text: string) => {
@@ -2408,7 +2589,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     // Se falou EN → Wolfie responde em EN (JennyNeural)
     const studentLang: SpeechLanguage = input.studentLanguage ??
       inferWolfieSocialTurnLanguage(input.message) ??
-      detectSpeechLanguage(input.message || "", "en");
+      detectSpeechLanguage(
+        input.message || "",
+        lastLearnerLanguageRef.current,
+      );
+    if (input.message) lastLearnerLanguageRef.current = studentLang;
     const localLearnerTurnKind = classifyWolfieLearnerTurn(
       input.message,
       Boolean(input.audioBase64),
@@ -2419,6 +2604,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     );
 
     try {
+      brainRequestAbortRef.current?.abort();
+      const controller = new AbortController();
+      brainRequestAbortRef.current = controller;
       const history = messages.slice(-6).map((m) =>
         `${m.role === "user" ? "Student" : "Wolfie"}: ${m.content}`
       ).join("\n");
@@ -2472,9 +2660,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             experienceUniverse,
             experienceAudiences,
             previousContext: fullContext,
-            // Quando aluno fala PT, desativa tradução (já está em PT)
+            // No modo adaptativo, um turno PT recebe a ponte em inglês no
+            // campo de tradução; um turno EN pode receber apoio em PT.
             translationEnabled: studentLang === "pt"
-              ? false
+              ? true
               : translationEnabled,
             vocabularyEnabled: localTurnIsSubstantive,
             mode,
@@ -2483,10 +2672,15 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             allowPortuguese: true,
             turnCount,
             conversationId,
-            studentLanguage: studentLang, // PT ou EN — Wolfie responde no mesmo idioma
+            studentLanguage: studentLang,
           },
+          signal: controller.signal,
+          timeout: WOLFIE_BRAIN_TIMEOUT_MS,
         },
       );
+      if (brainRequestAbortRef.current === controller) {
+        brainRequestAbortRef.current = null;
+      }
 
       if (requestVersion !== requestVersionRef.current) return;
 
@@ -2519,8 +2713,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         learnerTurnKind,
         activePedagogicalTask,
       );
-      const suppressTranslation = learnerTurnKind === "greeting" ||
-        learnerTurnKind === "noise";
+      const suppressTranslation = learnerTurnKind === "noise";
       const chatText = firstString(
         responsePayload,
         "chatResponse",
@@ -2673,20 +2866,48 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       // O backend informa explicitamente o idioma desta fala. A heurística
       // acima existe apenas para compatibilidade durante a implantação.
       if (autoSpeakEnabled && chatText) {
-        void speak(chatText, undefined, responseLang);
+        const bilingualSegments = responseLang === "pt" && nextTranslation
+          ? [
+            { text: chatText, language: "pt" as const },
+            { text: "Agora, em inglês.", language: "pt" as const },
+            { text: nextTranslation, language: "en" as const },
+          ]
+          : undefined;
+        void speak(
+          chatText,
+          undefined,
+          bilingualSegments ? "mixed" : responseLang,
+          bilingualSegments,
+        );
       } else {
+        stopIOSKeepAlive();
         setState("IDLE");
       }
     } catch (err: any) {
       if (requestVersion !== requestVersionRef.current) return;
       console.error("Wolfie Brain Error:", err);
-      setError(err.message || "Erro de conexão");
+      brainRequestAbortRef.current = null;
+      stopIOSKeepAlive();
+      const errorName = err?.name ?? "";
+      const errorMessage = String(err?.message ?? "");
+      setError(
+        errorName === "AbortError" ||
+          /abort|timeout|timed out/i.test(errorMessage)
+          ? "O Wolfie demorou mais que o esperado. Tente novamente."
+          : "Não consegui responder agora. Tente novamente.",
+      );
       setState("IDLE");
       setTimeout(() => setError(null), 5000);
     } finally {
       // Libera o lock sempre — seja sucesso ou erro
       if (requestVersion === requestVersionRef.current) {
         isProcessingRef.current = false;
+      }
+      if (
+        brainRequestAbortRef.current?.signal.aborted ||
+        requestVersion !== requestVersionRef.current
+      ) {
+        brainRequestAbortRef.current = null;
       }
     }
   };
@@ -2716,12 +2937,34 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const invalidatePendingRequest = () => {
     requestVersionRef.current += 1;
     isProcessingRef.current = false;
+    brainRequestAbortRef.current?.abort();
+    brainRequestAbortRef.current = null;
+    transcriptionAbortRef.current?.abort();
+    transcriptionAbortRef.current = null;
   };
 
   const abortRecognition = () => {
+    recordingAttemptRef.current += 1;
+    transcriptionAbortRef.current?.abort();
+    transcriptionAbortRef.current = null;
     if (recordingDelayRef.current) {
       clearTimeout(recordingDelayRef.current);
       recordingDelayRef.current = null;
+    }
+    if (recordingMaxDurationRef.current) {
+      clearTimeout(recordingMaxDurationRef.current);
+      recordingMaxDurationRef.current = null;
+    }
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    mediaRecorderChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+      try {
+        recorder.stop();
+      } catch (_) {}
     }
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
@@ -3191,28 +3434,16 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               {realtime.muted ? "Retomar" : "Pausar"}
             </button>
           )}
-          {/* Idioma do reconhecimento — cada tentativa usa um único modelo acústico */}
+          {/* O idioma é reconhecido por fala, sem seletor PT/EN. */}
           {!isRealtimeMode && (
-            <button
-              type="button"
-              onClick={() =>
-                setRecognitionLanguage((current) => {
-                  const next = current === "en-US" ? "pt-BR" : "en-US";
-                  recognitionLanguageRef.current = next;
-                  return next;
-                })}
-              disabled={state === "LISTENING" || state === "THINKING"}
-              className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-violet-200 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-              title={recognitionLanguage === "en-US"
-                ? "Microfone ouvindo inglês americano. Clique para mudar para português do Brasil."
-                : "Microfone ouvindo português do Brasil. Clique para mudar para inglês americano."}
-              aria-label={recognitionLanguage === "en-US"
-                ? "Idioma do microfone: inglês americano"
-                : "Idioma do microfone: português do Brasil"}
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-violet-200"
+              title="O Wolfie reconhece português e inglês automaticamente a cada fala."
+              aria-label="Idioma do microfone: automático, português e inglês"
             >
               <Mic size={11} aria-hidden="true" />
-              MIC {recognitionLanguage === "en-US" ? "EN" : "PT"}
-            </button>
+              MIC AUTO
+            </span>
           )}
           {/* Translation Toggle */}
           <button
@@ -3402,21 +3633,26 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           onClick={isRealtimeMode
             ? () => void startRealtimeConversation()
             : undefined}
-          onMouseDown={isRealtimeMode ? undefined : startRecording}
-          onMouseUp={isRealtimeMode ? undefined : stopRecordingAndSend}
-          onMouseLeave={isRealtimeMode
+          onPointerDown={isRealtimeMode
             ? undefined
-            : () => state === "LISTENING" && stopRecordingAndSend()}
-          onTouchStart={isRealtimeMode
-            ? undefined
-            : (e) => {
-              e.preventDefault();
+            : (event) => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
               startRecording();
             }}
-          onTouchEnd={isRealtimeMode
+          onPointerUp={isRealtimeMode
             ? undefined
-            : (e) => {
-              e.preventDefault();
+            : (event) => {
+              event.preventDefault();
+              stopRecordingAndSend();
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+          onPointerCancel={isRealtimeMode
+            ? undefined
+            : (event) => {
+              event.preventDefault();
               stopRecordingAndSend();
             }}
           onContextMenu={(e) => e.preventDefault()}

@@ -16,6 +16,8 @@ import {
 
 const DEFAULT_FUNCTION_URL = `${FUNCTIONS_URL}/wolfie-realtime-session`;
 const SESSION_SETUP_TIMEOUT_MS = 25_000;
+const TRANSPORT_READY_TIMEOUT_MS = 12_000;
+const DISCONNECTED_GRACE_MS = 5_000;
 const MAX_TEXT_INPUT_LENGTH = 4_000;
 
 export type WolfieRealtimeFallbackReason =
@@ -232,6 +234,59 @@ function dataChannelIsOpen(
   return channel?.readyState === "open";
 }
 
+function waitForRealtimeTransport(
+  peer: RTCPeerConnection,
+  channel: RTCDataChannel,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      peer.removeEventListener("connectionstatechange", check);
+      channel.removeEventListener("open", check);
+      channel.removeEventListener("close", check);
+      channel.removeEventListener("error", check);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const check = () => {
+      if (channel.readyState === "open") {
+        finish();
+        return;
+      }
+      if (
+        channel.readyState === "closing" ||
+        channel.readyState === "closed" ||
+        peer.connectionState === "failed" ||
+        peer.connectionState === "closed"
+      ) {
+        finish(new Error("realtime_transport_failed"));
+      }
+    };
+    const timeout = window.setTimeout(
+      () =>
+        finish(
+          new DOMException(
+            "Realtime transport did not become ready",
+            "TimeoutError",
+          ),
+        ),
+      timeoutMs,
+    );
+    peer.addEventListener("connectionstatechange", check);
+    channel.addEventListener("open", check);
+    channel.addEventListener("close", check);
+    channel.addEventListener("error", check);
+    check();
+  });
+}
+
 function eventString(
   event: WolfieRealtimeServerEvent,
   field: string,
@@ -326,6 +381,7 @@ export function useWolfieRealtime(
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const metersRef = useRef<AudioMeterResources | null>(null);
   const setupAbortRef = useRef<AbortController | null>(null);
+  const disconnectedTimeoutRef = useRef<number | null>(null);
   const connectingRef = useRef(false);
   const connectionAttemptRef = useRef(0);
   const mountedRef = useRef(true);
@@ -385,6 +441,10 @@ export function useWolfieRealtime(
     connectionAttemptRef.current += 1;
     setupAbortRef.current?.abort();
     setupAbortRef.current = null;
+    if (disconnectedTimeoutRef.current !== null) {
+      window.clearTimeout(disconnectedTimeoutRef.current);
+      disconnectedTimeoutRef.current = null;
+    }
     connectingRef.current = false;
 
     const channel = dataChannelRef.current;
@@ -766,18 +826,45 @@ export function useWolfieRealtime(
     microphone.getTracks().forEach((track) => peer.addTrack(track, microphone));
     peer.ontrack = attachRemoteStream;
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === "connected") {
+      if (
+        peer.connectionState === "connected" &&
+        channel.readyState === "open"
+      ) {
+        if (disconnectedTimeoutRef.current !== null) {
+          window.clearTimeout(disconnectedTimeoutRef.current);
+          disconnectedTimeoutRef.current = null;
+        }
+        connectingRef.current = false;
         dispatch({ type: "local.phase", phase: "connected" });
+      } else if (peer.connectionState === "disconnected") {
+        if (disconnectedTimeoutRef.current === null) {
+          disconnectedTimeoutRef.current = window.setTimeout(() => {
+            disconnectedTimeoutRef.current = null;
+            if (
+              mountedRef.current &&
+              peerRef.current === peer &&
+              peer.connectionState === "disconnected"
+            ) {
+              markFallback(
+                "connection_failed",
+                "A conexão em tempo real não se recuperou. Voltamos ao modo de voz clássico.",
+              );
+            }
+          }, DISCONNECTED_GRACE_MS);
+        }
       } else if (
         peer.connectionState === "failed" ||
         peer.connectionState === "closed"
       ) {
+        if (disconnectedTimeoutRef.current !== null) {
+          window.clearTimeout(disconnectedTimeoutRef.current);
+          disconnectedTimeoutRef.current = null;
+        }
         if (mountedRef.current && peerRef.current === peer) {
-          cleanupResources(false);
-          dispatch({
-            type: "local.error",
-            message: "A conversa em tempo real foi interrompida.",
-          });
+          markFallback(
+            "connection_failed",
+            "A conversa em tempo real foi interrompida. Voltamos ao modo de voz clássico.",
+          );
         }
       }
     };
@@ -786,25 +873,28 @@ export function useWolfieRealtime(
     dataChannelRef.current = channel;
     channel.onopen = () => {
       if (mountedRef.current) {
+        if (disconnectedTimeoutRef.current !== null) {
+          window.clearTimeout(disconnectedTimeoutRef.current);
+          disconnectedTimeoutRef.current = null;
+        }
+        connectingRef.current = false;
         dispatch({ type: "local.phase", phase: "connected" });
       }
     };
     channel.onclose = () => {
       if (mountedRef.current && peerRef.current === peer) {
-        cleanupResources(false);
-        dispatch({
-          type: "local.error",
-          message: "O canal da conversa em tempo real foi fechado.",
-        });
+        markFallback(
+          "connection_failed",
+          "O canal da conversa em tempo real foi fechado. Voltamos ao modo de voz clássico.",
+        );
       }
     };
     channel.onerror = () => {
       if (mountedRef.current && peerRef.current === peer) {
-        cleanupResources(false);
-        dispatch({
-          type: "local.error",
-          message: "O canal da conversa em tempo real encontrou um erro.",
-        });
+        markFallback(
+          "connection_failed",
+          "O canal da conversa em tempo real encontrou um erro. Voltamos ao modo de voz clássico.",
+        );
       }
     };
     channel.onmessage = (event) => handleServerEvent(event.data);
@@ -898,7 +988,23 @@ export function useWolfieRealtime(
           message: "A conexão foi cancelada.",
         };
       }
+      await waitForRealtimeTransport(
+        peer,
+        channel,
+        TRANSPORT_READY_TIMEOUT_MS,
+      );
+      if (
+        connectionAttemptRef.current !== connectionAttempt ||
+        !mountedRef.current
+      ) {
+        return {
+          ok: false,
+          fallback: false,
+          message: "A conexão foi cancelada.",
+        };
+      }
       connectingRef.current = false;
+      dispatch({ type: "local.phase", phase: "connected" });
       return { ok: true, fallback: false };
     } catch (error) {
       if (
@@ -912,10 +1018,13 @@ export function useWolfieRealtime(
         };
       }
       connectingRef.current = false;
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (
+        error instanceof DOMException &&
+        (error.name === "AbortError" || error.name === "TimeoutError")
+      ) {
         return markFallback(
           "service_unavailable",
-          "O modo em tempo real demorou para responder. Use o modo de voz atual.",
+          "O modo em tempo real demorou para conectar. Voltamos ao modo de voz clássico.",
         );
       }
       return markFallback(

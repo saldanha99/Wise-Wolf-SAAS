@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+
 import {
   createClient,
   type SupabaseClient,
@@ -22,6 +24,37 @@ interface AuthorizeRequestOptions {
   allowService?: boolean;
   allowedRoles?: readonly string[];
   corsHeaders: Record<string, string>;
+}
+
+const TENANT_SCOPED_ROLES = new Set([
+  "STUDENT",
+  "TEACHER",
+  "SCHOOL_ADMIN",
+  "COORDINATOR",
+  "COMMERCIAL",
+  "SALESPERSON",
+  "NON_STUDENT",
+]);
+
+interface ActiveTenantMembership {
+  tenant_id: string;
+  role: string;
+}
+
+export function isAuthorizedTenantMembership(
+  membership: ActiveTenantMembership | null,
+): membership is ActiveTenantMembership {
+  return Boolean(
+    membership &&
+      membership.tenant_id &&
+      TENANT_SCOPED_ROLES.has(membership.role),
+  );
+}
+
+export function isAuthorizedTenantlessProfile(
+  profile: AuthProfile,
+): boolean {
+  return profile.role === "NON_STUDENT" && profile.tenant_id === null;
 }
 
 export type RequestAuthResult =
@@ -133,7 +166,112 @@ export async function authorizeRequest(
     };
   }
 
-  if (options.allowedRoles && !options.allowedRoles.includes(profile.role)) {
+  let activeProfile = profile as AuthProfile;
+  if (activeProfile.role !== "SUPER_ADMIN") {
+    const { data: selectedContext, error: contextError } = await admin
+      .from("tenant_user_contexts")
+      .select("tenant_id")
+      .eq("user_id", userData.user.id)
+      .maybeSingle();
+    if (contextError) {
+      console.error("Request authorization tenant context lookup failed", {
+        code: contextError.code,
+      });
+      return {
+        ok: false,
+        response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+      };
+    }
+
+    const preferredTenantId = selectedContext?.tenant_id || activeProfile.tenant_id;
+    let membership: ActiveTenantMembership | null = null;
+    if (preferredTenantId) {
+      const { data: preferredMembership, error: membershipError } = await admin
+        .from("tenant_memberships")
+        .select("tenant_id, role")
+        .eq("user_id", userData.user.id)
+        .eq("tenant_id", preferredTenantId)
+        .eq("status", "ACTIVE")
+        .maybeSingle();
+      if (membershipError) {
+        console.error("Request authorization membership lookup failed", {
+          code: membershipError.code,
+        });
+        return {
+          ok: false,
+          response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+        };
+      }
+      membership = preferredMembership;
+    }
+
+    if (!membership) {
+      const { data: fallbackMembership, error: fallbackError } = await admin
+        .from("tenant_memberships")
+        .select("tenant_id, role")
+        .eq("user_id", userData.user.id)
+        .eq("status", "ACTIVE")
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (fallbackError) {
+        console.error("Request authorization fallback membership lookup failed", {
+          code: fallbackError.code,
+        });
+        return {
+          ok: false,
+          response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+        };
+      }
+      membership = fallbackMembership;
+    }
+
+    // The membership foundation migration backfills every tenant profile and
+    // keeps new profiles synchronized. No ACTIVE row therefore means access
+    // was suspended/revoked; never fall back to the legacy profile tenant.
+    if (!membership && !isAuthorizedTenantlessProfile(activeProfile)) {
+      return {
+        ok: false,
+        response: jsonError(
+          options.corsHeaders,
+          403,
+          "Tenant membership is not active",
+        ),
+      };
+    }
+    if (!membership) {
+      // Hub learners intentionally start without a school tenant. They remain
+      // tenantless and cannot pass hasTenantAccess until they join a school.
+      activeProfile = {
+        id: activeProfile.id,
+        role: "NON_STUDENT",
+        tenant_id: null,
+      };
+    } else {
+      // SUPER_ADMIN is global authority and may only come from the canonical
+      // profile above. A tenant membership can never grant it (or an unknown
+      // future role), even if a malformed row reaches the database.
+      if (!isAuthorizedTenantMembership(membership)) {
+        console.error("Request authorization rejected invalid membership role");
+        return {
+          ok: false,
+          response: jsonError(
+            options.corsHeaders,
+            403,
+            "Tenant membership role is not authorized",
+          ),
+        };
+      }
+      activeProfile = {
+        id: activeProfile.id,
+        role: membership.role,
+        tenant_id: membership.tenant_id,
+      };
+    }
+  }
+
+  if (options.allowedRoles && !options.allowedRoles.includes(activeProfile.role)) {
     return {
       ok: false,
       response: jsonError(options.corsHeaders, 403, "Insufficient permissions"),
@@ -145,7 +283,7 @@ export async function authorizeRequest(
     context: {
       admin,
       isService: false,
-      profile: profile as AuthProfile,
+      profile: activeProfile,
       user: userData.user,
       userId: userData.user.id,
     },

@@ -8,6 +8,8 @@ import {
   type WolfieRealtimeProtocolState,
   WolfieRealtimeTurnAssembler,
 } from "../../../src/services/wolfieRealtimeProtocol.ts";
+import { WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY } from "../wolfie-brain/adaptive-language-policy.ts";
+import { buildRealtimeCallForm } from "./realtime-call-form.ts";
 import { WOLFIE_REALTIME_SOCIAL_TURN_POLICY } from "./social-turn-policy.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -30,6 +32,39 @@ Deno.test("Realtime prompt treats isolated greetings as social, not pedagogical 
       `missing social-turn rule: ${requiredRule}`,
     );
   }
+});
+
+Deno.test("Realtime prompt adapts every turn between PT-BR and English", () => {
+  for (
+    const requiredRule of [
+      "Never infer it from an interface or microphone setting",
+      "speak one concise natural PT-BR response first",
+      'Then say "Em inglês:"',
+      "If the learner speaks English",
+      "name, city, state, number",
+    ]
+  ) {
+    assert(
+      WOLFIE_REALTIME_ADAPTIVE_LANGUAGE_POLICY.includes(requiredRule),
+      `missing realtime adaptive-language rule: ${requiredRule}`,
+    );
+  }
+});
+
+Deno.test("Realtime unified call sends SDP and session as text form fields", () => {
+  const form = buildRealtimeCallForm("v=0\r\n", {
+    type: "realtime",
+    model: "gpt-realtime-2.1",
+  });
+  const sdp = form.get("sdp");
+  const session = form.get("session");
+  assert(typeof sdp === "string", "SDP must not be a Blob/File part");
+  assert(typeof session === "string", "session must not be a Blob/File part");
+  assert(sdp === "v=0\r\n", "SDP text must be preserved exactly");
+  assert(
+    JSON.parse(session).model === "gpt-realtime-2.1",
+    "session JSON must remain valid",
+  );
 });
 
 Deno.test("Realtime parser rejects invalid or untyped messages", () => {

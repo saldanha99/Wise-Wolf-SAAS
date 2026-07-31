@@ -20,6 +20,16 @@ import {
   suppressWolfiePedagogicalEvidence,
   type WolfieLearnerTurnKind,
 } from "./turn-policy.ts";
+import {
+  detectWolfieLearnerLanguage,
+  resolveWolfieLearnerLanguage,
+  resolveWolfieTurnLanguagePolicy,
+  WOLFIE_ADAPTIVE_LANGUAGE_POLICY,
+} from "./adaptive-language-policy.ts";
+import {
+  isWolfieSpeechDerivedTranscript,
+  normalizeWolfieAudioMimeType,
+} from "./audio-input.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -229,17 +239,21 @@ type JsonObject = Record<string, unknown>;
 interface WolfieRequest {
   action:
     | "interact"
+    | "transcribe_audio"
     | "abandon"
     | "dispute_correction"
     | "record_realtime_turn"
     | "confirm_realtime_fact";
   message: string;
   hasAudio: boolean;
+  audioBase64: string;
+  audioMimeType: string;
   previousContext: string;
   conversationId: string | null;
   studentLanguage?: "pt" | "en";
   transcriptionConfidence: number | null;
   transcriptionAlternatives: string[];
+  speechDerivedTranscript: boolean;
   transcriptConfirmed: boolean;
   disputeReason: string;
   clientTurnId: string;
@@ -290,6 +304,9 @@ const MAX_CONTEXT_LENGTH = 12_000;
 const MAX_AUDIO_BASE64_LENGTH = 6_750_000;
 const OPENROUTER_DEADLINE_MS = 30_000;
 const OPENROUTER_ATTEMPT_MS = 12_000;
+const OPENAI_TRANSCRIPTIONS_URL =
+  "https://api.openai.com/v1/audio/transcriptions";
+const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 22_000;
 const EXPERIENCE_MODES = new Set<ExperienceMode>([
   "free_conversation",
   "guided_lesson",
@@ -758,6 +775,7 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
   const rawAction = body.action ?? "interact";
   if (
     rawAction !== "interact" &&
+    rawAction !== "transcribe_audio" &&
     rawAction !== "abandon" &&
     rawAction !== "dispute_correction" &&
     rawAction !== "record_realtime_turn" &&
@@ -786,6 +804,8 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
   }
 
   let hasAudio = false;
+  let audioBase64 = "";
+  let audioMimeType = "";
   if (
     body.audioBase64 !== undefined && body.audioBase64 !== null &&
     body.audioBase64 !== ""
@@ -801,16 +821,29 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
     const encoded = commaIndex >= 0
       ? body.audioBase64.slice(commaIndex + 1)
       : body.audioBase64;
+    const prefixMatch = prefix.match(
+      /^data:(audio\/[a-z0-9.+-]+);base64$/i,
+    );
     if (
-      (prefix && !/^data:audio\/[a-z0-9.+-]+;base64$/i.test(prefix)) ||
+      (prefix && !prefixMatch) ||
       encoded.length === 0 ||
       !/^[a-z0-9+/_-]+={0,2}$/i.test(encoded)
     ) {
       throw new HttpError(400, "INVALID_AUDIO");
     }
+    audioMimeType = normalizeWolfieAudioMimeType(
+      prefixMatch?.[1] ?? body.audioMimeType ?? "audio/webm",
+    ) ?? "";
+    if (!audioMimeType) {
+      throw new HttpError(400, "INVALID_AUDIO_MIME_TYPE");
+    }
+    audioBase64 = encoded;
     hasAudio = true;
   }
-  if (hasAudio && !message) {
+  if (rawAction === "transcribe_audio" && !hasAudio) {
+    throw new HttpError(400, "AUDIO_REQUIRED");
+  }
+  if (rawAction !== "transcribe_audio" && hasAudio && !message) {
     throw new HttpError(400, "AUDIO_TRANSCRIPTION_REQUIRED");
   }
 
@@ -923,6 +956,11 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
     5,
     MAX_MESSAGE_LENGTH,
   ).filter((alternative) => alternative !== message);
+  const speechDerivedTranscript = optionalBoolean(
+    body,
+    "speechDerivedTranscript",
+    false,
+  );
   const transcriptConfirmed = optionalBoolean(
     body,
     "transcriptConfirmed",
@@ -1098,11 +1136,14 @@ function parseWolfieRequest(body: JsonObject): WolfieRequest {
     action: rawAction,
     message,
     hasAudio,
+    audioBase64,
+    audioMimeType,
     previousContext,
     conversationId,
     studentLanguage: rawLanguage as "pt" | "en" | undefined,
     transcriptionConfidence,
     transcriptionAlternatives,
+    speechDerivedTranscript,
     transcriptConfirmed,
     disputeReason,
     clientTurnId,
@@ -1340,6 +1381,10 @@ function buildSystemPrompt(
     "general conversation",
     "free conversation",
   ].includes(normalizedTopic.toLocaleLowerCase());
+  const turnLanguagePolicy = resolveWolfieTurnLanguagePolicy(
+    studentLanguage,
+    languageMode,
+  );
 
   const levelGuidance = (studentLevel === "A1" || studentLevel === "A2")
     ? `Use short concrete sentences, one instruction at a time, visible scaffolding and only essential corrections.`
@@ -1349,29 +1394,29 @@ function buildSystemPrompt(
       : `Use realistic social or work situations, natural chunks, moderate autonomy and clear intermediate feedback.`
     : `Demand nuance, naturalness, tone, precision and audience awareness. Do not oversimplify advanced language.`;
 
-  const languageInstruction = turnCount === 0
+  const languageInstruction = turnLanguagePolicy.needsEnglishBridge
+    ? `The learner is using Portuguese now. Reply entirely in concise natural PT-BR. Put one concise, immediately usable American-English formulation or next prompt in translation; never mix it into assistant_message.`
+    : turnLanguagePolicy.immersiveEnglishOnly
+    ? `Reply entirely in natural American English.`
+    : turnCount === 0
     ? isFreeConversation
       ? `Reply entirely in natural American English. Greet ${
         studentName || "the learner"
       } briefly and start one specific conversation direction.`
       : `Reply entirely in natural American English. The topic is already selected. Acknowledge it briefly and start the experience immediately with one concrete prompt. Never ask the learner to choose the topic or repeat the goal.`
-    : languageMode === "immersive"
-    ? `Reply entirely in natural American English.`
     : languageMode === "english_rescue"
-    ? `Reply in natural American English unless the learner explicitly asks for help in Portuguese; a rescue explanation must be entirely PT-BR for that turn.`
+    ? `Reply entirely in natural American English. If Portuguese rescue is useful, put it only in translation.`
     : languageMode === "pt_support"
-    ? `Use entirely PT-BR for explanation turns and entirely en-US for practice or simulation turns. Never mix languages inside assistant_message.`
-    : studentLanguage === "pt"
-    ? `The learner is using Portuguese now. Reply entirely in natural PT-BR unless they explicitly ask for an English formulation.`
+    ? `Reply entirely in natural American English and put concise PT-BR support only in translation when useful.`
     : `Reply entirely in natural American English.`;
 
-  const translationSchema = (
-      translationEnabled &&
-      languageMode !== "immersive" &&
-      studentLanguage !== "pt"
-    )
-    ? `"natural PT-BR translation of assistant_message"`
-    : "null";
+  const translationSchema = turnLanguagePolicy.needsEnglishBridge
+    ? `"one concise natural American-English formulation or next-step prompt that lets the learner continue immediately; never repeat the PT-BR response word-for-word unless a direct formulation was requested"`
+    : turnLanguagePolicy.immersiveEnglishOnly
+    ? "null"
+    : !translationEnabled
+    ? "null"
+    : `"concise natural PT-BR support or translation of assistant_message when it genuinely helps; otherwise null"`;
 
   const correctionInstruction = correctionMode === "examiner"
     ? `Do not help or correct during production. At assessment/report stage, give evidence-based feedback and 2-5 priorities.`
@@ -1637,7 +1682,8 @@ CORRECTIONS:
 
 LANGUAGE AND SPEECH:
 - ${languageInstruction}
-- assistant_message must contain only one language: fully PT-BR or fully en-US. Put PT support for an English turn in translation.
+${WOLFIE_ADAPTIVE_LANGUAGE_POLICY}
+- assistant_message must contain only one language: fully PT-BR or fully en-US. Put the cross-language support in translation.
 - Never write phonetic Portuguese for English or phonetic English for Portuguese. Use clean natural sentences without artificial pauses.
 - This model has no acoustic access in this function. pronunciation MUST be null. Never infer pronunciation, intonation or accent from a transcript.
 
@@ -2001,13 +2047,121 @@ function defaultAssistantLanguage(
   config: WolfieConfig,
   studentLanguage?: "pt" | "en",
 ): AssistantLanguage {
-  if (config.turnCount === 0 || config.languageMode === "immersive") {
-    return "en-US";
+  return resolveWolfieTurnLanguagePolicy(
+    studentLanguage,
+    config.languageMode,
+  ).assistantLanguage;
+}
+
+function decodeAudioBase64(encoded: string): Uint8Array {
+  const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  let binary: string;
+  try {
+    binary = atob(normalized);
+  } catch {
+    throw new HttpError(400, "INVALID_AUDIO");
   }
-  if (studentLanguage === "pt") {
-    return "pt-BR";
+  if (!binary.length) throw new HttpError(400, "INVALID_AUDIO");
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
   }
-  return "en-US";
+  return bytes;
+}
+
+function audioFileExtension(mimeType: string): string {
+  if (mimeType.includes("mp4") || mimeType.includes("m4a")) return "m4a";
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("mpeg") || mimeType.includes("mp3")) return "mp3";
+  if (mimeType.includes("wav")) return "wav";
+  return "webm";
+}
+
+async function transcribeClassicAudio(
+  apiKey: string,
+  input: Pick<WolfieRequest, "audioBase64" | "audioMimeType">,
+): Promise<{
+  text: string;
+  detectedLanguage: "pt" | "en";
+  model: string;
+}> {
+  const bytes = decodeAudioBase64(input.audioBase64);
+  const model = boundedString(
+    Deno.env.get("WOLFIE_TRANSCRIBE_MODEL"),
+    100,
+    "gpt-4o-transcribe",
+  );
+  const form = new FormData();
+  form.set("model", model);
+  form.set("response_format", "json");
+  form.set(
+    "prompt",
+    "Brazilian Portuguese and American English conversation. Preserve names, Brazilian cities and states, numbers, negations, and code-switching exactly. Do not translate.",
+  );
+  form.set(
+    "file",
+    new Blob([
+      bytes.buffer instanceof ArrayBuffer
+        ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+        : new Uint8Array(bytes).buffer,
+    ], { type: input.audioMimeType }),
+    `wolfie-turn.${audioFileExtension(input.audioMimeType)}`,
+  );
+
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(OPENAI_TRANSCRIPTION_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof DOMException &&
+      (error.name === "TimeoutError" || error.name === "AbortError");
+    console.warn("[wolfie] audio transcription transport failed", {
+      reason: timedOut ? "timeout" : "network",
+    });
+    throw new HttpError(503, "AUDIO_TRANSCRIPTION_UNAVAILABLE");
+  }
+
+  if (!response.ok) {
+    const requestId = response.headers.get("x-request-id");
+    await response.body?.cancel().catch(() => undefined);
+    console.warn("[wolfie] audio transcription provider rejected request", {
+      status: response.status,
+      requestId,
+    });
+    throw new HttpError(
+      response.status === 429 ? 429 : 502,
+      response.status === 429
+        ? "AUDIO_TRANSCRIPTION_RATE_LIMITED"
+        : "AUDIO_TRANSCRIPTION_FAILED",
+    );
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new HttpError(502, "AUDIO_TRANSCRIPTION_INVALID_RESPONSE");
+  }
+  const text = isJsonObject(payload)
+    ? boundedString(payload.text, MAX_MESSAGE_LENGTH)
+    : "";
+  if (!text) throw new HttpError(422, "AUDIO_NOT_UNDERSTOOD");
+
+  const providerLanguage = isJsonObject(payload)
+    ? boundedString(payload.language, 20).toLocaleLowerCase("en-US")
+    : "";
+  const detectedLanguage = providerLanguage.startsWith("pt")
+    ? "pt"
+    : providerLanguage.startsWith("en")
+    ? "en"
+    : resolveWolfieLearnerLanguage(text);
+
+  return { text, detectedLanguage, model };
 }
 
 async function callOpenRouter(
@@ -2098,9 +2252,27 @@ async function callOpenRouter(
       const classifiedLanguage = classifyAssistantLanguage(
         assistantMessage,
       );
-      if (classifiedLanguage === "mixed") {
+      if (
+        classifiedLanguage === "mixed" ||
+        (
+          classifiedLanguage !== "unknown" &&
+          classifiedLanguage !== fallbackLanguage
+        )
+      ) {
         providerReturnedInvalidContent = true;
-        console.warn("[wolfie] AI provider mixed spoken languages", {
+        console.warn("[wolfie] AI provider used an invalid spoken language", {
+          model,
+          expected: fallbackLanguage,
+          actual: classifiedLanguage,
+        });
+        continue;
+      }
+      if (
+        fallbackLanguage === "pt-BR" &&
+        !boundedString(parsed.translation, 4_000)
+      ) {
+        providerReturnedInvalidContent = true;
+        console.warn("[wolfie] AI provider omitted the English bridge", {
           model,
         });
         continue;
@@ -3821,6 +3993,25 @@ serve(async (req) => {
       }
     }
 
+    if (input.action === "transcribe_audio") {
+      if (profile.is_test_account === true) {
+        throw new HttpError(403, "TEST_FIXTURE_SUPPRESSED");
+      }
+      const openAiKey = (Deno.env.get("OPENAI_API_KEY") ?? "").trim();
+      if (!openAiKey) {
+        throw new HttpError(503, "AUDIO_TRANSCRIPTION_UNAVAILABLE");
+      }
+      const transcription = await transcribeClassicAudio(openAiKey, input);
+      return jsonResponse(200, {
+        transcribedText: transcription.text,
+        detectedLanguage: transcription.detectedLanguage,
+        detectedLanguageKind: detectWolfieLearnerLanguage(transcription.text),
+        confidence: null,
+        alternatives: [],
+        model: transcription.model,
+      });
+    }
+
     const openRouterKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
     if (!openRouterKey) {
       throw new HttpError(503, "AI_PROVIDER_UNAVAILABLE");
@@ -4476,9 +4667,7 @@ serve(async (req) => {
         );
       }
     };
-    const isSpeechDerivedTranscript = input.hasAudio ||
-      input.transcriptionConfidence !== null ||
-      input.transcriptionAlternatives.length > 0;
+    const isSpeechDerivedTranscript = isWolfieSpeechDerivedTranscript(input);
     const transcriptionRequiresConfirmation = isSpeechDerivedTranscript &&
       !input.transcriptConfirmed &&
       transcriptionNeedsFactConfirmation(
@@ -4653,7 +4842,9 @@ serve(async (req) => {
         correction: null,
         corrections: [],
         pronunciation: null,
-        translation: null,
+        translation: learnerTurnKind === "greeting" && isPortuguese
+          ? "Hi! I'm ready to practice with you."
+          : null,
         vocabulary: null,
         quiz: null,
         new_vocabulary: [],

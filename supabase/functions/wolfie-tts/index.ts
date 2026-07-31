@@ -22,6 +22,7 @@ const corsHeaders = {
 const OPENAI_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 const DEFAULT_MODEL = "gpt-4o-mini-tts";
 const MAX_REQUEST_BYTES = 32_000;
+type TtsLanguage = "pt" | "en" | "mixed";
 const ALLOWED_VOICES = new Set([
   "alloy",
   "ash",
@@ -63,12 +64,20 @@ const normalizeSpeed = (value: unknown): number => {
   return Math.max(0.25, Math.min(4, value));
 };
 
-const inferLanguage = (voice: unknown): "pt" | "en" =>
-  typeof voice === "string" && voice.toLocaleLowerCase().startsWith("pt")
+const inferLanguage = (
+  language: unknown,
+  voice: unknown,
+): TtsLanguage => {
+  if (language === "pt" || language === "en" || language === "mixed") {
+    return language;
+  }
+  return typeof voice === "string" &&
+      voice.toLocaleLowerCase().startsWith("pt")
     ? "pt"
     : "en";
+};
 
-const resolveVoice = (language: "pt" | "en"): string => {
+const resolveVoice = (language: TtsLanguage): string => {
   const configured = (
     language === "pt"
       ? Deno.env.get("WOLFIE_TTS_VOICE_PT")
@@ -78,8 +87,10 @@ const resolveVoice = (language: "pt" | "en"): string => {
   return configured && ALLOWED_VOICES.has(configured) ? configured : "marin";
 };
 
-const speakingInstructions = (language: "pt" | "en"): string =>
-  language === "pt"
+const speakingInstructions = (language: TtsLanguage): string =>
+  language === "mixed"
+    ? "Speak each labeled segment in its labeled language. Use natural Brazilian Portuguese for Português segments and natural American English for English segments, switching smoothly without translating, adding, correcting, or omitting content. Preserve names, cities, states, and numbers exactly."
+    : language === "pt"
     ? "Fale em português brasileiro natural, acolhedor e claro. Preserve exatamente nomes próprios, cidades, estados e números. Não acrescente nem corrija conteúdo."
     : "Speak in natural, warm, clear English for a language learner. Preserve proper names, Brazilian place names, and numbers exactly. Do not add or correct content.";
 
@@ -144,7 +155,7 @@ serve(async (req) => {
       });
     }
 
-    const language = inferLanguage(body.voice);
+    const language = inferLanguage(body.language, body.voice);
     const voice = resolveVoice(language);
     const model = Deno.env.get("WOLFIE_TTS_MODEL")?.trim() || DEFAULT_MODEL;
     const speed = normalizeSpeed(body.speed);
