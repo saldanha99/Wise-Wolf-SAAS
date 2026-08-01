@@ -534,6 +534,10 @@ const App: React.FC = () => {
         setStudents(filteredStudents.map(s => ({
           id: s.id,
           name: s.full_name,
+          // full_name e phone são usados pelo aviso de reposição no WhatsApp
+          // (App → onAdd → whatsappService). Sem eles o envio era sempre pulado.
+          full_name: s.full_name,
+          phone: s.phone,
           module: s.module || 'N/A',
           currentBookPart: s.current_book_part,
           evaluationUnlocked: s.evaluation_unlocked

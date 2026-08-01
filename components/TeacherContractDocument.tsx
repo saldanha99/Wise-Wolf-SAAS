@@ -172,12 +172,15 @@ export function TeacherContractDocument({
                             3.3 Os valores ajustados possuem natureza exclusivamente civil, referentes à prestação de serviços autônomos, não configurando salário ou qualquer verba de natureza trabalhista.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4 <strong>REMUNERAÇÃO PROGRESSIVA POR ASSIDUIDADE.</strong> O valor base por aula ministrada é de R$ 8,00 (oito reais). Caso o CONTRATADO complete 1 (um) mês consecutivo sem registrar falta — comparecendo e tendo a presença confirmada em todas as aulas do período —, passará a fazer jus à remuneração progressiva, apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
+                            3.4 <strong>REMUNERAÇÃO PROGRESSIVA POR ASSIDUIDADE E CARTEIRA.</strong> O valor base por aula ministrada é de R$ 8,00 (oito reais). A remuneração progressiva é devida quando o CONTRATADO cumprir, cumulativamente, os dois requisitos abaixo: (i) manter carteira mínima de 10 (dez) alunos ativos; e (ii) completar 1 (um) mês consecutivo sem registrar falta — comparecendo e tendo a presença confirmada em todas as aulas do período. Atendidos os dois requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
                         </p>
                         <div className="pl-4 space-y-1 mt-1">
                             <p>a) do 5º ao 9º aluno ativo: R$ 9,50 (nove reais e cinquenta centavos) por aula;</p>
                             <p>b) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>
                         </div>
+                        <p className="text-justify mt-2">
+                            3.4.1 Para os fins deste contrato, considera-se <strong>aluno ativo</strong> aquele com matrícula ativa e agendamento vigente na agenda do CONTRATADO. Enquanto a carteira for inferior a 10 (dez) alunos ativos, todas as aulas são remuneradas pelo valor base de R$ 8,00.
+                        </p>
                         <p className="text-justify mt-2">
                             3.5 A remuneração progressiva permanece ativa enquanto mantida a assiduidade. O registro de 1 (uma) falta do CONTRATADO interrompe o benefício, retornando a remuneração ao valor base de R$ 8,00 por aula, até que o CONTRATADO complete novo período de 1 (um) mês consecutivo sem faltas, quando o benefício é automaticamente reativado.
                         </p>
