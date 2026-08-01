@@ -47,6 +47,13 @@ const scoreMessage = (score: number) => {
 
 const rubricLabels: Record<keyof EvaluationRubric, string> = {
   taskCompletion: 'Objetivo',
+  structureAndFacilitation: 'Estrutura e facilitação',
+  interactionAndTurnTaking: 'Interação e turnos',
+  clarificationAndQuestionHandling: 'Perguntas e esclarecimentos',
+  diplomacyAndNegotiation: 'Diplomacia e negociação',
+  clarityAndConcision: 'Clareza e concisão',
+  accuracyAndNaturalness: 'Precisão e naturalidade',
+  decisionAndActionableClose: 'Decisão e fechamento acionável',
   structure: 'Estrutura',
   clarity: 'Clareza',
   accuracy: 'Precisão',
@@ -387,9 +394,114 @@ function SpeechSummary({ result }: { result: SpeechEvaluationResult }) {
           </div>
         </div>
       </section>
+      {result.rubric ? (
+        <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-7">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-lg font-black text-brand-text">
+              Competências da reunião
+            </h3>
+            {typeof result.contentScore === 'number' ? (
+              <span className="rounded-full bg-brand-surface-2 px-3 py-1 text-xs font-black text-brand-accent">
+                Conteúdo: {result.contentScore}/100
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm leading-6 text-brand-muted">
+            Esta rubrica avalia o conteúdo e a condução da reunião. A entrega
+            acústica aparece separadamente abaixo.
+          </p>
+          <div className="mt-5">
+            <RubricGrid rubric={result.rubric} />
+          </div>
+        </section>
+      ) : null}
+      {result.explanationPt ||
+          result.strengths?.length ||
+          result.priorities?.length ||
+          result.failedGates?.length ? (
+        <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-7">
+          <h3 className="text-lg font-black text-brand-text">
+            Feedback pedagógico da reunião
+          </h3>
+          {result.explanationPt ? (
+            <p className="mt-3 text-sm leading-6 text-brand-muted">
+              {result.explanationPt}
+            </p>
+          ) : null}
+          {!result.failedGates?.length && result.retryPrompt ? (
+            <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold leading-6 text-brand-text dark:border-amber-900/60 dark:bg-amber-950/20">
+              {result.retryPrompt}
+            </p>
+          ) : null}
+
+          {result.failedGates?.length ? (
+            <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+              <p className="font-black text-amber-800 dark:text-amber-300">
+                Competências obrigatórias que precisam aparecer
+              </p>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-brand-muted">
+                {result.failedGates.map((gate) => (
+                  <li key={gate} className="flex gap-2">
+                    <Target
+                      size={16}
+                      className="mt-1 shrink-0"
+                      aria-hidden="true"
+                    />
+                    {rubricLabels[gate as keyof EvaluationRubric] ?? gate}
+                  </li>
+                ))}
+              </ul>
+              {result.retryPrompt ? (
+                <p className="mt-3 text-sm font-bold leading-6 text-brand-text">
+                  {result.retryPrompt}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {result.strengths?.length || result.priorities?.length ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl bg-green-50 p-4 dark:bg-green-950/20">
+                <p className="font-black text-green-800 dark:text-green-300">
+                  Pontos fortes
+                </p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-brand-muted">
+                  {(result.strengths ?? []).map((strength) => (
+                    <li key={strength} className="flex gap-2">
+                      <Check
+                        size={16}
+                        className="mt-1 shrink-0"
+                        aria-hidden="true"
+                      />
+                      {strength}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-950/20">
+                <p className="font-black text-amber-800 dark:text-amber-300">
+                  Próximos ajustes
+                </p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-brand-muted">
+                  {(result.priorities ?? []).map((priority) => (
+                    <li key={priority} className="flex gap-2">
+                      <Target
+                        size={16}
+                        className="mt-1 shrink-0"
+                        aria-hidden="true"
+                      />
+                      {priority}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 sm:p-7">
         <h3 className="text-lg font-black text-brand-text">
-          Seus três pilares de fala
+          Entrega acústica: seus três pilares de fala
         </h3>
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <SpeechMetricCard

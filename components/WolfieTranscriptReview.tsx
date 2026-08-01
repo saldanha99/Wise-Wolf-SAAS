@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, Mic, PencilLine, RotateCcw } from "lucide-react";
+import { Check, Loader2, Mic, PencilLine, RotateCcw } from "lucide-react";
 import { uniqueTranscriptAlternatives } from "../lib/wolfieVoiceSafety";
 
 interface WolfieTranscriptReviewProps {
   transcript: string;
   alternatives?: string[];
   confidence?: number | null;
+  busy?: boolean;
   onConfirm: (transcript: string) => void;
   onRetry: () => void;
 }
@@ -16,6 +17,7 @@ export const WolfieTranscriptReview: React.FC<
   transcript,
   alternatives = [],
   confidence,
+  busy = false,
   onConfirm,
   onRetry,
 }) => {
@@ -37,7 +39,7 @@ export const WolfieTranscriptReview: React.FC<
 
   const confirm = () => {
     const normalized = value.trim();
-    if (normalized) onConfirm(normalized);
+    if (normalized && !busy) onConfirm(normalized);
   };
 
   return (
@@ -47,7 +49,7 @@ export const WolfieTranscriptReview: React.FC<
       aria-modal="true"
       aria-labelledby="wolfie-transcript-review-title"
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !isEditing) {
+        if (event.key === "Escape" && !isEditing && !busy) {
           event.preventDefault();
           onRetry();
         }
@@ -81,6 +83,7 @@ export const WolfieTranscriptReview: React.FC<
             ref={inputRef}
             value={value}
             onChange={(event) => setValue(event.target.value)}
+            disabled={busy}
             onKeyDown={(event) => {
               if (event.key === "Enter") confirm();
               if (event.key === "Escape") setIsEditing(false);
@@ -94,6 +97,7 @@ export const WolfieTranscriptReview: React.FC<
             ref={transcriptButtonRef}
             type="button"
             onClick={() => setIsEditing(true)}
+            disabled={busy}
             className="mt-4 flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-base font-semibold text-white transition hover:border-cyan-400/35 hover:bg-cyan-500/10"
           >
             <span>“{value}”</span>
@@ -111,6 +115,7 @@ export const WolfieTranscriptReview: React.FC<
               <button
                 key={choice}
                 type="button"
+                disabled={busy}
                 onClick={() => {
                   setValue(choice);
                   setIsEditing(false);
@@ -128,6 +133,7 @@ export const WolfieTranscriptReview: React.FC<
         <button
           type="button"
           onClick={onRetry}
+          disabled={busy}
           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-300 transition hover:bg-white/10"
         >
           <RotateCcw size={14} />
@@ -136,11 +142,13 @@ export const WolfieTranscriptReview: React.FC<
         <button
           type="button"
           onClick={confirm}
-          disabled={!value.trim()}
+          disabled={!value.trim() || busy}
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-xs font-black uppercase tracking-wider text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Check size={15} />
-          Está correto
+          {busy
+            ? <Loader2 size={15} className="animate-spin" />
+            : <Check size={15} />}
+          {busy ? "Salvando…" : "Está correto"}
         </button>
       </div>
     </div>

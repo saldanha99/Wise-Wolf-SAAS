@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Release isolada do Wolfie Tutor para a VPS de produção.
-# Publica frontend, quatro funções Wolfie, autenticação compartilhada e a
-# migration factual.
+# Publica frontend, quatro funções Wolfie, dependências compartilhadas e as
+# migrations de base já aprovadas para memória factual e isolamento de tenant.
 set -Eeuo pipefail
 umask 077
 
@@ -128,6 +128,20 @@ begin
   then
     raise exception 'pgvector_0_7_or_newer_is_required';
   end if;
+
+  if to_regclass('cron.job') is null then
+    raise exception 'pg_cron_job_catalog_is_required';
+  end if;
+  if to_regclass('vault.decrypted_secrets') is null then
+    raise exception 'supabase_vault_is_required';
+  end if;
+  perform 1
+    from vault.decrypted_secrets as secret
+   where secret.name = 'wisewolf_service_role_key'
+     and nullif(secret.decrypted_secret, '') is not null;
+  if not found then
+    raise exception 'wisewolf_service_role_key_is_not_configured';
+  end if;
 end
 $preflight$;
 SQL
@@ -172,20 +186,33 @@ VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
 echo "== Validação do artefato Wolfie =="
 npm ci
 npm run typecheck
+npx vitest run \
+  src/components/wolfie/WolfieActivitySummary.test.tsx \
+  src/components/wolfie/WolfieMeetingActivity.test.tsx \
+  src/services/wolfieConversationState.test.tsx \
+  src/services/wolfieRealtimeHandoff.test.tsx
 npx --yes deno test --no-lock \
   supabase/functions/_shared/request-auth.test.ts \
+  supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
   supabase/functions/wolfie-brain/adaptive-language-policy.test.ts \
   supabase/functions/wolfie-brain/audio-input.test.ts \
+  supabase/functions/wolfie-brain/classic-global-meeting.test.ts \
   supabase/functions/wolfie-brain/factual-integrity.test.ts \
+  supabase/functions/wolfie-brain/realtime-post-turn.test.ts \
   supabase/functions/wolfie-brain/turn-policy.test.ts \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
+  supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
+  supabase/functions/wolfie-realtime-session/session-context.test.ts \
+  scripts/tests/wolfie-global-meeting-policy.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
-  supabase/functions/wolfie-tts/index.ts
+  supabase/functions/wolfie-tts/index.ts \
+  supabase/functions/create-wolfie-topup/index.ts \
+  supabase/functions/asaas-webhook/index.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npm run build
 find dist -type d -exec chmod 0755 {} +
@@ -194,19 +221,35 @@ find dist -type f -exec chmod 0644 {} +
 MIGRATIONS=(
   "supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
   "supabase/migrations/20260731023000_harden_tenant_membership_roles.sql"
+  "supabase/migrations/20260731150000_wolfie_realtime_usage_tracking.sql"
+  "supabase/migrations/20260731160000_wolfie_realtime_quota.sql"
+  "supabase/migrations/20260731170000_ai_usage_observability.sql"
+  "supabase/migrations/20260731180000_student_plan_entitlements.sql"
+  "supabase/migrations/20260731190000_wolfie_minute_topups.sql"
+  "supabase/migrations/20260801190000_wolfie_realtime_analysis_atomicity.sql"
+  "supabase/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
+  "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
+  "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
   "supabase/tests/tenant_membership_role_hardening.sql"
+  "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
+  "supabase/tests/wolfie_classic_exchange_atomicity.sql"
+  "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
 )
 FUNCTIONS=(
   wolfie-activity
   wolfie-brain
   wolfie-realtime-session
   wolfie-tts
+  create-wolfie-topup
+  asaas-webhook
 )
 SHARED_FUNCTION_FILES=(
   request-auth.ts
+  ai-usage.ts
+  wolfie-global-meeting-policy.ts
 )
 
 for migration_path in "${MIGRATIONS[@]}"; do
@@ -247,6 +290,8 @@ mkdir -p -- \
   "$release_dir/functions/wolfie-brain" \
   "$release_dir/functions/wolfie-realtime-session" \
   "$release_dir/functions/wolfie-tts" \
+  "$release_dir/functions/create-wolfie-topup" \
+  "$release_dir/functions/asaas-webhook" \
   "$release_dir/functions/_shared" \
   "$release_dir/migrations" \
   "$release_dir/tests"
@@ -316,8 +361,13 @@ flock -n 9 || {
 backup_dir="$backups_dir/release-$release_id"
 marker_dir="$releases_dir/.migration-checksums"
 frontend_swapped=0
-shared_dependency_swapped=0
 swapped_functions=()
+swapped_shared_files=()
+SHARED_FUNCTION_FILES=(
+  request-auth.ts
+  ai-usage.ts
+  wolfie-global-meeting-policy.ts
+)
 
 restore_previous_release() {
   local exit_code=$?
@@ -344,13 +394,21 @@ restore_previous_release() {
       fi
     done
   fi
-  if [[ "$shared_dependency_swapped" = "1" ]]; then
-    cp -a -- "$functions_dir/_shared/request-auth.ts" \
-      "$backup_dir/failed-request-auth.ts"
-    cp -a -- "$backup_dir/request-auth.ts" \
-      "$functions_dir/_shared/.request-auth.ts.rollback"
-    mv -f -- "$functions_dir/_shared/.request-auth.ts.rollback" \
-      "$functions_dir/_shared/request-auth.ts"
+  if ((${#swapped_shared_files[@]} > 0)); then
+    for shared_file in "${swapped_shared_files[@]}"; do
+      if [[ -f "$functions_dir/_shared/$shared_file" ]]; then
+        cp -a -- "$functions_dir/_shared/$shared_file" \
+          "$backup_dir/failed-$shared_file"
+      fi
+      if [[ -f "$backup_dir/$shared_file" ]]; then
+        cp -a -- "$backup_dir/$shared_file" \
+          "$functions_dir/_shared/.$shared_file.rollback"
+        mv -f -- "$functions_dir/_shared/.$shared_file.rollback" \
+          "$functions_dir/_shared/$shared_file"
+      else
+        rm -f -- "$functions_dir/_shared/$shared_file"
+      fi
+    done
   fi
 
   (
@@ -368,23 +426,46 @@ trap restore_previous_release ERR
 mkdir -p -- "$backup_dir" "$marker_dir"
 [[ -d "$release_dir/frontend-dist" ]]
 for function_name in \
-  wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts; do
+  wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts \
+  create-wolfie-topup asaas-webhook; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
-[[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
-[[ -s "$functions_dir/_shared/request-auth.ts" ]]
+for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
+  [[ -s "$release_dir/functions/_shared/$shared_file" ]]
+done
 
 migration_versions=(
   20260730193415
   20260731023000
+  20260731150000
+  20260731160000
+  20260731170000
+  20260731180000
+  20260731190000
+  20260801190000
+  20260801200000
+  20260801210000
+  20260801220000
 )
 migration_paths=(
   "$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
   "$release_dir/migrations/20260731023000_harden_tenant_membership_roles.sql"
+  "$release_dir/migrations/20260731150000_wolfie_realtime_usage_tracking.sql"
+  "$release_dir/migrations/20260731160000_wolfie_realtime_quota.sql"
+  "$release_dir/migrations/20260731170000_ai_usage_observability.sql"
+  "$release_dir/migrations/20260731180000_student_plan_entitlements.sql"
+  "$release_dir/migrations/20260731190000_wolfie_minute_topups.sql"
+  "$release_dir/migrations/20260801190000_wolfie_realtime_analysis_atomicity.sql"
+  "$release_dir/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
+  "$release_dir/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
+  "$release_dir/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
 )
 database_tests=(
   "$release_dir/tests/wolfie_factual_memory_and_rag.sql"
   "$release_dir/tests/tenant_membership_role_hardening.sql"
+  "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
+  "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
+  "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
 )
 expected_markers=()
 database_migration_pending=0
@@ -448,6 +529,49 @@ for database_test in "${database_tests[@]}"; do
     < "$database_test"
 done
 
+docker exec -i supabase-db \
+  psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+do $wolfie_release_verify$
+begin
+  if to_regprocedure(
+    'public.trigger_wolfie_live_grant_cleanup()'
+  ) is null then
+    raise exception 'wolfie_cleanup_trigger_function_missing';
+  end if;
+  if not exists (
+    select 1
+      from vault.decrypted_secrets as secret
+     where secret.name = 'wisewolf_service_role_key'
+       and nullif(secret.decrypted_secret, '') is not null
+  ) then
+    raise exception 'wisewolf_service_role_key_is_not_configured';
+  end if;
+  if not exists (
+    select 1
+      from cron.job as job
+     where job.jobname = 'wisewolf-live-grant-cleanup'
+       and job.active
+       and job.schedule = '10 seconds'
+       and job.command =
+         'select public.trigger_wolfie_live_grant_cleanup();'
+  ) then
+    raise exception 'wolfie_cleanup_job_is_not_active';
+  end if;
+  if to_regprocedure(
+    'public.claim_wolfie_ai_request(uuid,uuid,text)'
+  ) is null
+     or to_regprocedure(
+       'public.finish_wolfie_ai_request(uuid,uuid,uuid,text,jsonb,text)'
+     ) is null
+     or to_regprocedure(
+       'public.create_wolfie_activity_session(uuid,text,text,text,text,text,uuid,uuid,jsonb,jsonb,text[],text[])'
+     ) is null then
+    raise exception 'wolfie_rollback_compatibility_wrapper_missing';
+  end if;
+end;
+$wolfie_release_verify$;
+SQL
+
 if [[ -d "$app_dir/dist" ]]; then
   mv -- "$app_dir/dist" "$backup_dir/frontend-dist"
 fi
@@ -455,7 +579,8 @@ frontend_swapped=1
 cp -a -- "$release_dir/frontend-dist" "$app_dir/dist"
 
 for function_name in \
-  wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts; do
+  wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts \
+  create-wolfie-topup asaas-webhook; do
   if [[ -d "$functions_dir/$function_name" ]]; then
     mv -- "$functions_dir/$function_name" "$backup_dir/$function_name"
   fi
@@ -464,16 +589,20 @@ for function_name in \
     "$functions_dir/$function_name"
 done
 
-cp -a -- "$functions_dir/_shared/request-auth.ts" \
-  "$backup_dir/request-auth.ts"
-cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
-  "$functions_dir/_shared/.request-auth.ts.release-$release_id"
-mv -f -- "$functions_dir/_shared/.request-auth.ts.release-$release_id" \
-  "$functions_dir/_shared/request-auth.ts"
-shared_dependency_swapped=1
-cmp -s \
-  "$release_dir/functions/_shared/request-auth.ts" \
-  "$functions_dir/_shared/request-auth.ts"
+for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
+  if [[ -f "$functions_dir/_shared/$shared_file" ]]; then
+    cp -a -- "$functions_dir/_shared/$shared_file" \
+      "$backup_dir/$shared_file"
+  fi
+  cp -a -- "$release_dir/functions/_shared/$shared_file" \
+    "$functions_dir/_shared/.$shared_file.release-$release_id"
+  mv -f -- "$functions_dir/_shared/.$shared_file.release-$release_id" \
+    "$functions_dir/_shared/$shared_file"
+  swapped_shared_files+=("$shared_file")
+  cmp -s \
+    "$release_dir/functions/_shared/$shared_file" \
+    "$functions_dir/_shared/$shared_file"
+done
 
 (
   cd "$supabase_dir"
@@ -555,6 +684,16 @@ wait_for_http_status 401 "autenticação da voz" \
   -X POST "$api_url/functions/v1/wolfie-tts" \
   -H 'Content-Type: application/json' \
   --data '{"text":"Hello"}'
+wait_for_http_status 200 "preflight da recarga Wolfie" \
+  -X OPTIONS "$api_url/functions/v1/create-wolfie-topup"
+wait_for_http_status 401 "autenticação da recarga Wolfie" \
+  -X POST "$api_url/functions/v1/create-wolfie-topup" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 401 "token do webhook Asaas" \
+  -X POST "$api_url/functions/v1/asaas-webhook" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
 
 printf '%s\n' "$release_id" > "$releases_dir/current"
 trap - ERR

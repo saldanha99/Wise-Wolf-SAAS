@@ -140,6 +140,20 @@ begin
   if installed_schema is not null and installed_schema <> 'extensions' then
     raise exception 'pgvector_must_use_extensions_schema';
   end if;
+
+  if to_regclass('cron.job') is null then
+    raise exception 'pg_cron_job_catalog_is_required';
+  end if;
+  if to_regclass('vault.decrypted_secrets') is null then
+    raise exception 'supabase_vault_is_required';
+  end if;
+  perform 1
+    from vault.decrypted_secrets as secret
+   where secret.name = 'wisewolf_service_role_key'
+     and nullif(secret.decrypted_secret, '') is not null;
+  if not found then
+    raise exception 'wisewolf_service_role_key_is_not_configured';
+  end if;
 end
 $preflight$;
 SQL
@@ -192,20 +206,28 @@ npm run typecheck
 npm test
 npx --yes deno test --no-lock \
   supabase/functions/lesson-planner/core.test.ts \
+  supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
+  supabase/functions/wolfie-brain/classic-global-meeting.test.ts \
+  supabase/functions/wolfie-brain/realtime-post-turn.test.ts \
   supabase/functions/wolfie-realtime-session/protocol.test.ts \
+  supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
+  supabase/functions/wolfie-realtime-session/session-context.test.ts \
   scripts/tests/wolfie-voice-safety.test.ts \
   scripts/tests/wolfie-audio.test.ts \
   scripts/tests/contract-dates.test.ts \
   scripts/tests/ai-usage.test.ts \
   scripts/tests/wolfie-quick-start.test.ts \
   scripts/tests/meeting-link.test.ts \
-  scripts/tests/wolfie-experience-catalog.test.ts
+  scripts/tests/wolfie-experience-catalog.test.ts \
+  scripts/tests/wolfie-global-meeting-policy.test.ts
+node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
   supabase/functions/wolfie-tts/index.ts \
+  supabase/functions/create-wolfie-topup/index.ts \
   supabase/functions/lesson-planner/index.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts \
@@ -261,7 +283,22 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260730020238_fix_tenant_membership_upsert_cardinality.sql"
   "supabase/migrations/20260730022012_enforce_vps_only_runtime_endpoints.sql"
   "supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
+  "supabase/migrations/20260731023000_harden_tenant_membership_roles.sql"
+  "supabase/migrations/20260731150000_wolfie_realtime_usage_tracking.sql"
+  "supabase/migrations/20260731160000_wolfie_realtime_quota.sql"
+  "supabase/migrations/20260731170000_ai_usage_observability.sql"
+  "supabase/migrations/20260731180000_student_plan_entitlements.sql"
+  "supabase/migrations/20260731190000_wolfie_minute_topups.sql"
   "supabase/migrations/20260731230000_settle_unlogged_confirmed_classes.sql"
+  "supabase/migrations/20260801190000_wolfie_realtime_analysis_atomicity.sql"
+  "supabase/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
+  "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
+  "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
+)
+DATABASE_TEST_RELATIVES=(
+  "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
+  "supabase/tests/wolfie_classic_exchange_atomicity.sql"
+  "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -278,7 +315,10 @@ ASAAS_WEBHOOK_FUNCTION_RELATIVE="supabase/functions/asaas-webhook"
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
 SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
 SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact-policy.ts"
+SHARED_AI_USAGE_RELATIVE="supabase/functions/_shared/ai-usage.ts"
+SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-meeting-policy.ts"
 HARDENED_FUNCTIONS=(
+  create-wolfie-topup
   lesson-planner
   sync-student-asaas
   create-asaas-subscription
@@ -310,6 +350,10 @@ for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
     die "migration ausente: $migration_relative"
 done
+for database_test_relative in "${DATABASE_TEST_RELATIVES[@]}"; do
+  [[ -s "$database_test_relative" ]] ||
+    die "teste SQL ausente: $database_test_relative"
+done
 [[ -s "$FUNCTION_RELATIVE/index.ts" ]] || die "função Wolfie ausente"
 [[ -s "$CONVERSATION_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de conversa do Wolfie ausente"
@@ -336,6 +380,8 @@ done
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
 [[ -s "$SHARED_ACCOUNT_INVITE_RELATIVE" ]] || die "helper de convite seguro ausente"
 [[ -s "$SHARED_COMMERCIAL_POLICY_RELATIVE" ]] || die "política de contato comercial ausente"
+[[ -s "$SHARED_AI_USAGE_RELATIVE" ]] || die "telemetria compartilhada de IA ausente"
+[[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -363,8 +409,14 @@ artifact_hash="$(
     for function_name in "${HARDENED_FUNCTIONS[@]}"; do
       find "supabase/functions/$function_name" -type f -print
     done
-    printf '%s\n' "$SHARED_AUTH_RELATIVE" "$SHARED_ACCOUNT_INVITE_RELATIVE" "$SHARED_COMMERCIAL_POLICY_RELATIVE"
+    printf '%s\n' \
+      "$SHARED_AUTH_RELATIVE" \
+      "$SHARED_ACCOUNT_INVITE_RELATIVE" \
+      "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
+      "$SHARED_AI_USAGE_RELATIVE" \
+      "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE"
     printf '%s\n' "${MIGRATION_RELATIVES[@]}"
+    printf '%s\n' "${DATABASE_TEST_RELATIVES[@]}"
   } |
     LC_ALL=C sort |
     while IFS= read -r release_input; do
@@ -424,7 +476,8 @@ mkdir -p -- \
   "$release_dir/functions/whatsapp-lead-notification" \
   "$release_dir/functions/referral-welcome" \
   "$release_dir/functions/_shared" \
-  "$release_dir/migrations"
+  "$release_dir/migrations" \
+  "$release_dir/tests"
 REMOTE
 
 rsync -a --delete -- dist/ \
@@ -459,6 +512,10 @@ rsync -a -- "$SHARED_ACCOUNT_INVITE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/account-invite.ts"
 rsync -a -- "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/commercial-contact-policy.ts"
+rsync -a -- "$SHARED_AI_USAGE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-usage.ts"
+rsync -a -- "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-global-meeting-policy.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
@@ -467,6 +524,11 @@ for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   migration_file="$(basename -- "$migration_relative")"
   rsync -a -- "$migration_relative" \
     "$DEPLOY_SSH_HOST:$remote_release/migrations/$migration_file"
+done
+for database_test_relative in "${DATABASE_TEST_RELATIVES[@]}"; do
+  database_test_file="$(basename -- "$database_test_relative")"
+  rsync -a -- "$database_test_relative" \
+    "$DEPLOY_SSH_HOST:$remote_release/tests/$database_test_file"
 done
 
 echo "== Ativação transacional e smoke tests =="
@@ -526,8 +588,11 @@ asaas_webhook_function_swapped=0
 shared_swapped=0
 account_invite_shared_swapped=0
 commercial_policy_shared_swapped=0
+ai_usage_shared_swapped=0
+global_meeting_policy_shared_swapped=0
 hardened_functions_swapped=()
 HARDENED_FUNCTIONS=(
+  create-wolfie-topup
   lesson-planner
   sync-student-asaas
   create-asaas-subscription
@@ -693,6 +758,22 @@ restore_previous_release() {
       rm -f -- "$functions_dir/_shared/commercial-contact-policy.ts"
     fi
   fi
+  if [[ "$ai_usage_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/ai-usage.ts" ]]; then
+      cp -a -- "$backup_dir/ai-usage.ts" \
+        "$functions_dir/_shared/ai-usage.ts"
+    else
+      rm -f -- "$functions_dir/_shared/ai-usage.ts"
+    fi
+  fi
+  if [[ "$global_meeting_policy_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/wolfie-global-meeting-policy.ts" ]]; then
+      cp -a -- "$backup_dir/wolfie-global-meeting-policy.ts" \
+        "$functions_dir/_shared/wolfie-global-meeting-policy.ts"
+    else
+      rm -f -- "$functions_dir/_shared/wolfie-global-meeting-policy.ts"
+    fi
+  fi
   if ((${#hardened_functions_swapped[@]} > 0)); then
     for function_name in "${hardened_functions_swapped[@]}"; do
       if [[ -d "$functions_dir/$function_name" ]]; then
@@ -734,8 +815,18 @@ mkdir -p -- "$backup_dir" "$marker_dir"
 [[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
 [[ -s "$release_dir/functions/_shared/account-invite.ts" ]]
 [[ -s "$release_dir/functions/_shared/commercial-contact-policy.ts" ]]
+[[ -s "$release_dir/functions/_shared/ai-usage.ts" ]]
+[[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
+done
+database_tests=(
+  "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
+  "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
+  "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
+)
+for database_test in "${database_tests[@]}"; do
+  [[ -s "$database_test" ]]
 done
 
 shopt -s nullglob
@@ -793,6 +884,13 @@ if ((${#unapplied_migrations[@]} > 0)); then
       > "${unapplied_markers[$marker_index]}"
   done
 fi
+
+echo "== Testes SQL transacionais do Wolfie =="
+for database_test in "${database_tests[@]}"; do
+  docker exec -i supabase-db \
+    psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+    < "$database_test"
+done
 
 docker exec -i supabase-db \
   psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
@@ -895,6 +993,42 @@ begin
   end if;
   if exists (select 1 from pg_foreign_server) then
     raise exception 'foreign_database_server_present';
+  end if;
+
+  if to_regprocedure(
+    'public.trigger_wolfie_live_grant_cleanup()'
+  ) is null then
+    raise exception 'wolfie_cleanup_trigger_function_missing';
+  end if;
+  if not exists (
+    select 1
+      from vault.decrypted_secrets as secret
+     where secret.name = 'wisewolf_service_role_key'
+       and nullif(secret.decrypted_secret, '') is not null
+  ) then
+    raise exception 'wisewolf_service_role_key_is_not_configured';
+  end if;
+  if not exists (
+    select 1
+      from cron.job as job
+     where job.jobname = 'wisewolf-live-grant-cleanup'
+       and job.active
+       and job.schedule = '10 seconds'
+       and job.command =
+         'select public.trigger_wolfie_live_grant_cleanup();'
+  ) then
+    raise exception 'wolfie_cleanup_job_is_not_active';
+  end if;
+  if to_regprocedure(
+    'public.claim_wolfie_ai_request(uuid,uuid,text)'
+  ) is null
+     or to_regprocedure(
+       'public.finish_wolfie_ai_request(uuid,uuid,uuid,text,jsonb,text)'
+     ) is null
+     or to_regprocedure(
+       'public.create_wolfie_activity_session(uuid,text,text,text,text,text,uuid,uuid,jsonb,jsonb,text[],text[])'
+     ) is null then
+    raise exception 'wolfie_rollback_compatibility_wrapper_missing';
   end if;
 end
 $verify$;
@@ -1014,6 +1148,22 @@ fi
 commercial_policy_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/commercial-contact-policy.ts" \
   "$functions_dir/_shared/commercial-contact-policy.ts"
+
+if [[ -f "$functions_dir/_shared/ai-usage.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/ai-usage.ts" \
+    "$backup_dir/ai-usage.ts"
+fi
+ai_usage_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/ai-usage.ts" \
+  "$functions_dir/_shared/ai-usage.ts"
+
+if [[ -f "$functions_dir/_shared/wolfie-global-meeting-policy.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/wolfie-global-meeting-policy.ts" \
+    "$backup_dir/wolfie-global-meeting-policy.ts"
+fi
+global_meeting_policy_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" \
+  "$functions_dir/_shared/wolfie-global-meeting-policy.ts"
 
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   if [[ -d "$functions_dir/$function_name" ]]; then
@@ -1138,6 +1288,7 @@ wait_for_http_status 401 "token do webhook Asaas" \
   -H 'Content-Type: application/json' \
   --data '{}'
 for protected_function in \
+  create-wolfie-topup \
   create-student-account \
   create-teacher-account \
   admin-update-subscription \

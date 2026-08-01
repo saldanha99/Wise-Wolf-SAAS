@@ -38,11 +38,35 @@ Deno.test("aceita o formato do OpenAI (input/output_tokens)", () => {
   );
 });
 
+Deno.test("aceita usageMetadata do Gemini", () => {
+  const usage = parseAiUsage({
+    usageMetadata: {
+      promptTokenCount: 900,
+      candidatesTokenCount: 120,
+      cachedContentTokenCount: 640,
+    },
+  });
+  assert(usage !== null, "usageMetadata do Gemini precisa ser lido");
+  assert(
+    usage.inputTokens === 900,
+    `input Gemini errado: ${usage.inputTokens}`,
+  );
+  assert(
+    usage.outputTokens === 120,
+    `output Gemini errado: ${usage.outputTokens}`,
+  );
+  assert(
+    usage.cachedTokens === 640,
+    `cache Gemini errado: ${usage.cachedTokens}`,
+  );
+});
+
 Deno.test("usage ausente ou zerado não vira evento", () => {
   assert(parseAiUsage(null) === null, "null não é usage");
   assert(parseAiUsage({}) === null, "objeto vazio não é usage");
   assert(
-    parseAiUsage({ usage: { prompt_tokens: 0, completion_tokens: 0 } }) === null,
+    parseAiUsage({ usage: { prompt_tokens: 0, completion_tokens: 0 } }) ===
+      null,
     "tudo zero não deve gerar linha de custo",
   );
 });
@@ -74,7 +98,9 @@ Deno.test("falha ao gravar NUNCA propaga — métrica não derruba a aula", asyn
   });
 
   const comErro = {
-    from: () => ({ insert: () => Promise.resolve({ error: { code: "42P01" } }) }),
+    from: () => ({
+      insert: () => Promise.resolve({ error: { code: "42P01" } }),
+    }),
   };
   await recordAiUsage(comErro, {
     tenantId: null,

@@ -45,7 +45,27 @@ import {
 import {
   useWolfieRealtime,
   type WolfieRealtimeCompletedTurn,
+  type WolfieRealtimePreparedSession,
+  type WolfieRealtimeServerGuidance,
 } from "../src/services/useWolfieRealtime";
+import {
+  beginRealtimePostTurn,
+  finishRealtimePostTurn,
+  initialRealtimePostTurnGateState,
+  realtimeConversationIdAfterExit,
+  realtimePostTurnGateIsBlocked,
+  realtimePostTurnTokenIsCurrent,
+  realtimeSessionNeedsClassicHandoff,
+  reconcileClassicReplayBubble,
+  resetRealtimePostTurnGate,
+  setRealtimeConfirmationPending,
+  type RealtimeConversationExit,
+  type RealtimePostTurnGateToken,
+} from "../src/services/wolfieConversationState";
+import {
+  handoffWolfieRealtimeToClassic,
+  WolfieRealtimeHandoffError,
+} from "../src/services/wolfieRealtimeHandoff";
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
@@ -293,13 +313,11 @@ const normalizeCorrections = (
     .filter((item): item is CorrectionData => Boolean(item));
 };
 
-
 declare global {
   interface Window {
     webkitSpeechRecognition: any;
   }
 }
-
 
 type SpeechLanguage = WolfieLearnerLanguage;
 type TtsLanguage = SpeechLanguage | "mixed";
@@ -366,6 +384,7 @@ function normalizedSpeechLanguage(
 interface WolfieBrainInput {
   message?: string;
   audioBase64?: string;
+  uiMessageId?: string;
   studentLanguage?: SpeechLanguage;
   transcriptionConfidence?: number | null;
   transcriptionAlternatives?: string[];
@@ -478,6 +497,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [pendingTranscriptReview, setPendingTranscriptReview] = useState<
     PendingTranscriptReview | null
   >(null);
+  const [isRealtimePostTurnPending, setIsRealtimePostTurnPending] = useState(
+    false,
+  );
+  const [isConfirmingRealtimeTranscript, setIsConfirmingRealtimeTranscript] =
+    useState(false);
   const [isDisputingCorrection, setIsDisputingCorrection] = useState(false);
 
   // --- UI State ---
@@ -528,6 +552,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     null,
   );
   const brainRequestAbortRef = useRef<AbortController | null>(null);
+  const pendingClassicRequestRef = useRef<
+    {
+      fingerprint: string;
+      clientTurnId: string;
+      optimisticMessageId: string;
+    } | null
+  >(null);
+  const pendingRealtimeClassicHandoffRef = useRef<string | null>(null);
   const transcriptionAbortRef = useRef<AbortController | null>(null);
   const ttsRequestAbortRef = useRef<AbortController | null>(null);
   const lastLearnerLanguageRef = useRef<SpeechLanguage>("en");
@@ -563,6 +595,17 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const realtimeTurnIdsRef = useRef(new Set<string>());
   const realtimeConversationIdRef = useRef<string | null>(null);
   const realtimePersistenceRef = useRef<Promise<void>>(Promise.resolve());
+  const realtimePostTurnGateRef = useRef(
+    initialRealtimePostTurnGateState(),
+  );
+  const isConfirmingRealtimeTranscriptRef = useRef(false);
+  const realtimeGuidanceRelayRef = useRef<
+    (guidance: WolfieRealtimeServerGuidance) => Promise<boolean>
+  >(() => Promise.resolve(false));
+  const realtimeMuteRelayRef = useRef<(muted: boolean) => void>(() => {});
+  const realtimeDisconnectRelayRef = useRef<
+    (forgetPreparedSession?: boolean) => void
+  >(() => {});
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null); // energia visual do mascote
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
@@ -574,11 +617,178 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     targetSkill,
   ].filter(Boolean).join("\n");
 
+  const publishRealtimePostTurnGate = useCallback(
+    (unmuteWhenOpen = true) => {
+      const blocked = realtimePostTurnGateIsBlocked(
+        realtimePostTurnGateRef.current,
+      );
+      if (isMountedRef.current) setIsRealtimePostTurnPending(blocked);
+      if (blocked) {
+        realtimeMuteRelayRef.current(true);
+      } else if (unmuteWhenOpen) {
+        realtimeMuteRelayRef.current(false);
+      }
+    },
+    [],
+  );
+
+  const beginRealtimePostTurnGate = useCallback(() => {
+    const transition = beginRealtimePostTurn(
+      realtimePostTurnGateRef.current,
+    );
+    realtimePostTurnGateRef.current = transition.state;
+    publishRealtimePostTurnGate();
+    return transition.token;
+  }, [publishRealtimePostTurnGate]);
+
+  const finishRealtimePostTurnGate = useCallback(
+    (token: RealtimePostTurnGateToken) => {
+      realtimePostTurnGateRef.current = finishRealtimePostTurn(
+        realtimePostTurnGateRef.current,
+        token,
+      );
+      publishRealtimePostTurnGate();
+    },
+    [publishRealtimePostTurnGate],
+  );
+
+  const markRealtimeConfirmationPending = useCallback(
+    (pending: boolean) => {
+      realtimePostTurnGateRef.current = setRealtimeConfirmationPending(
+        realtimePostTurnGateRef.current,
+        pending,
+      );
+      publishRealtimePostTurnGate();
+    },
+    [publishRealtimePostTurnGate],
+  );
+
+  const resetRealtimeGate = useCallback(() => {
+    realtimePostTurnGateRef.current = resetRealtimePostTurnGate(
+      realtimePostTurnGateRef.current,
+    );
+    publishRealtimePostTurnGate(false);
+  }, [publishRealtimePostTurnGate]);
+
+  const detachTransportSession = useCallback((
+    exit: RealtimeConversationExit = "terminal",
+  ) => {
+    const nextConversationId = realtimeConversationIdAfterExit(
+      realtimeConversationIdRef.current,
+      exit,
+    );
+    realtimeConversationIdRef.current = nextConversationId;
+    if (exit === "terminal") {
+      realtimeTurnIdsRef.current.clear();
+      pendingRealtimeClassicHandoffRef.current = null;
+    } else if (nextConversationId) {
+      pendingRealtimeClassicHandoffRef.current = nextConversationId;
+    }
+    setConversationId(nextConversationId);
+  }, []);
+
+  const applyRealtimeGuidance = useCallback(async (
+    payload: Record<string, unknown>,
+  ): Promise<boolean> => {
+    const guidance = asRecord(
+      payload.realtimeGuidance ?? payload.realtime_guidance,
+    );
+    if (Object.keys(guidance).length === 0) return false;
+
+    const retryRequired = firstBoolean(
+      guidance,
+      "requiresRetry",
+      "requires_retry",
+      "retryRequired",
+      "retry_required",
+    );
+    const normalizedCorrections = normalizeCorrections(guidance);
+    const nextCorrection = normalizedCorrections[0]
+      ? { ...normalizedCorrections[0], retryRequired }
+      : null;
+    const score = firstNumber(guidance, "sessionScore", "session_score");
+    const currentStage = firstString(
+      guidance,
+      "currentStage",
+      "current_stage",
+    ) || firstString(payload, "currentStage", "current_stage");
+    const scenarioStatus = firstString(
+      guidance,
+      "scenarioStatus",
+      "scenario_status",
+    ) || firstString(payload, "scenarioStatus", "scenario_status");
+    const nextAction = firstString(guidance, "nextAction", "next_action");
+    const strengths = firstStringArray(
+      guidance,
+      "studentStrengths",
+      "student_strengths",
+      "strengths",
+    );
+    const priorities = firstStringArray(
+      guidance,
+      "studentPriorities",
+      "student_priorities",
+      "priorities",
+    );
+    const needsExternalVerification = firstBoolean(
+      guidance,
+      "needsExternalVerification",
+      "needs_external_verification",
+    );
+    const verificationReason = firstString(
+      guidance,
+      "verificationReason",
+      "verification_reason",
+    );
+
+    if (isMountedRef.current) {
+      setCorrection(nextCorrection);
+      setTurnGuidance({
+        currentStage,
+        strengths,
+        priorities,
+        nextAction,
+        needsExternalVerification,
+        verificationReason,
+        retryRequired,
+        sessionScore: score === null
+          ? null
+          : Math.max(0, Math.min(100, Math.round(score))),
+      });
+    }
+    return await realtimeGuidanceRelayRef.current({
+      currentStage,
+      scenarioStatus,
+      requiresRetry: retryRequired,
+      retryCompleted: firstBoolean(
+        guidance,
+        "retryCompleted",
+        "retry_completed",
+      ),
+      nextAction,
+      counterpart: firstString(guidance, "counterpart"),
+      pendingQuestion: firstString(
+        guidance,
+        "pendingQuestion",
+        "pending_question",
+      ),
+      pendingDecision: firstString(
+        guidance,
+        "pendingDecision",
+        "pending_decision",
+      ),
+    });
+  }, []);
+
   const handleRealtimeTurnComplete = useCallback(
     (turn: WolfieRealtimeCompletedTurn) => {
       if (realtimeTurnIdsRef.current.has(turn.id)) return;
       realtimeTurnIdsRef.current.add(turn.id);
+      const postTurnGateToken = beginRealtimePostTurnGate();
 
+      // O próximo turno só pode começar depois que a análise autoritativa
+      // deste turno atualizar a sessão Realtime. Isso evita que o aluno fale
+      // sobre um checkpoint antigo enquanto o backend ainda decide retry/etapa.
       const timestamp = new Date(turn.completedAt);
       setMessages((current) => [
         ...current,
@@ -610,115 +820,202 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         detectSpeechLanguage(turn.assistantTranscript, "en"),
       );
 
-      if (
-        turn.inputMethod === "audio_transcription" &&
-        shouldConfirmVoiceTranscript({
-          transcript: turn.userTranscript,
-          alternatives: [],
-          confidence: turn.asrConfidence,
-        })
-      ) {
-        setPendingTranscriptReview((current) =>
-          current ?? {
-            transcript: turn.userTranscript,
-            alternatives: [],
-            confidence: turn.asrConfidence,
-            studentLanguage: detectSpeechLanguage(
-              turn.userTranscript,
-              "en",
-            ),
-            source: "realtime",
-            clientTurnId: turn.id,
-          }
-        );
-      }
-
       // Serializa a persistência para que o primeiro turno crie uma única
       // sessão e os seguintes reutilizem o mesmo conversationId.
       realtimePersistenceRef.current = realtimePersistenceRef.current
         .catch(() => undefined)
         .then(async () => {
-          const { data, error: persistenceError } = await supabase.functions
-            .invoke("wolfie-brain", {
-              body: {
-                action: "record_realtime_turn",
-                conversationId: realtimeConversationIdRef.current,
-                clientTurnId: turn.id,
-                userTranscript: turn.userTranscript,
-                assistantTranscript: turn.assistantTranscript,
-                inputMethod: turn.inputMethod,
-                asrConfidence: turn.asrConfidence,
-                transcriptIsRoughGuide: true,
-                // Consumo cobrado pela OpenAI neste turno — base do relatório
-                // de custo por aluno e, depois, da cota mensal.
-                usage: turn.usage,
-                studentLevel,
-                topic,
-                experienceMode,
-                correctionMode,
-                languageMode,
-                difficulty,
-                scenario,
-                studentGoal,
-                targetSkill,
-                experienceId,
-                experienceUniverse,
-                experienceAudiences,
-              },
-            });
+          const requestBody = {
+            action: "record_realtime_turn",
+            conversationId: realtimeConversationIdRef.current,
+            clientTurnId: turn.id,
+            userTranscript: turn.userTranscript,
+            assistantTranscript: turn.assistantTranscript,
+            inputMethod: turn.inputMethod,
+            asrConfidence: turn.asrConfidence,
+            transcriptIsRoughGuide: true,
+            // Consumo cobrado pela OpenAI neste turno — base do relatório
+            // de custo por aluno e, depois, da cota mensal.
+            usage: turn.usage,
+          };
+          const retryDelaysMs = [0, 600, 1_800, 4_000];
+          let payload: Record<string, unknown> = {};
+          let analysisStatus = "";
+          let lastFailure = "REALTIME_TURN_PERSISTENCE_FAILED";
 
-          const payload = asRecord(data);
-          const nextConversationId = firstString(
-            payload,
-            "conversationId",
-            "conversation_id",
-          );
-          if (nextConversationId) {
-            realtimeConversationIdRef.current = nextConversationId;
-            if (isMountedRef.current) setConversationId(nextConversationId);
+          for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+            const delayMs = retryDelaysMs[attempt];
+            if (delayMs > 0) {
+              await new Promise<void>((resolve) => {
+                window.setTimeout(resolve, delayMs);
+              });
+            }
+            if (
+              !isMountedRef.current ||
+              !realtimePostTurnTokenIsCurrent(
+                realtimePostTurnGateRef.current,
+                postTurnGateToken,
+              )
+            ) return;
+
+            const { data, error: persistenceError } = await supabase.functions
+              .invoke("wolfie-brain", { body: requestBody });
+            if (
+              !isMountedRef.current ||
+              !realtimePostTurnTokenIsCurrent(
+                realtimePostTurnGateRef.current,
+                postTurnGateToken,
+              )
+            ) return;
+            payload = asRecord(data);
+            const nextConversationId = firstString(
+              payload,
+              "conversationId",
+              "conversation_id",
+            );
+            if (nextConversationId) {
+              requestBody.conversationId = nextConversationId;
+              realtimeConversationIdRef.current = nextConversationId;
+              if (isMountedRef.current) setConversationId(nextConversationId);
+            }
+            analysisStatus = firstString(
+              payload,
+              "analysisStatus",
+              "analysis_status",
+            );
+            lastFailure = firstString(payload, "error") ||
+              persistenceError?.message || lastFailure;
+            const retryable = Boolean(persistenceError || payload.error) ||
+              analysisStatus === "processing" ||
+              analysisStatus === "retryable";
+            if (!retryable) break;
+            if (attempt === retryDelaysMs.length - 1) {
+              throw new Error(
+                analysisStatus === "processing" ||
+                  analysisStatus === "retryable"
+                  ? "REALTIME_ANALYSIS_RETRY_EXHAUSTED"
+                  : lastFailure,
+              );
+            }
           }
 
-          if (persistenceError || payload.error) {
-            throw new Error(
-              firstString(payload, "error") ||
-                persistenceError?.message ||
-                "REALTIME_TURN_PERSISTENCE_FAILED",
-            );
+          if (analysisStatus === "unavailable") {
+            throw new Error("REALTIME_ANALYSIS_UNAVAILABLE");
+          }
+          if (
+            analysisStatus !== "completed" &&
+            analysisStatus !== "awaiting_confirmation"
+          ) {
+            throw new Error("REALTIME_ANALYSIS_RETRY_EXHAUSTED");
+          }
+          const guidanceApplied = await applyRealtimeGuidance(payload);
+          if (!guidanceApplied) {
+            throw new Error("REALTIME_GUIDANCE_ACK_FAILED");
+          }
+          const currentStage = firstString(
+            payload,
+            "currentStage",
+            "current_stage",
+          );
+          const scenarioStatus = firstString(
+            payload,
+            "scenarioStatus",
+            "scenario_status",
+          );
+          if (analysisStatus === "awaiting_confirmation") {
+            markRealtimeConfirmationPending(true);
+            if (isMountedRef.current) {
+              setPendingTranscriptReview((current) =>
+                current ?? {
+                  transcript: turn.userTranscript,
+                  alternatives: [],
+                  confidence: turn.asrConfidence,
+                  studentLanguage: detectSpeechLanguage(
+                    turn.userTranscript,
+                    "en",
+                  ),
+                  source: "realtime",
+                  clientTurnId: turn.id,
+                }
+              );
+            }
+          } else if (
+            currentStage === "completed" || scenarioStatus === "completed"
+          ) {
+            resetRealtimeGate();
+            realtimeDisconnectRelayRef.current(true);
+            if (isMountedRef.current) {
+              detachTransportSession();
+              setVoiceTransport("classic");
+              setPendingTranscriptReview(null);
+              setState("IDLE");
+              setSubtitle(
+                "Treinamento concluído. Seu relatório já está disponível.",
+              );
+            }
           }
         })
         .catch((persistenceError) => {
+          if (
+            !isMountedRef.current ||
+            !realtimePostTurnTokenIsCurrent(
+              realtimePostTurnGateRef.current,
+              postTurnGateToken,
+            )
+          ) return;
           console.error(
             "[WolfieTutor] Falha ao salvar turno em tempo real:",
             persistenceError,
           );
-          if (!isMountedRef.current) return;
+          const failureCode = persistenceError instanceof Error
+            ? persistenceError.message
+            : "REALTIME_TURN_PERSISTENCE_FAILED";
+          const guidanceFailed = failureCode ===
+            "REALTIME_GUIDANCE_ACK_FAILED";
+          const analysisUnavailable = failureCode ===
+              "REALTIME_ANALYSIS_UNAVAILABLE" ||
+            failureCode === "REALTIME_ANALYSIS_RETRY_EXHAUSTED";
+          setPendingTranscriptReview((current) =>
+            current?.source === "realtime" &&
+              current.clientTurnId === turn.id
+              ? null
+              : current
+          );
+          resetRealtimeGate();
+          realtimeDisconnectRelayRef.current(false);
+          detachTransportSession("handoff_to_classic");
+          setVoiceTransport("classic");
+          setState("IDLE");
           setError(
-            "A conversa continua, mas este turno não pôde ser salvo no histórico.",
+            guidanceFailed
+              ? "O turno foi salvo, mas a orientação ao vivo não foi confirmada. O Wolfie mudou para a voz clássica."
+              : analysisUnavailable
+              ? "O turno foi preservado, mas a análise não concluiu após novas tentativas. O Wolfie mudou para a voz clássica."
+              : "O turno não pôde ser confirmado com segurança. O Wolfie mudou para a voz clássica.",
           );
           window.setTimeout(() => {
             if (isMountedRef.current) setError(null);
           }, 5000);
+        })
+        .finally(() => {
+          finishRealtimePostTurnGate(postTurnGateToken);
         });
     },
     [
-      correctionMode,
       activePedagogicalTask,
-      difficulty,
-      experienceAudiences,
-      experienceId,
-      experienceMode,
-      experienceUniverse,
-      languageMode,
-      scenario,
-      studentGoal,
-      studentLevel,
-      targetSkill,
-      topic,
+      applyRealtimeGuidance,
+      beginRealtimePostTurnGate,
+      detachTransportSession,
+      finishRealtimePostTurnGate,
+      markRealtimeConfirmationPending,
+      resetRealtimeGate,
     ],
   );
 
   const handleRealtimeFallback = useCallback(
     (_reason: string, message: string) => {
+      resetRealtimeGate();
+      detachTransportSession("handoff_to_classic");
       setVoiceTransport("classic");
       setState("IDLE");
       setError(`${message} O Wolfie mudou para a voz clássica.`);
@@ -726,18 +1023,58 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         if (isMountedRef.current) setError(null);
       }, 6000);
     },
+    [detachTransportSession, resetRealtimeGate],
+  );
+
+  const handleRealtimeSessionPrepared = useCallback(
+    (prepared: WolfieRealtimePreparedSession) => {
+      pendingRealtimeClassicHandoffRef.current = null;
+      realtimeConversationIdRef.current = prepared.conversationId;
+      setConversationId(prepared.conversationId);
+      setTurnGuidance((current) => ({
+        ...current,
+        currentStage: prepared.currentStage,
+        retryRequired: prepared.requiresRetry,
+      }));
+    },
     [],
   );
 
   const realtime = useWolfieRealtime({
     enabled: WOLFIE_REALTIME_ENABLED && isRealtimeMode,
+    conversationId,
+    sessionPreparationKey: restartNonce,
+    studentLevel,
     topic,
-    goal: studentGoal || targetSkill || "Praticar inglês com naturalidade",
-    language: "auto",
-    ragQuery: [topic, studentGoal, targetSkill].filter(Boolean).join("\n"),
+    experienceMode,
+    correctionMode,
+    languageMode,
+    difficulty,
+    scenario,
+    studentGoal,
+    targetSkill,
+    experienceId,
+    experienceUniverse,
+    experienceAudiences,
     onFallback: handleRealtimeFallback,
+    onSessionPrepared: handleRealtimeSessionPrepared,
     onTurnComplete: handleRealtimeTurnComplete,
   });
+
+  useEffect(() => {
+    realtimeGuidanceRelayRef.current = realtime.applyServerGuidance;
+    realtimeMuteRelayRef.current = realtime.setMuted;
+    realtimeDisconnectRelayRef.current = realtime.disconnect;
+    return () => {
+      realtimeGuidanceRelayRef.current = () => Promise.resolve(false);
+      realtimeMuteRelayRef.current = () => {};
+      realtimeDisconnectRelayRef.current = () => {};
+    };
+  }, [
+    realtime.applyServerGuidance,
+    realtime.disconnect,
+    realtime.setMuted,
+  ]);
 
   useEffect(() => {
     if (pendingTranscriptReview?.source === "realtime") {
@@ -752,10 +1089,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const confirmRealtimeTranscript = useCallback(
     async (review: PendingTranscriptReview, confirmedTranscript: string) => {
       const clientTurnId = review.clientTurnId;
-      if (!clientTurnId) return;
+      if (!clientTurnId || isConfirmingRealtimeTranscriptRef.current) return;
 
-      setPendingTranscriptReview(null);
-      realtime.setMuted(false);
+      isConfirmingRealtimeTranscriptRef.current = true;
+      setIsConfirmingRealtimeTranscript(true);
+      markRealtimeConfirmationPending(true);
       setSubtitle("Salvando apenas o dado que você confirmou…");
       setMessages((current) =>
         current.map((message) =>
@@ -783,18 +1121,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               userTranscript: confirmedTranscript,
               asrConfidence: review.confidence,
               transcriptConfirmed: true,
-              studentLevel,
-              topic,
-              experienceMode,
-              correctionMode,
-              languageMode,
-              difficulty,
-              scenario,
-              studentGoal,
-              targetSkill,
-              experienceId,
-              experienceUniverse,
-              experienceAudiences,
             },
           });
         const payload = asRecord(data);
@@ -805,8 +1131,44 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               "REALTIME_FACT_CONFIRMATION_FAILED",
           );
         }
-
+        const analysisStatus = firstString(
+          payload,
+          "analysisStatus",
+          "analysis_status",
+        );
+        if (
+          analysisStatus === "processing" || analysisStatus === "retryable"
+        ) {
+          throw new Error("REALTIME_ANALYSIS_RETRY_REQUIRED");
+        }
+        if (analysisStatus === "unavailable") {
+          throw new Error("REALTIME_ANALYSIS_UNAVAILABLE");
+        }
+        const guidanceApplied = await applyRealtimeGuidance(payload);
+        if (!guidanceApplied && isRealtimeMode) {
+          throw new Error("REALTIME_GUIDANCE_ACK_FAILED");
+        }
         if (!isMountedRef.current) return;
+        const currentStage = firstString(
+          payload,
+          "currentStage",
+          "current_stage",
+        );
+        const scenarioStatus = firstString(
+          payload,
+          "scenarioStatus",
+          "scenario_status",
+        );
+        setPendingTranscriptReview(null);
+        if (currentStage === "completed" || scenarioStatus === "completed") {
+          resetRealtimeGate();
+          realtime.disconnect(true);
+          detachTransportSession();
+          setVoiceTransport("classic");
+          setState("IDLE");
+        } else {
+          markRealtimeConfirmationPending(false);
+        }
         const recordedCount = firstNumber(
           payload,
           "factsRecorded",
@@ -825,30 +1187,45 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           "[WolfieTutor] Falha ao confirmar fato do turno ao vivo:",
           confirmationFailure,
         );
+        const guidanceFailed = confirmationFailure instanceof Error &&
+          confirmationFailure.message === "REALTIME_GUIDANCE_ACK_FAILED";
+        if (guidanceFailed) {
+          setPendingTranscriptReview(null);
+          resetRealtimeGate();
+          realtime.disconnect(false);
+          detachTransportSession("handoff_to_classic");
+          setVoiceTransport("classic");
+          setState("IDLE");
+        } else {
+          // The same modal remains mounted with its edited value. The next
+          // confirmation replays the same clientTurnId and is idempotent.
+          setPendingTranscriptReview((current) =>
+            current ?? { ...review, transcript: confirmedTranscript }
+          );
+          markRealtimeConfirmationPending(true);
+        }
         if (!isMountedRef.current) return;
         setSubtitle("");
         setError(
-          "A conversa continua, mas a informação confirmada não pôde ser salva.",
+          guidanceFailed
+            ? "A informação foi confirmada, mas a orientação ao vivo não foi aplicada. O Wolfie mudou para a voz clássica."
+            : "Ainda não foi possível concluir este turno. Revise e confirme novamente; o microfone continuará pausado.",
         );
         window.setTimeout(() => {
           if (isMountedRef.current) setError(null);
         }, 5000);
+      } finally {
+        isConfirmingRealtimeTranscriptRef.current = false;
+        if (isMountedRef.current) setIsConfirmingRealtimeTranscript(false);
       }
     },
     [
-      correctionMode,
-      difficulty,
-      experienceAudiences,
-      experienceId,
-      experienceMode,
-      experienceUniverse,
-      languageMode,
-      realtime.setMuted,
-      scenario,
-      studentGoal,
-      studentLevel,
-      targetSkill,
-      topic,
+      applyRealtimeGuidance,
+      detachTransportSession,
+      isRealtimeMode,
+      markRealtimeConfirmationPending,
+      realtime.disconnect,
+      resetRealtimeGate,
     ],
   );
 
@@ -861,53 +1238,61 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     if (isMountedRef.current) setAudioStream(null);
   }, []);
 
-  const ensureAudioStream = useCallback(async (): Promise<MediaStream | null> => {
-    if (typeof navigator === "undefined") return null;
-    if (audioStreamRef.current) return audioStreamRef.current;
-    if (audioStreamRequestRef.current) {
+  const ensureAudioStream = useCallback(
+    async (): Promise<MediaStream | null> => {
+      if (typeof navigator === "undefined") return null;
+      if (audioStreamRef.current) return audioStreamRef.current;
+      if (audioStreamRequestRef.current) {
+        try {
+          return await audioStreamRequestRef.current;
+        } catch {
+          return null;
+        }
+      }
+
+      const mediaDevices = navigator.mediaDevices;
+      if (!mediaDevices?.getUserMedia) {
+        console.warn(
+          "Mascot audio stream unavailable (avatar ficará estático)",
+        );
+        return null;
+      }
+
+      const request = mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const requestVersion = ++audioStreamRequestVersionRef.current;
+      audioStreamRequestRef.current = request;
       try {
-        return await audioStreamRequestRef.current;
-      } catch {
+        const stream = await request;
+        if (
+          !isMountedRef.current ||
+          requestVersion !== audioStreamRequestVersionRef.current
+        ) {
+          stream.getTracks().forEach((track) => track.stop());
+          return null;
+        }
+        audioStreamRef.current = stream;
+        setAudioStream(stream);
+        return stream;
+      } catch (err) {
+        console.warn(
+          "Mascot audio stream denied (avatar ficará estático):",
+          err,
+        );
         return null;
+      } finally {
+        if (audioStreamRequestRef.current === request) {
+          audioStreamRequestRef.current = null;
+        }
       }
-    }
-
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices?.getUserMedia) {
-      console.warn("Mascot audio stream unavailable (avatar ficará estático)");
-      return null;
-    }
-
-    const request = mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    const requestVersion = ++audioStreamRequestVersionRef.current;
-    audioStreamRequestRef.current = request;
-    try {
-      const stream = await request;
-      if (
-        !isMountedRef.current ||
-        requestVersion !== audioStreamRequestVersionRef.current
-      ) {
-        stream.getTracks().forEach((track) => track.stop());
-        return null;
-      }
-      audioStreamRef.current = stream;
-      setAudioStream(stream);
-      return stream;
-    } catch (err) {
-      console.warn("Mascot audio stream denied (avatar ficará estático):", err);
-      return null;
-    } finally {
-      if (audioStreamRequestRef.current === request) {
-        audioStreamRequestRef.current = null;
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   // ============================================================
   // EFFECTS
@@ -944,7 +1329,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           realtime.error ||
             "A conversa ao vivo foi interrompida. Mudamos para a voz clássica.",
         );
-        realtime.disconnect();
+        resetRealtimeGate();
+        realtime.disconnect(false);
+        detachTransportSession("handoff_to_classic");
         setVoiceTransport("classic");
         setState("IDLE");
         break;
@@ -957,6 +1344,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     realtime.disconnect,
     realtime.error,
     realtime.phase,
+    resetRealtimeGate,
+    detachTransportSession,
   ]);
 
   useEffect(() => {
@@ -1170,7 +1559,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         let sessionQuery = supabase
           .from("wolfie_sessions")
           .select(
-            "id, topic, started_at, last_activity_at, scenario_status, finished_at, student_level, experience_mode, correction_mode, language_mode, difficulty, scenario_context, student_goal, target_skill, current_stage",
+            "id, topic, started_at, last_activity_at, scenario_status, finished_at, student_level, experience_mode, correction_mode, language_mode, difficulty, scenario_context, student_goal, target_skill, current_stage, realtime_first_client_turn_id, classic_handoff_at",
           )
           .eq("student_id", user.id)
           .is("finished_at", null)
@@ -1266,6 +1655,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
         if (cancelled) return;
         const turns = [...(recentTurns ?? [])].reverse();
+        realtimeConversationIdRef.current = lastSession.id;
+        pendingRealtimeClassicHandoffRef.current =
+          realtimeSessionNeedsClassicHandoff(
+              lastSession.realtime_first_client_turn_id,
+              lastSession.classic_handoff_at,
+            )
+            ? lastSession.id
+            : null;
         setConversationId(lastSession.id);
         if (turns && turns.length > 0) {
           const restored: Message[] = turns.map((t: any) => {
@@ -1616,7 +2013,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     );
     setSubtitle("");
   }, [invalidatePendingTTS, stopOutputMeter]);
-
 
   /**
    * Fallback: Web Speech API (local, sem qualidade neural)
@@ -2016,9 +2412,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
   const startRealtimeConversation = async () => {
     if (!isRealtimeMode) return;
+    if (isRealtimePostTurnPending) {
+      setSubtitle(
+        pendingTranscriptReview?.source === "realtime"
+          ? "Confirme a transcrição antes de continuar."
+          : "O Wolfie está revisando este turno antes de continuar…",
+      );
+      return;
+    }
+    if (isLoadingHistory) {
+      setSubtitle("Preparando seu histórico para retomar do ponto certo…");
+      return;
+    }
     unlockAudio();
     setAudioGestureReady(true);
     setError(null);
+    setSubtitle("");
 
     if (realtime.connected) {
       if (realtime.isAssistantSpeaking) {
@@ -2038,7 +2447,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const useClassicVoice = () => {
     invalidatePendingRequest();
     abortRecognition();
-    realtime.disconnect();
+    resetRealtimeGate();
+    realtime.disconnect(false);
+    detachTransportSession("handoff_to_classic");
     setVoiceTransport("classic");
     setState("IDLE");
     setSubtitle("");
@@ -2049,6 +2460,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     invalidatePendingRequest();
     abortRecognition();
     stopSpeaking();
+    resetRealtimeGate();
+    pendingRealtimeClassicHandoffRef.current = null;
     setVoiceTransport("realtime");
     setState("IDLE");
     setSubtitle("");
@@ -2073,6 +2486,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     setState("THINKING");
     void sendToWolfieBrain({
       message: transcript,
+      uiMessageId: newUserMsg.id,
       studentLanguage: review.studentLanguage,
       transcriptionConfidence: review.confidence,
       transcriptionAlternatives: review.alternatives,
@@ -2320,7 +2734,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           (window as any).SpeechRecognition;
         if (!SpeechRec) {
           stopIOSKeepAlive();
-          setError("Reconhecimento de voz não suportado. Use o campo de texto.");
+          setError(
+            "Reconhecimento de voz não suportado. Use o campo de texto.",
+          );
           setTimeout(() => setError(null), 5000);
           setShowTextInput(true);
           setState("IDLE");
@@ -2386,7 +2802,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               "network": "Erro de rede no reconhecimento de voz",
             };
             setError(
-              messagesByError[event.error] ?? "O microfone falhou. Tente novamente.",
+              messagesByError[event.error] ??
+                "O microfone falhou. Tente novamente.",
             );
             setTimeout(() => setError(null), 4000);
           }
@@ -2488,6 +2905,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     unlockAudio(); // desbloqueia AudioContext no iOS para o texto também
 
     if (isRealtimeMode) {
+      if (isRealtimePostTurnPending) {
+        setError("Aguarde o Wolfie revisar este turno antes de continuar.");
+        setTimeout(() => setError(null), 4000);
+        return;
+      }
       if (!realtime.connected) {
         setError(
           "Toque no Wolfie para iniciar a conversa ao vivo antes de enviar texto.",
@@ -2527,7 +2949,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     };
     setMessages((prev) => [...prev, newUserMsg]);
 
-    await sendToWolfieBrain({ message: text });
+    await sendToWolfieBrain({ message: text, uiMessageId: newUserMsg.id });
   };
 
   const sendToWolfieBrain = async (input: WolfieBrainInput) => {
@@ -2537,6 +2959,48 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     }
     isProcessingRef.current = true;
     const requestVersion = ++requestVersionRef.current;
+    const classicRequestFingerprint = JSON.stringify({
+      message: input.message?.trim() ?? "",
+      hasAudio: Boolean(input.audioBase64),
+      studentLanguage: input.studentLanguage ?? null,
+      speechDerivedTranscript: input.speechDerivedTranscript ?? false,
+      transcriptConfirmed: input.transcriptConfirmed ?? false,
+      conversationId,
+      topic,
+      experienceMode,
+      targetSkill,
+    });
+    const replayedClassicRequest = pendingClassicRequestRef.current
+      ?.fingerprint === classicRequestFingerprint
+      ? pendingClassicRequestRef.current
+      : null;
+    const classicClientTurnId = replayedClassicRequest?.clientTurnId ??
+      crypto.randomUUID();
+    const optimisticMessageId = replayedClassicRequest?.optimisticMessageId ||
+      input.uiMessageId || "";
+    if (
+      replayedClassicRequest?.optimisticMessageId &&
+      input.uiMessageId &&
+      replayedClassicRequest.optimisticMessageId !== input.uiMessageId
+    ) {
+      setMessages((current) =>
+        reconcileClassicReplayBubble(
+          current,
+          replayedClassicRequest.optimisticMessageId,
+          input.uiMessageId as string,
+        )
+      );
+    }
+    // Keep this key after timeout/network ambiguity. A deliberate new payload
+    // gets a new key; an explicit success clears it so repeating the same text
+    // later remains a legitimate new learner turn.
+    pendingClassicRequestRef.current = {
+      fingerprint: classicRequestFingerprint,
+      clientTurnId: classicClientTurnId,
+      optimisticMessageId,
+    };
+    const serverInput = { ...input };
+    delete serverInput.uiMessageId;
 
     // ── Detecta idioma do input para resposta bilíngue ──
     // Se o aluno falou PT → Wolfie responde em PT (FranciscaNeural)
@@ -2561,9 +3025,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       brainRequestAbortRef.current?.abort();
       const controller = new AbortController();
       brainRequestAbortRef.current = controller;
-      const history = messages.slice(-6).map((m) =>
-        `${m.role === "user" ? "Student" : "Wolfie"}: ${m.content}`
-      ).join("\n");
+      const history = messages
+        .filter((message) => message.id !== optimisticMessageId)
+        .slice(-6)
+        .map((message) =>
+          `${message.role === "user" ? "Student" : "Wolfie"}: ${message.content}`
+        )
+        .join("\n");
       const scenarioSummary = typeof scenario === "string"
         ? scenario
         : scenario
@@ -2595,11 +3063,37 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         topicLower.includes(k)
       )?.[1] || "fluency";
 
+      let activeClassicConversationId = conversationId;
+      const pendingHandoffConversationId =
+        pendingRealtimeClassicHandoffRef.current;
+      if (pendingHandoffConversationId) {
+        setSubtitle("Finalizando a passagem para a voz clássica…");
+        const handoff = await handoffWolfieRealtimeToClassic(
+          pendingHandoffConversationId,
+          { signal: controller.signal },
+        );
+        if (requestVersion !== requestVersionRef.current) return;
+        activeClassicConversationId = handoff.conversationId;
+        realtimeConversationIdRef.current = handoff.conversationId;
+        setConversationId(handoff.conversationId);
+        if (
+          pendingRealtimeClassicHandoffRef.current === handoff.conversationId
+        ) {
+          pendingRealtimeClassicHandoffRef.current = null;
+        }
+        setTurnGuidance((current) => ({
+          ...current,
+          currentStage: handoff.currentStage || current.currentStage,
+          retryRequired: handoff.requiresRetry ?? current.retryRequired,
+        }));
+        setSubtitle("");
+      }
+
       const { data, error: supabaseError } = await supabase.functions.invoke(
         "wolfie-brain",
         {
           body: {
-            ...input,
+            ...serverInput,
             learnerTurnKind: localLearnerTurnKind,
             studentLevel,
             topic,
@@ -2625,7 +3119,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               mode === "exam_prep" || mode === "grammar_focus" ? 3 : 1,
             allowPortuguese: true,
             turnCount,
-            conversationId,
+            conversationId: activeClassicConversationId,
+            clientTurnId: classicClientTurnId,
             studentLanguage: studentLang,
           },
           signal: controller.signal,
@@ -2696,50 +3191,38 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         "current_stage",
         "stage",
       );
-      const nextStrengths = suppressPedagogy
-        ? []
-        : firstStringArray(
-          responsePayload,
-          "studentStrengths",
-          "student_strengths",
-          "strengths",
-        );
-      const nextPriorities = suppressPedagogy
-        ? []
-        : firstStringArray(
-          responsePayload,
-          "studentPriorities",
-          "student_priorities",
-          "priorities",
-        );
-      const nextAction = suppressPedagogy
-        ? ""
-        : firstString(
-          responsePayload,
-          "nextAction",
-          "next_action",
-        );
-      const needsExternalVerification = suppressPedagogy
-        ? false
-        : firstBoolean(
-          responsePayload,
-          "needsExternalVerification",
-          "needs_external_verification",
-        );
-      const verificationReason = suppressPedagogy
-        ? ""
-        : firstString(
-          responsePayload,
-          "verificationReason",
-          "verification_reason",
-        );
-      const sessionScore = suppressPedagogy
-        ? null
-        : firstNumber(
-          responsePayload,
-          "sessionScore",
-          "session_score",
-        );
+      const nextStrengths = suppressPedagogy ? [] : firstStringArray(
+        responsePayload,
+        "studentStrengths",
+        "student_strengths",
+        "strengths",
+      );
+      const nextPriorities = suppressPedagogy ? [] : firstStringArray(
+        responsePayload,
+        "studentPriorities",
+        "student_priorities",
+        "priorities",
+      );
+      const nextAction = suppressPedagogy ? "" : firstString(
+        responsePayload,
+        "nextAction",
+        "next_action",
+      );
+      const needsExternalVerification = suppressPedagogy ? false : firstBoolean(
+        responsePayload,
+        "needsExternalVerification",
+        "needs_external_verification",
+      );
+      const verificationReason = suppressPedagogy ? "" : firstString(
+        responsePayload,
+        "verificationReason",
+        "verification_reason",
+      );
+      const sessionScore = suppressPedagogy ? null : firstNumber(
+        responsePayload,
+        "sessionScore",
+        "session_score",
+      );
       const responseRequiresRetry = firstBoolean(
         responsePayload,
         "retryRequired",
@@ -2816,6 +3299,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             sessionScore,
           }
       );
+      if (
+        pendingClassicRequestRef.current?.clientTurnId === classicClientTurnId
+      ) {
+        pendingClassicRequestRef.current = null;
+      }
 
       // O backend informa explicitamente o idioma desta fala. A heurística
       // acima existe apenas para compatibilidade durante a implantação.
@@ -2842,10 +3330,34 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       console.error("Wolfie Brain Error:", err);
       brainRequestAbortRef.current = null;
       stopIOSKeepAlive();
+      setSubtitle("");
       const errorName = err?.name ?? "";
       const errorMessage = String(err?.message ?? "");
+      const handoffErrorCode = err instanceof WolfieRealtimeHandoffError
+        ? err.code
+        : "";
+      const terminalConversation = [
+        "CONVERSATION_FINISHED",
+        "CONVERSATION_NOT_FOUND",
+      ].includes(handoffErrorCode) ||
+        /CONVERSATION_FINISHED|CONVERSATION_NOT_FOUND/i.test(errorMessage);
+      if (terminalConversation) {
+        pendingRealtimeClassicHandoffRef.current = null;
+        realtime.disconnect(true);
+        detachTransportSession();
+      }
+      if (
+        /CONVERSATION_FINISHED|CONVERSATION_NOT_FOUND|TRANSPORT_MISMATCH|CLIENT_TURN_ID_REUSED/i.test(
+          errorMessage,
+        ) &&
+        pendingClassicRequestRef.current?.clientTurnId === classicClientTurnId
+      ) {
+        pendingClassicRequestRef.current = null;
+      }
       setError(
-        errorName === "AbortError" ||
+        handoffErrorCode === "REALTIME_HANDOFF_PENDING"
+          ? "A conversa ao vivo ainda está finalizando este turno. Tente enviar novamente em alguns instantes."
+          : errorName === "AbortError" ||
           /abort|timeout|timed out/i.test(errorMessage)
           ? "O Wolfie demorou mais que o esperado. Tente novamente."
           : "Não consegui responder agora. Tente novamente.",
@@ -2895,6 +3407,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     brainRequestAbortRef.current = null;
     transcriptionAbortRef.current?.abort();
     transcriptionAbortRef.current = null;
+    pendingClassicRequestRef.current = null;
   };
 
   const abortRecognition = () => {
@@ -2936,7 +3449,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
   const handleClose = () => {
     invalidatePendingRequest();
-    realtime.disconnect();
+    resetRealtimeGate();
+    realtime.disconnect(false);
     stopSpeaking();
     abortRecognition();
     setPendingTranscriptReview(null);
@@ -2998,16 +3512,23 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     if (!confirm(`Reiniciar a conversa mantendo o tema atual: "${topic}"?`)) {
       return;
     }
-    const sessionToAbandon = conversationId;
+    const sessionToAbandon = realtimeConversationIdRef.current ||
+      conversationId;
 
     invalidatePendingRequest();
-    realtime.disconnect();
+    resetRealtimeGate();
+    realtime.disconnect(true);
     stopSpeaking();
     abortRecognition();
     setError(null);
     setIsRestarting(true);
 
     try {
+      // `disconnect` removes the Realtime listeners. Any completed turn that
+      // was already handed to us remains in this serialized queue and must be
+      // persisted before the session is marked abandoned.
+      await realtimePersistenceRef.current;
+
       // A sessão precisa ser encerrada no servidor antes de o ID local ser
       // removido; caso contrário, um reload retomaria a conversa antiga.
       if (sessionToAbandon) {
@@ -3061,7 +3582,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   // ============================================================
   const realtimeSubtitle = realtime.isAssistantSpeaking
     ? realtime.assistantTranscript || realtime.lastAssistantTranscript
-    : realtime.userTranscript || realtime.lastUserTranscript;
+    : realtime.userTranscript || realtime.lastUserTranscript || subtitle;
   const displaySubtitle = isRealtimeMode ? realtimeSubtitle : subtitle;
   const avatarInputLevel = isRealtimeMode
     ? realtime.localAudioLevel
@@ -3071,6 +3592,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     : outputLevel;
 
   const getStatusLabel = () => {
+    if (isRealtimeMode && isRealtimePostTurnPending) {
+      return pendingTranscriptReview?.source === "realtime"
+        ? "Confirme a Transcrição"
+        : "Revisando o Turno...";
+    }
     if (isRealtimeMode && realtime.muted) return "Microfone Pausado";
     if (isRealtimeMode && realtime.connected && state === "IDLE") {
       return "Ao Vivo · Pode Falar";
@@ -3123,11 +3649,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     setContext("");
     setShowTextInput(mode === "text");
     setVoiceTransport(
-      mode === "live"
-        ? "realtime"
-        : mode === "voice"
-        ? "classic"
-        : "text",
+      mode === "live" ? "realtime" : mode === "voice" ? "classic" : "text",
     );
     setHasSelectedTopic(true);
 
@@ -3243,9 +3765,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-indigo-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-indigo-500 transition-all">
-                  <Mic size={22} className="text-indigo-400 group-hover:text-white transition-colors" />
+                  <Mic
+                    size={22}
+                    className="text-indigo-400 group-hover:text-white transition-colors"
+                  />
                 </div>
-                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">Falar</h3>
+                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">
+                  Falar
+                </h3>
                 <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
                   Você fala, o Wolfie responde por voz e texto.
                 </p>
@@ -3257,9 +3784,14 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-2 sm:mb-4 group-hover:bg-emerald-500 transition-all">
-                  <MessageSquare size={22} className="text-emerald-400 group-hover:text-white transition-colors" />
+                  <MessageSquare
+                    size={22}
+                    className="text-emerald-400 group-hover:text-white transition-colors"
+                  />
                 </div>
-                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">Escrever</h3>
+                <h3 className="text-sm sm:text-lg font-bold text-white mb-1">
+                  Escrever
+                </h3>
                 <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
                   Converse por escrito, no seu ritmo.
                 </p>
@@ -3277,7 +3809,10 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   className="group relative w-full p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-slate-900/80 to-slate-900/80 backdrop-blur-xl border border-amber-500/30 hover:border-amber-400/60 active:scale-[0.99] transition-all overflow-hidden flex items-center gap-4 text-left"
                 >
                   <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 rounded-full bg-amber-500/20 flex items-center justify-center group-hover:bg-amber-500 transition-all">
-                    <Radio size={22} className="text-amber-300 group-hover:text-white transition-colors" />
+                    <Radio
+                      size={22}
+                      className="text-amber-300 group-hover:text-white transition-colors"
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -3289,10 +3824,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                       </span>
                     </div>
                     <p className="text-slate-400 text-[11px] sm:text-xs mt-0.5">
-                      Fala natural, sem esperar: o Wolfie ouve e responde enquanto você fala.
+                      Fala natural, sem esperar: o Wolfie ouve e responde
+                      enquanto você fala.
                     </p>
-                    {/* Saldo à vista ANTES de entrar — o aluno não pode descobrir
-                        o limite só quando for cortado no meio da conversa. */}
+                    {
+                      /* Saldo à vista ANTES de entrar — o aluno não pode descobrir
+                        o limite só quando for cortado no meio da conversa. */
+                    }
                     <div className="mt-2">
                       <WolfieLiveBalance compact />
                     </div>
@@ -3390,7 +3928,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <button
               type="button"
               onClick={isRealtimeMode ? useClassicVoice : useRealtimeVoice}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${
+              disabled={isRealtimeMode && isRealtimePostTurnPending}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 isRealtimeMode
                   ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
                   : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
@@ -3413,6 +3952,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <button
               type="button"
               onClick={realtime.toggleMuted}
+              disabled={isRealtimePostTurnPending}
               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${
                 realtime.muted
                   ? "border-amber-400/40 bg-amber-500/20 text-amber-100"
@@ -3455,7 +3995,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             <button
               onClick={() => {
                 setAutoSpeakEnabled((p) => !p);
-                if (state === "SPEAKING") stopSpeaking();
+                if (state === "SPEAKING") {
+                  stopSpeaking();
+                }
               }}
               className={`p-1.5 rounded-full border transition-all ${
                 autoSpeakEnabled
@@ -3582,6 +4124,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               transcript={pendingTranscriptReview.transcript}
               alternatives={pendingTranscriptReview.alternatives}
               confidence={pendingTranscriptReview.confidence}
+              busy={pendingTranscriptReview.source === "realtime" &&
+                isConfirmingRealtimeTranscript}
               onConfirm={(transcript) => {
                 if (pendingTranscriptReview.source === "realtime") {
                   void confirmRealtimeTranscript(
@@ -3599,7 +4143,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               }}
               onRetry={() => {
                 if (pendingTranscriptReview.source === "realtime") {
-                  realtime.setMuted(false);
+                  markRealtimeConfirmationPending(true);
+                  setError(
+                    "Este turno já foi respondido. Edite a frase ou confirme-a para manter o histórico consistente.",
+                  );
+                  return;
                 }
                 setPendingTranscriptReview(null);
                 setSubtitle("");
@@ -3610,14 +4158,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         )}
         <div
           className={`relative w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] md:w-[500px] md:h-[500px] cursor-pointer touch-none select-none flex items-center justify-center group transition ${
-            pendingTranscriptReview ? "pointer-events-none opacity-25 blur-sm" : ""
+            pendingTranscriptReview || isRealtimePostTurnPending
+              ? "pointer-events-none opacity-25 blur-sm"
+              : ""
           }`}
           style={{
             WebkitUserSelect: "none",
             WebkitTouchCallout: "none",
           } as React.CSSProperties}
           role="button"
-          tabIndex={pendingTranscriptReview ? -1 : 0}
+          tabIndex={pendingTranscriptReview || isRealtimePostTurnPending
+            ? -1
+            : 0}
           aria-label={isRealtimeMode
             ? realtime.connected
               ? "Wolfie ao vivo. Toque para pausar ou interromper."
@@ -3626,28 +4178,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           onClick={isRealtimeMode
             ? () => void startRealtimeConversation()
             : undefined}
-          onPointerDown={isRealtimeMode
-            ? undefined
-            : (event) => {
-              event.preventDefault();
-              event.currentTarget.setPointerCapture(event.pointerId);
-              startRecording();
-            }}
-          onPointerUp={isRealtimeMode
-            ? undefined
-            : (event) => {
-              event.preventDefault();
-              stopRecordingAndSend();
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              }
-            }}
-          onPointerCancel={isRealtimeMode
-            ? undefined
-            : (event) => {
-              event.preventDefault();
-              stopRecordingAndSend();
-            }}
+          onPointerDown={isRealtimeMode ? undefined : (event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            startRecording();
+          }}
+          onPointerUp={isRealtimeMode ? undefined : (event) => {
+            event.preventDefault();
+            stopRecordingAndSend();
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          }}
+          onPointerCancel={isRealtimeMode ? undefined : (event) => {
+            event.preventDefault();
+            stopRecordingAndSend();
+          }}
           onContextMenu={(e) => e.preventDefault()}
           onKeyDown={(event) => {
             if (event.key !== "Enter" && event.key !== " ") return;
@@ -3740,6 +4286,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                 ? "Inicie o modo ao vivo no Wolfie..."
                 : "Type in English..."}
               disabled={state === "THINKING" ||
+                (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
               className="flex-1 min-w-0 bg-transparent border-none text-slate-200 placeholder:text-slate-500 focus:ring-0 focus:outline-none text-sm font-medium"
             />
@@ -3747,6 +4294,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               onClick={() => sendMessage(inputText)}
               disabled={!inputText.trim() ||
                 state === "THINKING" ||
+                (isRealtimeMode && isRealtimePostTurnPending) ||
                 (isRealtimeMode && !realtime.connected)}
               className="p-2.5 rounded-full bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 transition-all"
             >

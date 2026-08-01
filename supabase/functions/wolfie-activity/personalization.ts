@@ -1243,6 +1243,13 @@ function containsPotentialPersonalLeak(value: string): boolean {
   return [
     /\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i,
     /\b\d{3}[.\s-]?\d{3}[.\s-]?\d{3}[-\s]?\d{2}\b/,
+    /(?:\+?\d{1,3}[\s().-]*)?(?:\(?\d{2,3}\)?[\s.-]*)?\d{4,5}[\s.-]?\d{4}\b/,
+    /\b(?:\d[ -]*?){13,19}\b/,
+    /\b\d{5}-?\d{3}\b/,
+    /\b(?:password|senha|passcode|api[_ -]?key|access[_ -]?token|secret|chave\s+privada)\s*[:=]\s*\S+/i,
+    /\b(?:passport|passaporte|identity\s+card|documento\s+de\s+identidade|rg)\s*(?:number|n[uú]mero|n[º°])?\s*[:=]?\s*[A-Z0-9.-]{5,}\b/i,
+    /\b(?:address|endere[cç]o|rua|avenida|av\.?|street|road)\s*[:=]?\s+[^,;\n]{2,80}(?:,\s*)?\d{1,6}\b/i,
+    /\b(?:diagnos(?:is|ed|ticado|tico)|medical\s+condition|condi[cç][aã]o\s+m[eé]dica|doen[cç]a|medica[cç][aã]o|medication|tratamento|therapy|terapia)\b/i,
     /\b(i|eu)\s+(live|moro|resido|am from|sou de|was born|nasci|am based|tenho \d{1,3} anos)\b/i,
     /\b(i|eu)\s+(work|trabalho|study|estudo)\s+(at|for|na|no|em)\b/i,
     /\b(my|meu|minha)\s+(name|nome|address|endereco|endereço|phone|telefone|employer|company|empresa|school|escola)\b/i,

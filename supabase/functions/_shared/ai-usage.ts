@@ -36,13 +36,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * aceitamos os dois formatos em vez de assumir um.
  */
 export function parseAiUsage(payload: unknown): AiUsageTokens | null {
-  const usage = isRecord(payload) ? payload.usage ?? payload : null;
+  const usage = isRecord(payload)
+    ? payload.usage ?? payload.usageMetadata ?? payload
+    : null;
   if (!isRecord(usage)) return null;
 
   const inputTokens = wholeNumber(usage.input_tokens) ||
-    wholeNumber(usage.prompt_tokens);
+    wholeNumber(usage.prompt_tokens) ||
+    wholeNumber(usage.promptTokenCount);
   const outputTokens = wholeNumber(usage.output_tokens) ||
-    wholeNumber(usage.completion_tokens);
+    wholeNumber(usage.completion_tokens) ||
+    wholeNumber(usage.candidatesTokenCount);
 
   const promptDetails = isRecord(usage.prompt_tokens_details)
     ? usage.prompt_tokens_details
@@ -50,15 +54,16 @@ export function parseAiUsage(payload: unknown): AiUsageTokens | null {
     ? usage.input_token_details
     : null;
   const cachedTokens = wholeNumber(usage.cached_tokens) ||
-    wholeNumber(promptDetails?.cached_tokens);
+    wholeNumber(promptDetails?.cached_tokens) ||
+    wholeNumber(usage.cachedContentTokenCount);
 
   if (!inputTokens && !outputTokens && !cachedTokens) return null;
   return { inputTokens, outputTokens, cachedTokens };
 }
 
 /**
- * Grava um evento de consumo. Deliberadamente sem `await` obrigatório no
- * chamador: o retorno é sempre resolvido e nunca rejeita.
+ * Grava um evento de consumo. O retorno nunca rejeita, mas deve ser aguardado
+ * pela Edge Function para o isolate não encerrar antes da escrita.
  */
 export async function recordAiUsage(
   db: UsageWriter,

@@ -4,12 +4,15 @@ import type {
   ActivityPhase,
   AnswerFeedback,
   CefrLevel,
+  MeetingRecallBlocks,
+  MeetingRecallResult,
   MemorizationState,
   QuizResult,
   SpeechEvaluationResult,
   TextEvaluationResult,
   WolfieActivitySession,
   WolfieExperienceMode,
+  WolfieLearnerState,
   WolfieOverview,
   WolfieSubject,
 } from "../components/wolfie/types";
@@ -54,7 +57,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   MEETING_SECTIONS_INCOMPLETE:
     "Conclua os seis blocos da reunião antes de avançar.",
   MEMORIZATION_REQUIRED:
-    "Conclua ao menos uma rodada de memorização antes de readaptar o cenário.",
+    "Conclua e valide a recuperação dos seis blocos antes de readaptar o cenário.",
+  MEETING_RECALL_INCOMPLETE:
+    "Reconstrua os seis blocos com uma ideia completa em cada campo antes de validar.",
   INVALID_MEETING_STEP:
     "Esta etapa da reunião não está disponível. Volte ao início da prática.",
   RESPONSE_TOO_SHORT:
@@ -136,9 +141,7 @@ const readFunctionErrorCode = async (
   return error.message || "WOLFIE_ACTIVITY_FAILED";
 };
 
-async function invokeWolfie<T>(
-  body: Record<string, unknown>,
-): Promise<T> {
+async function invokeWolfie<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
     body,
   });
@@ -311,9 +314,37 @@ export async function saveWolfieMemorization(
   }>({
     action: "save_state",
     sessionId,
-    patch: { memorization },
+    patch: {
+      memorization: {
+        hiddenSections: memorization.hiddenSections,
+        confidence: memorization.confidence,
+      },
+    },
   });
   return response.learnerState;
+}
+
+export interface ValidateMeetingRecallInput {
+  sessionId: string;
+  recallBlocks: MeetingRecallBlocks;
+  requestKey?: string;
+}
+
+export async function validateWolfieMeetingRecall(
+  input: ValidateMeetingRecallInput,
+): Promise<{
+  result: MeetingRecallResult;
+  learnerState: WolfieLearnerState;
+}> {
+  return await invokeWolfie<{
+    result: MeetingRecallResult;
+    learnerState: WolfieLearnerState;
+  }>({
+    action: "validate_meeting_recall",
+    sessionId: input.sessionId,
+    requestKey: input.requestKey ?? createWolfieRequestKey(),
+    responses: { recallBlocks: input.recallBlocks },
+  });
 }
 
 export interface AnalyzeSpeechInput {
@@ -377,9 +408,7 @@ export function getWolfieListeningAudio(
   return request;
 }
 
-export async function abandonWolfieActivity(
-  sessionId: string,
-): Promise<void> {
+export async function abandonWolfieActivity(sessionId: string): Promise<void> {
   await invokeWolfie<{ ok: boolean }>({
     action: "abandon",
     sessionId,

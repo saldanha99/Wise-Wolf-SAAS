@@ -21,11 +21,16 @@ import {
   generateWolfieActivity,
   saveWolfieMemorization,
   submitWolfieText,
+  validateWolfieMeetingRecall,
+  WolfieActivityError,
 } from "../../services/wolfieActivityService";
 import type {
+  MeetingRecallBlocks,
+  MeetingRecallResult,
   MeetingSection,
   MeetingSectionState,
   MemorizationState,
+  TextEvaluationResult,
   WolfieActivityResult,
   WolfieActivitySession,
 } from "./types";
@@ -50,11 +55,31 @@ import { SECTOR_OPTIONS } from "./catalog";
 type MeetingStage = "construction" | "memorization" | "readaptation";
 type ResponseMode = "text" | "voice";
 
+const TERMINAL_AI_REQUEST_ERRORS = new Set([
+  "AI_REQUEST_PREVIOUSLY_FAILED",
+  "AI_REQUEST_RESULT_UNAVAILABLE",
+  "AI_PROVIDER_UNAVAILABLE",
+  "ACTIVITY_GENERATION_FAILED",
+  "SESSION_CREATE_FAILED",
+  "AI_EVALUATION_INVALID",
+  "ATTEMPT_SAVE_FAILED",
+  "STATE_SAVE_FAILED",
+  "SPEECH_ANALYSIS_FAILED",
+  "SPEECH_ANALYSIS_UNAVAILABLE",
+  "SPEECH_ANALYSIS_INVALID",
+]);
+
+const shouldRotateRequestKey = (cause: unknown): boolean =>
+  cause instanceof WolfieActivityError &&
+  TERMINAL_AI_REQUEST_ERRORS.has(cause.code);
+
 const resumedReadaptationAttempt = (
   session: WolfieActivitySession,
-):
-  | { result: WolfieActivityResult; mode: ResponseMode; attemptId: string }
-  | null => {
+): {
+  result: WolfieActivityResult;
+  mode: ResponseMode;
+  attemptId: string;
+} | null => {
   const snapshot = session.report_json?.latestAttempt;
   const feedback = snapshot?.feedbackPayload;
   if (
@@ -80,6 +105,65 @@ const resumedReadaptationAttempt = (
     } as WolfieActivityResult,
     mode: snapshot.modality === "voice" ? "voice" : "text",
     attemptId: snapshot.attemptId,
+  };
+};
+
+const resumedConstructionAttempt = (
+  session: WolfieActivitySession,
+): { text: string; evaluation: TextEvaluationResult; attemptId: string } | null => {
+  const snapshot = session.report_json?.latestAttempt;
+  const feedback = snapshot?.feedbackPayload;
+  const response = snapshot?.responsePayload;
+  if (
+    session.phase !== "construction" ||
+    session.status !== "AWAITING_RETRY" ||
+    snapshot?.stepKey !== "construction_complete" ||
+    snapshot.requiresRetry !== true ||
+    !snapshot.attemptId ||
+    !feedback
+  ) {
+    return null;
+  }
+
+  const text = typeof response?.text === "string" ? response.text.trim() : "";
+  const correctedText = typeof feedback.correctedText === "string"
+    ? feedback.correctedText
+    : text;
+  const naturalVersion = typeof feedback.naturalVersion === "string"
+    ? feedback.naturalVersion
+    : correctedText;
+  const stringList = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+
+  return {
+    text,
+    attemptId: snapshot.attemptId,
+    evaluation: {
+      score: snapshot.score ?? 0,
+      correctedText,
+      naturalVersion,
+      explanationPt: typeof feedback.explanationPt === "string"
+        ? feedback.explanationPt
+        : "",
+      strengths: stringList(feedback.strengths),
+      priorities: stringList(feedback.priorities),
+      readinessMessage: typeof feedback.readinessMessage === "string"
+        ? feedback.readinessMessage
+        : "",
+      retryPrompt: typeof feedback.retryPrompt === "string"
+        ? feedback.retryPrompt
+        : "",
+      rubric: feedback.rubric && typeof feedback.rubric === "object"
+        ? feedback.rubric as TextEvaluationResult["rubric"]
+        : {},
+      attemptId: snapshot.attemptId,
+      attemptNumber: snapshot.attemptNumber,
+      parentAttemptId: snapshot.parentAttemptId,
+      requiresRetry: true,
+      retryCompleted: snapshot.retryCompleted,
+    },
   };
 };
 
@@ -280,6 +364,7 @@ export function WolfieMeetingActivity({
   onConversation,
 }: WolfieMeetingActivityProps) {
   const resumedReadaptation = resumedReadaptationAttempt(session);
+  const resumedConstruction = resumedConstructionAttempt(session);
   const initialStage: MeetingStage = session.phase === "readaptation"
     ? "readaptation"
     : session.status === "COMPLETED"
@@ -294,12 +379,10 @@ export function WolfieMeetingActivity({
   );
   const sections = constructionSession.activity_content.sections ?? [];
   const [currentSectionIndex, setCurrentSectionIndex] = useState(() => {
-    const firstIncomplete = sections.findIndex(
-      (section) => {
-        const saved = constructionSession.learner_state.sections?.[section.key];
-        return !saved || saved.requiresRetry === true;
-      },
-    );
+    const firstIncomplete = sections.findIndex((section) => {
+      const saved = constructionSession.learner_state.sections?.[section.key];
+      return !saved || saved.requiresRetry === true;
+    });
     return firstIncomplete >= 0
       ? firstIncomplete
       : Math.max(0, sections.length - 1);
@@ -318,6 +401,19 @@ export function WolfieMeetingActivity({
   const [evaluations, setEvaluations] = useState<
     Partial<Record<MeetingSection["key"], MeetingSectionState>>
   >(() => constructionSession.learner_state.sections ?? {});
+  const [constructionRetryResult, setConstructionRetryResult] = useState<
+    TextEvaluationResult | null
+  >(resumedConstruction?.evaluation ?? null);
+  const [constructionRetryText, setConstructionRetryText] = useState(() =>
+    resumedConstruction?.text ||
+    sections
+      .map((section) => {
+        const saved = constructionSession.learner_state.sections?.[section.key];
+        return saved?.naturalVersion || saved?.corrected || saved?.original || "";
+      })
+      .filter(Boolean)
+      .join("\n\n")
+  );
   const [memorization, setMemorization] = useState<MemorizationState>(() => ({
     hiddenSections:
       constructionSession.learner_state.memorization?.hiddenSections ?? [],
@@ -325,7 +421,20 @@ export function WolfieMeetingActivity({
       constructionSession.learner_state.memorization?.rehearsalCount ?? 0,
     confidence: constructionSession.learner_state.memorization?.confidence ??
       50,
+    recallEvidence:
+      constructionSession.learner_state.memorization?.recallEvidence ?? null,
   }));
+  const [recallBlocks, setRecallBlocks] = useState<MeetingRecallBlocks>({
+    opening: "",
+    context: "",
+    data: "",
+    proposal: "",
+    next_steps: "",
+    closing: "",
+  });
+  const [recallResult, setRecallResult] = useState<MeetingRecallResult | null>(
+    null,
+  );
   const [responseMode, setResponseMode] = useState<ResponseMode>(
     resumedReadaptation?.mode ?? "text",
   );
@@ -335,21 +444,18 @@ export function WolfieMeetingActivity({
   const [readaptationText, setReadaptationText] = useState("");
   const [readaptationRetryResult, setReadaptationRetryResult] = useState<
     WolfieActivityResult | null
-  >(
-    resumedReadaptation?.result ?? null,
-  );
+  >(resumedReadaptation?.result ?? null);
   const [readaptationRetryMode, setReadaptationRetryMode] = useState<
     ResponseMode | null
   >(resumedReadaptation?.mode ?? null);
   const [audioResetKey, setAudioResetKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [constructionFinalError, setConstructionFinalError] = useState("");
   const stageHeadingRef = useRef<HTMLHeadingElement>(null);
   const stageStartedAt = useRef(Date.now());
   const sectionRequests = useRef<
-    Partial<
-      Record<MeetingSection["key"], { text: string; requestKey: string }>
-    >
+    Partial<Record<MeetingSection["key"], { text: string; requestKey: string }>>
   >({});
   const sectionRetryParents = useRef<
     Partial<Record<MeetingSection["key"], string>>
@@ -360,27 +466,47 @@ export function WolfieMeetingActivity({
       requestKey: string;
     } | null
   >(null);
+  const constructionFinalRetryParent = useRef(
+    resumedConstruction?.attemptId ?? "",
+  );
   const readaptationGenerateRequestKey = useRef("");
+  const recallRequest = useRef<
+    {
+      fingerprint: string;
+      requestKey: string;
+    } | null
+  >(null);
   const readaptationTextRequest = useRef<
     {
       text: string;
       requestKey: string;
     } | null
   >(null);
-  const readaptationRetryParent = useRef(
-    resumedReadaptation?.attemptId ?? "",
-  );
+  const readaptationRetryParent = useRef(resumedReadaptation?.attemptId ?? "");
 
   const currentSection = sections[currentSectionIndex];
   const currentEvaluation = currentSection
     ? evaluations[currentSection.key]
     : undefined;
-  const completedSectionCount = sections.filter(
-    (section) => {
-      const evaluation = evaluations[section.key];
-      return evaluation && !evaluation.requiresRetry;
-    },
-  ).length;
+  const completedSectionCount = sections.filter((section) => {
+    const evaluation = evaluations[section.key];
+    return evaluation && !evaluation.requiresRetry;
+  }).length;
+  const allSectionsHidden = sections.length === 6 &&
+    sections.every((section) =>
+      memorization.hiddenSections.includes(section.key)
+    );
+  const allRecallBlocksReady = sections.length === 6 &&
+    sections.every((section) => {
+      const text = recallBlocks[section.key].trim();
+      return text.length >= 12 && text.split(/\s+/).length >= 4;
+    });
+  const recallValidated = memorization.recallEvidence?.status === "validated" &&
+    memorization.recallEvidence.sourceSessionId === constructionSession.id;
+  const readaptationRetryRubric =
+    readaptationRetryResult && "rubric" in readaptationRetryResult
+      ? readaptationRetryResult.rubric
+      : undefined;
 
   const polishedSections = useMemo(
     () =>
@@ -403,23 +529,23 @@ export function WolfieMeetingActivity({
   }, [stage]);
 
   useEffect(() => {
+    if (constructionRetryResult) stageHeadingRef.current?.focus();
+  }, [constructionRetryResult]);
+
+  useEffect(() => {
     if (stage !== "memorization") return;
     const timer = window.setTimeout(() => {
-      void saveWolfieMemorization(
-        constructionSession.id,
-        memorization,
-      ).catch(() => {
-        // A chamada final antes da readaptação continua sendo a garantia forte.
-      });
+      void saveWolfieMemorization(constructionSession.id, memorization).catch(
+        () => {
+          // A chamada final antes da readaptação continua sendo a garantia forte.
+        },
+      );
     }, 500);
     return () => window.clearTimeout(timer);
   }, [constructionSession.id, memorization, stage]);
 
   const durationSeconds = () =>
-    Math.max(
-      1,
-      Math.round((Date.now() - stageStartedAt.current) / 1_000),
-    );
+    Math.max(1, Math.round((Date.now() - stageStartedAt.current) / 1_000));
 
   const saveAndExit = async () => {
     if (busy) return;
@@ -427,10 +553,7 @@ export function WolfieMeetingActivity({
       setBusy(true);
       setError("");
       try {
-        await saveWolfieMemorization(
-          constructionSession.id,
-          memorization,
-        );
+        await saveWolfieMemorization(constructionSession.id, memorization);
       } catch (cause) {
         setError(
           cause instanceof Error
@@ -457,6 +580,7 @@ export function WolfieMeetingActivity({
 
     setBusy(true);
     setError("");
+    setConstructionFinalError("");
     try {
       if (sectionRequests.current[currentSection.key]?.text !== text) {
         sectionRequests.current[currentSection.key] = {
@@ -494,6 +618,9 @@ export function WolfieMeetingActivity({
       }
       delete sectionRequests.current[currentSection.key];
     } catch (cause) {
+      if (shouldRotateRequestKey(cause)) {
+        delete sectionRequests.current[currentSection.key];
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -505,12 +632,22 @@ export function WolfieMeetingActivity({
   };
 
   const finalizeConstruction = async () => {
-    if (completedSectionCount !== sections.length || busy) return;
-    const completeScript = polishedSections
-      .map((section) => section.text)
-      .join("\n\n");
+    if (
+      (!constructionRetryResult &&
+        completedSectionCount !== sections.length) ||
+      busy
+    ) return;
+    const completeScript = (constructionRetryResult
+      ? constructionRetryText
+      : polishedSections.map((section) => section.text).join("\n\n")).trim();
+    if (completeScript.length < 3) {
+      setConstructionFinalError(
+        "Revise o roteiro completo antes de enviar a nova tentativa.",
+      );
+      return;
+    }
     setBusy(true);
-    setError("");
+    setConstructionFinalError("");
     try {
       if (constructionFinalRequest.current?.text !== completeScript) {
         constructionFinalRequest.current = {
@@ -518,7 +655,7 @@ export function WolfieMeetingActivity({
           requestKey: createWolfieRequestKey(),
         };
       }
-      await submitWolfieText({
+      const result = await submitWolfieText({
         sessionId: constructionSession.id,
         text: completeScript,
         durationSeconds: durationSeconds(),
@@ -526,10 +663,25 @@ export function WolfieMeetingActivity({
         complete: true,
         modality: "text",
         requestKey: constructionFinalRequest.current.requestKey,
+        parentAttemptId: constructionFinalRetryParent.current || undefined,
       });
+      if (result.requiresRetry) {
+        constructionFinalRetryParent.current = result.attemptId ?? "";
+        constructionFinalRequest.current = null;
+        setConstructionRetryResult(result);
+        setConstructionRetryText(completeScript);
+        return;
+      }
+      constructionFinalRetryParent.current = "";
+      constructionFinalRequest.current = null;
+      setConstructionRetryResult(null);
+      setConstructionRetryText("");
       setStage("memorization");
     } catch (cause) {
-      setError(
+      if (shouldRotateRequestKey(cause)) {
+        constructionFinalRequest.current = null;
+      }
+      setConstructionFinalError(
         cause instanceof Error
           ? cause.message
           : "Não foi possível consolidar seu roteiro.",
@@ -549,16 +701,13 @@ export function WolfieMeetingActivity({
   };
 
   const startReadaptation = async () => {
-    if (memorization.rehearsalCount < 1 || busy) return;
+    if (!recallValidated || busy) return;
     setBusy(true);
     setError("");
     try {
       const selectedExperience =
         constructionSession.activity_content.experience;
-      await saveWolfieMemorization(
-        constructionSession.id,
-        memorization,
-      );
+      await saveWolfieMemorization(constructionSession.id, memorization);
       const nextSession = await generateWolfieActivity({
         subject: "global_meetings",
         level: constructionSession.cefr_level,
@@ -588,6 +737,9 @@ export function WolfieMeetingActivity({
       onSessionChange(nextSession);
       setStage("readaptation");
     } catch (cause) {
+      if (shouldRotateRequestKey(cause)) {
+        readaptationGenerateRequestKey.current = "";
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -598,13 +750,53 @@ export function WolfieMeetingActivity({
     }
   };
 
+  const submitMeetingRecall = async () => {
+    if (!allSectionsHidden || !allRecallBlocksReady || busy) return;
+    const fingerprint = JSON.stringify(recallBlocks);
+    if (recallRequest.current?.fingerprint !== fingerprint) {
+      recallRequest.current = {
+        fingerprint,
+        requestKey: createWolfieRequestKey(),
+      };
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await validateWolfieMeetingRecall({
+        sessionId: constructionSession.id,
+        recallBlocks,
+        requestKey: recallRequest.current.requestKey,
+      });
+      setRecallResult(response.result);
+      const saved = response.learnerState.memorization;
+      if (saved) {
+        setMemorization({
+          hiddenSections: saved.hiddenSections ?? memorization.hiddenSections,
+          rehearsalCount: saved.rehearsalCount ?? memorization.rehearsalCount,
+          confidence: saved.confidence ?? memorization.confidence,
+          recallEvidence: saved.recallEvidence ?? memorization.recallEvidence,
+        });
+      }
+      if (response.result.validated) recallRequest.current = null;
+    } catch (cause) {
+      // Keep the key when the response may have been lost or the same request
+      // is still running. Rotate only after a terminal server-side failure.
+      if (shouldRotateRequestKey(cause)) {
+        recallRequest.current = null;
+      }
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível validar sua recuperação dos seis blocos.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitReadaptationText = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (
-      !readaptationSession ||
-      readaptationText.trim().length < 3 ||
-      busy
-    ) {
+    if (!readaptationSession || readaptationText.trim().length < 3 || busy) {
       return;
     }
     setBusy(true);
@@ -637,6 +829,9 @@ export function WolfieMeetingActivity({
       }
       onComplete(result, readaptationSession);
     } catch (cause) {
+      if (shouldRotateRequestKey(cause)) {
+        readaptationTextRequest.current = null;
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -725,7 +920,145 @@ export function WolfieMeetingActivity({
             <div className="min-w-0 space-y-5">
               <ScenarioCard session={constructionSession} />
 
-              <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
+              {constructionRetryResult
+                ? (
+                  <section className="rounded-3xl border border-amber-300 bg-brand-surface p-5 shadow-sm sm:p-7 dark:border-amber-700">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                      Nova tentativa do roteiro completo
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2
+                          ref={stageHeadingRef}
+                          tabIndex={-1}
+                          className="text-2xl font-black text-brand-text outline-none"
+                        >
+                          Revise os seis blocos em conjunto
+                        </h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-brand-muted">
+                          A estrutura já está salva. Aplique o feedback abaixo ao
+                          roteiro inteiro e envie esta nova versão para liberar a
+                          memorização.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                        {constructionRetryResult.score}/100
+                      </span>
+                    </div>
+
+                    {constructionRetryResult.retryPrompt ||
+                        constructionRetryResult.explanationPt
+                      ? (
+                        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                          <p className="font-black">O que precisa mudar</p>
+                          <p className="mt-1">
+                            {constructionRetryResult.retryPrompt ||
+                              constructionRetryResult.explanationPt}
+                          </p>
+                        </div>
+                      )
+                      : null}
+
+                    {constructionRetryResult.strengths.length
+                      ? (
+                        <div className="mt-5">
+                          <h3 className="text-sm font-black text-brand-text">
+                            O que vale manter
+                          </h3>
+                          <div className="mt-3">
+                            <Checklist
+                              items={constructionRetryResult.strengths}
+                            />
+                          </div>
+                        </div>
+                      )
+                      : null}
+
+                    {constructionRetryResult.priorities.length
+                      ? (
+                        <div className="mt-5">
+                          <h3 className="text-sm font-black text-brand-text">
+                            Prioridades desta revisão
+                          </h3>
+                          <div className="mt-3">
+                            <Checklist
+                              items={constructionRetryResult.priorities}
+                            />
+                          </div>
+                        </div>
+                      )
+                      : null}
+
+                    {constructionRetryResult.naturalVersion
+                      ? (
+                        <details className="mt-5 rounded-2xl border border-brand-border bg-brand-surface-2 p-4">
+                          <summary className="cursor-pointer text-sm font-black text-brand-accent">
+                            Ver uma versão mais natural como referência
+                          </summary>
+                          <p
+                            lang="en"
+                            className="mt-3 whitespace-pre-wrap text-sm leading-7 text-brand-text"
+                          >
+                            {constructionRetryResult.naturalVersion}
+                          </p>
+                        </details>
+                      )
+                      : null}
+
+                    <label
+                      htmlFor="meeting-construction-retry"
+                      className="mt-5 block text-sm font-black text-brand-text"
+                    >
+                      Seu roteiro completo revisado, em inglês
+                    </label>
+                    <textarea
+                      id="meeting-construction-retry"
+                      value={constructionRetryText}
+                      onChange={(event) => {
+                        setConstructionRetryText(event.target.value);
+                        constructionFinalRequest.current = null;
+                        setConstructionFinalError("");
+                      }}
+                      rows={16}
+                      maxLength={12_000}
+                      lang="en"
+                      spellCheck
+                      disabled={busy}
+                      className={`${inputClass} mt-2 resize-y leading-7 disabled:opacity-70`}
+                    />
+
+                    {constructionFinalError
+                      ? (
+                        <div className="mt-5">
+                          <InlineError
+                            message={constructionFinalError}
+                            onRetry={() => void finalizeConstruction()}
+                          />
+                        </div>
+                      )
+                      : null}
+
+                    <div className="mt-6 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void finalizeConstruction()}
+                        disabled={busy || constructionRetryText.trim().length < 3}
+                        className={primaryButton}
+                      >
+                        {busy
+                          ? <BusyLabel>Avaliando nova versão…</BusyLabel>
+                          : (
+                            <>
+                              <Send size={17} aria-hidden="true" />
+                              Enviar roteiro revisado
+                            </>
+                          )}
+                      </button>
+                    </div>
+                  </section>
+                )
+                : (
+                  <section className="rounded-3xl border border-brand-border bg-brand-surface p-5 shadow-sm sm:p-7">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.14em] text-brand-accent">
@@ -848,6 +1181,17 @@ export function WolfieMeetingActivity({
                   )
                   : null}
 
+                {constructionFinalError
+                  ? (
+                    <div className="mt-5">
+                      <InlineError
+                        message={constructionFinalError}
+                        onRetry={() => void finalizeConstruction()}
+                      />
+                    </div>
+                  )
+                  : null}
+
                 <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
                   <button
                     type="button"
@@ -898,7 +1242,8 @@ export function WolfieMeetingActivity({
                         onClick={() => void submitCurrentSection()}
                         disabled={busy ||
                           (sectionInputs[currentSection.key] ?? "").trim()
-                              .length < 3}
+                              .length <
+                            3}
                         className={primaryButton}
                       >
                         {busy
@@ -912,7 +1257,8 @@ export function WolfieMeetingActivity({
                       </button>
                     )}
                 </div>
-              </section>
+                  </section>
+                )}
             </div>
 
             <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
@@ -994,8 +1340,9 @@ export function WolfieMeetingActivity({
                         Memorize a lógica, não cada palavra
                       </h2>
                       <p className="mt-2 max-w-2xl text-sm leading-6 text-brand-muted">
-                        Oculte blocos aos poucos e reconstrua a ideia em voz
-                        alta. Seu objetivo é lembrar a sequência e a intenção.
+                        Oculte os blocos e reconstrua cada ideia por escrito,
+                        sem copiar o roteiro. Seu objetivo é lembrar a sequência
+                        e a intenção.
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -1067,14 +1414,18 @@ export function WolfieMeetingActivity({
                                     )}
                                 </button>
                               </div>
-                              <p className="mt-1 text-xs leading-5 text-brand-muted">
-                                {section.objective}
-                              </p>
+                              {!hidden
+                                ? (
+                                  <p className="mt-1 text-xs leading-5 text-brand-muted">
+                                    {section.objective}
+                                  </p>
+                                )
+                                : null}
                               {hidden
                                 ? (
                                   <div className="mt-3 rounded-xl border border-dashed border-brand-border bg-brand-surface-2 p-4 text-sm font-bold text-brand-muted">
-                                    Diga este trecho sem olhar. Depois revele e
-                                    compare.
+                                    Reconstrua a intenção deste bloco sem olhar.
+                                    Depois registre sua versão abaixo.
                                   </div>
                                 )
                                 : (
@@ -1093,29 +1444,144 @@ export function WolfieMeetingActivity({
                   </div>
 
                   <div className="mt-6 rounded-2xl border border-brand-border bg-brand-surface-2 p-4 sm:p-5">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="font-black text-brand-text">
-                          Rodadas concluídas: {memorization.rehearsalCount}
+                          Recuperação dos seis blocos
                         </p>
                         <p className="mt-1 text-sm text-brand-muted">
-                          Passe pelos seis blocos em voz alta e marque uma
-                          rodada.
+                          Escreva de memória a ideia essencial de cada etapa. O
+                          Wolfie compara sua reconstrução com as respostas já
+                          salvas, sem exigir texto decorado.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMemorization((current) => ({
-                            ...current,
-                            rehearsalCount: current.rehearsalCount + 1,
-                          }))}
-                        className={secondaryButton}
-                      >
-                        <CheckCircle2 size={17} aria-hidden="true" />
-                        Concluí uma rodada
-                      </button>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-surface px-3 py-1.5 text-xs font-black text-brand-accent">
+                        <CheckCircle2 size={15} aria-hidden="true" />
+                        Validadas: {memorization.rehearsalCount}
+                      </span>
                     </div>
+                    {!allSectionsHidden
+                      ? (
+                        <p className="mt-3 text-xs leading-5 text-brand-muted">
+                          Oculte os seis blocos para abrir os campos de
+                          recuperação sem apoio do roteiro.
+                        </p>
+                      )
+                      : (
+                        <div className="mt-4 space-y-4">
+                          {sections.map((section, index) => (
+                            <label
+                              key={section.key}
+                              htmlFor={`meeting-recall-${section.key}`}
+                              className="block"
+                            >
+                              <span className="text-sm font-black text-brand-text">
+                                {index + 1}. {section.title}
+                              </span>
+                              <textarea
+                                id={`meeting-recall-${section.key}`}
+                                value={recallBlocks[section.key]}
+                                onChange={(event) => {
+                                  setRecallBlocks((current) => ({
+                                    ...current,
+                                    [section.key]: event.target.value,
+                                  }));
+                                  recallRequest.current = null;
+                                  setRecallResult(null);
+                                  setError("");
+                                }}
+                                rows={3}
+                                maxLength={2_000}
+                                lang="en"
+                                spellCheck
+                                disabled={busy}
+                                placeholder="Reconstrua em inglês a intenção e os pontos essenciais deste bloco..."
+                                className={`${inputClass} mt-2 resize-y`}
+                              />
+                            </label>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={() => void submitMeetingRecall()}
+                            disabled={busy || !allRecallBlocksReady}
+                            className={`${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {busy
+                              ? <BusyLabel>Validando recuperação…</BusyLabel>
+                              : (
+                                <>
+                                  <CheckCircle2 size={17} aria-hidden="true" />
+                                  Validar minha recuperação
+                                </>
+                              )}
+                          </button>
+                          {!allRecallBlocksReady
+                            ? (
+                              <p className="text-xs leading-5 text-brand-muted">
+                                Escreva ao menos uma ideia completa em cada um
+                                dos seis campos.
+                              </p>
+                            )
+                            : null}
+                        </div>
+                      )}
+
+                    {recallResult
+                      ? (
+                        <section
+                          className={`mt-5 rounded-xl border p-4 ${
+                            recallResult.validated
+                              ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20"
+                              : "border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20"
+                          }`}
+                          aria-live="polite"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="font-black text-brand-text">
+                              {recallResult.validated
+                                ? "Recuperação validada"
+                                : "Revise e tente novamente"}
+                            </p>
+                            <span className="rounded-full bg-brand-surface px-3 py-1 text-xs font-black text-brand-accent">
+                              {recallResult.score}/100
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-brand-muted">
+                            {recallResult.explanationPt}
+                          </p>
+                          <dl className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+                            {sections.map((section) => (
+                              <div
+                                key={section.key}
+                                className="rounded-lg bg-brand-surface p-2"
+                              >
+                                <dt className="truncate text-[10px] font-black uppercase tracking-wide text-brand-muted">
+                                  {section.title}
+                                </dt>
+                                <dd className="mt-1 text-sm font-black text-brand-text">
+                                  {recallResult.blockScores[section.key]}/100
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                          {!recallResult.validated
+                            ? (
+                              <p className="mt-3 text-sm font-bold text-brand-text">
+                                {recallResult.retryPrompt}
+                              </p>
+                            )
+                            : null}
+                        </section>
+                      )
+                      : recallValidated
+                      ? (
+                        <p className="mt-4 inline-flex items-center gap-2 text-sm font-black text-emerald-700 dark:text-emerald-300">
+                          <CheckCircle2 size={17} aria-hidden="true" />A
+                          evidência validada desta sessão está salva.
+                        </p>
+                      )
+                      : null}
 
                     <label
                       htmlFor="meeting-confidence"
@@ -1133,10 +1599,11 @@ export function WolfieMeetingActivity({
                       max="100"
                       step="10"
                       value={memorization.confidence}
-                      onChange={(event) => setMemorization((current) => ({
-                        ...current,
-                        confidence: Number(event.target.value),
-                      }))}
+                      onChange={(event) =>
+                        setMemorization((current) => ({
+                          ...current,
+                          confidence: Number(event.target.value),
+                        }))}
                       className={`mt-3 w-full accent-[var(--brand-accent)] ${focusRing}`}
                     />
                   </div>
@@ -1166,9 +1633,10 @@ export function WolfieMeetingActivity({
                       }}
                       className={`${inputClass} mt-3`}
                     >
-                      {SECTOR_OPTIONS.filter((sector) =>
-                        !constructionSession.activity_content.experience ||
-                        sector.id === constructionSession.sector
+                      {SECTOR_OPTIONS.filter(
+                        (sector) =>
+                          !constructionSession.activity_content.experience ||
+                          sector.id === constructionSession.sector,
                       ).map((sector) => (
                         <option key={sector.id} value={sector.id}>
                           {sector.title}
@@ -1185,7 +1653,10 @@ export function WolfieMeetingActivity({
                       <div className="mt-5">
                         <InlineError
                           message={error}
-                          onRetry={() => void startReadaptation()}
+                          onRetry={() =>
+                            recallValidated
+                              ? void startReadaptation()
+                              : void submitMeetingRecall()}
                         />
                       </div>
                     )
@@ -1195,7 +1666,7 @@ export function WolfieMeetingActivity({
                     <button
                       type="button"
                       onClick={() => void startReadaptation()}
-                      disabled={busy || memorization.rehearsalCount < 1}
+                      disabled={busy || !recallValidated}
                       className={primaryButton}
                     >
                       {busy
@@ -1208,10 +1679,10 @@ export function WolfieMeetingActivity({
                         )}
                     </button>
                   </div>
-                  {memorization.rehearsalCount < 1
+                  {!recallValidated
                     ? (
                       <p className="mt-2 text-right text-xs text-brand-muted">
-                        Conclua ao menos uma rodada antes de readaptar.
+                        Valide a recuperação dos seis blocos antes de readaptar.
                       </p>
                     )
                     : null}
@@ -1262,8 +1733,7 @@ export function WolfieMeetingActivity({
                     aria-selected={responseMode === "text"}
                     onClick={() => setResponseMode("text")}
                     disabled={Boolean(
-                      readaptationRetryMode &&
-                        readaptationRetryMode !== "text",
+                      readaptationRetryMode && readaptationRetryMode !== "text",
                     )}
                     className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold ${
                       responseMode === "text"
@@ -1329,6 +1799,62 @@ export function WolfieMeetingActivity({
                           </ul>
                         )
                         : null}
+                      {readaptationRetryRubric
+                        ? (
+                          <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+                            {[
+                              [
+                                "Objetivo",
+                                readaptationRetryRubric.taskCompletion,
+                              ],
+                              [
+                                "Estrutura",
+                                readaptationRetryRubric
+                                  .structureAndFacilitation,
+                              ],
+                              [
+                                "Turnos",
+                                readaptationRetryRubric
+                                  .interactionAndTurnTaking,
+                              ],
+                              [
+                                "Perguntas",
+                                readaptationRetryRubric
+                                  .clarificationAndQuestionHandling,
+                              ],
+                              [
+                                "Diplomacia",
+                                readaptationRetryRubric.diplomacyAndNegotiation,
+                              ],
+                              [
+                                "Clareza",
+                                readaptationRetryRubric.clarityAndConcision,
+                              ],
+                              [
+                                "Inglês",
+                                readaptationRetryRubric.accuracyAndNaturalness,
+                              ],
+                              [
+                                "Fechamento",
+                                readaptationRetryRubric
+                                  .decisionAndActionableClose,
+                              ],
+                            ].map(([label, value]) => (
+                              <div
+                                key={String(label)}
+                                className="rounded-xl border border-amber-200 bg-brand-surface p-2 dark:border-amber-900/50"
+                              >
+                                <dt className="text-[10px] font-black uppercase tracking-wide text-brand-muted">
+                                  {label}
+                                </dt>
+                                <dd className="mt-1 text-sm font-black text-brand-text">
+                                  {typeof value === "number" ? value : 0}/100
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )
+                        : null}
                     </section>
                   )
                   : null}
@@ -1356,10 +1882,8 @@ export function WolfieMeetingActivity({
                         className={`${inputClass} mt-2 min-h-72 resize-y leading-7`}
                       />
                       <div className="mt-2 text-right text-xs text-brand-muted">
-                        {readaptationText
-                          .trim()
-                          .split(/\s+/)
-                          .filter(Boolean).length} palavras
+                        {readaptationText.trim().split(/\s+/).filter(Boolean)
+                          .length} palavras
                       </div>
 
                       {error
@@ -1445,12 +1969,11 @@ export function WolfieMeetingActivity({
                 <div className="mt-3">
                   <Checklist
                     items={readaptationSession.activity_content
-                      .readaptationRules ??
-                      [
-                        "Use o novo cenário.",
-                        "Mantenha os seis marcos.",
-                        "Fale com suas próprias palavras.",
-                      ]}
+                      .readaptationRules ?? [
+                      "Use o novo cenário.",
+                      "Mantenha os seis marcos.",
+                      "Fale com suas próprias palavras.",
+                    ]}
                   />
                 </div>
               </section>

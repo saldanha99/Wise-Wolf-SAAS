@@ -89,14 +89,16 @@ export interface MeetingScenario {
   sector: string;
 }
 
+export type MeetingSectionKey =
+  | "opening"
+  | "context"
+  | "data"
+  | "proposal"
+  | "next_steps"
+  | "closing";
+
 export interface MeetingSection {
-  key:
-    | "opening"
-    | "context"
-    | "data"
-    | "proposal"
-    | "next_steps"
-    | "closing";
+  key: MeetingSectionKey;
   title: string;
   objective: string;
   coachTipPt: string;
@@ -133,6 +135,40 @@ export interface MemorizationState {
   hiddenSections: string[];
   rehearsalCount: number;
   confidence: number;
+  recallEvidence?: MeetingRecallEvidence | null;
+}
+
+export type MeetingRecallBlocks = Record<MeetingSectionKey, string>;
+export type MeetingRecallBlockScores = Record<MeetingSectionKey, number>;
+
+export interface MeetingRecallEvidence {
+  kind: "structured_six_block_recall";
+  status: "validated";
+  validationVersion: 1;
+  validationId: string;
+  requestKey: string;
+  sourceSessionId: string;
+  recordedAt: string;
+  submissionDigest: string;
+  score: number;
+  blockScores: MeetingRecallBlockScores;
+  passedBlocks: MeetingSectionKey[];
+  referenceAttemptIds: Record<MeetingSectionKey, string>;
+}
+
+export interface MeetingRecallResult {
+  score: number;
+  blockScores: MeetingRecallBlockScores;
+  failedBlocks: MeetingSectionKey[];
+  validated: boolean;
+  requiresRetry: boolean;
+  strengths: string[];
+  priorities: string[];
+  explanationPt: string;
+  readinessMessage: string;
+  retryPrompt: string;
+  validationId: string;
+  recallEvidence?: MeetingRecallEvidence;
 }
 
 export interface MeetingSectionState {
@@ -275,6 +311,14 @@ export interface QuizResult extends AttemptMeta {
 
 export interface EvaluationRubric {
   taskCompletion?: number;
+  structureAndFacilitation?: number;
+  interactionAndTurnTaking?: number;
+  clarificationAndQuestionHandling?: number;
+  diplomacyAndNegotiation?: number;
+  clarityAndConcision?: number;
+  accuracyAndNaturalness?: number;
+  decisionAndActionableClose?: number;
+  /** Legacy non-meeting writing dimensions. */
   structure?: number;
   clarity?: number;
   accuracy?: number;
@@ -307,6 +351,12 @@ export interface SpeechEvaluationResult extends AttemptMeta {
   pronunciation: SpeechMetric;
   intonation: SpeechMetric;
   naturalness: SpeechMetric;
+  rubric?: EvaluationRubric;
+  contentScore?: number;
+  failedGates?: string[];
+  strengths?: string[];
+  priorities?: string[];
+  explanationPt?: string;
   readinessMessage: string;
 }
 

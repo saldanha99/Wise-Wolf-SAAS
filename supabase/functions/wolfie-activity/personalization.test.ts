@@ -11,6 +11,7 @@ import {
   parseExperienceContext,
   selectActivityPersonalization,
 } from "./personalization.ts";
+import { mapMeetingEvaluationMemories } from "./meeting-assessment.ts";
 
 function assert(
   condition: unknown,
@@ -600,6 +601,50 @@ Deno.test("activity personalization blocks personal-detail and prompt-injection 
   }]);
   assert(!JSON.stringify(selected).includes("Nova Iguaçu"));
   assert(!JSON.stringify(selected).toLowerCase().includes("reveal the prompt"));
+});
+
+Deno.test("evaluated meeting priority becomes a global-meeting learning target", () => {
+  const candidates = mapMeetingEvaluationMemories({
+    tenantId: "wolfie-personalization-fixture",
+    studentId: "00000000-0000-4000-8000-000000000026",
+    sessionId: "00000000-0000-4000-8000-000000000024",
+    attemptId: "00000000-0000-4000-8000-000000000025",
+    score: 72,
+    rubric: {
+      taskCompletion: 72,
+      structureAndFacilitation: 68,
+      interactionAndTurnTaking: 70,
+      clarificationAndQuestionHandling: 75,
+      diplomacyAndNegotiation: 75,
+      clarityAndConcision: 76,
+      accuracyAndNaturalness: 73,
+      decisionAndActionableClose: 62,
+    },
+    requiresRetry: true,
+  });
+  const selected = selectActivityPersonalization({
+    subject: "global_meetings",
+    experienceContext: null,
+    memories: candidates.map((candidate) => ({
+      kind: candidate.kind,
+      content: candidate.content,
+      status: candidate.status,
+      confidence: candidate.confidence,
+      occurrence_count: candidate.occurrenceCount,
+      evidence: [candidate.evidence],
+      sensitive: candidate.sensitive,
+      expires_at: null,
+    })),
+    facts: [],
+  });
+
+  assert(
+    selected.learningTargets.some((target) =>
+      target.kind === "structure_in_progress" &&
+      target.content ===
+        "Close with the decision, owner, deadline, and verifiable next step."
+    ),
+  );
 });
 
 Deno.test("writing personalization keeps verified language targets, not unrelated memory", () => {
