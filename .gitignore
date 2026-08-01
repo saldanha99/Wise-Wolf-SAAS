@@ -53,3 +53,6 @@ docs/qa/**/*.png
 docs/qa/**/*.webm
 docs/qa/**/*.mp4
 docs/qa/**/*.pdf
+
+# Saída gerada pelo graphify (grafo de conhecimento) — reconstruível via /graphify .
+graphify-out/
