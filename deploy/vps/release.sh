@@ -294,11 +294,13 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
   "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
+  "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
   "supabase/tests/wolfie_classic_exchange_atomicity.sql"
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
+  "supabase/tests/wolfie_sql_special_forms_repair.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

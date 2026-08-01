@@ -558,6 +558,39 @@ select
   (:'cas_exchange'::jsonb ->> 'studentTurnId')::uuid as cas_student_turn_id,
   (:'cas_exchange'::jsonb ->> 'assistantTurnId')::uuid as cas_assistant_turn_id
 \gset
+
+insert into public.wolfie_corrections (
+  id,
+  session_id,
+  turn_id,
+  wrong_sentence,
+  correct_sentence,
+  natural_sentence,
+  explanation_pt,
+  error_type,
+  priority,
+  requires_retry,
+  retry_completed
+)
+values (
+  '30000000-0000-4000-8000-000000000813',
+  '10000000-0000-4000-8000-000000000811',
+  :'cas_student_turn_id'::uuid,
+  'I applied retry',
+  'I applied the retry',
+  'I applied the retry',
+  'Use the article in this context.',
+  'grammar',
+  'high',
+  true,
+  false
+);
+update public.wolfie_sessions
+   set current_stage = 'retry',
+       scenario_status = 'awaiting_retry',
+       retry_count = 1
+ where id = '10000000-0000-4000-8000-000000000811';
+
 select public.claim_wolfie_realtime_analysis(
   '10000000-0000-4000-8000-000000000811',
   :'cas_assistant_turn_id'::uuid,
@@ -617,10 +650,10 @@ select pg_temp.assert_true(
       'generated_by_model', 'sql-fixture',
       'generated_at', now()
     ),
-    'practice',
-    'active',
-    '30000000-0000-4000-8000-000000000811',
-    '30000000-0000-4000-8000-000000000811',
+    'retry',
+    'awaiting_retry',
+    '30000000-0000-4000-8000-000000000813',
+    '30000000-0000-4000-8000-000000000813',
     :'cas_student_turn_id'::uuid,
     82,
     '{"source":"sql_atomic_retry","targetMatched":true}'::jsonb,
@@ -647,7 +680,7 @@ select pg_temp.assert_true(
        and retry_score = 82
        and retry_feedback ->> 'source' = 'sql_atomic_retry'
       from public.wolfie_corrections
-     where id = '30000000-0000-4000-8000-000000000811'
+     where id = '30000000-0000-4000-8000-000000000813'
   ),
   'retry completion and the canonical session checkpoint must commit together'
 );
@@ -1151,7 +1184,13 @@ select set_config(
   true
 );
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.wolfie_facts),
+  (
+    select count(*) = 3
+       and bool_and(
+         student_id = '00000000-0000-4000-8000-000000000811'
+       )
+      from public.wolfie_facts
+  ),
   'a learner may read only their own factual assertions'
 );
 

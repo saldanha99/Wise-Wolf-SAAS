@@ -230,6 +230,7 @@ MIGRATIONS=(
   "supabase/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
   "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
+  "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
@@ -237,6 +238,7 @@ DATABASE_TESTS=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
   "supabase/tests/wolfie_classic_exchange_atomicity.sql"
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
+  "supabase/tests/wolfie_sql_special_forms_repair.sql"
 )
 FUNCTIONS=(
   wolfie-activity
@@ -446,6 +448,7 @@ migration_versions=(
   20260801200000
   20260801210000
   20260801220000
+  20260801230000
 )
 migration_paths=(
   "$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
@@ -459,6 +462,7 @@ migration_paths=(
   "$release_dir/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
   "$release_dir/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "$release_dir/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
+  "$release_dir/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
 )
 database_tests=(
   "$release_dir/tests/wolfie_factual_memory_and_rag.sql"
@@ -466,6 +470,7 @@ database_tests=(
   "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
   "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
   "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
+  "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
 )
 expected_markers=()
 database_migration_pending=0

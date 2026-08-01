@@ -253,8 +253,9 @@ enviada ao navegador.
    `20260731023000_harden_tenant_membership_roles.sql`,
    `20260801190000_wolfie_realtime_analysis_atomicity.sql`,
    `20260801200000_wolfie_tenant_quota_usage_hardening.sql`,
-   `20260801210000_wolfie_classic_exchange_atomicity.sql` e
-   `20260801220000_wolfie_meeting_memory_lifecycle.sql` pelo pipeline
+   `20260801210000_wolfie_classic_exchange_atomicity.sql`,
+   `20260801220000_wolfie_meeting_memory_lifecycle.sql` e
+   `20260801230000_repair_wolfie_sql_special_forms.sql` pelo pipeline
    autorizado.
 2. Configurar os segredos OpenAI no runtime das funções.
 3. Publicar `wolfie-brain`, `wolfie-realtime-session`, `wolfie-tts`,
