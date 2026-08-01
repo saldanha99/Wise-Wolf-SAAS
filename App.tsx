@@ -71,7 +71,6 @@ const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
 const SmartFinder = lazy(() => import('./components/SmartFinder'));
 const ClaimOpportunity = lazy(() => import('./components/ClaimOpportunity'));
 const BookInterview = lazy(() => import('./components/BookInterview'));
-const WolfieTutor = lazy(() => import('./components/WolfieTutor'));
 const WolfieLab = lazy(() => import('./components/WolfieLab'));
 const TeacherNudges = lazy(() => import('./components/TeacherNudges'));
 const StudentOpportunitiesBoard = lazy(() => import('./components/StudentOpportunitiesBoard'));

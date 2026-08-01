@@ -1,0 +1,11 @@
+# Skills de terceiros instaladas via `npx skills add` — não fazem parte do projeto.
+# (O .gitignore tenta cobrir isso na linha 31, mas escreve `.agents/` e o
+#  diretório real é `.agent/`, então a regra nunca casou.)
+.agent/
+
+# Saída do próprio graphify
+graphify-out/
+
+# Ícones PWA e assets de marca — conteúdo visual não agrega ao grafo de
+# arquitetura; o código que os referencia já entra via AST.
+public/*.png
