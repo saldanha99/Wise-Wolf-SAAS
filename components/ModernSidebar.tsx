@@ -268,6 +268,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'student-payments', label: 'Mensalidades (Alunos)', icon: CreditCard, section: 'Financeiro' },
         { id: 'payments', label: 'Repasse a Profs', icon: DollarSign, section: 'Financeiro' },
         { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet, section: 'Financeiro' },
+        { id: 'margin', label: 'Custo e Margem', icon: TrendingUp, section: 'Financeiro' },
         { id: 'ai-costs', label: 'Custo de IA', icon: Bot },
         { id: 'verify-rooms', label: 'Verificar Salas', icon: Video, section: 'Aulas' },
         { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },
