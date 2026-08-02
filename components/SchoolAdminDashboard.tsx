@@ -277,7 +277,9 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       {activeTab === 'analytics' && (
         <>
           {/* Central de Pendências — tudo que precisa de ação do diretor */}
-          <DirectorPendingCenter onNavigate={onNavigate} />
+          <div data-tour="pending-center">
+            <DirectorPendingCenter onNavigate={onNavigate} />
+          </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -3,6 +3,7 @@ import {
   Bot,
     Mic,
     Menu,
+    Compass,
     FileBarChart,
     Scale,
     LayoutDashboard,
@@ -68,6 +69,8 @@ interface ModernSidebarProps {
     pendingCounts?: Record<string, number>; // contadores de pendência por área (badges)
     tenantMemberships?: TenantMembershipOption[];
     onTenantSwitch?: (tenantId: string) => Promise<void>;
+    /** Reabre o tour guiado. Ausente = papel sem roteiro. */
+    onOpenTour?: () => void;
 }
 
 interface MenuItem {
@@ -96,6 +99,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     pendingCounts = {},
     tenantMemberships = [],
     onTenantSwitch,
+    onOpenTour,
 }) => {
     const [isMobile, setIsMobile] = useState(() =>
         typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
@@ -476,6 +480,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     aria-label="Seções do sistema"
                     className="min-h-0 space-y-1 overflow-y-auto overscroll-contain scroll-py-2 pb-2 pr-1 [scrollbar-gutter:stable]"
                     data-sidebar-scroll-region="true"
+                    data-tour="sidebar-nav"
                     onKeyDown={handleMenuKeyDown}
                 >
                     {menuItems.map((item, idx) => {
@@ -570,6 +575,18 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                             </span>
                         )}
                     </button>
+
+                    {onOpenTour && (
+                        <button
+                            onClick={() => { onOpenTour(); setIsOpen(false); }}
+                            data-sidebar-focusable="true"
+                            title="Rever o tour guiado"
+                            className="flex h-10 w-full items-center rounded-xl px-3 text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+                        >
+                            <Compass className="h-5 w-5 shrink-0" />
+                            {expanded && <span className="text-sm font-bold ml-2">Tour guiado</span>}
+                        </button>
+                    )}
                 </div>
             </nav>
 

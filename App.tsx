@@ -5,6 +5,11 @@ import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
 import ScreenTabs from './components/ScreenTabs';
+import { TourRole } from './lib/tours';
+
+const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
+/** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
+const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
   UserRole,
   Tenant,
@@ -264,6 +269,22 @@ const App: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]); // Cache students for selection
   const [pendingLessonsCount, setPendingLessonsCount] = useState(0);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({}); // pendências do diretor (badges)
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Tour no primeiro acesso. `onboarded` nasce false, então quem nunca viu
+  // recebe uma vez; concluir OU pular marca true e não volta sozinho — o botão
+  // no rodapé do menu traz de volta quando a pessoa quiser.
+  // Comparação estrita de propósito: `null` (perfil antigo, migrado) não dispara.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || !TOUR_ROLES.includes(String(user?.role))) return;
+    let vivo = true;
+    void (async () => {
+      const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
+      if (vivo && data?.onboarded === false) setTourOpen(true);
+    })();
+    return () => { vivo = false; };
+  }, [user?.id, user?.role]);
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
@@ -1221,6 +1242,7 @@ const App: React.FC = () => {
           }}
           pendingLessonsCount={pendingLessonsCount}
           pendingCounts={pendingCounts}
+          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
@@ -1559,6 +1581,17 @@ const App: React.FC = () => {
         </main>
       </div>
       {(user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) && <SmartFinder user={user} />}
+      {tourOpen && TOUR_ROLES.includes(user.role as string) && (
+        <Suspense fallback={null}>
+          <GuidedTour
+            role={user.role as TourRole}
+            userId={user.id}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onClose={() => setTourOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 
