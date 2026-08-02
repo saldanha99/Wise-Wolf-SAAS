@@ -462,6 +462,9 @@ done
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/quiz
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/app
+docker exec wolfie-frontend wget -q -S -O /dev/null \
+  http://127.0.0.1/manifest.webmanifest 2>&1 | tr -d '\r' | \
+  grep -Eqi '^[[:space:]]*Content-Type:[[:space:]]*application/manifest\+json([;[:space:]]|$)'
 
 if [[ "$router_enabled" = "true" ]]; then
   public_ready=false
@@ -483,6 +486,10 @@ if [[ "$router_enabled" = "true" ]]; then
     sleep 5
   done
   [[ "$public_ready" = "true" ]]
+  curl --fail --silent --show-error -D - -o /dev/null \
+    --connect-timeout 5 --max-time 15 \
+    "$public_url/manifest.webmanifest" | tr -d '\r' | \
+    grep -Eqi '^[[:space:]]*Content-Type:[[:space:]]*application/manifest\+json([;[:space:]]|$)'
 fi
 
 if [[ -n "$previous_target" ]]; then

@@ -129,6 +129,10 @@ for attempt in $(seq 1 60); do
   sleep 5
 done
 [[ "$public_ready" = "true" ]]
+curl --fail --silent --show-error -D - -o /dev/null \
+  --connect-timeout 5 --max-time 15 \
+  "$public_url/manifest.webmanifest" | tr -d '\r' | \
+  grep -Eqi '^[[:space:]]*Content-Type:[[:space:]]*application/manifest\+json([;[:space:]]|$)'
 printf '%s\n' "$active_release" > "$public_next"
 chmod 0600 "$public_next"
 mv -Tf -- "$public_next" "$base_dir/PUBLIC_ACTIVE"
