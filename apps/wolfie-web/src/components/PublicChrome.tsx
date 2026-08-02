@@ -1,4 +1,4 @@
-import { ArrowRight, Menu, Sparkles, X } from "lucide-react";
+import { ArrowRight, Menu, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { WolfieLink } from "../router";
 
@@ -12,14 +12,18 @@ export function WolfieBrand({
   const onDark = tone === "dark";
 
   return (
-    <WolfieLink href="/" className="inline-flex items-center gap-3" ariaLabel="Wolfie AI Tutor — início">
-      <span className="grid h-10 w-10 place-items-center rounded-[14px] bg-gradient-to-br from-[#ffb45f] via-[#ff785f] to-[#e72d3d] text-[#17120e] shadow-[0_10px_28px_rgba(231,45,61,.2)]">
-        <Sparkles size={20} strokeWidth={2.5} aria-hidden="true" />
+    <WolfieLink href="/" className="inline-flex items-center" ariaLabel="Wise Wolf — Wolfie AI Tutor — início">
+      <span className={`${onDark ? "px-1" : "rounded-[15px] bg-[#17191f] px-3 py-2 shadow-[0_10px_28px_rgba(24,25,31,.14)]"} inline-flex items-center justify-center`}>
+        <img
+          src="/assets/wolfie/brand/wise-wolf-logo-horizontal-dark.png"
+          alt="Wise Wolf Languages"
+          width="114"
+          height="36"
+          className={`${compact ? "h-6" : "h-7"} w-auto object-contain`}
+          decoding="async"
+        />
       </span>
-      <span className={compact ? "sr-only" : "block"}>
-        <span className={`block font-display text-[18px] font-extrabold leading-none tracking-[-0.045em] ${onDark ? "text-white" : "text-[#171717]"}`}>Wolfie</span>
-        <span className={`mt-1 block text-[9px] font-extrabold uppercase tracking-[0.27em] ${onDark ? "text-slate-400" : "text-[#7b8290]"}`}>AI Tutor</span>
-      </span>
+      <span className="sr-only">Wolfie AI Tutor</span>
     </WolfieLink>
   );
 }
@@ -29,8 +33,8 @@ export function PublicHeader() {
   const close = () => setOpen(false);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-black/[.06] bg-white/[.9] px-5 backdrop-blur-xl">
-      <div className="mx-auto flex min-h-[72px] max-w-7xl items-center justify-between">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 lg:px-10 lg:pt-4">
+      <div className="pointer-events-auto mx-auto flex min-h-[66px] max-w-[1380px] items-center justify-between rounded-[26px] border border-black/[.065] bg-white/[.92] px-3.5 shadow-[0_14px_45px_rgba(31,32,38,.09)] backdrop-blur-xl sm:px-5">
         <WolfieBrand />
         <nav className="hidden items-center gap-7 lg:flex" aria-label="Navegação principal">
           <WolfieLink href="/como-funciona" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Como funciona</WolfieLink>
@@ -49,7 +53,7 @@ export function PublicHeader() {
         </button>
       </div>
       {open ? (
-        <nav className="mx-auto mb-4 grid max-w-7xl gap-1 rounded-[22px] border border-black/[.07] bg-white p-3 shadow-[0_22px_60px_rgba(30,31,36,.12)] md:hidden" aria-label="Navegação móvel">
+        <nav className="pointer-events-auto mx-auto mt-2 grid max-w-[1380px] gap-1 rounded-[22px] border border-black/[.07] bg-white p-3 shadow-[0_22px_60px_rgba(30,31,36,.12)] md:hidden" aria-label="Navegação móvel">
           <WolfieLink href="/como-funciona" className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]" ariaLabel="Como funciona"><span onClick={close}>Como funciona</span></WolfieLink>
           <a href="/#experiencias" onClick={close} className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]">Cenários</a>
           <a href="/#feedback" onClick={close} className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]">Feedback</a>

@@ -16,7 +16,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   background: #ffffff;
   color: #202126;
 }
@@ -68,6 +68,93 @@ a {
 .wolfie-wavebar {
   transform-origin: center;
   animation: wolfie-wave 780ms ease-in-out infinite;
+}
+
+.landing-section-anchor {
+  scroll-margin-top: 104px;
+}
+
+.premium-sticky-phone {
+  contain: paint;
+}
+
+.premium-scenario-aura {
+  position: absolute;
+  inset: 12% 16% 8%;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 28% 45%, rgb(255 119 95 / 0.24), transparent 34%),
+    radial-gradient(circle at 72% 42%, rgb(255 180 95 / 0.22), transparent 36%),
+    radial-gradient(circle at 52% 70%, rgb(204 33 59 / 0.16), transparent 44%);
+  filter: blur(34px);
+  transform: translate3d(-2%, 0, 0) scale(0.98);
+  animation: premium-aura-drift 6s ease-in-out infinite alternate;
+}
+
+@keyframes premium-aura-drift {
+  to {
+    transform: translate3d(2%, -2%, 0) scale(1.04);
+  }
+}
+
+@keyframes premium-voice-breathe {
+  0%,
+  100% {
+    transform: scale(0.98);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+.premium-voice-orb {
+  animation: premium-voice-breathe 4.8s ease-in-out infinite;
+}
+
+@media (min-width: 768px) {
+  .premium-scene-card {
+    flex: 1 1 0%;
+    transition:
+      flex-grow 420ms cubic-bezier(0.16, 1, 0.3, 1),
+      height 420ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 240ms ease,
+      transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .premium-scene-card.is-featured {
+    flex-grow: 1.42;
+  }
+}
+
+@media (min-width: 768px) and (hover: hover) {
+  .premium-scene-rail:hover .premium-scene-card:not(:hover),
+  .premium-scene-rail:focus-within .premium-scene-card:not(:focus-within) {
+    opacity: 0.76;
+  }
+
+  .premium-scene-card:hover,
+  .premium-scene-card:focus-within {
+    z-index: 2;
+    height: 500px;
+    flex-grow: 1.9;
+    transform: translateY(-4px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .premium-journey-step {
+    opacity: 0.32;
+    transform: scale(0.985);
+    transform-origin: left center;
+    transition:
+      opacity 220ms ease,
+      transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .premium-journey-step.is-active {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .wolfie-product {
@@ -126,5 +213,17 @@ a {
 
   .wolfie-wavebar {
     animation: none;
+  }
+
+  .premium-scenario-aura,
+  .premium-voice-orb {
+    animation: none;
+  }
+
+  .premium-journey-step,
+  .premium-scene-card {
+    opacity: 1 !important;
+    transform: none !important;
+    transition-duration: 0.01ms !important;
   }
 }
