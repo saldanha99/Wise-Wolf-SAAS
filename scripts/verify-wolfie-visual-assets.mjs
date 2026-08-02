@@ -24,12 +24,12 @@ const outputFormat = formatIndex >= 0 ? args[formatIndex + 1] : "summary";
 const expectedArgumentCount = outputFormat === "tsv" ? 4 : 2;
 if (
   args.length !== expectedArgumentCount ||
-  !["public", "dist"].includes(rootName) ||
+  !["public", "dist", "dist-wolfie"].includes(rootName) ||
   !["summary", "tsv"].includes(outputFormat)
 ) {
   fail(
     "uso: node scripts/verify-wolfie-visual-assets.mjs " +
-      "--root public|dist [--format tsv]",
+      "--root public|dist|dist-wolfie [--format tsv]",
   );
 }
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");

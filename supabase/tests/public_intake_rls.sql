@@ -34,6 +34,90 @@ limit 1
 select count(*) as total_crm_leads from public.crm_leads
 \gset
 
+select pg_temp.assert_true(
+  (
+    select array_agg(policyname::text order by policyname::text)
+    from pg_catalog.pg_policies
+    where schemaname = 'public'
+      and tablename = 'crm_leads'
+  ) = array[
+    'crm_leads_public_insert',
+    'crm_leads_service_role',
+    'crm_leads_tenant_staff'
+  ]::text[],
+  'crm_leads must have only the three reviewed policies'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from pg_catalog.pg_policies
+    where schemaname = 'public'
+      and tablename = 'crm_leads'
+      and policyname in (
+        'Unblock Insert',
+        'Unblock Select',
+        'Unblock Update',
+        'Enable insert for authenticated users',
+        'Enable select for users based on tenant',
+        'Enable update for authenticated users'
+      )
+  ),
+  'legacy permissive crm_leads policies must be absent'
+);
+
+select pg_temp.assert_true(
+  not pg_catalog.has_table_privilege('anon', 'public.crm_leads', 'SELECT')
+    and not pg_catalog.has_table_privilege('anon', 'public.crm_leads', 'UPDATE')
+    and not pg_catalog.has_any_column_privilege(
+      'anon',
+      'public.crm_leads',
+      'SELECT'
+    )
+    and not pg_catalog.has_any_column_privilege(
+      'anon',
+      'public.crm_leads',
+      'UPDATE'
+    )
+    and (
+      select array_agg(attribute.attname::text order by attribute.attname)
+      from pg_catalog.pg_attribute as attribute
+      where attribute.attrelid = 'public.crm_leads'::pg_catalog.regclass
+        and attribute.attnum > 0
+        and not attribute.attisdropped
+        and pg_catalog.has_column_privilege(
+          'anon',
+          'public.crm_leads',
+          attribute.attname,
+          'INSERT'
+        )
+    ) = array[
+      'email',
+      'goal',
+      'name',
+      'notes',
+      'phone',
+      'public_intake_idempotency_key',
+      'source',
+      'status',
+      'tenant_id'
+    ]::text[],
+  'anon must have only the reviewed public intake column grants'
+);
+
+select pg_temp.assert_true(
+  exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conrelid = 'public.crm_leads'::pg_catalog.regclass
+      and conname = 'crm_leads_public_intake_idempotency_uniq'
+      and contype = 'u'
+      and pg_catalog.pg_get_constraintdef(oid, true) =
+        'UNIQUE (tenant_id, public_intake_idempotency_key)'
+  ),
+  'Wolfie public intake idempotency constraint must be installed'
+);
+
 set local role anon;
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
 select set_config('request.headers', '{"x-real-ip":"203.0.113.77"}', true);
@@ -47,6 +131,85 @@ values (
   '11999999999', 'NEW', 'migration_test', 'test'
 );
 rollback to savepoint allowed_public_lead;
+
+savepoint wolfie_key_required;
+\set wolfie_key_required_failed false
+\set wolfie_key_required_sqlstate ''
+\set ON_ERROR_STOP off
+insert into public.crm_leads (
+  tenant_id, name, email, phone, status, source, goal
+)
+values (
+  'school-wise-wolf', 'Missing Quiz Key', 'missing-key@example.invalid',
+  '11999999991', 'NEW', 'wolfie_quiz', 'test'
+);
+\if :ERROR
+  \set wolfie_key_required_failed true
+  \set wolfie_key_required_sqlstate :SQLSTATE
+\endif
+\set ON_ERROR_STOP on
+rollback to savepoint wolfie_key_required;
+select pg_temp.assert_true(
+  :'wolfie_key_required_failed'::boolean
+    and :'wolfie_key_required_sqlstate' = '22023',
+  'wolfie quiz lead without an idempotency key must fail validation'
+);
+
+savepoint wolfie_duplicate_key;
+insert into public.crm_leads (
+  tenant_id,
+  name,
+  email,
+  phone,
+  status,
+  source,
+  goal,
+  public_intake_idempotency_key
+)
+values (
+  'school-wise-wolf',
+  'Idempotent Quiz Lead',
+  'idempotent@example.invalid',
+  '11999999992',
+  'NEW',
+  'wolfie_quiz',
+  'test',
+  '00000000-0000-4000-8000-000000000101'
+);
+\set wolfie_duplicate_key_failed false
+\set wolfie_duplicate_key_sqlstate ''
+\set ON_ERROR_STOP off
+insert into public.crm_leads (
+  tenant_id,
+  name,
+  email,
+  phone,
+  status,
+  source,
+  goal,
+  public_intake_idempotency_key
+)
+values (
+  'school-wise-wolf',
+  'Idempotent Quiz Lead Retry',
+  'idempotent-retry@example.invalid',
+  '11999999993',
+  'NEW',
+  'wolfie_quiz',
+  'test',
+  '00000000-0000-4000-8000-000000000101'
+);
+\if :ERROR
+  \set wolfie_duplicate_key_failed true
+  \set wolfie_duplicate_key_sqlstate :SQLSTATE
+\endif
+\set ON_ERROR_STOP on
+rollback to savepoint wolfie_duplicate_key;
+select pg_temp.assert_true(
+  :'wolfie_duplicate_key_failed'::boolean
+    and :'wolfie_duplicate_key_sqlstate' = '23505',
+  'retrying a Wolfie quiz key must hit the unique idempotency constraint'
+);
 
 savepoint invalid_lead_tenant;
 \set invalid_lead_tenant_failed false
@@ -171,6 +334,48 @@ select pg_temp.assert_true(
   'student must not read job applications'
 );
 
+savepoint student_lead_insert;
+\set student_lead_insert_failed false
+\set ON_ERROR_STOP off
+insert into public.crm_leads (
+  tenant_id, name, email, phone, status, source
+)
+values (
+  'school-wise-wolf', 'Blocked Student', 'student@example.invalid',
+  '11999999989', 'NEW', 'migration_test'
+);
+\if :ERROR
+  \set student_lead_insert_failed true
+\endif
+\set ON_ERROR_STOP on
+rollback to savepoint student_lead_insert;
+select pg_temp.assert_true(
+  :'student_lead_insert_failed'::boolean,
+  'authenticated students must not insert CRM leads'
+);
+
+savepoint student_guard_bypass;
+\set student_guard_bypass_failed false
+\set student_guard_bypass_sqlstate ''
+\set ON_ERROR_STOP off
+insert into public.crm_leads (
+  tenant_id, name, phone, status, source
+)
+values (
+  'school-wise-wolf', 'X', '11999999988', 'NEW', 'migration_test'
+);
+\if :ERROR
+  \set student_guard_bypass_failed true
+  \set student_guard_bypass_sqlstate :SQLSTATE
+\endif
+\set ON_ERROR_STOP on
+rollback to savepoint student_guard_bypass;
+select pg_temp.assert_true(
+  :'student_guard_bypass_failed'::boolean
+    and :'student_guard_bypass_sqlstate' = '22023',
+  'authenticated students must not bypass public payload validation'
+);
+
 savepoint student_resume_upload;
 \set student_resume_upload_failed false
 \set ON_ERROR_STOP off
@@ -208,6 +413,39 @@ select pg_temp.assert_true(
     select 1 from public.job_applications where tenant_id <> 'school-wise-wolf'
   ),
   'school admin must not read another tenant applications'
+);
+
+savepoint authorized_staff_guard_bypass;
+insert into public.crm_leads (
+  tenant_id, name, phone, status, source, ai_handled
+)
+values (
+  'school-wise-wolf', 'X', '11999999987',
+  'CONTACTED', 'migration_test', true
+);
+rollback to savepoint authorized_staff_guard_bypass;
+
+savepoint cross_tenant_staff_guard_bypass;
+\set cross_tenant_staff_guard_bypass_failed false
+\set cross_tenant_staff_guard_bypass_sqlstate ''
+\set ON_ERROR_STOP off
+insert into public.crm_leads (
+  tenant_id, name, phone, status, source
+)
+values (
+  'not-the-admin-tenant', 'Cross Tenant', '11999999986',
+  'NEW', 'migration_test'
+);
+\if :ERROR
+  \set cross_tenant_staff_guard_bypass_failed true
+  \set cross_tenant_staff_guard_bypass_sqlstate :SQLSTATE
+\endif
+\set ON_ERROR_STOP on
+rollback to savepoint cross_tenant_staff_guard_bypass;
+select pg_temp.assert_true(
+  :'cross_tenant_staff_guard_bypass_failed'::boolean
+    and :'cross_tenant_staff_guard_bypass_sqlstate' = '22023',
+  'staff must not bypass the guard for another tenant'
 );
 
 savepoint admin_resume_upload;
@@ -249,6 +487,19 @@ select pg_temp.assert_true(
   (select count(*) from public.crm_leads) = :'total_crm_leads'::bigint,
   'super admin CRM access must remain available'
 );
+
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+savepoint service_role_guard_bypass;
+insert into public.crm_leads (
+  tenant_id, name, phone, status, source, ai_handled
+)
+values (
+  'school-wise-wolf', 'X', '11999999985',
+  'CONTACTED', 'migration_test', true
+);
+rollback to savepoint service_role_guard_bypass;
 
 reset role;
 select 'public_intake_rls_tests_passed' as result;

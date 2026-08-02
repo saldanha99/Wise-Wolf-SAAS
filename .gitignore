@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-wolfie
 dist-ssr
 *.local
 
@@ -26,6 +27,7 @@ dist-ssr
 .env.*
 !.env.example
 !.env.deploy.example
+!.env.deploy.wolfie.example
 .vercel
 .env.supabase
 

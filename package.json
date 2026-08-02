@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:wolfie-web": "vite --config apps/wolfie-web/vite.config.ts",
     "build": "vite build",
+    "build:wolfie-web": "vite build --config apps/wolfie-web/vite.config.ts",
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.app.json",
+    "typecheck:wolfie-web": "tsc --noEmit --pretty false -p apps/wolfie-web/tsconfig.json",
     "preview": "vite preview",
+    "preview:wolfie-web": "vite preview --config apps/wolfie-web/vite.config.ts",
     "deploy:vps": "bash deploy/vps/release.sh",
     "import:wise-wolf-chatgpt": "node scripts/import-wise-wolf-chatgpt.mjs",
     "test": "vitest run",

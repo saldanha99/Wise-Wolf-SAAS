@@ -1,0 +1,130 @@
+@import "../../../index.css";
+
+:root {
+  color-scheme: dark;
+  font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: #07111f;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
+  background: #07111f;
+  color: #fff;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: "Manrope", "DM Sans", system-ui, sans-serif;
+}
+
+.wolfie-mascot-cutout {
+  overflow: hidden;
+  border-radius: 48% 48% 34% 34% / 44% 44% 25% 25%;
+  -webkit-mask-image: radial-gradient(
+    ellipse 72% 70% at 50% 51%,
+    #000 56%,
+    rgb(0 0 0 / 0.96) 68%,
+    transparent 83%
+  );
+  mask-image: radial-gradient(
+    ellipse 72% 70% at 50% 51%,
+    #000 56%,
+    rgb(0 0 0 / 0.96) 68%,
+    transparent 83%
+  );
+  filter: drop-shadow(0 45px 55px rgb(0 0 0 / 0.5));
+}
+
+@keyframes wolfie-wave {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1.15);
+    opacity: 1;
+  }
+}
+
+.wolfie-wavebar {
+  transform-origin: center;
+  animation: wolfie-wave 780ms ease-in-out infinite;
+}
+
+.wolfie-product {
+  color-scheme: light;
+  --brand-bg: #f8fafc;
+  --brand-surface: #ffffff;
+  --brand-surface-2: #edf3f8;
+  --brand-accent: #1769e0;
+  --brand-accent-hover: #0f55bd;
+  --brand-border: rgb(15 23 42 / 0.12);
+  --brand-text: #0f172a;
+  --brand-muted: #607086;
+  --background: 210 40% 98%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 217 82% 48%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+}
+
+:focus-visible {
+  outline: 3px solid rgb(255 191 105 / 0.8);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .wolfie-mascot-cutout {
+    -webkit-mask-image: radial-gradient(
+      ellipse 76% 70% at 50% 50%,
+      #000 54%,
+      transparent 84%
+    );
+    mask-image: radial-gradient(
+      ellipse 76% 70% at 50% 50%,
+      #000 54%,
+      transparent 84%
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .wolfie-wavebar {
+    animation: none;
+  }
+}

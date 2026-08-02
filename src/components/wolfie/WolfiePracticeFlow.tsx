@@ -35,6 +35,7 @@ import {
   type LearningExperience,
 } from "./experienceCatalog";
 import type {
+  ActivityModality,
   CefrLevel,
   WolfieActivityResult,
   WolfieActivitySession,
@@ -365,18 +366,56 @@ function LoadingExperience({
 
 interface WolfiePracticeFlowProps {
   user: WolfieUserSummary;
+  /** Experiência sugerida fora do catálogo, por exemplo pelo quiz público. */
+  initialExperienceId?: string;
+  /** Nível autodeclarado já confirmado antes de abrir o fluxo. */
+  initialLevel?: CefrLevel;
+  /** Preferências declaradas antes do login, usadas para preparar o primeiro treino. */
+  initialIntent?: WolfieInitialIntent;
+  /** Informa ao shell que a preferência anônima já foi aplicada uma única vez. */
+  onInitialIntentConsumed?: () => void;
 }
 
-export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
-  const [view, setView] = useState<FlowView>("subject");
+export interface WolfieInitialIntent {
+  modality?: ActivityModality;
+  minutesPerSession?: number;
+  focus?: string;
+  participation?: string;
+  urgency?: string;
+  correctionMode?: WolfieCorrectionMode;
+  difficulty?: WolfieDifficulty;
+}
+
+export function WolfiePracticeFlow({
+  user,
+  initialExperienceId,
+  initialLevel,
+  initialIntent,
+  onInitialIntentConsumed,
+}: WolfiePracticeFlowProps) {
+  const initialExperience = initialExperienceId
+    ? getExperienceById(initialExperienceId) ?? null
+    : null;
+  const initialSector = initialExperience?.sector ?? "";
+  const initialView: FlowView = initialExperience
+    ? initialLevel
+      ? initialExperience.subject === "global_meetings" && !initialSector
+        ? "sector"
+        : "mode"
+      : "level"
+    : "subject";
+  const [view, setView] = useState<FlowView>(initialView);
   const [selectedSubject, setSelectedSubject] = useState<WolfieSubject | null>(
-    null,
+    initialExperience?.subject ?? null,
   );
   const [selectedExperience, setSelectedExperience] = useState<
     LearningExperience | null
-  >(null);
-  const [selectedLevel, setSelectedLevel] = useState<CefrLevel | null>(null);
-  const [selectedSector, setSelectedSector] = useState<string>("");
+  >(initialExperience);
+  const [selectedLevel, setSelectedLevel] = useState<CefrLevel | null>(
+    initialLevel ?? null,
+  );
+  const [selectedSector, setSelectedSector] = useState<string>(initialSector);
+  const [pendingInitialIntent, setPendingInitialIntent] = useState(initialIntent);
   const [selection, setSelection] = useState<WolfieSelection | null>(null);
   const [activeSession, setActiveSession] = useState<
     WolfieActivitySession | null
@@ -553,6 +592,10 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   };
 
   const chooseExperience = (experience: LearningExperience) => {
+    if (experience.id !== initialExperienceId) {
+      setPendingInitialIntent(undefined);
+      onInitialIntentConsumed?.();
+    }
     setSelectedExperience(experience);
     setSelectedSubject(experience.subject);
     setSelectedLevel(null);
@@ -578,7 +621,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
   const selectedPractice = (): WolfieSelection | null => {
     if (!selectedSubject || !selectedLevel) return null;
     if (selectedSubject === "global_meetings" && !selectedSector) return null;
-    return {
+    const baseSelection: WolfieSelection = {
       subject: selectedSubject,
       level: selectedLevel,
       sector: selectedSector || undefined,
@@ -586,6 +629,30 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
         ? experienceToSelectionContext(selectedExperience)
         : {}),
     };
+    const diagnosticContext = [
+      pendingInitialIntent?.focus
+        ? `Foco declarado no diagnóstico: ${pendingInitialIntent.focus}.`
+        : "",
+      pendingInitialIntent?.participation
+        ? `Participação desejada: ${pendingInitialIntent.participation}.`
+        : "",
+      pendingInitialIntent?.urgency
+        ? `Horizonte declarado: ${pendingInitialIntent.urgency}.`
+        : "",
+      pendingInitialIntent?.minutesPerSession
+        ? `Planejar uma prática que caiba em cerca de ${pendingInitialIntent.minutesPerSession} minutos.`
+        : "",
+    ].filter(Boolean).join(" ");
+
+    return diagnosticContext
+      ? {
+        ...baseSelection,
+        experienceContext: [
+          baseSelection.experienceContext,
+          diagnosticContext,
+        ].filter(Boolean).join(" ").slice(0, 1_200),
+      }
+      : baseSelection;
   };
 
   const buildConversationBrief = (
@@ -623,7 +690,8 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
         : nextSelection.level === "B1" || nextSelection.level === "B2"
         ? "bilingual"
         : "immersive");
-    const correctionMode = wolfieSettings?.preferredCorrectionMode ??
+    const correctionMode = pendingInitialIntent?.correctionMode ??
+      wolfieSettings?.preferredCorrectionMode ??
       (wolfieSettings?.correctionStrictness === 3
         ? "immediate"
         : wolfieSettings?.correctionStrictness === 1
@@ -665,7 +733,7 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
         .slice(0, 160),
       scenario: scenario.slice(0, 1_200),
       studentGoal: (experienceGoal || savedGoal).slice(0, 320),
-      targetSkill: experienceGoal.slice(0, 240),
+      targetSkill: (pendingInitialIntent?.focus || experienceGoal).slice(0, 240),
       experienceId: nextSelection.experienceId,
       experienceUniverse: nextSelection.experienceUniverse,
       experienceAudiences: nextSelection.experienceAudiences,
@@ -673,19 +741,25 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
         defaultExperienceForSubject(nextSelection.subject),
       correctionMode,
       languageMode,
-      difficulty: "adaptive",
+      difficulty: pendingInitialIntent?.difficulty ?? "adaptive",
     };
   };
 
   const beginWrittenPractice = () => {
     const nextSelection = selectedPractice();
-    if (nextSelection) void startActivity(nextSelection);
+    if (nextSelection) {
+      setPendingInitialIntent(undefined);
+      onInitialIntentConsumed?.();
+      void startActivity(nextSelection);
+    }
   };
 
   const beginConversation = () => {
     const nextSelection = selectedPractice();
     if (!nextSelection) return;
     setConversationDraft(buildConversationBrief(nextSelection));
+    setPendingInitialIntent(undefined);
+    onInitialIntentConsumed?.();
     setView("conversation_setup");
   };
 
@@ -1334,6 +1408,16 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                   Você pode construir a resposta com calma por escrito ou
                   treinar uma conversa real com o Wolfie usando sua voz.
                 </p>
+                {pendingInitialIntent
+                  ? (
+                    <p className="mt-4 rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold leading-6 text-brand-text">
+                      O diagnóstico já trouxe o foco
+                      {pendingInitialIntent.minutesPerSession
+                        ? ` e uma prática de ${pendingInitialIntent.minutesPerSession} minutos`
+                        : ""}. Confirme apenas o formato para começar.
+                    </p>
+                  )
+                  : null}
               </div>
 
               <section
@@ -1351,6 +1435,10 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                   <h2 className="mt-6 text-xl font-black text-brand-text">
                     Por escrita
                   </h2>
+                  {pendingInitialIntent?.modality === "text" ||
+                      pendingInitialIntent?.modality === "mixed"
+                    ? <span className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-brand-accent">{pendingInitialIntent.modality === "mixed" ? "Formato misto recomendado" : "Recomendado pelo diagnóstico"}</span>
+                    : null}
                   <p className="mt-2 flex-1 text-sm leading-6 text-brand-muted">
                     Faça a atividade no seu ritmo, escreva suas respostas e
                     receba correções calibradas ao seu nível.
@@ -1376,6 +1464,10 @@ export function WolfiePracticeFlow({ user }: WolfiePracticeFlowProps) {
                   <h2 className="mt-6 text-xl font-black text-brand-text">
                     Conversa real
                   </h2>
+                  {pendingInitialIntent?.modality === "voice" ||
+                      pendingInitialIntent?.modality === "mixed"
+                    ? <span className="mt-2 text-xs font-black uppercase tracking-[0.12em] text-brand-accent">{pendingInitialIntent.modality === "mixed" ? "Formato misto recomendado" : "Recomendado pelo diagnóstico"}</span>
+                    : null}
                   <p className="mt-2 flex-1 text-sm leading-6 text-brand-muted">
                     Fale com o Wolfie em tempo real e treine espontaneidade,
                     fluidez e naturalidade dentro do assunto escolhido.
