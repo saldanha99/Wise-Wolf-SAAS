@@ -322,8 +322,8 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 </div>
                                 <p className="text-[10px] text-brand-muted font-medium px-1">
                                     {kind === 'TRIAL'
-                                        ? 'Aluno novo experimentando. Entra na folha a R$ 8,00 e só paga com comparecimento registrado.'
-                                        : 'Professor treinando professor. Quem ministra recebe R$ 16,00; quem participa recebe o valor de aula.'}
+                                        ? 'Aluno novo experimentando. Entra na folha a R$ 8,00 e só paga depois que o comparecimento for registrado.'
+                                        : 'Professor treinando professor. Quem MINISTRA recebe R$ 16,00 e quem é TREINADO recebe R$ 8,00.'}
                                 </p>
 
                                 <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2 pt-2">
