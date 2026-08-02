@@ -81,18 +81,74 @@ compose_next="$base_dir/docker-compose.yml.next$suffix"
 nginx_next="$base_dir/nginx.conf.next$suffix"
 current_next="$base_dir/current.next$suffix"
 active_next="$base_dir/ACTIVE_RELEASE.next$suffix"
+public_next="$base_dir/PUBLIC_ACTIVE.next$suffix"
 previous_next="$base_dir/previous.next$suffix"
 for temp_path in "$compose_next" "$nginx_next" "$current_next" \
-  "$active_next" "$previous_next"; do
+  "$active_next" "$public_next" "$previous_next"; do
   [[ ! -e "$temp_path" && ! -L "$temp_path" ]]
 done
+
+active_marker="$base_dir/ACTIVE_RELEASE"
+public_marker="$base_dir/PUBLIC_ACTIVE"
+active_marker_existed=false
+public_marker_existed=false
+active_marker_value=""
+public_marker_value=""
+if [[ -e "$active_marker" || -L "$active_marker" ]]; then
+  [[ -f "$active_marker" && ! -L "$active_marker" ]]
+  active_marker_value="$(cat "$active_marker")"
+  [[ "$active_marker_value" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]]
+  active_marker_existed=true
+fi
+if [[ -e "$public_marker" || -L "$public_marker" ]]; then
+  [[ -f "$public_marker" && ! -L "$public_marker" ]]
+  public_marker_value="$(cat "$public_marker")"
+  [[ "$public_marker_value" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]]
+  public_marker_existed=true
+fi
+old_previous_link="$base_dir/previous"
+old_previous_link_existed=false
+old_previous_link_target=""
+if [[ -e "$old_previous_link" || -L "$old_previous_link" ]]; then
+  [[ -L "$old_previous_link" ]]
+  old_previous_link_target="$(readlink -f "$old_previous_link")"
+  [[ "$old_previous_link_target" == "$base_dir"/releases/*/dist ]]
+  [[ -d "$old_previous_link_target" && ! -L "$old_previous_link_target" ]]
+  old_previous_link_existed=true
+fi
+
+restore_marker() {
+  local marker_path=$1
+  local marker_existed=$2
+  local marker_value=$3
+  local marker_restore="${marker_path}.restore.$release_id.$$"
+  rm -f -- "$marker_restore"
+  if [[ "$marker_existed" = "true" ]]; then
+    printf '%s\n' "$marker_value" > "$marker_restore"
+    chmod 0600 "$marker_restore"
+    mv -Tf -- "$marker_restore" "$marker_path"
+  else
+    rm -f -- "$marker_path"
+  fi
+}
+
+restore_previous_link() {
+  local previous_restore="${old_previous_link}.restore.$release_id.$$"
+  rm -f -- "$previous_restore"
+  if [[ "$old_previous_link_existed" = "true" ]]; then
+    ln -s -- "$old_previous_link_target" "$previous_restore"
+    mv -Tf -- "$previous_restore" "$old_previous_link"
+  else
+    rm -f -- "$old_previous_link"
+  fi
+}
 
 restore_old() {
   local exit_code=$?
   trap - ERR INT TERM
   set +e
   rm -f -- "$compose_next" "$nginx_next" "$current_next" \
-    "$active_next" "$previous_next"
+    "$active_next" "$public_next" "$previous_next"
   cp -- "$old_release/docker-compose.yml" "$compose_next"
   cp -- "$old_release/nginx.conf" "$nginx_next"
   mv -Tf -- "$compose_next" "$base_dir/docker-compose.yml"
@@ -100,6 +156,9 @@ restore_old() {
   ln -s -- "$old_target" "$current_next"
   mv -Tf -- "$current_next" "$base_dir/current"
   (cd "$base_dir" && docker compose up -d --force-recreate wolfie-frontend)
+  restore_previous_link
+  restore_marker "$active_marker" "$active_marker_existed" "$active_marker_value"
+  restore_marker "$public_marker" "$public_marker_existed" "$public_marker_value"
   exit "$exit_code"
 }
 trap restore_old ERR INT TERM
@@ -152,7 +211,14 @@ ln -s -- "$old_target" "$previous_next"
 mv -Tf -- "$previous_next" "$base_dir/previous"
 printf '%s\n' "$release_id" > "$active_next"
 chmod 0600 "$active_next"
-mv -Tf -- "$active_next" "$base_dir/ACTIVE_RELEASE"
+if [[ "$router_enabled" = "true" ]]; then
+  printf '%s\n' "$release_id" > "$public_next"
+  chmod 0600 "$public_next"
+fi
+mv -Tf -- "$active_next" "$active_marker"
+if [[ "$router_enabled" = "true" ]]; then
+  mv -Tf -- "$public_next" "$public_marker"
+fi
 trap - ERR INT TERM
 REMOTE
 
