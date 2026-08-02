@@ -78,10 +78,46 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [draftDuration, setDraftDuration] = useState('');
     const [savingRow, setSavingRow] = useState<string | null>(null);
     const [rowError, setRowError] = useState<string | null>(null);
+    // Cobertura: aula lançada por um professor que quem deu foi outro.
+    const [transferLog, setTransferLog] = useState<{ id: string; date: string; student: string } | null>(null);
+    const [transferTargets, setTransferTargets] = useState<{ id: string; full_name: string }[]>([]);
+    const [transferTo, setTransferTo] = useState('');
+    const [transferReason, setTransferReason] = useState('');
+    const [transferring, setTransferring] = useState(false);
 
     useEffect(() => {
         fetchFinancials();
     }, [user.id, selectedMonth, tenantId]);
+
+    // Lista de destinos só faz sentido para a direção.
+    useEffect(() => {
+        if (!directorMode) return;
+        supabase.rpc('list_tenant_teachers_for_transfer').then(({ data }) => {
+            setTransferTargets(((data as any[]) || []).filter(t => t.id !== user.id));
+        });
+    }, [directorMode, user.id]);
+
+    const handleTransfer = async () => {
+        if (!transferLog || !transferTo) return;
+        setTransferring(true);
+        setRowError(null);
+        try {
+            const { error } = await supabase.rpc('transfer_class_coverage', {
+                p_log_id: transferLog.id,
+                p_to_teacher: transferTo,
+                p_reason: transferReason || null,
+            });
+            if (error) throw error;
+            setTransferLog(null);
+            setTransferTo('');
+            setTransferReason('');
+            await fetchFinancials();
+        } catch (err: any) {
+            setRowError(err.message || 'Não foi possível transferir a aula.');
+        } finally {
+            setTransferring(false);
+        }
+    };
 
     const fetchFinancials = async () => {
         setLoading(true);
@@ -756,11 +792,24 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {row.detalhe.map((d, i) => (
                                                             <span key={d.id || i}
-                                                                className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${d.presence === 'COMPLETED'
+                                                                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold ${d.presence === 'COMPLETED'
                                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                                                                     : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                                                                 {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                                                                 {' · '}{money(d.valor)}{d.override ? ' ✎' : ''}
+                                                                {/* Cobertura: se quem deu a aula foi outro professor, a aula
+                                                                    (e o pagamento) muda de dono aqui mesmo. */}
+                                                                {directorMode && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setTransferLog({ id: d.id, date: d.date, student: row.student })}
+                                                                        title="Esta aula foi dada por outro professor"
+                                                                        aria-label={`Transferir a aula de ${row.student} em ${d.date} para outro professor`}
+                                                                        className="rounded p-0.5 opacity-60 transition-opacity hover:bg-black/5 hover:opacity-100"
+                                                                    >
+                                                                        <ArrowRight size={12} />
+                                                                    </button>
+                                                                )}
                                                             </span>
                                                         ))}
                                                     </div>
@@ -797,6 +846,63 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                     </table>
                 </div>
             </div>
+
+            {/* Cobertura: mover a aula (e o pagamento) para quem realmente deu */}
+            {transferLog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                    <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
+                        <h3 className="text-lg font-black uppercase tracking-tight text-brand-text">Quem deu esta aula?</h3>
+                        <p className="mt-1 text-sm font-medium text-brand-muted">
+                            {transferLog.student} · {new Date(`${transferLog.date}T12:00:00`).toLocaleDateString('pt-BR')}
+                        </p>
+                        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+                            A aula sai da folha deste professor e entra na de quem você escolher. O valor vai junto.
+                        </p>
+
+                        <label className="mt-5 block">
+                            <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Professor que cobriu</span>
+                            <select
+                                value={transferTo}
+                                onChange={(e) => setTransferTo(e.target.value)}
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                            >
+                                <option value="">Selecione…</option>
+                                {transferTargets.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                            </select>
+                        </label>
+
+                        <label className="mt-4 block">
+                            <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Motivo (opcional)</span>
+                            <input
+                                value={transferReason}
+                                onChange={(e) => setTransferReason(e.target.value)}
+                                placeholder="Ex: professor passou mal, cobertura de última hora"
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                            />
+                        </label>
+
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setTransferLog(null); setTransferTo(''); setTransferReason(''); }}
+                                disabled={transferring}
+                                className="shrink-0 whitespace-nowrap rounded-xl px-5 py-3 text-xs font-bold uppercase tracking-widest text-brand-muted"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleTransfer}
+                                disabled={transferring || !transferTo}
+                                className="flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-tenant-primary px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-tenant-primary/20 disabled:opacity-50"
+                            >
+                                {transferring ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+                                {transferring ? 'Transferindo…' : 'Transferir aula'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Dados de recebimento + nota fiscal, na mesma tela (antes eram outras duas). */}
             <TeacherPayoutDetails
