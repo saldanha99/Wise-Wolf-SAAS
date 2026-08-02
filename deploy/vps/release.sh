@@ -331,6 +331,10 @@ HUB_CHECKOUT_FUNCTION_RELATIVE="supabase/functions/create-hub-checkout"
 HUB_AI_FUNCTION_RELATIVE="supabase/functions/pedagogical-content"
 HUB_TUTOR_FUNCTION_RELATIVE="supabase/functions/wolf-tutor-api"
 ASAAS_WEBHOOK_FUNCTION_RELATIVE="supabase/functions/asaas-webhook"
+# Cobertura de professor: o aceite move o pagamento (apply_coverage_acceptance).
+# Ficava de fora da lista, então a correção não subia pelo deploy.
+COVERAGE_ACCEPT_FUNCTION_RELATIVE="supabase/functions/accept-coverage"
+COVERAGE_ADMIN_FUNCTION_RELATIVE="supabase/functions/coverage-admin"
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
 SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
 SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact-policy.ts"
@@ -394,6 +398,10 @@ done
   die "função de IA do Hub ausente"
 [[ -s "$HUB_TUTOR_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função Wolfie do Hub ausente"
+[[ -s "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "accept-coverage/index.ts ausente"
+[[ -s "$COVERAGE_ADMIN_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "coverage-admin/index.ts ausente"
 [[ -s "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/index.ts" ]] ||
   die "webhook Asaas ausente"
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
@@ -422,6 +430,8 @@ artifact_hash="$(
       "$HUB_CHECKOUT_FUNCTION_RELATIVE" \
       "$HUB_AI_FUNCTION_RELATIVE" \
       "$HUB_TUTOR_FUNCTION_RELATIVE" \
+      "$COVERAGE_ACCEPT_FUNCTION_RELATIVE" \
+      "$COVERAGE_ADMIN_FUNCTION_RELATIVE" \
       "$ASAAS_WEBHOOK_FUNCTION_RELATIVE"; do
       find "$release_input_dir" -type f -print
     done
@@ -525,6 +535,10 @@ rsync -a --delete -- "$HUB_TUTOR_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolf-tutor-api/"
 rsync -a --delete -- "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/asaas-webhook/"
+rsync -a --delete -- "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/accept-coverage/"
+rsync -a --delete -- "$COVERAGE_ADMIN_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/coverage-admin/"
 rsync -a -- "$SHARED_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/request-auth.ts"
 rsync -a -- "$SHARED_ACCOUNT_INVITE_RELATIVE" \
