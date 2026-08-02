@@ -56,3 +56,9 @@ docs/qa/**/*.pdf
 
 # Saída gerada pelo graphify (grafo de conhecimento) — reconstruível via /graphify .
 graphify-out/
+
+# Fontes intermediárias e harness local do redesign visual do Wolfie.
+# Os WebPs finais e os testes de componentes permanecem versionados.
+/design-assets/wolfie/generated-sources/
+/src/wolfie-visual-qa.tsx
+/wolfie-visual-qa.html

@@ -13,7 +13,8 @@ LOCAL_STAGE=""
 cleanup() {
   local exit_code=$?
   trap - EXIT
-  unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY
+  unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY \
+    VITE_WOLFIE_REALTIME_ENABLED VITE_WOLFIE_SCENARIO_UI_V2
   if [[ -n "$LOCAL_STAGE" && -d "$LOCAL_STAGE" ]]; then
     rm -rf -- "$LOCAL_STAGE"
   fi
@@ -107,10 +108,10 @@ done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-edge-functions --format '{{.State.Running}}' | grep -qx true
 docker exec supabase-edge-functions sh -lc \
-  'test -n "${OPENROUTER_API_KEY:-}"'
+  'test -n "${OPENAI_API_KEY:-}" && test -n "${OPENROUTER_API_KEY:-}"'
 docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
   supabase-edge-functions |
-  grep -qx 'SUPABASE_URL=http://kong:8000'
+  grep -Eq '^SUPABASE_URL=http://(kong|api-gw):8000$'
 docker exec -i supabase-db \
   psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
 do $preflight$
@@ -188,9 +189,11 @@ REMOTE
 export VITE_SUPABASE_URL
 export VITE_SUPABASE_ANON_KEY
 export VITE_WOLFIE_REALTIME_ENABLED
+export VITE_WOLFIE_SCENARIO_UI_V2
 VITE_SUPABASE_URL="$(read_remote_public_env VITE_SUPABASE_URL)"
 VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
 VITE_WOLFIE_REALTIME_ENABLED="${VITE_WOLFIE_REALTIME_ENABLED:-true}"
+VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-false}"
 [[ "$VITE_SUPABASE_URL" =~ ^https://[^[:space:]]+$ ]] ||
   die "VITE_SUPABASE_URL remota inválida"
 [[ "$VITE_SUPABASE_URL" = "$DEPLOY_API_URL" ]] ||
@@ -200,6 +203,9 @@ VITE_WOLFIE_REALTIME_ENABLED="${VITE_WOLFIE_REALTIME_ENABLED:-true}"
 [[ "$VITE_WOLFIE_REALTIME_ENABLED" = "true" ||
   "$VITE_WOLFIE_REALTIME_ENABLED" = "false" ]] ||
   die "VITE_WOLFIE_REALTIME_ENABLED deve ser true ou false"
+[[ "$VITE_WOLFIE_SCENARIO_UI_V2" = "true" ||
+  "$VITE_WOLFIE_SCENARIO_UI_V2" = "false" ]] ||
+  die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
 
 echo "== Validação local =="
 npm run typecheck
@@ -826,6 +832,7 @@ database_tests=(
   "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
   "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
   "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
+  "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
 )
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]

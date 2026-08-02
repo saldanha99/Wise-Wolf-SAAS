@@ -12,7 +12,8 @@ DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$PROJECT_DIR/.env.deploy.local}"
 cleanup() {
   local exit_code=$?
   trap - EXIT
-  unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY
+  unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY \
+    VITE_WOLFIE_SCENARIO_UI_V2
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -176,6 +177,10 @@ REMOTE
 export VITE_SUPABASE_URL
 export VITE_SUPABASE_ANON_KEY
 export VITE_WOLFIE_REALTIME_ENABLED=true
+export VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-false}"
+[[ "$VITE_WOLFIE_SCENARIO_UI_V2" = "true" ||
+  "$VITE_WOLFIE_SCENARIO_UI_V2" = "false" ]] ||
+  die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
 VITE_SUPABASE_URL="$(read_remote_public_env VITE_SUPABASE_URL)"
 VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
 [[ "$VITE_SUPABASE_URL" = "$DEPLOY_API_URL" ]] ||

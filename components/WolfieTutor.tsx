@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   BrainCircuit,
@@ -69,6 +69,14 @@ import {
 import { WolfieAvatar } from "./WolfieAvatar";
 import { WolfieTranscriptReview } from "./WolfieTranscriptReview";
 import { WolfieLiveBalance } from "./WolfieLiveBalance";
+import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
+import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
+import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
+import { WolfieMeetingHUD } from "../src/components/wolfie/visuals/WolfieMeetingHUD";
+import { resolveScene } from "../src/components/wolfie/visuals/resolveScene";
+import { WolfieScenarioStage } from "../src/components/wolfie/visuals/WolfieScenarioStage";
+import { WolfieSessionHUD } from "../src/components/wolfie/visuals/WolfieSessionHUD";
+import { resolveMeetingVisualState } from "../src/components/wolfie/visuals/visualStateResolver";
 
 // ============================================================
 // TYPES
@@ -102,6 +110,11 @@ interface CorrectionData {
 
 interface TurnGuidance {
   currentStage: string;
+  scenarioStatus: string;
+  learnerIntent: string;
+  counterpart: string;
+  pendingQuestion: string;
+  pendingDecision: string;
   strengths: string[];
   priorities: string[];
   nextAction: string;
@@ -155,8 +168,18 @@ const WOLFIE_REALTIME_ENABLED =
   String(import.meta.env.VITE_WOLFIE_REALTIME_ENABLED ?? "true")
     .toLocaleLowerCase("en-US") !== "false";
 
+const WOLFIE_SCENARIO_UI_V2_ENABLED =
+  String(import.meta.env.VITE_WOLFIE_SCENARIO_UI_V2 ?? "false")
+    .trim()
+    .toLocaleLowerCase("en-US") === "true";
+
 const EMPTY_TURN_GUIDANCE: TurnGuidance = {
   currentStage: "",
+  scenarioStatus: "active",
+  learnerIntent: "perform",
+  counterpart: "",
+  pendingQuestion: "",
+  pendingDecision: "",
   strengths: [],
   priorities: [],
   nextAction: "",
@@ -164,6 +187,21 @@ const EMPTY_TURN_GUIDANCE: TurnGuidance = {
   verificationReason: "",
   retryRequired: false,
   sessionScore: null,
+};
+
+const resolveVisualPressureLabel = (value?: string): string => {
+  switch (value) {
+    case "supportive":
+      return "Apoio alto";
+    case "balanced":
+      return "Pressão equilibrada";
+    case "challenging":
+      return "Pressão alta";
+    case "adaptive":
+      return "Pressão adaptativa";
+    default:
+      return "Pressão adaptativa";
+  }
 };
 
 type WolfieLearnerTurnKind = ReturnType<typeof classifyWolfieLearnerTurn>;
@@ -717,6 +755,23 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       "scenarioStatus",
       "scenario_status",
     ) || firstString(payload, "scenarioStatus", "scenario_status");
+    const learnerIntent = firstString(
+      guidance,
+      "learnerIntent",
+      "learner_intent",
+    ) || firstString(payload, "learnerIntent", "learner_intent");
+    const counterpart = firstString(guidance, "counterpart") ||
+      firstString(payload, "counterpart");
+    const pendingQuestion = firstString(
+      guidance,
+      "pendingQuestion",
+      "pending_question",
+    ) || firstString(payload, "pendingQuestion", "pending_question");
+    const pendingDecision = firstString(
+      guidance,
+      "pendingDecision",
+      "pending_decision",
+    ) || firstString(payload, "pendingDecision", "pending_decision");
     const nextAction = firstString(guidance, "nextAction", "next_action");
     const strengths = firstStringArray(
       guidance,
@@ -745,6 +800,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setCorrection(nextCorrection);
       setTurnGuidance({
         currentStage,
+        scenarioStatus: scenarioStatus || "active",
+        learnerIntent: learnerIntent || "perform",
+        counterpart,
+        pendingQuestion,
+        pendingDecision,
         strengths,
         priorities,
         nextAction,
@@ -766,17 +826,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         "retry_completed",
       ),
       nextAction,
-      counterpart: firstString(guidance, "counterpart"),
-      pendingQuestion: firstString(
-        guidance,
-        "pendingQuestion",
-        "pending_question",
-      ),
-      pendingDecision: firstString(
-        guidance,
-        "pendingDecision",
-        "pending_decision",
-      ),
+      counterpart,
+      pendingQuestion,
+      pendingDecision,
     });
   }, []);
 
@@ -1034,6 +1086,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setTurnGuidance((current) => ({
         ...current,
         currentStage: prepared.currentStage,
+        scenarioStatus: prepared.scenarioStatus || current.scenarioStatus,
         retryRequired: prepared.requiresRetry,
       }));
     },
@@ -1655,6 +1708,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
         if (cancelled) return;
         const turns = [...(recentTurns ?? [])].reverse();
+        const latestWolfieTurn = [...turns]
+          .reverse()
+          .find((turn: any) => turn.speaker !== "student");
+        const latestWolfiePayload = asRecord(
+          latestWolfieTurn?.structured_payload,
+        );
         realtimeConversationIdRef.current = lastSession.id;
         pendingRealtimeClassicHandoffRef.current =
           realtimeSessionNeedsClassicHandoff(
@@ -1664,6 +1723,38 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             ? lastSession.id
             : null;
         setConversationId(lastSession.id);
+        setTurnGuidance((current) => ({
+          ...current,
+          currentStage: firstString(
+            latestWolfiePayload,
+            "currentStage",
+            "current_stage",
+            "stage",
+          ) || lastSession.current_stage || current.currentStage,
+          scenarioStatus: firstString(
+            latestWolfiePayload,
+            "scenarioStatus",
+            "scenario_status",
+          ) || lastSession.scenario_status || current.scenarioStatus,
+          learnerIntent: firstString(
+            latestWolfiePayload,
+            "learnerIntent",
+            "learner_intent",
+          ) || current.learnerIntent,
+          counterpart: firstString(latestWolfiePayload, "counterpart") ||
+            current.counterpart,
+          pendingQuestion: firstString(
+            latestWolfiePayload,
+            "pendingQuestion",
+            "pending_question",
+          ) || current.pendingQuestion,
+          pendingDecision: firstString(
+            latestWolfiePayload,
+            "pendingDecision",
+            "pending_decision",
+          ) || current.pendingDecision,
+          retryRequired: lastSession.scenario_status === "awaiting_retry",
+        }));
         if (turns && turns.length > 0) {
           const restored: Message[] = turns.map((t: any) => {
             const payload = asRecord(t.structured_payload);
@@ -1708,9 +1799,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         }
 
         if (lastSession.scenario_status === "awaiting_retry") {
-          const latestWolfieTurn = [...turns]
-            .reverse()
-            .find((turn: any) => turn.speaker !== "student");
           const retryWolfieTurn = [...turns]
             .reverse()
             .find((turn: any) =>
@@ -1780,6 +1868,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
               "current_stage",
               "stage",
             ) || lastSession.current_stage || "retry",
+            scenarioStatus: firstString(
+              retryPayload,
+              "scenarioStatus",
+              "scenario_status",
+            ) || lastSession.scenario_status || "awaiting_retry",
+            learnerIntent: firstString(
+              retryPayload,
+              "learnerIntent",
+              "learner_intent",
+            ) || "perform",
+            counterpart: firstString(retryPayload, "counterpart"),
+            pendingQuestion: firstString(
+              retryPayload,
+              "pendingQuestion",
+              "pending_question",
+            ),
+            pendingDecision: firstString(
+              retryPayload,
+              "pendingDecision",
+              "pending_decision",
+            ),
             strengths: firstStringArray(
               retryPayload,
               "studentStrengths",
@@ -2650,6 +2759,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setTurnGuidance((current) => ({
         ...EMPTY_TURN_GUIDANCE,
         currentStage: current.currentStage,
+        scenarioStatus: current.scenarioStatus,
+        learnerIntent: current.learnerIntent,
+        counterpart: current.counterpart,
+        pendingQuestion: current.pendingQuestion,
+        pendingDecision: current.pendingDecision,
       }));
     }
     setError(null);
@@ -2937,6 +3051,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setTurnGuidance((current) => ({
         ...EMPTY_TURN_GUIDANCE,
         currentStage: current.currentStage,
+        scenarioStatus: current.scenarioStatus,
+        learnerIntent: current.learnerIntent,
+        counterpart: current.counterpart,
+        pendingQuestion: current.pendingQuestion,
+        pendingDecision: current.pendingDecision,
       }));
     }
 
@@ -3084,6 +3203,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         setTurnGuidance((current) => ({
           ...current,
           currentStage: handoff.currentStage || current.currentStage,
+          scenarioStatus: handoff.scenarioStatus || current.scenarioStatus,
           retryRequired: handoff.requiresRetry ?? current.retryRequired,
         }));
         setSubtitle("");
@@ -3191,6 +3311,27 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         "current_stage",
         "stage",
       );
+      const nextScenarioStatus = firstString(
+        responsePayload,
+        "scenarioStatus",
+        "scenario_status",
+      );
+      const nextLearnerIntent = firstString(
+        responsePayload,
+        "learnerIntent",
+        "learner_intent",
+      );
+      const nextCounterpart = firstString(responsePayload, "counterpart");
+      const nextPendingQuestion = firstString(
+        responsePayload,
+        "pendingQuestion",
+        "pending_question",
+      );
+      const nextPendingDecision = firstString(
+        responsePayload,
+        "pendingDecision",
+        "pending_decision",
+      );
       const nextStrengths = suppressPedagogy ? [] : firstStringArray(
         responsePayload,
         "studentStrengths",
@@ -3281,15 +3422,30 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             ? {
               ...current,
               currentStage: current.currentStage || nextCurrentStage || "retry",
+              scenarioStatus: nextScenarioStatus || current.scenarioStatus,
+              learnerIntent: nextLearnerIntent || current.learnerIntent,
+              counterpart: nextCounterpart || current.counterpart,
+              pendingQuestion: nextPendingQuestion || current.pendingQuestion,
+              pendingDecision: nextPendingDecision || current.pendingDecision,
               retryRequired: true,
             }
             : {
               ...EMPTY_TURN_GUIDANCE,
               currentStage: current.currentStage ||
                 (learnerTurnKind === "opening" ? nextCurrentStage : ""),
+              scenarioStatus: nextScenarioStatus || current.scenarioStatus,
+              learnerIntent: nextLearnerIntent || current.learnerIntent,
+              counterpart: nextCounterpart || current.counterpart,
+              pendingQuestion: nextPendingQuestion || current.pendingQuestion,
+              pendingDecision: nextPendingDecision || current.pendingDecision,
             }
           : {
             currentStage: nextCurrentStage,
+            scenarioStatus: nextScenarioStatus || current.scenarioStatus,
+            learnerIntent: nextLearnerIntent || "perform",
+            counterpart: nextCounterpart || current.counterpart,
+            pendingQuestion: nextPendingQuestion || current.pendingQuestion,
+            pendingDecision: nextPendingDecision || current.pendingDecision,
             strengths: nextStrengths,
             priorities: nextPriorities,
             nextAction,
@@ -3592,6 +3748,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     : outputLevel;
 
   const getStatusLabel = () => {
+    if (error) return "Não foi possível responder";
     if (isRealtimeMode && isRealtimePostTurnPending) {
       return pendingTranscriptReview?.source === "realtime"
         ? "Confirme a Transcrição"
@@ -3658,6 +3815,50 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   };
 
   const normalizedStage = turnGuidance.currentStage.trim().toLowerCase();
+  const visualSceneProfile = useMemo(
+    () =>
+      resolveScene({
+        experienceId,
+        universeId: experienceUniverse,
+        experienceMode,
+      }),
+    [experienceId, experienceMode, experienceUniverse],
+  );
+  const isGlobalMeetingScene = visualSceneProfile.universeId ===
+      "global-meetings" || visualSceneProfile.hudVariant === "meeting";
+  const meetingVisualState = useMemo(
+    () =>
+      isGlobalMeetingScene && turnGuidance.currentStage
+        ? resolveMeetingVisualState({
+          stage: turnGuidance.currentStage,
+          scenarioStatus: turnGuidance.scenarioStatus,
+          learnerIntent: turnGuidance.learnerIntent,
+          requiresRetry: turnGuidance.retryRequired,
+          counterpart: turnGuidance.counterpart,
+          pendingQuestion: turnGuidance.pendingQuestion,
+          pendingDecision: turnGuidance.pendingDecision,
+        })
+        : null,
+    [
+      isGlobalMeetingScene,
+      turnGuidance.counterpart,
+      turnGuidance.currentStage,
+      turnGuidance.learnerIntent,
+      turnGuidance.pendingDecision,
+      turnGuidance.pendingQuestion,
+      turnGuidance.retryRequired,
+      turnGuidance.scenarioStatus,
+    ],
+  );
+  const resumeMeetingFromCoach = useCallback(() => {
+    setTurnGuidance((current) => ({
+      ...current,
+      learnerIntent: "perform",
+      scenarioStatus: current.retryRequired ? "awaiting_retry" : "active",
+    }));
+  }, []);
+  const visualCharacterState = error ? "ERROR" : state;
+  const visualPressureLabel = resolveVisualPressureLabel(difficulty);
   const showSessionScore = turnGuidance.sessionScore !== null &&
     (normalizedStage === "report" || normalizedStage === "completed");
   const normalizedSessionScore = turnGuidance.sessionScore === null
@@ -3840,6 +4041,730 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
             )}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (WOLFIE_SCENARIO_UI_V2_ENABLED) {
+    const visualControls = (
+      <>
+        {WOLFIE_REALTIME_ENABLED && (
+          <button
+            type="button"
+            onClick={isRealtimeMode ? useClassicVoice : useRealtimeVoice}
+            disabled={isRealtimeMode && isRealtimePostTurnPending}
+            aria-pressed={isRealtimeMode}
+            aria-label={isRealtimeMode
+              ? "Usar a voz clássica"
+              : "Usar conversa contínua em tempo real"}
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+              isRealtimeMode
+                ? "border-emerald-300/35 bg-emerald-400/15 text-emerald-100"
+                : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+            }`}
+          >
+            <Radio
+              size={15}
+              className={isRealtimeMode && realtime.connected
+                ? "animate-pulse motion-reduce:animate-none"
+                : ""}
+              aria-hidden="true"
+            />
+            {isRealtimeMode ? "Ao vivo" : "Clássico"}
+          </button>
+        )}
+        {isRealtimeMode && realtime.connected && (
+          <button
+            type="button"
+            onClick={realtime.toggleMuted}
+            disabled={isRealtimePostTurnPending}
+            aria-pressed={realtime.muted}
+            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+              realtime.muted
+                ? "border-amber-300/35 bg-amber-400/15 text-amber-100"
+                : "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
+            }`}
+          >
+            {realtime.muted
+              ? <MicOff size={15} aria-hidden="true" />
+              : <Mic size={15} aria-hidden="true" />}
+            {realtime.muted ? "Retomar" : "Pausar"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setTranslationEnabled((current) => !current)}
+          aria-pressed={translationEnabled}
+          aria-label={translationEnabled ? "Desativar tradução" : "Ativar tradução"}
+          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+            translationEnabled
+              ? "border-sky-300/30 bg-sky-400/10 text-sky-100"
+              : "border-white/10 bg-white/5 text-slate-300"
+          }`}
+        >
+          <Languages size={16} aria-hidden="true" />
+        </button>
+        {!isRealtimeMode && (
+          <button
+            type="button"
+            onClick={() => {
+              setAutoSpeakEnabled((current) => !current);
+              if (state === "SPEAKING") stopSpeaking();
+            }}
+            aria-pressed={autoSpeakEnabled}
+            aria-label={autoSpeakEnabled
+              ? "Desativar reprodução automática"
+              : "Ativar reprodução automática"}
+            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+              autoSpeakEnabled
+                ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+                : "border-white/10 bg-white/5 text-slate-300"
+            }`}
+          >
+            {autoSpeakEnabled
+              ? <Volume2 size={16} aria-hidden="true" />
+              : <VolumeX size={16} aria-hidden="true" />}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowTextInput((current) => !current)}
+          aria-pressed={showTextInput}
+          aria-label={showTextInput ? "Ocultar teclado" : "Mostrar teclado"}
+          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+            showTextInput
+              ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
+              : "border-white/10 bg-white/5 text-slate-300"
+          }`}
+        >
+          <MessageSquare size={16} aria-hidden="true" />
+        </button>
+        {!isRealtimeMode && (
+          <button
+            type="button"
+            onClick={slowReplay}
+            disabled={!lastSpokenTextRef.current}
+            aria-label="Repetir a última fala devagar"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            <RotateCcw size={16} aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={restartConversation}
+          disabled={isRestarting || state === "THINKING" || state === "LISTENING"}
+          className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isRestarting ? "Reiniciando…" : "Nova conversa"}
+        </button>
+      </>
+    );
+
+    const visualInteraction = (
+      <div
+        className={`group relative h-full min-h-[15rem] w-full cursor-pointer touch-none select-none transition ${
+          pendingTranscriptReview || isRealtimePostTurnPending
+            ? "pointer-events-none opacity-40"
+            : ""
+        }`}
+        style={{
+          WebkitUserSelect: "none",
+          WebkitTouchCallout: "none",
+        } as React.CSSProperties}
+        role="button"
+        tabIndex={pendingTranscriptReview || isRealtimePostTurnPending ? -1 : 0}
+        aria-label={isRealtimeMode
+          ? realtime.connected
+            ? "Wolfie ao vivo. Toque para pausar ou interromper."
+            : "Toque no Wolfie para iniciar a conversa ao vivo"
+          : "Pressione e segure o Wolfie para falar"}
+        onClick={isRealtimeMode
+          ? () => void startRealtimeConversation()
+          : undefined}
+        onPointerDown={isRealtimeMode ? undefined : (event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          startRecording();
+        }}
+        onPointerUp={isRealtimeMode ? undefined : (event) => {
+          event.preventDefault();
+          stopRecordingAndSend();
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }
+        }}
+        onPointerCancel={isRealtimeMode ? undefined : (event) => {
+          event.preventDefault();
+          stopRecordingAndSend();
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          if (isRealtimeMode) {
+            event.preventDefault();
+            if (!event.repeat) void startRealtimeConversation();
+          } else if (state === "IDLE") {
+            event.preventDefault();
+            startRecording();
+          }
+        }}
+        onKeyUp={(event) => {
+          if (
+            !isRealtimeMode &&
+            (event.key === "Enter" || event.key === " ")
+          ) {
+            event.preventDefault();
+            stopRecordingAndSend();
+          }
+        }}
+      >
+        <span className="pointer-events-none absolute bottom-4 left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/15 bg-slate-950/72 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-2xl backdrop-blur-xl sm:bottom-6">
+          {isRealtimeMode
+            ? realtime.connected
+              ? realtime.muted
+                ? "Toque para retomar"
+                : "Conversa ao vivo"
+              : "Toque para iniciar"
+            : state === "LISTENING"
+            ? "Solte para enviar"
+            : "Segure para falar"}
+        </span>
+      </div>
+    );
+
+    const visualContext = (
+      <div className="space-y-3">
+        {error && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-red-300/30 bg-red-950/70 p-4 text-sm font-semibold leading-6 text-red-100"
+          >
+            {error}
+          </div>
+        )}
+
+        {meetingVisualState
+          ? <WolfieMeetingHUD state={meetingVisualState} compact />
+          : (
+            <section className="rounded-3xl border border-white/10 bg-slate-950/76 p-4 shadow-2xl backdrop-blur-2xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">
+                Contexto da prática
+              </p>
+              <h2 className="mt-1 text-lg font-black text-white">
+                {visualSceneProfile.environmentDescription}
+              </h2>
+              <p className="mt-2 text-xs leading-5 text-slate-300">
+                {studentGoal || "Converse naturalmente e aplique o feedback no próximo turno."}
+              </p>
+            </section>
+          )}
+
+        <section
+          aria-label="Foco da prática"
+          className="grid gap-2 rounded-2xl border border-white/10 bg-slate-950/72 p-3 text-xs backdrop-blur-xl sm:grid-cols-2 lg:grid-cols-1"
+        >
+          <div className="rounded-xl bg-white/5 p-3">
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+              Competência em foco
+            </p>
+            <p className="mt-1 font-semibold leading-5 text-slate-100">
+              {targetSkill || "Comunicação clara e natural"}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/5 p-3">
+            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+              Nível de pressão
+            </p>
+            <p className="mt-1 font-semibold leading-5 text-slate-100">
+              {visualPressureLabel}
+            </p>
+          </div>
+        </section>
+
+        {translation && (
+          <section className="rounded-2xl border border-sky-300/20 bg-sky-950/65 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-sky-200">
+                {translationLanguage === "pt" ? "Tradução" : "Versão em inglês"}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void speak(translation, 1, translationLanguage)}
+                  aria-label="Ouvir tradução"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                >
+                  <Volume2 size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranslation(null)}
+                  aria-label="Fechar tradução"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-sky-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-sm font-medium leading-6 text-sky-50">
+              {translation}
+            </p>
+          </section>
+        )}
+
+        {(correction || turnGuidance.strengths.length > 0 ||
+          turnGuidance.priorities.length > 0 || turnGuidance.nextAction ||
+          turnGuidance.needsExternalVerification || showSessionScore) && (
+          <section className="rounded-3xl border border-white/10 bg-slate-950/80 p-4 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-200">
+                  Feedback da rodada
+                </p>
+                {correction?.priority && (
+                  <span
+                    className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider ${
+                      correction.priority === "high"
+                        ? "bg-red-400/15 text-red-200"
+                        : correction.priority === "medium"
+                        ? "bg-amber-400/15 text-amber-200"
+                        : "bg-sky-400/15 text-sky-200"
+                    }`}
+                  >
+                    Prioridade {correction.priority === "high"
+                      ? "alta"
+                      : correction.priority === "medium"
+                      ? "média"
+                      : "baixa"}
+                  </span>
+                )}
+              </div>
+              {!turnGuidance.retryRequired && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCorrection(null);
+                    setTurnGuidance((current) => ({
+                      ...EMPTY_TURN_GUIDANCE,
+                      currentStage: current.currentStage,
+                      scenarioStatus: current.scenarioStatus,
+                      learnerIntent: current.learnerIntent,
+                      counterpart: current.counterpart,
+                      pendingQuestion: current.pendingQuestion,
+                      pendingDecision: current.pendingDecision,
+                    }));
+                  }}
+                  aria-label="Fechar feedback"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+
+            {showSessionScore && (
+              <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-400/10 p-3">
+                <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">
+                  Resultado desta sessão
+                </p>
+                <p className="mt-1 text-2xl font-black text-white">
+                  {normalizedSessionScore}<span className="text-xs text-slate-300">/100</span>
+                </p>
+              </div>
+            )}
+
+            {correction && (
+              <div className="mt-3 space-y-2">
+                {correction.original && (
+                  <div className="rounded-xl border border-red-300/15 bg-red-950/35 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-red-200">
+                      Como você disse
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300 line-through decoration-red-300/60">
+                      {correction.original}
+                    </p>
+                  </div>
+                )}
+                {correction.corrected && (
+                  <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-emerald-200">
+                      Forma recomendada
+                    </p>
+                    <p className="mt-1 text-sm font-black leading-6 text-emerald-50" lang="en">
+                      {correction.corrected}
+                    </p>
+                  </div>
+                )}
+                {correction.naturalVersion &&
+                  correction.naturalVersion !== correction.corrected && (
+                  <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/10 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-cyan-200">
+                      Versão mais natural
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-cyan-50" lang="en">
+                      {correction.naturalVersion}
+                    </p>
+                  </div>
+                )}
+                {correction.explanation_pt && (
+                  <p className="text-xs leading-5 text-slate-300" lang="pt-BR">
+                    {correction.explanation_pt}
+                  </p>
+                )}
+                {correction.usefulChunk && (
+                  <div className="rounded-xl bg-indigo-400/10 p-3 text-xs leading-5 text-indigo-100">
+                    <strong className="mr-2 uppercase tracking-wider text-indigo-200">
+                      Chunk útil
+                    </strong>
+                    <span lang="en">{correction.usefulChunk}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(turnGuidance.strengths.length > 0 ||
+              turnGuidance.priorities.length > 0) && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                {turnGuidance.strengths.length > 0 && (
+                  <div className="rounded-xl bg-emerald-400/10 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-emerald-200">
+                      O que funcionou
+                    </p>
+                    <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-100">
+                      {turnGuidance.strengths.map((item, index) => (
+                        <li key={`${item}-${index}`}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {turnGuidance.priorities.length > 0 && (
+                  <div className="rounded-xl bg-amber-400/10 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-amber-200">
+                      Prioridades
+                    </p>
+                    <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-100">
+                      {turnGuidance.priorities.map((item, index) => (
+                        <li key={`${item}-${index}`}>• {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(turnGuidance.nextAction || turnGuidance.retryRequired) && (
+              <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-50">
+                <strong className="block uppercase tracking-wider text-amber-200">
+                  {turnGuidance.retryRequired ? "Nova tentativa" : "Próxima ação"}
+                </strong>
+                {turnGuidance.nextAction ||
+                  "Repita sua resposta usando a correção antes de avançar."}
+                {turnGuidance.retryRequired && (
+                  <button
+                    type="button"
+                    onClick={() => void disputePendingCorrection()}
+                    disabled={isDisputingCorrection}
+                    className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/25 bg-white/5 px-3 font-black transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200 disabled:opacity-50"
+                  >
+                    {isDisputingCorrection
+                      ? <Loader2 size={14} className="animate-spin motion-reduce:animate-none" />
+                      : <X size={14} />}
+                    Wolfie entendeu errado
+                  </button>
+                )}
+              </div>
+            )}
+
+            {turnGuidance.needsExternalVerification && (
+              <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-950/45 p-3 text-xs leading-5 text-amber-50">
+                <strong className="block text-amber-200">
+                  Confirme esta informação em uma fonte oficial
+                </strong>
+                {turnGuidance.verificationReason ||
+                  "Este ponto pode ter mudado e precisa de verificação antes de ser usado como fato."}
+              </div>
+            )}
+          </section>
+        )}
+
+        {vocabulary?.keyTerms?.length ? (
+          <section className="rounded-2xl border border-indigo-300/20 bg-indigo-950/65 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-wider text-indigo-200">
+                Vocabulário útil
+              </p>
+              <button
+                type="button"
+                onClick={() => setVocabulary(null)}
+                aria-label="Fechar vocabulário"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-indigo-100 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mt-2 space-y-2">
+              {vocabulary.keyTerms.map((term, index) => (
+                <div key={`${term.term}-${index}`} className="rounded-xl bg-white/5 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-black text-indigo-100" lang="en">{term.term}</p>
+                    {term.level && (
+                      <span className="shrink-0 rounded-full bg-indigo-400/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-indigo-200">
+                        {term.level}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-300">{term.definition}</p>
+                  <p className="mt-1 text-xs italic leading-5 text-indigo-100/80" lang="en">
+                    {term.example}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {vocabulary.grammarNote && (
+              <p className="mt-3 border-t border-white/10 pt-3 text-xs font-medium leading-5 text-indigo-200">
+                {vocabulary.grammarNote}
+              </p>
+            )}
+          </section>
+        ) : null}
+
+        {quiz && <InlineQuiz quiz={quiz} />}
+
+        <section className="rounded-2xl border border-white/10 bg-slate-950/72 p-3 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setShowTranscript((current) => !current)}
+            aria-expanded={showTranscript}
+            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-2 text-left text-xs font-black uppercase tracking-wider text-slate-200 transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            Histórico ({messages.length})
+            {showTranscript
+              ? <ChevronUp size={16} aria-hidden="true" />
+              : <ChevronDown size={16} aria-hidden="true" />}
+          </button>
+          {showTranscript && (
+            <div className="mt-2 max-h-64 space-y-2 overflow-y-auto border-t border-white/10 pt-3">
+              {messages.length === 0
+                ? <p className="text-xs text-slate-400">Nenhuma mensagem ainda.</p>
+                : messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`rounded-xl p-3 text-xs leading-5 ${
+                      message.role === "user"
+                        ? "ml-5 bg-indigo-400/15 text-indigo-50"
+                        : "mr-5 bg-white/5 text-slate-100"
+                    }`}
+                  >
+                    <p>{message.content}</p>
+                    {message.correction && (
+                      <div className="mt-2 border-t border-white/10 pt-2">
+                        {message.correction.original && (
+                          <span className="text-red-300 line-through">
+                            {message.correction.original}
+                          </span>
+                        )}
+                        {message.correction.corrected && (
+                          <span className="ml-2 font-semibold text-emerald-300">
+                            {message.correction.corrected}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {message.translation && (
+                      <p className="mt-1 italic text-sky-200/80">
+                        {message.translation}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </section>
+      </div>
+    );
+
+    const visualActions = (
+      <div className="mx-auto w-full max-w-4xl space-y-2 px-3 pb-3 sm:px-5 lg:px-7">
+        {showTextInput && (
+          <div className="flex min-h-14 items-center gap-2 rounded-2xl border border-white/12 bg-slate-950/82 p-2 pl-4 shadow-2xl backdrop-blur-2xl focus-within:ring-2 focus-within:ring-cyan-300/60">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(event) => setInputText(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && sendMessage(inputText)}
+              placeholder={isRealtimeMode && !realtime.connected
+                ? "Inicie a conversa ao vivo no Wolfie…"
+                : "Digite em inglês ou português…"}
+              disabled={state === "THINKING" ||
+                (isRealtimeMode && isRealtimePostTurnPending) ||
+                (isRealtimeMode && !realtime.connected)}
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-none placeholder:text-slate-400 disabled:opacity-50"
+              aria-label="Mensagem para o Wolfie"
+            />
+            <button
+              type="button"
+              onClick={() => sendMessage(inputText)}
+              disabled={!inputText.trim() || state === "THINKING" ||
+                (isRealtimeMode && isRealtimePostTurnPending) ||
+                (isRealtimeMode && !realtime.connected)}
+              aria-label="Enviar mensagem"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white transition hover:bg-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              {state === "THINKING"
+                ? <Loader2 size={17} className="animate-spin motion-reduce:animate-none" />
+                : <Send size={17} aria-hidden="true" />}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+
+    const latestAssistantText = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant")
+      ?.content.trim() || "";
+    const visualCoachResponse = latestAssistantText ||
+      displaySubtitle.trim() || turnGuidance.nextAction.trim();
+    const shouldShowVisualModal = Boolean(
+      pendingTranscriptReview || meetingVisualState?.showCoachSheet,
+    );
+    const visualModal = shouldShowVisualModal
+      ? (
+        <>
+          {pendingTranscriptReview && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+              <WolfieTranscriptReview
+                transcript={pendingTranscriptReview.transcript}
+                alternatives={pendingTranscriptReview.alternatives}
+                confidence={pendingTranscriptReview.confidence}
+                busy={pendingTranscriptReview.source === "realtime" &&
+                  isConfirmingRealtimeTranscript}
+                onConfirm={(transcript) => {
+                  if (pendingTranscriptReview.source === "realtime") {
+                    void confirmRealtimeTranscript(
+                      pendingTranscriptReview,
+                      transcript,
+                    );
+                    return;
+                  }
+                  unlockAudio();
+                  startIOSKeepAlive();
+                  submitVoiceTranscript(
+                    { ...pendingTranscriptReview, transcript },
+                    true,
+                  );
+                }}
+                onRetry={() => {
+                  if (pendingTranscriptReview.source === "realtime") {
+                    markRealtimeConfirmationPending(true);
+                    setError(
+                      "Este turno já foi respondido. Edite a frase ou confirme-a para manter o histórico consistente.",
+                    );
+                    return;
+                  }
+                  setPendingTranscriptReview(null);
+                  setSubtitle("");
+                  setState("IDLE");
+                }}
+              />
+            </div>
+          )}
+          {meetingVisualState && !pendingTranscriptReview && (
+            <WolfieCoachSheet
+              state={meetingVisualState}
+              open={meetingVisualState.showCoachSheet}
+              onResume={resumeMeetingFromCoach}
+            >
+              <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">
+                  Resposta do Wolfie
+                </p>
+                <p
+                  className="whitespace-pre-wrap text-sm font-medium leading-6 text-slate-100"
+                  lang={assistantLanguage}
+                  dir="auto"
+                >
+                  {visualCoachResponse ||
+                    "O apoio específico aparecerá aqui assim que o Wolfie concluir a resposta."}
+                </p>
+                {correction?.corrected && (
+                  <div className="rounded-xl border border-emerald-300/20 bg-emerald-400/10 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-wider text-emerald-200">
+                      Forma recomendada
+                    </p>
+                    <p className="mt-1 text-sm font-black leading-6 text-emerald-50" lang="en">
+                      {correction.corrected}
+                    </p>
+                  </div>
+                )}
+                {translation && (
+                  <p className="rounded-xl bg-sky-400/10 p-3 text-xs leading-5 text-sky-100">
+                    {translation}
+                  </p>
+                )}
+              </div>
+            </WolfieCoachSheet>
+          )}
+        </>
+      )
+      : null;
+
+    return (
+      <div className="fixed inset-0 z-[200] overflow-hidden bg-slate-950 font-sans">
+        <WolfieScenarioStage
+          profile={visualSceneProfile}
+          priority
+          hud={
+            <WolfieSessionHUD
+              profile={visualSceneProfile}
+              state={visualCharacterState}
+              statusLabel={getStatusLabel()}
+              elapsedSeconds={elapsed}
+              level={studentLevel}
+              topic={topic}
+              stageLabel={meetingVisualState?.stageMeta.label ||
+                turnGuidance.currentStage || undefined}
+              modeLabel={isRealtimeMode ? "Ao vivo" : showTextInput ? "Texto" : "Voz clássica"}
+              connectionLabel={isRealtimeMode
+                ? realtime.connected
+                  ? realtime.muted ? "Pausado" : "Conectado"
+                  : "Pronto para conectar"
+                : undefined}
+              controls={visualControls}
+              onClose={onClose ? handleClose : undefined}
+            />
+          }
+          character={
+            <WolfieCharacter
+              profile={visualSceneProfile}
+              state={visualCharacterState}
+              inputLevel={avatarInputLevel}
+              outputLevel={avatarOutputLevel}
+              fallbackImageSrc={null}
+              className="px-3 pt-3 sm:px-8 lg:px-12"
+            />
+          }
+          sceneContent={visualInteraction}
+          context={visualContext}
+          caption={
+            <WolfieCaptionBar
+              text={displaySubtitle}
+              speaker={state === "LISTENING" ? "Você" : "Wolfie Tutor"}
+              language={assistantLanguage}
+              state={visualCharacterState}
+              isFinal={state !== "LISTENING"}
+              announceFinal
+            />
+          }
+          actions={visualActions}
+          modal={visualModal}
+          stageLabel="Área interativa do Wolfie"
+          contextLabel={isGlobalMeetingScene
+            ? "Checkpoint e apoio da reunião"
+            : "Contexto e apoio da prática"}
+        />
       </div>
     );
   }
@@ -4357,6 +5282,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                       setTurnGuidance((current) => ({
                         ...EMPTY_TURN_GUIDANCE,
                         currentStage: current.currentStage,
+                        scenarioStatus: current.scenarioStatus,
+                        learnerIntent: current.learnerIntent,
+                        counterpart: current.counterpart,
+                        pendingQuestion: current.pendingQuestion,
+                        pendingDecision: current.pendingDecision,
                       }));
                     }}
                     aria-label="Fechar feedback"
