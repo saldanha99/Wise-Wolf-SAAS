@@ -311,6 +311,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802070000_cobertura_transfere_aula.sql"
   "supabase/migrations/20260802080000_teste_oral_paga_e_ajustes_fechamento.sql"
   "supabase/migrations/20260802090000_divergencia_agenda_lancamento.sql"
+  "supabase/migrations/20260802100000_cobertura_funcional.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
