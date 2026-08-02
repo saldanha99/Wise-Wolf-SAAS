@@ -1,11 +1,11 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1, V2 e V3 publicados em produção; próximo lote em preparação
-> Data da análise: 1º de agosto de 2026
+> Status: lotes V1, V2 e V3 publicados; lote V4 integrado e aprovado localmente, com rollout pendente
+> Data da análise: 2 de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
 
-## Status da execução — 1º de agosto de 2026
+## Status da execução — 2 de agosto de 2026
 
 Esta seção registra o estado verificável da primeira entrega. Ela prevalece sobre
 verbos no futuro usados nas fases do plano abaixo, que permanecem como roteiro de
@@ -47,17 +47,33 @@ evolução.
   carregamento — ou se um bitmap falhar — o gradiente do perfil mantém a prática
   legível e funcional.
 
+### Integrado e aprovado localmente, ainda sem rollout
+
+- O lote V4 possui fontes aprovadas e recortes WebP fingerprintados integrados
+  ao manifesto para cinco
+  provas internacionais: `exam-cambridge`, `exam-toefl`, `exam-ielts`,
+  `exam-toeic` e `exam-duolingo`.
+- O mesmo lote prepara cinco laboratórios: `listening-lab`,
+  `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab`.
+- A cobertura atual deste branch após a aprovação local do V4 é de **38 cenários
+  com bitmap próprio e 18 perfis no fallback determinístico**.
+- Testes focais e completos, typecheck, build, inventário de `public` e `dist` e
+  QA responsivo em sessão headless única passaram. A release, os smoke tests e
+  a verificação externa de produção permanecem pendentes; portanto, estes dez
+  cenários ainda não são descritos como publicados.
+
 ### Coberto por perfil, ainda sem bitmap exclusivo
 
-As outras **28 experiências** já possuem identidade pré-definida no catálogo —
-layout, ambiente, elenco, câmera, lado do personagem, paleta, HUD e descrição
-acessível —, mas ainda usam o fallback visual gerado em código. Portanto,
-“cobertura das 56 experiências” significa cobertura de resolução e design; não
-significa que 56 fundos finais já foram produzidos.
+Com o lote V4 integrado neste branch, as outras **18 experiências** têm
+identidade pré-definida no catálogo — layout, ambiente, elenco, câmera, lado do
+personagem, paleta, HUD e descrição acessível —, mas continuarão usando o
+fallback visual gerado em código. Portanto, “cobertura das 56 experiências”
+significa cobertura de resolução e design; não significa que 56 fundos finais
+já foram produzidos.
 
 Também permanecem para lotes futuros:
 
-- imagens exclusivas das 28 experiências restantes;
+- imagens exclusivas das 18 experiências restantes após a aprovação do V4;
 - poses adicionais e elenco de interlocutores 3D;
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
@@ -70,9 +86,10 @@ Também permanecem para lotes futuros:
 O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, o lote V2
 na release `20260802T022645Z-745c73755821` e o lote V3 na release
 `20260802T033326Z-5a9a6fe506fc`, todos com a feature flag ativada, backup
-reversível e evidências registradas na seção 15. Os inventários e a proveniência estão em
-`docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md` e
-`docs/wolfie-visual-assets-v3.md`.
+reversível e evidências registradas na seção 15. O lote V4 ainda não possui
+release. Os inventários e a proveniência estão em
+`docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md`,
+`docs/wolfie-visual-assets-v3.md` e `docs/wolfie-visual-assets-v4.md`.
 
 ## 1. Resultado esperado
 
@@ -987,6 +1004,31 @@ Evidências aprovadas no terceiro rollout:
   com dimensões esperadas numa única página headless, sem erro de página ou de
   console;
 - sessão headless encerrada, sem sessão automatizada residual.
+
+### Quarto lote — provas internacionais e laboratórios
+
+O quarto lote está integrado e aprovado localmente, mas ainda não foi implantado
+em produção.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | Pendente |
+| Release | Pendente |
+| Backup reversível | Pendente |
+| Escopo visual preparado | `exam-cambridge`, `exam-toefl`, `exam-ielts`, `exam-toeic`, `exam-duolingo`, `listening-lab`, `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab` |
+| Cobertura local aprovada | 38 cenários com bitmap próprio; 18 perfis no fallback determinístico |
+| Gate local | 60/60 testes, typecheck, build, 102/102 assets em `public`, 102/102 em `dist` e QA responsivo aprovados |
+
+O QA responsivo percorreu os dez cenários em desktop `1440 × 900` e mobile
+`390 × 844`, sempre na mesma página e na mesma sessão headless. Todos carregaram
+o WebP correto (`1600 × 900` ou `900 × 1200`), o personagem `1024 × 1536`, sem
+overflow horizontal, erro de página ou erro de console. A sessão foi encerrada
+e a lista final confirmou nenhum navegador automatizado residual. O inventário,
+as fontes aprovadas, as rejeições e os checksums locais estão em
+`docs/wolfie-visual-assets-v4.md`.
+
+Antes do rollout faltam somente versionar o lote, executar a release completa,
+os smoke tests e a verificação externa de produção com MIME, bytes e SHA-256.
 
 O rollback atual deve usar o backup do lote V3 registrado acima. Cada lote
 seguinte deve repetir os mesmos gates de teste, checksums, acessibilidade,

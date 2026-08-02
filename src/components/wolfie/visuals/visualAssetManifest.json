@@ -588,6 +588,216 @@
         "maxBytes": 180000,
         "sha256": "ebbb0f52717c0b72b3396b42cb182f98fec5fdaeebf4d05fb8f465fe6d7e65b6"
       }
+    },
+    {
+      "experienceId": "exam-cambridge",
+      "universeId": "international-exams",
+      "sourceId": "exec-0aecc5f4-97da-4b4d-aa6c-4be87494ffc9.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-cambridge/desktop.373af4b139ed.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 81762,
+        "maxBytes": 320000,
+        "sha256": "373af4b139edac3758071879c794451afdcaf84caa0d8ce04959dc4b96392b50"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-cambridge/mobile.688a19261164.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 38242,
+        "maxBytes": 180000,
+        "sha256": "688a1926116452746306720c0aa67f790b4e93787a9e15c9622dfad054d08e43"
+      }
+    },
+    {
+      "experienceId": "exam-toefl",
+      "universeId": "international-exams",
+      "sourceId": "exec-059dc707-ca39-4d38-90f8-1a096c6f16c1.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-toefl/desktop.83ff1f067209.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 75962,
+        "maxBytes": 320000,
+        "sha256": "83ff1f067209efc1382ec3ac736c56ab153669e045fe8c9f1ccf72fbc0593c77"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-toefl/mobile.20ceb502ea7e.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 42626,
+        "maxBytes": 180000,
+        "sha256": "20ceb502ea7e76dd75a9a31da13e44a0cd876a7e7c0d7666b699c81becf8fcc0"
+      }
+    },
+    {
+      "experienceId": "exam-ielts",
+      "universeId": "international-exams",
+      "sourceId": "exec-82c78033-d776-4052-b9be-25e5dee016dd.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-ielts/desktop.4f221c48a062.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 75990,
+        "maxBytes": 320000,
+        "sha256": "4f221c48a062207d45c5a6c040f0f26f119f94561443f65ccbdd627abd0bbc77"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-ielts/mobile.3a5749e66232.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39316,
+        "maxBytes": 180000,
+        "sha256": "3a5749e66232e28d433f609f695cc65c09e609ee76a29a76b2e91c0968058f76"
+      }
+    },
+    {
+      "experienceId": "exam-toeic",
+      "universeId": "international-exams",
+      "sourceId": "exec-ae99ae0a-7d80-4022-9d6c-ab64a02bea6f.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-toeic/desktop.d55736018355.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 55432,
+        "maxBytes": 320000,
+        "sha256": "d557360183555d4f1fda72c3c1084f715d7abaa9b2cc1f489ff82f196772ca17"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-toeic/mobile.efac6eb29b58.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 30244,
+        "maxBytes": 180000,
+        "sha256": "efac6eb29b586e38e46bced720c5710519ff5309e867a2b3f08389852ef6754d"
+      }
+    },
+    {
+      "experienceId": "exam-duolingo",
+      "universeId": "international-exams",
+      "sourceId": "exec-15edcf76-824d-40a8-9b8b-a6ecff637ac9.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-duolingo/desktop.3dae9089c6e8.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 42238,
+        "maxBytes": 320000,
+        "sha256": "3dae9089c6e8f9cd17c4ca517b7fb00d0a29900cf5038e7bd3ba2f07b6637c2f"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/international-exams/exam-duolingo/mobile.1d27c40da778.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 19214,
+        "maxBytes": 180000,
+        "sha256": "1d27c40da778b3224eab514df1cb6840d96c4400250340323c68c1ee2e9d180e"
+      }
+    },
+    {
+      "experienceId": "listening-lab",
+      "universeId": "skill-labs",
+      "sourceId": "exec-fd775873-4967-4bb9-96f6-7d20258db133.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/skill-labs/listening-lab/desktop.47c78d7f2bf1.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 88694,
+        "maxBytes": 320000,
+        "sha256": "47c78d7f2bf13c2cc7da8fbeec84340a1e924fb7085676f265f1e9c567bc477b"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/skill-labs/listening-lab/mobile.3aa5fe898afa.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 54392,
+        "maxBytes": 180000,
+        "sha256": "3aa5fe898afa6ba264023bc97de293c277b0ba6ec42abcf1c216d322f70fa584"
+      }
+    },
+    {
+      "experienceId": "pronunciation-lab",
+      "universeId": "skill-labs",
+      "sourceId": "exec-c2255670-0041-4edb-bd90-83212b844cb6.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/skill-labs/pronunciation-lab/desktop.e8e29b402c75.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 53438,
+        "maxBytes": 320000,
+        "sha256": "e8e29b402c7571803ac23d8d172b8518106cd0f213bbc73b5600e3800a2f7343"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/skill-labs/pronunciation-lab/mobile.1777972f5b87.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 31546,
+        "maxBytes": 180000,
+        "sha256": "1777972f5b87628d0be86f507d642b7a6fbf9c3c03dd868573d6231280a7527f"
+      }
+    },
+    {
+      "experienceId": "writing-lab",
+      "universeId": "skill-labs",
+      "sourceId": "exec-ebede0ec-095d-4c6c-9347-052a2e5644c7.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/skill-labs/writing-lab/desktop.af0947bf245b.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 51874,
+        "maxBytes": 320000,
+        "sha256": "af0947bf245b4775eb08dcaa7abc165d7ac0952cc9ef5513199c4b003e237684"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/skill-labs/writing-lab/mobile.af7d7b7788c0.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 23948,
+        "maxBytes": 180000,
+        "sha256": "af7d7b7788c03f66897b9fa347f6deddfa9dab18cbbe7af16b48d51434106bd3"
+      }
+    },
+    {
+      "experienceId": "vocabulary-lab",
+      "universeId": "skill-labs",
+      "sourceId": "exec-9dae4fdd-e38d-42f7-9cce-0c56903b052d.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/skill-labs/vocabulary-lab/desktop.257f75f59101.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 55590,
+        "maxBytes": 320000,
+        "sha256": "257f75f59101d40709a131420d57859abaf4897c0de74f64de08be54a5e06ecb"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/skill-labs/vocabulary-lab/mobile.b8be1192783b.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 35748,
+        "maxBytes": 180000,
+        "sha256": "b8be1192783bd92a839c2831117f24ad6ef180f8abd64538b0cea474713626dd"
+      }
+    },
+    {
+      "experienceId": "presentation-lab",
+      "universeId": "skill-labs",
+      "sourceId": "exec-f1daa406-f3f5-4651-b17b-3f0b3e21d160.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/skill-labs/presentation-lab/desktop.45863e9a8305.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 41846,
+        "maxBytes": 320000,
+        "sha256": "45863e9a830520eaa28c179f1ecb3cb43f44f44fe3e574ef5fa5aafe050c1acb"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/skill-labs/presentation-lab/mobile.fc85426ad26c.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 26480,
+        "maxBytes": 180000,
+        "sha256": "fc85426ad26c1f03eed003ac9760e2c1117488c50402681a35457f5b89e701ff"
+      }
     }
   ],
   "characters": [
