@@ -325,6 +325,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802190000_vinculo_pagamento_aluno.sql"
   "supabase/migrations/20260802200000_pagamento_fora_da_receita.sql"
   "supabase/migrations/20260802210000_mei_radar_reentrante.sql"
+  "supabase/migrations/20260802220000_gestao_snapshot.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

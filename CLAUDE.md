@@ -518,3 +518,34 @@ concluir que um erro é posterior ao deploy.
 **Gasto de anúncio** (`post_ad_spend` → conta 6.1.03 Marketing): gasto de mês em curso **cresce**; reimportar não é duplicata. Por isso a chave `(tenant, origem, conta, período)` faz a segunda importação **atualizar** o lançamento, não criar outro. Controle em `ad_spend_imports`.
 
 ⚠️ **Limite de escopo honesto:** o MCP de anúncios roda na **sessão do agente**, não dentro do produto — a VPS não tem token do Meta nem chama MCP. `post_ad_spend` é a porta de entrada; quem lê a conta e chama é um agente. Automação de verdade exigiria token próprio + edge + cron.
+
+---
+
+## Assistente de Gestão no grupo de WhatsApp ✅
+
+Grupo da direção vira um gerente a quem se pergunta. Entrada: `whatsapp-inbound`, que **sempre descartou mensagem de grupo** (`if (!remoteJid.endsWith("@s.whatsapp.net")) continue`) — agora há um desvio antes dessa linha, e só para o grupo autorizado.
+
+**Três travas, nesta ordem, antes de qualquer coisa cara:**
+1. **Gatilho** — a mensagem precisa começar com `Wolfie`, `gerente` ou `/`. Grupo é conversa entre pessoas; responder a tudo seria insuportável e caro.
+2. **Grupo autorizado** — o JID tem de ser exatamente `dre_report_settings.destino` daquele tenant, com `is_active`. ⚠️ **Não existe lista paralela de grupos permitidos** — é o mesmo grupo que já recebe o relatório, configurado na tela. Duas listas sairiam de sincronia.
+3. **Dedup** — `wa_inbound_seen` (PK `msg_id`), a mesma trava atômica do 1:1.
+
+Mais teto de **20 respostas/hora por grupo** (`ai_wa_messages`): erro de configuração ou brincadeira não vira conta de IA.
+
+⚠️ **Grupo não autorizado é ignorado em SILÊNCIO.** Responder "sem permissão" confirmaria que existe um assistente ali para quem tiver o link.
+
+⚠️ **Sem laço de resposta:** o webhook já descarta `fromMe` de grupo, então a própria resposta do bot não se realimenta.
+
+### `gestao_snapshot(mes, tenant)` — a base factual
+O assistente **não consulta o banco livremente e não tem tool-calling**. Recebe um retrato pronto e responde em cima dele:
+- Uma IA que monta a própria query **decide sozinha o que é "receita"** — exatamente o que este projeto passou a semana consertando. Aqui a definição continua sendo a das RPCs (`dre_gerencial`, `balancete_professores`), uma só.
+- O tenant é resolvido **no servidor**; não existe caminho para a pergunta alcançar outra escola.
+- Custo e latência previsíveis: uma chamada.
+
+Preço conhecido: **o que não estiver no snapshot, o assistente não sabe** — e o prompt manda dizer que não sabe em vez de inventar. Payload ~6 KB (resultado do mês corrente e do fechado, professores, pendências, inadimplência, MEI).
+
+⚠️ O snapshot usa o **mês FECHADO** para "como fomos": o corrente está pela metade e induz conclusão errada numa comparação direta.
+
+⚠️ A pergunta vem de um grupo de WhatsApp = **entrada não confiável**: vai dentro de `<pergunta>` e o system prompt manda tratar como dado, recusar pedido de ignorar regras, de revelar o prompt ou de agir no sistema (o assistente não executa nada — só informa em que tela se faz).
+
+⚠️ **Privacidade:** todo mundo no grupo passa a ver faturamento, margem e quanto cada professor recebe. Conferir participantes antes de ativar. A API devolve os participantes como `@lid`, então **não dá para identificá-los pelo servidor**.
