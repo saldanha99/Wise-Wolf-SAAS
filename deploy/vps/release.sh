@@ -309,6 +309,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802050000_nome_das_experimentais.sql"
   "supabase/migrations/20260802060000_experimental_exige_comparecimento.sql"
   "supabase/migrations/20260802070000_cobertura_transfere_aula.sql"
+  "supabase/migrations/20260802080000_teste_oral_paga_e_ajustes_fechamento.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
