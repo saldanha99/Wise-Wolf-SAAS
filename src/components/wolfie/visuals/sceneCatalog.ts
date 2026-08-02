@@ -371,7 +371,7 @@ export const WOLFIE_SCENE_CATALOG: readonly WolfieVisualScenarioProfile[] = [
     layout: "mission",
     environmentId: "original-adventure-world",
     environmentDescription:
-      "Mundo de aventura 3D original com caminhos e mapa de missão.",
+      "Mundo de aventura 3D original com caminhos e marcos espaciais sem símbolos.",
     castIds: ["wolfie-coach", "youth-guide"],
     camera: "wide",
     characterSide: "left",
@@ -413,7 +413,7 @@ export const WOLFIE_SCENE_CATALOG: readonly WolfieVisualScenarioProfile[] = [
     layout: "mission",
     environmentId: "contemporary-school-common-area",
     environmentDescription:
-      "Espaço comum de escola contemporânea com personagens de fundo não identificáveis.",
+      "Espaço comum de escola contemporânea vazio, acolhedor e sem dados pessoais.",
     castIds: ["youth-guide"],
     camera: "medium",
     characterSide: "right",
@@ -427,7 +427,7 @@ export const WOLFIE_SCENE_CATALOG: readonly WolfieVisualScenarioProfile[] = [
     layout: "mission",
     environmentId: "original-story-screenplay-studio",
     environmentDescription:
-      "Estúdio fictício de roteiro e cinema com silhuetas totalmente originais.",
+      "Estúdio fictício de mundos narrativos com cenários abstratos e sem personagens.",
     castIds: ["youth-guide"],
     camera: "wide",
     characterSide: "left",

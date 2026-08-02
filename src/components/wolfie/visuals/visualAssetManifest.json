@@ -798,6 +798,258 @@
         "maxBytes": 180000,
         "sha256": "fc85426ad26c1f03eed003ac9760e2c1117488c50402681a35457f5b89e701ff"
       }
+    },
+    {
+      "experienceId": "introduce-yourself",
+      "universeId": "about-you",
+      "sourceId": "exec-b630037e-09d8-4f4c-8c15-64272c95d80e.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/introduce-yourself/desktop.89527013f270.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 108782,
+        "maxBytes": 320000,
+        "sha256": "89527013f2709fe1b07825e2fc4c8e65fc52774374fc2ffa05c5d0036d30053a"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/introduce-yourself/mobile.3e4748c14cdb.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 48472,
+        "maxBytes": 180000,
+        "sha256": "3e4748c14cdbc692fd9a387a26951a91b25c511e4254356929101bbbc448158e"
+      }
+    },
+    {
+      "experienceId": "my-routine",
+      "universeId": "about-you",
+      "sourceId": "exec-a9042711-0cf5-4aca-b513-84574f75fe29.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/my-routine/desktop.1c46144dc4f1.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 81680,
+        "maxBytes": 320000,
+        "sha256": "1c46144dc4f17851d97f740dd9e3526b29114c2ca1ba098f8ee499ca523c2cde"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/my-routine/mobile.773c8e24aecc.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 46330,
+        "maxBytes": 180000,
+        "sha256": "773c8e24aecc304c09eab54fc047ad6ea686fdaee32705adc0930a5ee739ae84"
+      }
+    },
+    {
+      "experienceId": "my-home",
+      "universeId": "about-you",
+      "sourceId": "exec-c596e309-bbd3-461a-8883-6821021b853d.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/my-home/desktop.48c7047f52b3.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 113014,
+        "maxBytes": 320000,
+        "sha256": "48c7047f52b31a12afa6f54af3c77ac2eb4b010e474b3292fd9fffd9662ecb9c"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/my-home/mobile.5ed66ac111ec.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 59540,
+        "maxBytes": 180000,
+        "sha256": "5ed66ac111ecf5157691a7ca3e1463b9c1d5decb17cac4ca7ce50849264bc437"
+      }
+    },
+    {
+      "experienceId": "my-family",
+      "universeId": "about-you",
+      "sourceId": "exec-35f46f71-104b-4b85-b2ef-fb1039f1c891.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/my-family/desktop.dd5b26bed58f.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 71900,
+        "maxBytes": 320000,
+        "sha256": "dd5b26bed58f78a526cc16d47061d5dc2238cf86060e3e26106c6ed293070191"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/my-family/mobile.0e8a79010263.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39814,
+        "maxBytes": 180000,
+        "sha256": "0e8a7901026362b0cc83f72714f05d1bee0be2f7a80612c75df442c9cd6bd8cd"
+      }
+    },
+    {
+      "experienceId": "my-childhood",
+      "universeId": "about-you",
+      "sourceId": "exec-660e7501-e068-4783-b77f-0fcc609b89d3.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/my-childhood/desktop.191f385095cf.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 86532,
+        "maxBytes": 320000,
+        "sha256": "191f385095cff41e1c3ca4ff0f97b11451e0ba9c47bbbf113ccfbb06e04f953f"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/my-childhood/mobile.46b73cfddf12.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 43196,
+        "maxBytes": 180000,
+        "sha256": "46b73cfddf12cba982b9a5c671cf32bbcb27f41a2704899fee71bddea96bf180"
+      }
+    },
+    {
+      "experienceId": "my-plans",
+      "universeId": "about-you",
+      "sourceId": "exec-753230dd-9f94-4831-92cc-2c9671ad1964.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/about-you/my-plans/desktop.af6437ba28a8.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 53212,
+        "maxBytes": 320000,
+        "sha256": "af6437ba28a8d7e6673b7be218f057a7e642a563550edba106875929d20cf636"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/about-you/my-plans/mobile.4b09fdfd498b.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 29644,
+        "maxBytes": 180000,
+        "sha256": "4b09fdfd498b1b2eba4568a56b600be70e4b12d30da667fde198f7b4c7b33507"
+      }
+    },
+    {
+      "experienceId": "game-worlds",
+      "universeId": "kids-teens",
+      "sourceId": "exec-c6a89193-a8c5-419b-b770-8cf19bd3a5cd.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/game-worlds/desktop.783427e37823.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 164836,
+        "maxBytes": 320000,
+        "sha256": "783427e378238c54441ce7be8f075ed00153e2e5015d34f7da0721581c6f1e33"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/game-worlds/mobile.f81b215974e7.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 108658,
+        "maxBytes": 180000,
+        "sha256": "f81b215974e7a2bf58306554d40a311ed68d043fa78d681c60e4b6f563717343"
+      }
+    },
+    {
+      "experienceId": "roblox-inspired-missions",
+      "universeId": "kids-teens",
+      "sourceId": "exec-da0e55f0-401e-4a0b-a640-45f4fb43de4d.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/roblox-inspired-missions/desktop.1989f90b6622.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 78198,
+        "maxBytes": 320000,
+        "sha256": "1989f90b6622515c392e980c0814ec696ee685064ed11b845ba1bd16fb5ba12b"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/roblox-inspired-missions/mobile.ebb8cd7f6e4f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 64030,
+        "maxBytes": 180000,
+        "sha256": "ebb8cd7f6e4f1c1d5d1cb1fef90106fc7875919fcc91cd29d80d3e9eb39c49da"
+      }
+    },
+    {
+      "experienceId": "create-your-avatar",
+      "universeId": "kids-teens",
+      "sourceId": "exec-5658e406-88ba-4335-9ef5-ddda8dabd736.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/create-your-avatar/desktop.840619bcca65.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 67140,
+        "maxBytes": 320000,
+        "sha256": "840619bcca65f95d29a271051831d7b337b5d0d11390ac2314122bd13cc79946"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/create-your-avatar/mobile.e431613c5e81.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39974,
+        "maxBytes": 180000,
+        "sha256": "e431613c5e81455a9703df7536392d2f42693cdab7229789a1fd32f6ea38bcbc"
+      }
+    },
+    {
+      "experienceId": "school-life",
+      "universeId": "kids-teens",
+      "sourceId": "exec-1da14d80-2585-496d-934c-cda59f206d8d.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/school-life/desktop.18f05cf026d8.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 110834,
+        "maxBytes": 320000,
+        "sha256": "18f05cf026d8da94d13df2077ede2247eae01136ba5a29d6591fbb92a8cdc6b9"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/school-life/mobile.7bc21c3d9185.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 60662,
+        "maxBytes": 180000,
+        "sha256": "7bc21c3d918544a8925afd40d1e28deb016b645e95785b09aa791b8ff75d2990"
+      }
+    },
+    {
+      "experienceId": "series-characters",
+      "universeId": "kids-teens",
+      "sourceId": "exec-662fe898-12dc-44c8-af48-c1e216c22880.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/series-characters/desktop.09777e32b94f.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 93182,
+        "maxBytes": 320000,
+        "sha256": "09777e32b94f68e9ed84b9dfc50361b881eea825aa383bc49248b2c996d875c4"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/series-characters/mobile.9eb9fc94db9f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 88160,
+        "maxBytes": 180000,
+        "sha256": "9eb9fc94db9fb9a9c6b74e903ae830897371d90d035faf14cfe4ec68f0caf043"
+      }
+    },
+    {
+      "experienceId": "mystery-adventures",
+      "universeId": "kids-teens",
+      "sourceId": "exec-db83c6b6-1556-4e06-aadb-2d0ac43e3318.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/kids-teens/mystery-adventures/desktop.90585100d9c5.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 106506,
+        "maxBytes": 320000,
+        "sha256": "90585100d9c5e0fb0d1a63beffefea9aeb928ad0443d6f054f6bfb625db917a2"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/kids-teens/mystery-adventures/mobile.b7d9ab86d1a5.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 58102,
+        "maxBytes": 180000,
+        "sha256": "b7d9ab86d1a51070203705065c624a9ed708b4fc432ad38d42c87f209bb8749c"
+      }
     }
   ],
   "characters": [

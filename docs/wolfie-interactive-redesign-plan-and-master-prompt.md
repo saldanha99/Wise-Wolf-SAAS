@@ -47,7 +47,7 @@ evolução.
   carregamento — ou se um bitmap falhar — o gradiente do perfil mantém a prática
   legível e funcional.
 
-### Integrado e aprovado localmente, ainda sem rollout
+### Integrado e aprovado localmente, aguardando rollout consolidado
 
 - O lote V4 possui fontes aprovadas e recortes WebP fingerprintados integrados
   ao manifesto para cinco
@@ -55,25 +55,31 @@ evolução.
   `exam-toeic` e `exam-duolingo`.
 - O mesmo lote prepara cinco laboratórios: `listening-lab`,
   `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab`.
-- A cobertura atual deste branch após a aprovação local do V4 é de **38 cenários
-  com bitmap próprio e 18 perfis no fallback determinístico**.
-- Testes focais e completos, typecheck, build, inventário de `public` e `dist` e
-  QA responsivo em sessão headless única passaram. A release, os smoke tests e
-  a verificação externa de produção permanecem pendentes; portanto, estes dez
-  cenários ainda não são descritos como publicados.
+- O lote V5 acrescenta as seis experiências de apresentação pessoal e as seis
+  experiências para crianças e adolescentes documentadas em
+  `docs/wolfie-visual-assets-v5.md`.
+- A cobertura atual deste branch é de **50 cenários com bitmap próprio e seis
+  perfis no fallback determinístico**.
+- Testes focais e completos, typecheck, build, inventário de `public` e `dist`,
+  revisão independente e QA responsivo em sessão headless única passaram para
+  os lotes V4 e V5. A publicação definitiva será consolidada depois do lote V6;
+  portanto, esses cenários ainda não são descritos como ativos na release atual.
 
 ### Coberto por perfil, ainda sem bitmap exclusivo
 
-Com o lote V4 integrado neste branch, as outras **18 experiências** têm
+Com os lotes V4 e V5 integrados neste branch, as outras **seis experiências** têm
 identidade pré-definida no catálogo — layout, ambiente, elenco, câmera, lado do
 personagem, paleta, HUD e descrição acessível —, mas continuarão usando o
 fallback visual gerado em código. Portanto, “cobertura das 56 experiências”
 significa cobertura de resolução e design; não significa que 56 fundos finais
 já foram produzidos.
 
+As seis experiências finais são `first-job`, `multinationals`, `career-change`,
+`events-networking`, `panels` e `poster-presentation`.
+
 Também permanecem para lotes futuros:
 
-- imagens exclusivas das 18 experiências restantes após a aprovação do V4;
+- imagens exclusivas das seis experiências restantes após a aprovação do V5;
 - poses adicionais e elenco de interlocutores 3D;
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
@@ -86,10 +92,13 @@ Também permanecem para lotes futuros:
 O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, o lote V2
 na release `20260802T022645Z-745c73755821` e o lote V3 na release
 `20260802T033326Z-5a9a6fe506fc`, todos com a feature flag ativada, backup
-reversível e evidências registradas na seção 15. O lote V4 ainda não possui
-release. Os inventários e a proveniência estão em
+reversível e evidências registradas na seção 15. O lote V4 passou por duas
+releases completas, porém ambas foram substituídas pouco depois por deploys
+externos concorrentes; por isso, V4 e V5 aguardam o rollout final consolidado.
+Os inventários e a proveniência estão em
 `docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md`,
-`docs/wolfie-visual-assets-v3.md` e `docs/wolfie-visual-assets-v4.md`.
+`docs/wolfie-visual-assets-v3.md`, `docs/wolfie-visual-assets-v4.md` e
+`docs/wolfie-visual-assets-v5.md`.
 
 ## 1. Resultado esperado
 
@@ -1007,17 +1016,19 @@ Evidências aprovadas no terceiro rollout:
 
 ### Quarto lote — provas internacionais e laboratórios
 
-O quarto lote está integrado e aprovado localmente, mas ainda não foi implantado
-em produção.
+O quarto lote está versionado e aprovado. Duas releases completas passaram por
+todos os gates, porém foram substituídas em seguida por deploys externos
+concorrentes. Por isso, o lote não é tratado como ativo na release atual.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | Pendente |
-| Release | Pendente |
-| Backup reversível | Pendente |
+| Commit de origem | `e3cea6d8c9cc` |
+| Releases completas substituídas | `20260802T042733Z-395153672948` e `20260802T043600Z-395153672948` |
+| Backups reversíveis | `/opt/wisewolf/backups/release-20260802T042733Z-395153672948` e `/opt/wisewolf/backups/release-20260802T043600Z-395153672948` |
 | Escopo visual preparado | `exam-cambridge`, `exam-toefl`, `exam-ielts`, `exam-toeic`, `exam-duolingo`, `listening-lab`, `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab` |
 | Cobertura local aprovada | 38 cenários com bitmap próprio; 18 perfis no fallback determinístico |
 | Gate local | 60/60 testes, typecheck, build, 102/102 assets em `public`, 102/102 em `dist` e QA responsivo aprovados |
+| Estado de produção | Não confirmado como ativo; substituído por releases externas posteriores |
 
 O QA responsivo percorreu os dez cenários em desktop `1440 × 900` e mobile
 `390 × 844`, sempre na mesma página e na mesma sessão headless. Todos carregaram
@@ -1027,9 +1038,35 @@ e a lista final confirmou nenhum navegador automatizado residual. O inventário,
 as fontes aprovadas, as rejeições e os checksums locais estão em
 `docs/wolfie-visual-assets-v4.md`.
 
-Antes do rollout faltam somente versionar o lote, executar a release completa,
-os smoke tests e a verificação externa de produção com MIME, bytes e SHA-256.
+As duas execuções completas também passaram pelos testes Deno, checks das
+funções, suítes SQL transacionais com `ROLLBACK` e smoke tests. A primeira
+ativou `20260802T042733Z-395153672948`; a segunda repetiu todo o processo e
+ativou `20260802T043600Z-395153672948`. Em ambos os casos, outra automação
+publicou uma release diferente logo depois e os assets fingerprintados do V4
+deixaram de ser servidos. Novas tentativas foram suspensas até a janela final
+estável, evitando uma disputa contínua de deploy.
 
-O rollback atual deve usar o backup do lote V3 registrado acima. Cada lote
-seguinte deve repetir os mesmos gates de teste, checksums, acessibilidade,
-responsividade e smoke test em sessão única.
+### Quinto lote — apresentação pessoal e jovens
+
+O quinto lote está integrado e aprovado localmente. Seu rollout será agrupado
+ao sexto e último lote.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | Pendente |
+| Release | Aguardando rollout consolidado |
+| Escopo visual preparado | `introduce-yourself`, `my-routine`, `my-home`, `my-family`, `my-childhood`, `my-plans`, `game-worlds`, `roblox-inspired-missions`, `create-your-avatar`, `school-life`, `series-characters` e `mystery-adventures` |
+| Cobertura local aprovada | 50 cenários com bitmap próprio; seis perfis no fallback determinístico |
+| Gate local | 10/10 testes focais, 60/60 testes completos, typecheck, build, 126/126 assets em `public`, 126/126 em `dist` e QA responsivo aprovados |
+| Revisão independente | Sem achados de qualquer severidade |
+
+O ensaio responsivo definitivo percorreu os doze cenários em desktop
+`1440 × 900` e mobile `390 × 844`, sempre na mesma página, em uma única sessão
+headless e com uma única guia. Todos carregaram o fundo correto e o personagem
+integrado, sem overflow horizontal, erro de página ou erro de console. A sessão
+foi encerrada e a lista final confirmou nenhum navegador automatizado residual.
+
+O inventário, os prompts, as decisões de rejeição e todos os checksums estão em
+`docs/wolfie-visual-assets-v5.md`. O lote final deve repetir os mesmos gates e,
+após uma janela sem release externa concorrente, executar uma única publicação
+com verificação externa completa e backup próprio.
