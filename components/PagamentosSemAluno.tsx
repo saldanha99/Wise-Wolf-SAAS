@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Link2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Link2, RefreshCw, AlertTriangle, Ban } from 'lucide-react';
 
 /**
  * Pagamentos que entraram sem aluno vinculado.
@@ -74,6 +74,30 @@ const PagamentosSemAluno: React.FC<Props> = ({ month, onChanged }) => {
     onChanged();
   };
 
+  /**
+   * Tira o pagamento da receita sem apagar nada. Foi o caso dos R$ 1.819,00 da
+   * contratante em julho/2026: dinheiro real entrando na conta, que não é
+   * mensalidade de ninguém e inflava a margem e o radar do MEI.
+   */
+  const naoEhMensalidade = async (p: Pagamento) => {
+    const motivo = window.prompt(
+      `Tirar ${money(p.value)} da receita da escola.\n\n` +
+      `Use para dinheiro que entrou pela conta mas não é mensalidade: aporte do sócio, ` +
+      `reembolso, transferência. O lançamento NÃO é apagado — some da receita e continua ` +
+      `no caixa com outra etiqueta.\n\nMotivo:`,
+      'Movimentação do sócio, não é mensalidade',
+    );
+    if (motivo === null) return;
+    setSalvando(p.id); setErro(null);
+    const { data: r } = await supabase.rpc('set_payment_not_revenue', {
+      p_payment_id: p.id, p_reason: motivo,
+    });
+    setSalvando(null);
+    if (r?.error) { setErro(`Não foi possível excluir (${r.error}).`); return; }
+    await load();
+    onChanged();
+  };
+
   const pagamentos = d?.pagamentos || [];
   const total = pagamentos.reduce((s, p) => s + Number(p.value || 0), 0);
 
@@ -135,6 +159,14 @@ const PagamentosSemAluno: React.FC<Props> = ({ month, onChanged }) => {
                   <option value="">{salvando === p.id ? 'Vinculando…' : 'Vincular ao aluno…'}</option>
                   {(d?.alunos || []).map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
                 </select>
+                <button
+                  onClick={() => void naoEhMensalidade(p)}
+                  disabled={salvando === p.id}
+                  title="Tirar da receita — não é mensalidade"
+                  className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-brand-border text-brand-muted hover:text-red-600 hover:border-red-500/30 hover:bg-red-500/10 disabled:opacity-50"
+                >
+                  <Ban size={12} /> Não é mensalidade
+                </button>
               </div>
             </div>
           ))}
