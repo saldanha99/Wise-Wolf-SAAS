@@ -231,9 +231,13 @@ proveniência das gerações, não o checksum do arquivo otimizado.
 |---|---|
 | `wolfie-coach/wolfie-v2-listening.webp` | `07cf0629cc2d6c406252eee866d42c44182eb869c3deddeb09928f0e1d519c0e` |
 
-## 6. Limites e próximo lote
+## 6. Estado do rollout, limites e próximo lote
 
-- Este documento não declara rollout ou deploy.
+- Este catálogo V1 foi publicado na release
+  `20260802T004103Z-5d79a11ddaae`, a partir do commit `c1ad91a205e9`, com
+  `VITE_WOLFIE_SCENARIO_UI_V2=true`.
+- Os 25 assets deste lote e o mascote legado foram conferidos em produção: os
+  26 WebPs retornaram `image/webp` e checksum idêntico ao arquivo local.
 - Os 44 perfis sem bitmap continuam intencionalmente em fallback visual.
 - Não há AVIF, rig em tempo real, lip-sync facial, elenco setorial completo nem
   thumbnails neste lote.

@@ -895,3 +895,33 @@ Depois do piloto, a ordem de maior impacto é:
 6. unificação opcional do Studio do Hub.
 
 Essa sequência ataca primeiro o problema comercial mais valioso — treinamento profissional em reuniões globais — e estabelece um motor reutilizável para todo o restante.
+
+## 15. Registro do rollout em produção
+
+O primeiro lote visual foi ativado em produção em 2 de agosto de 2026, às
+00:41 UTC (1º de agosto, às 21:41 BRT), com a feature flag
+`VITE_WOLFIE_SCENARIO_UI_V2=true`.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | `c1ad91a205e9` |
+| Release ativa | `20260802T004103Z-5d79a11ddaae` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T004103Z-5d79a11ddaae` |
+| Escopo visual | Dez reuniões globais, `food-cooking`, `speak-for-a-minute` e Wolfie V2 em camada separada |
+| Perfis sem bitmap próprio | 44 perfis, preservados no fallback visual determinístico |
+
+Evidências aprovadas no rollout:
+
+- typecheck, 54 testes do frontend, testes Deno do Wolf Tutor e build de produção;
+- quatro suítes SQL transacionais executadas no servidor com `ROLLBACK`;
+- frontend e Hub respondendo `200`, preflights das APIs do Wolfie respondendo
+  `200` e proteções de autenticação preservadas pelo smoke test da release;
+- 26 de 26 WebPs servidos como `image/webp`, com SHA-256 remoto idêntico ao
+  arquivo aprovado localmente — 25 assets do lote V1 e o mascote legado;
+- cena de tecnologia carregada como recurso real da interface em `1600×900`,
+  sem erro no navegador headless;
+- sessão de navegador encerrada após o teste, sem sessão automatizada residual.
+
+O rollback deste lote deve usar o backup reversível registrado acima. O lote
+seguinte não deve substituir esta release sem repetir os mesmos gates de teste,
+checksums, acessibilidade, responsividade e smoke test em sessão única.
