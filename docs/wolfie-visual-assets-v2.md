@@ -2,7 +2,7 @@
 
 > Versão: 2
 > Data: 1º de agosto de 2026
-> Estado: lote validado localmente; aguardando publicação
+> Estado: publicado em produção na release `20260802T022645Z-745c73755821`
 > Escopo: três experiências de carreira, três experiências de eventos e
 > endurecimento do inventário visual
 
@@ -110,7 +110,7 @@ imitate or reproduce Praktika assets or composition.
 | `trade-shows` | 106.354 / `8d9bfdb96dd147e4ceb04ddb87906452ab8de8b8a0dad0bfbb2078e4897c471a` | 52.840 / `f7716d27306837ab1409a786bdf1d39d08e8a48871041af03ded644ed4ac62eb` |
 | `medical-congresses` | 103.162 / `e7cdb4fbc2b924a7df2ac1da9953d4d13b374ac1f84f9a8001200c2a286e9333` | 49.496 / `18951655e993be46377460f39f56d03327351fcf7c48b9855e7ba1de286018d8` |
 
-## 7. QA executado e gates restantes
+## 7. QA e rollout executados
 
 Concluído:
 
@@ -125,11 +125,14 @@ Concluído:
   25 aliases de transição;
 - QA integrado aprovado nos seis cenários em `1440 × 900` e `390 × 844`, sem
   overflow horizontal e com os recortes desktop/mobile corretos;
-- nenhum texto, logo, marca, pessoa ou dado detectado na revisão visual.
-
-Antes de publicar:
-
-- executar o release transacional e conferir MIME/checksum em produção;
-- registrar release, commit, backup e smoke test no plano principal.
+- nenhum texto, logo, marca, pessoa ou dado detectado na revisão visual;
+- release transacional concluído a partir do commit `f1ee474d99eb`;
+- backup reversível:
+  `/opt/wisewolf/backups/release-20260802T022645Z-745c73755821`;
+- 62/62 URLs aprovadas no smoke remoto com MIME, bytes e SHA-256;
+- frontend e Hub em `200`; marcador remoto confirmado na release acima;
+- 14 recursos carregados em navegação headless de produção — os 12 novos
+  recortes, personagem fingerprintado e um alias legado — sem erro de página;
+- navegador headless encerrado e nenhuma sessão residual.
 
 Os 38 perfis sem bitmap próprio continuam no fallback visual determinístico.

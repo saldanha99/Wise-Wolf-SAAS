@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lote V1 em produção; lote V2 de carreira e eventos em validação local
+> Status: lotes V1 e V2 publicados em produção; próximo lote em preparação
 > Data da análise: 1º de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -11,7 +11,7 @@ Esta seção registra o estado verificável da primeira entrega. Ela prevalece s
 verbos no futuro usados nas fases do plano abaixo, que permanecem como roteiro de
 evolução.
 
-### Implementado no código local
+### Implementado e publicado
 
 - O catálogo visual possui **56 perfis explícitos e versionados**, um para cada
   `experienceId` canônico. A seleção é determinística e segue
@@ -29,7 +29,7 @@ evolução.
 - Dois pilotos fora de reuniões também possuem fundo bitmap: `food-cooking` e
   `speak-for-a-minute`. Com `meetings-business`, eles formaram o lote inicial que
   validou a composição antes da expansão para as demais reuniões.
-- O lote V2 acrescenta, ainda localmente, seis cenários fingerprintados:
+- O lote V2 acrescenta seis cenários fingerprintados em produção:
   `job-interviews`, `career-networking`, `promotion`, `talks`, `trade-shows` e
   `medical-congresses`. O manifesto de assets trava URL, dimensão, bytes,
   orçamento e SHA-256 de cada arquivo.
@@ -62,10 +62,9 @@ Também permanecem para lotes futuros:
 
 ### Rollout
 
-O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, com a
-feature flag ativada e backup reversível registrado na seção 15. O lote V2 ainda
-não foi implantado: ele deve permanecer isolado até concluir testes completos,
-build, QA visual e uma nova autorização de rollout. Os inventários e a
+O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae` e o lote V2
+na release `20260802T022645Z-745c73755821`, ambos com a feature flag ativada,
+backup reversível e evidências registradas na seção 15. Os inventários e a
 proveniência estão em `docs/wolfie-visual-assets-v1.md` e
 `docs/wolfie-visual-assets-v2.md`.
 
@@ -913,7 +912,7 @@ O primeiro lote visual foi ativado em produção em 2 de agosto de 2026, às
 | Campo | Valor |
 |---|---|
 | Commit de origem | `c1ad91a205e9` |
-| Release ativa | `20260802T004103Z-5d79a11ddaae` |
+| Release do lote V1 | `20260802T004103Z-5d79a11ddaae` |
 | Backup reversível | `/opt/wisewolf/backups/release-20260802T004103Z-5d79a11ddaae` |
 | Escopo visual | Dez reuniões globais, `food-cooking`, `speak-for-a-minute` e Wolfie V2 em camada separada |
 | Perfis sem bitmap próprio | 44 perfis, preservados no fallback visual determinístico |
@@ -930,6 +929,32 @@ Evidências aprovadas no rollout:
   sem erro no navegador headless;
 - sessão de navegador encerrada após o teste, sem sessão automatizada residual.
 
-O rollback deste lote deve usar o backup reversível registrado acima. O lote
-seguinte não deve substituir esta release sem repetir os mesmos gates de teste,
-checksums, acessibilidade, responsividade e smoke test em sessão única.
+### Segundo lote — carreira, eventos e cache imutável
+
+O segundo lote foi ativado em 2 de agosto de 2026, às 02:26 UTC (1º de agosto,
+às 23:26 BRT), preservando `VITE_WOLFIE_SCENARIO_UI_V2=true`.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | `f1ee474d99eb` |
+| Release ativa | `20260802T022645Z-745c73755821` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T022645Z-745c73755821` |
+| Escopo visual novo | `job-interviews`, `career-networking`, `promotion`, `talks`, `trade-shows` e `medical-congresses` |
+| Cobertura atual | 18 cenários com bitmap próprio; 38 perfis no fallback determinístico |
+
+Evidências aprovadas no segundo rollout:
+
+- 60 testes de frontend, 166 testes Deno, typecheck, checks das funções e build
+  de produção;
+- suítes SQL transacionais concluídas com `ROLLBACK`;
+- 62/62 URLs conferidas em produção com MIME, bytes e SHA-256 — 37 assets
+  primários e 25 aliases de transição para sessões já abertas;
+- frontend e Hub respondendo `200`, marcador remoto apontando exatamente para a
+  nova release e todos os smokes de API aprovados pelo release;
+- os 12 WebPs novos, o personagem fingerprintado e um alias legado carregados
+  como imagens reais, com dimensões esperadas e sem erro no navegador headless;
+- sessão de navegador encerrada, sem sessão automatizada residual.
+
+O rollback atual deve usar o backup do lote V2 registrado acima. Cada lote
+seguinte deve repetir os mesmos gates de teste, checksums, acessibilidade,
+responsividade e smoke test em sessão única.
