@@ -9,6 +9,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.tsx", "components/**/*.test.tsx"],
+    // lib/**/*.test.ts entra porque regra de negócio pura (navegação, datas)
+    // mora em lib/ e não tem .tsx — ficava fora do `npm test` sem ninguém notar.
+    include: ["src/**/*.test.tsx", "components/**/*.test.tsx", "lib/**/*.test.ts"],
   },
 });
