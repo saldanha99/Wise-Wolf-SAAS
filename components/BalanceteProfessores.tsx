@@ -6,6 +6,7 @@ import {
   SlidersHorizontal, Coins, Info,
 } from 'lucide-react';
 import { User as UserType } from '../types';
+import PagamentosSemAluno from './PagamentosSemAluno';
 
 /**
  * Balancete por professor.
@@ -87,18 +88,26 @@ const monthShort = (m: string) => {
   return new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 };
 
+type SemAulaPorProf = { professor: string; receita: number; alunos: number };
+type SemAula = { total: number; por_professor: SemAulaPorProf[]; error?: string };
+
 interface Props { user: UserType; tenantId?: string; }
 
 const BalanceteProfessores: React.FC<Props> = () => {
   const [b, setB] = useState<Balancete | null>(null);
+  const [semAula, setSemAula] = useState<SemAula | null>(null);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<string>(localMonth());
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async (m: string) => {
     setLoading(true);
-    const { data } = await supabase.rpc('balancete_professores', { p_month: m });
+    const [{ data }, { data: sa }] = await Promise.all([
+      supabase.rpc('balancete_professores', { p_month: m }),
+      supabase.rpc('balancete_receita_sem_aula', { p_month: m }),
+    ]);
     setB(data && !data.error ? (data as Balancete) : null);
+    setSemAula(sa && !sa.error ? (sa as SemAula) : null);
     setLoading(false);
   }, []);
 
@@ -295,24 +304,40 @@ const BalanceteProfessores: React.FC<Props> = () => {
                   </div>
                 )}
                 {b.receita_aluno_sem_aula > 0 && (
-                  <div className="flex justify-between gap-2">
-                    <span className="text-brand-muted">Aluno pagou mas não teve aula no mês</span>
-                    <span className="font-bold text-brand-text">{money(b.receita_aluno_sem_aula)}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-brand-muted">Aluno pagou mas não teve aula no mês</span>
+                      <span className="font-bold text-brand-text">{money(b.receita_aluno_sem_aula)}</span>
+                    </div>
+                    {/* Aqui existe professor — na agenda. Fica fora do lucro (receita sem
+                        aula é receita sem custo), mas visível: quase sempre significa aula
+                        entregue e não lançada. */}
+                    {(semAula?.por_professor || []).map(x => (
+                      <div key={x.professor} className="flex justify-between gap-2 pl-4">
+                        <span className="text-brand-muted text-xs">
+                          ↳ agenda de <b>{x.professor}</b> · {x.alunos} {x.alunos === 1 ? 'aluno' : 'alunos'}
+                        </span>
+                        <span className="text-brand-text text-xs">{money(x.receita)}</span>
+                      </div>
+                    ))}
+                  </>
                 )}
                 <div className="border-t border-brand-border pt-1.5 mt-1.5 flex justify-between font-bold text-brand-text">
                   <span>Receita total do mês (igual à do DRE)</span><span>{money(b.receita_total)}</span>
                 </div>
               </div>
-              {b.receita_sem_aluno > 0 && (
+              {b.receita_aluno_sem_aula > 0 && (
                 <p className="text-[11px] text-brand-muted mt-3 leading-relaxed">
-                  ⚠️ {money(b.receita_sem_aluno)} entraram <b>sem aluno vinculado</b> — não dá para saber de quem
-                  vieram nem atribuir a professor. Vincular esses pagamentos ao aluno faz a receita voltar
-                  para o balancete.
+                  💡 Aluno que pagou e não teve <b>nenhuma aula lançada</b> quase sempre é aula entregue e
+                  não registrada — vale conferir a agenda do professor acima. Esse valor fica <b>fora</b> do
+                  lucro deles de propósito: receita sem aula é receita sem custo, e somá-la premiaria
+                  justamente quem não lançou.
                 </p>
               )}
             </div>
           )}
+
+          <PagamentosSemAluno month={month} onChanged={() => void load(month)} />
 
           {b.alunos_multi_professor > 0 && (
             <p className="text-[11px] text-brand-muted px-1">

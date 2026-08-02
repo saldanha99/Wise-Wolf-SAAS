@@ -322,6 +322,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802160000_dre_relatorio_grupo.sql"
   "supabase/migrations/20260802170000_balancete_professores.sql"
   "supabase/migrations/20260802180000_gasto_de_anuncio.sql"
+  "supabase/migrations/20260802190000_vinculo_pagamento_aluno.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
