@@ -503,3 +503,18 @@ concluir que um erro é posterior ao deploy.
 **Arquivos:** `components/DreGerencialPanel.tsx` (menu Financeiro → "Resultado (DRE)"), `DreCategorizer.tsx`, `RecurringExpensesManager.tsx`, `DreReportSettings.tsx`; edges `dre-categorize`, `dre-report`. Migrations `20260802120000` a `20260802160000`.
 
 ⚠️ **Se um dia a escola quiser um ledger clássico com toda movimentação postada**, é `dre_gerencial` que define o que postar — mas aí `get_cashflow` tem de parar de ler `teacher_closings` **no mesmo commit**, senão dobra.
+
+---
+
+## Balancete por Professor e gasto de anúncio ✅
+
+**Balancete** (`balancete_professores`, menu Financeiro → "Balancete por Prof"): abre o custo com professor por natureza e mostra o lucro por cabeça. O custo NÃO é recalculado — sai de `v_payable_class_logs`, a mesma fonte da folha e do DRE; o que a função faz é **decompor**.
+
+- **Decomposição**: `custo_base` = aulas × valor da faixa 1 (lido de `teacher_pay_tiers`, **nunca chumbado**), e tudo acima disso separado por motivo. A ordem da classificação espelha o `COALESCE` de `rate_efetivo` na view — **override primeiro**, depois o 16,00 de quem MINISTRA treinamento, e só então a faixa por carteira. Inverter faria um override de 10,50 ser lido como turbo.
+- ⚠️ **Receita rateada.** `director_teacher_margin` junta a receita INTEIRA do aluno em cada linha professor×aluno — aluno com dois professores aparece com a mensalidade cheia nos dois e o lucro de ambos sai inflado (1 caso em julho/2026, 7 no histórico). O balancete rateia pelo número de aulas.
+- ⚠️ **Receita não atribuível vai numa linha própria**, nunca some nem é diluída: pagamento sem `student_id` (R$ 2.365,00 em julho/2026, 8 pagamentos) e aluno que pagou sem ter aula no mês. Descartar faria o balancete não fechar com o DRE; diluir inventaria lucro.
+- ⚠️ **A expressão de receita é IDÊNTICA à de `dre_gerencial`** (status `RECEIVED`/`RECEIVED_IN_CASH`, escopo por `student_payments.tenant_id`, data por `COALESCE(paid_at, payment_date, due_date)`). `director_teacher_margin` usa outra (aceita `CONFIRMED`/`PAID` e escopo pelo tenant do PERFIL) — por isso os dois não batem. Não "melhore" um lado só.
+
+**Gasto de anúncio** (`post_ad_spend` → conta 6.1.03 Marketing): gasto de mês em curso **cresce**; reimportar não é duplicata. Por isso a chave `(tenant, origem, conta, período)` faz a segunda importação **atualizar** o lançamento, não criar outro. Controle em `ad_spend_imports`.
+
+⚠️ **Limite de escopo honesto:** o MCP de anúncios roda na **sessão do agente**, não dentro do produto — a VPS não tem token do Meta nem chama MCP. `post_ad_spend` é a porta de entrada; quem lê a conta e chama é um agente. Automação de verdade exigiria token próprio + edge + cron.

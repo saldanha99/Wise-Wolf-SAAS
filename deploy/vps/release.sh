@@ -320,6 +320,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802140000_despesas_recorrentes.sql"
   "supabase/migrations/20260802150000_dre_categorizador.sql"
   "supabase/migrations/20260802160000_dre_relatorio_grupo.sql"
+  "supabase/migrations/20260802170000_balancete_professores.sql"
+  "supabase/migrations/20260802180000_gasto_de_anuncio.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

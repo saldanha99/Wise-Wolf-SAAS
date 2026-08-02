@@ -57,6 +57,7 @@ const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
 const DreGerencialPanel = lazy(() => import('./components/DreGerencialPanel'));
+const BalanceteProfessores = lazy(() => import('./components/BalanceteProfessores'));
 const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
 const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
@@ -151,6 +152,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
     { tab: 'dre', label: 'Resultado (DRE)', group: 'Financeiro' },
+    { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
@@ -1003,7 +1005,7 @@ const App: React.FC = () => {
         'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
         'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
         'trial-settlement', 'coverage', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'dre', 'margin', 'ai-costs', 'verify-rooms', 'financial',
+        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'dre', 'balancete', 'margin', 'ai-costs', 'verify-rooms', 'financial',
         'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
         'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
       ];
@@ -1143,6 +1145,7 @@ const App: React.FC = () => {
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
       'dre': <DreGerencialPanel user={user} tenantId={currentTenant?.id} />,
+      'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
       'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
