@@ -19,6 +19,14 @@ import { User } from '../types';
 // o número aqui bate com o que o professor vê no Financeiro dele — era isso que
 // faltava para o diretor conferir se um aluno dá lucro ou prejuízo.
 
+interface DivergenceRow {
+    teacher_name: string;
+    student_name: string;
+    aulas_sem_lancamento: number;
+    valor_estimado: number;
+    datas: string[];
+}
+
 interface MarginRow {
     teacher_id: string;
     teacher_name: string;
@@ -52,6 +60,10 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openTeachers, setOpenTeachers] = useState<Set<string>>(new Set());
+    // Aulas que a agenda previa e ninguém lançou — o diretor precisa cobrar ANTES
+    // de aprovar a folha, senão descobre conferindo aluno por aluno na mão.
+    const [divergences, setDivergences] = useState<DivergenceRow[]>([]);
+    const [divOpen, setDivOpen] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -61,6 +73,9 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
             if (rpcError) throw rpcError;
             setRows(((data as any)?.rows || []) as MarginRow[]);
             setTotal((data as any)?.total || null);
+
+            const { data: div } = await supabase.rpc('closing_divergences', { p_month: month });
+            setDivergences(((div as any)?.rows || []) as DivergenceRow[]);
         } catch (err: any) {
             setError(err.message || 'Não foi possível carregar o painel.');
             setRows([]);
@@ -154,6 +169,61 @@ const DirectorMarginPanel: React.FC<{ user: User; tenantId?: string }> = ({ user
                     <AlertCircle size={18} className="mt-0.5 shrink-0" />
                     <p className="text-sm font-medium">{error}</p>
                 </div>
+            )}
+
+            {divergences.length > 0 && (
+                <section className="overflow-hidden rounded-[2rem] border border-amber-300 bg-amber-50 shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => setDivOpen(!divOpen)}
+                        aria-expanded={divOpen}
+                        className="flex w-full items-center justify-between gap-4 p-5 text-left sm:p-6"
+                    >
+                        <span className="flex min-w-0 items-center gap-3">
+                            <AlertCircle size={20} className="shrink-0 text-amber-600" />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-black uppercase tracking-tight text-amber-900">
+                                    {divergences.reduce((n, d) => n + Number(d.aulas_sem_lancamento), 0)} aulas previstas sem lançamento
+                                </span>
+                                <span className="block text-xs font-medium text-amber-800">
+                                    A agenda previa, ninguém lançou. Cobre o lançamento antes de aprovar a folha.
+                                </span>
+                            </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-3">
+                            <span className="whitespace-nowrap text-sm font-black text-amber-900">
+                                ~{money(divergences.reduce((v, d) => v + Number(d.valor_estimado), 0))}
+                            </span>
+                            <span className="text-amber-700">{divOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+                        </span>
+                    </button>
+                    {divOpen && (
+                        <div className="overflow-x-auto border-t border-amber-200">
+                            <table className="w-full min-w-[560px]">
+                                <thead>
+                                    <tr className="bg-amber-100/60">
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-amber-800">Professor</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-amber-800">Aluno</th>
+                                        <th className="px-6 py-3 text-center text-[10px] font-black uppercase tracking-widest text-amber-800">Aulas</th>
+                                        <th className="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-amber-800">Datas</th>
+                                        <th className="px-6 py-3 text-right text-[10px] font-black uppercase tracking-widest text-amber-800">Estimado</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-200">
+                                    {divergences.map((d, i) => (
+                                        <tr key={`${d.teacher_name}-${d.student_name}-${i}`}>
+                                            <td className="px-6 py-3 text-sm font-bold text-amber-900">{d.teacher_name}</td>
+                                            <td className="px-6 py-3 text-sm font-medium text-amber-900">{d.student_name}</td>
+                                            <td className="px-6 py-3 text-center text-sm font-black text-amber-900">{d.aulas_sem_lancamento}</td>
+                                            <td className="px-6 py-3 text-[11px] font-medium text-amber-800">{(d.datas || []).join(' · ')}</td>
+                                            <td className="px-6 py-3 text-right text-sm font-bold text-amber-900">{money(d.valor_estimado)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </section>
             )}
 
             {total && (
