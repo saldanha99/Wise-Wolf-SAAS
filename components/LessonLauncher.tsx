@@ -54,6 +54,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const startDate = new Date();
       startDate.setDate(today.getDate() - LOOKBACK_DAYS);
       const startStr = localYMD(startDate);
+      // Fim da janela = hoje (o lançador só trata aula que já aconteceu).
+      const endStr = localYMD(today);
 
       const allLessons: any[] = [];
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
@@ -92,6 +94,32 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
         .eq('teacher_id', user.id)
         .not('day_of_week', 'is', null);
+
+      // COBERTURAS confirmadas da janela: aula que este professor CEDEU sai da
+      // lista dele (ele não deu, não pode lançar nem receber) e aula que ele
+      // ASSUMIU entra — mesmo sendo agendamento de outro professor.
+      const { data: coverages } = await supabase.rpc('coverages_for_teacher', {
+        p_teacher: user.id, p_from: startStr, p_to: endStr,
+      });
+      const covList = (coverages as any[]) || [];
+      const cedidas = new Set(
+        covList.filter(c => c.papel === 'cedida').map(c => `${c.booking_id}|${c.class_date}`)
+      );
+      const assumidas = covList.filter(c => c.papel === 'assumida');
+
+      // Agendamentos assumidos pertencem a OUTRO professor, então não vêm em
+      // allBookings — buscamos os que faltam para montar a aula com o aluno certo.
+      let assumedBookings: any[] = [];
+      if (assumidas.length > 0) {
+        const ids = Array.from(new Set(assumidas.map(c => c.booking_id).filter(Boolean)));
+        if (ids.length > 0) {
+          const { data } = await supabase
+            .from('bookings')
+            .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+            .in('id', ids);
+          assumedBookings = (data as any[]) || [];
+        }
+      }
 
       const { data: allReschedules } = await supabase
         .from('reschedules')
@@ -191,6 +219,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           // por horário (evita que bookings redundantes virem várias aulas a lançar).
           const slotSeen = new Set<string>();
           for (const b of bookings) {
+            // Cedida por cobertura: quem dá a aula é outro professor.
+            if (cedidas.has(`${b.id}|${dateStr}`)) continue;
             const notStarted = b.start_date && dateStr < b.start_date ? b.start_date : null;
             // Hoje: ocultar aulas que ainda não chegou o horário
             if (i === 0 && isStillFutureToday(b.time_slot)) continue;
@@ -201,6 +231,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               await processLesson(b, 'REGULAR', b.time_slot, notStarted);
             }
           }
+        }
+
+        // Coberturas ASSUMIDAS neste dia: entram na lista de quem vai dar a aula.
+        for (const c of assumidas) {
+          if (c.class_date !== dateStr) continue;
+          const ab = assumedBookings.find(x => x.id === c.booking_id);
+          if (!ab) continue;
+          if (i === 0 && isStillFutureToday(ab.time_slot || c.class_time)) continue;
+          if (logs?.some(l => l.booking_id === ab.id)) continue;
+          await processLesson(ab, 'REGULAR', ab.time_slot || c.class_time);
         }
 
         // Reschedules
