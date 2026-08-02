@@ -10,6 +10,7 @@ import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
 import AutomacaoSmart from './AutomacaoSmart';
 import TeacherAffiliateCard from './TeacherAffiliateCard';
+import TeacherTurboCard from './TeacherTurboCard';
 import TeacherContractAccept from './TeacherContractAccept';
 
 interface TeacherDashboardProps {
@@ -394,6 +395,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         />
       )}
 
+      {user?.id && <TeacherTurboCard teacherId={user.id} />}
 
       {/* Aceite de contrato PJ pendente — banner de regularização */}
       {contractPending && (

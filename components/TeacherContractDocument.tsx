@@ -172,15 +172,20 @@ export function TeacherContractDocument({
                             3.3 Os valores ajustados possuem natureza exclusivamente civil, referentes à prestação de serviços autônomos, não configurando salário ou qualquer verba de natureza trabalhista.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4 <strong>VALOR DA AULA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais), valor único, independentemente do número de alunos na carteira do CONTRATADO ou do tempo de casa.
+                            3.4 <strong>VALOR DA AULA E REMUNERAÇÃO PROGRESSIVA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais). O CONTRATADO faz jus à remuneração progressiva quando cumprir, cumulativamente: (i) manter carteira mínima de 10 (dez) alunos ativos; (ii) completar 1 (um) mês consecutivo sem registrar falta; e (iii) não possuir conflito de lançamento em aberto no mesmo período. Atendidos os três requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
                         </p>
                         <div className="pl-4 space-y-1 mt-1">
-                            <p>a) a aula em que o ALUNO falta é remunerada normalmente, desde que o CONTRATADO tenha comparecido;</p>
-                            <p>b) a aula em que o CONTRATADO falta não é remunerada, e passa a sê-lo apenas por meio da respectiva reposição;</p>
-                            <p>c) a reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.</p>
+                            <p>a) do 5º ao 9º aluno ativo: R$ 9,50 (nove reais e cinquenta centavos) por aula;</p>
+                            <p>b) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>
                         </div>
                         <p className="text-justify mt-2">
-                            3.5 <strong>TREINAMENTO DE PROFESSORES.</strong> O CONTRATADO formalmente habilitado pela CONTRATANTE a ministrar treinamentos a outros professores recebe R$ 16,00 (dezesseis reais) por treinamento ministrado.
+                            3.4.1 Considera-se <strong>aluno ativo</strong> aquele com matrícula ativa e agendamento vigente na agenda do CONTRATADO. Considera-se <strong>conflito de lançamento</strong> a divergência entre a aula registrada pelo CONTRATADO e a confirmação de presença do aluno. Enquanto qualquer dos três requisitos não for atendido, todas as aulas são remuneradas por R$ 8,00.
+                        </p>
+                        <p className="text-justify mt-2">
+                            3.4.2 São remuneradas por R$ 8,00 a aula em que o ALUNO falta, desde que o CONTRATADO tenha comparecido. A aula em que o CONTRATADO falta não é remunerada, passando a sê-lo apenas por meio da respectiva reposição. A reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.
+                        </p>
+                        <p className="text-justify mt-2">
+                            3.5 <strong>TREINAMENTO DE PROFESSORES.</strong> O CONTRATADO formalmente habilitado pela CONTRATANTE a ministrar treinamentos a outros professores recebe R$ 16,00 (dezesseis reais) por treinamento ministrado. O professor que recebe o treinamento é remunerado pelo valor de aula de R$ 8,00.
                         </p>
                         <p className="text-justify">
                             3.6 Para fins de apuração da remuneração, somente serão contabilizadas as aulas com presença confirmada pelo aluno no link de confirmação enviado ou, na ausência de confirmação do aluno, mediante registro de presença realizado pelo próprio CONTRATADO (veredito do professor).
