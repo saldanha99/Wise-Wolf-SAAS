@@ -271,7 +271,9 @@ for (const character of manifest.characters) {
     fail(`entrada de personagem inválida: ${key}`);
   }
   const characterFingerprint = posix.basename(character.asset.url).match(
-    /^wolfie-v2-listening\.([a-f0-9]{12})\.webp$/,
+    new RegExp(
+      `^wolfie-v${character.version}-${character.state}\\.([a-f0-9]{12})\\.webp$`,
+    ),
   )?.[1];
   if (characterFingerprint !== character.asset.sha256.slice(0, 12)) {
     fail(`fingerprint divergente: ${character.asset.url}`);

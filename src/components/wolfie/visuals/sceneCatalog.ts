@@ -16,55 +16,55 @@ export const WOLFIE_UNIVERSE_PALETTES: Record<
   "about-you": {
     accent: "#F5B94C",
     glow: "rgba(245, 185, 76, 0.28)",
-    scrim: "rgba(21, 27, 45, 0.72)",
+    scrim: "rgba(21, 27, 45, 0.34)",
     gradient: "linear-gradient(145deg, #17233f 0%, #382b45 52%, #8a533d 100%)",
   },
   "daily-life": {
     accent: "#58D6BC",
     glow: "rgba(88, 214, 188, 0.24)",
-    scrim: "rgba(12, 34, 40, 0.72)",
+    scrim: "rgba(12, 34, 40, 0.32)",
     gradient: "linear-gradient(145deg, #123940 0%, #1f5e62 48%, #b2764d 100%)",
   },
   speaking: {
     accent: "#FF7B72",
     glow: "rgba(255, 123, 114, 0.28)",
-    scrim: "rgba(28, 18, 42, 0.72)",
+    scrim: "rgba(28, 18, 42, 0.34)",
     gradient: "linear-gradient(145deg, #211735 0%, #663e69 50%, #d96665 100%)",
   },
   "kids-teens": {
     accent: "#FFD84D",
     glow: "rgba(255, 216, 77, 0.3)",
-    scrim: "rgba(26, 31, 63, 0.68)",
+    scrim: "rgba(26, 31, 63, 0.28)",
     gradient: "linear-gradient(145deg, #283565 0%, #6056a5 45%, #48a7c8 100%)",
   },
   career: {
     accent: "#65B7FF",
     glow: "rgba(101, 183, 255, 0.25)",
-    scrim: "rgba(10, 25, 48, 0.76)",
+    scrim: "rgba(10, 25, 48, 0.38)",
     gradient: "linear-gradient(145deg, #0d203d 0%, #244d76 52%, #527da1 100%)",
   },
   "global-meetings": {
     accent: "#59D3FF",
     glow: "rgba(89, 211, 255, 0.25)",
-    scrim: "rgba(5, 18, 35, 0.78)",
+    scrim: "rgba(5, 18, 35, 0.4)",
     gradient: "linear-gradient(145deg, #061629 0%, #123d5d 52%, #236f83 100%)",
   },
   events: {
     accent: "#C8A7FF",
     glow: "rgba(200, 167, 255, 0.27)",
-    scrim: "rgba(26, 17, 47, 0.74)",
+    scrim: "rgba(26, 17, 47, 0.34)",
     gradient: "linear-gradient(145deg, #211635 0%, #5d3f73 50%, #b16d85 100%)",
   },
   "international-exams": {
     accent: "#85A6FF",
     glow: "rgba(133, 166, 255, 0.22)",
-    scrim: "rgba(18, 27, 47, 0.8)",
+    scrim: "rgba(18, 27, 47, 0.42)",
     gradient: "linear-gradient(145deg, #151e33 0%, #354a6c 52%, #657589 100%)",
   },
   "skill-labs": {
     accent: "#6EE7FF",
     glow: "rgba(110, 231, 255, 0.26)",
-    scrim: "rgba(8, 25, 39, 0.76)",
+    scrim: "rgba(8, 25, 39, 0.38)",
     gradient: "linear-gradient(145deg, #081c2c 0%, #174f62 50%, #58768a 100%)",
   },
 };
@@ -941,7 +941,7 @@ const fallback = (input: FallbackDefinition): WolfieVisualSceneProfile => ({
 const neutralPalette: WolfieVisualPalette = {
   accent: "#8CD7FF",
   glow: "rgba(140, 215, 255, 0.24)",
-  scrim: "rgba(9, 20, 39, 0.8)",
+  scrim: "rgba(9, 20, 39, 0.42)",
   gradient: "linear-gradient(145deg, #09172c 0%, #193753 52%, #325a70 100%)",
 };
 

@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_WOLFIE_CHARACTER_IMAGE } from "./WolfieCharacter";
+import {
+  DEFAULT_WOLFIE_CHARACTER_IMAGE,
+  DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE,
+} from "./WolfieCharacter";
 import { WOLFIE_SCENE_BY_EXPERIENCE_ID } from "./sceneCatalog";
 import visualAssetManifest from "./visualAssetManifest.json";
 
@@ -167,25 +170,44 @@ describe("Wolfie visual asset manifest", () => {
     expect(new Set(urls).size).toBe(urls.length);
   });
 
-  it("locks the V2 listening character with the same integrity checks", () => {
-    expect(visualAssetManifest.characters).toHaveLength(1);
-    const character = visualAssetManifest.characters[0];
+  it("locks the V2 character and speaking mouth with the same integrity checks", () => {
+    expect(visualAssetManifest.characters).toHaveLength(2);
+    const charactersByState = new Map(
+      visualAssetManifest.characters.map((character) => [
+        character.state,
+        character,
+      ]),
+    );
+    const listening = charactersByState.get("listening");
+    const speaking = charactersByState.get("speaking");
 
-    expect(character).toMatchObject({
+    expect(listening).toMatchObject({
       characterId: "wolfie-coach",
       state: "listening",
       version: 2,
     });
-    expect(character.sourceId).toMatch(
-      /^exec-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.png$/,
-    );
-    expect(character.asset.url).toMatch(
-      /^\/assets\/wolfie\/characters\/wolfie-coach\/wolfie-v2-listening\.[a-f0-9]{12}\.webp$/,
-    );
-    expect(DEFAULT_WOLFIE_CHARACTER_IMAGE).toBe(character.asset.url);
-    expect(basename(character.asset.url).match(/\.([a-f0-9]{12})\.webp$/)?.[1])
-      .toBe(character.asset.sha256.slice(0, 12));
-    assertLockedFile(character.asset);
+    expect(speaking).toMatchObject({
+      characterId: "wolfie-coach",
+      state: "speaking",
+      version: 2,
+    });
+    expect(listening?.asset.url).toBe(DEFAULT_WOLFIE_CHARACTER_IMAGE);
+    expect(speaking?.asset.url).toBe(DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE);
+
+    for (const character of visualAssetManifest.characters) {
+      expect(character.sourceId).toMatch(
+        /^exec-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.png$/,
+      );
+      expect(character.asset.url).toMatch(
+        new RegExp(
+          `^/assets/wolfie/characters/wolfie-coach/wolfie-v2-${character.state}\\.[a-f0-9]{12}\\.webp$`,
+        ),
+      );
+      expect(
+        basename(character.asset.url).match(/\.([a-f0-9]{12})\.webp$/)?.[1],
+      ).toBe(character.asset.sha256.slice(0, 12));
+      assertLockedFile(character.asset);
+    }
   });
 
   it("preserves transitional V1 aliases with the exact primary bytes", () => {

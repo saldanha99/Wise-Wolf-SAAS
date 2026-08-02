@@ -1192,6 +1192,20 @@
         "maxBytes": 400000,
         "sha256": "07cf0629cc2d6c406252eee866d42c44182eb869c3deddeb09928f0e1d519c0e"
       }
+    },
+    {
+      "characterId": "wolfie-coach",
+      "state": "speaking",
+      "version": 2,
+      "sourceId": "exec-59349412-d577-4399-a9ce-40d308f3d4af.png",
+      "asset": {
+        "url": "/assets/wolfie/characters/wolfie-coach/wolfie-v2-speaking.b3384896f5ef.webp",
+        "width": 1024,
+        "height": 1536,
+        "bytes": 84362,
+        "maxBytes": 400000,
+        "sha256": "b3384896f5ef8666bafa16b1c7a3af3d98cd63d8792e3eb544268647803cb2bc"
+      }
     }
   ],
   "legacyAliases": [

@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1–V6 publicados; cobertura visual completa ativa em produção
+> Status: lotes V1–V6 publicados; camada V7 de vivacidade validada para rollout
 > Data da análise: 2 de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -23,6 +23,13 @@ evolução.
   substituir seus contratos pedagógicos, de áudio ou de persistência.
 - O Wolfie V2 usa um recorte vertical transparente e aparece integrado ao palco,
   sem o cartão quadrado do avatar legado.
+- A camada V7 acrescenta uma boca transparente alinhada ao Wolfie V2. Durante
+  fala Realtime ou TTS, sua abertura acompanha a energia real do áudio; quando o
+  transporte não expõe medição, uma cadência limitada preserva a sensação de
+  fala. A preferência de movimento reduzido mantém o personagem estático.
+- Os ambientes usam scrim entre **28% e 42%**, ganho leve de brilho e saturação e
+  um deslocamento de câmera muito lento. O cenário continua legível sem competir
+  com legenda, controles ou conteúdo pedagógico.
 - Os dez perfis de reuniões globais possuem fundos bitmap próprios, em recortes
   desktop e mobile: negócios, medicina, reprodução humana, laboratórios, beleza,
   varejo, tecnologia, logística, turismo e aviação.
@@ -81,8 +88,8 @@ Também permanecem para lotes futuros:
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
 - auditoria completa de acessibilidade, performance e métricas p75 em produção;
-- rig facial/corporal — o primeiro lote usa poster em camadas, não um rig 3D em
-  tempo real.
+- rig facial multi-viseme/phoneme e articulação corporal independente — a V7 já
+  reage ao áudio em uma camada facial, mas ainda não é um rig 3D em tempo real.
 
 ### Rollout
 

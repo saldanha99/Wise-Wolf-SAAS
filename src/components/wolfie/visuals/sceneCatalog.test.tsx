@@ -74,6 +74,10 @@ const EXPECTED_EXPERIENCE_IDS = [
 ] as const;
 
 const sorted = (values: readonly string[]) => [...values].sort();
+const scrimAlpha = (scrim: string): number => {
+  const value = scrim.match(/,\s*(0(?:\.\d+)?)\)$/)?.[1];
+  return value ? Number(value) : Number.NaN;
+};
 
 const EXPECTED_MANIFEST_SCENE_IDS = [
   "career-change",
@@ -165,6 +169,8 @@ describe("Wolfie visual scene catalog", () => {
       expect(profile.accessibleEnvironmentLabel.trim()).not.toBe("");
       expect(profile.castIds.length).toBeGreaterThan(0);
       expect(profile.palette.gradient).toContain("linear-gradient");
+      expect(scrimAlpha(profile.palette.scrim)).toBeGreaterThanOrEqual(0.28);
+      expect(scrimAlpha(profile.palette.scrim)).toBeLessThanOrEqual(0.42);
       expect(WOLFIE_SCENE_BY_EXPERIENCE_ID[profile.experienceId]).toBe(profile);
     }
   });
@@ -236,6 +242,8 @@ describe("Wolfie visual scene catalog", () => {
       expect(profile.version).toBe(1);
       expect(profile.assets).toBeUndefined();
       expect(profile.palette.gradient).toContain("linear-gradient");
+      expect(scrimAlpha(profile.palette.scrim)).toBeGreaterThanOrEqual(0.28);
+      expect(scrimAlpha(profile.palette.scrim)).toBeLessThanOrEqual(0.42);
       expect(profile.accessibleEnvironmentLabel.trim()).not.toBe("");
     }
   });

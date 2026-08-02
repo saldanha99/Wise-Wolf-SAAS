@@ -106,7 +106,7 @@ export function WolfieScenarioStage({
               {profile.assets?.desktopAvif
                 ? <source type="image/avif" srcSet={profile.assets.desktopAvif} />
                 : null}
-              <img
+              <motion.img
                 src={backgroundSource}
                 alt=""
                 width={1920}
@@ -115,7 +115,19 @@ export function WolfieScenarioStage({
                 fetchPriority={priority ? "high" : "auto"}
                 decoding="async"
                 onError={handleBackgroundError}
-                className="h-full w-full object-cover object-center"
+                data-stage-layer="background"
+                className="h-full w-full object-cover object-center will-change-transform"
+                animate={staticMode
+                  ? { scale: 1, x: "0%", y: "0%" }
+                  : {
+                    scale: [1.025, 1.055, 1.025],
+                    x: ["0%", "-0.6%", "0%"],
+                    y: ["0%", "-0.35%", "0%"],
+                  }}
+                transition={staticMode
+                  ? { duration: 0 }
+                  : { duration: 20, repeat: Infinity, ease: "easeInOut" }}
+                style={{ filter: "brightness(1.06) saturate(1.08)" }}
               />
             </picture>
           )
@@ -125,6 +137,7 @@ export function WolfieScenarioStage({
       <div
         className="pointer-events-none absolute inset-0 -z-20"
         style={{ background: profile.palette.scrim }}
+        data-stage-layer="scrim"
         aria-hidden="true"
       />
 

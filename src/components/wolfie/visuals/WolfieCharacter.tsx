@@ -25,6 +25,7 @@ export interface WolfieCharacterProps {
   inputLevel?: number;
   outputLevel?: number;
   imageSrc?: string;
+  speakingMouthSrc?: string | null;
   stateImages?: WolfieCharacterStateImages;
   fallbackImageSrc?: string | null;
   reducedMotion?: boolean;
@@ -36,6 +37,8 @@ export interface WolfieCharacterProps {
 
 export const DEFAULT_WOLFIE_CHARACTER_IMAGE =
   "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp";
+export const DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE =
+  "/assets/wolfie/characters/wolfie-coach/wolfie-v2-speaking.b3384896f5ef.webp";
 export const LEGACY_WOLFIE_CHARACTER_IMAGE =
   "/assets/wolfie/wolfie-tutor-mascot.webp";
 
@@ -76,6 +79,7 @@ export function WolfieCharacter({
   inputLevel = 0,
   outputLevel = 0,
   imageSrc = DEFAULT_WOLFIE_CHARACTER_IMAGE,
+  speakingMouthSrc = DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE,
   stateImages,
   fallbackImageSrc = LEGACY_WOLFIE_CHARACTER_IMAGE,
   reducedMotion,
@@ -91,10 +95,62 @@ export function WolfieCharacter({
   const primarySource = stateImages?.[state] || imageSrc || "";
   const initialSource = primarySource || fallbackImageSrc || null;
   const [activeSource, setActiveSource] = useState<string | null>(initialSource);
+  const [mouthAvailable, setMouthAvailable] = useState(Boolean(speakingMouthSrc));
+  const [hasMeasuredOutput, setHasMeasuredOutput] = useState(false);
 
   useEffect(() => {
     setActiveSource(primarySource || fallbackImageSrc || null);
   }, [fallbackImageSrc, primarySource]);
+
+  useEffect(() => {
+    setMouthAvailable(Boolean(speakingMouthSrc));
+  }, [speakingMouthSrc]);
+
+  useEffect(() => {
+    if (state !== "SPEAKING") {
+      setHasMeasuredOutput(false);
+      return;
+    }
+    if (outputEnergy >= 0.015) setHasMeasuredOutput(true);
+  }, [outputEnergy, state]);
+
+  const mouthOpenness = hasMeasuredOutput
+    ? clampEnergy(outputEnergy * 5.2)
+    : 0;
+  const canAnimateMouth = Boolean(
+    speakingMouthSrc &&
+      mouthAvailable &&
+      activeSource === DEFAULT_WOLFIE_CHARACTER_IMAGE,
+  );
+  const lipSyncMode = staticMode || state !== "SPEAKING" || !canAnimateMouth
+    ? "off"
+    : hasMeasuredOutput
+    ? "audio"
+    : "fallback";
+
+  const mouthMotion = useMemo(() => {
+    if (lipSyncMode === "off") {
+      return {
+        animate: { opacity: 0 },
+        transition: { duration: 0.08 },
+      };
+    }
+    if (lipSyncMode === "audio") {
+      return {
+        animate: { opacity: mouthOpenness },
+        transition: { duration: 0.055, ease: "linear" as const },
+      };
+    }
+    return {
+      animate: { opacity: [0.06, 0.7, 0.2, 0.88, 0.12, 0.62, 0.04] },
+      transition: {
+        duration: 1.04,
+        repeat: Infinity,
+        ease: "easeInOut" as const,
+        times: [0, 0.15, 0.3, 0.5, 0.66, 0.82, 1],
+      },
+    };
+  }, [lipSyncMode, mouthOpenness]);
 
   const characterMotion = useMemo(() => {
     if (staticMode) {
@@ -108,32 +164,34 @@ export function WolfieCharacter({
       case "LISTENING":
         return {
           animate: {
-            x: profile.characterSide === "right" ? -3 : 3,
-            y: -2 - inputEnergy * 3,
-            rotate: profile.characterSide === "right" ? -0.8 : 0.8,
-            scale: 1 + inputEnergy * 0.018,
+            x: profile.characterSide === "right" ? -5 : 5,
+            y: -4 - inputEnergy * 7,
+            rotate: profile.characterSide === "right" ? -1.25 : 1.25,
+            scale: 1.006 + inputEnergy * 0.026,
           },
-          transition: { type: "spring" as const, stiffness: 150, damping: 20 },
+          transition: { type: "spring" as const, stiffness: 135, damping: 18 },
         };
       case "THINKING":
         return {
-          animate: { y: [0, -4, 0], rotate: [0, 0.7, 0], scale: 1 },
+          animate: { x: [0, 2, 0], y: [0, -8, 0], rotate: [0, 1.2, 0], scale: 1 },
           transition: { duration: 3.2, repeat: Infinity, ease: "easeInOut" },
         };
       case "SYNTHESIZING":
         return {
-          animate: { y: [0, -2, 0], scale: [1, 1.012, 1] },
+          animate: { y: [0, -5, 0], scale: [1, 1.02, 1] },
           transition: { duration: 1.4, repeat: Infinity, ease: "easeInOut" },
         };
       case "SPEAKING":
         return {
           animate: {
-            y: -1 - outputEnergy * 2.5,
+            x: (profile.characterSide === "right" ? -1 : 1) *
+              (1.5 + outputEnergy * 2.5),
+            y: -2 - outputEnergy * 6,
             rotate: (profile.characterSide === "right" ? -1 : 1) *
-              outputEnergy * 0.35,
-            scale: 1 + outputEnergy * 0.012,
+              (0.3 + outputEnergy * 0.8),
+            scale: 1.008 + outputEnergy * 0.026,
           },
-          transition: { duration: 0.08, ease: "linear" },
+          transition: { duration: 0.075, ease: "linear" },
         };
       case "INTERRUPTED":
         return {
@@ -148,8 +206,13 @@ export function WolfieCharacter({
       case "IDLE":
       default:
         return {
-          animate: { y: [0, -4, 0], rotate: [-0.2, 0.2, -0.2], scale: 1 },
-          transition: { duration: 5.6, repeat: Infinity, ease: "easeInOut" },
+          animate: {
+            x: [0, 1.5, 0],
+            y: [0, -8, 0],
+            rotate: [-0.45, 0.45, -0.45],
+            scale: [1, 1.008, 1],
+          },
+          transition: { duration: 4.8, repeat: Infinity, ease: "easeInOut" },
         };
     }
   }, [inputEnergy, outputEnergy, profile.characterSide, state, staticMode]);
@@ -178,6 +241,8 @@ export function WolfieCharacter({
       data-input-level={inputEnergy.toFixed(3)}
       data-output-level={outputEnergy.toFixed(3)}
       data-motion={staticMode ? "static" : "dynamic"}
+      data-lip-sync={lipSyncMode}
+      data-mouth-openness={mouthOpenness.toFixed(3)}
       aria-hidden={decorative || undefined}
       role={decorative ? undefined : "img"}
       aria-label={decorative ? undefined : announcedLabel}
@@ -218,14 +283,38 @@ export function WolfieCharacter({
       >
         {activeSource
           ? (
-            <img
-              src={activeSource}
-              alt=""
-              draggable={false}
-              decoding="async"
-              onError={handleImageError}
-              className="max-h-full w-auto max-w-full object-contain object-bottom"
-            />
+            <>
+              <img
+                src={activeSource}
+                alt=""
+                draggable={false}
+                decoding="async"
+                onError={handleImageError}
+                data-character-layer="base"
+                className="max-h-full w-auto max-w-full object-contain object-bottom"
+              />
+              {canAnimateMouth && speakingMouthSrc
+                ? (
+                  <motion.img
+                    src={speakingMouthSrc}
+                    alt=""
+                    aria-hidden="true"
+                    draggable={false}
+                    decoding="async"
+                    loading="eager"
+                    initial={false}
+                    animate={mouthMotion.animate}
+                    transition={mouthMotion.transition}
+                    onError={() => {
+                      setMouthAvailable(false);
+                      onImageError?.(speakingMouthSrc);
+                    }}
+                    data-character-layer="mouth"
+                    className="absolute inset-0 h-full w-full object-contain object-bottom"
+                  />
+                )
+                : null}
+            </>
           )
           : (
             <div

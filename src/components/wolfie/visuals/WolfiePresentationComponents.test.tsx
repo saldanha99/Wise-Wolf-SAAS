@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WolfieCaptionBar } from "./WolfieCaptionBar";
 import {
   DEFAULT_WOLFIE_CHARACTER_IMAGE,
+  DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE,
   WolfieCharacter,
 } from "./WolfieCharacter";
 import { WolfieScenarioStage } from "./WolfieScenarioStage";
@@ -107,6 +108,21 @@ describe("WolfieScenarioStage", () => {
     expect(onBackgroundError).toHaveBeenCalledWith("/scene/desktop.webp");
   });
 
+  it("keeps the environment vivid and marks the ambient background layer", () => {
+    const { container } = render(
+      <WolfieScenarioStage profile={profile} reducedMotion={false} />,
+    );
+    const background = container.querySelector(
+      "[data-stage-layer='background']",
+    );
+    const scrim = container.querySelector("[data-stage-layer='scrim']");
+
+    expect(background).toHaveStyle({
+      filter: "brightness(1.06) saturate(1.08)",
+    });
+    expect(scrim).toHaveStyle({ background: profile.palette.scrim });
+  });
+
   it("does not request an image when the profile has no asset manifest", () => {
     const paletteOnlyProfile: WolfieVisualSceneProfile = {
       ...profile,
@@ -140,6 +156,7 @@ describe("WolfieCharacter", () => {
     expect(character).toHaveAttribute("data-output-level", "1.000");
     expect(character).toHaveAttribute("data-input-level", "0.000");
     expect(character).toHaveAttribute("data-motion", "static");
+    expect(character).toHaveAttribute("data-lip-sync", "off");
     expect(container.querySelector("img")).toHaveAttribute(
       "src",
       DEFAULT_WOLFIE_CHARACTER_IMAGE,
@@ -169,6 +186,39 @@ describe("WolfieCharacter", () => {
       "/characters/new.webp",
       "/characters/legacy.webp",
     ]);
+  });
+
+  it("drives the speaking mouth from measured output audio", () => {
+    const { container } = render(
+      <WolfieCharacter
+        profile={profile}
+        state="SPEAKING"
+        outputLevel={0.1}
+        reducedMotion={false}
+      />,
+    );
+    const character = container.querySelector("[data-character-state]");
+    const mouth = container.querySelector("[data-character-layer='mouth']");
+
+    expect(character).toHaveAttribute("data-lip-sync", "audio");
+    expect(character).toHaveAttribute("data-mouth-openness", "0.520");
+    expect(mouth).toHaveAttribute("src", DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE);
+  });
+
+  it("uses a bounded speech fallback when an audio meter is unavailable", () => {
+    const { container } = render(
+      <WolfieCharacter
+        profile={profile}
+        state="SPEAKING"
+        outputLevel={0}
+        reducedMotion={false}
+      />,
+    );
+
+    expect(container.querySelector("[data-character-state]"))
+      .toHaveAttribute("data-lip-sync", "fallback");
+    expect(container.querySelector("[data-character-layer='mouth']"))
+      .toBeInTheDocument();
   });
 
   it("can expose an equivalent accessible label when it is not decorative", () => {
