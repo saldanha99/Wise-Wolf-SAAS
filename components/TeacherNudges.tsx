@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { X, CalendarClock, FileText, ShieldAlert, Flame, AlertTriangle, BellRing } from 'lucide-react';
+import { X, CalendarClock, FileText, ShieldAlert, AlertTriangle, BellRing } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DE AVISOS DO PROFESSOR (funil pós-contratação)
@@ -107,31 +107,9 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                     });
                 }
 
-                // 5. Turbo (assiduidade → remuneração progressiva)
-                const { data: turbo } = await supabase.rpc('teacher_turbo_status', { p_teacher: userId });
-                if (turbo) {
-                    const studentsMissing = Number(turbo.students_missing || 0);
-                    if (turbo.active) {
-                        found.push({
-                            id: 'turboOn', tone: 'emerald', icon: <Flame size={18} />,
-                            title: 'Turbo ATIVO 🔥 — não pode faltar!',
-                            text: 'Seus alunos do 5º ao 9º valem R$ 9,50 e do 10º em diante R$ 10,50 por aula. Uma falta (inclusive comprovada pela confirmação dos alunos) zera o turbo por 30 dias.',
-                        });
-                    } else if (studentsMissing > 0) {
-                        // Regra 04/07/2026: turbo só ativa a partir de 10 alunos ativos
-                        found.push({
-                            id: 'turboLockedStudents', tone: 'amber', icon: <Flame size={18} />,
-                            title: `Faltam ${studentsMissing} aluno${studentsMissing === 1 ? '' : 's'} para você poder ativar o turbo`,
-                            text: `O turbo (R$ 9,50/10,50 por aula) destrava a partir de 10 alunos ativos — hoje você tem ${Number(turbo.students_active || 0)}. Assiduidade e qualidade trazem mais alunos pra você; também é preciso estar há 30 dias sem falta.`,
-                        });
-                    } else if (Number(turbo.days_to_activate) > 0 && Number(turbo.days_clean) > 0) {
-                        found.push({
-                            id: 'turboOff', tone: 'amber', icon: <Flame size={18} />,
-                            title: `Faltam ${turbo.days_to_activate} dias sem falta para destravar o turbo`,
-                            text: 'Assiduidade paga: 30 dias limpos destravam R$ 9,50/10,50 por aula a partir do seu 5º aluno.',
-                        });
-                    }
-                }
+                // O aviso de "turbo" (remuneração progressiva por antiguidade de aluno)
+                // foi removido em 01/08/2026: a tarifa passou a ser única, R$ 8,00 por
+                // aula. Ele prometia R$ 9,50/10,50 e nunca destravou para ninguém.
 
                 setNudges(found);
                 if (found.length && localStorage.getItem(todayKey) !== 'seen') setOpen(true);

@@ -303,6 +303,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
   "supabase/migrations/20260802000000_teacher_financial_simplified.sql"
   "supabase/migrations/20260802010000_payable_rule_and_director_margin.sql"
+  "supabase/migrations/20260802020000_flat_rate_and_trainer_bonus.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
