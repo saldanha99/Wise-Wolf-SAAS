@@ -65,8 +65,8 @@ export function WolfieWebApp() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[#07111f] px-5 text-center text-white">
-      <div><p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">404</p><h1 className="mt-4 font-display text-4xl font-extrabold">Esta rota não existe.</h1><WolfieLink href="/" className="mt-7 inline-flex min-h-[52px] items-center rounded-full bg-white px-6 py-3.5 font-extrabold text-[#111827]">Voltar ao início</WolfieLink></div>
+    <div className="grid min-h-screen place-items-center bg-white px-5 text-center text-[#202126]">
+      <div><p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">404</p><h1 className="mt-4 font-display text-4xl font-extrabold">Esta rota não existe.</h1><WolfieLink href="/" className="mt-7 inline-flex min-h-[52px] items-center rounded-full bg-[#e72d3d] px-6 py-3.5 font-extrabold text-white">Voltar ao início</WolfieLink></div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import {
   ArrowRight,
+  BookOpenCheck,
   BriefcaseBusiness,
   Check,
+  ChevronRight,
   Headphones,
   Languages,
   LockKeyhole,
@@ -10,8 +12,12 @@ import {
   Plane,
   Presentation,
   RefreshCcw,
+  ShieldCheck,
   Sparkles,
+  Target,
   Volume2,
+  X,
+  Zap,
 } from "lucide-react";
 import { ALL_EXPERIENCES } from "../../../../src/components/wolfie/experienceCatalog";
 import { WolfieLink } from "../router";
@@ -20,21 +26,22 @@ import { PublicPage } from "./PublicChrome";
 const experiences = [
   {
     title: "Reunião global",
-    description: "Entre na conversa, faça seu ponto e confirme decisões.",
+    description: "Entre na conversa, apresente seu ponto e confirme decisões.",
     image: "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp",
     icon: BriefcaseBusiness,
   },
   {
     title: "Entrevista",
-    description: "Organize exemplos e responda a perguntas de verdade.",
+    description: "Organize exemplos e responda perguntas com mais clareza.",
     image: "/assets/wolfie/scenes/career/job-interviews/desktop.dc0f18a9a9dc.webp",
     icon: MessageCircleMore,
   },
   {
     title: "Apresentação",
-    description: "Ensaios objetivos, clareza e perguntas inesperadas.",
+    description: "Ensaie ideias, transições e perguntas inesperadas.",
     image: "/assets/wolfie/scenes/skill-labs/presentation-lab/desktop.45863e9a8305.webp",
     icon: Presentation,
+    featured: true,
   },
   {
     title: "Viagem",
@@ -42,141 +49,298 @@ const experiences = [
     image: "/assets/wolfie/scenes/daily-life/services/desktop.f4718b4b2fcc.webp",
     icon: Plane,
   },
+  {
+    title: "Conversação",
+    description: "Fale sobre temas reais sem depender de frases prontas.",
+    image: "/assets/wolfie/scenes/speaking/give-your-opinion/desktop.66b5facc2154.webp",
+    icon: Mic2,
+  },
 ];
 
-const waveform = [22, 44, 70, 38, 82, 58, 92, 45, 67, 30, 76, 49];
+const journeySteps = [
+  {
+    number: "01 / 05",
+    title: "Comece no seu idioma",
+    description: "Explique o que você precisa viver em inglês. O Wolfie organiza o contexto sem exigir que você saiba dar o prompt perfeito.",
+    icon: Languages,
+  },
+  {
+    number: "02 / 05",
+    title: "Receba um plano para a situação",
+    description: "O diagnóstico combina objetivo, nível declarado, habilidade, formato e tempo disponível em um ponto de partida explicável.",
+    icon: Target,
+  },
+  {
+    number: "03 / 05",
+    title: "Entre na conversa com apoio",
+    description: "Use voz ou texto, receba sugestões úteis e continue falando sem transformar cada erro numa interrupção.",
+    icon: MessageCircleMore,
+  },
+  {
+    number: "04 / 05",
+    title: "Aprenda com a tentativa",
+    description: "O feedback mostra o ajuste que muda sua mensagem — vocabulário, estrutura, clareza ou pronúncia — e abre uma nova tentativa.",
+    icon: RefreshCcw,
+  },
+  {
+    number: "05 / 05",
+    title: "Fale sobre o que realmente importa",
+    description: "Reunião, entrevista, apresentação, viagem ou uma conversa espontânea: a prática acompanha seu objetivo, não uma trilha genérica.",
+    icon: Mic2,
+  },
+];
+
+const outcomeCards = [
+  ["Antes da reunião", "Ensaie sua abertura, organize o argumento e prepare respostas para objeções."],
+  ["Quando faltar uma palavra", "Receba uma alternativa natural sem perder o fio da conversa."],
+  ["Ao perceber um erro", "Veja uma correção curta, entenda o motivo e tente novamente no mesmo contexto."],
+  ["Para falar com mais clareza", "Transforme uma ideia longa em uma mensagem que a outra pessoa consegue acompanhar."],
+  ["Quando o ritmo apertar", "Pratique sessões curtas e retome do ponto certo sem recomeçar tudo."],
+  ["Em contextos profissionais", "Treine decisões de comunicação, não apenas listas de palavras soltas."],
+];
+
+function ProductPhone() {
+  return (
+    <div className="relative mx-auto w-full max-w-[390px]">
+      <div className="rounded-[54px] border-[10px] border-[#17191f] bg-[#17191f] p-2 shadow-[0_38px_90px_rgba(35,31,44,.2)]">
+        <div className="overflow-hidden rounded-[38px] bg-white">
+          <div className="flex items-center justify-between border-b border-black/[.06] px-5 py-4">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#e72d3d]">Seu primeiro treino</p>
+              <p className="mt-1 font-display text-lg font-extrabold text-[#171717]">Reunião global</p>
+            </div>
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-[#fff0ec] text-[#e72d3d]"><BriefcaseBusiness size={18} /></span>
+          </div>
+          <div className="space-y-3 p-5">
+            <p className="text-sm font-bold leading-6 text-[#25272d]">O que você mais precisa fazer nessa situação?</p>
+            {["Responder sem travar", "Conduzir próximos passos", "Explicar uma ideia"].map((label, index) => (
+              <div key={label} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-bold ${index === 1 ? "border-[#ff7a61] bg-[#fff2ed] text-[#b92233]" : "border-black/[.07] bg-[#fafafa] text-[#555b65]"}`}>
+                <span className={`h-4 w-4 rounded-full border ${index === 1 ? "border-[#e72d3d] bg-[#e72d3d] shadow-[inset_0_0_0_4px_white]" : "border-black/20"}`} />
+                {label}
+              </div>
+            ))}
+            <div className="mt-5 rounded-[24px] bg-[#17191f] p-5 text-white">
+              <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#ffb45f]">Wolfie recomenda</p>
+              <p className="mt-2 font-display text-xl font-extrabold">Comece com uma abertura de 30 segundos.</p>
+              <div className="mt-4 flex h-9 items-center gap-1" aria-hidden="true">
+                {[28, 55, 36, 78, 48, 86, 42, 68, 32, 58, 38].map((height, index) => <span key={index} className="wolfie-wavebar w-1.5 rounded-full bg-[#ff785f]" style={{ height: `${height}%`, animationDelay: `${index * 65}ms` }} />)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="absolute -left-12 top-[28%] hidden rounded-2xl border border-black/[.06] bg-white p-4 shadow-[0_20px_50px_rgba(38,34,48,.13)] sm:block">
+        <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-[#8b8f98]">Nível declarado</p>
+        <p className="mt-1 font-display text-xl font-extrabold text-[#e72d3d]">B1</p>
+      </div>
+    </div>
+  );
+}
 
 export function LandingPage() {
   return (
     <PublicPage>
       <main>
-        <section className="wolfie-hero relative isolate min-h-[790px] overflow-hidden px-5 pb-20 pt-32 sm:pt-36 lg:min-h-[850px]">
-          <div className="absolute inset-0 -z-20 bg-[url('/assets/wolfie/standalone/hero-global-studio.webp')] bg-cover bg-[62%_center]" />
-          <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#07111f_0%,rgba(7,17,31,.96)_31%,rgba(7,17,31,.48)_61%,rgba(7,17,31,.16)_100%)]" />
-          <div className="absolute inset-x-0 bottom-0 -z-10 h-56 bg-gradient-to-t from-[#07111f] to-transparent" />
-          <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[1.02fr_.98fr]">
-            <div className="max-w-2xl pt-6 lg:pt-16">
-              <p className="inline-flex items-center gap-2 rounded-full border border-amber-200/20 bg-amber-200/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-amber-200 backdrop-blur-md">
-                <Sparkles size={15} aria-hidden="true" /> Inglês para situações reais
-              </p>
-              <h1 className="mt-7 font-display text-[clamp(3rem,6.5vw,6.4rem)] font-extrabold leading-[.91] tracking-[-0.065em] text-white">
-                Treine a conversa <span className="text-[#ffbf69]">antes</span> que ela aconteça.
-              </h1>
-              <p className="mt-7 max-w-xl text-lg leading-8 text-slate-200 sm:text-xl">O Wolfie transforma seu objetivo em uma simulação por voz ou texto e corrige o que realmente muda sua comunicação.</p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <WolfieLink href="/quiz" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#ffbf69] px-7 py-4 font-extrabold text-[#101827] shadow-2xl shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-[#ffd09a]">
-                  Descobrir meu primeiro treino <ArrowRight size={19} aria-hidden="true" />
-                </WolfieLink>
-                <WolfieLink href="/entrar" className="inline-flex min-h-14 items-center justify-center rounded-full border border-white/[.18] bg-white/[.08] px-7 py-4 font-bold text-white backdrop-blur-md transition hover:bg-white/[.13]">Já sou aluno</WolfieLink>
+        <section className="px-5 pb-14 pt-28 sm:pt-32">
+          <div className="mx-auto grid max-w-7xl overflow-hidden rounded-[34px] bg-[linear-gradient(135deg,#d9273a_0%,#f6534b_48%,#ffad57_100%)] shadow-[0_30px_90px_rgba(196,42,58,.18)] lg:min-h-[610px] lg:grid-cols-[.93fr_1.07fr]">
+            <div className="flex flex-col justify-center p-7 text-white sm:p-12 lg:p-16">
+              <p className="inline-flex w-fit items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[.16em] backdrop-blur-sm"><Sparkles size={15} /> Inglês para situações reais</p>
+              <h1 className="mt-7 max-w-xl font-display text-[clamp(3.2rem,6vw,5.8rem)] font-extrabold leading-[.94] tracking-[-.065em]">A conversa chega. Você chega preparado.</h1>
+              <p className="mt-6 max-w-xl text-lg leading-8 text-white/85">Treine reuniões, entrevistas, apresentações e viagens com uma IA que entende seu objetivo, escuta sua tentativa e ajuda você a responder melhor.</p>
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <WolfieLink href="/quiz" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#b91f32] shadow-[0_16px_38px_rgba(111,20,39,.18)] transition hover:-translate-y-0.5">Descobrir meu treino <ArrowRight size={18} /></WolfieLink>
+                <WolfieLink href="/entrar" className="inline-flex min-h-14 items-center justify-center rounded-full border border-white/30 bg-white/10 px-7 py-4 font-extrabold text-white backdrop-blur-sm transition hover:bg-white/20">Já sou aluno</WolfieLink>
               </div>
-              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-slate-300">
-                <span className="inline-flex items-center gap-2"><Check size={16} className="text-emerald-300" /> Voz e texto</span>
-                <span className="inline-flex items-center gap-2"><Check size={16} className="text-emerald-300" /> Feedback no contexto</span>
-                <span className="inline-flex items-center gap-2"><Check size={16} className="text-emerald-300" /> {ALL_EXPERIENCES.length} experiências</span>
+              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-bold text-white/80">
+                <span className="inline-flex items-center gap-2"><Check size={16} /> Voz e texto</span>
+                <span className="inline-flex items-center gap-2"><Check size={16} /> Feedback no contexto</span>
+                <span className="inline-flex items-center gap-2"><Check size={16} /> Resultado antes do cadastro</span>
               </div>
             </div>
+            <div className="relative flex min-h-[500px] items-end justify-center p-5 lg:min-h-[610px] lg:justify-end lg:p-8">
+              <div className="absolute inset-8 rounded-[34px] bg-white/15 blur-2xl" />
+              <div className="relative h-full w-full max-w-[530px] overflow-hidden rounded-[34px] bg-white shadow-[0_30px_80px_rgba(107,18,38,.25)]">
+                <img src="/assets/wolfie/standalone/hero-light-phone-v2.webp" alt="Wolfie, tutor de inglês em 3D, dentro de um smartphone" className="h-full w-full object-cover" fetchPriority="high" />
+              </div>
+            </div>
+          </div>
+          <div className="mx-auto grid max-w-5xl grid-cols-2 gap-x-8 gap-y-7 py-10 text-center sm:grid-cols-4">
+            {[
+              ["Wise Wolf", "Produto educacional"],
+              [String(ALL_EXPERIENCES.length), "experiências catalogadas"],
+              ["Voz + texto", "no seu ritmo"],
+              ["Privacidade", "desde o diagnóstico"],
+            ].map(([value, label]) => (
+              <div key={value}>
+                <p className="font-display text-xl font-extrabold tracking-[-.04em] text-[#202126]">{value}</p>
+                <p className="mt-1 text-xs font-bold text-[#9296a0]">{label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-            <div className="relative min-h-[480px] lg:min-h-[620px]" aria-label="Demonstração visual do Wolfie conversando">
-              <div className="absolute inset-x-[4%] bottom-[4%] top-[4%] rounded-[48%_48%_34%_34%/44%_44%_24%_24%] border border-white/15 bg-[#03070d]/55 shadow-[0_45px_120px_rgba(0,0,0,.48)] backdrop-blur-[2px]" />
-              <div className="wolfie-mascot-cutout absolute inset-x-[7%] bottom-0 top-[1%]">
-                <img src="/assets/wolfie/wolfie-tutor-mascot.webp" alt="Wolfie, tutor de inglês em 3D" className="h-full w-full object-cover object-top" fetchPriority="high" />
+        <section className="px-5 py-20 sm:py-28">
+          <div className="mx-auto max-w-7xl">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Como funciona</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold leading-[1.04] tracking-[-.055em] text-[#18191d] sm:text-6xl">Qualidade de tutor particular. Liberdade para praticar quando quiser.</h2>
+            </div>
+            <div className="mt-20 grid items-start gap-16 lg:grid-cols-[.86fr_1.14fr]">
+              <div className="space-y-20 lg:space-y-28">
+                {journeySteps.map(({ number, title, description, icon: Icon }) => (
+                  <article key={number} className="max-w-xl">
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#fff0ec] text-[#e72d3d]"><Icon size={19} /></span>
+                      <span className="text-xs font-extrabold uppercase tracking-[.17em] text-[#a3a6ad]">{number}</span>
+                    </div>
+                    <h3 className="mt-5 font-display text-3xl font-extrabold leading-tight tracking-[-.045em] text-[#1c1d21] sm:text-4xl">{title}</h3>
+                    <p className="mt-4 text-base leading-7 text-[#6b707b] sm:text-lg sm:leading-8">{description}</p>
+                  </article>
+                ))}
               </div>
-              <div className="absolute right-0 top-[12%] max-w-[245px] rounded-[24px_24px_5px_24px] border border-white/15 bg-[#f8f5ef]/95 p-4 text-[#111827] shadow-2xl backdrop-blur-md sm:right-[2%]">
-                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#925516]">Simulação ao vivo</p>
-                <p className="mt-2 text-sm font-bold leading-5">“Let’s rehearse how you’ll open the meeting.”</p>
+              <div className="sticky top-28 hidden rounded-[44px] bg-[radial-gradient(circle_at_50%_18%,#fff4ed_0%,#faf8ff_47%,#f5f6f8_100%)] px-8 py-14 lg:block">
+                <ProductPhone />
               </div>
-              <div className="absolute bottom-[8%] left-0 right-0 mx-auto flex w-[min(88%,420px)] items-center gap-4 rounded-3xl border border-white/[.14] bg-[#07111f]/[.88] p-4 shadow-2xl backdrop-blur-xl">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-emerald-300 text-[#07111f]"><Mic2 size={21} /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-emerald-200">Wolfie está ouvindo</p>
-                  <div className="mt-2 flex h-6 items-center gap-1" aria-hidden="true">
-                    {waveform.map((height, index) => <span key={index} className="wolfie-wavebar w-1 rounded-full bg-emerald-300" style={{ height: `${height}%`, animationDelay: `${index * 70}ms` }} />)}
+            </div>
+          </div>
+        </section>
+
+        <section id="experiencias" className="overflow-hidden bg-[#fbfbfc] px-5 py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl text-center">
+            <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Cenários que lembram o seu contexto</p>
+            <h2 className="mx-auto mt-4 max-w-3xl font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">Escolha a conversa. O Wolfie ajuda você a entrar nela.</h2>
+            <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#737781]">Cada experiência combina ambiente, objetivo, nível e formato para treinar uma decisão real de comunicação.</p>
+            <div className="mt-14 grid gap-4 md:grid-cols-5 md:items-center">
+              {experiences.map(({ title, description, image, icon: Icon, featured }) => (
+                <article key={title} className={`group relative overflow-hidden rounded-[30px] bg-[#17191f] text-left shadow-[0_18px_45px_rgba(34,35,40,.1)] ${featured ? "min-h-[430px] md:-mx-2 md:min-h-[500px]" : "min-h-[360px] md:min-h-[410px]"}`}>
+                  <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-5">
+                    <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/20 bg-white/15 text-white backdrop-blur-md"><Icon size={18} /></span>
+                    <h3 className="mt-4 font-display text-xl font-extrabold text-white">{title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-white/75">{description}</p>
+                    {featured ? <WolfieLink href="/quiz" className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-[#24252a]">Começar por aqui <ChevronRight size={15} /></WolfieLink> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="feedback" className="px-5 py-24 sm:py-32">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Feedback em tempo real</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">Corrija a mensagem sem sair da conversa.</h2>
+            </div>
+            <div className="mt-14 grid gap-5 md:grid-cols-2">
+              <article className="rounded-[34px] bg-[#fff0ec] p-7 sm:p-9">
+                <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#b92333]">Sua tentativa</p>
+                <p className="mt-4 font-display text-2xl font-extrabold leading-tight text-[#292126]">“I want discuss about the next steps.”</p>
+                <div className="my-6 border-t border-[#e72d3d]/15" />
+                <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#b92333]">Uma forma mais natural</p>
+                <p className="mt-3 font-display text-2xl font-extrabold leading-tight text-[#b92333]">“I’d like to discuss the next steps.”</p>
+                <p className="mt-4 text-sm leading-6 text-[#74555b]">O ajuste aparece com explicação curta e espaço para uma nova tentativa.</p>
+              </article>
+              <article className="rounded-[34px] bg-[#f3f0ff] p-7 sm:p-9">
+                <div className="flex items-center justify-between">
+                  <div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#6151a6]">Intensidade do apoio</p><h3 className="mt-3 font-display text-3xl font-extrabold text-[#292531]">No ponto certo.</h3></div>
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-[#7259d6] shadow-sm"><Zap size={20} /></span>
+                </div>
+                <div className="mt-8 grid grid-cols-3 gap-3 text-center text-xs font-extrabold">
+                  <div className="rounded-2xl bg-white p-4 text-[#55a876]"><span className="mx-auto block h-10 w-10 rounded-full bg-[#67d38e]" /><p className="mt-3">Leve</p></div>
+                  <div className="scale-105 rounded-2xl bg-white p-4 text-[#5a70c8] shadow-md"><span className="mx-auto block h-10 w-10 rounded-xl bg-[#6f8cff]" /><p className="mt-3">Equilibrado</p></div>
+                  <div className="rounded-2xl bg-white p-4 text-[#d45366]"><span className="mx-auto block h-10 w-10 bg-[#f46a80] [clip-path:polygon(50%_0,100%_100%,0_100%)]" /><p className="mt-3">Direto</p></div>
+                </div>
+              </article>
+              <article className="rounded-[34px] border border-black/[.07] bg-white p-7 shadow-[0_22px_70px_rgba(40,39,48,.08)] sm:p-9 md:col-span-2">
+                <div className="grid items-center gap-8 md:grid-cols-[1fr_auto_1fr]">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#e72d3d]">Voz, texto e contexto</p>
+                    <h3 className="mt-3 font-display text-3xl font-extrabold tracking-[-.04em] text-[#202126]">A prática não termina na gramática.</h3>
+                    <p className="mt-4 leading-7 text-[#6b707a]">Compreensão, escolha de palavras, clareza, ritmo e continuidade entram no mesmo treino.</p>
+                  </div>
+                  <div className="mx-auto grid h-36 w-36 place-items-center rounded-full bg-[radial-gradient(circle,#ffebe7_0%,#fff7f3_48%,white_49%)] text-[#e72d3d] shadow-[0_20px_45px_rgba(226,47,63,.12)]"><Volume2 size={40} /></div>
+                  <div className="space-y-3 text-sm font-bold text-[#464b55]">
+                    <p className="flex items-center gap-3"><Headphones size={17} className="text-[#e72d3d]" /> Compreensão no cenário</p>
+                    <p className="flex items-center gap-3"><Languages size={17} className="text-[#e72d3d]" /> Apoio em português</p>
+                    <p className="flex items-center gap-3"><RefreshCcw size={17} className="text-[#e72d3d]" /> Nova tentativa orientada</p>
                   </div>
                 </div>
-                <Volume2 size={20} className="text-slate-300" />
-              </div>
+              </article>
             </div>
           </div>
         </section>
 
-        <section id="experiencias" className="bg-[#07111f] px-5 py-24 sm:py-32">
+        <section className="bg-[#fbfbfc] px-5 py-24 sm:py-32">
           <div className="mx-auto max-w-7xl">
-            <div className="max-w-3xl">
-              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">Seu inglês tem um destino</p>
-              <h2 className="mt-4 font-display text-4xl font-extrabold leading-tight tracking-[-0.045em] text-white sm:text-6xl">Não é uma aula genérica. É a situação que você precisa viver.</h2>
-              <p className="mt-5 text-lg leading-8 text-slate-400">Cada experiência combina cenário, objetivo, nível e formato. Você pratica decisões de comunicação — não frases soltas.</p>
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Prova de produto, sem número inventado</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">{ALL_EXPERIENCES.length} experiências. Uma lógica: preparar você para usar o inglês.</h2>
             </div>
-            <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {experiences.map(({ title, description, image, icon: Icon }) => (
-                <article key={title} className="group relative min-h-[390px] overflow-hidden rounded-[30px] border border-white/10 bg-slate-900">
-                  <img src={image} alt="" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#050b14] via-[#050b14]/45 to-transparent" />
-                  <div className="absolute inset-x-0 bottom-0 p-6">
-                    <span className="grid h-11 w-11 place-items-center rounded-2xl border border-white/15 bg-white/10 text-amber-200 backdrop-blur-md"><Icon size={20} /></span>
-                    <h3 className="mt-4 font-display text-2xl font-extrabold tracking-tight text-white">{title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
-                  </div>
+            <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {outcomeCards.map(([title, description], index) => (
+                <article key={title} className="rounded-[28px] border border-black/[.06] bg-white p-6 shadow-[0_12px_40px_rgba(38,39,44,.05)]">
+                  <div className="flex items-start justify-between gap-4"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#fff0ec] text-[#e72d3d]"><Check size={18} strokeWidth={2.7} /></span><span className="text-xs font-extrabold text-[#b4b7bd]">0{index + 1}</span></div>
+                  <h3 className="mt-5 font-display text-xl font-extrabold text-[#24252a]">{title}</h3>
+                  <p className="mt-3 text-sm leading-6 text-[#777b84]">{description}</p>
                 </article>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="bg-[#f5f1e9] px-5 py-24 text-[#111827] sm:py-32">
-          <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-2">
-            <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#9a5414]">Feedback que não corta sua coragem</p>
-              <h2 className="mt-4 font-display text-4xl font-extrabold leading-tight tracking-[-0.05em] sm:text-6xl">Fale primeiro. Entenda o ajuste. Tente de novo.</h2>
-              <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600">O Wolfie mantém a conversa em movimento e transforma os pontos importantes em uma próxima tentativa mais clara.</p>
-              <ul className="mt-8 grid gap-4 text-sm font-bold text-slate-700 sm:grid-cols-2">
-                <li className="flex gap-3"><Headphones className="mt-0.5 text-[#9a5414]" size={19} /> Compreensão auditiva no cenário</li>
-                <li className="flex gap-3"><Languages className="mt-0.5 text-[#9a5414]" size={19} /> Apoio em português quando necessário</li>
-                <li className="flex gap-3"><RefreshCcw className="mt-0.5 text-[#9a5414]" size={19} /> Reformulação sem recomeçar tudo</li>
-                <li className="flex gap-3"><Mic2 className="mt-0.5 text-[#9a5414]" size={19} /> Voz ou texto no seu ritmo</li>
-              </ul>
+        <section className="px-5 py-24 sm:py-32">
+          <div className="mx-auto max-w-5xl">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Uma comparação honesta</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">Treino personalizado sem depender de uma agenda fixa.</h2>
             </div>
-            <div className="rounded-[36px] bg-[#0b1728] p-5 shadow-2xl sm:p-8">
-              <div className="rounded-[28px] border border-white/10 bg-[#101f33] p-5 sm:p-7">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300">Sua tentativa</p>
-                <p className="mt-3 text-lg font-semibold leading-8 text-white">“I want discuss about the next steps with the team.”</p>
-              </div>
-              <div className="mx-5 h-6 border-l-2 border-dashed border-amber-300/50" />
-              <div className="rounded-[28px] border border-amber-200/15 bg-[#ffbf69] p-5 text-[#111827] sm:p-7">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#6c3b0c]">Ajuste útil</p>
-                <p className="mt-3 text-lg font-extrabold leading-8">“I’d like to discuss the next steps with the team.”</p>
-                <p className="mt-3 text-sm leading-6 text-[#5b3a18]">Depois de <strong>want</strong>, use <strong>to discuss</strong>. Para soar mais colaborativo, <strong>I’d like to…</strong> funciona bem.</p>
-              </div>
-              <WolfieLink href="/quiz" className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/[.12] bg-white/[.08] font-bold text-white"><RefreshCcw size={17} /> Preparar minha tentativa</WolfieLink>
+            <div className="mt-14 grid gap-5 md:grid-cols-2">
+              <article className="rounded-[34px] bg-[linear-gradient(145deg,#e72d3d,#ff7b5c)] p-8 text-white shadow-[0_24px_65px_rgba(206,38,56,.18)]">
+                <p className="text-xs font-extrabold uppercase tracking-[.17em] text-white/75">Com Wolfie</p>
+                <h3 className="mt-3 font-display text-4xl font-extrabold">Prática no momento em que você precisa.</h3>
+                <ul className="mt-8 space-y-4 text-sm font-bold">
+                  {["Escolha o cenário que importa agora", "Pratique por voz ou texto", "Retome sem perder o contexto", "Receba feedback durante a tentativa", "Acesse com sua conta Wise Wolf"].map((item) => <li key={item} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-[#d9273a]"><Check size={14} strokeWidth={3} /></span>{item}</li>)}
+                </ul>
+                <WolfieLink href="/quiz" className="mt-9 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 font-extrabold text-[#ba2032]">Descobrir meu treino <ArrowRight size={17} /></WolfieLink>
+              </article>
+              <article className="rounded-[34px] border border-black/[.08] bg-white p-8">
+                <p className="text-xs font-extrabold uppercase tracking-[.17em] text-[#9a9da4]">Sem um treino contextual</p>
+                <h3 className="mt-3 font-display text-4xl font-extrabold text-[#2b2c31]">Muito conteúdo. Pouca preparação para a conversa.</h3>
+                <ul className="mt-8 space-y-4 text-sm font-bold text-[#70747d]">
+                  {["Trilha igual para objetivos diferentes", "Frases soltas fora do seu ambiente", "Correção que interrompe o raciocínio", "Pouca continuidade entre tentativas", "Dificuldade para transferir o estudo ao trabalho"].map((item) => <li key={item} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#f4f4f5] text-[#a2a5ab]"><X size={14} strokeWidth={2.7} /></span>{item}</li>)}
+                </ul>
+              </article>
             </div>
           </div>
         </section>
 
-        <section className="bg-[#0b1728] px-5 py-24 sm:py-32">
-          <div className="mx-auto max-w-7xl">
-            <div className="grid gap-5 md:grid-cols-3">
-              {[
-                ["01", "Conte seu objetivo", "Um diagnóstico curto organiza contexto, urgência e formato de prática."],
-                ["02", "Receba um ponto de partida", "A recomendação é explicável e usa experiências que já existem no Wolfie."],
-                ["03", "Entre na simulação", "Alunos entram com a conta Wise Wolf e praticam no motor pedagógico real."],
-              ].map(([number, title, description]) => (
-                <article key={number} className="rounded-[30px] border border-white/[.09] bg-white/[.035] p-7">
-                  <span className="font-display text-5xl font-extrabold text-white/15">{number}</span>
-                  <h3 className="mt-7 font-display text-2xl font-extrabold text-white">{title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-400">{description}</p>
-                </article>
-              ))}
+        <section className="bg-[#fff7f3] px-5 py-24 sm:py-32">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[.9fr_1.1fr]">
+            <div className="relative mx-auto aspect-[4/3] w-full max-w-xl overflow-hidden rounded-[36px] bg-white shadow-[0_26px_70px_rgba(86,51,48,.11)]">
+              <img src="/assets/wolfie/standalone/hero-light-phone-v2.webp" alt="Wolfie em uma experiência de conversa por voz" className="h-full w-full object-cover object-[center_36%]" />
+            </div>
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Criado pela Wise Wolf</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold tracking-[-.055em] text-[#1c1d21] sm:text-6xl">Tecnologia com uma intenção pedagógica clara.</h2>
+              <p className="mt-6 text-lg leading-8 text-[#686d77]">O Wolfie nasceu dentro de uma operação de ensino de inglês. Por isso, não começa perguntando apenas o seu nível: começa entendendo a conversa que você precisa ter.</p>
+              <p className="mt-5 text-lg leading-8 text-[#686d77]">A IA conduz a prática, mas a arquitetura continua comprometida com clareza, tentativa, feedback e autonomia do aluno.</p>
+              <a href="https://wisewolflanguage.com.br" rel="noreferrer" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full border border-black/10 bg-white px-6 py-3 font-extrabold text-[#25262b] transition hover:-translate-y-0.5 hover:shadow-lg">Conhecer a Wise Wolf <ArrowRight size={17} /></a>
             </div>
           </div>
         </section>
 
-        <section className="bg-[#07111f] px-5 py-24 sm:py-32">
-          <div className="mx-auto grid max-w-7xl gap-8 overflow-hidden rounded-[40px] border border-white/10 bg-[radial-gradient(circle_at_85%_20%,rgba(255,191,105,.18),transparent_34%),linear-gradient(135deg,#13243b,#091321)] p-7 sm:p-12 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div>
-              <span className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300"><LockKeyhole size={16} /> Privacidade por princípio</span>
-              <h2 className="mt-4 max-w-3xl font-display text-4xl font-extrabold tracking-[-0.045em] text-white sm:text-5xl">Seu diagnóstico público não precisa expor sua vida.</h2>
-              <p className="mt-5 max-w-2xl leading-7 text-slate-300">As respostas do quiz são escolhas fechadas, sem dados pessoais na URL. Nome e contato só aparecem no fim, com consentimento, se você quiser conversar com a equipe.</p>
+        <section className="px-5 py-24 sm:py-32">
+          <div className="mx-auto max-w-4xl text-center">
+            <span className="mx-auto grid h-20 w-20 place-items-center rounded-[25px] bg-gradient-to-br from-[#ffb45f] via-[#ff785f] to-[#e72d3d] text-[#1f1513] shadow-[0_18px_45px_rgba(231,45,61,.2)]"><Sparkles size={34} /></span>
+            <h2 className="mx-auto mt-8 max-w-3xl font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">Pratique antes da conversa. Chegue diferente nela.</h2>
+            <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#727680]">Faça o diagnóstico, veja a recomendação antes de informar seus dados e escolha seu próximo treino.</p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <WolfieLink href="/quiz" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#e72d3d] px-7 py-4 font-extrabold text-white shadow-[0_16px_35px_rgba(231,45,61,.18)]">Descobrir meu treino <ArrowRight size={18} /></WolfieLink>
+              <WolfieLink href="/entrar" className="inline-flex min-h-14 items-center justify-center rounded-full border border-black/10 px-7 py-4 font-extrabold text-[#25262b]">Já sou aluno</WolfieLink>
             </div>
-            <WolfieLink href="/quiz" className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#111827] transition hover:-translate-y-0.5">Começar agora <ArrowRight size={18} /></WolfieLink>
+            <p className="mt-7 inline-flex items-center gap-2 text-xs font-bold text-[#8b8f98]"><LockKeyhole size={15} /> Sem dados pessoais na URL e sem contato obrigatório.</p>
           </div>
         </section>
       </main>
@@ -185,34 +349,35 @@ export function LandingPage() {
 }
 
 export function HowItWorksPage() {
+  const features = [
+    [Sparkles, "Diagnóstico curto", "Oito perguntas fechadas identificam cenário, participação, ponto de partida, bloqueio, formato e ritmo."],
+    [BookOpenCheck, "Experiência recomendada", "O resultado aponta uma experiência real do catálogo, alternativas e um plano inicial explicável."],
+    [Mic2, "Conversa por voz ou texto", "Na área autenticada, o Wolfie conduz simulação, transcrição e continuidade de sessão."],
+    [RefreshCcw, "Tentativa orientada", "O feedback explica o ajuste que importa para a mensagem e abre espaço para tentar novamente."],
+  ] as const;
+
   return (
     <PublicPage>
       <main className="px-5 pb-24 pt-36 sm:pt-44">
-        <div className="mx-auto max-w-5xl">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">Como funciona</p>
-          <h1 className="mt-5 max-w-4xl font-display text-5xl font-extrabold leading-[.98] tracking-[-0.055em] text-white sm:text-7xl">Do objetivo à conversa, sem uma trilha genérica no meio.</h1>
-          <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300">O Wolfie usa seu contexto para escolher uma experiência do catálogo e depois adapta a dificuldade durante a prática.</p>
-          <div className="mt-14 grid gap-6 md:grid-cols-2">
-            {[
-              [Sparkles, "Diagnóstico curto", "Oito perguntas fechadas identificam cenário, participação, ponto de partida, bloqueio, formato e ritmo."],
-              [Presentation, "Experiência recomendada", "O resultado aponta uma experiência real do catálogo, alternativas e um plano de frequência — sem fingir uma avaliação clínica ou de proficiência."],
-              [Mic2, "Conversa por voz ou texto", "Na área autenticada, o mesmo motor do Wolfie oferece simulação, transcrição e continuidade de sessão."],
-              [RefreshCcw, "Tentativa orientada", "O feedback explica o ajuste que importa para a mensagem e abre espaço para uma nova tentativa."],
-            ].map(([Icon, title, description]) => {
-              const FeatureIcon = Icon as typeof Sparkles;
-              return (
-                <article key={String(title)} className="rounded-[30px] border border-white/10 bg-white/[.035] p-7">
-                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#ffbf69] text-[#111827]"><FeatureIcon size={21} /></span>
-                  <h2 className="mt-6 font-display text-2xl font-extrabold text-white">{String(title)}</h2>
-                  <p className="mt-3 leading-7 text-slate-400">{String(description)}</p>
-                </article>
-              );
-            })}
+        <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Como funciona</p>
+            <h1 className="mt-5 font-display text-5xl font-extrabold leading-[.98] tracking-[-.06em] text-[#191a1e] sm:text-7xl">Do objetivo à conversa, sem uma trilha genérica no meio.</h1>
+            <p className="mx-auto mt-7 max-w-2xl text-lg leading-8 text-[#6d727c]">O Wolfie usa seu contexto para escolher uma experiência e adapta a dificuldade durante a prática.</p>
           </div>
-          <div className="mt-12 rounded-[34px] bg-[#f5f1e9] p-7 text-[#111827] sm:p-10">
+          <div className="mt-16 grid gap-5 md:grid-cols-2">
+            {features.map(([Icon, title, description]) => (
+              <article key={title} className="rounded-[30px] border border-black/[.07] bg-[#fbfbfc] p-7">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fff0ec] text-[#e72d3d]"><Icon size={21} /></span>
+                <h2 className="mt-6 font-display text-2xl font-extrabold text-[#202126]">{title}</h2>
+                <p className="mt-3 leading-7 text-[#737781]">{description}</p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-12 rounded-[34px] bg-[linear-gradient(135deg,#d9273a,#ff795d)] p-8 text-white sm:p-11">
             <h2 className="font-display text-3xl font-extrabold tracking-tight">Pronto para encontrar seu primeiro cenário?</h2>
-            <p className="mt-3 text-slate-600">Leva poucos minutos e você vê o resultado antes de informar seus dados.</p>
-            <WolfieLink href="/quiz" className="mt-7 inline-flex min-h-14 items-center gap-2 rounded-full bg-[#111827] px-7 py-4 font-extrabold text-white">Começar diagnóstico <ArrowRight size={18} /></WolfieLink>
+            <p className="mt-3 text-white/80">Leva poucos minutos e você vê o resultado antes de informar seus dados.</p>
+            <WolfieLink href="/quiz" className="mt-7 inline-flex min-h-14 items-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#b91f32]">Começar diagnóstico <ArrowRight size={18} /></WolfieLink>
           </div>
         </div>
       </main>
@@ -225,23 +390,24 @@ export function AccessPage() {
     <PublicPage>
       <main className="px-5 pb-24 pt-36 sm:pt-44">
         <div className="mx-auto max-w-5xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">Acesso ao Wolfie</p>
-          <h1 className="mx-auto mt-5 max-w-4xl font-display text-5xl font-extrabold tracking-[-0.055em] text-white sm:text-7xl">Comece pelo caminho certo para você.</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300">Não exibimos preço fictício. O acesso segue sua matrícula ou uma conversa com a equipe Wise Wolf.</p>
-          <div className="mt-12 grid gap-6 text-left md:grid-cols-2">
-            <article className="rounded-[34px] border border-white/10 bg-white/[.04] p-8">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300">Já sou aluno</p>
-              <h2 className="mt-4 font-display text-3xl font-extrabold text-white">Entrar com minha conta</h2>
-              <p className="mt-4 leading-7 text-slate-400">Use o mesmo e-mail e senha da Wise Wolf. A sessão do subdomínio é independente por segurança.</p>
-              <WolfieLink href="/entrar" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-white px-6 py-3.5 font-extrabold text-[#111827]">Entrar agora <ArrowRight size={17} /></WolfieLink>
+          <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Acesso ao Wolfie</p>
+          <h1 className="mx-auto mt-5 max-w-4xl font-display text-5xl font-extrabold tracking-[-.06em] text-[#191a1e] sm:text-7xl">Comece pelo caminho certo para você.</h1>
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#6d727c]">O acesso segue sua matrícula ou uma conversa com a equipe Wise Wolf. Não exibimos preço ou condição que não esteja aprovada.</p>
+          <div className="mt-12 grid gap-5 text-left md:grid-cols-2">
+            <article className="rounded-[34px] border border-black/[.07] bg-[#fbfbfc] p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#6f7480]">Já sou aluno</p>
+              <h2 className="mt-4 font-display text-3xl font-extrabold text-[#202126]">Entrar com minha conta</h2>
+              <p className="mt-4 leading-7 text-[#737781]">Use o mesmo e-mail e senha da Wise Wolf. A sessão do subdomínio é independente por segurança.</p>
+              <WolfieLink href="/entrar" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#202126] px-6 py-3.5 font-extrabold text-white">Entrar agora <ArrowRight size={17} /></WolfieLink>
             </article>
-            <article className="rounded-[34px] border border-amber-200/20 bg-[#ffbf69] p-8 text-[#111827]">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#6d3d0e]">Quero conhecer</p>
+            <article className="rounded-[34px] bg-[linear-gradient(145deg,#e72d3d,#ff795d)] p-8 text-white shadow-[0_24px_60px_rgba(221,44,61,.16)]">
+              <p className="text-xs font-extrabold uppercase tracking-[.16em] text-white/75">Quero conhecer</p>
               <h2 className="mt-4 font-display text-3xl font-extrabold">Descobrir meu treino</h2>
-              <p className="mt-4 leading-7 text-[#5a3b1d]">Faça o diagnóstico, veja a recomendação e escolha se deseja deixar seu contato no final.</p>
-              <WolfieLink href="/quiz" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#111827] px-6 py-3.5 font-extrabold text-white">Começar diagnóstico <ArrowRight size={17} /></WolfieLink>
+              <p className="mt-4 leading-7 text-white/80">Faça o diagnóstico, veja a recomendação e escolha se deseja deixar seu contato no final.</p>
+              <WolfieLink href="/quiz" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-white px-6 py-3.5 font-extrabold text-[#b91f32]">Começar diagnóstico <ArrowRight size={17} /></WolfieLink>
             </article>
           </div>
+          <p className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-[#777b84]"><ShieldCheck size={17} className="text-[#e72d3d]" /> Resultado antes do cadastro e contato sempre opcional.</p>
         </div>
       </main>
     </PublicPage>

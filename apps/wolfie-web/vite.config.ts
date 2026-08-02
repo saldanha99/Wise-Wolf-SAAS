@@ -225,8 +225,8 @@ export default defineConfig(({ command, mode }) => {
           short_name: "Wolfie Tutor",
           description:
             "Pratique inglês em cenários reais com um tutor de IA por voz e texto.",
-          theme_color: "#07111f",
-          background_color: "#07111f",
+          theme_color: "#ffffff",
+          background_color: "#ffffff",
           display: "standalone",
           orientation: "any",
           start_url: "/app",

@@ -144,43 +144,43 @@ export function QuizPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07111f] text-white">
-      <header className="flex min-h-20 items-center justify-between px-5 sm:px-8">
+    <div className="min-h-screen bg-white text-[#1d1e22]">
+      <header className="flex min-h-20 items-center justify-between border-b border-black/[.06] px-5 sm:px-8">
         <WolfieBrand />
-        <span aria-live="polite" className="text-xs font-bold text-slate-300">Etapa {stepIndex + 1} de {PUBLIC_QUIZ_STEPS.length}</span>
+        <span aria-live="polite" className="rounded-full bg-[#f5f5f6] px-4 py-2 text-xs font-extrabold text-[#727680]">Etapa {stepIndex + 1} de {PUBLIC_QUIZ_STEPS.length}</span>
       </header>
-      <div role="progressbar" aria-label="Progresso do diagnóstico" aria-valuemin={1} aria-valuemax={PUBLIC_QUIZ_STEPS.length} aria-valuenow={stepIndex + 1} className="h-1 bg-white/[.08]"><div className="h-full bg-gradient-to-r from-amber-300 to-orange-400 transition-[width] duration-300" style={{ width: `${progress}%` }} /></div>
+      <div role="progressbar" aria-label="Progresso do diagnóstico" aria-valuemin={1} aria-valuemax={PUBLIC_QUIZ_STEPS.length} aria-valuenow={stepIndex + 1} className="h-1 bg-black/[.05]"><div className="h-full bg-gradient-to-r from-[#e72d3d] to-[#ff8b61] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div>
       <main className="grid min-h-[calc(100vh-84px)] lg:grid-cols-[1.02fr_.98fr]">
         <section className="flex px-5 py-10 sm:px-10 lg:px-[8vw] lg:py-16">
           <div className="m-auto w-full max-w-2xl">
-            <button type="button" onClick={goBack} className="inline-flex min-h-11 items-center gap-2 rounded-full text-sm font-bold text-slate-400 transition hover:text-white"><ArrowLeft size={17} /> Voltar</button>
-            <p className="mt-7 text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">{step.eyebrow}</p>
+            <button type="button" onClick={goBack} className="inline-flex min-h-11 items-center gap-2 rounded-full text-sm font-bold text-[#777b84] transition hover:text-[#202126]"><ArrowLeft size={17} /> Voltar</button>
+            <p className="mt-7 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{step.eyebrow}</p>
             <h1 ref={questionHeadingRef} tabIndex={-1} className="mt-4 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.045em] outline-none sm:text-5xl">{step.title}</h1>
-            <p className="mt-4 text-base leading-7 text-slate-400">{step.supportingText}</p>
+            <p className="mt-4 text-base leading-7 text-[#737781]">{step.supportingText}</p>
             <div className="mt-8 grid gap-3" role="group" aria-label={`Respostas para: ${step.title}`}>
               {step.options.map((option) => {
                 const selected = answers[step.id] === option.value;
                 return (
-                  <button key={option.value} type="button" aria-pressed={selected} onClick={() => selectOption(option.value)} className={`group flex min-h-[68px] items-center gap-4 rounded-[20px] border px-5 py-4 text-left transition ${selected ? "border-[#ffbf69] bg-[#ffbf69]/[.12]" : "border-white/10 bg-white/[.035] hover:border-white/25 hover:bg-white/[.06]"}`}>
-                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${selected ? "border-[#ffbf69] bg-[#ffbf69] text-[#111827]" : "border-white/20"}`}>{selected ? <Check size={14} strokeWidth={3} /> : null}</span>
-                    <span className="flex-1 font-bold text-slate-100">{option.label}</span>
-                    <ChevronRight size={18} className="text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-slate-300" />
+                  <button key={option.value} type="button" aria-pressed={selected} onClick={() => selectOption(option.value)} className={`group flex min-h-[68px] items-center gap-4 rounded-[20px] border px-5 py-4 text-left transition ${selected ? "border-[#e72d3d] bg-[#fff1ed] shadow-[0_10px_30px_rgba(231,45,61,.08)]" : "border-black/[.08] bg-white hover:border-black/20 hover:bg-[#fafafa]"}`}>
+                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${selected ? "border-[#e72d3d] bg-[#e72d3d] text-white" : "border-black/20"}`}>{selected ? <Check size={14} strokeWidth={3} /> : null}</span>
+                    <span className="flex-1 font-bold text-[#303238]">{option.label}</span>
+                    <ChevronRight size={18} className="text-[#b3b5ba] transition group-hover:translate-x-0.5 group-hover:text-[#686c75]" />
                   </button>
                 );
               })}
             </div>
-            <p className="mt-7 flex items-center gap-2 text-xs leading-5 text-slate-400"><ShieldCheck size={15} className="shrink-0" /> Guardamos aqui apenas escolhas do quiz, sem nome, e-mail ou telefone.</p>
+            <p className="mt-7 flex items-center gap-2 text-xs leading-5 text-[#878b94]"><ShieldCheck size={15} className="shrink-0 text-[#e72d3d]" /> Guardamos aqui apenas escolhas do quiz, sem nome, e-mail ou telefone.</p>
           </div>
         </section>
-        <aside className="relative hidden overflow-hidden border-l border-white/[.08] lg:block">
+        <aside className="relative m-5 hidden overflow-hidden rounded-[34px] bg-[#f4f4f5] lg:block">
           <img src={art.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#07111f] via-[#07111f]/[.38] to-[#07111f]/[.12]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 p-12">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#07111f]/70 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-amber-200 backdrop-blur-md"><Target size={15} /> {art.label}</p>
-            <div className="mt-5 rounded-[28px] border border-white/[.14] bg-[#07111f]/[.78] p-6 backdrop-blur-xl">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300">O que estamos organizando</p>
+            <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/90 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#b92333] backdrop-blur-md"><Target size={15} /> {art.label}</p>
+            <div className="mt-5 rounded-[28px] border border-white/30 bg-white/90 p-6 text-[#202126] shadow-xl backdrop-blur-xl">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#e72d3d]">O que estamos organizando</p>
               <p className="mt-3 text-2xl font-extrabold leading-tight">Um primeiro treino que combine situação, habilidade, nível declarado e tempo disponível.</p>
-              <p className="mt-4 text-sm leading-6 text-slate-300">Nada de análise secreta: a lógica do resultado usa somente as escolhas que você vê.</p>
+              <p className="mt-4 text-sm leading-6 text-[#6d727c]">Nada de análise secreta: a lógica do resultado usa somente as escolhas que você vê.</p>
             </div>
           </div>
         </aside>
@@ -199,12 +199,12 @@ export function QuizResultPage() {
 
   if (!result) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#07111f] px-5 text-white">
+      <div className="grid min-h-screen place-items-center bg-white px-5 text-[#202126]">
         <div className="max-w-lg text-center">
-          <CircleAlert size={34} className="mx-auto text-amber-300" />
+          <CircleAlert size={34} className="mx-auto text-[#e72d3d]" />
           <h1 className="mt-5 font-display text-3xl font-extrabold">Seu resultado ainda não está pronto</h1>
-          <p className="mt-3 text-slate-400">Complete as oito etapas para receber uma recomendação coerente.</p>
-          <WolfieLink href="/quiz" className="mt-7 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#ffbf69] px-6 py-3.5 font-extrabold text-[#111827]">Continuar diagnóstico <ArrowRight size={17} /></WolfieLink>
+          <p className="mt-3 text-[#777b84]">Complete as oito etapas para receber uma recomendação coerente.</p>
+          <WolfieLink href="/quiz" className="mt-7 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#e72d3d] px-6 py-3.5 font-extrabold text-white">Continuar diagnóstico <ArrowRight size={17} /></WolfieLink>
         </div>
       </div>
     );
@@ -234,42 +234,42 @@ export function QuizResultPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#07111f] text-white">
-      <header className="flex min-h-20 items-center justify-between px-5 sm:px-8"><WolfieBrand /><WolfieLink href="/quiz?novo=1" className="inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white"><RotateCcw size={16} /> Refazer</WolfieLink></header>
+    <div className="min-h-screen bg-[#fbfbfc] text-[#202126]">
+      <header className="flex min-h-20 items-center justify-between border-b border-black/[.06] bg-white px-5 sm:px-8"><WolfieBrand /><WolfieLink href="/quiz?novo=1" className="inline-flex items-center gap-2 text-sm font-bold text-[#747881] hover:text-[#202126]"><RotateCcw size={16} /> Refazer</WolfieLink></header>
       <main className="px-5 pb-20 pt-8 sm:pt-12">
         <div className="mx-auto max-w-6xl">
-          <div className="grid overflow-hidden rounded-[36px] border border-white/10 bg-[#0c192b] shadow-2xl lg:grid-cols-[1.04fr_.96fr]">
+          <div className="grid overflow-hidden rounded-[36px] border border-black/[.07] bg-white shadow-[0_28px_90px_rgba(37,38,44,.09)] lg:grid-cols-[1.04fr_.96fr]">
             <section className="p-7 sm:p-10 lg:p-12">
-              <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-300"><BadgeCheck size={17} /> Recomendação pronta</p>
+              <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]"><BadgeCheck size={17} /> Recomendação pronta</p>
               <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.05em] sm:text-6xl">{recommendation.title}</h1>
-              <p className="mt-5 text-lg leading-8 text-slate-300">{recommendation.summary}</p>
-              <div className="mt-8 rounded-[26px] border border-amber-200/20 bg-[#ffbf69] p-6 text-[#111827]">
+              <p className="mt-5 text-lg leading-8 text-[#6d727c]">{recommendation.summary}</p>
+              <div className="mt-8 rounded-[26px] border border-[#e72d3d]/10 bg-[#fff0ec] p-6 text-[#202126]">
                 <div className="flex items-start gap-4">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#111827] text-[#ffbf69]"><GoalIcon size={21} /></span>
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#e72d3d] text-white"><GoalIcon size={21} /></span>
                   <div>
-                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#71410f]">Primeira experiência</p>
+                    <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#b92333]">Primeira experiência</p>
                     <h2 className="mt-1 font-display text-2xl font-extrabold">{recommendation.primary.title}</h2>
-                    <p className="mt-2 text-sm font-semibold text-[#5a3b1d]">{recommendation.primary.matchScore}% de aderência às escolhas · nível inicial autodeclarado {recommendation.startingLevel}</p>
+                    <p className="mt-2 text-sm font-semibold text-[#76555a]">{recommendation.primary.matchScore}% de aderência às escolhas · nível inicial autodeclarado {recommendation.startingLevel}</p>
                   </div>
                 </div>
               </div>
               <div className="mt-7 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-white/10 bg-white/[.04] p-4"><CalendarClock size={19} className="text-amber-200" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.minutesPerSession} min</p><p className="text-xs text-slate-400">por prática</p></div>
-                <div className="rounded-2xl border border-white/10 bg-white/[.04] p-4"><Target size={19} className="text-amber-200" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.sessionsPerWeek}×</p><p className="text-xs text-slate-400">por semana</p></div>
-                <div className="rounded-2xl border border-white/10 bg-white/[.04] p-4"><Mic2 size={19} className="text-amber-200" /><p className="mt-3 text-2xl font-extrabold">{answers.modality === "voice" ? "Voz" : answers.modality === "text" ? "Texto" : "Misto"}</p><p className="text-xs text-slate-400">formato inicial</p></div>
+                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><CalendarClock size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.minutesPerSession} min</p><p className="text-xs text-[#858992]">por prática</p></div>
+                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><Target size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{recommendation.practicePlan.sessionsPerWeek}×</p><p className="text-xs text-[#858992]">por semana</p></div>
+                <div className="rounded-2xl border border-black/[.06] bg-[#fafafa] p-4"><Mic2 size={19} className="text-[#e72d3d]" /><p className="mt-3 text-2xl font-extrabold">{answers.modality === "voice" ? "Voz" : answers.modality === "text" ? "Texto" : "Misto"}</p><p className="text-xs text-[#858992]">formato inicial</p></div>
               </div>
-              <div className="mt-7 rounded-2xl border border-white/[.08] bg-white/[.025] p-5">
-                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-400">Foco sugerido</p>
-                <p className="mt-2 font-bold text-slate-200">{recommendation.practicePlan.focus}</p>
+              <div className="mt-7 rounded-2xl border border-black/[.06] bg-[#fafafa] p-5">
+                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#8b8f98]">Foco sugerido</p>
+                <p className="mt-2 font-bold text-[#383a40]">{recommendation.practicePlan.focus}</p>
               </div>
-              <p className="mt-5 text-xs leading-5 text-slate-400">{recommendation.disclaimer}</p>
-              <WolfieLink href="/entrar?next=/app/praticar" className="mt-8 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#111827] sm:w-auto">Já sou aluno: praticar agora <ArrowRight size={18} /></WolfieLink>
+              <p className="mt-5 text-xs leading-5 text-[#8b8f98]">{recommendation.disclaimer}</p>
+              <WolfieLink href="/entrar?next=/app/praticar" className="mt-8 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-full bg-[#202126] px-7 py-4 font-extrabold text-white sm:w-auto">Já sou aluno: praticar agora <ArrowRight size={18} /></WolfieLink>
             </section>
             <aside className="relative min-h-[360px] lg:min-h-full">
               <img src={image} alt="Cenário da experiência recomendada" className="absolute inset-0 h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#07111f]/95 via-[#07111f]/20 to-transparent lg:bg-gradient-to-r lg:from-[#0c192b]/45 lg:via-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent lg:bg-gradient-to-r lg:from-white/20 lg:via-transparent" />
               <div className="absolute inset-x-6 bottom-6 rounded-[24px] border border-white/[.14] bg-[#07111f]/[.82] p-5 backdrop-blur-xl">
-                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-amber-200">Outras rotas possíveis</p>
+                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#ffb9ad]">Outras rotas possíveis</p>
                 <div className="mt-3 grid gap-2">{recommendation.alternatives.map((item) => <div key={item.experienceId} className="flex items-center justify-between gap-4 rounded-xl bg-white/[.06] px-4 py-3"><span className="text-sm font-bold">{item.title}</span><span className="text-xs font-bold text-slate-400">{item.matchScore}%</span></div>)}</div>
               </div>
             </aside>

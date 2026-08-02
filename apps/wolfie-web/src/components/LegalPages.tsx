@@ -18,11 +18,11 @@ function LegalLayout({
   return (
     <PublicPage>
       <main className="px-5 pb-24 pt-36 sm:pt-44">
-        <article className="mx-auto max-w-4xl rounded-[34px] border border-white/10 bg-white/[.035] p-7 sm:p-10 lg:p-12">
-          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffbf69]">{eyebrow}</p>
-          <h1 className="mt-4 font-display text-4xl font-extrabold tracking-[-0.045em] text-white sm:text-6xl">{title}</h1>
-          <p className="mt-4 text-sm text-slate-300">Versão {WOLFIE_PRIVACY_NOTICE_VERSION} · vigente desde 2 de agosto de 2026</p>
-          <div className="mt-10 space-y-9 text-base leading-7 text-slate-300">{children}</div>
+        <article className="mx-auto max-w-4xl rounded-[34px] border border-black/[.07] bg-[#fbfbfc] p-7 shadow-[0_20px_70px_rgba(36,37,42,.06)] sm:p-10 lg:p-12">
+          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{eyebrow}</p>
+          <h1 className="mt-4 font-display text-4xl font-extrabold tracking-[-0.045em] text-[#202126] sm:text-6xl">{title}</h1>
+          <p className="mt-4 text-sm text-[#7d818a]">Versão {WOLFIE_PRIVACY_NOTICE_VERSION} · vigente desde 2 de agosto de 2026</p>
+          <div className="mt-10 space-y-9 text-base leading-7 text-[#626771]">{children}</div>
         </article>
       </main>
     </PublicPage>
@@ -31,7 +31,7 @@ function LegalLayout({
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section>
-    <h2 className="font-display text-2xl font-extrabold text-white">{title}</h2>
+    <h2 className="font-display text-2xl font-extrabold text-[#202126]">{title}</h2>
     <div className="mt-3 space-y-3">{children}</div>
   </section>
 );
@@ -40,7 +40,7 @@ export function PrivacyPage() {
   return (
     <LegalLayout eyebrow="Privacidade" title="Seus dados no Wolfie">
       <Section title="Quem cuida dos dados">
-        <p>A Wise Wolf é responsável pelo tratamento realizado neste site e no Wolfie AI Tutor. Solicitações sobre privacidade podem ser feitas pelos canais oficiais disponíveis em <a className="font-bold text-amber-200 underline underline-offset-4" href="https://wisewolflanguage.com.br" rel="noreferrer">wisewolflanguage.com.br</a>.</p>
+        <p>A Wise Wolf é responsável pelo tratamento realizado neste site e no Wolfie AI Tutor. Solicitações sobre privacidade podem ser feitas pelos canais oficiais disponíveis em <a className="font-bold text-[#b92333] underline underline-offset-4" href="https://wisewolflanguage.com.br" rel="noreferrer">wisewolflanguage.com.br</a>.</p>
       </Section>
       <Section title="O que coletamos e por quê">
         <p>As oito respostas do diagnóstico são escolhas fechadas usadas para recomendar um cenário, nível autodeclarado, foco e ritmo inicial. Elas não são uma avaliação de proficiência.</p>

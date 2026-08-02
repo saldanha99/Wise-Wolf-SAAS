@@ -125,35 +125,35 @@ export function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-[#07111f] text-white lg:grid-cols-[.92fr_1.08fr]">
+    <div className="grid min-h-screen bg-white text-[#202126] lg:grid-cols-[.92fr_1.08fr]">
       <main className="flex min-h-screen px-5 py-8 sm:px-10 lg:px-[8vw]">
         <div className="m-auto w-full max-w-md">
           <WolfieBrand />
-          <WolfieLink href="/" className="mt-12 inline-flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white"><ArrowLeft size={16} /> Voltar ao início</WolfieLink>
-          <p className="mt-10 text-xs font-extrabold uppercase tracking-[0.17em] text-[#ffbf69]">Área do aluno</p>
+          <WolfieLink href="/" className="mt-12 inline-flex items-center gap-2 text-sm font-bold text-[#777b84] hover:text-[#202126]"><ArrowLeft size={16} /> Voltar ao início</WolfieLink>
+          <p className="mt-10 text-xs font-extrabold uppercase tracking-[0.17em] text-[#e72d3d]">Área do aluno</p>
           <h1 className="mt-4 font-display text-4xl font-extrabold tracking-[-0.045em] sm:text-5xl">Continue sua prática.</h1>
-          <p className="mt-4 leading-7 text-slate-400">Use as mesmas credenciais do sistema Wise Wolf. Por segurança, o subdomínio mantém uma sessão própria.</p>
+          <p className="mt-4 leading-7 text-[#727680]">Use as mesmas credenciais do sistema Wise Wolf. Por segurança, o subdomínio mantém uma sessão própria.</p>
           <form onSubmit={submit} className="mt-9 grid gap-5">
-            <label className="text-sm font-bold text-slate-200">E-mail
-              <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 min-h-[52px] w-full rounded-2xl border border-white/[.12] bg-white/[.055] px-4 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-[#ffbf69] focus:ring-2 focus:ring-[#ffbf69]/20" placeholder="voce@exemplo.com" />
+            <label className="text-sm font-bold text-[#45484f]">E-mail
+              <input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 min-h-[52px] w-full rounded-2xl border border-black/[.1] bg-[#fafafa] px-4 text-base text-[#202126] outline-none transition placeholder:text-[#a3a6ad] focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" placeholder="voce@exemplo.com" />
             </label>
-            <label className="text-sm font-bold text-slate-200">Senha
+            <label className="text-sm font-bold text-[#45484f]">Senha
               <span className="relative mt-2 block">
-                <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-[52px] w-full rounded-2xl border border-white/[.12] bg-white/[.055] px-4 pr-12 text-base text-white outline-none transition focus:border-[#ffbf69] focus:ring-2 focus:ring-[#ffbf69]/20" />
-                <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-1 grid w-11 place-items-center text-slate-400 hover:text-white" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+                <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-[52px] w-full rounded-2xl border border-black/[.1] bg-[#fafafa] px-4 pr-12 text-base text-[#202126] outline-none transition focus:border-[#e72d3d] focus:ring-2 focus:ring-[#e72d3d]/15" />
+                <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-1 grid w-11 place-items-center text-[#858992] hover:text-[#202126]" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
               </span>
             </label>
-            {error ? <p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-200"><CircleAlert size={17} className="mt-0.5 shrink-0" /> {error}</p> : null}
-            <button type="submit" disabled={loading} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#ffbf69] px-7 py-4 font-extrabold text-[#111827] shadow-xl shadow-orange-500/15 transition hover:bg-[#ffd09a] disabled:cursor-wait disabled:opacity-70">{loading ? <><Loader2 size={18} className="animate-spin" /> Entrando</> : <>Entrar no Wolfie <ArrowRight size={18} /></>}</button>
+            {error ? <p role="alert" className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700"><CircleAlert size={17} className="mt-0.5 shrink-0" /> {error}</p> : null}
+            <button type="submit" disabled={loading} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-[#e72d3d] px-7 py-4 font-extrabold text-white shadow-[0_15px_35px_rgba(231,45,61,.18)] transition hover:bg-[#ca2031] disabled:cursor-wait disabled:opacity-70">{loading ? <><Loader2 size={18} className="animate-spin" /> Entrando</> : <>Entrar no Wolfie <ArrowRight size={18} /></>}</button>
           </form>
-          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-slate-400"><ShieldCheck size={15} className="shrink-0" /> Sua senha é processada pelo serviço de autenticação e não é enviada para o quiz.</p>
+          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-[#858992]"><ShieldCheck size={15} className="shrink-0 text-[#e72d3d]" /> Sua senha é processada pelo serviço de autenticação e não é enviada para o quiz.</p>
         </div>
       </main>
-      <aside className="relative hidden overflow-hidden border-l border-white/[.08] lg:block">
-        <img src="/assets/wolfie/standalone/hero-global-studio.webp" alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#07111f] via-[#07111f]/15 to-transparent" />
-        <div className="absolute inset-x-10 bottom-10 rounded-[32px] border border-white/[.14] bg-[#07111f]/[.78] p-7 backdrop-blur-xl">
-          <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-300"><Mic2 size={16} /> Seu cenário continua aqui</p>
+      <aside className="relative m-5 hidden overflow-hidden rounded-[38px] bg-[linear-gradient(145deg,#d9273a,#ff8b61)] lg:block">
+        <img src="/assets/wolfie/standalone/hero-light-phone-v2.webp" alt="" className="absolute inset-0 h-full w-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#711522]/80 via-transparent to-white/5" />
+        <div className="absolute inset-x-10 bottom-10 rounded-[30px] border border-white/40 bg-white/90 p-7 text-[#202126] shadow-xl backdrop-blur-xl">
+          <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.16em] text-[#e72d3d]"><Mic2 size={16} /> Seu cenário continua aqui</p>
           <p className="mt-4 max-w-xl font-display text-3xl font-extrabold leading-tight">Entre, confirme o treino recomendado e comece pela situação que importa agora.</p>
         </div>
       </aside>
@@ -236,7 +236,7 @@ export function AuthenticatedWolfieApp() {
     <div className="wolfie-product min-h-screen bg-[#07111f]">
       <header className="sticky top-0 z-40 border-b border-white/[.08] bg-[#07111f]/[.92] px-4 py-3 text-white backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
-          <WolfieBrand />
+          <WolfieBrand tone="dark" />
           <div className="flex items-center gap-3">
             <span className="hidden text-right sm:block"><span className="block text-sm font-extrabold">{auth.user.name?.split(" ")[0]}</span><span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Aluno Wise Wolf</span></span>
             <button type="button" onClick={async () => { await supabase.auth.signOut({ scope: "local" }); }} className="grid h-11 w-11 place-items-center rounded-full border border-white/10 text-slate-300 hover:bg-white/[.08] hover:text-white" aria-label="Sair"><LogOut size={18} /></button>
