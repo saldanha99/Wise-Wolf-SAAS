@@ -163,7 +163,6 @@ export function TeacherContractDocument({
                         <div className="pl-4 space-y-1 mt-1">
                             <p>a) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de aula ministrada, equivalente a R$ {finalHourlyRate.toFixed(2).replace('.', ',')} por hora;</p>
                             <p>b) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de participação em treinamentos internos promovidos pela CONTRATANTE;</p>
-                            <p>c) Bonificação de R$ 50,00 (cinquenta reais) por indicação de professor que venha a ser efetivamente contratado pela CONTRATANTE.</p>
                         </div>
                         <p className="text-justify mt-2">
                             3.2 O pagamento será realizado até o dia 10 (dez) de cada mês, via PIX ou transferência bancária, mediante apuração das atividades realizadas no mês anterior.
@@ -175,8 +174,7 @@ export function TeacherContractDocument({
                             3.4 <strong>VALOR DA AULA E REMUNERAÇÃO PROGRESSIVA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais). O CONTRATADO faz jus à remuneração progressiva quando cumprir, cumulativamente: (i) manter carteira mínima de 10 (dez) alunos ativos; (ii) completar 1 (um) mês consecutivo sem registrar falta; e (iii) não possuir conflito de lançamento em aberto no mesmo período. Atendidos os três requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
                         </p>
                         <div className="pl-4 space-y-1 mt-1">
-                            <p>a) do 5º ao 9º aluno ativo: R$ 9,50 (nove reais e cinquenta centavos) por aula;</p>
-                            <p>b) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>
+                            <p>a) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>
                         </div>
                         <p className="text-justify mt-2">
                             3.4.1 Considera-se <strong>aluno ativo</strong> aquele com matrícula ativa e agendamento vigente na agenda do CONTRATADO. Considera-se <strong>conflito de lançamento</strong> a divergência entre a aula registrada pelo CONTRATADO e a confirmação de presença do aluno. Enquanto qualquer dos três requisitos não for atendido, todas as aulas são remuneradas por R$ 8,00.
