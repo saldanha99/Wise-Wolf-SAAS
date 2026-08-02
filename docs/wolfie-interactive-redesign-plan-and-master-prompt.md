@@ -1053,7 +1053,7 @@ ao sexto e último lote.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | Pendente |
+| Commit de origem | `8dd2b7240f28` |
 | Release | Aguardando rollout consolidado |
 | Escopo visual preparado | `introduce-yourself`, `my-routine`, `my-home`, `my-family`, `my-childhood`, `my-plans`, `game-worlds`, `roblox-inspired-missions`, `create-your-avatar`, `school-life`, `series-characters` e `mystery-adventures` |
 | Cobertura local aprovada | 50 cenários com bitmap próprio; seis perfis no fallback determinístico |
