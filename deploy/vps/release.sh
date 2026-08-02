@@ -305,6 +305,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802010000_payable_rule_and_director_margin.sql"
   "supabase/migrations/20260802020000_flat_rate_and_trainer_bonus.sql"
   "supabase/migrations/20260802030000_turbo_restored_and_carryover.sql"
+  "supabase/migrations/20260802040000_turbo_por_mes_fechado.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
