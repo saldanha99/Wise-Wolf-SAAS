@@ -2,7 +2,7 @@
 
 > Versão: 3
 > Data: 1º de agosto de 2026
-> Estado: validado localmente e pronto para rollout de produção
+> Estado: publicado em produção na release `20260802T033326Z-5a9a6fe506fc`
 > Escopo: seis experiências de vida cotidiana e quatro experiências de fala
 
 ## 1. Resumo
@@ -112,7 +112,7 @@ reproduce any Praktika asset or composition.
 | `describe-what-you-see` | 45.228 / `26949399b48b569315d803d09fccf36438ba25eacc985039f7263eb062c3e4eb` | 26.018 / `1d72d75ed0dcba62b59598050871450305c2249f788181975075135c226a40c6` |
 | `give-your-opinion` | 51.130 / `66b5facc2154ff7dcdc58fe9ea85b1b6dddf776b54f62040af15d28724f93a45` | 27.506 / `0c7e85d2a25170225d3eec60454f330b0c874fc6dbfd246b6623fb237053a67e` |
 
-## 7. QA local
+## 7. QA e rollout executados
 
 Concluído antes do rollout:
 
@@ -135,7 +135,24 @@ Concluído antes do rollout:
 - navegador headless encerrado, sem sessão automatizada residual;
 - nenhum texto, logo, marca, pessoa ou dado detectado na revisão visual.
 
-Ainda devem ser registrados após a publicação: release, backup e smoke remoto.
+Rollout concluído em 2 de agosto de 2026, às 03:33 UTC (00:33 BRT):
+
+- commit de origem `00a5908f5e7b`;
+- release ativa `20260802T033326Z-5a9a6fe506fc`;
+- backup reversível
+  `/opt/wisewolf/backups/release-20260802T033326Z-5a9a6fe506fc`;
+- feature flag `VITE_WOLFIE_SCENARIO_UI_V2=true` preservada;
+- preflight da VPS, 60 testes do frontend, 166 testes Deno, checks das funções
+  e build de produção aprovados;
+- suítes SQL transacionais concluídas com `ROLLBACK`;
+- marcador remoto apontando exatamente para a release ativa;
+- frontend e Hub em `200`, além dos três preflights do Wolfie em `200`;
+- 82/82 URLs conferidas novamente fora do processo de release, com MIME
+  `image/webp`, bytes e SHA-256 idênticos ao manifesto;
+- os 20 novos recortes, o personagem fingerprintado e um alias legado foram
+  carregados como imagens reais em uma única página headless de produção, com
+  dimensões corretas, zero erro de página e zero erro de console;
+- sessão headless encerrada e nenhuma sessão automatizada residual.
 
 Com este lote, 28 dos 56 cenários canônicos possuem bitmap próprio. Os outros
 28 continuam usando o fallback visual determinístico até os lotes seguintes.

@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1 e V2 publicados; lote V3 validado e pronto para rollout
+> Status: lotes V1, V2 e V3 publicados em produção; próximo lote em preparação
 > Data da análise: 1º de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -67,10 +67,10 @@ Também permanecem para lotes futuros:
 
 ### Rollout
 
-O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae` e o lote V2
-na release `20260802T022645Z-745c73755821`, ambos com a feature flag ativada,
-backup reversível e evidências registradas na seção 15. O lote V3 passou pelos
-gates locais e aguarda o rollout. Os inventários e a proveniência estão em
+O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, o lote V2
+na release `20260802T022645Z-745c73755821` e o lote V3 na release
+`20260802T033326Z-5a9a6fe506fc`, todos com a feature flag ativada, backup
+reversível e evidências registradas na seção 15. Os inventários e a proveniência estão em
 `docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md` e
 `docs/wolfie-visual-assets-v3.md`.
 
@@ -961,6 +961,33 @@ Evidências aprovadas no segundo rollout:
   como imagens reais, com dimensões esperadas e sem erro no navegador headless;
 - sessão de navegador encerrada, sem sessão automatizada residual.
 
-O rollback atual deve usar o backup do lote V2 registrado acima. Cada lote
+### Terceiro lote — vida cotidiana e treino de fala
+
+O terceiro lote foi ativado em 2 de agosto de 2026, às 03:33 UTC (00:33 BRT),
+preservando `VITE_WOLFIE_SCENARIO_UI_V2=true`.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | `00a5908f5e7b` |
+| Release ativa | `20260802T033326Z-5a9a6fe506fc` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T033326Z-5a9a6fe506fc` |
+| Escopo visual novo | `home-organization`, `skincare-beauty`, `health-symptoms`, `shopping`, `services`, `digital-life`, `record-a-story`, `tell-a-story`, `describe-what-you-see` e `give-your-opinion` |
+| Cobertura atual | 28 cenários com bitmap próprio; 28 perfis no fallback determinístico |
+
+Evidências aprovadas no terceiro rollout:
+
+- 60 testes de frontend, 166 testes Deno, typecheck, checks das funções e build
+  de produção;
+- suítes SQL transacionais concluídas com `ROLLBACK`;
+- 82/82 URLs conferidas em produção com MIME, bytes e SHA-256 — 57 assets
+  primários e 25 aliases de transição;
+- frontend e Hub em `200`, marcador remoto confirmado e preflights das três APIs
+  do Wolfie em `200`;
+- os 20 WebPs novos, o personagem fingerprintado e um alias legado carregados
+  com dimensões esperadas numa única página headless, sem erro de página ou de
+  console;
+- sessão headless encerrada, sem sessão automatizada residual.
+
+O rollback atual deve usar o backup do lote V3 registrado acima. Cada lote
 seguinte deve repetir os mesmos gates de teste, checksums, acessibilidade,
 responsividade e smoke test em sessão única.
