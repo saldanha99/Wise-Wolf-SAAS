@@ -127,7 +127,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);
 
         // Helper to process lesson
-        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
+        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string, notStartedUntil?: string | null) => {
           const student = b.student as any;
           if (!student) return;
 
@@ -160,6 +160,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             // Origem da reposição (só relevante para REPOSIÇÃO): TEACHER paga, STUDENT não
             faultType: type === 'REPOSIÇÃO' ? (b.fault_type || 'STUDENT') : null,
             isLate: i > 0,
+            // Aluno matriculado com início futuro: aparece na agenda, mas o
+            // lançamento fica bloqueado até a data que veio do link de matrícula.
+            // Antes a aula era simplesmente ocultada — o professor não sabia que o
+            // aluno existia, e quando a data vinha errada (Flavio Ramyres, julho/2026)
+            // ele lançava falta justificada de quem nem tinha começado.
+            notStartedUntil: notStartedUntil || null,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
             suggestedMaterialUrl: topicInfo?.base_material?.file_url || null
@@ -185,14 +191,14 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           // por horário (evita que bookings redundantes virem várias aulas a lançar).
           const slotSeen = new Set<string>();
           for (const b of bookings) {
-            if (b.start_date && dateStr < b.start_date) continue;
+            const notStarted = b.start_date && dateStr < b.start_date ? b.start_date : null;
             // Hoje: ocultar aulas que ainda não chegou o horário
             if (i === 0 && isStillFutureToday(b.time_slot)) continue;
             if (!b.time_slot) continue; // booking sem horário definido: ignorar
             if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
             slotSeen.add(b.time_slot);
             if (!logs?.some(l => l.booking_id === b.id)) {
-              await processLesson(b, 'REGULAR', b.time_slot);
+              await processLesson(b, 'REGULAR', b.time_slot, notStarted);
             }
           }
         }
@@ -505,10 +511,35 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             {(() => {
               // Separa as reposições numa seção dedicada — depois de agendadas e feitas, o
               // professor confirma aqui o que aconteceu (presença / falta do aluno / falta do prof).
-              const repos = todayLessons.filter(l => l.type === 'REPOSIÇÃO');
-              const regular = todayLessons.filter(l => l.type !== 'REPOSIÇÃO');
+              // Aluno matriculado com início futuro: fica VISÍVEL (o professor
+              // precisa saber que ele existe e quando começa) mas FORA do formulário
+              // de lançamento — não vai para o ClassLogForm.
+              const naoIniciadas = todayLessons.filter(l => l.notStartedUntil);
+              const lancaveis = todayLessons.filter(l => !l.notStartedUntil);
+              const repos = lancaveis.filter(l => l.type === 'REPOSIÇÃO');
+              const regular = lancaveis.filter(l => l.type !== 'REPOSIÇÃO');
               return (
                 <div className="space-y-6">
+                  {naoIniciadas.length > 0 && (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-blue-800">
+                        Ainda não começaram ({naoIniciadas.length})
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-blue-700">
+                        Já estão na sua agenda, mas o lançamento abre só na data de início da matrícula.
+                      </p>
+                      <ul className="mt-3 space-y-1.5">
+                        {naoIniciadas.map((l: any) => (
+                          <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-blue-900">
+                            <span>{l.name} · {l.time}</span>
+                            <span className="whitespace-nowrap text-[11px] font-medium">
+                              começa em {new Date(`${l.notStartedUntil}T12:00:00`).toLocaleDateString('pt-BR')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {regular.length > 0 && (
                     <ClassLogForm
                       items={regular}
