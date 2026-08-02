@@ -84,6 +84,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [transferTo, setTransferTo] = useState('');
     const [transferReason, setTransferReason] = useState('');
     const [transferring, setTransferring] = useState(false);
+    // Ajustes do fechamento: acordos que não são aula (reserva de agenda, bônus,
+    // desconto). Antes a direção editava valor de aula na mão para "encaixar".
+    const [adjustments, setAdjustments] = useState<{ id: string; description: string; amount: number }[]>([]);
+    const [adjOpen, setAdjOpen] = useState(false);
+    const [adjDesc, setAdjDesc] = useState('');
+    const [adjAmount, setAdjAmount] = useState('');
+    const [adjSaving, setAdjSaving] = useState(false);
 
     useEffect(() => {
         fetchFinancials();
@@ -158,6 +165,11 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 p_month: selectedMonth,
             });
             setReport(reportData || null);
+
+            const { data: adj } = await supabase.rpc('teacher_closing_adjustments', {
+                p_teacher_id: user.id, p_month: selectedMonth,
+            });
+            setAdjustments(((adj as any[]) || []).map(a => ({ ...a, amount: Number(a.amount) })));
 
             // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase
@@ -256,6 +268,38 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             setRowError(err.message || 'Não foi possível salvar.');
         } finally {
             setSavingRow(null);
+        }
+    };
+
+    const adjustmentsTotal = adjustments.reduce((sum, a) => sum + a.amount, 0);
+    const grandTotal = () => officialTotal() + adjustmentsTotal;
+
+    const saveAdjustment = async (deleteId?: string) => {
+        setAdjSaving(true);
+        setRowError(null);
+        try {
+            if (!deleteId) {
+                const value = Number(adjAmount.replace(',', '.'));
+                if (!isFinite(value) || value === 0) throw new Error('Informe um valor (use - para desconto).');
+                if (!adjDesc.trim()) throw new Error('Descreva o motivo do ajuste.');
+                const { error } = await supabase.rpc('set_closing_adjustment', {
+                    p_teacher_id: user.id, p_month: selectedMonth,
+                    p_description: adjDesc.trim(), p_amount: value,
+                });
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.rpc('set_closing_adjustment', {
+                    p_teacher_id: user.id, p_month: selectedMonth,
+                    p_description: '-', p_amount: 0, p_delete_id: deleteId,
+                });
+                if (error) throw error;
+            }
+            setAdjOpen(false); setAdjDesc(''); setAdjAmount('');
+            await fetchFinancials();
+        } catch (err: any) {
+            setRowError(err.message || 'Não foi possível salvar o ajuste.');
+        } finally {
+            setAdjSaving(false);
         }
     };
 
@@ -846,6 +890,103 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                     </table>
                 </div>
             </div>
+
+            {/* Ajustes do fechamento — o que não é aula */}
+            {(directorMode || adjustments.length > 0) && (
+                <div className="overflow-hidden rounded-[2.5rem] border border-brand-border bg-brand-surface shadow-sm">
+                    <div className="flex flex-col gap-3 border-b border-brand-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+                        <div className="min-w-0">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-brand-text">Ajustes do fechamento</h3>
+                            <p className="mt-1 text-xs font-medium text-brand-muted">
+                                Acordos que não são aula — reserva de agenda, bônus, desconto.
+                            </p>
+                        </div>
+                        {directorMode && !adjOpen && (
+                            <button
+                                type="button"
+                                onClick={() => setAdjOpen(true)}
+                                className="shrink-0 whitespace-nowrap rounded-xl bg-tenant-primary/10 px-4 py-2 text-xs font-bold text-tenant-primary"
+                            >
+                                + Lançar ajuste
+                            </button>
+                        )}
+                    </div>
+
+                    {adjOpen && (
+                        <div className="grid gap-3 border-b border-brand-border bg-brand-surface-2/40 p-5 sm:grid-cols-[1fr_auto_auto] sm:items-end sm:p-6">
+                            <label className="block">
+                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Motivo</span>
+                                <input
+                                    value={adjDesc}
+                                    onChange={(e) => setAdjDesc(e.target.value)}
+                                    list="ajuste-sugestoes"
+                                    placeholder="Ex: Reserva de agenda — aluno começa depois"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                />
+                                <datalist id="ajuste-sugestoes">
+                                    <option value="Reserva de agenda" />
+                                    <option value="Bônus acordado com a direção" />
+                                    <option value="Desconto acordado" />
+                                    <option value="Ajuste de fechamento anterior" />
+                                </datalist>
+                            </label>
+                            <label className="block">
+                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor (R$)</span>
+                                <input
+                                    value={adjAmount}
+                                    onChange={(e) => setAdjAmount(e.target.value)}
+                                    inputMode="decimal"
+                                    placeholder="30,00"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30 sm:w-32"
+                                />
+                            </label>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => { setAdjOpen(false); setAdjDesc(''); setAdjAmount(''); }}
+                                    className="shrink-0 rounded-xl px-4 py-3 text-xs font-bold uppercase tracking-widest text-brand-muted">
+                                    Cancelar
+                                </button>
+                                <button type="button" onClick={() => saveAdjustment()} disabled={adjSaving}
+                                    className="flex shrink-0 items-center gap-2 rounded-xl bg-tenant-primary px-5 py-3 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50">
+                                    {adjSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Lançar
+                                </button>
+                            </div>
+                            <p className="text-[11px] font-medium text-brand-muted sm:col-span-3">
+                                Use valor negativo para desconto. O ajuste aparece na folha do professor com o motivo escrito.
+                            </p>
+                        </div>
+                    )}
+
+                    {adjustments.length === 0 ? (
+                        <p className="p-8 text-center text-xs font-bold uppercase tracking-widest text-brand-muted">
+                            Nenhum ajuste neste mês.
+                        </p>
+                    ) : (
+                        <ul className="divide-y divide-brand-border">
+                            {adjustments.map(a => (
+                                <li key={a.id} className="flex items-center justify-between gap-4 px-5 py-4 sm:px-8">
+                                    <span className="min-w-0 text-sm font-bold text-brand-text">{a.description}</span>
+                                    <span className="flex shrink-0 items-center gap-3">
+                                        <span className={`text-sm font-black ${a.amount < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                            {a.amount < 0 ? '- ' : '+ '}{money(Math.abs(a.amount))}
+                                        </span>
+                                        {directorMode && (
+                                            <button type="button" onClick={() => saveAdjustment(a.id)} disabled={adjSaving}
+                                                aria-label={`Remover ajuste ${a.description}`}
+                                                className="rounded-md p-1.5 text-brand-muted hover:bg-red-50 hover:text-red-500">
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </span>
+                                </li>
+                            ))}
+                            <li className="flex items-center justify-between gap-4 bg-brand-surface-2/60 px-5 py-5 sm:px-8">
+                                <span className="text-xs font-black uppercase tracking-widest text-brand-muted">Total a receber</span>
+                                <span className="text-xl font-black tracking-tight text-tenant-primary">{money(grandTotal())}</span>
+                            </li>
+                        </ul>
+                    )}
+                </div>
+            )}
 
             {/* Cobertura: mover a aula (e o pagamento) para quem realmente deu */}
             {transferLog && (
