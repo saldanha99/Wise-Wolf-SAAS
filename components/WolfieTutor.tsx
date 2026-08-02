@@ -72,6 +72,7 @@ import { WolfieLiveBalance } from "./WolfieLiveBalance";
 import { WolfieCaptionBar } from "../src/components/wolfie/visuals/WolfieCaptionBar";
 import { WolfieCharacter } from "../src/components/wolfie/visuals/WolfieCharacter";
 import { WolfieCoachSheet } from "../src/components/wolfie/visuals/WolfieCoachSheet";
+import { WOLFIE_SCENARIO_UI_V2_ENABLED } from "../src/components/wolfie/visuals/featureFlags";
 import { WolfieMeetingHUD } from "../src/components/wolfie/visuals/WolfieMeetingHUD";
 import { resolveScene } from "../src/components/wolfie/visuals/resolveScene";
 import { WolfieScenarioStage } from "../src/components/wolfie/visuals/WolfieScenarioStage";
@@ -167,11 +168,6 @@ type VoiceTransport = "realtime" | "classic" | "text";
 const WOLFIE_REALTIME_ENABLED =
   String(import.meta.env.VITE_WOLFIE_REALTIME_ENABLED ?? "true")
     .toLocaleLowerCase("en-US") !== "false";
-
-const WOLFIE_SCENARIO_UI_V2_ENABLED =
-  String(import.meta.env.VITE_WOLFIE_SCENARIO_UI_V2 ?? "false")
-    .trim()
-    .toLocaleLowerCase("en-US") === "true";
 
 const EMPTY_TURN_GUIDANCE: TurnGuidance = {
   currentStage: "",

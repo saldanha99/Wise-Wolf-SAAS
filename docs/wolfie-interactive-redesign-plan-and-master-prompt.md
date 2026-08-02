@@ -40,9 +40,9 @@ evolução.
   possuem bitmap exclusivo.
 - O painel de coaching contém Tab e Shift+Tab dentro do diálogo, ignora controles
   indisponíveis e preserva foco inicial, Escape e restauração de foco.
-- A interface V2 é protegida por `VITE_WOLFIE_SCENARIO_UI_V2`. O valor padrão de
-  segurança é `false`; quando a flag está desligada, a experiência clássica
-  continua disponível.
+- A interface V2 é protegida por `VITE_WOLFIE_SCENARIO_UI_V2` e permanece ativa
+  por padrão. O valor explícito `false` preserva a experiência clássica como
+  rollback operacional.
 - Há fallbacks por perfil, setor, universo, modo e cena neutra. Durante o
   carregamento — ou se um bitmap falhar — o gradiente do perfil mantém a prática
   legível e funcional.

@@ -9,12 +9,20 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$PROJECT_DIR/.env.deploy.local}"
 LOCAL_STAGE=""
+caller_wolfie_scenario_ui_v2_was_set=false
+caller_wolfie_scenario_ui_v2_value=""
+if [[ "${VITE_WOLFIE_SCENARIO_UI_V2+x}" = "x" ]]; then
+  caller_wolfie_scenario_ui_v2_was_set=true
+  caller_wolfie_scenario_ui_v2_value="$VITE_WOLFIE_SCENARIO_UI_V2"
+fi
 
 cleanup() {
   local exit_code=$?
   trap - EXIT
   unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY \
-    VITE_WOLFIE_REALTIME_ENABLED VITE_WOLFIE_SCENARIO_UI_V2
+    VITE_WOLFIE_REALTIME_ENABLED VITE_WOLFIE_SCENARIO_UI_V2 \
+    caller_wolfie_scenario_ui_v2_was_set \
+    caller_wolfie_scenario_ui_v2_value
   if [[ -n "$LOCAL_STAGE" && -d "$LOCAL_STAGE" ]]; then
     rm -rf -- "$LOCAL_STAGE"
   fi
@@ -59,6 +67,9 @@ set -a
 # shellcheck disable=SC1090
 source "$DEPLOY_ENV_FILE"
 set +a
+if [[ "$caller_wolfie_scenario_ui_v2_was_set" = "true" ]]; then
+  VITE_WOLFIE_SCENARIO_UI_V2="$caller_wolfie_scenario_ui_v2_value"
+fi
 
 required_vars=(
   DEPLOY_SSH_HOST
@@ -214,7 +225,7 @@ export VITE_WOLFIE_SCENARIO_UI_V2
 VITE_SUPABASE_URL="$(read_remote_public_env VITE_SUPABASE_URL)"
 VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
 VITE_WOLFIE_REALTIME_ENABLED="${VITE_WOLFIE_REALTIME_ENABLED:-true}"
-VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-false}"
+VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-true}"
 validate_https_url "$VITE_SUPABASE_URL" ||
   die "VITE_SUPABASE_URL remota inválida"
 [[ "$VITE_SUPABASE_URL" = "$DEPLOY_API_URL" ]] ||

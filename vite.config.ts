@@ -71,9 +71,18 @@ export default defineConfig(({ command, mode }) => {
             ],
           },
           workbox: {
+            // Navigations must try the network first so online tabs receive the
+            // current shell; the precached index remains an offline-only fallback.
             globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-            navigateFallbackDenylist: [/^\/api/, /supabase/],
+            navigateFallback: null,
             runtimeCaching: [
+              {
+                urlPattern: ({ request }) => request.mode === 'navigate',
+                handler: 'NetworkOnly',
+                options: {
+                  precacheFallback: { fallbackURL: 'index.html' },
+                },
+              },
               {
                 urlPattern: ({ url }) => url.hostname.includes('supabase'),
                 handler: 'NetworkOnly',

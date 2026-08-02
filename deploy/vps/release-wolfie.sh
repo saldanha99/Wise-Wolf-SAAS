@@ -8,12 +8,20 @@ umask 077
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-$PROJECT_DIR/.env.deploy.local}"
+caller_wolfie_scenario_ui_v2_was_set=false
+caller_wolfie_scenario_ui_v2_value=""
+if [[ "${VITE_WOLFIE_SCENARIO_UI_V2+x}" = "x" ]]; then
+  caller_wolfie_scenario_ui_v2_was_set=true
+  caller_wolfie_scenario_ui_v2_value="$VITE_WOLFIE_SCENARIO_UI_V2"
+fi
 
 cleanup() {
   local exit_code=$?
   trap - EXIT
   unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY \
-    VITE_WOLFIE_SCENARIO_UI_V2
+    VITE_WOLFIE_SCENARIO_UI_V2 \
+    caller_wolfie_scenario_ui_v2_was_set \
+    caller_wolfie_scenario_ui_v2_value
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -56,6 +64,9 @@ set -a
 # shellcheck disable=SC1090
 source "$DEPLOY_ENV_FILE"
 set +a
+if [[ "$caller_wolfie_scenario_ui_v2_was_set" = "true" ]]; then
+  VITE_WOLFIE_SCENARIO_UI_V2="$caller_wolfie_scenario_ui_v2_value"
+fi
 
 required_vars=(
   DEPLOY_SSH_HOST
@@ -198,7 +209,7 @@ REMOTE
 export VITE_SUPABASE_URL
 export VITE_SUPABASE_ANON_KEY
 export VITE_WOLFIE_REALTIME_ENABLED=true
-export VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-false}"
+export VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-true}"
 [[ "$VITE_WOLFIE_SCENARIO_UI_V2" = "true" ||
   "$VITE_WOLFIE_SCENARIO_UI_V2" = "false" ]] ||
   die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
@@ -216,8 +227,11 @@ npm ci
 npm run typecheck
 npm run wolfie:assets:verify
 npx vitest run \
+  src/components/wolfie/visuals/featureFlags.test.tsx \
+  src/components/wolfie/visuals/WolfiePresentationComponents.test.tsx \
   src/components/wolfie/WolfieActivitySummary.test.tsx \
   src/components/wolfie/WolfieMeetingActivity.test.tsx \
+  src/services/pwaFreshness.test.tsx \
   src/services/wolfieConversationState.test.tsx \
   src/services/wolfieRealtimeHandoff.test.tsx
 npx --yes deno test --no-lock \
