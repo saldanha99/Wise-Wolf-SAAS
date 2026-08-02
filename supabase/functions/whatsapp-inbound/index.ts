@@ -209,7 +209,9 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
 Responda em português do Brasil, direto, no máximo 6 linhas, com os números que importam.
 
 REGRAS ABSOLUTAS:
-- Use SOMENTE os números do <dados_da_escola>. Nunca calcule receita, custo ou lucro por conta própria a partir de outra coisa.
+- Use SOMENTE os números do <dados_da_escola>.
+- NUNCA some, subtraia ou calcule percentual você mesmo. Todo total já vem pronto no JSON — encontre o campo certo e repita o valor. Se a pergunta pede um total que não existe pronto, diga que não tem esse número consolidado em vez de somar.
+- Ao falar de fechamentos em aberto, use pendencias.fechamentos_nao_pagos.total_geral (ou o total do mês em por_mes). NÃO cite o valor de um professor como se fosse o total.
 - Se a resposta não estiver nos dados, diga que não tem esse dado e sugira onde ver no sistema. NUNCA invente número, nome ou data.
 - Valores em reais no formato R$ 1.234,56.
 - Negrito do WhatsApp é *asterisco simples*, não **duplo**.
