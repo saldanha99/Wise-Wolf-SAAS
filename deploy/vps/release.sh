@@ -267,7 +267,9 @@ npx --yes deno check --no-lock \
   supabase/functions/school-ai-digest/index.ts \
   supabase/functions/hr-ai-screening/index.ts \
   supabase/functions/wolfie-eval/index.ts \
-  supabase/functions/wolfie-live-proxy/index.ts
+  supabase/functions/wolfie-live-proxy/index.ts \
+  supabase/functions/dre-categorize/index.ts \
+  supabase/functions/dre-report/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -313,6 +315,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802090000_divergencia_agenda_lancamento.sql"
   "supabase/migrations/20260802100000_cobertura_funcional.sql"
   "supabase/migrations/20260802110000_remove_faixa_9_50.sql"
+  "supabase/migrations/20260802120000_versiona_get_cashflow.sql"
+  "supabase/migrations/20260802130000_dre_gerencial_plano_de_contas.sql"
+  "supabase/migrations/20260802140000_despesas_recorrentes.sql"
+  "supabase/migrations/20260802150000_dre_categorizador.sql"
+  "supabase/migrations/20260802160000_dre_relatorio_grupo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -369,6 +376,8 @@ HARDENED_FUNCTIONS=(
   hr-ai-screening
   wolfie-eval
   wolfie-live-proxy
+  dre-categorize
+  dre-report
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -653,6 +662,8 @@ HARDENED_FUNCTIONS=(
   hr-ai-screening
   wolfie-eval
   wolfie-live-proxy
+  dre-categorize
+  dre-report
 )
 
 restore_previous_release() {

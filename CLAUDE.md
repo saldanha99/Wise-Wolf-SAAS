@@ -453,3 +453,53 @@ concluir que um erro é posterior ao deploy.
   - **Badge cinza** `UserX · "INATIVO · SEM NOTIFICAÇÕES"` no card; o card inteiro fica **esmaecido** (`opacity-60 grayscale`, borda slate).
   - **Botão por aluno** (`handleToggleStatus`): `UserX` (inativar, âmbar) ↔ `UserCheck` (reativar, esmeralda), com `window.confirm` explicando que os dados são mantidos. Chama `set_student_status` e atualiza o estado local otimista.
 - ⚠️ **Pegadinha:** o gating só silencia valores **explicitamente inativos** (`Inativo` / `INACTIVE` / `Inactive` / `Arquivado` / `Cancelado` / `Trancado`) ou `status_financial='ARCHIVED'`. **Nunca** silencia `'Ativo'` / `'ACTIVE'` / `null` — em produção só existem `'Ativo'` e `'ACTIVE'` (ambos ativos), então o default é "notifica". Ao adicionar uma automação nova, prefira `is_student_notifiable(uuid)` em vez de reescrever a lista (evita drift).
+
+---
+
+## DRE Gerencial — resultado por competência ✅
+
+> **Leia antes de mexer em `get_cashflow`, `financial_transactions` ou qualquer coisa que "lance despesa".**
+
+**O problema que originou:** o caixa tinha **159 lançamentos, todos `ENTRADA`**. Zero saída. Nem repasse a professor, nem ferramentas, nem impostos. Sem o lado do custo não existe resultado — só faturamento.
+
+**A armadilha que quase foi cometida:** "lançar o repasse a professores como SAÍDA no caixa". Isso **dobraria** a conta — `get_cashflow` já soma o repasse direto de `teacher_closings`. É o mesmo bug que `20260612210100_fix_cashflow_double_count.sql` matou do lado da receita.
+
+**O problema real era REGIME, não lançamento faltando.** `get_cashflow` só reconhece o custo quando o fechamento vira `PAGO`. Julho/2026 tem R$ 2.150,00 de custo real e reporta R$ 0,00 lá; no histórico só R$ 3.519,50 de R$ 7.799,50 em fechamentos chegaram a PAGO — **55% do custo com professor nunca entrou em relatório nenhum.**
+
+### Os dois regimes convivem, cada um no seu caminho
+| Função | Pergunta que responde | Custo do professor |
+|---|---|---|
+| `get_cashflow(mes)` | quanto dinheiro entrou e saiu | quando o fechamento é **PAGO** |
+| `dre_gerencial(mes, tenant)` | qual foi o **resultado** do mês | no mês em que a **aula aconteceu** |
+
+`get_cashflow` foi **versionado em migration** (`20260802120000`) — vivia só no banco, mesmo drift do catálogo de nichos. Captura fiel, nada mudou de comportamento.
+
+### Plano de contas (`dre_accounts`, global) + mapa por escola (`dre_category_map`)
+- **`ledger_allowed = false`** é a trava contra dupla contagem: conta alimentada por competência (repasse 5.1.01, ajustes 5.1.02, comissões 6.1.01, indicações 6.1.02) **não aceita** lançamento do caixa. Saída que caia numa dessas é **ignorada no resultado** e vira alerta. `set_dre_category_account` e `upsert_recurring_expense` **recusam** essas contas na origem.
+- **Precedência da classificação:** `financial_transactions.account_code` (lançamento sabe sua conta) → `dre_category_map` (categoria em texto livre, legado) → `6.9.99 Outras despesas`.
+- ⚠️ Categoria sem mapa **nunca some** do resultado — cai em Outras despesas. Despesa esquecida infla o lucro.
+- `financial_transactions.category` nasceu com duas eras para a mesma coisa (`student_tuition` 83× e `MENSALIDADE` 76×). O mapa reconcilia **sem reescrever dado histórico**.
+- As linhas do DRE são agregadas **por conta**, não por natureza — senão classificar marketing, ferramentas e contabilidade continuaria mostrando um total único e o plano de contas não serviria para nada.
+
+### Despesas recorrentes (`recurring_expenses`)
+- É **molde, não saldo**. `run_recurring_expenses(mes)` materializa como SAÍDA no caixa — aí caixa e DRE veem a mesma despesa, cada um no seu regime, e o diretor corrige o mês em que o valor real veio diferente sem mexer no molde.
+- Idempotência por **índice único** `(recurring_expense_id, recurring_month)`, não por `NOT EXISTS` — dois cliques simultâneos perderiam a corrida.
+- ⚠️ O índice é **parcial** → o `ON CONFLICT` precisa repetir o predicado (`WHERE recurring_expense_id IS NOT NULL`), senão dá "no unique or exclusion constraint matching". Mesma pedra de `uq_bookings_no_dup_active`.
+- `day_of_month` limitado a **28**: dia 29–31 não existe em todo mês.
+- Cron `wisewolf-recurring-expenses` (dia 1, 06:10 UTC), antes do fechamento do professor.
+
+### Categorizador por IA (`dre-categorize`)
+- **Sugere, não grava.** O mapa decide como o resultado é lido; classificação errada gravada em silêncio é pior que sugestão recusada. O diretor aplica via `set_dre_category_account`.
+- Toda sugestão é validada contra o plano antes de sair da edge — código inventado pela IA é descartado. Categoria não classificada continua pendente e o retorno diz quantas (`nao_classificadas`).
+- Categoria e descrição são texto escrito por humanos no caixa = **entrada não confiável**: vão dentro de `<dados_do_caixa>` e o system prompt manda ignorar instruções que apareçam ali.
+
+### Relatório no WhatsApp (`dre-report`)
+- **Nasce desligado** (`dre_report_settings.is_active` default false, tabela vazia). Nada é enviado até o diretor configurar destino e cadência.
+- **Um cron diário só** (`wisewolf-dre-report`, 11:20 UTC); quem decide "hoje envia?" é `dre_report_targets`, lendo a cadência da escola. Trocar semanal→mensal é UPDATE, não novo agendamento.
+- Datas resolvidas em **America/Sao_Paulo** — o cron roda em UTC, mas "dia 1" e "segunda-feira" são do calendário do diretor.
+- ⚠️ `authorizeAutomation` garante que é o cron OU um admin — **não diz qual admin**. O `tenant` do envio manual vem SEMPRE do perfil de quem chamou (exceto SUPER_ADMIN); confiar no corpo da requisição deixaria um diretor disparar no grupo de outra escola.
+- Dedupe por `automation_sent` (`kind=DRE_REPORT`); envio manual usa `subject_id = <tenant>:manual` para não ser bloqueado pelo automático do mesmo dia.
+
+**Arquivos:** `components/DreGerencialPanel.tsx` (menu Financeiro → "Resultado (DRE)"), `DreCategorizer.tsx`, `RecurringExpensesManager.tsx`, `DreReportSettings.tsx`; edges `dre-categorize`, `dre-report`. Migrations `20260802120000` a `20260802160000`.
+
+⚠️ **Se um dia a escola quiser um ledger clássico com toda movimentação postada**, é `dre_gerencial` que define o que postar — mas aí `get_cashflow` tem de parar de ler `teacher_closings` **no mesmo commit**, senão dobra.
