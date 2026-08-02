@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
+import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
+import ScreenTabs from './components/ScreenTabs';
 import {
   UserRole,
   Tenant,
@@ -1001,14 +1003,11 @@ const App: React.FC = () => {
     // Mantém o diretor dentro do escopo dele (abas de aluno/professor/vendedor
     // não pertencem aqui). Redireciona silenciosamente ao Início.
     if (user.role === UserRole.SCHOOL_ADMIN) {
-      const allowedAdminTabs = [
-        'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
-        'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
-        'trial-settlement', 'coverage', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'dre', 'balancete', 'margin', 'ai-costs', 'verify-rooms', 'financial',
-        'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
-        'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
-      ];
+      // Deriva da navegação, em vez de repetir a lista à mão: era fácil criar
+      // tela nova, pôr no menu e esquecer aqui — e ela caía no dashboard sem
+      // explicação. 'profile' entra à parte porque é alcançado pelo avatar, não
+      // pelo menu.
+      const allowedAdminTabs = [...ALL_ADMIN_TAB_IDS, 'profile'];
       if (!allowedAdminTabs.includes(activeTab)) {
         setActiveTab('dashboard');
         return null;
@@ -1180,7 +1179,23 @@ const App: React.FC = () => {
       'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
     };
 
-    return contentMap[activeTab] || contentMap['dashboard'];
+    const node = contentMap[activeTab] || contentMap['dashboard'];
+
+    // Abas em volta da tela quando o id ativo pertence a um grupo do menu do
+    // diretor. Fica AQUI, no fim, e não dentro de cada entrada do contentMap:
+    // assim link direto (`onNavigate('dre')`) e clique no menu chegam ao mesmo
+    // lugar, e nenhuma das 39 telas precisou ser tocada.
+    if (user.role === UserRole.SCHOOL_ADMIN) {
+      const grupo = groupForTab(activeTab);
+      if (grupo) {
+        return (
+          <ScreenTabs group={grupo} activeTab={activeTab} onChange={setActiveTab} pendingCounts={pendingCounts}>
+            {node}
+          </ScreenTabs>
+        );
+      }
+    }
+    return node;
   };
 
   const currentBranding = currentTenant?.branding || {
@@ -1524,7 +1539,11 @@ const App: React.FC = () => {
             </div>
           </header>
 
-          <div className="p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip">
+          {/* pb extra no celular: a barra inferior do diretor é fixa e cobriria
+              o fim da tela (o último lançamento, o botão de salvar). */}
+          <div className={`p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip ${
+            user.role === UserRole.SCHOOL_ADMIN ? 'pb-24 lg:pb-8' : ''
+          }`}>
             <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 w-full">
