@@ -149,12 +149,19 @@ printf '%s  %s\n%s  %s\n' \
 chmod 0400 "$checksum_file"
 
 echo "== Preflight seguro da VPS e do banco =="
-stage_mode="$(ssh "${SSH_OPTIONS[@]}" "$DEPLOY_SSH_HOST" bash -s -- \
+stage_mode_file="$LOCAL_STAGE/STAGE_MODE"
+[[ ! -e "$stage_mode_file" && ! -L "$stage_mode_file" ]]
+# Bash 3.2 (macOS) can misparse a quoted heredoc nested inside $(...), then
+# expand parts of the remote program locally under `set -u`. Capture SSH output
+# in a real file and read it only after the remote shell has completed.
+REMOTE_INCOMING_OWNED="true"
+ssh "${SSH_OPTIONS[@]}" "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_HOST" "$DEPLOY_USER" "$DEPLOY_RELEASES_DIR" \
   "$DEPLOY_BACKUPS_DIR" "$DEPLOY_SUPABASE_DIR" "$remote_bundle" \
   "$remote_incoming" "$MIGRATION_FILE" "$TEST_FILE" \
-  "$migration_checksum" "$test_checksum" <<'REMOTE'
+  "$migration_checksum" "$test_checksum" > "$stage_mode_file" <<'REMOTE'
 set -Eeuo pipefail
+[[ "$#" = "11" ]]
 expected_host=$1
 expected_user=$2
 releases_dir=$3
@@ -195,10 +202,8 @@ if [[ -e "$bundle_dir" || -L "$bundle_dir" ]]; then
   [[ -d "$bundle_dir" && ! -L "$bundle_dir" &&
     "$(readlink -f "$bundle_dir")" = "$bundle_dir" ]]
   [[ -f "$bundle_dir/SHA256SUMS" && ! -L "$bundle_dir/SHA256SUMS" ]]
-  [[ "$(sha256sum "$bundle_dir/$migration_file" | awk '{print $1}')" =
-    "$migration_checksum" ]]
-  [[ "$(sha256sum "$bundle_dir/$test_file" | awk '{print $1}')" =
-    "$test_checksum" ]]
+  [[ "$(sha256sum "$bundle_dir/$migration_file" | awk '{print $1}')" = "$migration_checksum" ]]
+  [[ "$(sha256sum "$bundle_dir/$test_file" | awk '{print $1}')" = "$test_checksum" ]]
   (cd "$bundle_dir" && sha256sum -c SHA256SUMS >/dev/null)
   printf 'reuse'
 else
@@ -209,11 +214,12 @@ else
   printf 'upload'
 fi
 REMOTE
-)"
+[[ -f "$stage_mode_file" && -s "$stage_mode_file" && ! -L "$stage_mode_file" ]]
+stage_mode="$(< "$stage_mode_file")"
 [[ "$stage_mode" = "upload" || "$stage_mode" = "reuse" ]] ||
   die "estado remoto inesperado: $stage_mode"
-if [[ "$stage_mode" = "upload" ]]; then
-  REMOTE_INCOMING_OWNED="true"
+if [[ "$stage_mode" = "reuse" ]]; then
+  REMOTE_INCOMING_OWNED="false"
 fi
 
 if [[ "$stage_mode" = "upload" ]]; then
@@ -265,14 +271,10 @@ verify_bundle() {
     echo "bundle contém link simbólico" >&2
     return 1
   fi
-  [[ "$(sha256sum "$candidate/$migration_file" | awk '{print $1}')" =
-    "$migration_checksum" ]]
-  [[ "$(sha256sum "$candidate/$test_file" | awk '{print $1}')" =
-    "$test_checksum" ]]
-  [[ "$(sed -n '1p' "$candidate/SHA256SUMS")" =
-    "$migration_checksum  $migration_file" ]]
-  [[ "$(sed -n '2p' "$candidate/SHA256SUMS")" =
-    "$test_checksum  $test_file" ]]
+  [[ "$(sha256sum "$candidate/$migration_file" | awk '{print $1}')" = "$migration_checksum" ]]
+  [[ "$(sha256sum "$candidate/$test_file" | awk '{print $1}')" = "$test_checksum" ]]
+  [[ "$(sed -n '1p' "$candidate/SHA256SUMS")" = "$migration_checksum  $migration_file" ]]
+  [[ "$(sed -n '2p' "$candidate/SHA256SUMS")" = "$test_checksum  $test_file" ]]
   [[ "$(wc -l < "$candidate/SHA256SUMS" | tr -d ' ')" = "2" ]]
   (cd "$candidate" && sha256sum -c SHA256SUMS >/dev/null)
 }
