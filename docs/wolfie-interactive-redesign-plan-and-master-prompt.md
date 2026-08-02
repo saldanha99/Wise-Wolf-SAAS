@@ -47,7 +47,7 @@ evolução.
   carregamento — ou se um bitmap falhar — o gradiente do perfil mantém a prática
   legível e funcional.
 
-### Integrado e aprovado localmente, aguardando rollout consolidado
+### Cobertura visual local concluída, aguardando rollout final
 
 - O lote V4 possui fontes aprovadas e recortes WebP fingerprintados integrados
   ao manifesto para cinco
@@ -58,28 +58,26 @@ evolução.
 - O lote V5 acrescenta as seis experiências de apresentação pessoal e as seis
   experiências para crianças e adolescentes documentadas em
   `docs/wolfie-visual-assets-v5.md`.
-- A cobertura atual deste branch é de **50 cenários com bitmap próprio e seis
-  perfis no fallback determinístico**.
+- O lote V6 completa `first-job`, `multinationals`, `career-change`,
+  `events-networking`, `panels` e `poster-presentation`, conforme
+  `docs/wolfie-visual-assets-v6.md`.
+- A cobertura atual deste branch é de **56 cenários canônicos com bitmap próprio
+  em desktop e mobile**. Nenhum cenário canônico depende do fallback por falta
+  de imagem.
 - Testes focais e completos, typecheck, build, inventário de `public` e `dist`,
   revisão independente e QA responsivo em sessão headless única passaram para
-  os lotes V4 e V5. A publicação definitiva será consolidada depois do lote V6;
-  portanto, esses cenários ainda não são descritos como ativos na release atual.
+  os lotes V4, V5 e V6. A publicação definitiva permanece pendente; portanto,
+  esses cenários ainda não são descritos como ativos na release atual.
 
-### Coberto por perfil, ainda sem bitmap exclusivo
+### Fallbacks preservados para resiliência
 
-Com os lotes V4 e V5 integrados neste branch, as outras **seis experiências** têm
-identidade pré-definida no catálogo — layout, ambiente, elenco, câmera, lado do
-personagem, paleta, HUD e descrição acessível —, mas continuarão usando o
-fallback visual gerado em código. Portanto, “cobertura das 56 experiências”
-significa cobertura de resolução e design; não significa que 56 fundos finais
-já foram produzidos.
-
-As seis experiências finais são `first-job`, `multinationals`, `career-change`,
-`events-networking`, `panels` e `poster-presentation`.
+Todos os 56 perfis possuem identidade pré-definida no catálogo — layout,
+ambiente, elenco, câmera, lado do personagem, paleta, HUD e descrição acessível
+— e bitmap exclusivo. Os fallbacks por cenário, universo, setor e modo continuam
+ativos somente como proteção durante carregamento ou falha de rede/arquivo.
 
 Também permanecem para lotes futuros:
 
-- imagens exclusivas das seis experiências restantes após a aprovação do V5;
 - poses adicionais e elenco de interlocutores 3D;
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
@@ -94,11 +92,11 @@ na release `20260802T022645Z-745c73755821` e o lote V3 na release
 `20260802T033326Z-5a9a6fe506fc`, todos com a feature flag ativada, backup
 reversível e evidências registradas na seção 15. O lote V4 passou por duas
 releases completas, porém ambas foram substituídas pouco depois por deploys
-externos concorrentes; por isso, V4 e V5 aguardam o rollout final consolidado.
+externos concorrentes; por isso, V4, V5 e V6 aguardam o rollout final consolidado.
 Os inventários e a proveniência estão em
 `docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md`,
-`docs/wolfie-visual-assets-v3.md`, `docs/wolfie-visual-assets-v4.md` e
-`docs/wolfie-visual-assets-v5.md`.
+`docs/wolfie-visual-assets-v3.md`, `docs/wolfie-visual-assets-v4.md`,
+`docs/wolfie-visual-assets-v5.md` e `docs/wolfie-visual-assets-v6.md`.
 
 ## 1. Resultado esperado
 
@@ -1070,3 +1068,29 @@ O inventário, os prompts, as decisões de rejeição e todos os checksums estã
 `docs/wolfie-visual-assets-v5.md`. O lote final deve repetir os mesmos gates e,
 após uma janela sem release externa concorrente, executar uma única publicação
 com verificação externa completa e backup próprio.
+
+### Sexto lote — carreira e eventos finais
+
+O sexto lote está integrado e aprovado localmente. Ele completa a matriz visual
+das 56 experiências canônicas.
+
+| Campo | Valor |
+|---|---|
+| Commit de origem | Pendente |
+| Release | Aguardando rollout final consolidado |
+| Escopo visual preparado | `first-job`, `multinationals`, `career-change`, `events-networking`, `panels` e `poster-presentation` |
+| Cobertura local aprovada | 56 de 56 cenários com bitmap próprio; nenhum cenário canônico sem asset |
+| Gate local | 10/10 testes focais, 60/60 testes completos, typecheck, build, 138/138 assets em `public`, 138/138 em `dist` e QA responsivo aprovados |
+| Revisão independente | Sem achados de qualquer severidade |
+
+O QA responsivo percorreu os seis cenários em desktop `1440 × 900` e mobile
+`390 × 844`, na mesma página, em uma única sessão headless e uma única guia.
+Todos carregaram o fundo correto e o personagem integrado, sem overflow
+horizontal, erro de página ou erro de console. A sessão foi encerrada e a lista
+final confirmou nenhum navegador automatizado residual.
+
+Fontes, prompts, rejeições, recortes e checksums estão em
+`docs/wolfie-visual-assets-v6.md`. Depois do versionamento e da revisão
+independente, falta somente aguardar uma janela estável, executar uma release
+completa e validar externamente as 138 URLs, o frontend, o Hub, o marcador e os
+preflights do Wolfie.

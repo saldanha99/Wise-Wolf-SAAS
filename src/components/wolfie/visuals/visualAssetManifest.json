@@ -1050,6 +1050,132 @@
         "maxBytes": 180000,
         "sha256": "b7d9ab86d1a51070203705065c624a9ed708b4fc432ad38d42c87f209bb8749c"
       }
+    },
+    {
+      "experienceId": "first-job",
+      "universeId": "career",
+      "sourceId": "exec-8f67529d-12cc-44a8-ba6d-d6b697f23e4a.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/first-job/desktop.1651a307b792.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 99338,
+        "maxBytes": 320000,
+        "sha256": "1651a307b792cbd3a8dcf8ba215b48a25d9e19abf3a582fb2db0972aea5126dd"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/first-job/mobile.6bf3c53c11ee.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 63268,
+        "maxBytes": 180000,
+        "sha256": "6bf3c53c11ee7f5d23d17288b38890a9f7c321066a5c364aa67e4d9e053db5e7"
+      }
+    },
+    {
+      "experienceId": "multinationals",
+      "universeId": "career",
+      "sourceId": "exec-45d5d953-72cb-459e-910c-037181f4d44a.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/multinationals/desktop.8b9b0d4d2087.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 119734,
+        "maxBytes": 320000,
+        "sha256": "8b9b0d4d2087a9fdf57f1678992db7896a6e0bd7014224c18aefb9ef03b1a4a2"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/multinationals/mobile.ac1652aa438c.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 58982,
+        "maxBytes": 180000,
+        "sha256": "ac1652aa438caa84bdd2679a72d4a31129cbcf9a3d5fbdeb9ae62a211d77a179"
+      }
+    },
+    {
+      "experienceId": "career-change",
+      "universeId": "career",
+      "sourceId": "exec-426e82d7-0193-43dd-a0ff-60d5dd5ff9d3.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/career-change/desktop.7582d772abe5.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 81992,
+        "maxBytes": 320000,
+        "sha256": "7582d772abe5eeeb9900af2b28658ecb286ae18dbba522ab59e4db54710fefd9"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/career-change/mobile.a6a7a558810e.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 48730,
+        "maxBytes": 180000,
+        "sha256": "a6a7a558810e848b1dacf310154adea4e0aeefc6bf53792ba8251fe050b764ca"
+      }
+    },
+    {
+      "experienceId": "events-networking",
+      "universeId": "events",
+      "sourceId": "exec-3f88929a-0b2e-40ad-911d-be2d944b950c.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/events-networking/desktop.9e608ec4862d.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 99956,
+        "maxBytes": 320000,
+        "sha256": "9e608ec4862d46100b2c5cd71550abfa0637e288e3c6bb410cf49a7a5f2aa560"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/events-networking/mobile.7b704231f47f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 56782,
+        "maxBytes": 180000,
+        "sha256": "7b704231f47f620b81c998ffa0bbdd1a46a0dc1ba9d01ba4047877ef9974a8f9"
+      }
+    },
+    {
+      "experienceId": "panels",
+      "universeId": "events",
+      "sourceId": "exec-80f8205d-9a77-4b51-99a7-cbbd0c051d50.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/panels/desktop.6bc6a1b1371e.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 63510,
+        "maxBytes": 320000,
+        "sha256": "6bc6a1b1371eff4263172da51da7ca834c100fa76a35bb6cd057d857828975eb"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/panels/mobile.64c50a1eabaa.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39582,
+        "maxBytes": 180000,
+        "sha256": "64c50a1eabaa2cc554a8ce50b553a15c93cc27e2a9d7923b9ffc14711732bd7d"
+      }
+    },
+    {
+      "experienceId": "poster-presentation",
+      "universeId": "events",
+      "sourceId": "exec-f1e01681-377f-49e5-a228-7a525d2c00a7.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/poster-presentation/desktop.32c7fcc8fc4c.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 42762,
+        "maxBytes": 320000,
+        "sha256": "32c7fcc8fc4c30de1a680f4b1345bdca880e0340b25d22a8b8b41af9aa1cb76c"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/poster-presentation/mobile.124b0d4af912.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 22762,
+        "maxBytes": 180000,
+        "sha256": "124b0d4af912382eb10f6bd1fdeba9f741a091a6b4c3b8bb3b185d3aaf34a845"
+      }
     }
   ],
   "characters": [
