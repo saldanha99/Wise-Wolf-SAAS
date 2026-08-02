@@ -1076,7 +1076,7 @@ das 56 experiências canônicas.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | Pendente |
+| Commit de origem | `6d4393eb5776` |
 | Release | Aguardando rollout final consolidado |
 | Escopo visual preparado | `first-job`, `multinationals`, `career-change`, `events-networking`, `panels` e `poster-presentation` |
 | Cobertura local aprovada | 56 de 56 cenários com bitmap próprio; nenhum cenário canônico sem asset |
