@@ -70,7 +70,18 @@ SELECT
   cl.*,
   COALESCE(
     cl.rate_override,
-    CASE WHEN cl.subtype = 'TREINAMENTO' AND COALESCE(tp.is_trainer, false)
+    -- R$ 16,00 só para quem MINISTRA o treinamento. O professor que RECEBE
+    -- treinamento ganha os R$ 8,00 normais — e ele é identificável por ser o
+    -- winner_teacher_id da oportunidade (foi quem aceitou o convite). Sem esta
+    -- checagem, um treinador que participasse do treinamento de outro receberia
+    -- R$ 16,00 por estar assistindo.
+    CASE WHEN cl.subtype = 'TREINAMENTO'
+              AND COALESCE(tp.is_trainer, false)
+              AND NOT EXISTS (
+                SELECT 1 FROM opportunities o
+                WHERE o.kind = 'TRAINING'
+                  AND o.winner_teacher_id = cl.teacher_id
+                  AND o.trial_appointment_id::text = cl.appointment_id)
          THEN 16.00 END,
     teacher_student_rate(cl.teacher_id, cl.student_id, cl.class_date)
   ) AS rate_efetivo,
@@ -78,7 +89,10 @@ SELECT
   -- fim, nunca inserir no meio. treinamento_ministrado entra depois da coluna
   -- que já existia na versão anterior da view.
   (cl.subtype IN ('REPOSIÇÃO','REPOSIÇÃO_PROF') AND r.id IS NULL) AS reposicao_sem_origem,
-  (cl.subtype = 'TREINAMENTO' AND COALESCE(tp.is_trainer, false)) AS treinamento_ministrado
+  (cl.subtype = 'TREINAMENTO' AND COALESCE(tp.is_trainer, false)
+     AND NOT EXISTS (SELECT 1 FROM opportunities o2 WHERE o2.kind = 'TRAINING'
+                       AND o2.winner_teacher_id = cl.teacher_id
+                       AND o2.trial_appointment_id::text = cl.appointment_id)) AS treinamento_ministrado
 FROM class_logs cl
 LEFT JOIN reschedules r ON r.id::text = cl.reschedule_id
 LEFT JOIN profiles tp ON tp.id = cl.teacher_id
