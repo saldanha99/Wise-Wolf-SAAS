@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1 e V2 publicados em produção; próximo lote em preparação
+> Status: lotes V1 e V2 publicados; lote V3 validado e pronto para rollout
 > Data da análise: 1º de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -33,6 +33,11 @@ evolução.
   `job-interviews`, `career-networking`, `promotion`, `talks`, `trade-shows` e
   `medical-congresses`. O manifesto de assets trava URL, dimensão, bytes,
   orçamento e SHA-256 de cada arquivo.
+- O lote V3 acrescenta dez cenários validados para vida cotidiana e fala:
+  `home-organization`, `skincare-beauty`, `health-symptoms`, `shopping`,
+  `services`, `digital-life`, `record-a-story`, `tell-a-story`,
+  `describe-what-you-see` e `give-your-opinion`. Com eles, 28 dos 56 perfis já
+  possuem bitmap exclusivo.
 - O painel de coaching contém Tab e Shift+Tab dentro do diálogo, ignora controles
   indisponíveis e preserva foco inicial, Escape e restauração de foco.
 - A interface V2 é protegida por `VITE_WOLFIE_SCENARIO_UI_V2`. O valor padrão de
@@ -44,7 +49,7 @@ evolução.
 
 ### Coberto por perfil, ainda sem bitmap exclusivo
 
-As outras **38 experiências** já possuem identidade pré-definida no catálogo —
+As outras **28 experiências** já possuem identidade pré-definida no catálogo —
 layout, ambiente, elenco, câmera, lado do personagem, paleta, HUD e descrição
 acessível —, mas ainda usam o fallback visual gerado em código. Portanto,
 “cobertura das 56 experiências” significa cobertura de resolução e design; não
@@ -52,7 +57,7 @@ significa que 56 fundos finais já foram produzidos.
 
 Também permanecem para lotes futuros:
 
-- imagens exclusivas das 38 experiências restantes;
+- imagens exclusivas das 28 experiências restantes;
 - poses adicionais e elenco de interlocutores 3D;
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
@@ -64,9 +69,10 @@ Também permanecem para lotes futuros:
 
 O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae` e o lote V2
 na release `20260802T022645Z-745c73755821`, ambos com a feature flag ativada,
-backup reversível e evidências registradas na seção 15. Os inventários e a
-proveniência estão em `docs/wolfie-visual-assets-v1.md` e
-`docs/wolfie-visual-assets-v2.md`.
+backup reversível e evidências registradas na seção 15. O lote V3 passou pelos
+gates locais e aguarda o rollout. Os inventários e a proveniência estão em
+`docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md` e
+`docs/wolfie-visual-assets-v3.md`.
 
 ## 1. Resultado esperado
 

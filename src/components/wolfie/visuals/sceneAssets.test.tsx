@@ -115,7 +115,7 @@ const assertLockedFile = (asset: LockedAssetFile): void => {
 describe("Wolfie visual asset manifest", () => {
   it("keeps the scene catalog and manifest in a one-to-one lock", () => {
     expect(visualAssetManifest.schemaVersion).toBe(1);
-    expect(visualAssetManifest.scenes).toHaveLength(18);
+    expect(visualAssetManifest.scenes).toHaveLength(28);
 
     const manifestIds = visualAssetManifest.scenes.map(
       (entry) => entry.experienceId,

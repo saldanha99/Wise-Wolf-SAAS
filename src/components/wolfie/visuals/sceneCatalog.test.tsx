@@ -77,7 +77,12 @@ const sorted = (values: readonly string[]) => [...values].sort();
 
 const EXPECTED_MANIFEST_SCENE_IDS = [
   "career-networking",
+  "describe-what-you-see",
+  "digital-life",
   "food-cooking",
+  "give-your-opinion",
+  "health-symptoms",
+  "home-organization",
   "job-interviews",
   "medical-congresses",
   "meetings-aviation",
@@ -91,8 +96,13 @@ const EXPECTED_MANIFEST_SCENE_IDS = [
   "meetings-technology",
   "meetings-tourism",
   "promotion",
+  "record-a-story",
+  "services",
+  "shopping",
+  "skincare-beauty",
   "speak-for-a-minute",
   "talks",
+  "tell-a-story",
   "trade-shows",
 ] as const;
 
@@ -145,7 +155,7 @@ describe("Wolfie visual scene catalog", () => {
 
   it("advertises exactly the scene files locked by the visual asset manifest", () => {
     expect(visualAssetManifest.schemaVersion).toBe(1);
-    expect(visualAssetManifest.scenes).toHaveLength(18);
+    expect(visualAssetManifest.scenes).toHaveLength(28);
 
     const profilesWithAssets = SCENE_CATALOG.filter((profile) => profile.assets);
     const manifestExperienceIds = visualAssetManifest.scenes.map(

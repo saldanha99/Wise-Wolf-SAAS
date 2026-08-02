@@ -378,6 +378,216 @@
         "maxBytes": 180000,
         "sha256": "18951655e993be46377460f39f56d03327351fcf7c48b9855e7ba1de286018d8"
       }
+    },
+    {
+      "experienceId": "home-organization",
+      "universeId": "daily-life",
+      "sourceId": "exec-1f8de380-8558-4e20-8a2b-6a9ed5013168.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/home-organization/desktop.7c4dc9c47869.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 138518,
+        "maxBytes": 320000,
+        "sha256": "7c4dc9c47869f82cfd726c4619ed2c12595f0a20e7bb6f1cc19700c28d895b59"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/home-organization/mobile.cf5219047081.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 79668,
+        "maxBytes": 180000,
+        "sha256": "cf52190470819c09eaea02f5dff1559fa932580789491337e27b35a1e4ed6155"
+      }
+    },
+    {
+      "experienceId": "skincare-beauty",
+      "universeId": "daily-life",
+      "sourceId": "exec-1079eb08-a8bc-4ceb-b393-980272acd727.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/skincare-beauty/desktop.d33a51897720.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 72888,
+        "maxBytes": 320000,
+        "sha256": "d33a51897720c3f2a7e335e9a4ccdce74dfece037ca8eb81b8d873ad11093860"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/skincare-beauty/mobile.8fcf4cb6fee3.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 25954,
+        "maxBytes": 180000,
+        "sha256": "8fcf4cb6fee3835fe2cda91a22912adcc8cd0c0d3be7bbcea4af6c8b11878916"
+      }
+    },
+    {
+      "experienceId": "health-symptoms",
+      "universeId": "daily-life",
+      "sourceId": "exec-80e61547-744c-4ae5-bcfe-8bb0bcdc2eb8.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/health-symptoms/desktop.9adfe824b04d.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 110976,
+        "maxBytes": 320000,
+        "sha256": "9adfe824b04deb18cd6923cabf981ae5a14c4e295f333ac4d26e88818f2471a2"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/health-symptoms/mobile.a477b7fe8b5c.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 68136,
+        "maxBytes": 180000,
+        "sha256": "a477b7fe8b5c9cb0517ff5d0092dc96a451f0cdf9f92fd5cc71cb5d0398ce4b9"
+      }
+    },
+    {
+      "experienceId": "record-a-story",
+      "universeId": "speaking",
+      "sourceId": "exec-db74f2b1-b14f-47b7-87f9-049203cb207b.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/speaking/record-a-story/desktop.33ed5d04f71d.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 55092,
+        "maxBytes": 320000,
+        "sha256": "33ed5d04f71dace087443bf74d7c33c22e07df6e95e04e0234c7157020632d4d"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/speaking/record-a-story/mobile.a54947aec928.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 26798,
+        "maxBytes": 180000,
+        "sha256": "a54947aec928c0dd0638c3fabe3b676c5e82cf25030dbf1188348866971321c2"
+      }
+    },
+    {
+      "experienceId": "tell-a-story",
+      "universeId": "speaking",
+      "sourceId": "exec-cd6254e1-f28a-4805-84f3-69db982672be.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/speaking/tell-a-story/desktop.b202bb21a980.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 65756,
+        "maxBytes": 320000,
+        "sha256": "b202bb21a9801e338a16c70be53328e6b5a75bfeafaab4b106fa513164f70342"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/speaking/tell-a-story/mobile.f75e67227d30.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 31476,
+        "maxBytes": 180000,
+        "sha256": "f75e67227d301494cc5c2a7edf94fde11960a9ad7a5946de7cd096099a7895b1"
+      }
+    },
+    {
+      "experienceId": "describe-what-you-see",
+      "universeId": "speaking",
+      "sourceId": "exec-4f8a0c0b-ee32-46a4-8b61-dce5776d7b02.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/speaking/describe-what-you-see/desktop.26949399b48b.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 45228,
+        "maxBytes": 320000,
+        "sha256": "26949399b48b569315d803d09fccf36438ba25eacc985039f7263eb062c3e4eb"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/speaking/describe-what-you-see/mobile.1d72d75ed0dc.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 26018,
+        "maxBytes": 180000,
+        "sha256": "1d72d75ed0dcba62b59598050871450305c2249f788181975075135c226a40c6"
+      }
+    },
+    {
+      "experienceId": "give-your-opinion",
+      "universeId": "speaking",
+      "sourceId": "exec-c1a5ab30-76f0-4c06-8d08-e6e80a6cf863.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/speaking/give-your-opinion/desktop.66b5facc2154.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 51130,
+        "maxBytes": 320000,
+        "sha256": "66b5facc2154ff7dcdc58fe9ea85b1b6dddf776b54f62040af15d28724f93a45"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/speaking/give-your-opinion/mobile.0c7e85d2a251.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 27506,
+        "maxBytes": 180000,
+        "sha256": "0c7e85d2a25170225d3eec60454f330b0c874fc6dbfd246b6623fb237053a67e"
+      }
+    },
+    {
+      "experienceId": "shopping",
+      "universeId": "daily-life",
+      "sourceId": "exec-593f1243-cc43-4716-9081-7929b8de1ae3.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/shopping/desktop.51815cc63841.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 88326,
+        "maxBytes": 320000,
+        "sha256": "51815cc638414331d064a55d740f8b7e7df81325acbbae8dfcc49941552ec2ed"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/shopping/mobile.3ef46a1b80b4.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 53724,
+        "maxBytes": 180000,
+        "sha256": "3ef46a1b80b414165a7df4496e4db19f40bded8dd84a195731997d0f87b7e895"
+      }
+    },
+    {
+      "experienceId": "services",
+      "universeId": "daily-life",
+      "sourceId": "exec-50886195-fcf0-4710-b2be-d879e965f7dd.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/services/desktop.f4718b4b2fcc.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 78370,
+        "maxBytes": 320000,
+        "sha256": "f4718b4b2fcc0611cac1d0c06874f5cca26678af7cd47938409c85b32b17d323"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/services/mobile.b8270b819e69.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 34106,
+        "maxBytes": 180000,
+        "sha256": "b8270b819e69e1cb75fa4332eb9c43e520e4e01324ad14cad7a9f4475a94a1b5"
+      }
+    },
+    {
+      "experienceId": "digital-life",
+      "universeId": "daily-life",
+      "sourceId": "exec-ef9c4333-5150-4e01-820f-668f8f5ed136.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/digital-life/desktop.3ec843995374.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 45316,
+        "maxBytes": 320000,
+        "sha256": "3ec8439953744f22459c8bf6d9d92eff37492e810e6012e344c24f1d00726550"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/digital-life/mobile.ebbb0f52717c.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 22348,
+        "maxBytes": 180000,
+        "sha256": "ebbb0f52717c0b72b3396b42cb182f98fec5fdaeebf4d05fb8f465fe6d7e65b6"
+      }
     }
   ],
   "characters": [
