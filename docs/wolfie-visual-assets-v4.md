@@ -2,7 +2,7 @@
 
 > Versão: 4
 > Data: 2 de agosto de 2026
-> Estado: integração e QA local aprovados; rollout em produção pendente
+> Estado: publicado em produção pelo rollout consolidado V4–V6
 > Escopo: cinco experiências de provas internacionais e cinco laboratórios de habilidade
 
 ## 1. Resumo
@@ -139,7 +139,7 @@ Os nomes fingerprintados correspondem aos primeiros 12 caracteres do SHA-256
 de cada WebP. Todos os arquivos respeitam as dimensões e os limites de bytes
 definidos para desktop e mobile.
 
-## 8. QA local concluído e rollout pendente
+## 8. QA concluído e rollout consolidado em produção
 
 Gates locais concluídos:
 
@@ -158,12 +158,26 @@ Gates locais concluídos:
 - uma única guia durante todo o ensaio e nenhuma sessão automatizada residual
   após o encerramento.
 
-Ainda é necessário executar o processo completo de release, os smoke tests e a
-verificação externa de produção antes de considerar o rollout concluído.
+Como marco histórico, este lote elevou a cobertura local aprovada para 38 dos
+56 cenários canônicos. Duas publicações completas do V4 foram aprovadas e
+substituídas pouco depois por deploys externos concorrentes:
+`20260802T042733Z-395153672948` e `20260802T043600Z-395153672948`.
 
-Nenhuma release, commit de origem ou backup de produção está registrado para o
-lote V4 neste documento porque o rollout ainda não ocorreu.
+O V4 passou a permanecer ativo em produção na publicação consolidada dos lotes
+V4, V5 e V6, concluída em 2 de agosto de 2026 às 06:00 UTC (03:00 BRT):
 
-Este lote elevou a cobertura local aprovada para 38
-dos 56 cenários canônicos com bitmap próprio. Os outros 18 continuarão usando o
-fallback visual determinístico até os lotes seguintes.
+| Campo | Valor |
+|---|---|
+| Commit original dos assets V4 | `e3cea6d8c9cc` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Cobertura ativa | 56/56 cenários canônicos com bitmap próprio em desktop e mobile |
+| Inventário publicado | 138/138 URLs: 112 fundos, um personagem e 25 aliases de transição |
+
+A verificação independente posterior confirmou o marcador remoto sem deploy
+concorrente, frontend e Hub em `200`, preflight/autenticação das três APIs
+centrais do Wolfie em `200/401` e as 138 URLs com MIME `image/webp`, bytes e
+SHA-256 exatos. Uma única sessão headless decodificou os 12 WebPs do lote final
+nas dimensões esperadas, sem erro de página ou console, e foi encerrada sem
+sessão residual.

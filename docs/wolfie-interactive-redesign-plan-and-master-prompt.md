@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1, V2 e V3 publicados; lote V4 integrado e aprovado localmente, com rollout pendente
+> Status: lotes V1–V6 publicados; cobertura visual completa ativa em produção
 > Data da análise: 2 de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -47,13 +47,12 @@ evolução.
   carregamento — ou se um bitmap falhar — o gradiente do perfil mantém a prática
   legível e funcional.
 
-### Cobertura visual local concluída, aguardando rollout final
+### Cobertura visual completa publicada
 
-- O lote V4 possui fontes aprovadas e recortes WebP fingerprintados integrados
-  ao manifesto para cinco
+- O lote V4 publicou fontes aprovadas e recortes WebP fingerprintados para cinco
   provas internacionais: `exam-cambridge`, `exam-toefl`, `exam-ielts`,
   `exam-toeic` e `exam-duolingo`.
-- O mesmo lote prepara cinco laboratórios: `listening-lab`,
+- O mesmo lote publica cinco laboratórios: `listening-lab`,
   `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab`.
 - O lote V5 acrescenta as seis experiências de apresentação pessoal e as seis
   experiências para crianças e adolescentes documentadas em
@@ -61,13 +60,13 @@ evolução.
 - O lote V6 completa `first-job`, `multinationals`, `career-change`,
   `events-networking`, `panels` e `poster-presentation`, conforme
   `docs/wolfie-visual-assets-v6.md`.
-- A cobertura atual deste branch é de **56 cenários canônicos com bitmap próprio
+- A cobertura ativa em produção é de **56 cenários canônicos com bitmap próprio
   em desktop e mobile**. Nenhum cenário canônico depende do fallback por falta
   de imagem.
 - Testes focais e completos, typecheck, build, inventário de `public` e `dist`,
   revisão independente e QA responsivo em sessão headless única passaram para
-  os lotes V4, V5 e V6. A publicação definitiva permanece pendente; portanto,
-  esses cenários ainda não são descritos como ativos na release atual.
+  os lotes V4, V5 e V6. A release consolidada também passou pelos gates do
+  runbook e pela auditoria externa de todas as 138 URLs publicadas.
 
 ### Fallbacks preservados para resiliência
 
@@ -89,10 +88,12 @@ Também permanecem para lotes futuros:
 
 O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, o lote V2
 na release `20260802T022645Z-745c73755821` e o lote V3 na release
-`20260802T033326Z-5a9a6fe506fc`, todos com a feature flag ativada, backup
-reversível e evidências registradas na seção 15. O lote V4 passou por duas
-releases completas, porém ambas foram substituídas pouco depois por deploys
-externos concorrentes; por isso, V4, V5 e V6 aguardam o rollout final consolidado.
+`20260802T033326Z-5a9a6fe506fc`. Os lotes V4, V5 e V6 foram consolidados na
+release ativa `20260802T060032Z-eeff3f871216`, pelo commit publicado
+`8d3a89276005`, com a feature flag ativada e backup reversível. As duas
+tentativas anteriores de V4 permanecem registradas na seção 15 como histórico
+de releases que passaram pelos gates, mas foram substituídas por deploys
+externos concorrentes.
 Os inventários e a proveniência estão em
 `docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md`,
 `docs/wolfie-visual-assets-v3.md`, `docs/wolfie-visual-assets-v4.md`,
@@ -115,7 +116,7 @@ O novo design deve:
 
 O princípio central é: **o cenário muda; o contrato pedagógico não**.
 
-## 2. Diagnóstico do produto atual
+## 2. Diagnóstico do baseline anterior ao redesign
 
 ### 2.1 Fluxo ativo
 
@@ -128,20 +129,30 @@ App.tsx
   → components/WolfieTutor.tsx
 ```
 
-O fluxo também pode abrir `WolfieTutor` por atividades de `components/ActivityPlayer.tsx`. Portanto, a nova apresentação precisa aceitar tanto uma experiência completa quanto um contexto parcial com fallback seguro.
+O fluxo também pode abrir `WolfieTutor` por atividades de
+`components/ActivityPlayer.tsx`. Por isso, a camada implementada precisou
+aceitar tanto uma experiência completa quanto um contexto parcial com fallback
+seguro.
 
 `components/WolfTutorChat.tsx` é legado e não deve ser tratado como a experiência ativa. O Studio do Hub, em `components/hub/HubWolfieStudio.tsx`, é uma superfície distinta e deve ser unificado somente em uma etapa própria, depois da estabilização do produto principal.
 
-### 2.2 Causa do “avatar quadrado”
+### 2.2 Causa original do “avatar quadrado”
 
-- Existe um único asset: `public/assets/wolfie/wolfie-tutor-mascot.webp`.
-- A imagem tem fundo incorporado, proporção quadrada e não possui transparência.
-- `components/WolfieAvatar.tsx` força `aspect-square`, recorte, fundo e cantos arredondados.
-- `components/WolfieTutor.tsx` centraliza o componente em aproximadamente 260, 320 ou 500 pixels.
-- Olhos, orelhas, focinho e boca são animados por recortes com coordenadas fixas do bitmap atual; trocar livremente a imagem desalinha o rosto.
-- O fundo da conversa é sempre um gradiente abstrato, sem vínculo com `experienceId`, universo, setor ou interlocutor.
+- No baseline, a conversa aplicava um único asset:
+  `public/assets/wolfie/wolfie-tutor-mascot.webp`.
+- A imagem tinha fundo incorporado, proporção quadrada e não possuía
+  transparência.
+- `components/WolfieAvatar.tsx` forçava `aspect-square`, recorte, fundo e cantos
+  arredondados.
+- `components/WolfieTutor.tsx` centralizava o componente em aproximadamente
+  260, 320 ou 500 pixels.
+- Olhos, orelhas, focinho e boca eram animados por recortes com coordenadas
+  fixas do bitmap; trocar livremente a imagem desalinhava o rosto.
+- O fundo da conversa era sempre um gradiente abstrato, sem vínculo com
+  `experienceId`, universo, setor ou interlocutor.
 
-Conclusão: os cenários existem pedagogicamente, mas ainda não existem como sistema visual.
+Conclusão do baseline: os cenários já existiam pedagogicamente, mas ainda não
+formavam um sistema visual.
 
 ### 2.3 Base disponível
 
@@ -1014,19 +1025,22 @@ Evidências aprovadas no terceiro rollout:
 
 ### Quarto lote — provas internacionais e laboratórios
 
-O quarto lote está versionado e aprovado. Duas releases completas passaram por
-todos os gates, porém foram substituídas em seguida por deploys externos
-concorrentes. Por isso, o lote não é tratado como ativo na release atual.
+O quarto lote está versionado, aprovado e ativo por meio da release consolidada
+dos lotes V4–V6. Antes dela, duas releases completas passaram por todos os
+gates, porém foram substituídas em seguida por deploys externos concorrentes.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | `e3cea6d8c9cc` |
+| Commit original dos assets V4 | `e3cea6d8c9cc` |
 | Releases completas substituídas | `20260802T042733Z-395153672948` e `20260802T043600Z-395153672948` |
-| Backups reversíveis | `/opt/wisewolf/backups/release-20260802T042733Z-395153672948` e `/opt/wisewolf/backups/release-20260802T043600Z-395153672948` |
-| Escopo visual preparado | `exam-cambridge`, `exam-toefl`, `exam-ielts`, `exam-toeic`, `exam-duolingo`, `listening-lab`, `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab` |
-| Cobertura local aprovada | 38 cenários com bitmap próprio; 18 perfis no fallback determinístico |
+| Backups históricos | `/opt/wisewolf/backups/release-20260802T042733Z-395153672948` e `/opt/wisewolf/backups/release-20260802T043600Z-395153672948` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup ativo reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Escopo visual | `exam-cambridge`, `exam-toefl`, `exam-ielts`, `exam-toeic`, `exam-duolingo`, `listening-lab`, `pronunciation-lab`, `writing-lab`, `vocabulary-lab` e `presentation-lab` |
+| Marco de cobertura local do V4 | 38 cenários com bitmap próprio; 18 perfis então no fallback determinístico |
 | Gate local | 60/60 testes, typecheck, build, 102/102 assets em `public`, 102/102 em `dist` e QA responsivo aprovados |
-| Estado de produção | Não confirmado como ativo; substituído por releases externas posteriores |
+| Estado de produção | Ativo pela release consolidada; cobertura total atual de 56/56 |
 
 O QA responsivo percorreu os dez cenários em desktop `1440 × 900` e mobile
 `390 × 844`, sempre na mesma página e na mesma sessão headless. Todos carregaram
@@ -1041,20 +1055,21 @@ funções, suítes SQL transacionais com `ROLLBACK` e smoke tests. A primeira
 ativou `20260802T042733Z-395153672948`; a segunda repetiu todo o processo e
 ativou `20260802T043600Z-395153672948`. Em ambos os casos, outra automação
 publicou uma release diferente logo depois e os assets fingerprintados do V4
-deixaram de ser servidos. Novas tentativas foram suspensas até a janela final
-estável, evitando uma disputa contínua de deploy.
+deixaram de ser servidos. A publicação consolidada ocorreu somente depois de
+confirmada uma janela estável, evitando uma disputa contínua de deploy.
 
 ### Quinto lote — apresentação pessoal e jovens
 
-O quinto lote está integrado e aprovado localmente. Seu rollout será agrupado
-ao sexto e último lote.
+O quinto lote foi integrado, aprovado e publicado junto com o sexto lote.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | `8dd2b7240f28` |
-| Release | Aguardando rollout consolidado |
-| Escopo visual preparado | `introduce-yourself`, `my-routine`, `my-home`, `my-family`, `my-childhood`, `my-plans`, `game-worlds`, `roblox-inspired-missions`, `create-your-avatar`, `school-life`, `series-characters` e `mystery-adventures` |
-| Cobertura local aprovada | 50 cenários com bitmap próprio; seis perfis no fallback determinístico |
+| Commit original dos assets V5 | `8dd2b7240f28` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Escopo visual | `introduce-yourself`, `my-routine`, `my-home`, `my-family`, `my-childhood`, `my-plans`, `game-worlds`, `roblox-inspired-missions`, `create-your-avatar`, `school-life`, `series-characters` e `mystery-adventures` |
+| Marco de cobertura local do V5 | 50 cenários com bitmap próprio; seis perfis então no fallback determinístico |
 | Gate local | 10/10 testes focais, 60/60 testes completos, typecheck, build, 126/126 assets em `public`, 126/126 em `dist` e QA responsivo aprovados |
 | Revisão independente | Sem achados de qualquer severidade |
 
@@ -1065,21 +1080,22 @@ integrado, sem overflow horizontal, erro de página ou erro de console. A sessã
 foi encerrada e a lista final confirmou nenhum navegador automatizado residual.
 
 O inventário, os prompts, as decisões de rejeição e todos os checksums estão em
-`docs/wolfie-visual-assets-v5.md`. O lote final deve repetir os mesmos gates e,
-após uma janela sem release externa concorrente, executar uma única publicação
-com verificação externa completa e backup próprio.
+`docs/wolfie-visual-assets-v5.md`. A publicação consolidada repetiu os gates e
+foi seguida por verificação externa completa e backup próprio.
 
 ### Sexto lote — carreira e eventos finais
 
-O sexto lote está integrado e aprovado localmente. Ele completa a matriz visual
-das 56 experiências canônicas.
+O sexto lote está integrado, aprovado e ativo em produção. Ele completa a
+matriz visual das 56 experiências canônicas.
 
 | Campo | Valor |
 |---|---|
-| Commit de origem | `6d4393eb5776` |
-| Release | Aguardando rollout final consolidado |
-| Escopo visual preparado | `first-job`, `multinationals`, `career-change`, `events-networking`, `panels` e `poster-presentation` |
-| Cobertura local aprovada | 56 de 56 cenários com bitmap próprio; nenhum cenário canônico sem asset |
+| Commit original dos assets V6 | `6d4393eb5776` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Escopo visual | `first-job`, `multinationals`, `career-change`, `events-networking`, `panels` e `poster-presentation` |
+| Cobertura ativa | 56 de 56 cenários com bitmap próprio; nenhum cenário canônico sem asset |
 | Gate local | 10/10 testes focais, 60/60 testes completos, typecheck, build, 138/138 assets em `public`, 138/138 em `dist` e QA responsivo aprovados |
 | Revisão independente | Sem achados de qualquer severidade |
 
@@ -1090,7 +1106,33 @@ horizontal, erro de página ou erro de console. A sessão foi encerrada e a list
 final confirmou nenhum navegador automatizado residual.
 
 Fontes, prompts, rejeições, recortes e checksums estão em
-`docs/wolfie-visual-assets-v6.md`. Depois do versionamento e da revisão
-independente, falta somente aguardar uma janela estável, executar uma release
-completa e validar externamente as 138 URLs, o frontend, o Hub, o marcador e os
-preflights do Wolfie.
+`docs/wolfie-visual-assets-v6.md`.
+
+### Rollout consolidado — V4, V5 e V6
+
+A publicação final foi concluída em 2 de agosto de 2026 às 06:00 UTC (03:00
+BRT), com `VITE_WOLFIE_SCENARIO_UI_V2=true`.
+
+| Campo | Valor |
+|---|---|
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Cobertura visual | 56/56 cenários canônicos com bitmap próprio em desktop e mobile |
+| Inventário publicado | 138 URLs: 112 fundos + um personagem + 25 aliases de transição |
+
+Evidências finais:
+
+- o processo completo de release repetiu testes frontend e Deno, typecheck,
+  checks das funções, build, suítes SQL transacionais com `ROLLBACK`, reinícios
+  controlados e smoke tests;
+- a auditoria independente confirmou o marcador remoto exatamente em
+  `20260802T060032Z-eeff3f871216`, sem outro deploy segurando o lock;
+- frontend e Hub responderam `200`; atividade, conversa e sessão em tempo real
+  do Wolfie responderam `200/401` nos pares preflight/autenticação;
+- 138/138 URLs públicas foram baixadas e comparadas por MIME `image/webp`,
+  tamanho em bytes e SHA-256;
+- os 12 WebPs do V6 foram carregados e decodificados nas dimensões esperadas em
+  uma única guia headless, sem erro de página ou console;
+- a sessão automatizada foi encerrada e a verificação final retornou
+  `No active sessions`.

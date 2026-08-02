@@ -2,7 +2,7 @@
 
 > Versão: 5
 > Data: 2 de agosto de 2026
-> Estado: integração e QA local aprovados; rollout consolidado pendente
+> Estado: publicado em produção pelo rollout consolidado V4–V6
 > Escopo: seis experiências “Sobre você” e seis experiências para crianças e adolescentes
 
 ## 1. Resumo
@@ -140,7 +140,7 @@ Os nomes fingerprintados correspondem aos primeiros 12 caracteres do SHA-256.
 Todos os desktops estão abaixo de 320.000 bytes e todos os mobiles abaixo de
 180.000 bytes.
 
-## 8. QA local concluído e rollout pendente
+## 8. QA concluído e rollout consolidado em produção
 
 Gates concluídos:
 
@@ -157,8 +157,22 @@ Gates concluídos:
 - revisão independente de catálogo, manifesto, hashes, assets e recortes sem
   achados de qualquer severidade.
 
-Este lote elevou a cobertura local para 50 dos 56 cenários canônicos com bitmap
-próprio. As seis experiências restantes permanecem no fallback determinístico
-até o lote V6. O rollout será consolidado com o lote final para evitar publicar
-uma versão intermediária enquanto outras releases do projeto ainda estão em
-atividade.
+Como marco histórico, este lote elevou a cobertura local para 50 dos 56
+cenários canônicos. As seis experiências então restantes foram concluídas no
+V6, e os três lotes finais entraram juntos em produção em 2 de agosto de 2026
+às 06:00 UTC (03:00 BRT):
+
+| Campo | Valor |
+|---|---|
+| Commit original dos assets V5 | `8dd2b7240f28` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Cobertura ativa | 56/56 cenários canônicos com bitmap próprio em desktop e mobile |
+| Inventário publicado | 138/138 URLs: 112 fundos, um personagem e 25 aliases de transição |
+
+A auditoria independente posterior confirmou o marcador remoto sem deploy
+concorrente, frontend e Hub em `200`, as três APIs centrais do Wolfie em
+`200/401` para preflight/autenticação e as 138 URLs com MIME, bytes e SHA-256
+exatos. O ensaio de navegador usou uma única sessão e uma única guia, encerradas
+sem resíduo.

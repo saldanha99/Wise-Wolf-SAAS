@@ -2,7 +2,7 @@
 
 > Versão: 6
 > Data: 2 de agosto de 2026
-> Estado: integração e QA local aprovados; rollout final pendente
+> Estado: publicado em produção pelo rollout consolidado V4–V6
 > Escopo: três experiências de carreira e três experiências de eventos
 
 ## 1. Resumo
@@ -112,7 +112,7 @@ Os nomes fingerprintados correspondem aos primeiros 12 caracteres do SHA-256.
 Todos os desktops estão abaixo de 320.000 bytes e todos os mobiles abaixo de
 180.000 bytes.
 
-## 8. QA local concluído e rollout pendente
+## 8. QA concluído e rollout consolidado em produção
 
 Gates concluídos:
 
@@ -129,7 +129,22 @@ Gates concluídos:
 - revisão independente de manifesto, fontes, 12 WebPs, recortes, hashes e
   limites sem achados de qualquer severidade.
 
-O rollout final permanece pendente de versionamento deste lote e de uma janela
-estável sem release externa concorrente. A publicação deve executar novamente
-todos os gates do runbook, criar backup próprio e conferir externamente as 138
-URLs por MIME, bytes e SHA-256 antes de considerar as 56 cenas ativas.
+O lote foi versionado, revisado e publicado junto com V4 e V5 em uma janela
+estável, em 2 de agosto de 2026 às 06:00 UTC (03:00 BRT):
+
+| Campo | Valor |
+|---|---|
+| Commit original dos assets V6 | `6d4393eb5776` |
+| Commit consolidado publicado | `8d3a89276005` |
+| Release ativa | `20260802T060032Z-eeff3f871216` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T060032Z-eeff3f871216` |
+| Cobertura ativa | 56/56 cenários canônicos com bitmap próprio em desktop e mobile |
+| Inventário publicado | 138/138 URLs: 112 fundos, um personagem e 25 aliases de transição |
+
+O processo completo de release repetiu os gates do runbook, criou o backup e
+ativou a interface com `VITE_WOLFIE_SCENARIO_UI_V2=true`. A auditoria externa
+independente confirmou as 138/138 URLs como `image/webp`, com bytes e SHA-256
+exatos; frontend e Hub em `200`; e as três APIs centrais do Wolfie em `200/401`
+para preflight/autenticação. Em uma única guia headless, os 12 WebPs do V6
+foram decodificados nas dimensões esperadas, sem erro de página ou console. A
+sessão foi encerrada e a lista final retornou `No active sessions`.
