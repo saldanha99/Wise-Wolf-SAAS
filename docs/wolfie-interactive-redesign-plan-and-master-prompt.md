@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: lotes V1–V6 publicados; camada V7 de vivacidade validada para rollout
+> Status: lotes V1–V7 publicados; cobertura visual e camada de vivacidade ativas
 > Data da análise: 2 de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -75,6 +75,18 @@ evolução.
   os lotes V4, V5 e V6. A release consolidada também passou pelos gates do
   runbook e pela auditoria externa de todas as 138 URLs publicadas.
 
+### Camada V7 de vivacidade publicada
+
+- Os scrims foram recalibrados de 68%–80% para **28%–42%**, preservando a
+  leitura dos ambientes em desktop e mobile.
+- O cenário recebeu brilho e saturação leves, além de movimento ambiente lento
+  de câmera; tudo fica estático quando o sistema solicita movimento reduzido.
+- O Wolfie recebeu movimentos próprios para espera, escuta, raciocínio,
+  síntese e fala. A boca transparente acompanha a energia do áudio Realtime/TTS
+  e usa uma cadência segura quando não existe medidor disponível.
+- O inventário passou para **139 URLs**: 112 fundos, duas camadas de personagem
+  e 25 aliases de transição.
+
 ### Fallbacks preservados para resiliência
 
 Todos os 56 perfis possuem identidade pré-definida no catálogo — layout,
@@ -105,6 +117,9 @@ Os inventários e a proveniência estão em
 `docs/wolfie-visual-assets-v1.md`, `docs/wolfie-visual-assets-v2.md`,
 `docs/wolfie-visual-assets-v3.md`, `docs/wolfie-visual-assets-v4.md`,
 `docs/wolfie-visual-assets-v5.md` e `docs/wolfie-visual-assets-v6.md`.
+A camada V7 foi publicada pelo commit `0ceea2bdd0c2`, na release ativa
+`20260802T151204Z-087af84a8665`, com backup reversível em
+`/opt/wisewolf/backups/release-20260802T151204Z-087af84a8665`.
 
 ## 1. Resultado esperado
 
@@ -1142,4 +1157,34 @@ Evidências finais:
 - os 12 WebPs do V6 foram carregados e decodificados nas dimensões esperadas em
   uma única guia headless, sem erro de página ou console;
 - a sessão automatizada foi encerrada e a verificação final retornou
+  `No active sessions`.
+
+### Rollout da camada V7 — visibilidade, movimento e sincronização labial
+
+A camada de vivacidade foi publicada em 2 de agosto de 2026 às 15:12 UTC
+(12:12 BRT), com `VITE_WOLFIE_SCENARIO_UI_V2=true`.
+
+| Campo | Valor |
+|---|---|
+| Commit publicado | `0ceea2bdd0c2` |
+| Release ativa | `20260802T151204Z-087af84a8665` |
+| Backup reversível | `/opt/wisewolf/backups/release-20260802T151204Z-087af84a8665` |
+| Escopo | Scrims 28%–42%, câmera ambiente, movimentos por estado e boca reativa ao áudio |
+| Inventário publicado | 139 URLs: 112 fundos + duas camadas de personagem + 25 aliases de transição |
+| Gate local e de release | 68/68 testes frontend, 166/166 testes Deno, typecheck, build e 139/139 assets em `public` e `dist` |
+
+Evidências do rollout V7:
+
+- o marcador remoto permaneceu em `20260802T151204Z-087af84a8665` após a
+  publicação e o backup reversível foi criado;
+- o frontend público respondeu `200`, sem cache de HTML antigo;
+- o bitmap da boca respondeu `200` como `image/webp`, com 84.362 bytes,
+  dimensões 1024 × 1536 e SHA-256
+  `b3384896f5ef8666bafa16b1c7a3af3d98cd63d8792e3eb544268647803cb2bc`;
+- o bundle público contém a boca fingerprintada, os marcadores de sincronização
+  labial e o tratamento de brilho/saturação do cenário;
+- o preflight do Wolfie Realtime respondeu `200` e uma chamada sem credenciais
+  respondeu `401`, preservando a fronteira de autenticação;
+- a página e o bitmap foram carregados e decodificados em uma única sessão
+  headless, sem erro de página, e a sessão foi encerrada com
   `No active sessions`.
