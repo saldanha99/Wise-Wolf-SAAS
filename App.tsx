@@ -57,6 +57,7 @@ const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
 const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
+const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
 const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
@@ -999,7 +1000,7 @@ const App: React.FC = () => {
       const allowedAdminTabs = [
         'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
         'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
-        'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
+        'trial-settlement', 'coverage', 'pedagogical', 'material-approvals', 'learning_paths_builder',
         'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'margin', 'ai-costs', 'verify-rooms', 'financial',
         'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
         'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
@@ -1140,6 +1141,7 @@ const App: React.FC = () => {
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
+      'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
       'verify-rooms': <MeetingLinkVerifier />,
       'automations': <AutomationPanel user={user} tenantId={currentTenant?.id} />,
@@ -1266,6 +1268,7 @@ const App: React.FC = () => {
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
                       'margin': 'Custo e Margem',
+                      'coverage': 'Cobertura de Professor',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',
                       'marketing': 'Páginas & Marketing',

@@ -323,12 +323,13 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             `${row.duracao_min} minutos`,
             row.aulas,
             Number(row.valor_base).toFixed(2).replace('.', ','),
+            `${row.aulas} x ${Number(row.valor_base).toFixed(2).replace('.', ',')}`,
             Number(row.valor).toFixed(2).replace('.', ','),
         ]);
         const csv = [
-            ['Aluno', 'Tempo', 'Qtd aulas', 'Valor base (R$)', 'Valor total (R$)'],
+            ['Aluno', 'Tempo', 'Qtd aulas', 'Valor base (R$)', 'Cálculo', 'Valor total (R$)'],
             ...rows,
-            ['TOTAL', '', officialLessons(), '', officialTotal().toFixed(2).replace('.', ',')],
+            ['TOTAL', '', officialLessons(), '', '', officialTotal().toFixed(2).replace('.', ',')],
         ].map((row) => row.map(csvCell).join(';')).join('\r\n');
         const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
         const link = document.createElement('a');
@@ -588,6 +589,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     <div className="text-right">
                                         <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor total</dt>
                                         <dd className="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-400">{money(row.valor)}</dd>
+                                        <dd className="mt-0.5 text-[10px] font-medium text-brand-muted">{row.aulas} × {money(row.valor_base)}</dd>
                                     </div>
                                 </dl>
                                 {directorMode && (
@@ -631,6 +633,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                 <th className="px-6 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Tempo</th>
                                 <th className="px-6 py-4 text-center text-[10px] font-black text-brand-muted uppercase tracking-widest">Qtd aulas</th>
                                 <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor base</th>
+                                <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Cálculo</th>
                                 <th className="px-8 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor total</th>
                                 {directorMode && <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Ajustar</th>}
                             </tr>
@@ -641,7 +644,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                 const isOpen = expanded.has(key);
                                 const isEditing = editingRow === key;
                                 const isSaving = savingRow === key;
-                                const colSpan = directorMode ? 6 : 5;
+                                const colSpan = directorMode ? 7 : 6;
                                 return (
                                     <React.Fragment key={key}>
                                         <tr
@@ -706,6 +709,11 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                                     </span>
                                                 )}
                                             </td>
+                                            {/* Conferência: a conta que gera o valor, do jeito que a
+                                                escola confere na planilha (14 × R$ 8,00). */}
+                                            <td className="whitespace-nowrap px-6 py-5 text-right text-xs font-bold text-brand-muted">
+                                                {row.aulas} × {money(row.valor_base)}
+                                            </td>
                                             <td className="px-8 py-5 text-right text-sm font-black text-emerald-600 dark:text-emerald-400">
                                                 {money(row.valor)}
                                             </td>
@@ -764,7 +772,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                             })}
                             {studentRows.length === 0 && (
                                 <tr>
-                                    <td colSpan={directorMode ? 6 : 5} className="px-8 py-20 text-center">
+                                    <td colSpan={directorMode ? 7 : 6} className="px-8 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3 text-brand-muted">
                                             <FileText size={48} className="opacity-20" />
                                             <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula remunerada neste mês.</p>
@@ -779,6 +787,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                                     <td className="px-8 py-5 text-xs font-black uppercase tracking-widest text-brand-muted">Total do mês</td>
                                     <td />
                                     <td className="px-6 py-5 text-center text-sm font-black text-brand-text">{officialLessons()}</td>
+                                    <td />
                                     <td />
                                     <td className="px-8 py-5 text-right text-lg font-black tracking-tight text-tenant-primary">{money(officialTotal())}</td>
                                     {directorMode && <td />}

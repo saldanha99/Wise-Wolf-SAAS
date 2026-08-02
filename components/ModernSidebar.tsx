@@ -37,6 +37,7 @@ import {
     Gift,
     UserPlus,
     TrendingUp,
+    CalendarOff,
     ShieldAlert,
     X
 } from 'lucide-react';
@@ -271,6 +272,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'margin', label: 'Custo e Margem', icon: TrendingUp, section: 'Financeiro' },
         { id: 'ai-costs', label: 'Custo de IA', icon: Bot },
         { id: 'verify-rooms', label: 'Verificar Salas', icon: Video, section: 'Aulas' },
+        { id: 'coverage', label: 'Cobertura de Profs', icon: CalendarOff, section: 'Aulas' },
         { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },
         // ── Crescimento ──
         { id: 'crm', label: 'CRM & Funil', icon: Users, section: 'Crescimento' },
