@@ -1,6 +1,6 @@
 # Wolf Tutor — plano de redesign interativo e prompt mestre
 
-> Status: plano aprovado e primeira entrega visual implementada localmente
+> Status: lote V1 em produção; lote V2 de carreira e eventos em validação local
 > Data da análise: 1º de agosto de 2026
 > Escopo: experiência do aluno em `WolfiePracticeFlow`, atividades e conversa com o Wolf Tutor
 > Referência conceitual: [Praktika](https://praktika.ai/) e sua [página oficial na App Store](https://apps.apple.com/us/app/praktika-ai-language-tutor/id1624701477)
@@ -29,6 +29,12 @@ evolução.
 - Dois pilotos fora de reuniões também possuem fundo bitmap: `food-cooking` e
   `speak-for-a-minute`. Com `meetings-business`, eles formaram o lote inicial que
   validou a composição antes da expansão para as demais reuniões.
+- O lote V2 acrescenta, ainda localmente, seis cenários fingerprintados:
+  `job-interviews`, `career-networking`, `promotion`, `talks`, `trade-shows` e
+  `medical-congresses`. O manifesto de assets trava URL, dimensão, bytes,
+  orçamento e SHA-256 de cada arquivo.
+- O painel de coaching contém Tab e Shift+Tab dentro do diálogo, ignora controles
+  indisponíveis e preserva foco inicial, Escape e restauração de foco.
 - A interface V2 é protegida por `VITE_WOLFIE_SCENARIO_UI_V2`. O valor padrão de
   segurança é `false`; quando a flag está desligada, a experiência clássica
   continua disponível.
@@ -38,7 +44,7 @@ evolução.
 
 ### Coberto por perfil, ainda sem bitmap exclusivo
 
-As outras **44 experiências** já possuem identidade pré-definida no catálogo —
+As outras **38 experiências** já possuem identidade pré-definida no catálogo —
 layout, ambiente, elenco, câmera, lado do personagem, paleta, HUD e descrição
 acessível —, mas ainda usam o fallback visual gerado em código. Portanto,
 “cobertura das 56 experiências” significa cobertura de resolução e design; não
@@ -46,7 +52,7 @@ significa que 56 fundos finais já foram produzidos.
 
 Também permanecem para lotes futuros:
 
-- imagens exclusivas das 44 experiências restantes;
+- imagens exclusivas das 38 experiências restantes;
 - poses adicionais e elenco de interlocutores 3D;
 - AVIF e `srcset` além dos WebP atuais;
 - thumbnails de descoberta e resumo;
@@ -56,10 +62,12 @@ Também permanecem para lotes futuros:
 
 ### Rollout
 
-Esta entrega **não foi implantada**. Nenhum deploy de produção faz parte desta
-execução; a ativação deve ocorrer separadamente, com autorização explícita e
-rollout progressivo pela feature flag. O inventário e a proveniência do lote de
-imagens estão em `docs/wolfie-visual-assets-v1.md`.
+O lote V1 foi implantado na release `20260802T004103Z-5d79a11ddaae`, com a
+feature flag ativada e backup reversível registrado na seção 15. O lote V2 ainda
+não foi implantado: ele deve permanecer isolado até concluir testes completos,
+build, QA visual e uma nova autorização de rollout. Os inventários e a
+proveniência estão em `docs/wolfie-visual-assets-v1.md` e
+`docs/wolfie-visual-assets-v2.md`.
 
 ## 1. Resultado esperado
 
@@ -181,10 +189,10 @@ src/components/wolfie/visuals/
 
 public/assets/wolfie/
   scenes/{universe-id}/{experience-id}/desktop.avif
-  scenes/{universe-id}/{experience-id}/desktop.webp
+  scenes/{universe-id}/{experience-id}/desktop.{sha256-12}.webp
   scenes/{universe-id}/{experience-id}/mobile.avif
-  scenes/{universe-id}/{experience-id}/mobile.webp
-  characters/{character-id}/{pose-or-state}.webp
+  scenes/{universe-id}/{experience-id}/mobile.{sha256-12}.webp
+  characters/{character-id}/{pose-or-state}.{sha256-12}.webp
   thumbnails/{experience-id}.webp
 ```
 

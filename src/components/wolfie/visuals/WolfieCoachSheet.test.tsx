@@ -70,6 +70,129 @@ describe("WolfieCoachSheet", () => {
     expect(onResume).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps Tab and Shift+Tab inside the dialog", () => {
+    const state = resolveMeetingVisualState({
+      stage: "practice",
+      learnerIntent: "ask_doubt",
+    });
+    render(
+      <>
+        <button type="button">Fora do diálogo</button>
+        <WolfieCoachSheet state={state} onResume={vi.fn()}>
+          <button type="button">Primeira ação</button>
+          <button type="button" disabled>Ação indisponível</button>
+        </WolfieCoachSheet>
+      </>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: /tire a dúvida e volte ao mesmo ponto/i,
+    });
+    const firstAction = screen.getByRole("button", { name: "Primeira ação" });
+    const resumeButton = screen.getByRole("button", { name: /retomar reunião/i });
+    const outsideButton = screen.getByRole("button", { name: "Fora do diálogo" });
+
+    expect(heading).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(firstAction).toHaveFocus();
+
+    resumeButton.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(firstAction).toHaveFocus();
+
+    firstAction.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(resumeButton).toHaveFocus();
+
+    outsideButton.focus();
+    expect(firstAction).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(firstAction).toHaveFocus();
+  });
+
+  it("keeps summary focusable and ignores hidden controls inside details", () => {
+    const state = resolveMeetingVisualState({
+      stage: "practice",
+      learnerIntent: "ask_doubt",
+    });
+    render(
+      <WolfieCoachSheet state={state}>
+        <button type="button" style={{ display: "none" }}>
+          Oculta por display
+        </button>
+        <div style={{ visibility: "hidden" }}>
+          <button type="button">Oculta por ancestral</button>
+        </div>
+        <details>
+          <summary>Detalhes fechados</summary>
+          <button type="button">Oculta em detalhes</button>
+        </details>
+        <button type="button">Ação visível</button>
+      </WolfieCoachSheet>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: /tire a dúvida e volte ao mesmo ponto/i,
+    });
+    const summary = screen.getByText("Detalhes fechados");
+    const visibleAction = screen.getByRole("button", { name: "Ação visível" });
+
+    expect(heading).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(summary).toHaveFocus();
+
+    visibleAction.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(summary).toHaveFocus();
+  });
+
+  it("keeps focus on the heading when no enabled control is available", () => {
+    const state = resolveMeetingVisualState({
+      stage: "feedback",
+      learnerIntent: "request_feedback",
+    });
+    render(
+      <WolfieCoachSheet state={state}>
+        <button type="button" disabled>Ação indisponível</button>
+      </WolfieCoachSheet>,
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: /observe a evidência e escolha uma prioridade/i,
+    });
+    expect(heading).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(heading).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(heading).toHaveFocus();
+  });
+
+  it("restores the focus that was active before opening", () => {
+    const state = resolveMeetingVisualState({
+      stage: "feedback",
+      learnerIntent: "request_feedback",
+    });
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "Abrir apoio";
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const { rerender } = render(
+      <WolfieCoachSheet state={state} open onResume={vi.fn()} />,
+    );
+    expect(screen.getByRole("heading", {
+      name: /observe a evidência e escolha uma prioridade/i,
+    })).toHaveFocus();
+
+    rerender(
+      <WolfieCoachSheet state={state} open={false} onResume={vi.fn()} />,
+    );
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
   it("does not steal focus when the parent supplies a new resume callback", () => {
     const state = resolveMeetingVisualState({
       stage: "feedback",

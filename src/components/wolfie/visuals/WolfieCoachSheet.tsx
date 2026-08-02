@@ -77,6 +77,58 @@ const fallbackCopy = {
   icon: Target,
 };
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "summary",
+  "textarea:not([disabled])",
+  "[contenteditable='true']",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+const isRenderedInside = (element: HTMLElement, container: HTMLElement) => {
+  let current: HTMLElement | null = element;
+  while (current) {
+    if (
+      current.hidden ||
+      current.hasAttribute("inert") ||
+      current.getAttribute("aria-hidden") === "true"
+    ) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(current);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse"
+    ) {
+      return false;
+    }
+
+    if (current instanceof HTMLDetailsElement && !current.open) {
+      const summary = current.querySelector("summary");
+      if (!summary?.contains(element)) return false;
+    }
+
+    if (current === container) return true;
+    current = current.parentElement;
+  }
+
+  return false;
+};
+
+const focusableElements = (container: HTMLElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element.tabIndex >= 0 &&
+      !element.matches(":disabled") &&
+      element.getAttribute("aria-disabled") !== "true" &&
+      isRenderedInside(element, container),
+  );
+
 export function WolfieCoachSheet({
   state,
   open = state.showCoachSheet,
@@ -88,6 +140,7 @@ export function WolfieCoachSheet({
 }: WolfieCoachSheetProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const dialogRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const priorFocusRef = useRef<HTMLElement | null>(null);
   const onResumeRef = useRef(onResume);
@@ -105,18 +158,67 @@ export function WolfieCoachSheet({
       : null;
     headingRef.current?.focus();
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key !== "Escape" || !onResumeRef.current ||
-        resumeDisabledRef.current
-      ) return;
-      event.preventDefault();
-      onResumeRef.current();
+    const focusFirstControlOrHeading = () => {
+      if (!dialogRef.current) return;
+      const firstControl = focusableElements(dialogRef.current)[0];
+      (firstControl ?? headingRef.current)?.focus();
     };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      if (
+        !dialogRef.current ||
+        dialogRef.current.contains(event.target as Node)
+      ) {
+        return;
+      }
+      focusFirstControlOrHeading();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (!onResumeRef.current || resumeDisabledRef.current) return;
+        event.preventDefault();
+        onResumeRef.current();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const candidates = focusableElements(dialogRef.current);
+      if (candidates.length === 0) {
+        event.preventDefault();
+        headingRef.current?.focus();
+        return;
+      }
+
+      const first = candidates[0];
+      const last = candidates[candidates.length - 1];
+      const activeIndex = document.activeElement instanceof HTMLElement
+        ? candidates.indexOf(document.activeElement)
+        : -1;
+
+      if (activeIndex === -1) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (event.shiftKey && activeIndex === 0) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeIndex === candidates.length - 1) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
+      document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("keydown", handleKeyDown);
-      priorFocusRef.current?.focus();
+      if (priorFocusRef.current?.isConnected) priorFocusRef.current.focus();
     };
   }, [open]);
 
@@ -133,6 +235,7 @@ export function WolfieCoachSheet({
     >
       <div className="absolute inset-0" aria-hidden="true" />
       <section
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

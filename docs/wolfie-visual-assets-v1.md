@@ -2,7 +2,7 @@
 
 > Versão: 1
 > Data: 1º de agosto de 2026
-> Estado: lote local; sem deploy de produção
+> Estado: publicado em produção na release `20260802T004103Z-5d79a11ddaae`
 > Escopo: Wolfie V2, dez reuniões globais e dois pilotos de outros universos
 
 ## 1. Resumo da entrega
@@ -31,28 +31,28 @@ Os fundos usam dois recortes WebP por experiência:
 
 - desktop: `1600 × 900`, proporção 16:9;
 - mobile: `900 × 1200`, proporção 3:4;
-- caminho: `public/assets/wolfie/scenes/{universe}/{experienceId}/{desktop|mobile}.webp`.
+- caminho: `public/assets/wolfie/scenes/{universe}/{experienceId}/{variant}.{sha256-12}.webp`.
 
 | Experiência | Universo | Fonte ImageGen aceita | Arquivos finais |
 |---|---|---|---|
-| `meetings-business` | `global-meetings` | `exec-cd8f189b-5133-4633-8f70-954db88b6caa.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-medicine` | `global-meetings` | `exec-6c6bdbe1-c2f9-48d7-835a-5d7c274dcf8d.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-human-reproduction` | `global-meetings` | `exec-7c8b2af2-c643-4aa2-8b60-6a47d4e19122.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-laboratories` | `global-meetings` | `exec-566dac13-ed89-492b-bd7c-5f5c63dd5539.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-beauty` | `global-meetings` | `exec-7d135767-3620-40d0-8312-860756313244.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-retail` | `global-meetings` | `exec-2d15e9ec-b9ac-43b6-be34-2ac7168e8621.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-technology` | `global-meetings` | `exec-db7280d6-eac4-4ef7-8403-4b2511639fd0.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-logistics` | `global-meetings` | `exec-9173058f-b11b-4cc8-9137-1d56f7e29374.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-tourism` | `global-meetings` | `exec-cf5951b4-3bc5-41d3-a870-78d9ce6bdbeb.png` | `desktop.webp`, `mobile.webp` |
-| `meetings-aviation` | `global-meetings` | `exec-bc66a18a-67a0-4ae8-a9c9-1d1c1dd58171.png` | `desktop.webp`, `mobile.webp` |
-| `food-cooking` | `daily-life` | `exec-766ce0f6-fed3-4901-86fc-50ad07f0dc2f.png` | `desktop.webp`, `mobile.webp` |
-| `speak-for-a-minute` | `speaking` | `exec-6d90ae90-a747-4b69-b6e0-bb15172f3522.png` | `desktop.webp`, `mobile.webp` |
+| `meetings-business` | `global-meetings` | `exec-cd8f189b-5133-4633-8f70-954db88b6caa.png` | `desktop.a5fc36b14418.webp`, `mobile.20595301b1f4.webp` |
+| `meetings-medicine` | `global-meetings` | `exec-6c6bdbe1-c2f9-48d7-835a-5d7c274dcf8d.png` | `desktop.9d63442a60df.webp`, `mobile.c54e39835bd6.webp` |
+| `meetings-human-reproduction` | `global-meetings` | `exec-7c8b2af2-c643-4aa2-8b60-6a47d4e19122.png` | `desktop.4fec99902172.webp`, `mobile.23bcb9c2b67b.webp` |
+| `meetings-laboratories` | `global-meetings` | `exec-566dac13-ed89-492b-bd7c-5f5c63dd5539.png` | `desktop.cb1b23039a24.webp`, `mobile.5dd04d3a2970.webp` |
+| `meetings-beauty` | `global-meetings` | `exec-7d135767-3620-40d0-8312-860756313244.png` | `desktop.d6a3e3f056eb.webp`, `mobile.390d81d9c1eb.webp` |
+| `meetings-retail` | `global-meetings` | `exec-2d15e9ec-b9ac-43b6-be34-2ac7168e8621.png` | `desktop.4a0c5a2ff773.webp`, `mobile.1b8e2fb6011b.webp` |
+| `meetings-technology` | `global-meetings` | `exec-db7280d6-eac4-4ef7-8403-4b2511639fd0.png` | `desktop.cc9f82869f7f.webp`, `mobile.3033a4a4558e.webp` |
+| `meetings-logistics` | `global-meetings` | `exec-9173058f-b11b-4cc8-9137-1d56f7e29374.png` | `desktop.b5f1816863cd.webp`, `mobile.80ad22c6ab3f.webp` |
+| `meetings-tourism` | `global-meetings` | `exec-cf5951b4-3bc5-41d3-a870-78d9ce6bdbeb.png` | `desktop.8ff421493764.webp`, `mobile.8c6ac11942c9.webp` |
+| `meetings-aviation` | `global-meetings` | `exec-bc66a18a-67a0-4ae8-a9c9-1d1c1dd58171.png` | `desktop.cc878f5bad08.webp`, `mobile.0f321cece25f.webp` |
+| `food-cooking` | `daily-life` | `exec-766ce0f6-fed3-4901-86fc-50ad07f0dc2f.png` | `desktop.e06d4adf2164.webp`, `mobile.cab5c78a7603.webp` |
+| `speak-for-a-minute` | `speaking` | `exec-6d90ae90-a747-4b69-b6e0-bb15172f3522.png` | `desktop.e463c26e251e.webp`, `mobile.ea57d3ee0fa5.webp` |
 
 O personagem final é:
 
 | Personagem/estado | Fonte ImageGen | Arquivo final | Dimensão final |
 |---|---|---|---|
-| `wolfie-coach/listening` | `exec-c074bdaf-0c17-44fc-a7f0-0af93bae6ee2.png` | `public/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.webp` | `1024 × 1536` |
+| `wolfie-coach/listening` | `exec-c074bdaf-0c17-44fc-a7f0-0af93bae6ee2.png` | `public/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp` | `1024 × 1536` |
 
 ### 2.2 Fontes e transformação
 
@@ -80,8 +80,9 @@ usa WebP com fallback de gradiente.
 
 Validação final do lote: **24 fundos e um personagem decodificados**, todos nas
 dimensões declaradas e dentro do orçamento. O maior desktop é
-`meetings-tourism/desktop.webp`, com 172.554 bytes; o maior mobile é
-`meetings-tourism/mobile.webp`, com 97.496 bytes; o personagem tem 98.684 bytes.
+`meetings-tourism/desktop.8ff421493764.webp`, com 172.554 bytes; o maior mobile é
+`meetings-tourism/mobile.8c6ac11942c9.webp`, com 97.496 bytes; o personagem tem
+98.684 bytes.
 
 ## 3. Proveniência e controle de qualidade
 
@@ -229,7 +230,7 @@ proveniência das gerações, não o checksum do arquivo otimizado.
 
 | Personagem | SHA-256 |
 |---|---|
-| `wolfie-coach/wolfie-v2-listening.webp` | `07cf0629cc2d6c406252eee866d42c44182eb869c3deddeb09928f0e1d519c0e` |
+| `wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp` | `07cf0629cc2d6c406252eee866d42c44182eb869c3deddeb09928f0e1d519c0e` |
 
 ## 6. Estado do rollout, limites e próximo lote
 
@@ -238,6 +239,8 @@ proveniência das gerações, não o checksum do arquivo otimizado.
   `VITE_WOLFIE_SCENARIO_UI_V2=true`.
 - Os 25 assets deste lote e o mascote legado foram conferidos em produção: os
   26 WebPs retornaram `image/webp` e checksum idêntico ao arquivo local.
+- A release V2 passa a usar nomes com fingerprint e preserva estes 25 caminhos
+  originais como aliases de transição, com os mesmos bytes e hashes.
 - Os 44 perfis sem bitmap continuam intencionalmente em fallback visual.
 - Não há AVIF, rig em tempo real, lip-sync facial, elenco setorial completo nem
   thumbnails neste lote.

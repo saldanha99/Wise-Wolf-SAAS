@@ -11,7 +11,9 @@
     "deploy:vps": "bash deploy/vps/release.sh",
     "import:wise-wolf-chatgpt": "node scripts/import-wise-wolf-chatgpt.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "wolfie:assets:verify": "node scripts/verify-wolfie-visual-assets.mjs --root public",
+    "wolfie:assets:verify:dist": "node scripts/verify-wolfie-visual-assets.mjs --root dist"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",

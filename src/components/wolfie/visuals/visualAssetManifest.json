@@ -1,0 +1,501 @@
+{
+  "schemaVersion": 1,
+  "scenes": [
+    {
+      "experienceId": "meetings-business",
+      "universeId": "global-meetings",
+      "sourceId": "exec-cd8f189b-5133-4633-8f70-954db88b6caa.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-business/desktop.a5fc36b14418.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 70076,
+        "maxBytes": 320000,
+        "sha256": "a5fc36b144181492045e3f257d868152c2083daf72abf02c4d107b4b862f47f9"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-business/mobile.20595301b1f4.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 36312,
+        "maxBytes": 180000,
+        "sha256": "20595301b1f4f1c0f2593c4a715f6e9becddbee46d702db1d309a7ebbcdbb00a"
+      }
+    },
+    {
+      "experienceId": "meetings-medicine",
+      "universeId": "global-meetings",
+      "sourceId": "exec-6c6bdbe1-c2f9-48d7-835a-5d7c274dcf8d.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-medicine/desktop.9d63442a60df.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 88230,
+        "maxBytes": 320000,
+        "sha256": "9d63442a60df178592ea51fe51ee44cf1d8a135e0eb3ec2bae8645692e48be33"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-medicine/mobile.c54e39835bd6.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39926,
+        "maxBytes": 180000,
+        "sha256": "c54e39835bd68af3e90267d1984a4afff23b6b20c979a96573696c3de303068b"
+      }
+    },
+    {
+      "experienceId": "meetings-human-reproduction",
+      "universeId": "global-meetings",
+      "sourceId": "exec-7c8b2af2-c643-4aa2-8b60-6a47d4e19122.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/desktop.4fec99902172.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 99144,
+        "maxBytes": 320000,
+        "sha256": "4fec999021729d005d713a93f6989d79b8636bc36f1683a50a2a7ce5753ecdc4"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/mobile.23bcb9c2b67b.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 46528,
+        "maxBytes": 180000,
+        "sha256": "23bcb9c2b67b2cdec2ec4a69da433cb44ca66a15640f46ae49053c7aa07d3dce"
+      }
+    },
+    {
+      "experienceId": "meetings-laboratories",
+      "universeId": "global-meetings",
+      "sourceId": "exec-566dac13-ed89-492b-bd7c-5f5c63dd5539.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/desktop.cb1b23039a24.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 113042,
+        "maxBytes": 320000,
+        "sha256": "cb1b23039a2448b63446f62d030017fe4cd9e1f4160eb8305063b9236601bf59"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/mobile.5dd04d3a2970.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 62394,
+        "maxBytes": 180000,
+        "sha256": "5dd04d3a2970620837e46438e9824125fdd1744131d1d6fb747146fefb5be1e8"
+      }
+    },
+    {
+      "experienceId": "meetings-beauty",
+      "universeId": "global-meetings",
+      "sourceId": "exec-7d135767-3620-40d0-8312-860756313244.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-beauty/desktop.d6a3e3f056eb.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 96868,
+        "maxBytes": 320000,
+        "sha256": "d6a3e3f056eb68079a1985a2e8d2cc1402cf6861517e5b7288670d34bebe7edd"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-beauty/mobile.390d81d9c1eb.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 46350,
+        "maxBytes": 180000,
+        "sha256": "390d81d9c1eb27ced904425e0febeca2f5978bcec6c142ec78edbba27f897321"
+      }
+    },
+    {
+      "experienceId": "meetings-retail",
+      "universeId": "global-meetings",
+      "sourceId": "exec-2d15e9ec-b9ac-43b6-be34-2ac7168e8621.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-retail/desktop.4a0c5a2ff773.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 106622,
+        "maxBytes": 320000,
+        "sha256": "4a0c5a2ff773c320c916879255858ae984084487f3cc83cd32dbe48789fd915b"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-retail/mobile.1b8e2fb6011b.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 67114,
+        "maxBytes": 180000,
+        "sha256": "1b8e2fb6011b875dbfef98a92a5d17fe5783e12315a434c1185cc4400cfb77ec"
+      }
+    },
+    {
+      "experienceId": "meetings-technology",
+      "universeId": "global-meetings",
+      "sourceId": "exec-db7280d6-eac4-4ef7-8403-4b2511639fd0.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 75216,
+        "maxBytes": 320000,
+        "sha256": "cc9f82869f7f1dfe74acc56f61c3e08fda6ea22f03e0de90bd24e15f51e467e0"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-technology/mobile.3033a4a4558e.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 39102,
+        "maxBytes": 180000,
+        "sha256": "3033a4a4558e7e0fb84119d8c5f90f0911e70b7a1af509f8e557f5a232c1d1f1"
+      }
+    },
+    {
+      "experienceId": "meetings-logistics",
+      "universeId": "global-meetings",
+      "sourceId": "exec-9173058f-b11b-4cc8-9137-1d56f7e29374.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-logistics/desktop.b5f1816863cd.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 106932,
+        "maxBytes": 320000,
+        "sha256": "b5f1816863cda234f36125079064f2277fe0c21b27958f56fbf0e29c205c0930"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-logistics/mobile.80ad22c6ab3f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 52100,
+        "maxBytes": 180000,
+        "sha256": "80ad22c6ab3f73c9a1b9f6e529109ab324e9a261f10e9b84c816642cd9e73788"
+      }
+    },
+    {
+      "experienceId": "meetings-tourism",
+      "universeId": "global-meetings",
+      "sourceId": "exec-cf5951b4-3bc5-41d3-a870-78d9ce6bdbeb.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-tourism/desktop.8ff421493764.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 172554,
+        "maxBytes": 320000,
+        "sha256": "8ff421493764768fecbc10d32651ebb3b8d1ea122fa9feac185c9466d7c1631c"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-tourism/mobile.8c6ac11942c9.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 97496,
+        "maxBytes": 180000,
+        "sha256": "8c6ac11942c959790ccebce37a115e7263f59791674b5516b701f29040564062"
+      }
+    },
+    {
+      "experienceId": "meetings-aviation",
+      "universeId": "global-meetings",
+      "sourceId": "exec-bc66a18a-67a0-4ae8-a9c9-1d1c1dd58171.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-aviation/desktop.cc878f5bad08.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 107488,
+        "maxBytes": 320000,
+        "sha256": "cc878f5bad08d507fa5adfb3a76be77984ed7ce57ae0ca35863930b37ad60de1"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/global-meetings/meetings-aviation/mobile.0f321cece25f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 53212,
+        "maxBytes": 180000,
+        "sha256": "0f321cece25ff95f3cf85201030c44f0f04825b0e1b6298ed44ba4cfb008483f"
+      }
+    },
+    {
+      "experienceId": "food-cooking",
+      "universeId": "daily-life",
+      "sourceId": "exec-766ce0f6-fed3-4901-86fc-50ad07f0dc2f.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/daily-life/food-cooking/desktop.e06d4adf2164.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 72000,
+        "maxBytes": 320000,
+        "sha256": "e06d4adf21646612f53d4ce10878beebb980ef7c8cd2aa5d9793b24d27a66c77"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/daily-life/food-cooking/mobile.cab5c78a7603.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 25924,
+        "maxBytes": 180000,
+        "sha256": "cab5c78a760352362bd4d59b4fe621856d1ebbf18b1410cf8299052837a790fd"
+      }
+    },
+    {
+      "experienceId": "speak-for-a-minute",
+      "universeId": "speaking",
+      "sourceId": "exec-6d90ae90-a747-4b69-b6e0-bb15172f3522.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/speaking/speak-for-a-minute/desktop.e463c26e251e.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 61490,
+        "maxBytes": 320000,
+        "sha256": "e463c26e251eacc70e7d53f899a04f9a5cea5aed82356afdaba41cad47e49b8a"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/speaking/speak-for-a-minute/mobile.ea57d3ee0fa5.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 27172,
+        "maxBytes": 180000,
+        "sha256": "ea57d3ee0fa554753d430d856ad17e0986142e438bc37a10155528325d215995"
+      }
+    },
+    {
+      "experienceId": "job-interviews",
+      "universeId": "career",
+      "sourceId": "exec-b4db3f7b-da5c-41ba-af0c-514cd5a78dd0.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/job-interviews/desktop.dc0f18a9a9dc.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 74254,
+        "maxBytes": 320000,
+        "sha256": "dc0f18a9a9dcc00280878034b33bdfb22c3a17b388c9795a17d5df84151a0c64"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/job-interviews/mobile.f52093d7182f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 44076,
+        "maxBytes": 180000,
+        "sha256": "f52093d7182f43fd3da68bdc9a3ea795506772a7051c20c68cbd26eb1145dd66"
+      }
+    },
+    {
+      "experienceId": "career-networking",
+      "universeId": "career",
+      "sourceId": "exec-882145be-3aa3-4965-852a-dcbb5cc96439.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/career-networking/desktop.81efc6d17664.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 70650,
+        "maxBytes": 320000,
+        "sha256": "81efc6d17664aec808dd08b13fba1a2b9a650069c07c895d7764efa64f9e58c3"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/career-networking/mobile.27130ba290bd.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 46386,
+        "maxBytes": 180000,
+        "sha256": "27130ba290bde9ac4a919ef3ae935993265f4377ead4db4c3d39543c5b533f55"
+      }
+    },
+    {
+      "experienceId": "promotion",
+      "universeId": "career",
+      "sourceId": "exec-3f04d1bd-8a02-4102-8684-7d51021f5a1c.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/career/promotion/desktop.23a201d28af8.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 56184,
+        "maxBytes": 320000,
+        "sha256": "23a201d28af8a9a7eed42522febd880b5b8a7ace0f308aa4d5164a3c03c04ed3"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/career/promotion/mobile.e2b1eaf5674f.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 37384,
+        "maxBytes": 180000,
+        "sha256": "e2b1eaf5674f5526bbe48b5a46f603a8caa6118b563d98a02320a78482d72da1"
+      }
+    },
+    {
+      "experienceId": "talks",
+      "universeId": "events",
+      "sourceId": "exec-f1a565e9-cad6-4208-be4e-bc51ba242f9b.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/talks/desktop.3caabfba1153.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 45578,
+        "maxBytes": 320000,
+        "sha256": "3caabfba1153419637897712e5f6683ffed88f56ced6bb6ab49714c1d1b0789b"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/talks/mobile.37bec22ebd53.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 28064,
+        "maxBytes": 180000,
+        "sha256": "37bec22ebd53dc1290e0b4e09807150b7728fb510192d727591bbf0fa79a50b3"
+      }
+    },
+    {
+      "experienceId": "trade-shows",
+      "universeId": "events",
+      "sourceId": "exec-306f12c9-af13-43de-a61b-328635d272ac.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/trade-shows/desktop.8d9bfdb96dd1.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 106354,
+        "maxBytes": 320000,
+        "sha256": "8d9bfdb96dd147e4ceb04ddb87906452ab8de8b8a0dad0bfbb2078e4897c471a"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/trade-shows/mobile.f7716d273068.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 52840,
+        "maxBytes": 180000,
+        "sha256": "f7716d27306837ab1409a786bdf1d39d08e8a48871041af03ded644ed4ac62eb"
+      }
+    },
+    {
+      "experienceId": "medical-congresses",
+      "universeId": "events",
+      "sourceId": "exec-a41d1dad-6c75-43a3-a985-584f6d6e0fa4.png",
+      "desktop": {
+        "url": "/assets/wolfie/scenes/events/medical-congresses/desktop.e7cdb4fbc2b9.webp",
+        "width": 1600,
+        "height": 900,
+        "bytes": 103162,
+        "maxBytes": 320000,
+        "sha256": "e7cdb4fbc2b924a7df2ac1da9953d4d13b374ac1f84f9a8001200c2a286e9333"
+      },
+      "mobile": {
+        "url": "/assets/wolfie/scenes/events/medical-congresses/mobile.18951655e993.webp",
+        "width": 900,
+        "height": 1200,
+        "bytes": 49496,
+        "maxBytes": 180000,
+        "sha256": "18951655e993be46377460f39f56d03327351fcf7c48b9855e7ba1de286018d8"
+      }
+    }
+  ],
+  "characters": [
+    {
+      "characterId": "wolfie-coach",
+      "state": "listening",
+      "version": 2,
+      "sourceId": "exec-c074bdaf-0c17-44fc-a7f0-0af93bae6ee2.png",
+      "asset": {
+        "url": "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp",
+        "width": 1024,
+        "height": 1536,
+        "bytes": 98684,
+        "maxBytes": 400000,
+        "sha256": "07cf0629cc2d6c406252eee866d42c44182eb869c3deddeb09928f0e1d519c0e"
+      }
+    }
+  ],
+  "legacyAliases": [
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-business/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-business/desktop.a5fc36b14418.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-business/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-business/mobile.20595301b1f4.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-medicine/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-medicine/desktop.9d63442a60df.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-medicine/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-medicine/mobile.c54e39835bd6.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/desktop.4fec99902172.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-human-reproduction/mobile.23bcb9c2b67b.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/desktop.cb1b23039a24.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-laboratories/mobile.5dd04d3a2970.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-beauty/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-beauty/desktop.d6a3e3f056eb.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-beauty/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-beauty/mobile.390d81d9c1eb.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-retail/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-retail/desktop.4a0c5a2ff773.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-retail/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-retail/mobile.1b8e2fb6011b.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-technology/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-technology/mobile.3033a4a4558e.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-logistics/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-logistics/desktop.b5f1816863cd.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-logistics/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-logistics/mobile.80ad22c6ab3f.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-tourism/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-tourism/desktop.8ff421493764.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-tourism/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-tourism/mobile.8c6ac11942c9.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-aviation/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-aviation/desktop.cc878f5bad08.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/global-meetings/meetings-aviation/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/global-meetings/meetings-aviation/mobile.0f321cece25f.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/daily-life/food-cooking/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/daily-life/food-cooking/desktop.e06d4adf2164.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/daily-life/food-cooking/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/daily-life/food-cooking/mobile.cab5c78a7603.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/speaking/speak-for-a-minute/desktop.webp",
+      "targetUrl": "/assets/wolfie/scenes/speaking/speak-for-a-minute/desktop.e463c26e251e.webp"
+    },
+    {
+      "url": "/assets/wolfie/scenes/speaking/speak-for-a-minute/mobile.webp",
+      "targetUrl": "/assets/wolfie/scenes/speaking/speak-for-a-minute/mobile.ea57d3ee0fa5.webp"
+    },
+    {
+      "url": "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.webp",
+      "targetUrl": "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp"
+    }
+  ]
+}

@@ -28,8 +28,24 @@ require_command() {
     die "comando obrigatório ausente: $1"
 }
 
+validate_remote_path() {
+  local remote_path=$1
+  [[ "$remote_path" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ &&
+    "$remote_path" != *".."* &&
+    "$remote_path" != *"//"* ]]
+}
+
+validate_https_url() {
+  local https_url=$1
+  local https_url_tail
+  [[ "$https_url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._/-]*)?$ ]] ||
+    return 1
+  https_url_tail=${https_url#https://}
+  [[ "$https_url_tail" != *".."* && "$https_url_tail" != *"//"* ]]
+}
+
 for command_name in \
-  git npm npx node ssh rsync curl shasum find; do
+  git npm npx node ssh rsync curl shasum base64 find; do
   require_command "$command_name"
 done
 
@@ -59,7 +75,7 @@ for required_var in "${required_vars[@]}"; do
     die "variável obrigatória ausente: $required_var"
 done
 
-[[ "$DEPLOY_SSH_HOST" =~ ^[A-Za-z0-9._-]+$ ]] ||
+[[ "$DEPLOY_SSH_HOST" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
   die "DEPLOY_SSH_HOST inválido"
 [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.:_-]+$ ]] ||
   die "DEPLOY_HOST inválido"
@@ -72,13 +88,13 @@ for remote_path in \
   "$DEPLOY_BACKUPS_DIR" \
   "$DEPLOY_FUNCTIONS_DIR" \
   "$DEPLOY_SUPABASE_DIR"; do
-  [[ "$remote_path" == /opt/wisewolf/* && "$remote_path" != *$'\n'* ]] ||
+  validate_remote_path "$remote_path" ||
     die "caminho remoto fora de /opt/wisewolf: $remote_path"
 done
-[[ "$DEPLOY_PUBLIC_URL" =~ ^https://[^[:space:]]+$ ]] ||
-  die "DEPLOY_PUBLIC_URL deve usar HTTPS"
-[[ "$DEPLOY_API_URL" =~ ^https://[^[:space:]]+$ ]] ||
-  die "DEPLOY_API_URL deve usar HTTPS"
+validate_https_url "$DEPLOY_PUBLIC_URL" ||
+  die "DEPLOY_PUBLIC_URL deve ser uma URL HTTPS segura"
+validate_https_url "$DEPLOY_API_URL" ||
+  die "DEPLOY_API_URL deve ser uma URL HTTPS segura"
 [[ "$DEPLOY_API_URL" != *".supabase.co"* ]] ||
   die "DEPLOY_API_URL não pode apontar para o Supabase hospedado"
 
@@ -103,6 +119,9 @@ current_ip="$(hostname -I | awk '{print $1}')"
 [[ "$current_ip" = "$expected_host" || "$expected_host" = "187.127.46.251" ]]
 for required_dir in "$app_dir" "$compose_dir" "$functions_dir" "$supabase_dir"; do
   [[ -d "$required_dir" ]]
+done
+for required_command in base64 sha256sum stat; do
+  command -v "$required_command" >/dev/null
 done
 [[ -s "$functions_dir/_shared/request-auth.ts" ]]
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
@@ -150,6 +169,8 @@ REMOTE
 
 read_remote_public_env() {
   local key=$1
+  [[ "$key" =~ ^VITE_[A-Z0-9_]+$ ]] ||
+    die "chave pública remota inválida"
   ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
     "$DEPLOY_APP_DIR/.env.production" "$key" <<'REMOTE'
 set -Eeuo pipefail
@@ -183,14 +204,17 @@ export VITE_WOLFIE_SCENARIO_UI_V2="${VITE_WOLFIE_SCENARIO_UI_V2:-false}"
   die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
 VITE_SUPABASE_URL="$(read_remote_public_env VITE_SUPABASE_URL)"
 VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
+validate_https_url "$VITE_SUPABASE_URL" ||
+  die "VITE_SUPABASE_URL remota inválida"
 [[ "$VITE_SUPABASE_URL" = "$DEPLOY_API_URL" ]] ||
   die "o frontend deve usar exatamente a API da VPS"
-[[ ${#VITE_SUPABASE_ANON_KEY} -ge 20 ]] ||
+[[ "$VITE_SUPABASE_ANON_KEY" =~ ^[A-Za-z0-9._-]{20,}$ ]] ||
   die "VITE_SUPABASE_ANON_KEY remota ausente ou truncada"
 
 echo "== Validação do artefato Wolfie =="
 npm ci
 npm run typecheck
+npm run wolfie:assets:verify
 npx vitest run \
   src/components/wolfie/WolfieActivitySummary.test.tsx \
   src/components/wolfie/WolfieMeetingActivity.test.tsx \
@@ -222,6 +246,26 @@ node scripts/provision-wolfie-rag.mjs --validate-only
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
+npm run wolfie:assets:verify:dist
+wolfie_asset_count="$(
+  node -e \
+    'const m=require("./src/components/wolfie/visuals/visualAssetManifest.json"); console.log((m.scenes.length * 2) + m.characters.length + m.legacyAliases.length)'
+)"
+wolfie_asset_lock_tsv="$(
+  node scripts/verify-wolfie-visual-assets.mjs --root dist --format tsv
+)"
+wolfie_asset_lock_count="$(
+  printf '%s\n' "$wolfie_asset_lock_tsv" | wc -l | tr -d ' '
+)"
+[[ "$wolfie_asset_count" =~ ^[1-9][0-9]*$ &&
+  "$wolfie_asset_lock_count" = "$wolfie_asset_count" ]] ||
+  die "lock HTTP dos assets Wolfie incompleto"
+wolfie_asset_lock_b64="$(
+  printf '%s\n' "$wolfie_asset_lock_tsv" | base64 | tr -d '\n'
+)"
+unset wolfie_asset_lock_tsv wolfie_asset_lock_count
+[[ "$wolfie_asset_lock_b64" =~ ^[A-Za-z0-9+/=]+$ ]] ||
+  die "lock HTTP dos assets Wolfie inválido"
 
 MIGRATIONS=(
   "supabase/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
@@ -283,8 +327,14 @@ for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
 done
 
 git_sha="$(git rev-parse --short=12 HEAD)"
+[[ "$git_sha" =~ ^[a-f0-9]{12}$ ]] ||
+  die "commit Git inválido"
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${git_sha}"
+[[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]] ||
+  die "identificador de release inválido"
 remote_release="$DEPLOY_RELEASES_DIR/$release_id"
+validate_remote_path "$remote_release" ||
+  die "caminho da release remota inválido"
 
 echo "== Preparação da release Wolfie $release_id =="
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- "$remote_release" <<'REMOTE'
@@ -335,7 +385,9 @@ ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_SUPABASE_DIR" \
   "$DEPLOY_PUBLIC_URL" \
   "$DEPLOY_API_URL" \
-  "$VITE_SUPABASE_ANON_KEY" <<'REMOTE'
+  "$VITE_SUPABASE_ANON_KEY" \
+  "$wolfie_asset_lock_b64" \
+  "$wolfie_asset_count" <<'REMOTE'
 set -Eeuo pipefail
 umask 077
 
@@ -350,14 +402,36 @@ supabase_dir=$8
 public_url=$9
 api_url=${10}
 anon_key=${11}
+wolfie_asset_lock_b64=${12}
+wolfie_asset_count=${13}
+
+validate_remote_path() {
+  local remote_path=$1
+  [[ "$remote_path" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ &&
+    "$remote_path" != *".."* &&
+    "$remote_path" != *"//"* ]]
+}
+
+validate_https_url() {
+  local https_url=$1
+  local https_url_tail
+  [[ "$https_url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._/-]*)?$ ]] ||
+    return 1
+  https_url_tail=${https_url#https://}
+  [[ "$https_url_tail" != *".."* && "$https_url_tail" != *"//"* ]]
+}
 
 for remote_path in \
   "$release_dir" "$app_dir" "$compose_dir" "$releases_dir" \
   "$backups_dir" "$functions_dir" "$supabase_dir"; do
-  [[ "$remote_path" == /opt/wisewolf/* ]]
+  validate_remote_path "$remote_path"
 done
+validate_https_url "$public_url"
+validate_https_url "$api_url"
 [[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]]
-[[ ${#anon_key} -ge 20 ]]
+[[ "$anon_key" =~ ^[A-Za-z0-9._-]{20,}$ ]]
+[[ "$wolfie_asset_lock_b64" =~ ^[A-Za-z0-9+/=]+$ ]]
+[[ "$wolfie_asset_count" =~ ^[1-9][0-9]*$ ]]
 
 exec 9>"$releases_dir/.deploy.lock"
 flock -n 9 || {
@@ -367,9 +441,17 @@ flock -n 9 || {
 
 backup_dir="$backups_dir/release-$release_id"
 marker_dir="$releases_dir/.migration-checksums"
+current_marker="$releases_dir/current"
+current_marker_backup="$backup_dir/current.previous"
+current_marker_tmp="$releases_dir/.current-$release_id.tmp"
+current_marker_rollback_tmp="$releases_dir/.current-$release_id.rollback.tmp"
+current_marker_existed=0
+current_marker_swapped=0
 frontend_swapped=0
 swapped_functions=()
 swapped_shared_files=()
+rollback_owner_subshell=$BASH_SUBSHELL
+rollback_started=0
 SHARED_FUNCTION_FILES=(
   request-auth.ts
   ai-usage.ts
@@ -378,9 +460,28 @@ SHARED_FUNCTION_FILES=(
 
 restore_previous_release() {
   local exit_code=$?
+  if [[ "$BASH_SUBSHELL" != "$rollback_owner_subshell" ]]; then
+    trap - ERR
+    exit "$exit_code"
+  fi
+  if [[ "$rollback_started" = "1" ]]; then
+    trap - ERR
+    exit "$exit_code"
+  fi
+  rollback_started=1
   trap - ERR
-  set +e
+  set +Ee
   echo "ERRO: release Wolfie falhou; restaurando artefatos anteriores." >&2
+
+  if [[ "$current_marker_swapped" = "1" ]]; then
+    if [[ "$current_marker_existed" = "1" && -f "$current_marker_backup" ]]; then
+      cp -a -- "$current_marker_backup" "$current_marker_rollback_tmp"
+      mv -f -- "$current_marker_rollback_tmp" "$current_marker"
+    else
+      rm -f -- "$current_marker"
+    fi
+  fi
+  rm -f -- "$current_marker_tmp" "$current_marker_rollback_tmp"
 
   if [[ "$frontend_swapped" = "1" ]]; then
     if [[ -d "$app_dir/dist" ]]; then
@@ -431,6 +532,19 @@ restore_previous_release() {
 trap restore_previous_release ERR
 
 mkdir -p -- "$backup_dir" "$marker_dir"
+[[ -d "$backup_dir" && ! -L "$backup_dir" ]]
+[[ -d "$marker_dir" && ! -L "$marker_dir" ]]
+[[ ! -e "$current_marker_backup" && ! -L "$current_marker_backup" ]]
+[[ ! -e "$current_marker_tmp" && ! -L "$current_marker_tmp" ]]
+[[ ! -e "$current_marker_rollback_tmp" && ! -L "$current_marker_rollback_tmp" ]]
+[[ ! -L "$current_marker" ]]
+if [[ -f "$current_marker" ]]; then
+  cp -a -- "$current_marker" "$current_marker_backup"
+  current_marker_existed=1
+elif [[ -e "$current_marker" ]]; then
+  echo "ERRO: marcador de release atual não é um arquivo regular." >&2
+  false
+fi
 [[ -d "$release_dir/frontend-dist" ]]
 for function_name in \
   wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts \
@@ -614,14 +728,18 @@ for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
     "$functions_dir/_shared/$shared_file"
 done
 
-(
-  cd "$supabase_dir"
+if ! (
+  cd "$supabase_dir" &&
   docker compose restart functions
-)
-(
-  cd "$compose_dir"
+); then
+  false
+fi
+if ! (
+  cd "$compose_dir" &&
   docker compose up -d --force-recreate frontend
-)
+); then
+  false
+fi
 
 wait_for_http_status() {
   local expected_status=$1
@@ -646,26 +764,68 @@ wait_for_http_status() {
 }
 
 wait_for_http_status 200 "frontend público" "$public_url/"
-frontend_html="$(curl -fsS --connect-timeout 5 --max-time 20 "$public_url/")"
-asset_path="$(
-  printf '%s' "$frontend_html" |
-    sed -n 's/.*src="\([^"]*\/assets\/[^"]*\.js\)".*/\1/p' |
-    head -n 1
-)"
+
+asset_smoke_dir="$backup_dir/wolfie-asset-smoke"
+asset_lock_file="$asset_smoke_dir/asset-lock.tsv"
+[[ ! -e "$asset_smoke_dir" && ! -L "$asset_smoke_dir" ]]
+mkdir -- "$asset_smoke_dir"
+[[ -d "$asset_smoke_dir" && ! -L "$asset_smoke_dir" ]]
+base64 -d > "$asset_lock_file" <<< "$wolfie_asset_lock_b64"
+[[ -s "$asset_lock_file" ]]
+verified_wolfie_assets=0
+while IFS=$'\t' read -r asset_url expected_bytes expected_sha; do
+  [[ "$asset_url" =~ ^/assets/wolfie/[A-Za-z0-9._/-]+\.webp$ ]]
+  [[ "$asset_url" != *".."* && "$asset_url" != *"//"* ]]
+  [[ "$expected_bytes" =~ ^[1-9][0-9]*$ ]]
+  [[ "$expected_sha" =~ ^[a-f0-9]{64}$ ]]
+  [[ "$verified_wolfie_assets" -lt "$wolfie_asset_count" ]]
+  asset_body_file="$asset_smoke_dir/asset-$verified_wolfie_assets.webp"
+  asset_metadata_file="$asset_smoke_dir/asset-$verified_wolfie_assets.content-type"
+  asset_size_file="$asset_smoke_dir/asset-$verified_wolfie_assets.size"
+  asset_sha_file="$asset_smoke_dir/asset-$verified_wolfie_assets.sha256"
+  curl -fsS \
+    --retry 3 --retry-connrefused --retry-max-time 75 \
+    --connect-timeout 5 --max-time 20 \
+    -o "$asset_body_file" \
+    -w '%{content_type}\n' \
+    "$public_url$asset_url" > "$asset_metadata_file"
+  IFS= read -r asset_content_type < "$asset_metadata_file"
+  [[ "$asset_content_type" = "image/webp" ]]
+  stat -c '%s' "$asset_body_file" > "$asset_size_file"
+  IFS= read -r downloaded_bytes < "$asset_size_file"
+  [[ "$downloaded_bytes" = "$expected_bytes" ]]
+  sha256sum "$asset_body_file" > "$asset_sha_file"
+  IFS=' ' read -r actual_sha _ < "$asset_sha_file"
+  [[ "$actual_sha" = "$expected_sha" ]]
+  verified_wolfie_assets=$((verified_wolfie_assets + 1))
+done < "$asset_lock_file"
+[[ "$verified_wolfie_assets" = "$wolfie_asset_count" ]]
+unset wolfie_asset_lock_b64
+
+frontend_html_file="$asset_smoke_dir/frontend.html"
+frontend_asset_paths_file="$asset_smoke_dir/frontend-assets.txt"
+curl -fsS --connect-timeout 5 --max-time 20 \
+  -o "$frontend_html_file" "$public_url/"
+sed -n 's/.*src="\([^"]*\/assets\/[^"]*\.js\)".*/\1/p' \
+  "$frontend_html_file" > "$frontend_asset_paths_file"
+IFS= read -r asset_path < "$frontend_asset_paths_file"
 [[ "$asset_path" == /assets/*.js ]]
 wait_for_http_status 200 "bundle JavaScript" "$public_url$asset_path"
 
-mascot_headers="$(
-  curl -fsSI --connect-timeout 5 --max-time 20 \
-    "$public_url/assets/wolfie/wolfie-tutor-mascot.webp"
-)"
-printf '%s\n' "$mascot_headers" | grep -qi '^content-type: image/webp'
-mascot_size="$(
-  curl -fsS --connect-timeout 5 --max-time 20 \
-    "$public_url/assets/wolfie/wolfie-tutor-mascot.webp" |
-    wc -c |
-    tr -d ' '
-)"
+mascot_body_file="$asset_smoke_dir/wolfie-tutor-mascot.webp"
+mascot_metadata_file="$asset_smoke_dir/wolfie-tutor-mascot.content-type"
+mascot_size_file="$asset_smoke_dir/wolfie-tutor-mascot.size"
+curl -fsS \
+  --retry 3 --retry-connrefused --retry-max-time 75 \
+  --connect-timeout 5 --max-time 20 \
+  -o "$mascot_body_file" \
+  -w '%{content_type}\n' \
+  "$public_url/assets/wolfie/wolfie-tutor-mascot.webp" \
+  > "$mascot_metadata_file"
+IFS= read -r mascot_content_type < "$mascot_metadata_file"
+[[ "$mascot_content_type" = "image/webp" ]]
+stat -c '%s' "$mascot_body_file" > "$mascot_size_file"
+IFS= read -r mascot_size < "$mascot_size_file"
 [[ "$mascot_size" =~ ^[0-9]+$ && "$mascot_size" -gt 10000 ]]
 
 wait_for_http_status 200 "saúde do Auth" \
@@ -705,7 +865,10 @@ wait_for_http_status 401 "token do webhook Asaas" \
   -H 'Content-Type: application/json' \
   --data '{}'
 
-printf '%s\n' "$release_id" > "$releases_dir/current"
+[[ ! -e "$current_marker_tmp" && ! -L "$current_marker_tmp" ]]
+printf '%s\n' "$release_id" > "$current_marker_tmp"
+mv -f -- "$current_marker_tmp" "$current_marker"
+current_marker_swapped=1
 trap - ERR
 echo "Release Wolfie ativa: $release_id"
 echo "Backup reversível: $backup_dir"

@@ -7,6 +7,7 @@ import type {
   WolfieVisualSceneProfile,
   WolfieVisualSectorId,
 } from "./types";
+import visualAssetManifest from "./visualAssetManifest.json";
 
 export const WOLFIE_UNIVERSE_PALETTES: Record<
   LearningUniverseId,
@@ -68,30 +69,20 @@ export const WOLFIE_UNIVERSE_PALETTES: Record<
   },
 };
 
-const GENERATED_SCENE_IDS = new Set([
-  "meetings-business",
-  "meetings-medicine",
-  "meetings-human-reproduction",
-  "meetings-laboratories",
-  "meetings-beauty",
-  "meetings-retail",
-  "meetings-technology",
-  "meetings-logistics",
-  "meetings-tourism",
-  "meetings-aviation",
-  "food-cooking",
-  "speak-for-a-minute",
-]);
+const MANIFEST_SCENE_ASSETS = new Map(
+  visualAssetManifest.scenes.map((entry) => [entry.experienceId, entry] as const),
+);
 
-const createGeneratedAssetSet = (
+const createManifestAssetSet = (
   universeId: LearningUniverseId,
   experienceId: string,
 ): WolfieVisualAssetSet | undefined => {
-  if (!GENERATED_SCENE_IDS.has(experienceId)) return undefined;
+  const entry = MANIFEST_SCENE_ASSETS.get(experienceId);
+  if (!entry || entry.universeId !== universeId) return undefined;
 
   return {
-    desktopWebp: `/assets/wolfie/scenes/${universeId}/${experienceId}/desktop.webp`,
-    mobileWebp: `/assets/wolfie/scenes/${universeId}/${experienceId}/mobile.webp`,
+    desktopWebp: entry.desktop.url,
+    mobileWebp: entry.mobile.url,
   };
 };
 
@@ -103,7 +94,7 @@ type ScenarioDefinition = Omit<
 const scenario = (
   input: ScenarioDefinition,
 ): WolfieVisualScenarioProfile => {
-  const assets = createGeneratedAssetSet(input.universeId, input.experienceId);
+  const assets = createManifestAssetSet(input.universeId, input.experienceId);
   return {
     ...input,
     version: 1,

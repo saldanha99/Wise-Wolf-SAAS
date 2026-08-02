@@ -12,6 +12,7 @@ import {
   WOLFIE_UNIVERSE_FALLBACKS,
 } from "./sceneCatalog";
 import { WOLFIE_VISUAL_SECTOR_IDS } from "./types";
+import visualAssetManifest from "./visualAssetManifest.json";
 
 const EXPECTED_EXPERIENCE_IDS = [
   "introduce-yourself",
@@ -74,6 +75,27 @@ const EXPECTED_EXPERIENCE_IDS = [
 
 const sorted = (values: readonly string[]) => [...values].sort();
 
+const EXPECTED_MANIFEST_SCENE_IDS = [
+  "career-networking",
+  "food-cooking",
+  "job-interviews",
+  "medical-congresses",
+  "meetings-aviation",
+  "meetings-beauty",
+  "meetings-business",
+  "meetings-human-reproduction",
+  "meetings-laboratories",
+  "meetings-logistics",
+  "meetings-medicine",
+  "meetings-retail",
+  "meetings-technology",
+  "meetings-tourism",
+  "promotion",
+  "speak-for-a-minute",
+  "talks",
+  "trade-shows",
+] as const;
+
 describe("Wolfie visual scene catalog", () => {
   it("covers exactly the canonical 56 experience IDs", () => {
     expect(EXPECTED_EXPERIENCE_IDS).toHaveLength(56);
@@ -121,30 +143,25 @@ describe("Wolfie visual scene catalog", () => {
     }
   });
 
-  it("advertises files for every generated meeting scene and pilot", () => {
-    const profilesWithAssets = SCENE_CATALOG.filter((profile) => profile.assets);
-    expect(profilesWithAssets.map((profile) => profile.experienceId).sort()).toEqual(
-      [
-        "food-cooking",
-        "meetings-aviation",
-        "meetings-beauty",
-        "meetings-business",
-        "meetings-human-reproduction",
-        "meetings-laboratories",
-        "meetings-logistics",
-        "meetings-medicine",
-        "meetings-retail",
-        "meetings-technology",
-        "meetings-tourism",
-        "speak-for-a-minute",
-      ],
-    );
+  it("advertises exactly the scene files locked by the visual asset manifest", () => {
+    expect(visualAssetManifest.schemaVersion).toBe(1);
+    expect(visualAssetManifest.scenes).toHaveLength(18);
 
-    for (const profile of profilesWithAssets) {
-      const expectedBase =
-        `/assets/wolfie/scenes/${profile.universeId}/${profile.experienceId}`;
-      expect(profile.assets?.desktopWebp).toBe(`${expectedBase}/desktop.webp`);
-      expect(profile.assets?.mobileWebp).toBe(`${expectedBase}/mobile.webp`);
+    const profilesWithAssets = SCENE_CATALOG.filter((profile) => profile.assets);
+    const manifestExperienceIds = visualAssetManifest.scenes.map(
+      (entry) => entry.experienceId,
+    );
+    expect(sorted(manifestExperienceIds)).toEqual(
+      sorted(EXPECTED_MANIFEST_SCENE_IDS),
+    );
+    expect(sorted(profilesWithAssets.map((profile) => profile.experienceId)))
+      .toEqual(sorted(manifestExperienceIds));
+
+    for (const entry of visualAssetManifest.scenes) {
+      const profile = WOLFIE_SCENE_BY_EXPERIENCE_ID[entry.experienceId];
+      expect(profile.universeId).toBe(entry.universeId);
+      expect(profile.assets?.desktopWebp).toBe(entry.desktop.url);
+      expect(profile.assets?.mobileWebp).toBe(entry.mobile.url);
       expect(profile.assets?.desktopAvif).toBeUndefined();
       expect(profile.assets?.mobileAvif).toBeUndefined();
       expect(profile.assets?.posterWebp).toBeUndefined();

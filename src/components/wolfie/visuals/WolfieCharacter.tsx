@@ -35,7 +35,7 @@ export interface WolfieCharacterProps {
 }
 
 export const DEFAULT_WOLFIE_CHARACTER_IMAGE =
-  "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.webp";
+  "/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp";
 export const LEGACY_WOLFIE_CHARACTER_IMAGE =
   "/assets/wolfie/wolfie-tutor-mascot.webp";
 
