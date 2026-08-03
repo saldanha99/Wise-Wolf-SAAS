@@ -13,6 +13,7 @@
 // deno-lint-ignore no-import-prefix
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 
 let ASAAS_URL = Deno.env.get("ASAAS_API_URL") ||
   "https://api-sandbox.asaas.com";
@@ -64,8 +65,14 @@ serve(async (req) => {
   const auth = await authorizeRequest(req, {
     corsHeaders,
     allowedRoles: ["STUDENT"],
+    allowWolfieDirect: true,
   });
   if (auth.ok === false) return auth.response;
+  const accessError = await requireWolfieProductAccess(
+    auth.context,
+    corsHeaders,
+  );
+  if (accessError) return accessError;
 
   const tenantId = auth.context.profile?.tenant_id;
   const studentId = auth.context.userId;
@@ -88,12 +95,47 @@ serve(async (req) => {
     return json({ error: "INVALID_REQUEST_KEY" }, 400);
   }
 
-  const { data: profile, error: profileError } = await auth.context.admin
-    .from("profiles")
-    .select("asaas_customer_id")
-    .eq("id", studentId)
-    .maybeSingle();
-  if (profileError || !profile?.asaas_customer_id) {
+  let asaasCustomerId: string | null = null;
+  if (tenantId === "wolfie-direct") {
+    const { data: membership, error: membershipError } = await auth.context
+      .admin
+      .from("hub_memberships")
+      .select(
+        "hub_accounts!inner(asaas_customer_id, account_type, owner_user_id)",
+      )
+      .eq("user_id", studentId)
+      .eq("status", "ACTIVE")
+      .eq("membership_role", "OWNER")
+      .eq("hub_accounts.account_type", "PERSONAL")
+      .eq("hub_accounts.owner_user_id", studentId)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle();
+    if (membershipError) {
+      console.error("Wolfie direct customer lookup failed", {
+        code: membershipError.code,
+      });
+      return json({ error: "CUSTOMER_NOT_READY" }, 409);
+    }
+    const account = Array.isArray(membership?.hub_accounts)
+      ? membership.hub_accounts[0]
+      : membership?.hub_accounts;
+    asaasCustomerId = account?.asaas_customer_id || null;
+  } else {
+    const { data: profile, error: profileError } = await auth.context.admin
+      .from("profiles")
+      .select("asaas_customer_id")
+      .eq("id", studentId)
+      .maybeSingle();
+    if (profileError) {
+      console.error("Student customer lookup failed", {
+        code: profileError.code,
+      });
+      return json({ error: "CUSTOMER_NOT_READY" }, 409);
+    }
+    asaasCustomerId = profile?.asaas_customer_id || null;
+  }
+  if (!asaasCustomerId) {
     return json({ error: "CUSTOMER_NOT_READY" }, 409);
   }
 
@@ -172,7 +214,7 @@ serve(async (req) => {
     typeof payment.id === "string" &&
     payment.id.length >= 1 && payment.id.length <= 200 &&
     payment.externalReference === reference &&
-    payment.customer === profile.asaas_customer_id &&
+    payment.customer === asaasCustomerId &&
     payment.billingType === "PIX" &&
     sameMoney(payment.value, order.amount_brl);
 
@@ -267,7 +309,7 @@ serve(async (req) => {
       `${ASAAS_URL}${asaasPathPrefix()}/payments`,
     );
     lookupUrl.searchParams.set("externalReference", reference);
-    lookupUrl.searchParams.set("customer", profile.asaas_customer_id);
+    lookupUrl.searchParams.set("customer", asaasCustomerId);
     lookupUrl.searchParams.set("limit", "10");
     const lookupRes = await fetch(lookupUrl, {
       headers: { "access_token": ASAAS_API_KEY },
@@ -325,7 +367,7 @@ serve(async (req) => {
           "access_token": ASAAS_API_KEY,
         },
         body: JSON.stringify({
-          customer: profile.asaas_customer_id,
+          customer: asaasCustomerId,
           billingType: "PIX",
           value: Number(order.amount_brl),
           dueDate: new Date().toISOString().slice(0, 10),

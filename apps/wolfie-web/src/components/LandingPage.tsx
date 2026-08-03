@@ -12,7 +12,6 @@ import {
   Plane,
   Presentation,
   RefreshCcw,
-  ShieldCheck,
   Sparkles,
   Target,
   Volume2,
@@ -609,35 +608,6 @@ export function HowItWorksPage() {
             <p className="mt-3 text-white/80">Leva poucos minutos e você vê o resultado antes de informar seus dados.</p>
             <WolfieLink href="/quiz" className="mt-7 inline-flex min-h-14 items-center gap-2 rounded-full bg-white px-7 py-4 font-extrabold text-[#b91f32]">Começar diagnóstico <ArrowRight size={18} /></WolfieLink>
           </div>
-        </div>
-      </main>
-    </PublicPage>
-  );
-}
-
-export function AccessPage() {
-  return (
-    <PublicPage>
-      <main className="px-5 pb-24 pt-36 sm:pt-44">
-        <div className="mx-auto max-w-5xl text-center">
-          <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Acesso ao Wolfie</p>
-          <h1 className="mx-auto mt-5 max-w-4xl font-display text-5xl font-extrabold tracking-[-.06em] text-[#191a1e] sm:text-7xl">Comece pelo caminho certo para você.</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#6d727c]">O acesso segue sua matrícula ou uma conversa com a equipe Wise Wolf. Não exibimos preço ou condição que não esteja aprovada.</p>
-          <div className="mt-12 grid gap-5 text-left md:grid-cols-2">
-            <article className="rounded-[34px] border border-black/[.07] bg-[#fbfbfc] p-8">
-              <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#6f7480]">Já sou aluno</p>
-              <h2 className="mt-4 font-display text-3xl font-extrabold text-[#202126]">Entrar com minha conta</h2>
-              <p className="mt-4 leading-7 text-[#737781]">Use o mesmo e-mail e senha da Wise Wolf. A sessão do subdomínio é independente por segurança.</p>
-              <WolfieLink href="/entrar" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#202126] px-6 py-3.5 font-extrabold text-white">Entrar agora <ArrowRight size={17} /></WolfieLink>
-            </article>
-            <article className="rounded-[34px] bg-[linear-gradient(145deg,#e72d3d,#ff795d)] p-8 text-white shadow-[0_24px_60px_rgba(221,44,61,.16)]">
-              <p className="text-xs font-extrabold uppercase tracking-[.16em] text-white/75">Quero conhecer</p>
-              <h2 className="mt-4 font-display text-3xl font-extrabold">Descobrir meu treino</h2>
-              <p className="mt-4 leading-7 text-white/80">Faça o diagnóstico, veja a recomendação e escolha se deseja deixar seu contato no final.</p>
-              <WolfieLink href="/quiz" className="mt-8 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-white px-6 py-3.5 font-extrabold text-[#b91f32]">Começar diagnóstico <ArrowRight size={17} /></WolfieLink>
-            </article>
-          </div>
-          <p className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-[#777b84]"><ShieldCheck size={17} className="text-[#e72d3d]" /> Resultado antes do cadastro e contato sempre opcional.</p>
         </div>
       </main>
     </PublicPage>

@@ -244,6 +244,7 @@ npm run typecheck
 npm test
 npm run wolfie:assets:verify
 npx --yes deno test --no-lock \
+  supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
@@ -355,12 +356,14 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
+  "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
   "supabase/tests/wolfie_classic_exchange_atomicity.sql"
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
+  "supabase/tests/wolfie_standalone_subscriptions.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -379,6 +382,8 @@ SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
 SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact-policy.ts"
 SHARED_AI_USAGE_RELATIVE="supabase/functions/_shared/ai-usage.ts"
 SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-meeting-policy.ts"
+SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
+SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 HARDENED_FUNCTIONS=(
   create-wolfie-topup
   lesson-planner
@@ -444,6 +449,7 @@ done
 [[ -s "$SHARED_COMMERCIAL_POLICY_RELATIVE" ]] || die "política de contato comercial ausente"
 [[ -s "$SHARED_AI_USAGE_RELATIVE" ]] || die "telemetria compartilhada de IA ausente"
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
+[[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -476,7 +482,8 @@ artifact_hash="$(
       "$SHARED_ACCOUNT_INVITE_RELATIVE" \
       "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
       "$SHARED_AI_USAGE_RELATIVE" \
-      "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE"
+      "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
+      "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE"
     printf '%s\n' "${MIGRATION_RELATIVES[@]}"
     printf '%s\n' "${DATABASE_TEST_RELATIVES[@]}"
   } |
@@ -582,6 +589,10 @@ rsync -a -- "$SHARED_AI_USAGE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/ai-usage.ts"
 rsync -a -- "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-global-meeting-policy.ts"
+rsync -a -- "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-billing-safety.ts"
+rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
@@ -686,6 +697,8 @@ account_invite_shared_swapped=0
 commercial_policy_shared_swapped=0
 ai_usage_shared_swapped=0
 global_meeting_policy_shared_swapped=0
+hub_billing_safety_shared_swapped=0
+wolfie_product_access_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
@@ -891,6 +904,22 @@ restore_previous_release() {
       rm -f -- "$functions_dir/_shared/wolfie-global-meeting-policy.ts"
     fi
   fi
+  if [[ "$hub_billing_safety_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/hub-billing-safety.ts" ]]; then
+      cp -a -- "$backup_dir/hub-billing-safety.ts" \
+        "$functions_dir/_shared/hub-billing-safety.ts"
+    else
+      rm -f -- "$functions_dir/_shared/hub-billing-safety.ts"
+    fi
+  fi
+  if [[ "$wolfie_product_access_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/wolfie-product-access.ts" ]]; then
+      cp -a -- "$backup_dir/wolfie-product-access.ts" \
+        "$functions_dir/_shared/wolfie-product-access.ts"
+    else
+      rm -f -- "$functions_dir/_shared/wolfie-product-access.ts"
+    fi
+  fi
   if ((${#hardened_functions_swapped[@]} > 0)); then
     for function_name in "${hardened_functions_swapped[@]}"; do
       if [[ -d "$functions_dir/$function_name" ]]; then
@@ -947,6 +976,8 @@ fi
 [[ -s "$release_dir/functions/_shared/commercial-contact-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/ai-usage.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
+[[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -1295,6 +1326,22 @@ fi
 global_meeting_policy_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" \
   "$functions_dir/_shared/wolfie-global-meeting-policy.ts"
+
+if [[ -f "$functions_dir/_shared/hub-billing-safety.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/hub-billing-safety.ts" \
+    "$backup_dir/hub-billing-safety.ts"
+fi
+hub_billing_safety_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/hub-billing-safety.ts" \
+  "$functions_dir/_shared/hub-billing-safety.ts"
+
+if [[ -f "$functions_dir/_shared/wolfie-product-access.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/wolfie-product-access.ts" \
+    "$backup_dir/wolfie-product-access.ts"
+fi
+wolfie_product_access_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/wolfie-product-access.ts" \
+  "$functions_dir/_shared/wolfie-product-access.ts"
 
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   if [[ -d "$functions_dir/$function_name" ]]; then

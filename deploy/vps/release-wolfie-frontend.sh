@@ -192,6 +192,29 @@ begin
   ) then
     raise exception 'crm_leads RLS is disabled';
   end if;
+
+  if to_regprocedure('public.my_wolfie_access()') is null
+     or to_regprocedure(
+       'public.wolfie_prepare_checkout_account(text,text,jsonb)'
+     ) is null
+     or to_regclass('public.wolfie_standalone_acceptances') is null
+     or to_regclass('public.hub_payment_event_inbox') is null then
+    raise exception 'wolfie standalone backend is not ready';
+  end if;
+  if (
+    select count(*)
+    from public.hub_plans
+    where code in (
+      'WOLFIE_FOCO',
+      'WOLFIE_RITMO',
+      'WOLFIE_PERFORMANCE'
+    )
+      and product_family = 'WOLFIE_STANDALONE'
+      and is_active
+      and is_public
+  ) <> 3 then
+    raise exception 'wolfie standalone plans are incomplete';
+  end if;
 end;
 $preflight$;
 SQL
@@ -520,6 +543,8 @@ done
 [[ "$(docker exec wolfie-frontend wget -q -O - http://127.0.0.1/.well-known/wolfie-release)" = "$release_id" ]]
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/quiz
+docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/planos
+docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/assinar
 docker exec wolfie-frontend wget -q -O /dev/null http://127.0.0.1/app
 docker exec wolfie-frontend wget -q -S -O /dev/null \
   http://127.0.0.1/manifest.webmanifest 2>&1 | tr -d '\r' | \
@@ -537,6 +562,10 @@ if [[ "$router_enabled" = "true" ]]; then
         "$public_url/" >/dev/null &&
       curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
         "$public_url/quiz" >/dev/null &&
+      curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+        "$public_url/planos" >/dev/null &&
+      curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+        "$public_url/assinar" >/dev/null &&
       curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
         "$public_url/app" >/dev/null; then
       public_ready=true

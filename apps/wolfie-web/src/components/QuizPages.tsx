@@ -60,6 +60,10 @@ import {
 } from "../funnel/quizModel";
 import { submitWolfieLead } from "../funnel/leadIntake";
 import {
+  recommendWolfiePlanCode,
+  WOLFIE_STANDALONE_PLANS,
+} from "../funnel/wolfiePlans";
+import {
   clearQuizResult,
   markQuizLeadSent,
   readQuizResult,
@@ -69,6 +73,7 @@ import {
 import { navigate, WolfieLink } from "../router";
 import { WOLFIE_PRIVACY_NOTICE_VERSION } from "../privacy";
 import { WolfieBrand } from "./PublicChrome";
+import { WolfiePlanCards } from "./WolfiePlanCards";
 
 const goalArt: Record<QuizGoal, { image: string; label: string }> = {
   global_meeting: {
@@ -627,6 +632,13 @@ export function QuizResultPage() {
   const { answers, recommendation } = result;
   const GoalIcon = iconForGoal[recommendation.goal];
   const image = goalArt[recommendation.goal].image;
+  const recommendedPlanCode = recommendWolfiePlanCode(
+    answers,
+    recommendation,
+  );
+  const recommendedPlan = WOLFIE_STANDALONE_PLANS.find(
+    (plan) => plan.code === recommendedPlanCode,
+  ) ?? WOLFIE_STANDALONE_PLANS[1];
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -688,6 +700,21 @@ export function QuizResultPage() {
               </div>
             </aside>
           </div>
+
+          <section className="mt-10 rounded-[36px] border border-black/[.07] bg-[linear-gradient(180deg,#fff,#f7f7f8)] p-6 shadow-[0_25px_80px_rgba(37,38,44,.07)] sm:p-9 lg:p-12">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="inline-flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]"><Sparkles size={17} /> Plano calculado para seu ritmo</p>
+              <h2 className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-.05em] sm:text-5xl">Continue com o Wolfie, sem precisar estar matriculado na escola.</h2>
+              <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#6d727c]">Pelas suas escolhas de formato e frequência, o plano <strong className="text-[#202126]">{recommendedPlan.name}</strong> oferece o ponto de partida mais equilibrado. Você ainda pode escolher qualquer um dos três.</p>
+            </div>
+            <div className="mt-11">
+              <WolfiePlanCards
+                recommendedCode={recommendedPlanCode}
+                source="quiz_result"
+              />
+            </div>
+            <p className="mx-auto mt-6 max-w-2xl text-center text-xs leading-5 text-[#8b8f98]">A recomendação de plano estima o uso mensal a partir do ritmo declarado no quiz. A cobrança só é criada depois de cadastro, revisão e confirmação no checkout.</p>
+          </section>
 
           <section className="mx-auto mt-10 max-w-3xl rounded-[34px] bg-[#f5f1e9] p-7 text-[#111827] sm:p-10">
             {state === "sent" ? (

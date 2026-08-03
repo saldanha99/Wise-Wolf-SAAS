@@ -7,6 +7,7 @@ import {
   recordAiUsage,
 } from "../_shared/ai-usage.ts";
 import { authorizeRequest } from "../_shared/request-auth.ts";
+import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 import {
   correctionLocksRetry,
   correctionPreservesFactualIntegrity,
@@ -5068,8 +5069,14 @@ serve(async (req) => {
     const auth = await authorizeRequest(req, {
       corsHeaders,
       allowedRoles: ["STUDENT"],
+      allowWolfieDirect: true,
     });
     if (auth.ok === false) return auth.response;
+    const accessError = await requireWolfieProductAccess(
+      auth.context,
+      corsHeaders,
+    );
+    if (accessError) return accessError;
     if (
       input.action === "interact" &&
       !UUID_PATTERN.test(input.clientTurnId)

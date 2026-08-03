@@ -86,6 +86,12 @@ const HubApp: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (bootstrap?.plan?.metadata?.product_family === 'WOLFIE_STANDALONE') {
+      window.location.replace('https://wolfie.wisewolflanguage.com.br/app/praticar');
+    }
+  }, [bootstrap?.plan?.metadata]);
+
   const activateTrial = async (audience: HubAudience, accountName?: string) => {
     setClaiming(true);
     setError('');
@@ -111,6 +117,10 @@ const HubApp: React.FC = () => {
   };
 
   if (loading) return <HubLoading />;
+
+  if (bootstrap?.plan?.metadata?.product_family === 'WOLFIE_STANDALONE') {
+    return <HubLoading />;
+  }
 
   if (session && bootstrap?.subscription) {
     return <HubPortal bootstrap={bootstrap} plans={plans} settings={settings} content={content} userEmail={session.user.email || ''} onRefresh={refreshBootstrap} onLogout={logout} />;

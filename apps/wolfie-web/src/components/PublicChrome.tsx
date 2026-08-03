@@ -37,7 +37,7 @@ export function PublicHeader() {
           <WolfieLink href="/como-funciona" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Como funciona</WolfieLink>
           <a href="/#experiencias" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Cenários</a>
           <a href="/#feedback" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Feedback</a>
-          <WolfieLink href="/planos" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Acesso</WolfieLink>
+          <WolfieLink href="/planos" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Planos</WolfieLink>
         </nav>
         <div className="hidden items-center gap-2 md:flex">
           <WolfieLink href="/entrar" className="rounded-full px-4 py-2.5 text-sm font-extrabold text-[#292c33] transition hover:bg-[#f5f5f7]">Entrar</WolfieLink>
@@ -54,7 +54,7 @@ export function PublicHeader() {
           <WolfieLink href="/como-funciona" className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]" ariaLabel="Como funciona"><span onClick={close}>Como funciona</span></WolfieLink>
           <a href="/#experiencias" onClick={close} className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]">Cenários</a>
           <a href="/#feedback" onClick={close} className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]">Feedback</a>
-          <WolfieLink href="/planos" className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]"><span onClick={close}>Acesso</span></WolfieLink>
+          <WolfieLink href="/planos" className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]"><span onClick={close}>Planos</span></WolfieLink>
           <WolfieLink href="/entrar" className="rounded-xl px-4 py-3 font-bold text-[#3e424b] hover:bg-[#f6f6f8]"><span onClick={close}>Entrar</span></WolfieLink>
           <WolfieLink href="/quiz" className="mt-1 rounded-xl bg-[#e72d3d] px-4 py-3 text-center font-extrabold text-white"><span onClick={close}>Descobrir meu treino</span></WolfieLink>
         </nav>
@@ -74,6 +74,7 @@ export function PublicFooter() {
         <nav className="flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold" aria-label="Navegação do rodapé">
           <WolfieLink href="/como-funciona" className="hover:text-[#171717]">Como funciona</WolfieLink>
           <WolfieLink href="/quiz" className="hover:text-[#171717]">Diagnóstico</WolfieLink>
+          <WolfieLink href="/planos" className="hover:text-[#171717]">Planos</WolfieLink>
           <WolfieLink href="/entrar" className="hover:text-[#171717]">Entrar</WolfieLink>
           <WolfieLink href="/privacidade" className="hover:text-[#171717]">Privacidade</WolfieLink>
           <WolfieLink href="/termos" className="hover:text-[#171717]">Termos</WolfieLink>

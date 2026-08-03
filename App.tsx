@@ -291,8 +291,12 @@ const App: React.FC = () => {
   }, [searchQuery, user?.role]);
 
   useEffect(() => {
+    if (user?.tenantId === 'wolfie-direct') {
+      window.location.replace('https://wolfie.wisewolflanguage.com.br/app/praticar');
+      return;
+    }
     if (user?.role === UserRole.NON_STUDENT) window.location.replace('/hub');
-  }, [user?.role]);
+  }, [user?.role, user?.tenantId]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -665,7 +669,7 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (user && user.tenantId) {
+    if (user && user.tenantId && user.tenantId !== 'wolfie-direct') {
       loadAppData();
     }
   }, [user]);
@@ -891,6 +895,15 @@ const App: React.FC = () => {
 
   if (!user) {
     return <Login onLogin={setUser} />;
+  }
+
+  if (user.tenantId === 'wolfie-direct') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-200" role="status">
+        <Loader2 className="animate-spin mr-3 text-red-400" aria-hidden="true" />
+        Abrindo o Wolfie AI Tutor...
+      </div>
+    );
   }
 
   if (user.role === UserRole.NON_STUDENT) {

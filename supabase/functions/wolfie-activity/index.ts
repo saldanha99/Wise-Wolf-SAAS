@@ -2,6 +2,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   GLOBAL_MEETING_MEMORY_KINDS,
@@ -5872,8 +5873,14 @@ serve(async (req) => {
     const auth = await authorizeRequest(req, {
       corsHeaders,
       allowedRoles: ["STUDENT"],
+      allowWolfieDirect: true,
     });
     if (auth.ok === false) return auth.response;
+    const accessError = await requireWolfieProductAccess(
+      auth.context,
+      corsHeaders,
+    );
+    if (accessError) return accessError;
     const userId = auth.context.userId!;
     const activeTenantId = auth.context.profile?.tenant_id;
     const { data: rawProfile, error: profileError } = await auth.context.admin

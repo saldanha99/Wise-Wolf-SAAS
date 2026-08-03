@@ -80,6 +80,25 @@ const toWolfieUser = (user: User): WolfieUserSummary => ({
   shortTermGoal: user.shortTermGoal,
 });
 
+type WolfieAccessSnapshot = {
+  allowed: boolean;
+  code?: string;
+  accessKind?: "SCHOOL" | "STANDALONE";
+  planCode?: string | null;
+  planName?: string | null;
+  periodEndsAt?: string | null;
+  liveMinutes?: number | null;
+};
+
+const loadWolfieAccess = async (): Promise<WolfieAccessSnapshot> => {
+  const { data, error } = await supabase.rpc("my_wolfie_access");
+  if (error) throw error;
+  if (!data || typeof data !== "object") {
+    throw new Error("WOLFIE_ACCESS_UNAVAILABLE");
+  }
+  return data as WolfieAccessSnapshot;
+};
+
 export function LoginPage() {
   const nextPath = useMemo(() => {
     const raw = new URLSearchParams(window.location.search).get("next");
@@ -93,9 +112,20 @@ export function LoginPage() {
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (active && data.session) navigate(nextPath, { replace: true });
-    });
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active || !data.session) return;
+      try {
+        const access = await loadWolfieAccess();
+        if (!active) return;
+        if (access.allowed) navigate(nextPath, { replace: true });
+        else if (access.code === "WOLFIE_SUBSCRIPTION_REQUIRED") {
+          navigate("/planos?access=required", { replace: true });
+        }
+      } catch {
+        if (active) setError("Não foi possível confirmar seu acesso agora.");
+      }
+    })();
     return () => { active = false; };
   }, [nextPath]);
 
@@ -116,6 +146,15 @@ export function LoginPage() {
       if (!profile || profile.role !== UserRole.STUDENT) {
         await supabase.auth.signOut({ scope: "local" });
         throw new Error("Esta área está disponível para perfis de aluno com acesso ativo.");
+      }
+      const access = await loadWolfieAccess();
+      if (!access.allowed) {
+        if (access.code === "WOLFIE_SUBSCRIPTION_REQUIRED") {
+          navigate("/planos?access=required", { replace: true });
+          return;
+        }
+        await supabase.auth.signOut({ scope: "local" });
+        throw new Error("Sua conta ainda não possui acesso ativo ao Wolfie.");
       }
       navigate(nextPath, { replace: true });
     } catch (cause) {
@@ -163,8 +202,8 @@ export function LoginPage() {
 
 type AuthState =
   | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; user: User };
+  | { status: "error"; message: string; upgrade?: boolean }
+  | { status: "ready"; user: User; access: WolfieAccessSnapshot };
 
 export function AuthenticatedWolfieApp() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
@@ -190,7 +229,19 @@ export function AuthenticatedWolfieApp() {
           setAuth({ status: "error", message: "Seu perfil não possui acesso de aluno ao Wolfie." });
           return;
         }
-        setAuth({ status: "ready", user });
+        const access = await loadWolfieAccess();
+        if (!active) return;
+        if (!access.allowed) {
+          setAuth({
+            status: "error",
+            message: access.code === "WOLFIE_SUBSCRIPTION_REQUIRED"
+              ? "Sua conta está pronta. Escolha um plano para liberar o Wolfie AI Tutor."
+              : "Sua conta não possui acesso ativo ao Wolfie.",
+            upgrade: access.code === "WOLFIE_SUBSCRIPTION_REQUIRED",
+          });
+          return;
+        }
+        setAuth({ status: "ready", user, access });
         if (initialQuizResult) clearQuizResult();
       } catch {
         if (active) setAuth({ status: "error", message: "Não foi possível carregar sua conta agora." });
@@ -213,7 +264,7 @@ export function AuthenticatedWolfieApp() {
   if (auth.status === "error") {
     return (
       <div className="grid min-h-screen place-items-center bg-[#07111f] px-5 text-white">
-        <div className="max-w-lg text-center"><CircleAlert size={36} className="mx-auto text-amber-300" /><h1 className="mt-5 font-display text-3xl font-extrabold">Acesso não disponível</h1><p className="mt-3 text-slate-400">{auth.message}</p><button type="button" onClick={async () => { await supabase.auth.signOut({ scope: "local" }); }} className="mt-7 inline-flex min-h-[52px] items-center gap-2 rounded-full bg-white px-6 py-3.5 font-extrabold text-[#111827]"><LogOut size={17} /> Sair desta conta</button></div>
+        <div className="max-w-lg text-center"><CircleAlert size={36} className="mx-auto text-amber-300" /><h1 className="mt-5 font-display text-3xl font-extrabold">Acesso não disponível</h1><p className="mt-3 text-slate-400">{auth.message}</p><div className="mt-7 flex flex-wrap justify-center gap-3">{auth.upgrade ? <WolfieLink href="/planos" className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-[#e72d3d] px-6 py-3.5 font-extrabold text-white">Ver planos <ArrowRight size={17} /></WolfieLink> : null}<button type="button" onClick={async () => { await supabase.auth.signOut({ scope: "local" }); }} className="inline-flex min-h-[52px] items-center gap-2 rounded-full bg-white px-6 py-3.5 font-extrabold text-[#111827]"><LogOut size={17} /> Sair desta conta</button></div></div>
       </div>
     );
   }
@@ -238,7 +289,7 @@ export function AuthenticatedWolfieApp() {
         <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
           <WolfieBrand tone="dark" />
           <div className="flex items-center gap-3">
-            <span className="hidden text-right sm:block"><span className="block text-sm font-extrabold">{auth.user.name?.split(" ")[0]}</span><span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Aluno Wise Wolf</span></span>
+            <span className="hidden text-right sm:block"><span className="block text-sm font-extrabold">{auth.user.name?.split(" ")[0]}</span><span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{auth.access.planName || (auth.access.accessKind === "SCHOOL" ? "Acesso pela escola" : "Wolfie AI Tutor")}</span></span>
             <button type="button" onClick={async () => { await supabase.auth.signOut({ scope: "local" }); }} className="grid h-11 w-11 place-items-center rounded-full border border-white/10 text-slate-300 hover:bg-white/[.08] hover:text-white" aria-label="Sair"><LogOut size={18} /></button>
           </div>
         </div>

@@ -236,6 +236,7 @@ npx vitest run \
   src/services/wolfieRealtimeHandoff.test.tsx
 npx --yes deno test --no-lock \
   supabase/functions/_shared/request-auth.test.ts \
+  supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
@@ -256,6 +257,9 @@ npx --yes deno check --no-lock \
   supabase/functions/wolfie-realtime-session/index.ts \
   supabase/functions/wolfie-tts/index.ts \
   supabase/functions/create-wolfie-topup/index.ts \
+  supabase/functions/create-hub-checkout/index.ts \
+  supabase/functions/wolfie-eval/index.ts \
+  supabase/functions/wolfie-live-proxy/index.ts \
   supabase/functions/asaas-webhook/index.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npm run build
@@ -295,6 +299,7 @@ MIGRATIONS=(
   "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
+  "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
@@ -303,6 +308,7 @@ DATABASE_TESTS=(
   "supabase/tests/wolfie_classic_exchange_atomicity.sql"
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
+  "supabase/tests/wolfie_standalone_subscriptions.sql"
 )
 FUNCTIONS=(
   wolfie-activity
@@ -310,12 +316,17 @@ FUNCTIONS=(
   wolfie-realtime-session
   wolfie-tts
   create-wolfie-topup
+  create-hub-checkout
+  wolfie-eval
+  wolfie-live-proxy
   asaas-webhook
 )
 SHARED_FUNCTION_FILES=(
   request-auth.ts
   ai-usage.ts
   wolfie-global-meeting-policy.ts
+  hub-billing-safety.ts
+  wolfie-product-access.ts
 )
 
 for migration_path in "${MIGRATIONS[@]}"; do
@@ -363,6 +374,9 @@ mkdir -p -- \
   "$release_dir/functions/wolfie-realtime-session" \
   "$release_dir/functions/wolfie-tts" \
   "$release_dir/functions/create-wolfie-topup" \
+  "$release_dir/functions/create-hub-checkout" \
+  "$release_dir/functions/wolfie-eval" \
+  "$release_dir/functions/wolfie-live-proxy" \
   "$release_dir/functions/asaas-webhook" \
   "$release_dir/functions/_shared" \
   "$release_dir/migrations" \
@@ -471,6 +485,8 @@ SHARED_FUNCTION_FILES=(
   request-auth.ts
   ai-usage.ts
   wolfie-global-meeting-policy.ts
+  hub-billing-safety.ts
+  wolfie-product-access.ts
 )
 
 restore_previous_release() {
@@ -563,7 +579,8 @@ fi
 [[ -d "$release_dir/frontend-dist" ]]
 for function_name in \
   wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts \
-  create-wolfie-topup asaas-webhook; do
+  create-wolfie-topup create-hub-checkout wolfie-eval wolfie-live-proxy \
+  asaas-webhook; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
 for shared_file in "${SHARED_FUNCTION_FILES[@]}"; do
@@ -583,6 +600,7 @@ migration_versions=(
   20260801210000
   20260801220000
   20260801230000
+  20260803163128
 )
 migration_paths=(
   "$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
@@ -597,6 +615,7 @@ migration_paths=(
   "$release_dir/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "$release_dir/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "$release_dir/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
+  "$release_dir/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
 )
 database_tests=(
   "$release_dir/tests/wolfie_factual_memory_and_rag.sql"
@@ -605,6 +624,7 @@ database_tests=(
   "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
   "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
   "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
+  "$release_dir/tests/wolfie_standalone_subscriptions.sql"
 )
 expected_markers=()
 database_migration_pending=0
@@ -707,6 +727,33 @@ begin
      ) is null then
     raise exception 'wolfie_rollback_compatibility_wrapper_missing';
   end if;
+  if to_regprocedure('public.my_wolfie_access()') is null
+     or to_regprocedure(
+       'public.wolfie_prepare_checkout_account(text,text,jsonb)'
+     ) is null
+     or to_regprocedure(
+       'public.hub_reverse_paid_checkout(uuid,text,text)'
+     ) is null
+     or to_regprocedure(
+       'public.hub_mark_checkout_overdue(uuid,text)'
+     ) is null
+     or to_regclass('public.hub_payment_event_inbox') is null then
+    raise exception 'wolfie_standalone_backend_missing';
+  end if;
+  if (
+    select count(*)
+      from public.hub_plans
+     where code in (
+       'WOLFIE_FOCO',
+       'WOLFIE_RITMO',
+       'WOLFIE_PERFORMANCE'
+     )
+       and product_family = 'WOLFIE_STANDALONE'
+       and is_active
+       and is_public
+  ) <> 3 then
+    raise exception 'wolfie_standalone_plans_incomplete';
+  end if;
 end;
 $wolfie_release_verify$;
 SQL
@@ -719,7 +766,8 @@ cp -a -- "$release_dir/frontend-dist" "$app_dir/dist"
 
 for function_name in \
   wolfie-activity wolfie-brain wolfie-realtime-session wolfie-tts \
-  create-wolfie-topup asaas-webhook; do
+  create-wolfie-topup create-hub-checkout wolfie-eval wolfie-live-proxy \
+  asaas-webhook; do
   if [[ -d "$functions_dir/$function_name" ]]; then
     mv -- "$functions_dir/$function_name" "$backup_dir/$function_name"
   fi
@@ -873,6 +921,12 @@ wait_for_http_status 200 "preflight da recarga Wolfie" \
   -X OPTIONS "$api_url/functions/v1/create-wolfie-topup"
 wait_for_http_status 401 "autenticação da recarga Wolfie" \
   -X POST "$api_url/functions/v1/create-wolfie-topup" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 200 "preflight do checkout Wolfie" \
+  -X OPTIONS "$api_url/functions/v1/create-hub-checkout"
+wait_for_http_status 401 "autenticação do checkout Wolfie" \
+  -X POST "$api_url/functions/v1/create-hub-checkout" \
   -H 'Content-Type: application/json' \
   --data '{}'
 wait_for_http_status 401 "token do webhook Asaas" \

@@ -5,14 +5,19 @@ import {
   WOLFIE_PRIVACY_NOTICE_VERSION,
   WOLFIE_QUIZ_RETENTION_DAYS,
 } from "../privacy";
+import { WOLFIE_STANDALONE_TERMS_VERSION } from "../funnel/wolfiePlans";
 
 function LegalLayout({
   eyebrow,
   title,
+  version = WOLFIE_PRIVACY_NOTICE_VERSION,
+  effectiveDate = "2 de agosto de 2026",
   children,
 }: {
   eyebrow: string;
   title: string;
+  version?: string;
+  effectiveDate?: string;
   children: ReactNode;
 }) {
   return (
@@ -21,7 +26,7 @@ function LegalLayout({
         <article className="mx-auto max-w-4xl rounded-[34px] border border-black/[.07] bg-[#fbfbfc] p-7 shadow-[0_20px_70px_rgba(36,37,42,.06)] sm:p-10 lg:p-12">
           <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{eyebrow}</p>
           <h1 className="mt-4 font-display text-4xl font-extrabold tracking-[-0.045em] text-[#202126] sm:text-6xl">{title}</h1>
-          <p className="mt-4 text-sm text-[#7d818a]">Versão {WOLFIE_PRIVACY_NOTICE_VERSION} · vigente desde 2 de agosto de 2026</p>
+          <p className="mt-4 text-sm text-[#7d818a]">Versão {version} · vigente desde {effectiveDate}</p>
           <div className="mt-10 space-y-9 text-base leading-7 text-[#626771]">{children}</div>
         </article>
       </main>
@@ -45,14 +50,15 @@ export function PrivacyPage() {
       <Section title="O que coletamos e por quê">
         <p>As oito respostas do diagnóstico são escolhas fechadas usadas para recomendar um cenário, nível autodeclarado, foco e ritmo inicial. Elas não são uma avaliação de proficiência.</p>
         <p>Nome, e-mail e WhatsApp opcional só são coletados quando você pede contato e marca o consentimento. Usamos esses dados para responder ao pedido, apresentar o Wolfie e registrar a autorização correspondente.</p>
-        <p>Na área do aluno, autenticação, práticas, voz, transcrições, feedback e uso de minutos seguem a finalidade educacional e os termos da matrícula.</p>
+        <p>Ao criar uma assinatura independente, também tratamos dados de autenticação, identificação e cobrança para preparar a conta, processar o pagamento e controlar o acesso ao plano escolhido.</p>
+        <p>Na área de prática, autenticação, sessões, voz, transcrições, feedback e uso de minutos seguem a finalidade educacional e os termos da matrícula ou assinatura Wolfie.</p>
       </Section>
       <Section title="Prazo e armazenamento">
         <p>O progresso anônimo do quiz fica somente neste navegador por até {WOLFIE_QUIZ_RETENTION_DAYS} dias. O resultado fica na sessão da aba e é removido ao refazer o quiz ou depois de ser levado ao primeiro treino autenticado.</p>
         <p>Se o contato não se converter em relação de aluno ou cliente, o prazo padrão do registro é de até {WOLFIE_LEAD_RETENTION_DAYS} dias após o último contato, salvo obrigação legal, exercício regular de direitos ou pedido de exclusão anterior.</p>
       </Section>
       <Section title="Compartilhamento e segurança">
-        <p>Dados são acessados apenas por pessoas e fornecedores necessários à operação, autenticação, comunicação e recursos de IA, sob controles de acesso. Não vendemos respostas, áudio ou transcrições e não os enviamos a pixels de publicidade neste funil.</p>
+        <p>Dados são acessados apenas por pessoas e fornecedores necessários à operação, autenticação, comunicação, recursos de IA e processamento financeiro, sob controles de acesso. A cobrança é processada pelo Asaas. Não vendemos respostas, áudio ou transcrições e não os enviamos a pixels de publicidade neste funil.</p>
       </Section>
       <Section title="Seus direitos">
         <p>Você pode pedir confirmação, acesso, correção, informação sobre uso, revogação do consentimento e exclusão quando aplicável. Revogar o contato comercial não afeta o uso anterior realizado de forma válida.</p>
@@ -63,12 +69,13 @@ export function PrivacyPage() {
 
 export function TermsPage() {
   return (
-    <LegalLayout eyebrow="Termos de uso" title="Uso responsável do Wolfie">
+    <LegalLayout eyebrow="Termos de uso" title="Uso responsável do Wolfie" version={WOLFIE_STANDALONE_TERMS_VERSION} effectiveDate="3 de agosto de 2026">
       <Section title="Diagnóstico público">
         <p>O resultado organiza um ponto de partida a partir das respostas declaradas. Ele não garante proficiência, desempenho profissional, aprovação em entrevista ou qualquer resultado específico.</p>
       </Section>
       <Section title="Acesso à prática">
-        <p>A prática completa exige uma conta de aluno ativa e está sujeita às condições da matrícula, disponibilidade técnica, limites do plano e regras de uso da Wise Wolf. O formulário público não cria conta nem cobrança.</p>
+        <p>A prática completa exige uma matrícula ativa ou uma assinatura Wolfie independente, além de uma conta autenticada. O acesso está sujeito à disponibilidade técnica, aos limites do plano e às regras de uso da Wise Wolf.</p>
+        <p>O formulário de contato no resultado do quiz não cria conta nem cobrança. No checkout de assinatura, a cobrança recorrente mensal só é solicitada depois que você cria ou acessa sua conta, informa os dados, aceita estes termos, revisa o plano e confirma a geração de PIX ou boleto. O acesso é ativado depois da confirmação do pagamento pelo provedor.</p>
       </Section>
       <Section title="Uso permitido">
         <p>Não tente contornar autenticação, cotas, isolamento entre contas ou limites de segurança; automatizar abuso do serviço; inserir dados de terceiros sem autorização; ou usar o Wolfie para conteúdo ilegal ou que viole direitos.</p>

@@ -6,6 +6,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 import {
   buildGlobalMeetingPolicyBlock,
   GLOBAL_MEETING_MEMORY_KINDS,
@@ -1236,8 +1237,14 @@ async function closeRealtimeGrant(req: Request): Promise<Response> {
   const auth = await authorizeRequest(req, {
     corsHeaders,
     allowedRoles: ["STUDENT"],
+    allowWolfieDirect: true,
   });
   if (auth.ok === false) return auth.response;
+  const accessError = await requireWolfieProductAccess(
+    auth.context,
+    corsHeaders,
+  );
+  if (accessError) return accessError;
   const tenantId = auth.context.profile?.tenant_id;
   const userId = auth.context.userId;
   if (!tenantId || !userId) {
@@ -1497,8 +1504,14 @@ serve(async (req) => {
   const auth = await authorizeRequest(req, {
     corsHeaders,
     allowedRoles: ["STUDENT"],
+    allowWolfieDirect: true,
   });
   if (auth.ok === false) return auth.response;
+  const accessError = await requireWolfieProductAccess(
+    auth.context,
+    corsHeaders,
+  );
+  if (accessError) return accessError;
   const tenantId = auth.context.profile?.tenant_id;
   const userId = auth.context.userId;
   if (!tenantId || !userId) {

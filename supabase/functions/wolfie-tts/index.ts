@@ -8,10 +8,8 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import {
-  authorizeRequest,
-  methodNotAllowed,
-} from "../_shared/request-auth.ts";
+import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,10 +101,16 @@ serve(async (req) => {
   try {
     const auth = await authorizeRequest(req, {
       allowService: false,
+      allowWolfieDirect: true,
       allowedRoles: ["STUDENT"],
       corsHeaders,
     });
     if (auth.ok === false) return auth.response;
+    const accessError = await requireWolfieProductAccess(
+      auth.context,
+      corsHeaders,
+    );
+    if (accessError) return accessError;
 
     const apiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
     if (!apiKey) {

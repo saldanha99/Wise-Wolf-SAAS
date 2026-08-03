@@ -12,6 +12,12 @@ import {
   sendAccountActivation,
 } from "../_shared/account-invite.ts";
 import { classifyStudentPaymentType } from "./payment-classification.ts";
+import {
+  hubCheckoutIdFromExternalReference,
+  hubRecoveryReason,
+  isHubRecoveryEvent,
+  providerCancellationIsFinal,
+} from "../_shared/hub-billing-safety.ts";
 
 // EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
 declare const EdgeRuntime:
@@ -44,6 +50,7 @@ const PAID_EVENTS = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
 const CANCELLED_EVENTS = new Set([
   "PAYMENT_DELETED",
   "PAYMENT_REFUNDED",
+  "PAYMENT_PARTIALLY_REFUNDED",
   "PAYMENT_CHARGEBACK_REQUESTED",
 ]);
 const TOPUP_REVERSAL_EVENTS = new Set([
@@ -55,6 +62,12 @@ const TOPUP_REVERSAL_EVENTS = new Set([
 const TOPUP_FREEZE_EVENTS = new Set([
   "PAYMENT_PARTIALLY_REFUNDED",
   "PAYMENT_REFUND_IN_PROGRESS",
+]);
+const HUB_REVERSAL_EVENTS = new Set([
+  "PAYMENT_DELETED",
+  "PAYMENT_REFUNDED",
+  "PAYMENT_CHARGEBACK_REQUESTED",
+  "PAYMENT_RECEIVED_IN_CASH_UNDONE",
 ]);
 
 function isUuid(value: string): boolean {
@@ -159,6 +172,32 @@ async function fetchComTimeout(
     return await fetch(url, { ...init, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function cancelHubProviderSubscription(
+  providerSubscriptionId: string,
+): Promise<void> {
+  if (!ASAAS_ACCESS_TOKEN) {
+    throw new Error("asaas_subscription_cancellation_unavailable");
+  }
+  const response = await fetchComTimeout(
+    `${ASAAS_V3_URL}/subscriptions/${
+      encodeURIComponent(providerSubscriptionId)
+    }`,
+    {
+      method: "DELETE",
+      headers: {
+        access_token: ASAAS_ACCESS_TOKEN,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+  if (!providerCancellationIsFinal(response.status)) {
+    console.error("[Webhook] Hub provider cancellation failed", {
+      status: response.status,
+    });
+    throw new Error("hub_provider_cancellation_failed");
   }
 }
 
@@ -592,6 +631,229 @@ async function processWolfieTopupEvent(
   }
   await finishInbox("APPLIED");
   return true;
+}
+
+type HubPaymentInboxClaim = {
+  duplicate: boolean;
+  eventKey: string;
+};
+
+async function claimHubPaymentEvent(
+  supabase: SupabaseClient,
+  body: AsaasWebhookBody,
+  checkoutId: string,
+): Promise<HubPaymentInboxClaim> {
+  const event = body.event || "UNKNOWN";
+  const paymentId = body.payment?.id || "unknown";
+  const providerEventId = typeof body.id === "string" ? body.id.trim() : "";
+  const eventKey = (`asaas:${providerEventId || `${event}:${paymentId}`}`)
+    .slice(0, 200);
+  const leaseExpiresAt = new Date(Date.now() + 120_000).toISOString();
+  const { error: insertError } = await supabase
+    .from("hub_payment_event_inbox")
+    .insert({
+      event_key: eventKey,
+      event_name: event,
+      payment_id: paymentId,
+      checkout_id: checkoutId,
+      status: "PROCESSING",
+      lease_expires_at: leaseExpiresAt,
+      metadata: {
+        paymentStatus: body.payment?.status || null,
+        subscriptionId: body.payment?.subscription || null,
+      },
+    });
+
+  if (!insertError) return { duplicate: false, eventKey };
+  if (insertError.code !== "23505") throw insertError;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("hub_payment_event_inbox")
+    .select("status, lease_expires_at, attempt_count")
+    .eq("event_key", eventKey)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) throw new Error("hub_event_inbox_missing");
+  if (existing.status === "PROCESSED") {
+    return { duplicate: true, eventKey };
+  }
+  const leaseIsActive = existing.status === "PROCESSING" &&
+    Date.parse(existing.lease_expires_at) > Date.now();
+  if (leaseIsActive) throw new Error("hub_event_already_processing");
+
+  const { data: reclaimed, error: reclaimError } = await supabase
+    .from("hub_payment_event_inbox")
+    .update({
+      status: "PROCESSING",
+      lease_expires_at: leaseExpiresAt,
+      last_error: null,
+      attempt_count: Math.min(Number(existing.attempt_count || 1) + 1, 100),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("event_key", eventKey)
+    .neq("status", "PROCESSED")
+    .select("event_key")
+    .maybeSingle();
+  if (reclaimError) throw reclaimError;
+  return { duplicate: !reclaimed, eventKey };
+}
+
+async function finishHubPaymentEvent(
+  supabase: SupabaseClient,
+  eventKey: string,
+  status: "PROCESSED" | "FAILED",
+  lastError?: string,
+): Promise<void> {
+  const { error } = await supabase.from("hub_payment_event_inbox").update({
+    status,
+    last_error: lastError?.slice(0, 500) || null,
+    processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
+    lease_expires_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("event_key", eventKey);
+  if (error) throw error;
+}
+
+async function resolveHubCheckoutId(
+  body: AsaasWebhookBody,
+): Promise<string | null> {
+  const directId = hubCheckoutIdFromExternalReference(
+    body.payment?.externalReference,
+  );
+  if (directId !== null) return directId;
+
+  const providerSubscriptionId = body.payment?.subscription?.trim() ?? "";
+  if (!providerSubscriptionId) return null;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("hub_subscription_lookup_unavailable");
+  }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data, error } = await supabase
+    .from("hub_checkout_sessions")
+    .select("id")
+    .eq("asaas_subscription_id", providerSubscriptionId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+async function processHubPaymentEvent(
+  body: AsaasWebhookBody,
+  resolvedCheckoutId?: string | null,
+): Promise<void> {
+  const event = body.event;
+  const payment = body.payment;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !event || !payment?.id) {
+    throw new Error("hub_webhook_payload_invalid");
+  }
+  const checkoutId = resolvedCheckoutId ??
+    hubCheckoutIdFromExternalReference(payment.externalReference) ?? "";
+  if (!isUuid(checkoutId)) throw new Error("hub_checkout_reference_invalid");
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const claim = await claimHubPaymentEvent(supabase, body, checkoutId);
+  if (claim.duplicate) return;
+
+  try {
+    const { data: checkout, error: checkoutError } = await supabase
+      .from("hub_checkout_sessions")
+      .select(
+        "id, account_id, requested_by, status, product_family, asaas_subscription_id, asaas_payment_id, metadata",
+      )
+      .eq("id", checkoutId)
+      .maybeSingle();
+    if (checkoutError) throw checkoutError;
+    if (!checkout) throw new Error("hub_checkout_not_found");
+    if (
+      payment.subscription && checkout.asaas_subscription_id &&
+      payment.subscription !== checkout.asaas_subscription_id
+    ) {
+      throw new Error("hub_subscription_mismatch");
+    }
+    const providerSubscriptionId = checkout.asaas_subscription_id ||
+      payment.subscription || null;
+    if (payment.subscription && !checkout.asaas_subscription_id) {
+      const { error: linkError } = await supabase
+        .from("hub_checkout_sessions")
+        .update({ asaas_subscription_id: payment.subscription })
+        .eq("id", checkoutId)
+        .is("asaas_subscription_id", null);
+      if (linkError) throw linkError;
+    }
+
+    if (PAID_EVENTS.has(event)) {
+      const { error } = await supabase.rpc("hub_activate_paid_checkout", {
+        p_checkout_id: checkoutId,
+        p_payment_id: payment.id,
+      });
+      if (error) throw error;
+    } else if (HUB_REVERSAL_EVENTS.has(event)) {
+      if (!providerSubscriptionId) {
+        throw new Error("hub_provider_subscription_required_for_reversal");
+      }
+      // A local reversal without cancelling the scheduler would keep creating
+      // charges for an account whose access was already revoked. Deletion is
+      // idempotent (404/410 means it was already absent) and must finish first.
+      await cancelHubProviderSubscription(providerSubscriptionId);
+      const { error } = await supabase.rpc("hub_reverse_paid_checkout", {
+        p_checkout_id: checkoutId,
+        p_payment_id: payment.id,
+        p_event_name: event,
+      });
+      if (error) throw error;
+    } else if (isHubRecoveryEvent(event)) {
+      // Official Asaas recovery/dispute events are recorded for reconciliation
+      // only. They never call the paid RPC, so they cannot grant a fresh period
+      // or resurrect a provider subscription that was deliberately cancelled.
+      const { error } = await supabase.from("hub_checkout_sessions").update({
+        metadata: {
+          ...(checkout.metadata && typeof checkout.metadata === "object" &&
+              !Array.isArray(checkout.metadata)
+            ? checkout.metadata
+            : {}),
+          providerRecoveryEvent: event,
+          providerRecoveryReason: hubRecoveryReason(event),
+          providerRecoveryPaymentId: payment.id,
+          providerRecoveryAt: new Date().toISOString(),
+          requiresManualReconciliation: true,
+        },
+        updated_at: new Date().toISOString(),
+      }).eq("id", checkoutId);
+      if (error) throw error;
+    } else if (
+      event === "PAYMENT_OVERDUE" ||
+      event === "PAYMENT_REFUND_IN_PROGRESS" ||
+      event === "PAYMENT_BANK_SLIP_CANCELLED"
+    ) {
+      const { error } = await supabase.rpc("hub_mark_checkout_overdue", {
+        p_checkout_id: checkoutId,
+        p_payment_id: payment.id,
+      });
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("hub_checkout_sessions").update({
+        asaas_payment_id: checkout.asaas_payment_id || payment.id,
+        invoice_url: payment.invoiceUrl || null,
+        bank_slip_url: payment.bankSlipUrl || null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", checkoutId).neq("status", "REVERSED");
+      if (error) throw error;
+    }
+
+    await finishHubPaymentEvent(supabase, claim.eventKey, "PROCESSED");
+  } catch (error) {
+    const reason = error instanceof Error
+      ? error.message
+      : "hub_payment_failed";
+    try {
+      await finishHubPaymentEvent(supabase, claim.eventKey, "FAILED", reason);
+    } catch (finishError) {
+      console.error("[Webhook] Hub inbox failure could not be recorded", {
+        type: finishError instanceof Error ? finishError.message : "unknown",
+      });
+    }
+    throw error;
+  }
 }
 
 // Processa o evento do ASAAS. Roda em BACKGROUND (EdgeRuntime.waitUntil),
@@ -1172,6 +1434,40 @@ serve(async (req) => {
         type: error instanceof Error ? error.message : "unknown",
       });
       return new Response(JSON.stringify({ error: "TOPUP_RETRY_REQUIRED" }), {
+        headers: corsHeaders,
+        status: 503,
+      });
+    }
+  }
+
+  let hubCheckoutId: string | null = null;
+  try {
+    hubCheckoutId = await resolveHubCheckoutId(body);
+  } catch (error) {
+    console.error("[Webhook] Hub subscription routing failed", {
+      type: error instanceof Error ? error.message : "unknown",
+    });
+    return new Response(JSON.stringify({ error: "HUB_RETRY_REQUIRED" }), {
+      headers: corsHeaders,
+      status: 503,
+    });
+  }
+
+  // Hub/Wolfie subscriptions are access-bearing financial events. Process
+  // them synchronously with a durable inbox so a transient database failure
+  // returns 5xx and Asaas retries instead of silently losing access state.
+  if (topupReference.startsWith("hub:") || hubCheckoutId) {
+    try {
+      await processHubPaymentEvent(body, hubCheckoutId);
+      return new Response(JSON.stringify({ received: true }), {
+        headers: corsHeaders,
+        status: 200,
+      });
+    } catch (error) {
+      console.error("[Webhook] Hub subscription processing failed", {
+        type: error instanceof Error ? error.message : "unknown",
+      });
+      return new Response(JSON.stringify({ error: "HUB_RETRY_REQUIRED" }), {
         headers: corsHeaders,
         status: 503,
       });

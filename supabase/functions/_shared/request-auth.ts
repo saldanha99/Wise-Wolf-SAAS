@@ -22,6 +22,12 @@ export interface RequestAuthContext {
 
 interface AuthorizeRequestOptions {
   allowService?: boolean;
+  /**
+   * The direct-to-consumer Wolfie tenant is denied by default even though its
+   * membership role is STUDENT. Only product-scoped endpoints may opt in, and
+   * they must still verify the paid Wolfie entitlement before doing work.
+   */
+  allowWolfieDirect?: boolean;
   allowedRoles?: readonly string[];
   corsHeaders: Record<string, string>;
 }
@@ -92,12 +98,17 @@ export async function authorizeRequest(
   options: AuthorizeRequestOptions,
 ): Promise<RequestAuthResult> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ??
+    "";
 
   if (!supabaseUrl || !serviceRoleKey) {
     return {
       ok: false,
-      response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+      response: jsonError(
+        options.corsHeaders,
+        503,
+        "Authentication is unavailable",
+      ),
     };
   }
 
@@ -106,13 +117,18 @@ export async function authorizeRequest(
   });
   const bearer = bearerToken(req);
   const apiKey = req.headers.get("apikey")?.trim() ?? "";
-  const presentedServiceKey = bearer === serviceRoleKey || apiKey === serviceRoleKey;
+  const presentedServiceKey = bearer === serviceRoleKey ||
+    apiKey === serviceRoleKey;
 
   if (presentedServiceKey) {
     if (!options.allowService) {
       return {
         ok: false,
-        response: jsonError(options.corsHeaders, 403, "Service access is not allowed"),
+        response: jsonError(
+          options.corsHeaders,
+          403,
+          "Service access is not allowed",
+        ),
       };
     }
 
@@ -155,14 +171,22 @@ export async function authorizeRequest(
     });
     return {
       ok: false,
-      response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+      response: jsonError(
+        options.corsHeaders,
+        503,
+        "Authentication is unavailable",
+      ),
     };
   }
 
   if (!profile) {
     return {
       ok: false,
-      response: jsonError(options.corsHeaders, 403, "User profile is not authorized"),
+      response: jsonError(
+        options.corsHeaders,
+        403,
+        "User profile is not authorized",
+      ),
     };
   }
 
@@ -179,11 +203,16 @@ export async function authorizeRequest(
       });
       return {
         ok: false,
-        response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+        response: jsonError(
+          options.corsHeaders,
+          503,
+          "Authentication is unavailable",
+        ),
       };
     }
 
-    const preferredTenantId = selectedContext?.tenant_id || activeProfile.tenant_id;
+    const preferredTenantId = selectedContext?.tenant_id ||
+      activeProfile.tenant_id;
     let membership: ActiveTenantMembership | null = null;
     if (preferredTenantId) {
       const { data: preferredMembership, error: membershipError } = await admin
@@ -199,7 +228,11 @@ export async function authorizeRequest(
         });
         return {
           ok: false,
-          response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+          response: jsonError(
+            options.corsHeaders,
+            503,
+            "Authentication is unavailable",
+          ),
         };
       }
       membership = preferredMembership;
@@ -216,12 +249,19 @@ export async function authorizeRequest(
         .limit(1)
         .maybeSingle();
       if (fallbackError) {
-        console.error("Request authorization fallback membership lookup failed", {
-          code: fallbackError.code,
-        });
+        console.error(
+          "Request authorization fallback membership lookup failed",
+          {
+            code: fallbackError.code,
+          },
+        );
         return {
           ok: false,
-          response: jsonError(options.corsHeaders, 503, "Authentication is unavailable"),
+          response: jsonError(
+            options.corsHeaders,
+            503,
+            "Authentication is unavailable",
+          ),
         };
       }
       membership = fallbackMembership;
@@ -271,10 +311,26 @@ export async function authorizeRequest(
     }
   }
 
-  if (options.allowedRoles && !options.allowedRoles.includes(activeProfile.role)) {
+  if (
+    options.allowedRoles && !options.allowedRoles.includes(activeProfile.role)
+  ) {
     return {
       ok: false,
       response: jsonError(options.corsHeaders, 403, "Insufficient permissions"),
+    };
+  }
+
+  if (
+    activeProfile.tenant_id === "wolfie-direct" &&
+    options.allowWolfieDirect !== true
+  ) {
+    return {
+      ok: false,
+      response: jsonError(
+        options.corsHeaders,
+        403,
+        "This account is restricted to Wolfie AI Tutor",
+      ),
     };
   }
 
