@@ -48,7 +48,13 @@ type Professor = {
   aulas_treinamento: number;
   aulas_ajustadas: number;
   receita: number;
+  /** Mensalidade dos alunos atendidos — o que o professor entregou. */
+  receita_contratada: number;
+  /** contratada − faturada. Positivo = não foi cobrado. Negativo = pagou adiantado/atrasado. */
+  nao_faturado: number;
   lucro: number;
+  /** Lucro isolando falha de cobrança. É por ele que se compara professor. */
+  lucro_contratado: number;
   margem_pct: number | null;
   custo_por_aula: number | null;
   alunos_detalhe: Detalhe[];
@@ -63,7 +69,10 @@ type Totais = {
   ajustes_fechamento: number;
   custo_total: number;
   receita_alocada: number;
+  receita_contratada: number;
+  nao_faturado: number;
   lucro: number;
+  lucro_contratado: number;
 };
 
 type Balancete = {
@@ -151,12 +160,30 @@ const BalanceteProfessores: React.FC<Props> = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi label="Receita atribuída" value={money(t.receita_alocada)} hint={`de ${money(b.receita_total)} no mês`} />
             <Kpi label="Custo com professores" value={money(t.custo_total)} hint={`${t.aulas} aulas`} />
-            <Kpi label="Lucro sobre as aulas" value={money(t.lucro)} accent={t.lucro >= 0 ? 'text-emerald-600' : 'text-red-600'} />
+            {/* O número em destaque é o CONTRATADO: é ele que compara professores
+                sem punir quem tem aluno que a escola esqueceu de cobrar. */}
             <Kpi
-              label="Margem"
-              value={pct(t.receita_alocada > 0 ? (100 * t.lucro) / t.receita_alocada : null)}
-              hint="sobre a receita atribuída"
+              label="Lucro real das aulas"
+              value={money(t.lucro_contratado)}
+              hint={`faturado: ${money(t.lucro)}`}
+              accent={t.lucro_contratado >= 0 ? 'text-emerald-600' : 'text-red-600'}
             />
+            <Kpi
+              label="A cobrar"
+              value={money(Math.max(0, t.nao_faturado))}
+              hint={t.nao_faturado > 0 ? 'mensalidade não faturada' : 'tudo faturado'}
+              accent={t.nao_faturado > 0 ? 'text-rose-600' : undefined}
+            />
+          </div>
+
+          <div className="flex items-start gap-2 text-[11px] text-brand-muted bg-brand-surface border border-brand-border rounded-2xl px-4 py-3">
+            <Info size={14} className="text-sky-500 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <b>Lucro real</b> usa a mensalidade dos alunos atendidos — é por ele que se compara
+              professor, porque não pune quem tem aluno que a escola esqueceu de cobrar.
+              <b> Faturado</b> é o que efetivamente entrou e é o que fecha com o DRE.
+              A coluna <b>A cobrar</b> é a diferença: dinheiro a recuperar, não desempenho ruim.
+            </p>
           </div>
 
           {/* Categorização do custo */}
@@ -195,8 +222,9 @@ const BalanceteProfessores: React.FC<Props> = () => {
                     <th className="text-right py-3 px-2">Treino</th>
                     <th className="text-right py-3 px-2">Ajustes</th>
                     <th className="text-right py-3 px-2">Custo</th>
-                    <th className="text-right py-3 px-2">Receita</th>
-                    <th className="text-right py-3 px-2">Lucro</th>
+                    <th className="text-right py-3 px-2">Faturado</th>
+                    <th className="text-right py-3 px-2">A cobrar</th>
+                    <th className="text-right py-3 px-2">Lucro real</th>
                     <th className="text-right py-3 px-4">Margem</th>
                   </tr>
                 </thead>
@@ -230,14 +258,18 @@ const BalanceteProfessores: React.FC<Props> = () => {
                           </td>
                           <td className="text-right px-2 font-bold text-brand-text">{money(p.custo_total)}</td>
                           <td className="text-right px-2 text-brand-text">{money(p.receita)}</td>
-                          <td className={`text-right px-2 font-black ${p.lucro >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {money(p.lucro)}
+                          <td className={`text-right px-2 ${p.nao_faturado > 0 ? 'text-rose-600 font-bold' : 'text-brand-muted'}`}
+                              title={p.nao_faturado < 0 ? 'Recebeu mais que a mensalidade (atrasado de outro mês)' : 'Mensalidade não cobrada'}>
+                            {p.nao_faturado > 0 ? money(p.nao_faturado) : '—'}
+                          </td>
+                          <td className={`text-right px-2 font-black ${p.lucro_contratado >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {money(p.lucro_contratado)}
                           </td>
                           <td className="text-right px-4 text-brand-muted">{pct(p.margem_pct)}</td>
                         </tr>
                         {open && (
                           <tr className="bg-brand-surface-2">
-                            <td colSpan={11} className="px-4 py-3">
+                            <td colSpan={12} className="px-4 py-3">
                               <p className="text-[10px] font-black uppercase text-brand-muted mb-2">
                                 Alunos de {p.teacher_name} · {money(p.custo_por_aula)} de custo por aula
                               </p>
@@ -264,7 +296,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
                     );
                   })}
                   {b.professores.length === 0 && (
-                    <tr><td colSpan={11} className="py-8 text-center text-brand-muted text-sm">Nenhuma aula pagável neste mês.</td></tr>
+                    <tr><td colSpan={12} className="py-8 text-center text-brand-muted text-sm">Nenhuma aula pagável neste mês.</td></tr>
                   )}
                 </tbody>
                 {b.professores.length > 0 && (
@@ -279,7 +311,8 @@ const BalanceteProfessores: React.FC<Props> = () => {
                       <td className="text-right px-2">{money(Number(t.ajuste_valor_base) + Number(t.ajustes_fechamento))}</td>
                       <td className="text-right px-2">{money(t.custo_total)}</td>
                       <td className="text-right px-2">{money(t.receita_alocada)}</td>
-                      <td className={`text-right px-2 ${t.lucro >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(t.lucro)}</td>
+                      <td className={`text-right px-2 ${t.nao_faturado > 0 ? 'text-rose-600' : ''}`}>{t.nao_faturado > 0 ? money(t.nao_faturado) : '—'}</td>
+                      <td className={`text-right px-2 ${t.lucro_contratado >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(t.lucro_contratado)}</td>
                       <td className="text-right px-4">—</td>
                     </tr>
                   </tfoot>

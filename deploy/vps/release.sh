@@ -330,6 +330,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802240000_gestao_faltas_e_cobranca.sql"
   "supabase/migrations/20260802250000_gestao_faltas_com_mes.sql"
   "supabase/migrations/20260802260000_aluno_sem_assinatura.sql"
+  "supabase/migrations/20260803010000_balancete_lucro_contratado.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
