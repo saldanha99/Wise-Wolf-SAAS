@@ -17,8 +17,8 @@ Guia técnico para o Claude Code neste projeto.
   (PostgREST) · `supabase-auth` (GoTrue) · `supabase-kong` (gateway) ·
   `supabase-edge-functions` (**Deno**) · `supabase-storage` · `supabase-studio`
 - **IA:** OpenAI Realtime (`wolfie-realtime-session`), OpenRouter
-  (`wolfie-brain`, `pedagogical-content`, `lesson-planner`), Google Translate TTS
-  (`wolfie-tts`)
+  (`wolfie-brain`, `pedagogical-content`, `lesson-planner`), OpenAI TTS
+  (`wolfie-tts` → `gpt-4o-mini-tts`)
 - **Pagamentos:** Asaas
 - **Deploy:** VPS própria — frontend servido por **nginx** em
   `system.wisewolflanguage.com.br`; API em `api.wisewolflanguage.com.br`
@@ -39,7 +39,7 @@ passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
 
 | Camada | Desktop | iOS Safari/Chrome |
 |--------|---------|-------------------|
-| TTS (geração) | `wolfie-tts` → Google Translate TTS | idem |
+| TTS (geração) | `wolfie-tts` → OpenAI `gpt-4o-mini-tts` | idem |
 | Playback principal | `AudioContext` + `BufferSource` | `HTMLAudioElement` pré-ativado |
 | Fallback 1 | `HTMLAudioElement` (blob URL) | `AudioContext` (se preUnlocked falhar) |
 | Fallback 2 | `Web Speech API` | `speakWebSpeech` |
@@ -49,22 +49,36 @@ passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
 ### Edge Function: `wolfie-tts`
 
 **Localização:** `supabase/functions/wolfie-tts/index.ts`  
-**TTS em uso:** Google Translate TTS (v9, funcional)
+**TTS em uso:** **OpenAI** `gpt-4o-mini-tts` — é o fallback oficial de voz para
+tudo que não está numa sessão speech-to-speech da Realtime API.
 
 ```
-GET https://translate.google.com/translate_tts
-  ?ie=UTF-8
-  &q=TEXTO_ENCODED
-  &tl=en-US          ← locale extraído do nome da voz
-  &client=gtx
-  &ttsspeed=1
+POST https://api.openai.com/v1/audio/speech
+  model: gpt-4o-mini-tts        ← WOLFIE_TTS_MODEL sobrescreve
+  voice: marin                  ← WOLFIE_TTS_VOICE_PT / _EN, contra allowlist
+  instructions: <por idioma>    ← pt | en | mixed
+  response_format: mp3
+  speed: 0.25–4                 ← normalizado no servidor
 ```
 
 **Regras críticas:**
-- ✅ **User-Agent de browser real obrigatório** — Google bloqueia UAs de servidor/bot
-- ✅ **Chunks de 180 chars** — limite do endpoint; textos longos são divididos em sentenças
-- ✅ **Chunks buscados em paralelo** com `Promise.all` e concatenados
-- ✅ **Locale** extraído do nome da voz: `en-US-JennyNeural` → `en-US`, `pt-BR-ThalitaNeural` → `pt-BR`
+- ✅ **A `OPENAI_API_KEY` nunca sai do servidor** — vive só em
+  `/opt/wisewolf/supabase-docker/.env`. Sem ela a função devolve 503, não tenta
+  nada alternativo.
+- ✅ **Só aluno autenticado chama** (`allowedRoles: ["STUDENT"]`, sem
+  service-role) e assinante do tenant `wolfie-direct` passa por
+  `requireWolfieProductAccess` antes de gerar áudio.
+- ✅ **Voz vem de allowlist** (`marin`, `alloy`, `nova`…); valor de env inválido
+  cai em `marin` em vez de quebrar.
+- ✅ **`instructions` por idioma** manda preservar nome próprio, cidade e número
+  exatamente — é o que impede o TTS de "corrigir" o que o aluno disse.
+- ✅ **Teto de 32 KB por request**; acima disso, 413.
+
+**Histórico — o que já foi TTS aqui e por que saiu:**
+- 🕘 **Google Translate TTS** (grátis, sem auth) foi o motor até a migração para
+  a voz oficial da OpenAI, que trouxe voz única entre modo ao vivo e clássico.
+  Exigia User-Agent de browser real, chunks de 180 chars e locale extraído do
+  nome da voz. Nada disso vale mais.
 
 **O que NÃO funciona no Deno/Supabase Edge Functions:**
 - ❌ **Microsoft Edge TTS (WebSocket)** — WebSocket conecta, mas mensagens binárias nunca chegam. Tentamos 7 versões com `binaryType`, subprotocolos, ConnectionId — nada funcionou.
@@ -155,12 +169,17 @@ onClick texto → sendMessage() → unlockAudio()
 | Arquivo | Responsabilidade |
 |---------|-----------------|
 | `components/WolfieTutor.tsx` | Unlock, keepalive, playback iOS/Desktop, estado da conversa |
-| `supabase/functions/wolfie-tts/index.ts` | Geração TTS → Google Translate → base64 MP3 |
-| `supabase/functions/wolfie-brain/index.ts` | IA conversacional (Gemini) — NÃO mexer no TTS |
+| `supabase/functions/wolfie-tts/index.ts` | Geração TTS → OpenAI `gpt-4o-mini-tts` → base64 MP3 |
+| `supabase/functions/wolfie-brain/index.ts` | IA conversacional (OpenRouter) — NÃO mexer no TTS |
+| `supabase/functions/wolfie-realtime-session/index.ts` | Voz ao vivo (OpenAI Realtime) — não usa o `wolfie-tts` |
 
-### Variáveis de Ambiente (Supabase)
-- `wolfie-brain`: precisa de `GEMINI_API_KEY` (configurada no painel Supabase)
-- `wolfie-tts`: **sem variáveis** — Google Translate TTS é gratuito e sem auth
+### Variáveis de Ambiente (runtime das Edge Functions, na VPS)
+- `wolfie-brain`: `OPENROUTER_API_KEY`
+- `wolfie-tts` / `wolfie-realtime-session`: `OPENAI_API_KEY` (obrigatória),
+  `WOLFIE_TTS_MODEL`, `WOLFIE_TTS_VOICE_PT`, `WOLFIE_TTS_VOICE_EN`,
+  `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, `OPENAI_SAFETY_SALT`
+- ⚠️ Nenhuma delas pode ter prefixo `VITE_` nem entrar em arquivo versionado —
+  elas vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root)
 
 ---
 
@@ -398,6 +417,18 @@ nem MCP da Supabase. Nada disso chega na produção.
 `/opt/wisewolf/releases/<timestamp>-<commit>/`, promove e roda smoke test.
 Cada função é copiada com `rsync -a` da **pasta inteira** — arquivo novo dentro
 do diretório da function vai junto sem precisar registrar em lista.
+
+🔒 **Trava de árvore** (`deploy/vps/lib/release-preflight.sh`, commit `d36c84f`):
+antes de qualquer contato com a VPS, o release recusa **árvore suja** (inclusive
+arquivo não rastreado), **branch ≠ `DEPLOY_GIT_BRANCH`** (declarada no
+`.env.deploy.local`), **HEAD atrás de `origin/<branch>`** e **HEAD sem
+`origin/main`** — e imprime checkout, branch e commit antes de publicar. Existe
+porque já publicamos árvore antiga (o frontend voltou no tempo e travou o
+lançamento de aulas por ~23h) e trabalho não commitado que estava no checkout
+por acaso. Consequência: **deployar de worktree acabou** (o Git não deixa a mesma
+branch em dois checkouts) — se o checkout principal estiver sujo, commite ou
+descarte, porque era esse WIP que vazava. Emergência consciente:
+`DEPLOY_ALLOW_DIRTY=1`.
 
 ✅ **Hotfix de uma edge function** (sem subir frontend — útil quando a árvore
 tem mudanças de outras frentes que não podem ir junto):
