@@ -171,9 +171,105 @@ async function callAI(system: string, messages: { role: string; content: string 
  * Grupo não autorizado é ignorado em SILÊNCIO: responder "sem permissão" já
  * confirmaria que existe um assistente ali, para quem quer que tenha o link.
  */
+/**
+ * Transcreve o áudio de uma mensagem do WhatsApp.
+ *
+ * Duas etapas porque a mídia do WhatsApp é criptografada: a Evolution devolve o
+ * arquivo decifrado em base64 a partir da chave da mensagem, e só então dá para
+ * mandar ao Whisper.
+ *
+ * Devolve null em qualquer falha — quem chama decide o que dizer ao usuário.
+ * Áudio que não transcreve NÃO pode virar silêncio: no grupo, silêncio parece
+ * bug, e a pessoa repete a mensagem sem saber que o problema foi o áudio.
+ */
+async function transcreverAudio(instance: string, msgId: string): Promise<string | null> {
+  const apiKey = (Deno.env.get("OPENAI_API_KEY") ?? "").trim();
+  if (!apiKey || !msgId) return null;
+
+  let base64 = "";
+  let mimetype = "audio/ogg";
+  for (const key of EVOLUTION_KEYS) {
+    try {
+      const r = await fetch(
+        `${EVOLUTION_BASE}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key },
+          body: JSON.stringify({ message: { key: { id: msgId } }, convertToMp4: false }),
+          signal: AbortSignal.timeout(20000),
+        },
+      );
+      if (r.status === 401) continue;
+      if (!r.ok) return null;
+      const d = await r.json().catch(() => null);
+      base64 = String(d?.base64 || "");
+      mimetype = String(d?.mimetype || "audio/ogg").split(";")[0];
+      break;
+    } catch { return null; }
+  }
+  if (!base64) return null;
+
+  try {
+    const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    // Whisper decide o decoder pela EXTENSÃO do arquivo, não pelo mimetype do
+    // form — nota de voz do WhatsApp é ogg/opus e sem o nome certo ele recusa.
+    const ext = mimetype.includes("mp4") || mimetype.includes("m4a")
+      ? "m4a"
+      : mimetype.includes("mpeg") || mimetype.includes("mp3")
+      ? "mp3"
+      : "ogg";
+    const form = new FormData();
+    form.append("file", new Blob([bin], { type: mimetype }), `audio.${ext}`);
+    form.append("model", "whisper-1");
+    form.append("language", "pt");
+
+    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!resp.ok) {
+      console.warn("gestao: whisper recusou", { status: resp.status });
+      return null;
+    }
+    const d = await resp.json().catch(() => null);
+    const texto = String(d?.text || "").trim();
+    return texto || null;
+  } catch (e) {
+    console.warn("gestao: transcrição falhou", { erro: (e as Error).message.slice(0, 90) });
+    return null;
+  }
+}
+
 async function handleGestao(sb: any, instance: string, groupJid: string, item: any): Promise<void> {
   const msg = item?.message || {};
-  const raw = String(msg.conversation || msg.extendedTextMessage?.text || "").trim();
+  const msgId = String(item?.key?.id || "");
+  let raw = String(msg.conversation || msg.extendedTextMessage?.text || "").trim();
+
+  // Áudio: o diretor prefere falar a digitar, e no celular isso é a diferença
+  // entre usar e não usar. A transcrição vira a pergunta e segue o fluxo normal.
+  const ehAudio = !raw && !!(msg.audioMessage || msg.pttMessage);
+  if (ehAudio) {
+    const transcrito = await transcreverAudio(instance, msgId);
+    if (!transcrito) {
+      // Só avisa se o grupo for o autorizado — senão vira resposta em grupo
+      // qualquer, que é justamente o que o silêncio protege.
+      const { data: ownersA } = await sb.from("profiles").select("tenant_id, role")
+        .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
+      const oA = pickOwner(ownersA || []);
+      if (oA?.tenant_id) {
+        const { data: cA } = await sb.from("dre_report_settings")
+          .select("destino, is_active").eq("tenant_id", oA.tenant_id).maybeSingle();
+        if (cA?.is_active && String(cA.destino || "") === groupJid) {
+          await sendWhats(instance, groupJid, "Não consegui entender o áudio. Pode repetir ou mandar por escrito?");
+        }
+      }
+      return;
+    }
+    raw = transcrito;
+  }
+
   if (!raw) return;
 
   // O gatilho continua valendo (quem gosta de usar, usa), mas não é exigido.
@@ -195,7 +291,6 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
     .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
   if (!conf?.is_active || String(conf.destino || "") !== groupJid) return;
 
-  const msgId = String(item?.key?.id || "");
   if (msgId) {
     const { error: seenErr } = await sb.from("wa_inbound_seen").insert({ msg_id: msgId, phone: groupJid });
     if (seenErr) return;
