@@ -1,22 +1,49 @@
 import {
+  AudioLines,
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  BookOpen,
   BriefcaseBusiness,
+  Building2,
   CalendarClock,
+  CalendarDays,
+  CalendarRange,
   Check,
   ChevronRight,
   CircleAlert,
+  Clock3,
+  Cpu,
+  FlaskConical,
+  Gem,
+  Globe2,
+  Headphones,
+  HeartPulse,
+  Hotel,
+  InfinityIcon,
+  Keyboard,
+  ListTree,
   Loader2,
+  MessageCircle,
   MessageCircleMore,
+  MessagesSquare,
   Mic2,
+  Network,
   Plane,
   Presentation,
   RotateCcw,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
+  Sprout,
   Target,
+  Timer,
+  Truck,
+  UsersRound,
+  Volume2,
+  type LucideIcon,
 } from "lucide-react";
+import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   PUBLIC_QUIZ_STEPS,
@@ -27,7 +54,9 @@ import {
   resolveQuizStart,
   serializeQuizSnapshot,
   type QuizAnswers,
+  type QuizContext,
   type QuizGoal,
+  type QuizStepId,
 } from "../funnel/quizModel";
 import { submitWolfieLead } from "../funnel/leadIntake";
 import {
@@ -64,6 +93,19 @@ const goalArt: Record<QuizGoal, { image: string; label: string }> = {
   },
 };
 
+const meetingContextArt: Record<QuizContext, string> = {
+  business: "/assets/wolfie/scenes/global-meetings/meetings-business/desktop.a5fc36b14418.webp",
+  technology: "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp",
+  health: "/assets/wolfie/scenes/global-meetings/meetings-medicine/desktop.9d63442a60df.webp",
+  laboratory: "/assets/wolfie/scenes/global-meetings/meetings-laboratories/desktop.cb1b23039a24.webp",
+  beauty: "/assets/wolfie/scenes/global-meetings/meetings-beauty/desktop.d6a3e3f056eb.webp",
+  retail: "/assets/wolfie/scenes/global-meetings/meetings-retail/desktop.4a0c5a2ff773.webp",
+  logistics: "/assets/wolfie/scenes/global-meetings/meetings-logistics/desktop.b5f1816863cd.webp",
+  tourism: "/assets/wolfie/scenes/global-meetings/meetings-tourism/desktop.8ff421493764.webp",
+  aviation: "/assets/wolfie/scenes/global-meetings/meetings-aviation/desktop.cc878f5bad08.webp",
+  general: "/assets/wolfie/scenes/global-meetings/meetings-business/desktop.a5fc36b14418.webp",
+};
+
 const iconForGoal: Record<QuizGoal, typeof BriefcaseBusiness> = {
   global_meeting: BriefcaseBusiness,
   interview: MessageCircleMore,
@@ -71,6 +113,82 @@ const iconForGoal: Record<QuizGoal, typeof BriefcaseBusiness> = {
   travel: Plane,
   conversation: Mic2,
 };
+
+const quizStepPresentation: Record<QuizStepId, {
+  label: string;
+  icon: LucideIcon;
+}> = {
+  goal: { label: "Objetivo", icon: Target },
+  context: { label: "Contexto", icon: Building2 },
+  participation: { label: "Ação", icon: MessageCircleMore },
+  declaredAbility: { label: "Seu inglês", icon: BadgeCheck },
+  obstacle: { label: "Foco", icon: Sparkles },
+  modality: { label: "Formato", icon: Mic2 },
+  urgency: { label: "Ritmo", icon: CalendarClock },
+  practiceMinutes: { label: "Rotina", icon: Timer },
+};
+
+const optionIconByValue: Readonly<Record<string, LucideIcon>> = {
+  global_meeting: BriefcaseBusiness,
+  interview: MessageCircleMore,
+  presentation: Presentation,
+  travel: Plane,
+  conversation: Mic2,
+  business: Building2,
+  technology: Cpu,
+  health: HeartPulse,
+  laboratory: FlaskConical,
+  beauty: Sparkles,
+  retail: ShoppingBag,
+  logistics: Truck,
+  tourism: Hotel,
+  aviation: Plane,
+  general: Globe2,
+  understand: Headphones,
+  respond: MessageCircle,
+  lead: UsersRound,
+  present: Presentation,
+  starting: Sprout,
+  short_exchanges: MessageCircle,
+  routine_conversations: MessagesSquare,
+  complex_conversations: Network,
+  nuanced_conversations: Gem,
+  thinking_time: Clock3,
+  listening: AudioLines,
+  vocabulary: BookOpen,
+  pronunciation: Volume2,
+  structure: ListTree,
+  voice: Mic2,
+  text: Keyboard,
+  mixed: MessagesSquare,
+  next_7_days: CalendarDays,
+  next_30_days: CalendarClock,
+  next_90_days: CalendarRange,
+  ongoing: InfinityIcon,
+  "5": Timer,
+  "10": Timer,
+  "15": Timer,
+};
+
+const calculationSteps = [
+  "Organizando objetivo e contexto",
+  "Combinando habilidade e formato",
+  "Ajustando ritmo e tempo de prática",
+] as const;
+
+type QuizPhase = "questions" | "calculating" | "error";
+
+const getAnswerLabel = (stepId: QuizStepId, value: string | undefined) =>
+  PUBLIC_QUIZ_STEPS
+    .find((candidate) => candidate.id === stepId)
+    ?.options.find((option) => option.value === value)?.label;
+
+const getAnsweredChoices = (answers: QuizAnswers) =>
+  PUBLIC_QUIZ_STEPS.flatMap((candidate) => {
+    const value = answers[candidate.id];
+    const label = getAnswerLabel(candidate.id, value);
+    return label ? [{ id: candidate.id, label }] : [];
+  });
 
 const readQuizStart = () => resolveQuizStart(
   window.location.search,
@@ -84,10 +202,24 @@ export function QuizPage() {
   const [stepIndex, setStepIndex] = useState(() =>
     Math.max(0, PUBLIC_QUIZ_STEPS.findIndex((step) => step.id === initial.currentStep))
   );
+  const [phase, setPhase] = useState<QuizPhase>("questions");
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const [calculationStage, setCalculationStage] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [quizError, setQuizError] = useState("");
   const step = PUBLIC_QUIZ_STEPS[stepIndex];
-  const progress = ((stepIndex + 1) / PUBLIC_QUIZ_STEPS.length) * 100;
-  const art = answers.goal ? goalArt[answers.goal] : goalArt.global_meeting;
+  const baseArt = answers.goal ? goalArt[answers.goal] : goalArt.global_meeting;
+  const art = answers.goal === "global_meeting" && answers.context
+    ? { ...baseArt, image: meetingContextArt[answers.context] }
+    : baseArt;
+  const answeredChoices = useMemo(() => getAnsweredChoices(answers), [answers]);
+  const answeredCount = answeredChoices.length;
+  const calculationProgress = [24, 58, 84, 100][calculationStage] ?? 24;
+  const reducedMotion = Boolean(useReducedMotion());
   const questionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const calculationHeadingRef = useRef<HTMLHeadingElement>(null);
+  const optionTimerRef = useRef<number | null>(null);
+  const completionStartedRef = useRef(false);
 
   useEffect(() => {
     if (quizStart.cleanSearch !== null) {
@@ -110,9 +242,41 @@ export function QuizPage() {
   }, [quizStart]);
 
   useEffect(() => {
+    if (phase === "calculating") return;
     window.scrollTo({ top: 0, behavior: "auto" });
-    questionHeadingRef.current?.focus();
-  }, [stepIndex]);
+    const frame = window.requestAnimationFrame(() => questionHeadingRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [phase, stepIndex]);
+
+  useEffect(() => () => {
+    if (optionTimerRef.current !== null) window.clearTimeout(optionTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "calculating") return;
+
+    window.scrollTo({ top: 0, behavior: "auto" });
+    const frame = window.requestAnimationFrame(() => calculationHeadingRef.current?.focus());
+    const timers: number[] = [];
+
+    if (reducedMotion) {
+      setCalculationStage(3);
+    } else {
+      timers.push(window.setTimeout(() => setCalculationStage(1), 650));
+      timers.push(window.setTimeout(() => setCalculationStage(2), 1_300));
+      timers.push(window.setTimeout(() => setCalculationStage(3), 1_900));
+    }
+
+    timers.push(window.setTimeout(
+      () => navigate("/quiz/resultado", { replace: true }),
+      reducedMotion ? 1_200 : 2_450,
+    ));
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [phase, reducedMotion]);
 
   const persist = (nextAnswers: QuizAnswers, nextIndex: number) => {
     const nextStep = PUBLIC_QUIZ_STEPS[nextIndex]?.id ?? step.id;
@@ -123,75 +287,319 @@ export function QuizPage() {
   };
 
   const selectOption = (value: string) => {
+    if (pendingValue !== null || phase === "calculating" || completionStartedRef.current) return;
+
     const nextAnswers = answerQuizStep(answers, step.id, value as never);
-    setAnswers(nextAnswers);
     if (stepIndex === PUBLIC_QUIZ_STEPS.length - 1 && isQuizComplete(nextAnswers)) {
-      localStorage.setItem(
-        PUBLIC_QUIZ_STORAGE_KEY,
-        serializeQuizSnapshot(createQuizSnapshot(nextAnswers, step.id)),
-      );
-      saveQuizResult(nextAnswers);
-      navigate("/quiz/resultado");
+      completionStartedRef.current = true;
+      try {
+        localStorage.setItem(
+          PUBLIC_QUIZ_STORAGE_KEY,
+          serializeQuizSnapshot(createQuizSnapshot(nextAnswers, step.id)),
+        );
+        saveQuizResult(nextAnswers);
+      } catch {
+        completionStartedRef.current = false;
+        setPhase("error");
+        setQuizError("Não conseguimos guardar sua última escolha neste navegador. Tente novamente.");
+        return;
+      }
+      setQuizError("");
+      setAnswers(nextAnswers);
+      setPendingValue(value);
+      optionTimerRef.current = window.setTimeout(() => {
+        setPendingValue(null);
+        setCalculationStage(0);
+        setPhase("calculating");
+      }, reducedMotion ? 20 : 320);
       return;
     }
+
     const nextIndex = Math.min(stepIndex + 1, PUBLIC_QUIZ_STEPS.length - 1);
-    persist(nextAnswers, nextIndex);
-    setStepIndex(nextIndex);
+    try {
+      persist(nextAnswers, nextIndex);
+    } catch {
+      setPhase("error");
+      setQuizError("Não conseguimos guardar esta escolha neste navegador. Tente novamente.");
+      return;
+    }
+    setQuizError("");
+    setPhase("questions");
+    setAnswers(nextAnswers);
+    setPendingValue(value);
+    setDirection(1);
+    optionTimerRef.current = window.setTimeout(() => {
+      setStepIndex(nextIndex);
+      setPendingValue(null);
+    }, reducedMotion ? 20 : 320);
   };
 
   const goBack = () => {
+    if (pendingValue !== null || phase === "calculating") return;
     if (stepIndex === 0) {
       navigate("/");
       return;
     }
     const nextIndex = stepIndex - 1;
-    persist(answers, nextIndex);
+    try {
+      persist(answers, nextIndex);
+    } catch {
+      setPhase("error");
+      setQuizError("Não conseguimos atualizar esta etapa. Tente novamente.");
+      return;
+    }
+    setQuizError("");
+    setPhase("questions");
+    setDirection(-1);
     setStepIndex(nextIndex);
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#1d1e22]">
-      <header className="flex min-h-20 items-center justify-between border-b border-black/[.06] px-5 sm:px-8">
-        <WolfieBrand />
-        <span aria-live="polite" className="rounded-full bg-[#f5f5f6] px-4 py-2 text-xs font-extrabold text-[#727680]">Etapa {stepIndex + 1} de {PUBLIC_QUIZ_STEPS.length}</span>
-      </header>
-      <div role="progressbar" aria-label="Progresso do diagnóstico" aria-valuemin={1} aria-valuemax={PUBLIC_QUIZ_STEPS.length} aria-valuenow={stepIndex + 1} className="h-1 bg-black/[.05]"><div className="h-full bg-gradient-to-r from-[#e72d3d] to-[#ff8b61] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div>
-      <main className="grid min-h-[calc(100vh-84px)] lg:grid-cols-[1.02fr_.98fr]">
-        <section className="flex px-5 py-10 sm:px-10 lg:px-[8vw] lg:py-16">
-          <div className="m-auto w-full max-w-2xl">
-            <button type="button" onClick={goBack} className="inline-flex min-h-11 items-center gap-2 rounded-full text-sm font-bold text-[#777b84] transition hover:text-[#202126]"><ArrowLeft size={17} /> Voltar</button>
-            <p className="mt-7 text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{step.eyebrow}</p>
-            <h1 ref={questionHeadingRef} tabIndex={-1} className="mt-4 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.045em] outline-none sm:text-5xl">{step.title}</h1>
-            <p className="mt-4 text-base leading-7 text-[#737781]">{step.supportingText}</p>
-            <div className="mt-8 grid gap-3" role="group" aria-label={`Respostas para: ${step.title}`}>
-              {step.options.map((option) => {
-                const selected = answers[step.id] === option.value;
+    <LazyMotion features={domAnimation}>
+      <div className="min-h-screen bg-[#fffdfb] text-[#1d1e22]">
+        <header className="sticky top-0 z-50 border-b border-black/[.06] bg-white/95 shadow-[0_8px_30px_rgba(24,25,30,.04)] backdrop-blur-xl">
+          <div className="mx-auto flex min-h-16 max-w-[1600px] items-center justify-between px-5 sm:min-h-[72px] sm:px-8">
+            <WolfieBrand />
+            <div className="text-right">
+              <p className="hidden text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#6f727a] sm:block">
+                {phase === "calculating" ? "Preparando resultado" : "Diagnóstico personalizado"}
+              </p>
+              <p className="mt-0.5 text-xs font-extrabold text-[#34363b] sm:text-sm">
+                <span className="sm:hidden">{phase === "calculating" ? `${calculationProgress}%` : `${answeredCount} resp.`}</span>
+                <span className="hidden sm:inline">{phase === "calculating"
+                  ? `${calculationProgress}% concluído`
+                  : `${answeredCount} de ${PUBLIC_QUIZ_STEPS.length} ${answeredCount === 1 ? "resposta" : "respostas"}`}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="mx-auto max-w-[1600px] px-5 pb-3 sm:px-8 sm:pb-4">
+            <div
+              className="sr-only"
+              role="progressbar"
+              aria-label={phase === "calculating" ? "Preparação do diagnóstico" : "Respostas concluídas no diagnóstico"}
+              aria-valuemin={0}
+              aria-valuemax={phase === "calculating" ? 100 : PUBLIC_QUIZ_STEPS.length}
+              aria-valuenow={phase === "calculating" ? calculationProgress : answeredCount}
+              aria-valuetext={phase === "calculating" ? `${calculationProgress}% do diagnóstico preparado` : `${answeredCount} de ${PUBLIC_QUIZ_STEPS.length} respostas concluídas`}
+            />
+            <div className="mb-2 flex items-center justify-between gap-4 lg:hidden">
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.13em] text-[#e72d3d]">
+                {phase === "calculating" ? "Diagnóstico" : quizStepPresentation[step.id].label}
+              </span>
+              <span className="text-[11px] font-bold text-[#656870]">
+                {phase === "calculating" ? "8 escolhas organizadas" : `Etapa ${stepIndex + 1} de 8`}
+              </span>
+            </div>
+            <ol aria-label="Etapas do diagnóstico" className="grid grid-cols-8 gap-1.5 sm:gap-2">
+              {PUBLIC_QUIZ_STEPS.map((candidate, index) => {
+                const completed = Boolean(answers[candidate.id]) || phase === "calculating";
+                const current = phase !== "calculating" && index === stepIndex;
                 return (
-                  <button key={option.value} type="button" aria-pressed={selected} onClick={() => selectOption(option.value)} className={`group flex min-h-[68px] items-center gap-4 rounded-[20px] border px-5 py-4 text-left transition ${selected ? "border-[#e72d3d] bg-[#fff1ed] shadow-[0_10px_30px_rgba(231,45,61,.08)]" : "border-black/[.08] bg-white hover:border-black/20 hover:bg-[#fafafa]"}`}>
-                    <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border ${selected ? "border-[#e72d3d] bg-[#e72d3d] text-white" : "border-black/20"}`}>{selected ? <Check size={14} strokeWidth={3} /> : null}</span>
-                    <span className="flex-1 font-bold text-[#303238]">{option.label}</span>
-                    <ChevronRight size={18} className="text-[#b3b5ba] transition group-hover:translate-x-0.5 group-hover:text-[#686c75]" />
-                  </button>
+                  <li key={candidate.id} aria-current={current ? "step" : undefined} className="min-w-0">
+                    <span className="sr-only">{quizStepPresentation[candidate.id].label}{completed ? ", concluída" : current ? ", etapa atual" : ", ainda não respondida"}</span>
+                    <span aria-hidden="true" className={`quiz-progress-segment block h-1.5 rounded-full transition-colors duration-300 ${completed ? "bg-[#e72d3d]" : current ? "bg-[#ff9a77] shadow-[0_0_0_3px_rgba(231,45,61,.10)]" : "bg-[#e8e8ea]"}`} />
+                    <span aria-hidden="true" className={`mt-2 hidden truncate text-[10px] font-extrabold uppercase tracking-[0.09em] lg:block ${current ? "text-[#e72d3d]" : completed ? "text-[#47494f]" : "text-[#73767e]"}`}>
+                      {quizStepPresentation[candidate.id].label}
+                    </span>
+                  </li>
                 );
               })}
-            </div>
-            <p className="mt-7 flex items-center gap-2 text-xs leading-5 text-[#878b94]"><ShieldCheck size={15} className="shrink-0 text-[#e72d3d]" /> Guardamos aqui apenas escolhas do quiz, sem nome, e-mail ou telefone.</p>
+            </ol>
           </div>
-        </section>
-        <aside className="relative m-5 hidden overflow-hidden rounded-[34px] bg-[#f4f4f5] lg:block">
-          <img src={art.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 p-12">
-            <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/90 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[#b92333] backdrop-blur-md"><Target size={15} /> {art.label}</p>
-            <div className="mt-5 rounded-[28px] border border-white/30 bg-white/90 p-6 text-[#202126] shadow-xl backdrop-blur-xl">
-              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#e72d3d]">O que estamos organizando</p>
-              <p className="mt-3 text-2xl font-extrabold leading-tight">Um primeiro treino que combine situação, habilidade, nível declarado e tempo disponível.</p>
-              <p className="mt-4 text-sm leading-6 text-[#6d727c]">Nada de análise secreta: a lógica do resultado usa somente as escolhas que você vê.</p>
-            </div>
-          </div>
-        </aside>
-      </main>
-    </div>
+        </header>
+
+        {phase === "calculating" ? (
+          <main className="px-5 py-7 sm:px-8 sm:py-10">
+            <section className="mx-auto grid min-h-[calc(100vh-180px)] max-w-6xl overflow-hidden rounded-[34px] border border-black/[.07] bg-white shadow-[0_30px_100px_rgba(38,39,45,.10)] lg:grid-cols-[.9fr_1.1fr]">
+              <div className="relative min-h-[210px] overflow-hidden lg:order-2 lg:min-h-full">
+                <img src={art.image} alt={`Cenário de ${art.label}`} className="absolute inset-0 h-full w-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#17181c]/80 via-transparent to-white/10" />
+                <div className="quiz-calculating-aura absolute left-1/2 top-1/2 h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/30 bg-white/10 shadow-[0_0_80px_rgba(255,255,255,.30)] backdrop-blur-[2px]" />
+                <div className="absolute inset-x-5 bottom-5 flex flex-wrap gap-2 lg:inset-x-8 lg:bottom-8">
+                  {answeredChoices.slice(0, 4).map((choice) => (
+                    <span key={choice.id} className="rounded-full border border-white/25 bg-white/90 px-3 py-1.5 text-[10px] font-extrabold text-[#37393e] shadow-lg backdrop-blur-md">
+                      {choice.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center p-7 sm:p-10 lg:order-1 lg:p-14">
+                <div className="w-full max-w-xl">
+                  <p className="inline-flex items-center gap-2 rounded-full bg-[#fff0ec] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#bd2735]">
+                    <Sparkles size={14} aria-hidden="true" /> Diagnóstico em construção
+                  </p>
+                  <h1 ref={calculationHeadingRef} tabIndex={-1} className="mt-5 font-display text-4xl font-extrabold leading-[1.02] tracking-[-0.05em] outline-none focus-visible:outline-none sm:text-5xl">
+                    Calculando seu diagnóstico
+                  </h1>
+                  <p role="status" aria-live="polite" aria-atomic="true" className="mt-4 max-w-lg text-base leading-7 text-[#71757e]">
+                    Estamos combinando somente as oito escolhas que você informou para montar seu primeiro treino.
+                  </p>
+
+                  <div className="mt-8 flex items-center gap-5 rounded-[26px] border border-[#e72d3d]/10 bg-[#fff8f5] p-5 sm:p-6">
+                    <div className="relative grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(#e72d3d ${calculationProgress}%, #f0deda 0)` }} aria-hidden="true">
+                      <div className="grid h-[66px] w-[66px] place-items-center rounded-full bg-white shadow-inner">
+                        <span className="text-lg font-extrabold text-[#e72d3d]">{calculationProgress}%</span>
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="h-2 overflow-hidden rounded-full bg-[#eadfdb]" aria-hidden="true">
+                        <m.div
+                          className="h-full rounded-full bg-gradient-to-r from-[#e72d3d] via-[#ff7658] to-[#ffad77]"
+                          animate={{ width: `${calculationProgress}%` }}
+                          transition={{ duration: reducedMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
+                        />
+                      </div>
+                      <p className="mt-3 text-sm font-extrabold text-[#34363b]">
+                        {calculationStage === 3 ? "Seu primeiro treino está pronto" : calculationSteps[Math.min(calculationStage, 2)]}
+                      </p>
+                      <p className="mt-1 text-xs text-[#8a8d95]">Sem teste secreto ou inferência de personalidade.</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-3">
+                    {calculationSteps.map((label, index) => {
+                      const complete = calculationStage > index || calculationStage === 3;
+                      const active = calculationStage === index && calculationStage < 3;
+                      return (
+                        <div key={label} className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${complete ? "border-emerald-200 bg-emerald-50/70" : active ? "border-[#f2b7ae] bg-[#fff8f5]" : "border-black/[.06] bg-[#fafafa]"}`}>
+                          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${complete ? "bg-emerald-600 text-white" : active ? "bg-[#e72d3d] text-white" : "bg-[#e9e9eb] text-[#9c9fa6]"}`}>
+                            {complete ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : active ? <Loader2 size={14} className="quiz-calculating-spinner animate-spin" aria-hidden="true" /> : <span className="text-[10px] font-extrabold">{index + 1}</span>}
+                          </span>
+                          <span className={`text-sm font-bold ${complete || active ? "text-[#35373c]" : "text-[#6d7078]"}`}>{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </main>
+        ) : (
+          <main className="grid min-h-[calc(100vh-124px)] lg:grid-cols-[1.04fr_.96fr]">
+            <section className="px-5 py-7 sm:px-10 sm:py-10 lg:px-[7vw] lg:py-12">
+              <div className="mx-auto w-full max-w-2xl">
+                <button disabled={pendingValue !== null} type="button" onClick={goBack} className="inline-flex min-h-11 items-center gap-2 rounded-full text-sm font-bold text-[#777b84] transition hover:text-[#202126] disabled:cursor-wait disabled:opacity-45">
+                  <ArrowLeft size={17} aria-hidden="true" /> Voltar
+                </button>
+
+                <m.div
+                  key={step.id}
+                  initial={reducedMotion ? false : { opacity: 0, x: direction * 22 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: reducedMotion ? 0 : 0.36, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div className="mt-5 flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fff0ec] text-[#e72d3d]">
+                      {(() => {
+                        const StepIcon = quizStepPresentation[step.id].icon;
+                        return <StepIcon size={17} aria-hidden="true" />;
+                      })()}
+                    </span>
+                    <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#e72d3d]">{step.eyebrow}</p>
+                  </div>
+                  <h1 ref={questionHeadingRef} tabIndex={-1} className="mt-4 font-display text-[2.25rem] font-extrabold leading-[1.02] tracking-[-0.045em] outline-none focus-visible:outline-none sm:text-5xl">{step.title}</h1>
+                  <p className="mt-4 text-base leading-7 text-[#737781]">{step.supportingText}</p>
+
+                  <div className="relative mt-6 min-h-[148px] overflow-hidden rounded-[26px] bg-[#27282d] shadow-[0_18px_45px_rgba(38,39,44,.14)] lg:hidden">
+                    <img src={art.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/25 to-transparent" />
+                    <div className="absolute inset-0 flex flex-col justify-between p-4 text-white">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#b92333] backdrop-blur-md">
+                          {answers.goal ? art.label : "Seu cenário"}
+                        </span>
+                        <span className="rounded-full bg-black/35 px-3 py-1.5 text-[10px] font-bold backdrop-blur-md">{answeredCount} resp.</span>
+                      </div>
+                      <div>
+                        <p className="max-w-[260px] font-display text-lg font-extrabold leading-tight">
+                          {answeredCount ? "Seu treino já está tomando forma." : "Escolha o primeiro cenário da sua prática."}
+                        </p>
+                        {answeredChoices.length ? (
+                          <div className="mt-2 flex max-w-full gap-1.5 overflow-hidden">
+                            {answeredChoices.slice(-2).map((choice) => <span key={choice.id} className="max-w-[150px] truncate rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold text-[#34363b]">{choice.id === "goal" && answers.goal ? goalArt[answers.goal].label : choice.label}</span>)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  {quizError ? <p role="alert" className="mt-5 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700"><CircleAlert size={17} className="mt-0.5 shrink-0" aria-hidden="true" /> {quizError}</p> : null}
+
+                  <div className={`mt-7 grid gap-3 ${step.id === "context" ? "min-[360px]:grid-cols-2" : step.id === "modality" || step.id === "practiceMinutes" ? "sm:grid-cols-3" : ""}`} role="group" aria-label={`Respostas para: ${step.title}`} aria-busy={pendingValue !== null}>
+                    {step.options.map((option) => {
+                      const selected = answers[step.id] === option.value;
+                      const OptionIcon = optionIconByValue[option.value] ?? quizStepPresentation[step.id].icon;
+                      const compact = step.id === "context";
+                      const isMinutes = step.id === "practiceMinutes";
+                      return (
+                        <m.button
+                          key={option.value}
+                          type="button"
+                          aria-label={option.label}
+                          aria-pressed={selected}
+                          disabled={pendingValue !== null}
+                          onClick={() => selectOption(option.value)}
+                          whileTap={reducedMotion ? undefined : { scale: 0.985 }}
+                          className={`quiz-option-card group relative flex min-h-[72px] items-center gap-3 overflow-hidden rounded-[20px] border text-left transition duration-200 disabled:cursor-wait ${compact ? "px-3 py-3 sm:px-4" : "px-4 py-4 sm:px-5"} ${isMinutes ? "sm:flex-col sm:justify-center sm:text-center" : ""} ${selected ? "border-[#e72d3d] bg-[#fff1ed] shadow-[0_13px_36px_rgba(231,45,61,.11)]" : "border-black/[.08] bg-white shadow-[0_4px_14px_rgba(32,33,38,.025)] hover:-translate-y-0.5 hover:border-[#e72d3d]/40 hover:shadow-[0_12px_30px_rgba(32,33,38,.08)]"}`}
+                        >
+                          <span className={`grid shrink-0 place-items-center rounded-xl transition ${compact ? "h-9 w-9" : "h-11 w-11"} ${selected ? "bg-[#e72d3d] text-white" : "bg-[#f5f5f6] text-[#555860] group-hover:bg-[#fff0ec] group-hover:text-[#e72d3d]"}`}>
+                            {selected ? <Check size={compact ? 17 : 19} strokeWidth={3} aria-hidden="true" /> : <OptionIcon size={compact ? 17 : 19} aria-hidden="true" />}
+                          </span>
+                          <span className={`min-w-0 flex-1 font-bold text-[#303238] ${compact ? "text-xs leading-[1.25] sm:text-sm" : "text-sm leading-5 sm:text-base"}`}>
+                            {isMinutes ? <><strong className="block text-2xl leading-none sm:text-3xl">{option.value}</strong><span className="mt-1 block text-xs font-bold text-[#777b84]">minutos</span></> : option.label}
+                          </span>
+                          {selected ? <span className="hidden text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#b92333] sm:block">Escolhido</span> : !compact && !isMinutes ? <ChevronRight size={17} className="shrink-0 text-[#b3b5ba] transition group-hover:translate-x-0.5 group-hover:text-[#e72d3d]" aria-hidden="true" /> : null}
+                        </m.button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-7 flex items-start gap-2 text-xs leading-5 text-[#878b94]"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-[#e72d3d]" aria-hidden="true" /> Guardamos aqui apenas escolhas do quiz, sem nome, e-mail ou telefone.</p>
+                </m.div>
+              </div>
+            </section>
+
+            <aside className="hidden p-5 pl-0 lg:block">
+              <div className="sticky top-[138px] min-h-[620px] overflow-hidden rounded-[34px] bg-[#f4f4f5] shadow-[0_24px_80px_rgba(34,35,40,.12)]" style={{ height: "calc(100vh - 158px)" }}>
+                <m.img key={art.image} src={art.image} alt={`Cenário de ${answers.goal ? art.label : "prática com o Wolfie"}`} className="absolute inset-0 h-full w-full object-cover" initial={reducedMotion ? false : { opacity: 0.6, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: reducedMotion ? 0 : 0.55 }} />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/5 to-white/10" />
+
+                <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-7">
+                  <p className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/90 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#b92333] shadow-lg backdrop-blur-md"><Target size={15} aria-hidden="true" /> {answers.goal ? art.label : "Seu cenário"}</p>
+                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full p-1 shadow-xl" style={{ background: `conic-gradient(#e72d3d ${(answeredCount / PUBLIC_QUIZ_STEPS.length) * 100}%, rgba(255,255,255,.72) 0)` }} aria-hidden="true">
+                    <div className="grid h-full w-full place-items-center rounded-full bg-white/95 text-center backdrop-blur-md"><span className="text-sm font-extrabold text-[#e72d3d]">{answeredCount}<small className="text-[9px] text-[#8d9097]">/8</small></span></div>
+                  </div>
+                </div>
+
+                <div className="absolute inset-x-0 bottom-0 p-7 xl:p-9">
+                  <div className="rounded-[28px] border border-white/30 bg-white/[.92] p-6 text-[#202126] shadow-[0_18px_60px_rgba(0,0,0,.18)] backdrop-blur-xl xl:p-7">
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#e72d3d]">Seu treino está tomando forma</p>
+                      <Sparkles size={17} className="text-[#e72d3d]" aria-hidden="true" />
+                    </div>
+                    <p className="mt-3 font-display text-2xl font-extrabold leading-[1.08] tracking-[-0.03em]">
+                      {answeredCount
+                        ? `${answers.goal ? art.label : "Uma prática real"}${getAnswerLabel("context", answers.context) ? ` para ${getAnswerLabel("context", answers.context)?.toLowerCase()}` : ""}.`
+                        : "Comece pela situação que você quer destravar."}
+                    </p>
+                    <div className="mt-5 flex min-h-16 flex-wrap content-start gap-2">
+                      {answeredChoices.slice(-5).map((choice) => (
+                        <m.span key={choice.id} layout initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="max-w-full truncate rounded-full border border-[#e72d3d]/10 bg-[#fff0ec] px-3 py-2 text-[10px] font-extrabold text-[#83303a]">
+                          {choice.label}
+                        </m.span>
+                      ))}
+                      {Array.from({ length: Math.max(0, 3 - answeredChoices.length) }).map((_, index) => <span key={`placeholder-${index}`} className="h-8 w-24 rounded-full border border-dashed border-black/15 bg-black/[.025]" aria-hidden="true" />)}
+                    </div>
+                    <p className="mt-4 border-t border-black/[.06] pt-4 text-xs leading-5 text-[#777b84]">A recomendação usa somente as respostas visíveis deste quiz — sem análise secreta.</p>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </main>
+        )}
+      </div>
+    </LazyMotion>
   );
 }
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompleteQuizAnswers } from "./quizModel";
 import {
   PUBLIC_QUIZ_RESULT_KEY,
@@ -7,6 +7,7 @@ import {
   markQuizLeadSent,
   parseStoredQuizResult,
   readQuizResult,
+  saveQuizResult,
   wasQuizLeadSent,
 } from "./quizSession";
 
@@ -24,6 +25,7 @@ const answers: CompleteQuizAnswers = {
 
 describe("sessão anônima do resultado Wolfie", () => {
   beforeEach(() => sessionStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
 
   it("preserva uma chave UUID v4 de idempotência no resultado", () => {
     const stored = createStoredQuizResult(answers, requestId);
@@ -49,5 +51,16 @@ describe("sessão anônima do resultado Wolfie", () => {
     clearQuizResult();
     expect(readQuizResult()).toBeNull();
     expect(wasQuizLeadSent(requestId)).toBe(false);
+  });
+
+  it("salva a recomendação completa antes de qualquer navegação", () => {
+    const uuid = vi.spyOn(crypto, "randomUUID").mockReturnValue(requestId);
+
+    const stored = saveQuizResult(answers);
+
+    expect(stored.leadRequestId).toBe(requestId);
+    expect(stored.recommendation.primary.experienceId).toBe("meetings-technology");
+    expect(readQuizResult()).toEqual(stored);
+    expect(uuid).toHaveBeenCalledTimes(1);
   });
 });

@@ -111,6 +111,22 @@ a {
   animation: premium-voice-breathe 4.8s ease-in-out infinite;
 }
 
+@keyframes quiz-calculating-aura {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+.quiz-calculating-aura {
+  animation: quiz-calculating-aura 2.4s ease-in-out infinite;
+}
+
 .premium-scene-description {
   transition:
     max-height 260ms ease,
@@ -244,13 +260,17 @@ a {
   }
 
   .premium-scenario-aura,
-  .premium-voice-orb {
+  .premium-voice-orb,
+  .quiz-calculating-aura,
+  .quiz-calculating-spinner {
     animation: none;
   }
 
   .premium-journey-step,
   .premium-scene-card,
-  .premium-scene-description {
+  .premium-scene-description,
+  .quiz-option-card,
+  .quiz-progress-segment {
     opacity: 1 !important;
     transform: none !important;
     transition-duration: 0.01ms !important;
