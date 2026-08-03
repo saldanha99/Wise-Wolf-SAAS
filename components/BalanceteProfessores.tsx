@@ -159,17 +159,17 @@ const BalanceteProfessores: React.FC<Props> = () => {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Kpi label="Receita atribuída" value={money(t.receita_alocada)} hint={`de ${money(b.receita_total)} no mês`} />
-            <Kpi label="Custo com professores" value={money(t.custo_total)} hint={`${t.aulas} aulas`} />
+            <Kpi label="Pago aos professores" value={money(t.custo_total)} hint={`${t.aulas} aulas`} />
             {/* O número em destaque é o CONTRATADO: é ele que compara professores
                 sem punir quem tem aluno que a escola esqueceu de cobrar. */}
             <Kpi
-              label="Lucro real das aulas"
+              label="Sobra real p/ a escola"
               value={money(t.lucro_contratado)}
               hint={`faturado: ${money(t.lucro)}`}
               accent={t.lucro_contratado >= 0 ? 'text-emerald-600' : 'text-red-600'}
             />
             <Kpi
-              label="A cobrar"
+              label="Falta cobrar"
               value={money(Math.max(0, t.nao_faturado))}
               hint={t.nao_faturado > 0 ? 'mensalidade não faturada' : 'tudo faturado'}
               accent={t.nao_faturado > 0 ? 'text-rose-600' : undefined}
@@ -179,10 +179,14 @@ const BalanceteProfessores: React.FC<Props> = () => {
           <div className="flex items-start gap-2 text-[11px] text-brand-muted bg-brand-surface border border-brand-border rounded-2xl px-4 py-3">
             <Info size={14} className="text-sky-500 shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              <b>Lucro real</b> usa a mensalidade dos alunos atendidos — é por ele que se compara
-              professor, porque não pune quem tem aluno que a escola esqueceu de cobrar.
-              <b> Faturado</b> é o que efetivamente entrou e é o que fecha com o DRE.
-              A coluna <b>A cobrar</b> é a diferença: dinheiro a recuperar, não desempenho ruim.
+              <b>Pago ao prof</b> é quanto o professor recebeu (aulas × valor da aula) —
+              é ganho dele, custo da escola. <b>Mensalidades</b> é o que os alunos dele deviam pagar
+              no mês; <b>Entrou</b> é o que caiu no caixa. Quando o aluno paga atrasado de outro mês,
+              Entrou fica maior; quando ninguém cobrou, fica menor.
+              <br />
+              <b>Sobra p/ escola = Mensalidades − Pago ao prof.</b> É por ela que se compara professor,
+              porque não pune quem tem aluno que a escola esqueceu de cobrar.
+              <b> Falta cobrar</b> é o que ficou sem cobrança — dinheiro a recuperar, não desempenho ruim.
             </p>
           </div>
 
@@ -221,10 +225,11 @@ const BalanceteProfessores: React.FC<Props> = () => {
                     <th className="text-right py-3 px-2">Turbo</th>
                     <th className="text-right py-3 px-2">Treino</th>
                     <th className="text-right py-3 px-2">Ajustes</th>
-                    <th className="text-right py-3 px-2">Custo</th>
-                    <th className="text-right py-3 px-2">Faturado</th>
-                    <th className="text-right py-3 px-2">A cobrar</th>
-                    <th className="text-right py-3 px-2">Lucro real</th>
+                    <th className="text-right py-3 px-2">Pago ao prof</th>
+                    <th className="text-right py-3 px-2">Mensalidades</th>
+                    <th className="text-right py-3 px-2">Entrou</th>
+                    <th className="text-right py-3 px-2">Falta cobrar</th>
+                    <th className="text-right py-3 px-2">Sobra p/ escola</th>
                     <th className="text-right py-3 px-4">Margem</th>
                   </tr>
                 </thead>
@@ -257,7 +262,8 @@ const BalanceteProfessores: React.FC<Props> = () => {
                             {ajustes !== 0 ? money(ajustes) : '—'}
                           </td>
                           <td className="text-right px-2 font-bold text-brand-text">{money(p.custo_total)}</td>
-                          <td className="text-right px-2 text-brand-text">{money(p.receita)}</td>
+                          <td className="text-right px-2 text-brand-text">{money(p.receita_contratada)}</td>
+                          <td className="text-right px-2 text-brand-muted">{money(p.receita)}</td>
                           <td className={`text-right px-2 ${p.nao_faturado > 0 ? 'text-rose-600 font-bold' : 'text-brand-muted'}`}
                               title={p.nao_faturado < 0 ? 'Recebeu mais que a mensalidade (atrasado de outro mês)' : 'Mensalidade não cobrada'}>
                             {p.nao_faturado > 0 ? money(p.nao_faturado) : '—'}
@@ -269,7 +275,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
                         </tr>
                         {open && (
                           <tr className="bg-brand-surface-2">
-                            <td colSpan={12} className="px-4 py-3">
+                            <td colSpan={13} className="px-4 py-3">
                               <p className="text-[10px] font-black uppercase text-brand-muted mb-2">
                                 Alunos de {p.teacher_name} · {money(p.custo_por_aula)} de custo por aula
                               </p>
@@ -296,7 +302,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
                     );
                   })}
                   {b.professores.length === 0 && (
-                    <tr><td colSpan={12} className="py-8 text-center text-brand-muted text-sm">Nenhuma aula pagável neste mês.</td></tr>
+                    <tr><td colSpan={13} className="py-8 text-center text-brand-muted text-sm">Nenhuma aula pagável neste mês.</td></tr>
                   )}
                 </tbody>
                 {b.professores.length > 0 && (
@@ -310,6 +316,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
                       <td className="text-right px-2">{money(t.bonus_treinamento)}</td>
                       <td className="text-right px-2">{money(Number(t.ajuste_valor_base) + Number(t.ajustes_fechamento))}</td>
                       <td className="text-right px-2">{money(t.custo_total)}</td>
+                      <td className="text-right px-2">{money(t.receita_contratada)}</td>
                       <td className="text-right px-2">{money(t.receita_alocada)}</td>
                       <td className={`text-right px-2 ${t.nao_faturado > 0 ? 'text-rose-600' : ''}`}>{t.nao_faturado > 0 ? money(t.nao_faturado) : '—'}</td>
                       <td className={`text-right px-2 ${t.lucro_contratado >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(t.lucro_contratado)}</td>
