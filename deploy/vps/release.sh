@@ -112,6 +112,10 @@ validate_https_url "$DEPLOY_API_URL" ||
 [[ "$DEPLOY_API_URL" != *".supabase.co"* ]] ||
   die "DEPLOY_API_URL não pode apontar para o Supabase hospedado"
 
+# shellcheck source=lib/release-preflight.sh
+source "$SCRIPT_DIR/lib/release-preflight.sh"
+assert_release_tree_is_publishable "$PROJECT_DIR"
+
 cd "$PROJECT_DIR"
 
 echo "== Preflight da VPS =="

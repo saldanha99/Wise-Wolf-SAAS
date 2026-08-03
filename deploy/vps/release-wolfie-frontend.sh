@@ -254,6 +254,10 @@ VITE_SUPABASE_ANON_KEY="$(read_remote_public_env VITE_SUPABASE_ANON_KEY)"
 [[ "$VITE_SUPABASE_ANON_KEY" =~ ^[A-Za-z0-9._-]{20,}$ ]] ||
   die "chave pública Supabase ausente ou truncada"
 
+# shellcheck source=lib/release-preflight.sh
+source "$SCRIPT_DIR/lib/release-preflight.sh"
+assert_release_tree_is_publishable "$PROJECT_DIR"
+
 cd "$PROJECT_DIR"
 echo "== Validação local do Wolfie standalone =="
 npm run typecheck:wolfie-web
