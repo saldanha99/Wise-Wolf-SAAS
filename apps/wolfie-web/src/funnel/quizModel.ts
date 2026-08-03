@@ -342,6 +342,9 @@ const stepAcceptsValue = (stepId: QuizStepId, value: unknown): boolean => {
   return step?.options.some((option) => option.value === value) ?? false;
 };
 
+export const isQuizGoal = (value: unknown): value is QuizGoal =>
+  stepAcceptsValue("goal", value);
+
 export const sanitizeQuizAnswers = (input: unknown): QuizAnswers => {
   if (!isRecord(input)) return {};
 
@@ -432,6 +435,53 @@ export const parseQuizSnapshot = (
   } catch {
     return null;
   }
+};
+
+export interface QuizStartResolution {
+  snapshot: PublicQuizSnapshotV2;
+  shouldStartNew: boolean;
+  shouldRemoveStoredSnapshot: boolean;
+  cleanSearch: string | null;
+}
+
+/**
+ * Resolve o estado inicial sem alterar URL ou storage. A aplicação aplica os
+ * efeitos depois do primeiro render, mantendo a inicialização segura no
+ * StrictMode e o comportamento simples de testar.
+ */
+export const resolveQuizStart = (
+  search: string,
+  serializedSnapshot: string | null,
+): QuizStartResolution => {
+  const params = new URLSearchParams(search);
+  const shouldStartNew = params.get("novo") === "1";
+  const requestedGoal = params.get("objetivo");
+  const prefilledGoal = shouldStartNew && isQuizGoal(requestedGoal)
+    ? requestedGoal
+    : null;
+  const hasManagedParams = params.has("novo") || params.has("objetivo");
+
+  if (hasManagedParams) {
+    params.delete("novo");
+    params.delete("objetivo");
+  }
+
+  if (shouldStartNew) {
+    return {
+      snapshot: createQuizSnapshot(prefilledGoal ? { goal: prefilledGoal } : {}),
+      shouldStartNew: true,
+      shouldRemoveStoredSnapshot: false,
+      cleanSearch: hasManagedParams ? params.toString() : null,
+    };
+  }
+
+  const storedSnapshot = parseQuizSnapshot(serializedSnapshot);
+  return {
+    snapshot: storedSnapshot ?? createQuizSnapshot({}),
+    shouldStartNew: false,
+    shouldRemoveStoredSnapshot: Boolean(serializedSnapshot && !storedSnapshot),
+    cleanSearch: hasManagedParams ? params.toString() : null,
+  };
 };
 
 const resolveRecommendationIds = (

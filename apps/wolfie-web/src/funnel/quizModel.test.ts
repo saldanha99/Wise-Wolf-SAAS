@@ -6,8 +6,10 @@ import {
   answerQuizStep,
   createQuizSnapshot,
   isQuizComplete,
+  isQuizGoal,
   parseQuizSnapshot,
   recommendQuizExperience,
+  resolveQuizStart,
   sanitizeQuizAnswers,
   serializeQuizSnapshot,
   type CompleteQuizAnswers,
@@ -25,6 +27,42 @@ const baseAnswers: CompleteQuizAnswers = {
 };
 
 describe("modelo do quiz público do Wolfie", () => {
+  it("aceita somente objetivos enumerados para pré-preencher o diagnóstico", () => {
+    expect(isQuizGoal("global_meeting")).toBe(true);
+    expect(isQuizGoal("conversation")).toBe(true);
+    expect(isQuizGoal("qualquer_coisa")).toBe(false);
+    expect(isQuizGoal(null)).toBe(false);
+  });
+
+  it("resolve URL, snapshot e etapa inicial sem executar efeitos colaterais", () => {
+    const existing = serializeQuizSnapshot(createQuizSnapshot({ goal: "travel" }));
+    const prefilled = resolveQuizStart(
+      "?novo=1&objetivo=interview&utm_source=cenario",
+      existing,
+    );
+
+    expect(prefilled.shouldStartNew).toBe(true);
+    expect(prefilled.cleanSearch).toBe("utm_source=cenario");
+    expect(prefilled.snapshot.answers).toEqual({ goal: "interview" });
+    expect(prefilled.snapshot.currentStep).toBe("context");
+
+    const invalid = resolveQuizStart("?novo=1&objetivo=inventado", existing);
+    expect(invalid.snapshot.answers).toEqual({});
+    expect(invalid.snapshot.currentStep).toBe("goal");
+    expect(invalid.cleanSearch).toBe("");
+  });
+
+  it("preserva snapshot válido e sinaliza somente storage inválido para limpeza", () => {
+    const existing = serializeQuizSnapshot(createQuizSnapshot({ goal: "travel" }));
+    const resumed = resolveQuizStart("", existing);
+    const malformed = resolveQuizStart("", "conteúdo inválido");
+
+    expect(resumed.snapshot.answers).toEqual({ goal: "travel" });
+    expect(resumed.shouldRemoveStoredSnapshot).toBe(false);
+    expect(malformed.snapshot.answers).toEqual({});
+    expect(malformed.shouldRemoveStoredSnapshot).toBe(true);
+  });
+
   it("mantém um fluxo curto de oito etapas, com respostas fechadas e texto pt-BR", () => {
     expect(PUBLIC_QUIZ_STEPS).toHaveLength(8);
     expect(PUBLIC_QUIZ_STEPS.map((step) => step.id)).toEqual([

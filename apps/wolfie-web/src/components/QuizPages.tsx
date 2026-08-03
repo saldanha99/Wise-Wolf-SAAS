@@ -24,7 +24,7 @@ import {
   answerQuizStep,
   createQuizSnapshot,
   isQuizComplete,
-  parseQuizSnapshot,
+  resolveQuizStart,
   serializeQuizSnapshot,
   type QuizAnswers,
   type QuizGoal,
@@ -72,28 +72,14 @@ const iconForGoal: Record<QuizGoal, typeof BriefcaseBusiness> = {
   conversation: Mic2,
 };
 
-const loadSnapshot = () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("novo") === "1") {
-    localStorage.removeItem(PUBLIC_QUIZ_STORAGE_KEY);
-    clearQuizResult();
-    params.delete("novo");
-    const search = params.toString();
-    window.history.replaceState(
-      {},
-      "",
-      `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`,
-    );
-    return createQuizSnapshot({});
-  }
-  const serialized = localStorage.getItem(PUBLIC_QUIZ_STORAGE_KEY);
-  const snapshot = parseQuizSnapshot(serialized);
-  if (!snapshot && serialized) localStorage.removeItem(PUBLIC_QUIZ_STORAGE_KEY);
-  return snapshot ?? createQuizSnapshot({});
-};
+const readQuizStart = () => resolveQuizStart(
+  window.location.search,
+  localStorage.getItem(PUBLIC_QUIZ_STORAGE_KEY),
+);
 
 export function QuizPage() {
-  const initial = useMemo(loadSnapshot, []);
+  const [quizStart] = useState(readQuizStart);
+  const initial = quizStart.snapshot;
   const [answers, setAnswers] = useState<QuizAnswers>(initial.answers);
   const [stepIndex, setStepIndex] = useState(() =>
     Math.max(0, PUBLIC_QUIZ_STEPS.findIndex((step) => step.id === initial.currentStep))
@@ -102,6 +88,26 @@ export function QuizPage() {
   const progress = ((stepIndex + 1) / PUBLIC_QUIZ_STEPS.length) * 100;
   const art = answers.goal ? goalArt[answers.goal] : goalArt.global_meeting;
   const questionHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (quizStart.cleanSearch !== null) {
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${quizStart.cleanSearch ? `?${quizStart.cleanSearch}` : ""}${window.location.hash}`,
+      );
+    }
+
+    if (quizStart.shouldStartNew) {
+      clearQuizResult();
+      localStorage.setItem(
+        PUBLIC_QUIZ_STORAGE_KEY,
+        serializeQuizSnapshot(quizStart.snapshot),
+      );
+    } else if (quizStart.shouldRemoveStoredSnapshot) {
+      localStorage.removeItem(PUBLIC_QUIZ_STORAGE_KEY);
+    }
+  }, [quizStart]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });

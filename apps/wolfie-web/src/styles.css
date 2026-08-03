@@ -111,6 +111,13 @@ a {
   animation: premium-voice-breathe 4.8s ease-in-out infinite;
 }
 
+.premium-scene-description {
+  transition:
+    max-height 260ms ease,
+    margin 260ms ease,
+    opacity 180ms ease;
+}
+
 @media (min-width: 768px) {
   .premium-scene-card {
     flex: 1 1 0%;
@@ -121,23 +128,44 @@ a {
       transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .premium-scene-card.is-featured {
-    flex-grow: 1.42;
-  }
-}
-
-@media (min-width: 768px) and (hover: hover) {
-  .premium-scene-rail:hover .premium-scene-card:not(:hover),
-  .premium-scene-rail:focus-within .premium-scene-card:not(:focus-within) {
+  .premium-scene-card:not(.is-selected) {
     opacity: 0.76;
   }
 
-  .premium-scene-card:hover,
-  .premium-scene-card:focus-within {
+  .premium-scene-card.is-selected {
     z-index: 2;
     height: 500px;
     flex-grow: 1.9;
     transform: translateY(-4px);
+  }
+}
+
+.premium-scene-card:focus-visible {
+  box-shadow:
+    0 0 0 4px #fff,
+    0 0 0 7px rgb(231 45 61 / 0.78),
+    0 24px 60px rgb(34 35 40 / 0.16);
+}
+
+@media (max-width: 767px) {
+  .premium-scene-card {
+    min-height: 132px;
+    height: 132px;
+    transition:
+      height 420ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 220ms ease;
+  }
+
+  .premium-scene-card.is-selected {
+    min-height: 430px;
+    height: 430px;
+  }
+
+  .premium-scene-card:not(.is-selected) .premium-scene-description {
+    max-height: 0;
+    margin-top: 0;
+    overflow: hidden;
+    opacity: 0;
   }
 }
 
@@ -221,8 +249,14 @@ a {
   }
 
   .premium-journey-step,
-  .premium-scene-card {
+  .premium-scene-card,
+  .premium-scene-description {
     opacity: 1 !important;
+    transform: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .premium-scene-card img {
     transform: none !important;
     transition-duration: 0.01ms !important;
   }

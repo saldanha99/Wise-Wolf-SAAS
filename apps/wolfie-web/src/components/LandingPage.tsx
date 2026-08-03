@@ -26,6 +26,7 @@ import {
 } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { ALL_EXPERIENCES } from "../../../../src/components/wolfie/experienceCatalog";
+import type { QuizGoal } from "../funnel/quizModel";
 import { WolfieLink } from "../router";
 import { PublicPage } from "./PublicChrome";
 import {
@@ -34,34 +35,39 @@ import {
   ParallaxVisual,
   Reveal,
 } from "./landing/LandingMotion";
+import { LandingTutorDemo } from "./landing/LandingTutorDemo";
 
 const experiences = [
   {
-    title: "Reunião global",
-    description: "Entre na conversa, apresente seu ponto e confirme decisões.",
-    image: "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp",
-    icon: BriefcaseBusiness,
-  },
-  {
+    goal: "interview" as const,
     title: "Entrevista",
     description: "Organize exemplos e responda perguntas com mais clareza.",
     image: "/assets/wolfie/scenes/career/job-interviews/desktop.dc0f18a9a9dc.webp",
     icon: MessageCircleMore,
   },
   {
+    goal: "presentation" as const,
     title: "Apresentação",
     description: "Ensaie ideias, transições e perguntas inesperadas.",
     image: "/assets/wolfie/scenes/skill-labs/presentation-lab/desktop.45863e9a8305.webp",
     icon: Presentation,
-    featured: true,
   },
   {
+    goal: "global_meeting" as const,
+    title: "Reunião global",
+    description: "Entre na conversa, apresente seu ponto e confirme decisões.",
+    image: "/assets/wolfie/scenes/global-meetings/meetings-technology/desktop.cc9f82869f7f.webp",
+    icon: BriefcaseBusiness,
+  },
+  {
+    goal: "travel" as const,
     title: "Viagem",
     description: "Resolva situações cotidianas com mais autonomia.",
     image: "/assets/wolfie/scenes/daily-life/services/desktop.f4718b4b2fcc.webp",
     icon: Plane,
   },
   {
+    goal: "conversation" as const,
     title: "Conversação",
     description: "Fale sobre temas reais sem depender de frases prontas.",
     image: "/assets/wolfie/scenes/speaking/give-your-opinion/desktop.66b5facc2154.webp",
@@ -307,6 +313,11 @@ function StickyLearningJourney() {
 }
 
 export function LandingPage() {
+  const reducedMotion = useReducedMotion();
+  const [selectedGoal, setSelectedGoal] = useState<QuizGoal>("global_meeting");
+  const selectedExperience = experiences.find(({ goal }) => goal === selectedGoal)
+    ?? experiences[2];
+
   return (
     <LandingMotionRoot>
       <PublicPage>
@@ -372,19 +383,59 @@ export function LandingPage() {
             <Reveal className="relative mt-14" direction="scale" amount={0.12}>
               <div className="premium-scenario-aura" aria-hidden="true" />
               <div className="premium-scene-rail relative flex flex-col gap-4 md:h-[520px] md:flex-row md:items-center">
-                {experiences.map(({ title, description, image, icon: Icon, featured }) => (
-                  <article key={title} tabIndex={0} className={`premium-scene-card group relative min-h-[360px] overflow-hidden rounded-[32px] bg-[#17191f] text-left shadow-[0_18px_45px_rgba(34,35,40,.1)] outline-none md:h-[430px] md:min-h-0 ${featured ? "is-featured md:h-[500px]" : ""}`}>
+                {experiences.map(({ goal, title, description, image, icon: Icon }) => {
+                  const selected = goal === selectedGoal;
+                  return (
+                  <button
+                    key={goal}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setSelectedGoal(goal)}
+                    className={`premium-scene-card group relative min-h-[360px] overflow-hidden rounded-[32px] bg-[#17191f] text-left shadow-[0_18px_45px_rgba(34,35,40,.1)] outline-none md:h-[430px] md:min-h-0 ${selected ? "is-selected md:h-[500px]" : ""}`}
+                  >
                     <img src={image} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105 group-focus:scale-105" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
                     <div className="absolute inset-x-0 bottom-0 p-5">
-                      <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/20 bg-white/15 text-white backdrop-blur-md"><Icon size={18} /></span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="grid h-10 w-10 place-items-center rounded-2xl border border-white/20 bg-white/15 text-white backdrop-blur-md"><Icon size={18} /></span>
+                        {selected ? <span className="rounded-full border border-white/20 bg-white/90 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[.13em] text-[#b92333]">Selecionado</span> : null}
+                      </div>
                       <h3 className="mt-4 font-display text-xl font-extrabold text-white">{title}</h3>
                       <p className="premium-scene-description mt-2 text-sm leading-6 text-white/75">{description}</p>
-                      {featured ? <WolfieLink href="/quiz" className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-[#24252a]">Começar por aqui <ChevronRight size={15} /></WolfieLink> : null}
                     </div>
-                  </article>
-                ))}
+                  </button>
+                  );
+                })}
               </div>
+              <m.div
+                key={selectedGoal}
+                initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reducedMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+                className="relative mx-auto mt-7 flex max-w-3xl flex-col items-center justify-between gap-5 rounded-[28px] border border-black/[.07] bg-white p-5 text-left shadow-[0_20px_55px_rgba(38,39,44,.08)] sm:flex-row sm:p-6"
+              >
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#e72d3d]">Seu ponto de partida</p>
+                  <p className="mt-2 font-display text-xl font-extrabold text-[#202126]">{selectedExperience.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#777b84]">Você vê a recomendação antes de informar seus dados.</p>
+                </div>
+                <WolfieLink href={`/quiz?novo=1&objetivo=${selectedGoal}`} className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-full bg-[#c91f30] px-6 py-3 text-sm font-extrabold text-white shadow-[0_14px_30px_rgba(201,31,48,.2)] transition hover:bg-[#af1828] sm:w-auto">
+                  Montar meu treino <ArrowRight size={17} />
+                </WolfieLink>
+              </m.div>
+            </Reveal>
+          </div>
+        </section>
+
+        <section className="px-5 py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl">
+            <Reveal className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#e72d3d]">Presença em tempo real</p>
+              <h2 className="mt-4 font-display text-4xl font-extrabold tracking-[-.055em] text-[#191a1e] sm:text-6xl">O personagem ouve, responde e acompanha o ritmo da fala.</h2>
+              <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-[#737781]">A animação tem uma função: deixar claro quando o Wolfie está ouvindo, pensando ou falando, sem transformar a prática em distração.</p>
+            </Reveal>
+            <Reveal className="mt-14" direction="scale" amount={0.08}>
+              <LandingTutorDemo />
             </Reveal>
           </div>
         </section>

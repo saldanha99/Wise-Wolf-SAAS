@@ -12,15 +12,12 @@ export function WolfieBrand({
   const onDark = tone === "dark";
 
   return (
-    <WolfieLink href="/" className="inline-flex items-center" ariaLabel="Wise Wolf — Wolfie AI Tutor — início">
-      <span className={`${onDark ? "px-1" : "rounded-[15px] bg-[#17191f] px-3 py-2 shadow-[0_10px_28px_rgba(24,25,31,.14)]"} inline-flex items-center justify-center`}>
-        <img
-          src="/assets/wolfie/brand/wise-wolf-logo-horizontal-dark.png"
-          alt="Wise Wolf Languages"
-          width="114"
-          height="36"
-          className={`${compact ? "h-6" : "h-7"} w-auto object-contain`}
-          decoding="async"
+    <WolfieLink href="/" className="inline-flex shrink-0 items-center" ariaLabel="Wise Wolf — Wolfie AI Tutor — início">
+      <span className={`${onDark ? "px-1" : "min-w-[113px] rounded-[15px] bg-[#17191f] px-3 py-2 shadow-[0_10px_28px_rgba(24,25,31,.14)]"} inline-flex shrink-0 items-center justify-center`}>
+        <span
+          aria-hidden="true"
+          className={`${compact ? "h-6 w-[76px]" : "h-7 w-[89px]"} block shrink-0 bg-contain bg-center bg-no-repeat`}
+          style={{ backgroundImage: "url('/assets/wolfie/brand/wise-wolf-logo-horizontal-dark.png')" }}
         />
       </span>
       <span className="sr-only">Wolfie AI Tutor</span>
@@ -34,7 +31,7 @@ export function PublicHeader() {
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 px-3 pt-3 sm:px-5 lg:px-10 lg:pt-4">
-      <div className="pointer-events-auto mx-auto flex min-h-[66px] max-w-[1380px] items-center justify-between rounded-[26px] border border-black/[.065] bg-white/[.92] px-3.5 shadow-[0_14px_45px_rgba(31,32,38,.09)] backdrop-blur-xl sm:px-5">
+      <div className="pointer-events-auto mx-auto flex min-h-[66px] max-w-[1380px] items-center justify-between rounded-[26px] border border-black/[.065] bg-white/[.98] px-3.5 shadow-[0_14px_45px_rgba(31,32,38,.09)] sm:px-5">
         <WolfieBrand />
         <nav className="hidden items-center gap-7 lg:flex" aria-label="Navegação principal">
           <WolfieLink href="/como-funciona" className="text-[13px] font-bold text-[#4f5561] transition hover:text-[#111318]">Como funciona</WolfieLink>
