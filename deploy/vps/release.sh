@@ -245,6 +245,7 @@ npm test
 npm run wolfie:assets:verify
 npx --yes deno test --no-lock \
   supabase/functions/lesson-planner/core.test.ts \
+  supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
   supabase/functions/wolfie-brain/classic-global-meeting.test.ts \

@@ -236,6 +236,7 @@ npx vitest run \
   src/services/wolfieRealtimeHandoff.test.tsx
 npx --yes deno test --no-lock \
   supabase/functions/_shared/request-auth.test.ts \
+  supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
   supabase/functions/wolfie-brain/adaptive-language-policy.test.ts \

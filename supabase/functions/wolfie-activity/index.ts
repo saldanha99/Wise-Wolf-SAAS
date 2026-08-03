@@ -18,6 +18,7 @@ import {
   parseExperienceContext,
   selectActivityPersonalization,
 } from "./personalization.ts";
+import { auditQuestionKey } from "./answer-key-audit.ts";
 import {
   applyMeetingReadaptationContract,
   assessMeetingAttempt,
@@ -865,14 +866,22 @@ function normalizeQuestions(value: unknown): NormalizedQuestion[] {
   return value
     .filter(isJsonObject)
     .map((question, index) => {
-      const rawOptions = boundedStringArray(question.options, 6, 300);
+      // Normaliza SEM descartar posições: `correctIndex` é um índice sobre o
+      // array que o modelo enviou, então filtrar itens vazios/não-string antes
+      // de ler o gabarito deslocaria a resposta certa em silêncio.
+      const rawOptions = Array.isArray(question.options)
+        ? question.options.map((option) =>
+          typeof option === "string" ? option.trim().slice(0, 300) : ""
+        )
+        : [];
       const rawCorrectIndex = question.correctIndex;
       const originalCorrectIndex = typeof rawCorrectIndex === "number" &&
           Number.isInteger(rawCorrectIndex)
         ? rawCorrectIndex
         : -1;
       const correctOption = rawOptions[originalCorrectIndex] ?? "";
-      const options = Array.from(new Set(rawOptions));
+      const options = Array.from(new Set(rawOptions.filter(Boolean)))
+        .slice(0, 6);
       for (
         let optionIndex = options.length - 1;
         optionIndex > 0;
@@ -886,13 +895,32 @@ function normalizeQuestions(value: unknown): NormalizedQuestion[] {
         ];
       }
       const correctIndex = options.indexOf(correctOption);
-      return {
-        id: boundedString(question.id, 80) || `q${index + 1}`,
-        prompt: boundedString(question.prompt, 1_200),
+      const id = boundedString(question.id, 80) || `q${index + 1}`;
+      const prompt = boundedString(question.prompt, 1_200);
+      const explanationPt = boundedString(question.explanationPt, 1_000) ||
+        "A alternativa correta é a que combina com o sentido e a estrutura deste contexto.";
+      // A IA propõe o gabarito; a auditoria determinística tem poder de veto.
+      // Questão reprovada sai com correctIndex -1 e é descartada no filtro
+      // abaixo — nunca é "corrigida" por adivinhação.
+      const audit = auditQuestionKey({
+        prompt,
         options,
         correctIndex,
-        explanationPt: boundedString(question.explanationPt, 1_000) ||
-          "A alternativa correta é a que combina com o sentido e a estrutura deste contexto.",
+        explanationPt,
+      });
+      if (audit.status === "rejected") {
+        console.warn("[wolfie-activity] gabarito reprovado na auditoria", {
+          questionId: id,
+          code: audit.code,
+          detail: audit.detail,
+        });
+      }
+      return {
+        id,
+        prompt,
+        options,
+        correctIndex: audit.status === "rejected" ? -1 : correctIndex,
+        explanationPt,
         term: boundedString(question.term, 120) || undefined,
         translation: boundedString(question.translation, 240) || undefined,
         definitionPt: boundedString(question.definitionPt, 500) || undefined,
@@ -4687,6 +4715,23 @@ async function handleCheckAnswer(
     correctIndex < 0 ||
     correctIndex >= options.length
   ) {
+    throw new HttpError(503, "ANSWER_KEY_INVALID");
+  }
+  // Segunda barreira: sessões criadas ANTES da auditoria ainda têm gabarito
+  // não verificado no banco. Reprovar aqui é melhor do que ensinar errado.
+  const storedKeyAudit = auditQuestionKey({
+    prompt: boundedString(safeQuestion.prompt, 1_200),
+    options: options.map((option) => boundedString(option, 300)),
+    correctIndex,
+    explanationPt: boundedString(keyQuestion.explanationPt, 1_000),
+  });
+  if (storedKeyAudit.status === "rejected") {
+    console.error("[wolfie-activity] gabarito armazenado reprovado", {
+      sessionId: session.id,
+      questionId,
+      code: storedKeyAudit.code,
+      detail: storedKeyAudit.detail,
+    });
     throw new HttpError(503, "ANSWER_KEY_INVALID");
   }
   const correct = selectedIndex === correctIndex;

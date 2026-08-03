@@ -49,6 +49,10 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Esta tentativa já foi encerrada. Comece uma nova prática para continuar.",
   ANSWER_KEY_UNAVAILABLE:
     "O feedback desta pergunta está indisponível no momento. Tente novamente.",
+  // Auditoria de gramática reprovou o gabarito desta questão: melhor não
+  // corrigir do que corrigir errado. Não adianta repetir a mesma pergunta.
+  ANSWER_KEY_INVALID:
+    "Encontramos uma inconsistência na correção desta pergunta e preferimos não te dar um feedback errado. Gere uma nova prática para continuar.",
   QUESTION_NOT_FOUND:
     "Esta pergunta não foi encontrada. Gere uma nova atividade.",
   INVALID_ANSWER: "Escolha uma alternativa válida para continuar.",

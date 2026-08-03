@@ -453,3 +453,59 @@ concluir que um erro é posterior ao deploy.
   - **Badge cinza** `UserX · "INATIVO · SEM NOTIFICAÇÕES"` no card; o card inteiro fica **esmaecido** (`opacity-60 grayscale`, borda slate).
   - **Botão por aluno** (`handleToggleStatus`): `UserX` (inativar, âmbar) ↔ `UserCheck` (reativar, esmeralda), com `window.confirm` explicando que os dados são mantidos. Chama `set_student_status` e atualiza o estado local otimista.
 - ⚠️ **Pegadinha:** o gating só silencia valores **explicitamente inativos** (`Inativo` / `INACTIVE` / `Inactive` / `Arquivado` / `Cancelado` / `Trancado`) ou `status_financial='ARCHIVED'`. **Nunca** silencia `'Ativo'` / `'ACTIVE'` / `null` — em produção só existem `'Ativo'` e `'ACTIVE'` (ambos ativos), então o default é "notifica". Ao adicionar uma automação nova, prefira `is_student_notifiable(uuid)` em vez de reescrever a lista (evita drift).
+
+---
+
+## Auditoria Determinística do Gabarito (`answer-key-audit`) ✅
+
+> **Bug real (03/08/2026):** o quiz marcou **"am / like / am"** como resposta correta em
+> *"Hi! My name ___ Ana. I ___ sports. ... I ___ from Curitiba."*, produzindo **"My name am Ana"** —
+> e a própria explicação dizia `'My name is' usa 'is'`. Um aluno viu a plataforma validar um erro
+> de gramática básica. **Prioridade máxima: credibilidade pedagógica.**
+
+**Causa raiz:** `correctIndex` é **autoral do modelo**. A edge `wolfie-activity` pedia
+`{prompt, options, correctIndex, explanationPt}` ao OpenRouter e gravava o gabarito em
+`wolfie_activity_keys.answer_key` **sem nenhuma verificação**. Não era bug de embaralhamento nem
+de mapeamento — era o modelo apontando o índice errado, com explicação certa ao lado.
+
+**Regra de ouro: a IA PROPÕE, o código VETA.**
+
+- **`supabase/functions/wolfie-activity/answer-key-audit.ts`** — auditoria determinística, sem modelo:
+  - **Regra 1 — concordância de classe fechada.** Preenche as lacunas com CADA alternativa e checa
+    pronome + cópula/auxiliar (`I am` / `he is` / `they are` / `she has` / `I do`…). Inclui a regra
+    universal: **só o pronome `I` licencia `am`** — é o que reprova `My name am Ana`. Rejeita quando
+    o gabarito viola E outra alternativa é limpa.
+  - **Regra 2 — explicação × gabarito.** Extrai trechos entre aspas da `explanationPt` e compara o
+    par (sujeito, verbo) com o que o gabarito produz. `'My name is'` + gabarito `name am` = incoerência.
+    Guarda contra contraexemplo: só considera citação que já é gramatical (não dispara em "nunca diga 'he have'").
+  - **Nunca "corrige" o índice.** Reprovou → a questão sai de circulação. Adivinhar gabarito seria o mesmo erro.
+  - **Só rejeita com CERTEZA.** Fora do alcance das regras → `unknown` → segue o fluxo. Falso negativo é aceitável;
+    falso positivo só desperdiça geração. Cada regra tem guarda: sujeito coordenado (`Ana and I are`),
+    inversão (`Does he have`), subjuntivo (`If I were you`), `9 am` (horário), WH-word.
+
+**Duas barreiras (as duas necessárias):**
+1. **Geração** — `normalizeQuestions` audita cada questão; reprovada sai com `correctIndex = -1` e é
+   descartada. Se sobrarem <6 questões, `normalizeGeneratedActivity` cai no **banco curado**
+   (`buildContextualFallback`, em `personalization.ts`). ⚠️ Por isso o teste
+   `"nenhuma questão do banco curado é reprovada"` é obrigatório: se a auditoria reprovasse o próprio
+   fallback, `normalizeGeneratedActivity` recursionaria infinitamente.
+2. **Conferência** — `handleCheckAnswer` re-audita o gabarito **lido do banco**. Sessões criadas ANTES
+   dessa mudança têm gabarito não verificado; ali o servidor devolve `ANSWER_KEY_INVALID` (503) em vez
+   de ensinar errado. Mensagem pt-BR em `src/services/wolfieActivityService.ts`.
+
+**Bug latente corrigido junto:** `normalizeQuestions` usava `boundedStringArray()` (que **descarta**
+itens vazios/não-string) e só depois lia `rawOptions[correctIndex]` — uma opção vazia vinda do modelo
+**deslocava o gabarito em silêncio**. Agora a normalização preserva as posições e só filtra depois de
+capturar a alternativa correta.
+
+**O que a auditoria NÃO faz:** não prova que o gabarito está certo, só que não viola regra decidível.
+Semântica, vocabulário e tempo verbal continuam por conta do modelo — por isso `q4`/`q5` de gramática
+básica (`is/are/am`) são o alvo, que é onde dói na credibilidade.
+
+**Observabilidade:** log `[wolfie-activity] gabarito reprovado na auditoria` (geração) e
+`gabarito armazenado reprovado` (conferência). Grepar isso nos logs da edge mede a taxa real de erro do modelo.
+
+**Testes:** `supabase/functions/wolfie-activity/answer-key-audit.test.ts` (12 casos, inclui o print da aluna
+como regressão). Registrado em `deploy/vps/release.sh` e `release-wolfie.sh`.
+⚠️ `fallbackQuiz()` em `index.ts` é **código morto** (nunca chamado) — o fallback real é
+`buildContextualFallback` de `personalization.ts`. Não confie no primeiro ao mexer no banco curado.
