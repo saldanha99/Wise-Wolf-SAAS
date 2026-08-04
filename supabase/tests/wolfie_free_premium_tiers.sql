@@ -152,8 +152,10 @@ exception
 end;
 $$;
 
+-- Neste ponto a franquia do passo 2 é do TENANT (plan_id nulo), então vale
+-- também para este aluno: o esperado aqui é premium, não gratuito.
 select pg_temp.assert_true(
-  (public.my_wolfie_tier() ->> 'tier') = 'FREE',
+  (public.my_wolfie_tier() ->> 'reason') = 'franquia_disponivel',
   'my_wolfie_tier deveria responder pelo proprio aluno');
 
 reset role;
