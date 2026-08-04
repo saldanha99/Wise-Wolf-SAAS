@@ -278,8 +278,13 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
 
   // Ruído de grupo: descartado ANTES da IA, porque é o caso mais frequente e o
   // mais barato de reconhecer.
-  const RUIDO = /^(ok(ay)?|blz|beleza|certo|show|top|kk+|k?haha+|rs+|vlw|valeu|obrigad[oa]|de nada|bom dia|boa tarde|boa noite|sim|não|nao|👍|👏|✅|❤️|🙏|😂|🐺)[\s!.,]*$/i;
-  if (pergunta.length < 6 || RUIDO.test(pergunta)) return;
+  const RUIDO = /^(ok(ay)?|blz|beleza|certo|show|top|kk+|k?haha+|rs+|vlw|valeu|obrigad[oa]|de nada|bom dia|boa tarde|boa noite|👍|👏|✅|❤️|🙏|😂|🐺)[\s!.,]*$/i;
+  // "sim" tem 3 letras e cairia no filtro de curto — mas confirmação É curta por
+  // natureza. Ela passa aqui e é resolvida logo abaixo, contra a ação pendente;
+  // se não houver ação pendente, aí sim vira ruído e para.
+  const CONFIRMACAO = /^\s*(sim|s|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato|n[ãa]o|nao|cancela|deixa|esquece|errado)\b[\s!.,]*$/i;
+  const ehConfirmacao = CONFIRMACAO.test(pergunta);
+  if (!ehConfirmacao && (pergunta.length < 6 || RUIDO.test(pergunta))) return;
 
   const { data: owners } = await sb.from("profiles").select("tenant_id, role")
     .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
@@ -312,7 +317,12 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
   const { data: pend } = await sb.from("gestao_acao_pendente")
     .select("acao, resumo, expires_at").eq("group_jid", groupJid).maybeSingle();
 
-  if (pend && new Date(pend.expires_at).getTime() > Date.now()) {
+  const temPendente = !!pend && new Date(pend.expires_at).getTime() > Date.now();
+  // Confirmação sem nada a confirmar é conversa entre pessoas ("ok", "pode").
+  // Não vale uma chamada de modelo.
+  if (ehConfirmacao && !temPendente) return;
+
+  if (temPendente && pend) {
     if (NAO.test(pergunta)) {
       await sb.from("gestao_acao_pendente").delete().eq("group_jid", groupJid);
       await sendWhats(instance, groupJid, "Ok, cancelado. Nada foi lançado.");
