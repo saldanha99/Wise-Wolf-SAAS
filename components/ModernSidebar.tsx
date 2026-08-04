@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bot,
     Mic,
+    Menu,
+    Compass,
+    FileBarChart,
+    Scale,
     LayoutDashboard,
     BookOpen,
     Target,
@@ -37,6 +41,7 @@ import {
     Gift,
     UserPlus,
     TrendingUp,
+    CalendarOff,
     ShieldAlert,
     X
 } from 'lucide-react';
@@ -46,6 +51,7 @@ import {
     User as UserType,
     UserRole,
 } from '../types';
+import { ADMIN_NAV, groupForTab } from '../lib/adminNav';
 
 interface ModernSidebarProps {
     tenant: Tenant;
@@ -63,6 +69,8 @@ interface ModernSidebarProps {
     pendingCounts?: Record<string, number>; // contadores de pendência por área (badges)
     tenantMemberships?: TenantMembershipOption[];
     onTenantSwitch?: (tenantId: string) => Promise<void>;
+    /** Reabre o tour guiado. Ausente = papel sem roteiro. */
+    onOpenTour?: () => void;
 }
 
 interface MenuItem {
@@ -72,6 +80,7 @@ interface MenuItem {
     badge?: number | string;
     section?: string;        // grupo do menu (ex: "Pessoas", "Financeiro")
     badgeKey?: string;       // chave em pendingCounts que vira badge (ex: "acolhimento")
+    primary?: boolean;       // uso diário — ganha lugar na barra inferior do celular
 }
 
 const ModernSidebar: React.FC<ModernSidebarProps> = ({
@@ -90,6 +99,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     pendingCounts = {},
     tenantMemberships = [],
     onTenantSwitch,
+    onOpenTour,
 }) => {
     const [isMobile, setIsMobile] = useState(() =>
         typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
@@ -240,50 +250,13 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'referral', label: 'Indicações', icon: Gift },
     ];
 
-    const schoolAdminMenu: MenuItem[] = [
-        // ── Visão geral ──
-        { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Visão geral' },
-        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Visão geral' },
-        // ── Pessoas ──
-        { id: 'students', label: 'Alunos', icon: GraduationCap, section: 'Pessoas' },
-        { id: 'student-insights', label: 'Painel de Alunos', icon: TrendingUp, section: 'Pessoas' },
-        { id: 'teachers', label: 'Professores', icon: Users, section: 'Pessoas' },
-        { id: 'teacher-insights', label: 'Gestão de Profs', icon: ShieldAlert, section: 'Pessoas' },
-        { id: 'approvals', label: 'Acolhimento (Docs)', icon: CheckCircle, section: 'Pessoas', badgeKey: 'acolhimento' },
-        { id: 'recruiting', label: 'Recrutamento', icon: UserPlus, section: 'Pessoas' },
-        { id: 'hr', label: 'Recursos Humanos', icon: Briefcase, section: 'Pessoas' },
-        // ── Aulas ──
-        { id: 'schedule_explorer', label: 'Mapa de Aulas', icon: CalendarClock, section: 'Aulas' },
-        { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca' },
-        { id: 'trials', label: 'Agendar Experimental', icon: Zap, section: 'Aulas' },
-        { id: 'trial-settlement', label: 'Pagar Exp./Treino', icon: CheckCircle, section: 'Aulas', badgeKey: 'trials' },
-        { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Aulas' },
-        // ── Pedagógico ──
-        { id: 'pedagogical', label: 'Biblioteca', icon: Book, section: 'Pedagógico' },
-        { id: 'material-approvals', label: 'Aprovar Materiais', icon: FileText, section: 'Pedagógico', badgeKey: 'materiais' },
-        { id: 'learning_paths_builder', label: 'Trilhas', icon: Target, section: 'Pedagógico' },
-        { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico' },
-        { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico' },
-        // ── Financeiro ──
-        { id: 'student-payments', label: 'Mensalidades (Alunos)', icon: CreditCard, section: 'Financeiro' },
-        { id: 'payments', label: 'Repasse a Profs', icon: DollarSign, section: 'Financeiro' },
-        { id: 'cashflow', label: 'Fluxo de Caixa', icon: Wallet, section: 'Financeiro' },
-        { id: 'ai-costs', label: 'Custo de IA', icon: Bot },
-        { id: 'verify-rooms', label: 'Verificar Salas', icon: Video, section: 'Aulas' },
-        { id: 'financial', label: 'Lançamentos do Caixa', icon: Wallet, section: 'Financeiro' },
-        // ── Crescimento ──
-        { id: 'crm', label: 'CRM & Funil', icon: Users, section: 'Crescimento' },
-        { id: 'marketing', label: 'Site & Vendas', icon: Globe, section: 'Crescimento' },
-        { id: 'referral-admin', label: 'Indicações', icon: Gift, section: 'Crescimento' },
-        { id: 'vendors-mgmt', label: 'Vendedores', icon: TrendingUp, section: 'Crescimento' },
-        // ── Configurações ──
-        { id: 'contracts', label: 'Contratos', icon: FileText, section: 'Configurações' },
-        { id: 'settings_school', label: 'Branding', icon: Palette, section: 'Configurações' },
-        { id: 'automation', label: 'WhatsApp (Conexão)', icon: Zap, section: 'Configurações' },
-        { id: 'automations', label: 'Disparos WhatsApp', icon: Bell, section: 'Configurações' },
-        { id: 'tenant_advanced', label: 'Config. Avançada', icon: Settings, section: 'Configurações' },
-        { id: 'admin_workflows', label: 'Workflows', icon: Repeat, section: 'Configurações' },
-    ];
+    // Deriva de ADMIN_NAV (lib/adminNav.ts), fonte única do menu e das abas.
+    // A lista à mão que vivia aqui tinha 37 itens, uma entrada sem seção e duas
+    // fora de ordem — o que fazia "Financeiro" aparecer duas vezes na tela.
+    const schoolAdminMenu: MenuItem[] = ADMIN_NAV.map(g => ({
+        id: g.id, label: g.label, icon: g.icon, section: g.section,
+        badgeKey: g.badgeKey, primary: g.primary,
+    }));
 
     const superAdminMenu: MenuItem[] = [
         { id: 'dashboard', label: 'Visão Global', icon: Shield },
@@ -310,6 +283,13 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     };
 
     const menuItems = getMenuItems();
+
+    // A aba ativa pode ser uma SUB-ABA (ex.: 'balancete' dentro de Relatórios).
+    // Sem isto o menu não destacaria nada e o diretor ficaria sem saber onde
+    // está — que é metade da queixa de "menu confuso".
+    const activeMenuId = (user.role === UserRole.SCHOOL_ADMIN
+        ? groupForTab(activeTab)?.id
+        : undefined) ?? activeTab;
     const expanded = isMobile || !isCollapsed;
     const drawerHidden = isMobile && !isOpen;
 
@@ -500,6 +480,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     aria-label="Seções do sistema"
                     className="min-h-0 space-y-1 overflow-y-auto overscroll-contain scroll-py-2 pb-2 pr-1 [scrollbar-gutter:stable]"
                     data-sidebar-scroll-region="true"
+                    data-tour="sidebar-nav"
                     onKeyDown={handleMenuKeyDown}
                 >
                     {menuItems.map((item, idx) => {
@@ -521,7 +502,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                 <Option
                                     Icon={item.icon}
                                     title={item.label}
-                                    selected={activeTab}
+                                    selected={activeMenuId}
                                     itemId={item.id}
                                     setSelected={(id: string) => {
                                         setActiveTab(id);
@@ -549,7 +530,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         <Option
                             Icon={Settings}
                             title="Meu Perfil"
-                            selected={activeTab}
+                            selected={activeMenuId}
                             itemId={'profile'}
                             setSelected={(id: string) => {
                                 setActiveTab(id);
@@ -594,8 +575,61 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                             </span>
                         )}
                     </button>
+
+                    {onOpenTour && (
+                        <button
+                            onClick={() => { onOpenTour(); setIsOpen(false); }}
+                            data-sidebar-focusable="true"
+                            title="Rever o tour guiado"
+                            className="flex h-10 w-full items-center rounded-xl px-3 text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+                        >
+                            <Compass className="h-5 w-5 shrink-0" />
+                            {expanded && <span className="text-sm font-bold ml-2">Tour guiado</span>}
+                        </button>
+                    )}
                 </div>
             </nav>
+
+            {/*
+              BARRA INFERIOR (celular) — só para quem tem menu grande.
+              O diretor tem 17 entradas; caçá-las numa gaveta a cada troca de tela
+              é o que torna o celular inviável. Aqui ficam as marcadas `primary`
+              (o trabalho do dia) e um botão que abre o menu inteiro.
+              Papéis com menu curto não ganham a barra: seria repetir a gaveta.
+            */}
+            {user.role === UserRole.SCHOOL_ADMIN && (
+                <div className="lg:hidden fixed bottom-0 inset-x-0 z-[80] flex items-stretch justify-between gap-1 px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))] bg-brand-surface border-t border-brand-border">
+                    {menuItems.filter(i => i.primary).map(item => {
+                        const ativo = activeMenuId === item.id;
+                        const badge = item.badgeKey ? pendingCounts[item.badgeKey] : undefined;
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => { setActiveTab(item.id); setIsOpen(false); }}
+                                aria-current={ativo ? 'page' : undefined}
+                                className={`relative flex flex-1 min-w-0 flex-col items-center justify-end gap-1 rounded-xl py-1.5 transition-colors ${
+                                    ativo ? 'text-brand-primary' : 'text-brand-muted'
+                                }`}
+                            >
+                                <item.icon size={22} strokeWidth={ativo ? 2.6 : 2} />
+                                <span className="text-[10px] font-bold leading-none truncate max-w-full px-0.5">{item.label}</span>
+                                {!!badge && badge > 0 && (
+                                    <span className="absolute top-0.5 right-1/4 text-[9px] font-black px-1 rounded-full bg-amber-500 text-white">
+                                        {badge}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                    <button
+                        onClick={() => setIsOpen(true)}
+                        className="flex flex-1 min-w-0 flex-col items-center justify-end gap-1 rounded-xl py-1.5 text-brand-muted"
+                    >
+                        <Menu size={22} />
+                        <span className="text-[10px] font-bold leading-none">Menu</span>
+                    </button>
+                </div>
+            )}
         </>
     );
 };

@@ -38,6 +38,18 @@ serve(async (req) => {
       return html(page('Cobertura recusada', `Tudo bem. A coordenação será avisada e buscará outro professor para ${dataFmt} às ${cov.class_time}.`, '#fbbf24'));
     }
     await S.from('class_coverages').update({ status: 'confirmed', confirmed_at: new Date().toISOString() }).eq('id', cov.id);
+
+    // O aceite tem que MOVER O PAGAMENTO, não só marcar a linha como confirmada.
+    // Era exatamente o que faltava: a cobertura era registrada e a aula continuava
+    // na folha de quem não deu. Se a aula já foi lançada, o class_log muda de
+    // professor e os dois fechamentos pendentes são recalculados; se ainda é
+    // futura, a linha confirmada redireciona o lançamento.
+    const { error: applyErr } = await S.rpc('apply_coverage_acceptance', { p_coverage_id: cov.id });
+    if (applyErr) {
+      console.error('apply_coverage_acceptance falhou:', applyErr.message);
+      return html(page('Cobertura confirmada, com pendência', `Você assumiu a aula de ${dataFmt} às ${cov.class_time}, mas o pagamento não foi transferido automaticamente. Avise a coordenação para conferir. Detalhe: ${applyErr.message}`, '#fbbf24'));
+    }
+
     return html(page('Cobertura confirmada! ✅', `Você assumiu a aula de ${dataFmt} às ${cov.class_time}. Ela aparecerá na sua agenda e será contabilizada no seu pagamento. Obrigado! 🐺💜`, '#34d399'));
   } catch (e) {
     return html(page('Erro', (e as Error).message, '#f87171'), 500);

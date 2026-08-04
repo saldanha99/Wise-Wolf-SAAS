@@ -40,6 +40,11 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     // WhatsApp (Conexão); 'individual' manda DM só pros professores ativos.
     // Padrão = grupo (preferência do diretor).
     const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('group');
+    // TRIAL = aula experimental de aluno · TRAINING = treinamento de professor.
+    // Sem este campo o broadcast caía sempre em TRIAL, e o treinamento entrava na
+    // folha como AULA EXPERIMENTAL a R$ 8,00 em vez de R$ 16,00 de treinador —
+    // foi o que aconteceu com o treinamento da Teacher Lais em julho/2026.
+    const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
 
     const [loading, setLoading] = useState(false);
 
@@ -98,6 +103,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                     interests: studentInterests,
                     preferred_slots: preferredSlots.length > 0 ? preferredSlots : undefined,
                     dispatch_mode: dispatchMode,
+                    kind,
                 })
             });
 
@@ -290,6 +296,37 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                             {/* Dispatch Mode Toggle */}
                             <div className="space-y-3">
                                 <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
+                                    <Zap size={14} /> Tipo da oportunidade
+                                </p>
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind('TRIAL')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRIAL'
+                                            ? 'bg-indigo-600 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        Aula experimental
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind('TRAINING')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRAINING'
+                                            ? 'bg-indigo-600 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        Treinamento de professor
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-brand-muted font-medium px-1">
+                                    {kind === 'TRIAL'
+                                        ? 'Aluno novo experimentando. Entra na folha a R$ 8,00 e só paga depois que o comparecimento for registrado.'
+                                        : 'Professor treinando professor. Quem MINISTRA recebe R$ 16,00 e quem é TREINADO recebe R$ 8,00.'}
+                                </p>
+
+                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2 pt-2">
                                     <Send size={14} /> Como disparar
                                 </p>
                                 <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">

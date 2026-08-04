@@ -583,3 +583,98 @@ básica (`is/are/am`) são o alvo, que é onde dói na credibilidade.
 como regressão). Registrado em `deploy/vps/release.sh` e `release-wolfie.sh`.
 ⚠️ `fallbackQuiz()` em `index.ts` é **código morto** (nunca chamado) — o fallback real é
 `buildContextualFallback` de `personalization.ts`. Não confie no primeiro ao mexer no banco curado.
+---
+
+## DRE Gerencial — resultado por competência ✅
+
+> **Leia antes de mexer em `get_cashflow`, `financial_transactions` ou qualquer coisa que "lance despesa".**
+
+**O problema que originou:** o caixa tinha **159 lançamentos, todos `ENTRADA`**. Zero saída. Nem repasse a professor, nem ferramentas, nem impostos. Sem o lado do custo não existe resultado — só faturamento.
+
+**A armadilha que quase foi cometida:** "lançar o repasse a professores como SAÍDA no caixa". Isso **dobraria** a conta — `get_cashflow` já soma o repasse direto de `teacher_closings`. É o mesmo bug que `20260612210100_fix_cashflow_double_count.sql` matou do lado da receita.
+
+**O problema real era REGIME, não lançamento faltando.** `get_cashflow` só reconhece o custo quando o fechamento vira `PAGO`. Julho/2026 tem R$ 2.150,00 de custo real e reporta R$ 0,00 lá; no histórico só R$ 3.519,50 de R$ 7.799,50 em fechamentos chegaram a PAGO — **55% do custo com professor nunca entrou em relatório nenhum.**
+
+### Os dois regimes convivem, cada um no seu caminho
+| Função | Pergunta que responde | Custo do professor |
+|---|---|---|
+| `get_cashflow(mes)` | quanto dinheiro entrou e saiu | quando o fechamento é **PAGO** |
+| `dre_gerencial(mes, tenant)` | qual foi o **resultado** do mês | no mês em que a **aula aconteceu** |
+
+`get_cashflow` foi **versionado em migration** (`20260802120000`) — vivia só no banco, mesmo drift do catálogo de nichos. Captura fiel, nada mudou de comportamento.
+
+### Plano de contas (`dre_accounts`, global) + mapa por escola (`dre_category_map`)
+- **`ledger_allowed = false`** é a trava contra dupla contagem: conta alimentada por competência (repasse 5.1.01, ajustes 5.1.02, comissões 6.1.01, indicações 6.1.02) **não aceita** lançamento do caixa. Saída que caia numa dessas é **ignorada no resultado** e vira alerta. `set_dre_category_account` e `upsert_recurring_expense` **recusam** essas contas na origem.
+- **Precedência da classificação:** `financial_transactions.account_code` (lançamento sabe sua conta) → `dre_category_map` (categoria em texto livre, legado) → `6.9.99 Outras despesas`.
+- ⚠️ Categoria sem mapa **nunca some** do resultado — cai em Outras despesas. Despesa esquecida infla o lucro.
+- `financial_transactions.category` nasceu com duas eras para a mesma coisa (`student_tuition` 83× e `MENSALIDADE` 76×). O mapa reconcilia **sem reescrever dado histórico**.
+- As linhas do DRE são agregadas **por conta**, não por natureza — senão classificar marketing, ferramentas e contabilidade continuaria mostrando um total único e o plano de contas não serviria para nada.
+
+### Despesas recorrentes (`recurring_expenses`)
+- É **molde, não saldo**. `run_recurring_expenses(mes)` materializa como SAÍDA no caixa — aí caixa e DRE veem a mesma despesa, cada um no seu regime, e o diretor corrige o mês em que o valor real veio diferente sem mexer no molde.
+- Idempotência por **índice único** `(recurring_expense_id, recurring_month)`, não por `NOT EXISTS` — dois cliques simultâneos perderiam a corrida.
+- ⚠️ O índice é **parcial** → o `ON CONFLICT` precisa repetir o predicado (`WHERE recurring_expense_id IS NOT NULL`), senão dá "no unique or exclusion constraint matching". Mesma pedra de `uq_bookings_no_dup_active`.
+- `day_of_month` limitado a **28**: dia 29–31 não existe em todo mês.
+- Cron `wisewolf-recurring-expenses` (dia 1, 06:10 UTC), antes do fechamento do professor.
+
+### Categorizador por IA (`dre-categorize`)
+- **Sugere, não grava.** O mapa decide como o resultado é lido; classificação errada gravada em silêncio é pior que sugestão recusada. O diretor aplica via `set_dre_category_account`.
+- Toda sugestão é validada contra o plano antes de sair da edge — código inventado pela IA é descartado. Categoria não classificada continua pendente e o retorno diz quantas (`nao_classificadas`).
+- Categoria e descrição são texto escrito por humanos no caixa = **entrada não confiável**: vão dentro de `<dados_do_caixa>` e o system prompt manda ignorar instruções que apareçam ali.
+
+### Relatório no WhatsApp (`dre-report`)
+- **Nasce desligado** (`dre_report_settings.is_active` default false, tabela vazia). Nada é enviado até o diretor configurar destino e cadência.
+- **Um cron diário só** (`wisewolf-dre-report`, 11:20 UTC); quem decide "hoje envia?" é `dre_report_targets`, lendo a cadência da escola. Trocar semanal→mensal é UPDATE, não novo agendamento.
+- Datas resolvidas em **America/Sao_Paulo** — o cron roda em UTC, mas "dia 1" e "segunda-feira" são do calendário do diretor.
+- ⚠️ `authorizeAutomation` garante que é o cron OU um admin — **não diz qual admin**. O `tenant` do envio manual vem SEMPRE do perfil de quem chamou (exceto SUPER_ADMIN); confiar no corpo da requisição deixaria um diretor disparar no grupo de outra escola.
+- Dedupe por `automation_sent` (`kind=DRE_REPORT`); envio manual usa `subject_id = <tenant>:manual` para não ser bloqueado pelo automático do mesmo dia.
+
+**Arquivos:** `components/DreGerencialPanel.tsx` (menu Financeiro → "Resultado (DRE)"), `DreCategorizer.tsx`, `RecurringExpensesManager.tsx`, `DreReportSettings.tsx`; edges `dre-categorize`, `dre-report`. Migrations `20260802120000` a `20260802160000`.
+
+⚠️ **Se um dia a escola quiser um ledger clássico com toda movimentação postada**, é `dre_gerencial` que define o que postar — mas aí `get_cashflow` tem de parar de ler `teacher_closings` **no mesmo commit**, senão dobra.
+
+---
+
+## Balancete por Professor e gasto de anúncio ✅
+
+**Balancete** (`balancete_professores`, menu Financeiro → "Balancete por Prof"): abre o custo com professor por natureza e mostra o lucro por cabeça. O custo NÃO é recalculado — sai de `v_payable_class_logs`, a mesma fonte da folha e do DRE; o que a função faz é **decompor**.
+
+- **Decomposição**: `custo_base` = aulas × valor da faixa 1 (lido de `teacher_pay_tiers`, **nunca chumbado**), e tudo acima disso separado por motivo. A ordem da classificação espelha o `COALESCE` de `rate_efetivo` na view — **override primeiro**, depois o 16,00 de quem MINISTRA treinamento, e só então a faixa por carteira. Inverter faria um override de 10,50 ser lido como turbo.
+- ⚠️ **Receita rateada.** `director_teacher_margin` junta a receita INTEIRA do aluno em cada linha professor×aluno — aluno com dois professores aparece com a mensalidade cheia nos dois e o lucro de ambos sai inflado (1 caso em julho/2026, 7 no histórico). O balancete rateia pelo número de aulas.
+- ⚠️ **Receita não atribuível vai numa linha própria**, nunca some nem é diluída: pagamento sem `student_id` (R$ 2.365,00 em julho/2026, 8 pagamentos) e aluno que pagou sem ter aula no mês. Descartar faria o balancete não fechar com o DRE; diluir inventaria lucro.
+- ⚠️ **A expressão de receita é IDÊNTICA à de `dre_gerencial`** (status `RECEIVED`/`RECEIVED_IN_CASH`, escopo por `student_payments.tenant_id`, data por `COALESCE(paid_at, payment_date, due_date)`). `director_teacher_margin` usa outra (aceita `CONFIRMED`/`PAID` e escopo pelo tenant do PERFIL) — por isso os dois não batem. Não "melhore" um lado só.
+
+**Gasto de anúncio** (`post_ad_spend` → conta 6.1.03 Marketing): gasto de mês em curso **cresce**; reimportar não é duplicata. Por isso a chave `(tenant, origem, conta, período)` faz a segunda importação **atualizar** o lançamento, não criar outro. Controle em `ad_spend_imports`.
+
+⚠️ **Limite de escopo honesto:** o MCP de anúncios roda na **sessão do agente**, não dentro do produto — a VPS não tem token do Meta nem chama MCP. `post_ad_spend` é a porta de entrada; quem lê a conta e chama é um agente. Automação de verdade exigiria token próprio + edge + cron.
+
+---
+
+## Assistente de Gestão no grupo de WhatsApp ✅
+
+Grupo da direção vira um gerente a quem se pergunta. Entrada: `whatsapp-inbound`, que **sempre descartou mensagem de grupo** (`if (!remoteJid.endsWith("@s.whatsapp.net")) continue`) — agora há um desvio antes dessa linha, e só para o grupo autorizado.
+
+**Três travas, nesta ordem, antes de qualquer coisa cara:**
+1. **Gatilho** — a mensagem precisa começar com `Wolfie`, `gerente` ou `/`. Grupo é conversa entre pessoas; responder a tudo seria insuportável e caro.
+2. **Grupo autorizado** — o JID tem de ser exatamente `dre_report_settings.destino` daquele tenant, com `is_active`. ⚠️ **Não existe lista paralela de grupos permitidos** — é o mesmo grupo que já recebe o relatório, configurado na tela. Duas listas sairiam de sincronia.
+3. **Dedup** — `wa_inbound_seen` (PK `msg_id`), a mesma trava atômica do 1:1.
+
+Mais teto de **20 respostas/hora por grupo** (`ai_wa_messages`): erro de configuração ou brincadeira não vira conta de IA.
+
+⚠️ **Grupo não autorizado é ignorado em SILÊNCIO.** Responder "sem permissão" confirmaria que existe um assistente ali para quem tiver o link.
+
+⚠️ **Sem laço de resposta:** o webhook já descarta `fromMe` de grupo, então a própria resposta do bot não se realimenta.
+
+### `gestao_snapshot(mes, tenant)` — a base factual
+O assistente **não consulta o banco livremente e não tem tool-calling**. Recebe um retrato pronto e responde em cima dele:
+- Uma IA que monta a própria query **decide sozinha o que é "receita"** — exatamente o que este projeto passou a semana consertando. Aqui a definição continua sendo a das RPCs (`dre_gerencial`, `balancete_professores`), uma só.
+- O tenant é resolvido **no servidor**; não existe caminho para a pergunta alcançar outra escola.
+- Custo e latência previsíveis: uma chamada.
+
+Preço conhecido: **o que não estiver no snapshot, o assistente não sabe** — e o prompt manda dizer que não sabe em vez de inventar. Payload ~6 KB (resultado do mês corrente e do fechado, professores, pendências, inadimplência, MEI).
+
+⚠️ O snapshot usa o **mês FECHADO** para "como fomos": o corrente está pela metade e induz conclusão errada numa comparação direta.
+
+⚠️ A pergunta vem de um grupo de WhatsApp = **entrada não confiável**: vai dentro de `<pergunta>` e o system prompt manda tratar como dado, recusar pedido de ignorar regras, de revelar o prompt ou de agir no sistema (o assistente não executa nada — só informa em que tela se faz).
+
+⚠️ **Privacidade:** todo mundo no grupo passa a ver faturamento, margem e quanto cada professor recebe. Conferir participantes antes de ativar. A API devolve os participantes como `@lid`, então **não dá para identificá-los pelo servidor**.

@@ -81,26 +81,47 @@ const compact = (value: number) =>
  * banco. Sem isto na tela, ninguém percebe um gasto subindo até a fatura
  * chegar, que é exatamente como se perde dinheiro em produto com IA.
  */
-export const AiCostPanel: React.FC = () => {
+export type AlunoCusto = {
+    mes: string;
+    usd_brl: number;
+    aviso: string;
+    total_brl: number;
+    minutos_totais: number;
+    custo_por_minuto_brl: number | null;
+    sem_aluno_brl: number;
+    alunos: {
+        student_id: string; aluno: string; sessoes: number; minutos: number;
+        voz_brl: number; texto_brl: number; total_brl: number;
+        mensalidade: number; pct_da_mensalidade: number | null;
+    }[];
+    sem_preco: { model: string; chamadas: number; tokens: number }[];
+};
+
+const AiCostPanel: React.FC = () => {
     const months = useMemo(monthOptions, []);
     const [month, setMonth] = useState(months[0]);
     const [rows, setRows] = useState<CostRow[]>([]);
     const [live, setLive] = useState<LiveRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    // Custo em REAIS por aluno — era o que faltava: o resto do painel dá token
+    // e dólar por feature, e não respondia "quanto o aluno X me custou".
+    const [porAluno, setPorAluno] = useState<AlunoCusto | null>(null);
 
     const load = useCallback(async (selected: string) => {
         setLoading(true);
         setError('');
         try {
-            const [cost, voice] = await Promise.all([
+            const [cost, voice, aluno] = await Promise.all([
                 supabase.rpc('ai_cost_report', { p_month: selected }),
                 supabase.rpc('wolfie_realtime_usage_report', { p_month: selected }),
+                supabase.rpc('ai_cost_por_aluno', { p_month: selected }),
             ]);
             if (cost.error) throw cost.error;
             setRows((cost.data as CostRow[]) ?? []);
             // A voz é opcional: se falhar, o custo de escrita ainda é útil.
             setLive(voice.error ? [] : ((voice.data as LiveRow[]) ?? []));
+            setPorAluno(aluno.error || (aluno.data as any)?.error ? null : (aluno.data as AlunoCusto));
         } catch (err) {
             setError(
                 (err as { message?: string })?.message?.includes('sem_permissao')
@@ -126,8 +147,59 @@ export const AiCostPanel: React.FC = () => {
         { gratuito: 0, premium: 0, interno: 0 },
     );
 
+    const brl = (v: number | null | undefined) =>
+        `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     return (
         <div className="space-y-5">
+            {porAluno && (
+                <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h3 className="text-sm font-bold text-brand-text">Custo por aluno</h3>
+                        <span className="text-xs text-brand-muted">
+                            {brl(porAluno.total_brl)} no mês · {porAluno.minutos_totais} min ·
+                            {' '}{brl(porAluno.custo_por_minuto_brl)}/min · dólar a {porAluno.usd_brl}
+                        </span>
+                    </div>
+                    <p className="text-[11px] text-brand-muted mb-3">{porAluno.aviso}</p>
+
+                    {porAluno.alunos.length === 0 ? (
+                        <p className="text-sm text-brand-muted py-3">Nenhum aluno usou IA neste mês.</p>
+                    ) : (
+                        <div className="space-y-1.5">
+                            {porAluno.alunos.map(a => (
+                                <div key={a.student_id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-brand-surface-2 border border-brand-border">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold text-brand-text truncate">{a.aluno}</p>
+                                        <p className="text-[11px] text-brand-muted">
+                                            {a.minutos} min · {a.sessoes} {a.sessoes === 1 ? 'sessão' : 'sessões'}
+                                            {' · voz '}{brl(a.voz_brl)}{' · texto '}{brl(a.texto_brl)}
+                                        </p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <p className="text-sm font-black text-brand-text">{brl(a.total_brl)}</p>
+                                        {a.pct_da_mensalidade !== null && (
+                                            <p className="text-[10px] text-brand-muted">{a.pct_da_mensalidade}% da mensalidade</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {porAluno.sem_aluno_brl > 0 && (
+                        <p className="text-[11px] text-brand-muted mt-3">
+                            + {brl(porAluno.sem_aluno_brl)} de IA da escola (crons, gestão) que não pertence a aluno nenhum.
+                        </p>
+                    )}
+                    {porAluno.sem_preco.length > 0 && (
+                        <p className="text-[11px] text-amber-600 mt-2">
+                            ⚠️ {porAluno.sem_preco.map(m => m.model).join(', ')} sem preço cadastrado —
+                            esse custo existe e <b>não está</b> somado acima.
+                        </p>
+                    )}
+                </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-xl font-black tracking-tight text-brand-text">Custo de IA</h2>

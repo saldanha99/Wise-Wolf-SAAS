@@ -1,0 +1,219 @@
+-- Lucro por professor: separar entrega de faturamento.
+--
+-- O balancete media lucro pela receita FATURADA no mês, e isso misturava duas
+-- coisas que não têm nada a ver uma com a outra:
+--   * o professor deu aula (entrega dele);
+--   * a escola conseguiu cobrar (processo da secretaria).
+--
+-- O efeito prático, em julho/2026: Flávio aparecia isolado em primeiro com
+-- R$ 1.177,10, e a distância era artefato. Quatro alunos do Mateus não tinham
+-- assinatura e nunca foram cobrados, enquanto alunos do Flávio pagaram atrasados
+-- de junho DENTRO de julho — inflando um lado e esvaziando o outro. Medido pelo
+-- que cada um entregou, os três primeiros estão praticamente empatados
+-- (Debora 1.059,86 · Mateus 1.021,14 · Flávio 1.006,00).
+--
+-- Agora saem os dois números, com nome que diz o que cada um é:
+--   receita_faturada  — o que entrou. Reconcilia com o DRE. NÃO mudou.
+--   receita_contratada — a mensalidade dos alunos que tiveram aula, rateada
+--                        pelas aulas igual à faturada.
+--   nao_faturado      — a diferença. É a conta que a secretaria deve explicar.
+--
+-- ⚠️ Para COMPARAR PROFESSORES use lucro_contratado. Para saber quanto sobrou no
+-- mês use lucro_faturado (é ele que fecha com o caixa). Um responde "quem
+-- entregou mais", o outro "quanto entrou" — trocar os dois é o erro que esta
+-- migration existe para impedir.
+--
+-- Aluno com mensalidade 0 (cortesia) contribui 0 de contratada, o que é correto:
+-- ninguém pretendia cobrar. Ele aparece no custo e não na receita, e é assim que
+-- deve ser lido.
+
+CREATE OR REPLACE FUNCTION public.balancete_professores(
+  p_month text DEFAULT NULL, p_tenant text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_jwt_role text; v_caller_role text; v_tenant text; v_month text; v_base numeric;
+BEGIN
+  v_jwt_role := COALESCE(current_setting('request.jwt.claims', true)::json->>'role', '');
+  SELECT role, tenant_id INTO v_caller_role, v_tenant FROM profiles WHERE id = auth.uid();
+  IF v_jwt_role IN ('anon','authenticated') THEN
+    IF v_caller_role IS NULL OR v_caller_role NOT IN ('SCHOOL_ADMIN','SUPER_ADMIN','COORDINATOR') THEN
+      RAISE EXCEPTION 'Apenas a direção pode ver o balancete';
+    END IF;
+    IF v_caller_role = 'SUPER_ADMIN' THEN v_tenant := COALESCE(p_tenant, v_tenant); END IF;
+  ELSE
+    v_tenant := COALESCE(p_tenant, v_tenant);
+  END IF;
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Escola não identificada'; END IF;
+
+  v_month := COALESCE(p_month, to_char(current_date,'YYYY-MM'));
+  IF v_month !~ '^\d{4}-\d{2}$' THEN RAISE EXCEPTION 'Mês inválido (use YYYY-MM)'; END IF;
+
+  SELECT rate INTO v_base FROM teacher_pay_tiers
+   WHERE tenant_id = v_tenant AND min_students = 1;
+  v_base := COALESCE(v_base, 0);
+
+  RETURN (
+  WITH aulas AS (
+    SELECT v.id, v.teacher_id, v.student_id, v.rate_efetivo, v.rate_override, v.subtype
+      FROM v_payable_class_logs v
+      JOIN profiles t ON t.id = v.teacher_id
+     WHERE to_char(v.class_date,'YYYY-MM') = v_month AND t.tenant_id = v_tenant
+  ), classificado AS (
+    SELECT a.*,
+           CASE
+             WHEN a.rate_override IS NOT NULL                           THEN 'ajuste'
+             WHEN a.subtype = 'TREINAMENTO' AND a.rate_efetivo > v_base THEN 'treinamento'
+             WHEN a.rate_efetivo > v_base                               THEN 'turbo'
+             ELSE 'base'
+           END AS motivo
+      FROM aulas a
+  ), aulas_aluno_prof AS (
+    SELECT c.student_id, c.teacher_id, count(*)::int AS n
+      FROM classificado c WHERE c.student_id IS NOT NULL
+     GROUP BY 1,2
+  ), aulas_aluno AS (
+    SELECT ap.student_id, sum(ap.n) AS total FROM aulas_aluno_prof ap GROUP BY 1
+  ), receita_aluno AS (
+    SELECT sp.student_id, sum(sp.value) AS receita
+      FROM student_payments sp
+     WHERE sp.tenant_id = v_tenant
+       AND sp.status IN ('RECEIVED','RECEIVED_IN_CASH')
+       AND to_char(COALESCE(sp.paid_at, sp.payment_date, sp.due_date),'YYYY-MM') = v_month
+       AND sp.student_id IS NOT NULL
+     GROUP BY 1
+  ), rateio AS (
+    SELECT ap.teacher_id, ap.student_id,
+           ra.receita * ap.n / NULLIF(aa.total,0) AS receita
+      FROM aulas_aluno_prof ap
+      JOIN aulas_aluno   aa ON aa.student_id = ap.student_id
+      JOIN receita_aluno ra ON ra.student_id = ap.student_id
+  ), rateio_contratado AS (
+    -- Mesmo rateio da faturada, para os dois números serem comparáveis.
+    SELECT ap.teacher_id, ap.student_id,
+           COALESCE(pf.monthly_fee,0) * ap.n / NULLIF(aa.total,0) AS receita
+      FROM aulas_aluno_prof ap
+      JOIN aulas_aluno aa ON aa.student_id = ap.student_id
+      JOIN profiles    pf ON pf.id = ap.student_id
+  ), por_aluno AS (
+    SELECT c.teacher_id, c.student_id,
+           max(COALESCE(sp.full_name,'Aluno não cadastrado')) AS student_name,
+           count(*)::int                          AS aulas,
+           sum(c.rate_efetivo)                    AS custo,
+           count(*) FILTER (WHERE c.motivo = 'turbo')::int AS aulas_turbo,
+           COALESCE(max(r.receita), 0)            AS receita,
+           COALESCE(max(rc.receita), 0)           AS receita_contratada
+      FROM classificado c
+      LEFT JOIN profiles sp ON sp.id = c.student_id
+      LEFT JOIN rateio   r  ON r.teacher_id = c.teacher_id AND r.student_id = c.student_id
+      LEFT JOIN rateio_contratado rc ON rc.teacher_id = c.teacher_id AND rc.student_id = c.student_id
+     WHERE c.student_id IS NOT NULL
+     GROUP BY c.teacher_id, c.student_id
+  ), ajustes AS (
+    SELECT ca.teacher_id, sum(ca.amount) AS valor
+      FROM closing_adjustments ca
+     WHERE ca.tenant_id = v_tenant AND ca.month_year = v_month
+     GROUP BY 1
+  ), por_prof AS (
+    SELECT c.teacher_id,
+           count(*)::int                                              AS aulas,
+           count(DISTINCT c.student_id) FILTER (WHERE c.student_id IS NOT NULL)::int AS alunos,
+           (count(*) * v_base)                                        AS custo_base,
+           sum(CASE WHEN c.motivo='turbo'       THEN c.rate_efetivo - v_base ELSE 0 END) AS comissao_turbo,
+           sum(CASE WHEN c.motivo='treinamento' THEN c.rate_efetivo - v_base ELSE 0 END) AS bonus_treinamento,
+           sum(CASE WHEN c.motivo='ajuste'      THEN c.rate_efetivo - v_base ELSE 0 END) AS ajuste_valor_base,
+           count(*) FILTER (WHERE c.motivo='turbo')::int              AS aulas_turbo,
+           count(*) FILTER (WHERE c.motivo='treinamento')::int        AS aulas_treinamento,
+           count(*) FILTER (WHERE c.motivo='ajuste')::int             AS aulas_ajustadas,
+           sum(c.rate_efetivo)                                        AS custo_aulas
+      FROM classificado c
+     GROUP BY c.teacher_id
+  ), consolidado AS (
+    SELECT p.*,
+           COALESCE(aj.valor, 0)                          AS ajustes_fechamento,
+           p.custo_aulas + COALESCE(aj.valor, 0)          AS custo_total,
+           COALESCE((SELECT sum(r.receita) FROM rateio r WHERE r.teacher_id = p.teacher_id), 0) AS receita,
+           COALESCE((SELECT sum(rc.receita) FROM rateio_contratado rc WHERE rc.teacher_id = p.teacher_id), 0) AS receita_contratada,
+           trim(t.full_name)                              AS teacher_name
+      FROM por_prof p
+      JOIN profiles t   ON t.id = p.teacher_id
+      LEFT JOIN ajustes aj ON aj.teacher_id = p.teacher_id
+  )
+  SELECT jsonb_build_object(
+    'month', v_month,
+    'base_rate', v_base,
+    'como_ler',
+      'Para COMPARAR PROFESSORES use lucro_contratado: ele mede o que o professor entregou, sem a interferência de a escola ter conseguido cobrar ou não. Para saber quanto SOBROU no mês use lucro (faturado) — é ele que fecha com o DRE e com o caixa. nao_faturado positivo = mensalidade que não foi cobrada (responsabilidade da secretaria, não do professor); nao_faturado NEGATIVO = o aluno pagou mais que a mensalidade no mês, quase sempre atrasado de mês anterior caindo agora.',
+    'professores', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'teacher_id', k.teacher_id, 'teacher_name', k.teacher_name,
+        'aulas', k.aulas, 'alunos', k.alunos,
+        'custo_base',         round(k.custo_base,2),
+        'comissao_turbo',     round(k.comissao_turbo,2),
+        'bonus_treinamento',  round(k.bonus_treinamento,2),
+        'ajuste_valor_base',  round(k.ajuste_valor_base,2),
+        'ajustes_fechamento', round(k.ajustes_fechamento,2),
+        'custo_total',        round(k.custo_total,2),
+        'aulas_turbo', k.aulas_turbo, 'aulas_treinamento', k.aulas_treinamento,
+        'aulas_ajustadas', k.aulas_ajustadas,
+        'receita',            round(k.receita,2),
+        'receita_contratada', round(k.receita_contratada,2),
+        'nao_faturado',       round(k.receita_contratada - k.receita,2),
+        'lucro',              round(k.receita - k.custo_total,2),
+        'lucro_contratado',   round(k.receita_contratada - k.custo_total,2),
+        'margem_pct',         round(100 * (k.receita - k.custo_total) / NULLIF(k.receita,0),1),
+        'margem_contratada_pct', round(100 * (k.receita_contratada - k.custo_total) / NULLIF(k.receita_contratada,0),1),
+        'custo_por_aula', round(k.custo_total / NULLIF(k.aulas,0),2),
+        'alunos_detalhe', COALESCE((
+           SELECT jsonb_agg(jsonb_build_object(
+                    'student_id', pa.student_id, 'student_name', pa.student_name,
+                    'aulas', pa.aulas, 'aulas_turbo', pa.aulas_turbo,
+                    'custo', round(pa.custo,2), 'receita', round(pa.receita,2),
+                    'receita_contratada', round(pa.receita_contratada,2),
+                    'nao_faturado', round(pa.receita_contratada - pa.receita,2),
+                    'lucro', round(pa.receita - pa.custo,2))
+                  ORDER BY pa.receita_contratada - pa.custo DESC)
+             FROM por_aluno pa WHERE pa.teacher_id = k.teacher_id), '[]'::jsonb)
+      ) ORDER BY k.receita_contratada - k.custo_total DESC)   -- ← ordena pelo justo
+      FROM consolidado k), '[]'::jsonb),
+    'totais', (SELECT jsonb_build_object(
+        'aulas',              COALESCE(sum(k.aulas),0),
+        'custo_base',         round(COALESCE(sum(k.custo_base),0),2),
+        'comissao_turbo',     round(COALESCE(sum(k.comissao_turbo),0),2),
+        'bonus_treinamento',  round(COALESCE(sum(k.bonus_treinamento),0),2),
+        'ajuste_valor_base',  round(COALESCE(sum(k.ajuste_valor_base),0),2),
+        'ajustes_fechamento', round(COALESCE(sum(k.ajustes_fechamento),0),2),
+        'custo_total',        round(COALESCE(sum(k.custo_total),0),2),
+        'receita_alocada',    round(COALESCE(sum(k.receita),0),2),
+        'receita_contratada', round(COALESCE(sum(k.receita_contratada),0),2),
+        'nao_faturado',       round(COALESCE(sum(k.receita_contratada),0) - COALESCE(sum(k.receita),0),2),
+        'lucro',              round(COALESCE(sum(k.receita),0) - COALESCE(sum(k.custo_total),0),2),
+        'lucro_contratado',   round(COALESCE(sum(k.receita_contratada),0) - COALESCE(sum(k.custo_total),0),2)
+      ) FROM consolidado k),
+    'receita_total', round((SELECT COALESCE(sum(sp.value),0) FROM student_payments sp
+        WHERE sp.tenant_id = v_tenant AND sp.status IN ('RECEIVED','RECEIVED_IN_CASH')
+          AND to_char(COALESCE(sp.paid_at, sp.payment_date, sp.due_date),'YYYY-MM') = v_month),2),
+    'receita_sem_aluno', round((SELECT COALESCE(sum(sp.value),0) FROM student_payments sp
+        WHERE sp.tenant_id = v_tenant AND sp.status IN ('RECEIVED','RECEIVED_IN_CASH')
+          AND to_char(COALESCE(sp.paid_at, sp.payment_date, sp.due_date),'YYYY-MM') = v_month
+          AND sp.student_id IS NULL),2),
+    'receita_aluno_sem_aula', round(
+        (SELECT COALESCE(sum(sp.value),0) FROM student_payments sp
+          WHERE sp.tenant_id = v_tenant AND sp.status IN ('RECEIVED','RECEIVED_IN_CASH')
+            AND to_char(COALESCE(sp.paid_at, sp.payment_date, sp.due_date),'YYYY-MM') = v_month
+            AND sp.student_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM aulas_aluno aa WHERE aa.student_id = sp.student_id)),2),
+    'alunos_multi_professor', (SELECT count(*)::int FROM (
+        SELECT ap.student_id FROM aulas_aluno_prof ap
+         GROUP BY ap.student_id HAVING count(DISTINCT ap.teacher_id) > 1) z)
+  ));
+END;
+$function$;
+
+COMMENT ON FUNCTION public.balancete_professores(text, text) IS
+  'Balancete por professor. lucro_contratado (mensalidade dos alunos atendidos − custo) compara professores isolando falha de cobrança; lucro (faturado) fecha com o DRE. nao_faturado é a diferença.';
+
+REVOKE ALL ON FUNCTION public.balancete_professores(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.balancete_professores(text, text) TO authenticated, service_role;

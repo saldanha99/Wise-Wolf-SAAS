@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck } from 'lucide-react';
+import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck, AlertTriangle } from 'lucide-react';
 
 // =============================================================
 // Central de Pendências do diretor: lê director_pending_counts() e mostra,
@@ -27,6 +27,10 @@ const ITEMS: Item[] = [
   { key: 'trials', label: 'Experimentais/Treinos a pagar', tab: 'trial-settlement', icon: GraduationCap, color: 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30' },
   { key: 'pagamentos_retidos', label: 'Pagamentos retidos por conflito', tab: 'attendance-disputes', icon: Wallet, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
   { key: 'fechamentos', label: 'Fechamentos de professor pendentes', tab: 'payments', icon: DollarSign, color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30' },
+  // Aluno tendo aula que NINGUÉM está cobrando. Não aparece em inadimplência —
+  // cobrança que nunca foi criada não vence. Descoberto em 02/08/2026 com
+  // R$ 4.663,05 já não faturados.
+  { key: 'sem_assinatura', label: 'Alunos tendo aula sem cobrança ativa', tab: 'student-payments', icon: AlertTriangle, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/30' },
 ];
 
 const DirectorPendingCenter: React.FC<Props> = ({ onNavigate }) => {

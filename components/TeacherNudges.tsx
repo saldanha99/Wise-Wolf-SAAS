@@ -115,20 +115,20 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                         found.push({
                             id: 'turboOn', tone: 'emerald', icon: <Flame size={18} />,
                             title: 'Turbo ATIVO 🔥 — não pode faltar!',
-                            text: 'Seus alunos do 5º ao 9º valem R$ 9,50 e do 10º em diante R$ 10,50 por aula. Uma falta (inclusive comprovada pela confirmação dos alunos) zera o turbo por 30 dias.',
+                            text: 'Seus alunos do 5º ao 9º valem R$ 9,50 e do 10º em diante R$ 10,50 por aula. Uma falta OU um conflito de lançamento (aula que o aluno não confirmou) zera o turbo por 30 dias.',
                         });
                     } else if (studentsMissing > 0) {
                         // Regra 04/07/2026: turbo só ativa a partir de 10 alunos ativos
                         found.push({
                             id: 'turboLockedStudents', tone: 'amber', icon: <Flame size={18} />,
                             title: `Faltam ${studentsMissing} aluno${studentsMissing === 1 ? '' : 's'} para você poder ativar o turbo`,
-                            text: `O turbo (R$ 9,50/10,50 por aula) destrava a partir de 10 alunos ativos — hoje você tem ${Number(turbo.students_active || 0)}. Assiduidade e qualidade trazem mais alunos pra você; também é preciso estar há 30 dias sem falta.`,
+                            text: `O turbo (R$ 9,50/10,50 por aula) destrava a partir de 10 alunos na sua agenda — hoje você tem ${Number(turbo.students_active || 0)}. Também é preciso 30 dias sem falta e sem conflito de lançamento.`,
                         });
                     } else if (Number(turbo.days_to_activate) > 0 && Number(turbo.days_clean) > 0) {
                         found.push({
                             id: 'turboOff', tone: 'amber', icon: <Flame size={18} />,
                             title: `Faltam ${turbo.days_to_activate} dias sem falta para destravar o turbo`,
-                            text: 'Assiduidade paga: 30 dias limpos destravam R$ 9,50/10,50 por aula a partir do seu 5º aluno.',
+                            text: 'Assiduidade paga: 30 dias sem falta e sem conflito de lançamento destravam R$ 9,50/10,50 por aula a partir do seu 5º aluno.',
                         });
                     }
                 }

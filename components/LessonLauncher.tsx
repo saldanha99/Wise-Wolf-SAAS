@@ -54,6 +54,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const startDate = new Date();
       startDate.setDate(today.getDate() - LOOKBACK_DAYS);
       const startStr = localYMD(startDate);
+      // Fim da janela = hoje (o lançador só trata aula que já aconteceu).
+      const endStr = localYMD(today);
 
       const allLessons: any[] = [];
       let launchedToday = 0; // quantas aulas de HOJE já foram lançadas (confirmação visual)
@@ -93,6 +95,32 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .eq('teacher_id', user.id)
         .not('day_of_week', 'is', null);
 
+      // COBERTURAS confirmadas da janela: aula que este professor CEDEU sai da
+      // lista dele (ele não deu, não pode lançar nem receber) e aula que ele
+      // ASSUMIU entra — mesmo sendo agendamento de outro professor.
+      const { data: coverages } = await supabase.rpc('coverages_for_teacher', {
+        p_teacher: user.id, p_from: startStr, p_to: endStr,
+      });
+      const covList = (coverages as any[]) || [];
+      const cedidas = new Set(
+        covList.filter(c => c.papel === 'cedida').map(c => `${c.booking_id}|${c.class_date}`)
+      );
+      const assumidas = covList.filter(c => c.papel === 'assumida');
+
+      // Agendamentos assumidos pertencem a OUTRO professor, então não vêm em
+      // allBookings — buscamos os que faltam para montar a aula com o aluno certo.
+      let assumedBookings: any[] = [];
+      if (assumidas.length > 0) {
+        const ids = Array.from(new Set(assumidas.map(c => c.booking_id).filter(Boolean)));
+        if (ids.length > 0) {
+          const { data } = await supabase
+            .from('bookings')
+            .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+            .in('id', ids);
+          assumedBookings = (data as any[]) || [];
+        }
+      }
+
       const { data: allReschedules } = await supabase
         .from('reschedules')
         .select('id, time, date, fault_type, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
@@ -127,7 +155,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);
 
         // Helper to process lesson
-        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
+        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string, notStartedUntil?: string | null) => {
           const student = b.student as any;
           if (!student) return;
 
@@ -160,6 +188,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             // Origem da reposição (só relevante para REPOSIÇÃO): TEACHER paga, STUDENT não
             faultType: type === 'REPOSIÇÃO' ? (b.fault_type || 'STUDENT') : null,
             isLate: i > 0,
+            // Aluno matriculado com início futuro: aparece na agenda, mas o
+            // lançamento fica bloqueado até a data que veio do link de matrícula.
+            // Antes a aula era simplesmente ocultada — o professor não sabia que o
+            // aluno existia, e quando a data vinha errada (Flavio Ramyres, julho/2026)
+            // ele lançava falta justificada de quem nem tinha começado.
+            notStartedUntil: notStartedUntil || null,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
             suggestedMaterialUrl: topicInfo?.base_material?.file_url || null
@@ -185,16 +219,28 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           // por horário (evita que bookings redundantes virem várias aulas a lançar).
           const slotSeen = new Set<string>();
           for (const b of bookings) {
-            if (b.start_date && dateStr < b.start_date) continue;
+            // Cedida por cobertura: quem dá a aula é outro professor.
+            if (cedidas.has(`${b.id}|${dateStr}`)) continue;
+            const notStarted = b.start_date && dateStr < b.start_date ? b.start_date : null;
             // Hoje: ocultar aulas que ainda não chegou o horário
             if (i === 0 && isStillFutureToday(b.time_slot)) continue;
             if (!b.time_slot) continue; // booking sem horário definido: ignorar
             if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
             slotSeen.add(b.time_slot);
             if (!logs?.some(l => l.booking_id === b.id)) {
-              await processLesson(b, 'REGULAR', b.time_slot);
+              await processLesson(b, 'REGULAR', b.time_slot, notStarted);
             }
           }
+        }
+
+        // Coberturas ASSUMIDAS neste dia: entram na lista de quem vai dar a aula.
+        for (const c of assumidas) {
+          if (c.class_date !== dateStr) continue;
+          const ab = assumedBookings.find(x => x.id === c.booking_id);
+          if (!ab) continue;
+          if (i === 0 && isStillFutureToday(ab.time_slot || c.class_time)) continue;
+          if (logs?.some(l => l.booking_id === ab.id)) continue;
+          await processLesson(ab, 'REGULAR', ab.time_slot || c.class_time);
         }
 
         // Reschedules
@@ -352,10 +398,18 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           }
         }
 
-        // 2. Clear used Reschedules if any
+        // 2. Marca as reposições como usadas — NÃO apaga.
+        // Apagar destruía a prova de quem faltou (reschedules.fault_type), e é
+        // ela que decide se a reposição paga: falta do ALUNO não paga, falta do
+        // PROFESSOR paga. Com a linha apagada, 12 dos 13 class_logs ficaram
+        // apontando para nada e a regra nunca disparava.
+        // A exclusão também era desnecessária: a lista de pendentes já filtra
+        // por "existe class_log apontando para esta reposição?".
         const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
         if (completedReschedules.length > 0) {
-          await supabase.from('reschedules').delete().in('id', completedReschedules);
+          await supabase.from('reschedules')
+            .update({ used_at: new Date().toISOString() })
+            .in('id', completedReschedules);
         }
 
         // 3. Create credits for absences
@@ -505,10 +559,35 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             {(() => {
               // Separa as reposições numa seção dedicada — depois de agendadas e feitas, o
               // professor confirma aqui o que aconteceu (presença / falta do aluno / falta do prof).
-              const repos = todayLessons.filter(l => l.type === 'REPOSIÇÃO');
-              const regular = todayLessons.filter(l => l.type !== 'REPOSIÇÃO');
+              // Aluno matriculado com início futuro: fica VISÍVEL (o professor
+              // precisa saber que ele existe e quando começa) mas FORA do formulário
+              // de lançamento — não vai para o ClassLogForm.
+              const naoIniciadas = todayLessons.filter(l => l.notStartedUntil);
+              const lancaveis = todayLessons.filter(l => !l.notStartedUntil);
+              const repos = lancaveis.filter(l => l.type === 'REPOSIÇÃO');
+              const regular = lancaveis.filter(l => l.type !== 'REPOSIÇÃO');
               return (
                 <div className="space-y-6">
+                  {naoIniciadas.length > 0 && (
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-blue-800">
+                        Ainda não começaram ({naoIniciadas.length})
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-blue-700">
+                        Já estão na sua agenda, mas o lançamento abre só na data de início da matrícula.
+                      </p>
+                      <ul className="mt-3 space-y-1.5">
+                        {naoIniciadas.map((l: any) => (
+                          <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-blue-900">
+                            <span>{l.name} · {l.time}</span>
+                            <span className="whitespace-nowrap text-[11px] font-medium">
+                              começa em {new Date(`${l.notStartedUntil}T12:00:00`).toLocaleDateString('pt-BR')}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {regular.length > 0 && (
                     <ClassLogForm
                       items={regular}

@@ -165,6 +165,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     // Filter
     const [filter, setFilter] = useState<'all' | 'OPEN' | 'WON' | 'LOST'>('all');
+    // Filtro por professor: a escola usa a experimental também para COBRIR aluno
+    // de outro teacher, então o diretor precisa ver o que rolou por professor.
+    const [teacherFilter, setTeacherFilter] = useState<string>('all');
 
     // Pricing carregado do banco (com fallback hardcoded)
     const [pricingMatrix, setPricingMatrix] = useState<PricingMatrix>(pricingService.FALLBACK_PRICING);
@@ -415,9 +418,26 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // FILTERED LIST
     // =============================================================
     const filtered = useMemo(() => {
-        if (filter === 'all') return opportunities;
-        return opportunities.filter(o => o.conversion_status === filter);
-    }, [opportunities, filter]);
+        let list = opportunities;
+        if (filter !== 'all') list = list.filter(o => o.conversion_status === filter);
+        if (teacherFilter !== 'all') {
+            list = teacherFilter === 'none'
+                ? list.filter(o => !o.winner_teacher_id)
+                : list.filter(o => o.winner_teacher_id === teacherFilter);
+        }
+        return list;
+    }, [opportunities, filter, teacherFilter]);
+
+    // Quantas experimentais cada professor pegou — some no seletor para o diretor
+    // enxergar a distribuição sem precisar filtrar um por um.
+    const countByTeacher = useMemo(() => {
+        const map = new Map<string, number>();
+        opportunities.forEach(o => {
+            const key = o.winner_teacher_id || 'none';
+            map.set(key, (map.get(key) || 0) + 1);
+        });
+        return map;
+    }, [opportunities]);
 
     // =============================================================
     // OPEN ENROLLMENT LINK WIZARD
@@ -709,6 +729,31 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         {f === 'all' ? 'Todos' : f === 'OPEN' ? '⏳ Abertos' : f === 'WON' ? '✅ Ganhos' : '❌ Perdidos'}
                     </button>
                 ))}
+
+                <div className="flex items-center gap-2 ml-auto">
+                    <label htmlFor="trial-teacher-filter" className="text-xs font-bold uppercase tracking-widest text-brand-muted">
+                        Professor
+                    </label>
+                    <select
+                        id="trial-teacher-filter"
+                        value={teacherFilter}
+                        onChange={(e) => setTeacherFilter(e.target.value)}
+                        className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    >
+                        <option value="all">Todos os professores ({opportunities.length})</option>
+                        {teachers
+                            .filter(t => countByTeacher.get(t.id))
+                            .sort((a, b) => (countByTeacher.get(b.id) || 0) - (countByTeacher.get(a.id) || 0))
+                            .map(t => (
+                                <option key={t.id} value={t.id}>
+                                    {t.full_name} ({countByTeacher.get(t.id)})
+                                </option>
+                            ))}
+                        {countByTeacher.get('none') && (
+                            <option value="none">Sem professor definido ({countByTeacher.get('none')})</option>
+                        )}
+                    </select>
+                </div>
             </div>
 
             {/* PIPELINE LIST */}

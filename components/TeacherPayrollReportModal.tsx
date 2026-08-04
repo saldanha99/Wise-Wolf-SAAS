@@ -329,19 +329,29 @@ const TeacherPayrollReportModal: React.FC<TeacherPayrollReportModalProps> = ({ t
                                         <p className="text-[10px] font-bold text-brand-muted uppercase tracking-wider">Total de aulas</p>
                                     </div>
                                 </div>
+                                {/* QUEM MANDA É O FECHAMENTO.
+                                    Enquanto esta tela mostrava o recálculo ao vivo e o Repasse mostrava
+                                    o fechamento, as duas divergiam sempre que alguém lançava ou corrigia
+                                    uma aula depois — e o diretor via dois valores para o mesmo professor,
+                                    sem saber qual pagar. O fechamento é o número que ele conferiu e
+                                    aprovou; o recálculo vira "o que mudou desde então". */}
                                 <div className="mt-5 pt-5 border-t border-brand-border flex items-center justify-between">
-                                    <p className="text-xs font-black text-brand-muted uppercase tracking-widest">Valor total</p>
-                                    <p className="text-3xl font-black text-tenant-primary tracking-tight">{money(report.resumo.valor_total)}</p>
+                                    <p className="text-xs font-black text-brand-muted uppercase tracking-widest">
+                                        {report.closing ? 'Valor a pagar (fechamento)' : 'Valor total'}
+                                    </p>
+                                    <p className="text-3xl font-black text-tenant-primary tracking-tight">
+                                        {money(report.closing ? Number(report.closing.total_amount) : report.resumo.valor_total)}
+                                    </p>
                                 </div>
                             </div>
 
-                            {/* Divergência fechamento × relatório (se o fechamento estiver congelado com outro valor) */}
                             {report.closing && Number(report.closing.total_amount) !== Number(report.resumo.valor_total) && (
                                 <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
                                     <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
                                     <p className="text-xs text-amber-800 font-medium leading-relaxed">
-                                        O fechamento registrado deste mês está em <strong>{money(Number(report.closing.total_amount))}</strong> ({report.closing.total_lessons} aulas),
-                                        diferente do recalculado acima — provavelmente houve correção de lançamentos depois do fechamento.
+                                        Recalculando as aulas de hoje daria <strong>{money(report.resumo.valor_total)}</strong> ({report.resumo.total_aulas} aulas) —
+                                        houve lançamento ou correção depois que este fechamento foi gerado.
+                                        O valor a pagar continua sendo o do fechamento; para adotar o novo, regere o fechamento do mês.
                                     </p>
                                 </div>
                             )}

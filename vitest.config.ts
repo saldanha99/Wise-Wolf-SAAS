@@ -9,10 +9,14 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // lib/**/*.test.ts entra porque regra de negócio pura (navegação, datas)
+    // mora em lib/ e não tem .tsx — ficava fora do `npm test` sem ninguém notar.
+    // apps/ cobre o funil standalone do Wolfie, que vive fora de src/.
     include: [
       "src/**/*.test.{ts,tsx}",
       "components/**/*.test.{ts,tsx}",
       "apps/**/*.test.{ts,tsx}",
+      "lib/**/*.test.ts",
     ],
   },
 });

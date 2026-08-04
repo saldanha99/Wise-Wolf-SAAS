@@ -3,6 +3,13 @@ import { createPortal } from 'react-dom';
 import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
+import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
+import ScreenTabs from './components/ScreenTabs';
+import { TourRole } from './lib/tours';
+
+const GuidedTour = lazy(() => import('./components/tour/GuidedTour'));
+/** Papéis com roteiro de tour. Fora daqui, o botão nem aparece. */
+const TOUR_ROLES: string[] = ['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'];
 import {
   UserRole,
   Tenant,
@@ -56,6 +63,10 @@ const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoar
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
+const DreGerencialPanel = lazy(() => import('./components/DreGerencialPanel'));
+const BalanceteProfessores = lazy(() => import('./components/BalanceteProfessores'));
+const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
+const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
 const MeetingLinkVerifier = lazy(() => import('./components/MeetingLinkVerifier'));
 const AutomationPanel = lazy(() => import('./components/AutomationPanel'));
@@ -147,6 +158,8 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'student-payments', label: 'Mensalidades dos Alunos', group: 'Financeiro' },
     { tab: 'payments', label: 'Repasse a Professores', group: 'Financeiro' },
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
+    { tab: 'dre', label: 'Resultado (DRE)', group: 'Financeiro' },
+    { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
@@ -256,6 +269,22 @@ const App: React.FC = () => {
   const [students, setStudents] = useState<any[]>([]); // Cache students for selection
   const [pendingLessonsCount, setPendingLessonsCount] = useState(0);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({}); // pendências do diretor (badges)
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Tour no primeiro acesso. `onboarded` nasce false, então quem nunca viu
+  // recebe uma vez; concluir OU pular marca true e não volta sozinho — o botão
+  // no rodapé do menu traz de volta quando a pessoa quiser.
+  // Comparação estrita de propósito: `null` (perfil antigo, migrado) não dispara.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || !TOUR_ROLES.includes(String(user?.role))) return;
+    let vivo = true;
+    void (async () => {
+      const { data } = await supabase.from('profiles').select('onboarded').eq('id', uid).maybeSingle();
+      if (vivo && data?.onboarded === false) setTourOpen(true);
+    })();
+    return () => { vivo = false; };
+  }, [user?.id, user?.role]);
 
   // Loading State
   const [isLoading, setIsLoading] = useState(false);
@@ -538,6 +567,10 @@ const App: React.FC = () => {
         setStudents(filteredStudents.map(s => ({
           id: s.id,
           name: s.full_name,
+          // full_name e phone são usados pelo aviso de reposição no WhatsApp
+          // (App → onAdd → whatsappService). Sem eles o envio era sempre pulado.
+          full_name: s.full_name,
+          phone: s.phone,
           module: s.module || 'N/A',
           currentBookPart: s.current_book_part,
           evaluationUnlocked: s.evaluation_unlocked
@@ -1004,14 +1037,11 @@ const App: React.FC = () => {
     // Mantém o diretor dentro do escopo dele (abas de aluno/professor/vendedor
     // não pertencem aqui). Redireciona silenciosamente ao Início.
     if (user.role === UserRole.SCHOOL_ADMIN) {
-      const allowedAdminTabs = [
-        'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
-        'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
-        'trial-settlement', 'pedagogical', 'material-approvals', 'learning_paths_builder',
-        'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'ai-costs', 'verify-rooms', 'financial',
-        'crm', 'marketing', 'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school',
-        'automation', 'automations', 'tenant_advanced', 'admin_workflows', 'profile'
-      ];
+      // Deriva da navegação, em vez de repetir a lista à mão: era fácil criar
+      // tela nova, pôr no menu e esquecer aqui — e ela caía no dashboard sem
+      // explicação. 'profile' entra à parte porque é alcançado pelo avatar, não
+      // pelo menu.
+      const allowedAdminTabs = [...ALL_ADMIN_TAB_IDS, 'profile'];
       if (!allowedAdminTabs.includes(activeTab)) {
         setActiveTab('dashboard');
         return null;
@@ -1147,6 +1177,10 @@ const App: React.FC = () => {
       'vendors-mgmt': <VendorManagement user={user} tenantId={currentTenant?.id} />,
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
+      'dre': <DreGerencialPanel user={user} tenantId={currentTenant?.id} />,
+      'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
+      'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
+      'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
       'verify-rooms': <MeetingLinkVerifier />,
       'automations': <AutomationPanel user={user} tenantId={currentTenant?.id} />,
@@ -1179,7 +1213,23 @@ const App: React.FC = () => {
       'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
     };
 
-    return contentMap[activeTab] || contentMap['dashboard'];
+    const node = contentMap[activeTab] || contentMap['dashboard'];
+
+    // Abas em volta da tela quando o id ativo pertence a um grupo do menu do
+    // diretor. Fica AQUI, no fim, e não dentro de cada entrada do contentMap:
+    // assim link direto (`onNavigate('dre')`) e clique no menu chegam ao mesmo
+    // lugar, e nenhuma das 39 telas precisou ser tocada.
+    if (user.role === UserRole.SCHOOL_ADMIN) {
+      const grupo = groupForTab(activeTab);
+      if (grupo) {
+        return (
+          <ScreenTabs group={grupo} activeTab={activeTab} onChange={setActiveTab} pendingCounts={pendingCounts}>
+            {node}
+          </ScreenTabs>
+        );
+      }
+    }
+    return node;
   };
 
   const currentBranding = currentTenant?.branding || {
@@ -1205,6 +1255,7 @@ const App: React.FC = () => {
           }}
           pendingLessonsCount={pendingLessonsCount}
           pendingCounts={pendingCounts}
+          onOpenTour={TOUR_ROLES.includes(user.role as string) ? () => setTourOpen(true) : undefined}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}
@@ -1272,6 +1323,8 @@ const App: React.FC = () => {
                       'schedule_explorer': 'Explorador de Agenda',
                       'approvals': 'Acolhimento (Docs)',
                       'payments': 'Pagamentos',
+                      'margin': 'Custo e Margem',
+                      'coverage': 'Cobertura de Professor',
                       'settings_school': 'Configurações da Escola',
                       'crm': 'CRM & Vendas',
                       'marketing': 'Páginas & Marketing',
@@ -1521,7 +1574,11 @@ const App: React.FC = () => {
             </div>
           </header>
 
-          <div className="p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip">
+          {/* pb extra no celular: a barra inferior do diretor é fixa e cobriria
+              o fim da tela (o último lançamento, o botão de salvar). */}
+          <div className={`p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip ${
+            user.role === UserRole.SCHOOL_ADMIN ? 'pb-24 lg:pb-8' : ''
+          }`}>
             <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 w-full">
@@ -1537,6 +1594,17 @@ const App: React.FC = () => {
         </main>
       </div>
       {(user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) && <SmartFinder user={user} />}
+      {tourOpen && TOUR_ROLES.includes(user.role as string) && (
+        <Suspense fallback={null}>
+          <GuidedTour
+            role={user.role as TourRole}
+            userId={user.id}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onClose={() => setTourOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 
