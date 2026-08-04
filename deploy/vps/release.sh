@@ -334,6 +334,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260803020000_ressalva_lucro_atualizada.sql"
   "supabase/migrations/20260803030000_conta_beneficios.sql"
   "supabase/migrations/20260803040000_custo_ia_por_aluno.sql"
+  "supabase/migrations/20260803050000_reposicao_falta_aluno_nao_paga.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
