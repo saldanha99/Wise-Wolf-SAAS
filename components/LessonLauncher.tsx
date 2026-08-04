@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Save, User as UserIcon, BookOpen, ChevronRight, Sparkles, AlertCircle, CheckCircle, ArrowLeft, RefreshCw, Clock, X, MoreHorizontal, Calendar } from 'lucide-react';
-import { getPedagogicalSuggestion } from '../services/geminiService';
+import { AlertCircle, RefreshCw, Clock, Calendar } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
-import { splitAlreadyLogged } from '../lib/classLogGuard';
+import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
+import ClassLogReward from './ClassLogReward';
 import { User as UserType } from '../types';
 
 interface LessonLauncherProps {
@@ -14,14 +14,14 @@ interface LessonLauncherProps {
 }
 
 const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefresh }) => {
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
   const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
-  const [dupNotice, setDupNotice] = useState<string | null>(null); // aviso quando uma aula já estava lançada (não duplicada)
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Recompensa do lançamento: caixa real (servidor) + XP (arcade). Substitui o
+  // antigo toast "Aulas registradas com perfeição", que não dizia número nenhum.
+  const [reward, setReward] = useState<{ result: ClassLogResult; xp: XpBreakdown } | null>(null);
 
   // A escola do professor vem do próprio perfil quando o App não resolveu o tenant.
   // Sem este fallback a tela ficava PARADA no "Sincronizando Agenda..." para sempre —
@@ -262,160 +262,53 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // Validação de Fechamento Automático removida para permitir lançamento retroativo flexível
-      const entries = Object.keys(formData).map(bookingId => {
-        const item = todayLessons.find(l => String(l.id) === bookingId);
-        const data = formData[bookingId];
+      // Só monta a intenção; QUEM DECIDE é o servidor. O subtype da reposição
+      // (paga x não paga), a criação da reposição da falta, o consumo da
+      // reposição usada, o CRM e a trava anti-duplicata vivem na RPC
+      // `log_teacher_classes` — antes eram 4 chamadas soltas daqui, e a aba
+      // "Pendentes" tinha uma versão divergente das mesmas regras.
+      const entries: ClassLogEntryInput[] = [];
+      const lateFlags: boolean[] = [];
 
-        if (!item) return null;
+      for (const ref of Object.keys(formData)) {
+        const item = todayLessons.find(l => String(l.id) === ref);
+        if (!item) continue;
+        const data = formData[ref];
 
-        const isReschedule = String(bookingId).startsWith('repo-');
-        const isTrial = String(bookingId).startsWith('trial-');
+        const isReschedule = ref.startsWith('repo-');
+        const isTrial = ref.startsWith('trial-');
 
-        return {
-          tenant_id: effectiveTenantId,
-          teacher_id: user.id,
-          student_id: item.studentId || null,
-          booking_id: (!isReschedule && !isTrial) ? bookingId : null,
-          reschedule_id: isReschedule ? bookingId.replace('repo-', '') : null,
-          appointment_id: isTrial ? bookingId.replace('trial-', '') : null,
-          presence: data.type || 'Presença',
-          // Reposição de falta do PROFESSOR é paga (REPOSIÇÃO_PROF); de falta do ALUNO não (REPOSIÇÃO)
-          subtype: item.type === 'AULA EXPERIMENTAL'
-            ? 'AULA EXPERIMENTAL'
-            : item.type === 'TREINAMENTO'
-              ? 'TREINAMENTO'
-              : (isReschedule
-                  ? (item.faultType === 'TEACHER' ? 'REPOSIÇÃO_PROF' : 'REPOSIÇÃO')
-                  : (data.subtype || null)),
-          content_covered: data.lastApplied || null, // Book Selection
-          observations: data.observation || null, // Free text OBS
-
-          // Trial Fields
-          assessment_level: item.type === 'AULA EXPERIMENTAL' ? data.assessment_level : null,
-          psychological_profile: item.type === 'AULA EXPERIMENTAL' ? data.psychological_profile : null,
-          teacher_verdict: item.type === 'AULA EXPERIMENTAL' ? data.teacher_verdict : null,
-
-          // Legacy fields mapping
-          content: data.lastApplied || null,
-          class_date: item.dateObj, // Use the real date of the class
-          created_at: new Date().toISOString()
-        };
-      }).filter(Boolean);
-
-      // Guarda de origem cruzada: barra aula relançada como reposição quando o mesmo
-      // aluno já tem lançamento naquela data (as travas do banco não cobrem esse caso).
-      const { allowed, blocked: crossOriginDups } = await splitAlreadyLogged(supabase, user.id, entries as any[]);
-      let blockedDuplicates = crossOriginDups.length; // aulas que já estavam lançadas
-      if (allowed.length > 0) {
-        // 1. Insert Class Logs — resiliente: se uma aula já foi lançada (23505), NÃO
-        // derruba o lote inteiro. Cai pra inserção linha-a-linha e ignora as duplicatas
-        // (a trava de unicidade do banco garante que nunca há pagamento dobrado).
-        const { error: logError } = await supabase.from('class_logs').insert(allowed);
-        if (logError) {
-          if (logError.code === '23505') {
-            for (const e of allowed) {
-              const { error: rowErr } = await supabase.from('class_logs').insert([e]);
-              if (rowErr) {
-                if (rowErr.code === '23505') {
-                  blockedDuplicates++;
-                  console.warn('[LessonLauncher] Aula já lançada — ignorada (sem duplicar):', e.booking_id || e.appointment_id || e.reschedule_id);
-                } else {
-                  throw rowErr;
-                }
-              }
-            }
-          } else {
-            throw logError;
-          }
-        }
-
-        // Update CRM Leads to TRIAL_DONE
-        const trialEntries = (allowed as any[]).filter(e => e.subtype === 'AULA EXPERIMENTAL');
-        if (trialEntries.length > 0) {
-          for (const entry of trialEntries) {
-            const item = todayLessons.find(l => String(l.id) === `trial-${entry.appointment_id}`);
-            
-            if (entry.student_id) {
-              // Update by student_id if we have it
-              await supabase.from('crm_leads')
-                .update({ status: 'TRIAL_DONE' })
-                .eq('student_id', entry.student_id)
-                .eq('tenant_id', effectiveTenantId);
-            } else if (item?.leadPhone) {
-              // Update by phone if no student_id
-              await supabase.from('crm_leads')
-                .update({ status: 'TRIAL_DONE' })
-                .eq('phone', item.leadPhone)
-                .eq('tenant_id', effectiveTenantId);
-            }
-          }
-        }
-
-        // 2. Clear used Reschedules if any
-        const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
-        if (completedReschedules.length > 0) {
-          await supabase.from('reschedules').delete().in('id', completedReschedules);
-        }
-
-        // 3. Create credits for absences
-        const absences = (allowed as any[]).filter(e =>
-          (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada' || e.presence === 'TEACHER_ABSENCE')
-          && e.subtype !== 'REPOSIÇÃO'
-        );
-
-        if (absences.length > 0) {
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-
-          for (const a of absences) {
-            // Rule: Teacher Fault = Always Create. Student Fault = Limit 5.
-            const isTeacherFault = a.presence === 'TEACHER_ABSENCE';
-
-            // Limite de 5 reposições por falta de ALUNO no mês (falta do professor é ilimitada)
-            const { count, error: countError } = await supabase
-              .from('reschedules')
-              .select('id', { count: 'exact', head: true })
-              .eq('student_id', a.student_id)
-              .eq('fault_type', 'STUDENT')
-              .gte('created_at', startOfMonth);
-
-            const currentCount = count || 0;
-            const canCreate = isTeacherFault || currentCount < 5;
-
-            if (!countError && canCreate) {
-              await supabase.from('reschedules').insert([{
-                tenant_id: effectiveTenantId,
-                teacher_id: user.id,
-                student_id: a.student_id,
-                original_booking_id: a.booking_id,
-                date: 'Pendente',
-                time: 'Pendente',
-                // Marca a origem: TEACHER → reposição paga; STUDENT → não paga
-                fault_type: isTeacherFault ? 'TEACHER' : 'STUDENT',
-                created_at: new Date().toISOString(),
-              }]);
-            }
-          }
-        }
+        entries.push({
+          ref,
+          bookingId: (!isReschedule && !isTrial) ? ref : null,
+          rescheduleId: isReschedule ? ref.replace('repo-', '') : null,
+          appointmentId: isTrial ? ref.replace('trial-', '') : null,
+          classDate: item.dateObj,
+          presence: data.type || 'COMPLETED',
+          absenceReason: data.subtype || null,
+          contentCovered: data.lastApplied || null,
+          observations: data.observation || null,
+          assessmentLevel: item.type === 'AULA EXPERIMENTAL' ? data.assessment_level : null,
+          psychologicalProfile: item.type === 'AULA EXPERIMENTAL' ? data.psychological_profile : null,
+          teacherVerdict: item.type === 'AULA EXPERIMENTAL' ? data.teacher_verdict : null,
+        });
+        lateFlags.push(!!item.isLate);
       }
 
-      if (blockedDuplicates > 0) {
-        setDupNotice(`${blockedDuplicates} aula(s) já estavam lançadas e foram mantidas — não duplicamos nada. ✓`);
-        setTimeout(() => setDupNotice(null), 6000);
-        // Auditoria leve (best-effort, nunca quebra o fluxo): registra a tentativa barrada.
-        try {
-          await supabase.from('debug_logs').insert([{
-            message: `[LessonLauncher] ${blockedDuplicates} lançamento(s) duplicado(s) barrado(s) — prof ${user.id} / tenant ${effectiveTenantId}`
-          }]);
-        } catch (_) { /* ignora: o console.warn já registrou */ }
-      }
-      setShowSuccess(true);
+      if (entries.length === 0) return;
+
+      const result = await logTeacherClasses(entries);
+
+      // XP só das que realmente entraram (celebrar aula ignorada seria mentira).
+      const lancadas = new Set(result.entries.filter(e => e.status === 'lancada').map(e => e.ref));
+      const xp = calcularXp(entries.map((e, i) => lateFlags[i]).filter((_, i) => lancadas.has(entries[i].ref)));
+
+      setReward({ result, xp });
       if (onRefresh) onRefresh();
-      setTimeout(() => setShowSuccess(false), 3000);
       await fetchTodaySchedule();
     } catch (err: any) {
       console.error('Save Error:', err);
-      alert(`Erro: ${err.message}`);
+      alert(`Erro ao lançar: ${err.message || 'tente novamente'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -436,23 +329,15 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         </div>
       </div>
 
-      {/* Success Toast */}
-      {showSuccess && (
-        <div className="fixed top-10 right-10 z-50 bg-emerald-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-500">
-          <div className="bg-brand-surface/20 p-2 rounded-full"><CheckCircle size={20} /></div>
-          <div>
-            <p className="font-black uppercase text-xs tracking-widest">Sucesso!</p>
-            <p className="text-sm font-medium">Aulas registradas com perfeição.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Aviso: aula já estava lançada (não duplicada) — tranquiliza em vez de erro */}
-      {dupNotice && (
-        <div className="fixed top-28 right-10 z-50 bg-amber-500 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right duration-500 max-w-sm">
-          <CheckCircle size={20} className="shrink-0" />
-          <p className="text-sm font-medium">{dupNotice}</p>
-        </div>
+      {/* Recompensa: o caixa subindo no momento do lançamento. Substituiu o toast
+          "Aulas registradas com perfeição", que não mostrava número nenhum, e o
+          aviso de duplicata — agora ambos vivem dentro do mesmo resumo. */}
+      {reward && (
+        <ClassLogReward
+          result={reward.result}
+          xp={reward.xp}
+          onClose={() => setReward(null)}
+        />
       )}
 
       {/* Bulk Form */}

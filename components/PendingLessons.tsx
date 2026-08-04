@@ -4,7 +4,8 @@ import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, R
 import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
-import { splitAlreadyLogged } from '../lib/classLogGuard';
+import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
+import ClassLogReward from './ClassLogReward';
 import { User as UserType } from '../types';
 
 interface PendingLessonsProps {
@@ -19,6 +20,8 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
   const [loading, setLoading] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [isBulkRegularizing, setIsBulkRegularizing] = useState(false);
+  // Mesma recompensa do "Lançar Aula": regularizar pendência também alimenta o caixa.
+  const [reward, setReward] = useState<{ result: ClassLogResult; xp: XpBreakdown } | null>(null);
 
   // Mesmo fallback do LessonLauncher: sem tenant resolvido a tela ficava carregando
   // para sempre em vez de mostrar as aulas pendentes.
@@ -162,98 +165,39 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // 1. Validar Fechamento Automático (Bloqueio para meses passados)
-      const now = new Date();
-      const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+      // Esta tela tinha regra PRÓPRIA e ERRADA: nunca gerava reposição quando o
+      // PROFESSOR faltava (tirando dele o único caminho de reaver aquela aula),
+      // gravava a reposição sem `fault_type` e sempre com subtype 'REPOSIÇÃO' —
+      // ou seja, toda reposição de falta do professor valia R$ 0. Agora ela usa
+      // exatamente a mesma RPC do "Lançar Aula": uma regra só, no servidor.
+      const entries: ClassLogEntryInput[] = [];
+      const lateFlags: boolean[] = [];
 
-      const closedMonths = Object.keys(formData).map(id => {
-        const lesson = pending.find(p => p.id === id) || (selectedLesson?.id === id ? selectedLesson : null);
-        const lessonMonthYear = lesson?.rawDate ? lesson.rawDate.substring(0, 7) : null;
-        
-        if (lessonMonthYear && lessonMonthYear < currentMonthYear) {
-          return lessonMonthYear;
-        }
-        return null;
-      }).filter(Boolean);
+      for (const ref of Object.keys(formData)) {
+        const lesson = pending.find(p => p.id === ref) || (selectedLesson?.id === ref ? selectedLesson : null);
+        const data = formData[ref];
+        if (!lesson || !data) continue;
 
-      if (closedMonths.length > 0) {
-        throw new Error(`O mês ${closedMonths[0]} já está encerrado. O sistema bloqueia lançamentos de meses anteriores para garantir a integridade do fechamento.`);
-      }
-
-      const entries = Object.keys(formData).map(lessonId => {
-        const lesson = pending.find(p => p.id === lessonId) || (selectedLesson?.id === lessonId ? selectedLesson : null);
-        if (!lesson) return null;
-
-        const data = formData[lessonId];
-        if (!data) return null;
-
-        let finalPresence = data.type || 'COMPLETED';
-
-        return {
-          tenant_id: effectiveTenantId,
-          teacher_id: user.id,
-          student_id: lesson.studentId,
-          booking_id: lesson.type === 'REGULAR' ? lesson.bookingId : null,
-          reschedule_id: lesson.type === 'REPOSIÇÃO' ? lesson.rescheduleId : null,
-          presence: finalPresence,
-          subtype: lesson.type === 'REPOSIÇÃO' ? 'REPOSIÇÃO' : (data.subtype || null),
-          content: data.lastApplied || null,
+        entries.push({
+          ref,
+          bookingId: lesson.type === 'REGULAR' ? lesson.bookingId : null,
+          rescheduleId: lesson.type === 'REPOSIÇÃO' ? lesson.rescheduleId : null,
+          classDate: lesson.rawDate,
+          presence: data.type || 'COMPLETED',
+          absenceReason: data.subtype || null,
+          contentCovered: data.lastApplied || null,
           observations: data.observation || null,
-          class_date: lesson.rawDate,
-          created_at: lesson.rawDate ? `${lesson.rawDate}T12:00:00Z` : new Date().toISOString()
-        };
-      }).filter(Boolean);
+        });
+        lateFlags.push(true); // esta tela só lista aula de 7+ dias atrás
+      }
 
       if (entries.length === 0) return;
 
-      // Guarda de origem cruzada: barra aula relançada como reposição quando o mesmo
-      // aluno já tem lançamento naquela data (as travas do banco não cobrem esse caso).
-      const { allowed, blocked } = await splitAlreadyLogged(supabase, user.id, entries as any[]);
-      if (blocked.length > 0) {
-        alert(`${blocked.length} aula(s) já estavam lançadas para o mesmo aluno na mesma data e foram ignoradas — nada foi duplicado.`);
-      }
-      if (allowed.length === 0) {
-        await fetchPendingLessons();
-        setSelectedLesson(null);
-        setIsBulkRegularizing(false);
-        return;
-      }
+      const result = await logTeacherClasses(entries);
+      const lancadas = new Set(result.entries.filter(e => e.status === 'lancada').map(e => e.ref));
+      const xp = calcularXp(entries.map((e, i) => lateFlags[i]).filter((_, i) => lancadas.has(entries[i].ref)));
 
-      const { error } = await supabase.from('class_logs').insert(allowed);
-      if (error) throw error;
-
-      // Clear used Reschedules
-      const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
-      if (completedReschedules.length > 0) {
-        await supabase.from('reschedules').delete().in('id', completedReschedules);
-      }
-
-      // Handle Automated Reschedules for absences (exclusing makeup itself)
-      const absences = (allowed as any[]).filter(e => (e.presence === 'STUDENT_ABSENCE' || e.presence === 'Falta Justificada') && e.subtype !== 'REPOSIÇÃO');
-      if (absences.length > 0) {
-        const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-
-        for (const a of absences) {
-          const { count, error: countError } = await supabase
-            .from('reschedules')
-            .select('id', { count: 'exact', head: true })
-            .eq('student_id', a.student_id)
-            .gte('created_at', startOfMonth);
-
-          if (!countError && (count || 0) < 5) {
-            await supabase.from('reschedules').insert([{
-              tenant_id: effectiveTenantId,
-              teacher_id: user.id,
-              student_id: a.student_id,
-              original_booking_id: a.booking_id,
-              date: 'Pendente',
-              time: 'Pendente',
-              created_at: new Date().toISOString()
-            }]);
-          }
-        }
-      }
-
+      setReward({ result, xp });
       await fetchPendingLessons();
       setSelectedLesson(null);
       setIsBulkRegularizing(false);
@@ -268,6 +212,14 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto">
+      {reward && (
+        <ClassLogReward
+          result={reward.result}
+          xp={reward.xp}
+          onClose={() => setReward(null)}
+        />
+      )}
+
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-brand-surface p-8 rounded-[2.5rem] border border-brand-border shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
 

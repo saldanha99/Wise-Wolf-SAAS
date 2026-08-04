@@ -350,6 +350,70 @@ onClick texto → sendMessage() → unlockAudio()
 
 ---
 
+## Lançamento de Aula — RPC transacional `log_teacher_classes` ✅
+
+> **O lançamento tem UMA porta agora.** Migration `20260804120000_teacher_class_logging_rpc`.
+> Antes era `insert` direto em `class_logs` feito pelo navegador, **copiado em duas telas
+> que divergiram na regra** — e a cópia errada custava dinheiro do professor.
+
+**O bug que motivou (medido em produção, 04/08/2026):** 98 reposições no banco (9 por falta
+do professor) e **ZERO** `class_logs` com subtype `REPOSIÇÃO_PROF` na história do sistema.
+Ou seja: **nenhuma reposição de falta do professor jamais foi paga**, embora
+`v_payable_class_logs` já soubesse pagá-la. Causa: `PendingLessons` (aba "Pendentes")
+(i) não gerava reposição para `TEACHER_ABSENCE`, (ii) gravava a reposição **sem `fault_type`**,
+(iii) usava sempre subtype `'REPOSIÇÃO'`, (iv) contava o limite de 5 sem filtrar `fault_type`.
+
+**A regra (em `v_payable_class_logs`, NÃO alterada — só passou a ser alimentada certo):**
+| Situação | Subtype gravado | Paga? |
+|---|---|---|
+| Falta do PROFESSOR | — | ❌ e gera reposição `fault_type='TEACHER'` (ilimitada) |
+| Reposição de falta do PROFESSOR | `REPOSIÇÃO_PROF` | ✅ |
+| Falta do ALUNO | motivo (Doença/…) | ✅ e gera reposição `fault_type='STUDENT'` (5/mês) |
+| Reposição de falta do ALUNO | `REPOSIÇÃO` | ❌ (a aula de origem já foi paga) |
+
+- ✅ **O subtype é DERIVADO NO SERVIDOR** a partir de `reschedules.fault_type`. O navegador
+  não escolhe mais quanto uma aula vale — nem por acidente.
+- ✅ **Atômico:** gravar a aula + consumir a reposição usada + criar a reposição da falta +
+  mover o lead no CRM eram 4 chamadas soltas do navegador. Rede caindo no meio deixava
+  metade feito, em silêncio.
+- ✅ **Anti-duplicata no servidor** (o guard antigo, `lib/classLogGuard.ts`, era *fail-open*
+  no navegador e foi removido). Cruzamento só barra REPOSIÇÃO contra aula já lançada do
+  mesmo aluno/data — ⚠️ **dois bookings distintos no mesmo dia continuam passando** (aula de
+  1h partida, 19:00 + 19:30, é legítima e paga os dois).
+- ⚠️ **Continua sendo DELETE na reposição consumida**, não `used_at` (a coluna existe, com
+  0 de 98 preenchidos). Motivo: a view `upcoming_classes` lê `reschedules` **sem filtrar
+  consumo** → linha sobrevivente faria o aluno receber confirmação de presença por WhatsApp
+  de aula já lançada. A folha não se importa: `REPOSIÇÃO_PROF` paga mesmo com a origem
+  apagada (verificado em transação contra produção).
+- ⚠️ **`PendingLessons` não bloqueia mais mês anterior.** As duas telas tinham regras opostas
+  (45 dias x mês corrente). Hoje a janela é 120 dias na RPC, e aula atrasada vai para o
+  próximo fechamento aberto via `closing_carryovers` — o mecanismo está vivo (9 registros).
+- ⚠️ **`alter function ... owner to postgres`** é obrigatório: a migration é aplicada como
+  `supabase_admin`, que é **SUPERUSER**, e `SECURITY DEFINER` roda com os poderes do dono.
+- ⚠️ **`nullif` é forma especial do SQL** — `pg_catalog.nullif(...)` não existe e quebra em
+  runtime dentro de `set search_path = ''`. Mesma armadilha da migration
+  `repair_wolfie_sql_special_forms`. `btrim`/`date_trunc`/`jsonb_*` são funções de verdade
+  e aceitam o prefixo.
+
+**Estímulo (o caixa subindo na tela):** `components/ClassLogReward.tsx` + `lib/classLogRules.ts`.
+Duas camadas de propósito: **XP** é arcade (client-side, não representa dinheiro, então não
+pode mentir — premia lançar em dia e em lote) e **R$** vem da RPC, que soma `rate_efetivo` de
+`v_payable_class_logs` das aulas recém-inseridas.
+❌ **NUNCA estime valor de aula no cliente** (`aulas × tarifa`): o valor varia por posição de
+antiguidade do aluno na carteira e pelo turbo. Foi exatamente essa estimativa local que gerou
+**contestação em série** no `TeacherFinancials` (ver comentário em `TeacherFinancials.tsx:42`).
+Aula que não paga mostra **R$ 0,00 com o motivo** — fingir festa numa aula que vale zero
+custaria a credibilidade da tela inteira no fechamento.
+
+**Como testar:** `supabase/migrations/…_teacher_class_logging_rpc.sql` roda em
+`BEGIN … ROLLBACK` contra a VPS (`psql -U supabase_admin`); confira que
+`select sum(rate_efetivo) from v_payable_class_logs` é idêntico antes e depois.
+Testes de UI: `components/ClassLogReward.test.tsx` (11 casos).
+⚠️ **A migration ainda não foi aplicada em produção** — `release.sh` não aplica migration,
+só frontend e edge functions.
+
+---
+
 ## ⚠️ Gotchas de RPC `RETURNS TABLE` (aprendido na marra)
 
 Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação). Erros que deixam o painel "vazio" silenciosamente (frontend engole o erro):
