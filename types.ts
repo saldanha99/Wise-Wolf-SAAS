@@ -183,11 +183,16 @@ export interface TeacherClosing {
 export interface Reschedule {
   id: string | number;
   date: string;
+  time?: string;
   teacherName: string;
   studentName: string;
   repoId: number;
   originalLessonId: number;
-  teacherId: number;
+  // uuid do professor DONO da reposição — não é number (era, e o `as any` que
+  // escondia isso deixou a grade do Explorador pintar reposição de um professor
+  // na agenda de outro sem ninguém tropeçar no tipo).
+  teacherId: string;
+  studentId?: string;
 }
 
 export type JobStatus =

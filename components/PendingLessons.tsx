@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Clock, ChevronRight, CheckSquare, Calendar, User, Zap, RefreshCw } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
-import { supabase } from '../lib/supabase';
-import { localYMD } from '../lib/dateUtils';
+import {
+  fetchPendingLessons as fetchPendingLessonsRule,
+  PendingLesson,
+} from '../lib/pendingLessons';
 import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
 import ClassLogReward from './ClassLogReward';
 import { User as UserType } from '../types';
@@ -16,7 +18,7 @@ interface PendingLessonsProps {
 }
 
 const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegister, onRefresh }) => {
-  const [pending, setPending] = useState<any[]>([]);
+  const [pending, setPending] = useState<PendingLesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<any | null>(null);
   const [isBulkRegularizing, setIsBulkRegularizing] = useState(false);
@@ -35,119 +37,16 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
     }
   }, [user, effectiveTenantId]);
 
+  // A regra (janela, carência, corte de mês, o que conta como já lançada) vive em
+  // lib/pendingLessons.ts, junto com o badge do menu. Eram duas cópias divergentes:
+  // esta tela mostrava 0 e o badge do menu mostrava 130 para o mesmo professor.
   const fetchPendingLessons = async () => {
     setLoading(true);
     try {
-      const now = new Date();
-      // Start 60 days ago (Expanded to catch older lessons)
-      const startDate = new Date();
-      startDate.setDate(now.getDate() - 60);
-
-      // End 7 days ago (Grace Period)
-      const endDate = new Date();
-      endDate.setDate(now.getDate() - 7);
-
-      const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-      // We'll collect all expected lessons in the range [Day-30 to Day-7]
-      const allExpected: any[] = [];
-
-      // Iterate dates from startDate to endDate
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const dayName = daysOfWeek[d.getDay()];
-        // localYMD (NUNCA toISOString): depois das 21h a data UTC pula pro dia seguinte —
-        // a aula de segunda virava "pendência" de terça e era lançada em dobro no fechamento.
-        const dateStr = localYMD(d);
-
-        if (dayName === 'Domingo') continue;
-
-        // 1. Fetch regular bookings for this day
-        const { data: bookings } = await supabase
-          .from('bookings')
-          .select('id, time_slot, start_date, student:student_id(id, full_name, module)')
-          .eq('teacher_id', user.id)
-          .eq('day_of_week', dayName)
-          .eq('tenant_id', effectiveTenantId);
-
-        if (bookings) {
-          bookings.forEach(b => {
-            if (b.start_date && dateStr < b.start_date) return;
-            // No need to check future time since we are > 7 days ago
-
-            allExpected.push({
-              id: `book-${b.id}-${dateStr}`,
-              bookingId: b.id,
-              studentId: (b.student as any)?.id,
-              student: (b.student as any)?.full_name,
-              module: (b.student as any)?.module || 'N/A',
-              date: d.toLocaleDateString('pt-BR'),
-              rawDate: dateStr,
-              time: b.time_slot,
-              type: 'REGULAR'
-            });
-          });
-        }
-
-        // 2. Fetch reschedules
-        const { data: reschedules } = await supabase
-          .from('reschedules')
-          .select('id, time, student:student_id(id, full_name, module)')
-          .eq('teacher_id', user.id)
-          .eq('date', dateStr)
-          .eq('tenant_id', effectiveTenantId);
-
-        if (reschedules) {
-          reschedules.forEach(r => {
-            allExpected.push({
-              id: `repo-${r.id}`,
-              rescheduleId: r.id,
-              studentId: (r.student as any)?.id,
-              student: (r.student as any)?.full_name,
-              module: (r.student as any)?.module || 'N/A',
-              date: d.toLocaleDateString('pt-BR'),
-              rawDate: dateStr,
-              time: r.time,
-              type: 'REPOSIÇÃO'
-            });
-          });
-        }
-      }
-
-      // 3. Fetch logs from strict range to filter out
-      // Filtra por class_date (data real da aula), não por created_at: aula lançada
-      // com atraso tem created_at fora da janela e virava "pendência" duplicada.
-      const { data: logs } = await supabase
-        .from('class_logs')
-        .select('booking_id, reschedule_id, student_id, class_date')
-        .eq('teacher_id', user.id)
-        .eq('tenant_id', effectiveTenantId)
-        .gte('class_date', localYMD(startDate))
-        .lte('class_date', localYMD(endDate));
-
-      const currentMonthYear = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-
-      // Filter: Keep only those that DON'T have a log AND are in the current month
-      const pendingLessons = allExpected.filter(exp => {
-        // Hard Monthly Cutoff: Only show lessons from the current calendar month
-        const expMonthYear = exp.rawDate.substring(0, 7);
-        if (expMonthYear < currentMonthYear) return false;
-
-        const hasLog = logs?.some(log => {
-          const logDate = log.class_date;
-          const expDate = exp.rawDate;
-
-          if (exp.type === 'REGULAR' && log.booking_id && String(log.booking_id) === String(exp.bookingId)) {
-            return logDate === expDate;
-          }
-          if (exp.type === 'REPOSIÇÃO' && log.reschedule_id && String(log.reschedule_id) === String(exp.rescheduleId)) {
-            return true;
-          }
-          return String(log.student_id) === String(exp.studentId) && logDate === expDate;
-        });
-        return !hasLog;
-      });
-
-      setPending(pendingLessons);
+      setPending(await fetchPendingLessonsRule({
+        teacherId: user.id,
+        tenantId: effectiveTenantId,
+      }));
     } catch (err) {
       console.error('Error fetching pending lessons:', err);
     } finally {

@@ -39,6 +39,25 @@ export const recentMonths = (n: number, from: Date = new Date()): string[] => {
     return Array.from({ length: n }, (_, i) => localMonth(new Date(y, m - i, 1)));
 };
 
+// Lê uma data de calendário ('YYYY-MM-DD' ou 'DD/MM/YYYY') como data LOCAL.
+// NUNCA use new Date('2026-07-23') para isso: a string ISO só com data é lida como
+// UTC, e no fuso do Brasil vira 22/07 às 21h — o getDay() devolve QUARTA para uma
+// quinta-feira. Era esse deslocamento que jogava a reposição uma coluna à esquerda
+// na grade do Explorador de Agenda.
+// Devolve null para o que não é data (ex.: reposição ainda 'Pendente').
+export const parseLocalDate = (value: string | null | undefined): Date | null => {
+    if (!value) return null;
+    const raw = value.trim();
+
+    const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+
+    return null;
+};
+
 export const isBusinessDay = (date: Date): boolean => {
     const day = date.getDay();
     // 0 = Sunday, 6 = Saturday
