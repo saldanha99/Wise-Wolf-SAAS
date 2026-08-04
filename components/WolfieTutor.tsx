@@ -528,6 +528,37 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [turnCount, setTurnCount] = useState(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
+
+  /**
+   * Fronteira gratuito x premium. A fonte é o servidor (RPC `my_wolfie_tier`);
+   * aqui só refletimos: no gratuito o Wolfie responde POR ESCRITO, porque a voz
+   * é o recurso pago. `null` = ainda carregando, e carregando vale gratuito —
+   * liberar voz na dúvida é exatamente o custo que esta separação fecha.
+   */
+  const [voiceReplies, setVoiceReplies] = useState<boolean | null>(null);
+  const voiceRepliesRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc("my_wolfie_tier");
+      if (cancelled) return;
+      const snapshot = !error && data && typeof data === "object"
+        ? data as { voice_replies?: boolean }
+        : null;
+      // Falha de leitura não é resposta: mantemos `null` (desconhecido) e
+      // deixamos o wolfie-tts decidir. Assim um aluno premium não fica mudo por
+      // causa de uma falha momentânea de rede, e o gratuito continua bloqueado
+      // no servidor de qualquer forma.
+      if (!snapshot) return;
+      const allowed = snapshot.voice_replies === true;
+      voiceRepliesRef.current = allowed;
+      setVoiceReplies(allowed);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [pendingTranscriptReview, setPendingTranscriptReview] = useState<
     PendingTranscriptReview | null
   >(null);
@@ -2207,6 +2238,18 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           }`
         ).join("\n")
         : text;
+      // Tier gratuito: o Wolfie responde por escrito. Não chamamos o wolfie-tts
+      // (que já recusa no servidor) NEM o Web Speech — o fallback do navegador
+      // faria o Wolfie falar assim mesmo e a separação viraria só um rótulo.
+      // `null` (tier ainda desconhecido) segue em frente: quem decide é o
+      // servidor, e o 403 abaixo silencia sem cair no Web Speech.
+      if (voiceRepliesRef.current === false) {
+        setSubtitle(speechText);
+        lastSpokenTextRef.current = text;
+        setState("IDLE");
+        return;
+      }
+
       setState("SYNTHESIZING");
       setSubtitle(speechText);
       lastSpokenTextRef.current = text;
@@ -2256,6 +2299,20 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
 
         if (!isCurrent()) return;
         if (fnError || !data?.audio) {
+          // 403/402 = a voz é do tier premium. Isso não é falha técnica: cair
+          // no Web Speech aqui faria o navegador falar de graça e furar a
+          // separação que o servidor acabou de aplicar.
+          const refusalStatus =
+            (fnError as { context?: { status?: number } } | null)?.context
+              ?.status;
+          if (refusalStatus === 403 || refusalStatus === 402) {
+            voiceRepliesRef.current = false;
+            setVoiceReplies(false);
+            stopIOSKeepAlive();
+            ttsRequestAbortRef.current = null;
+            setState("IDLE");
+            return;
+          }
           throw new Error(fnError?.message || "wolfie-tts sem áudio");
         }
 
@@ -3530,6 +3587,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     }
   };
 
+  // No tier gratuito nada é reproduzido. Exigir o toque de "liberar a voz" no
+  // iOS seria fricção por um áudio que nunca vai tocar — e a tela ainda
+  // prometeria uma voz que o aluno não tem.
+  useEffect(() => {
+    if (voiceReplies === false && !isRealtimeMode) setAudioGestureReady(true);
+  }, [voiceReplies, isRealtimeMode]);
+
   // Auto-start first turn when mode is selected
   useEffect(() => {
     if (
@@ -3953,7 +4017,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           {/* ── PRÁTICA LIVRE — ilimitada, custa quase nada ── */}
           <div className="w-full max-w-3xl mx-auto">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 text-left">
-              Prática livre · ilimitada
+              {voiceReplies === true
+                ? "Prática livre · ilimitada"
+                : "Wolfie gratuito · ilimitado"}
             </p>
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <button
@@ -3971,7 +4037,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                   Falar
                 </h3>
                 <p className="text-slate-400 text-[11px] sm:text-xs hidden sm:block">
-                  Você fala, o Wolfie responde por voz e texto.
+                  {voiceReplies === true
+                    ? "Você fala, o Wolfie responde por voz e texto."
+                    : "Você fala, o Wolfie ouve, corrige e responde por escrito."}
                 </p>
               </button>
 
@@ -4023,6 +4091,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
                     <p className="text-slate-400 text-[11px] sm:text-xs mt-0.5">
                       Fala natural, sem esperar: o Wolfie ouve e responde
                       enquanto você fala.
+                      {voiceReplies === true
+                        ? " Também é o que dá voz ao Wolfie na prática livre."
+                        : " É aqui que o Wolfie fala com você."}
                     </p>
                     {
                       /* Saldo à vista ANTES de entrar — o aluno não pode descobrir
@@ -4135,7 +4206,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         >
           <MessageSquare size={16} aria-hidden="true" />
         </button>
-        {!isRealtimeMode && (
+        {!isRealtimeMode && voiceReplies === true && (
           <button
             type="button"
             onClick={slowReplay}
@@ -4942,8 +5013,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           >
             <MessageSquare size={12} />
           </button>
-          {/* Slow Replay */}
-          {!isRealtimeMode && (
+          {/* Slow Replay — só existe quando o Wolfie fala (premium) */}
+          {!isRealtimeMode && voiceReplies === true && (
             <button
               onClick={slowReplay}
               disabled={!lastSpokenTextRef.current}

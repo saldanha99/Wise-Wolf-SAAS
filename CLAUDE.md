@@ -30,6 +30,44 @@ passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
 
 ---
 
+## Wolfie: gratuito x premium — a VOZ é a fronteira ✅
+
+> **A separação não é de tela, é de servidor.** Antes existiam dois blocos na
+> entrada ("Prática livre" e "Chamada ao vivo · premium"), mas nenhuma regra
+> atrás deles: o modo clássico gerava voz paga da OpenAI para qualquer aluno,
+> sem limite e sem aparecer no painel de custo.
+
+| Tier | O que o aluno tem | Custo |
+|------|-------------------|-------|
+| **Gratuito** | Fala (speech-to-text), escreve e recebe correção — o Wolfie responde **por escrito**. Ilimitado. | Transcrição + modelo de texto |
+| **Premium** | O Wolfie **fala**: conversa ao vivo (speech-to-speech) e resposta falada no modo clássico. | Realtime + TTS |
+
+- **Fonte única:** RPC `wolfie_student_tier` → `private.wolfie_tier_snapshot`
+  (migration `20260803235500_wolfie_free_premium_tiers`). Superfícies:
+  `wolfie_tier_for_student(uuid)` (edge functions) e `my_wolfie_tier()` (aluno).
+- **Quem é premium:** assinante do `wolfie-direct` com assinatura viva, ou aluno
+  da escola com franquia `wolfie.live_minutes` **configurada e com saldo** (por
+  plano ou crédito comprado).
+- ⚠️ **Franquia não configurada NÃO é premium.** É ausência de decisão
+  comercial. Tratar como premium daria voz paga à escola inteira de graça.
+- ⚠️ **O acesso ao ao vivo continua fail-open** (`wolfie_live_balance` devolve
+  `allowed=true` quando não há franquia). O tier só reporta isso em
+  `live_enforced` — cortar de surpresa tiraria do ar um recurso em uso. Definir
+  a franquia é decisão do diretor.
+- **No cliente:** `WolfieTutor` bloqueia `speak()` quando o tier é gratuito e
+  **não cai no Web Speech** ao receber 403 — o fallback do navegador falaria de
+  graça e furaria a separação. Tier desconhecido (`null`) segue em frente: quem
+  decide é o servidor.
+- **Custo:** `wolfie-tts` e a transcrição do clássico agora gravam em
+  `ai_usage_events` (`wolfie_tts` é **estimativa** por caractere — a API de fala
+  não devolve `usage`). O `AiCostPanel` separa gratuito / premium / interno.
+  Cadastre `gpt-4o-mini-tts` e `gpt-4o-transcribe` em `ai_model_pricing` para o
+  custo sair em dólar em vez de só volume.
+- ⚠️ `wolfie_activity_listening_tts` (áudio de exercício de listening) segue
+  **no gratuito** de propósito: é material de atividade, não resposta do tutor.
+
+---
+
 ## Wolfie AI Tutor — Arquitetura de Áudio ✅ FUNCIONANDO
 
 > **Leia isto ANTES de qualquer alteração em `WolfieTutor.tsx` ou `wolfie-tts`.**  

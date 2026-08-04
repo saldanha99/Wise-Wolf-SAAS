@@ -302,6 +302,7 @@ MIGRATIONS=(
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
   "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
+  "supabase/migrations/20260803235500_wolfie_free_premium_tiers.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
@@ -311,6 +312,7 @@ DATABASE_TESTS=(
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
   "supabase/tests/wolfie_standalone_subscriptions.sql"
+  "supabase/tests/wolfie_free_premium_tiers.sql"
 )
 FUNCTIONS=(
   wolfie-activity

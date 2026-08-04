@@ -8,6 +8,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { recordAiUsage } from "../_shared/ai-usage.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 
@@ -85,6 +86,39 @@ const resolveVoice = (language: TtsLanguage): string => {
   return configured && ALLOWED_VOICES.has(configured) ? configured : "marin";
 };
 
+/**
+ * O tier premium é a fronteira da VOZ. No gratuito o Wolfie responde por
+ * escrito, então esta função nem chega a chamar a OpenAI.
+ *
+ * Nenhuma resposta daqui carrega `fallback: "browser_speech"`: o cliente cairia
+ * na voz do navegador e o aluno continuaria ouvindo o Wolfie — exatamente o que
+ * a separação de tiers veio impedir. Falha de leitura do tier também não libera
+ * voz: sem certeza de premium, não se gasta áudio pago.
+ */
+const voiceDeniedResponse = (
+  corsHeaders: Record<string, string>,
+  status: number,
+  code: string,
+  reason?: string,
+) =>
+  new Response(
+    JSON.stringify({
+      error: code,
+      code,
+      reason,
+      tier: "FREE",
+      upgradeUrl: "https://wolfie.wisewolflanguage.com.br/planos",
+    }),
+    {
+      status,
+      headers: {
+        ...corsHeaders,
+        "Cache-Control": "no-store",
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
 const speakingInstructions = (language: TtsLanguage): string =>
   language === "mixed"
     ? "Speak each labeled segment in its labeled language. Use natural Brazilian Portuguese for Português segments and natural American English for English segments, switching smoothly without translating, adding, correcting, or omitting content. Preserve names, cities, states, and numbers exactly."
@@ -111,6 +145,33 @@ serve(async (req) => {
       corsHeaders,
     );
     if (accessError) return accessError;
+
+    const { data: tier, error: tierError } = await auth.context.admin
+      .rpc("wolfie_tier_for_student", { p_student_id: auth.context.userId });
+    if (tierError) {
+      console.error("[wolfie-tts] leitura de tier falhou", {
+        code: tierError.code,
+      });
+      return voiceDeniedResponse(
+        corsHeaders,
+        503,
+        "VOICE_TIER_UNAVAILABLE",
+        "tier_indisponivel",
+      );
+    }
+    const tierSnapshot = tier && typeof tier === "object" && !Array.isArray(tier)
+      ? tier as Record<string, unknown>
+      : null;
+    if (tierSnapshot?.voice_replies !== true) {
+      return voiceDeniedResponse(
+        corsHeaders,
+        403,
+        "VOICE_IS_PREMIUM",
+        typeof tierSnapshot?.reason === "string"
+          ? tierSnapshot.reason
+          : undefined,
+      );
+    }
 
     const apiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
     if (!apiKey) {
@@ -163,6 +224,7 @@ serve(async (req) => {
     const voice = resolveVoice(language);
     const model = Deno.env.get("WOLFIE_TTS_MODEL")?.trim() || DEFAULT_MODEL;
     const speed = normalizeSpeed(body.speed);
+    const spokenText = text.slice(0, 4096);
 
     const response = await fetch(OPENAI_SPEECH_URL, {
       method: "POST",
@@ -173,7 +235,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model,
         voice,
-        input: text.slice(0, 4096),
+        input: spokenText,
         instructions: speakingInstructions(language),
         response_format: "mp3",
         speed,
@@ -205,6 +267,23 @@ serve(async (req) => {
     if (bytes.byteLength < 50) {
       throw new Error("WOLFIE_TTS_EMPTY_AUDIO");
     }
+
+    // A API de fala não devolve bloco `usage` — o custo é por token do texto de
+    // entrada. Registramos a ESTIMATIVA (~4 caracteres por token) porque o
+    // painel do diretor ignorava 100% do áudio: aparecia só o texto, e a conta
+    // da voz não existia em lugar nenhum. O rótulo no painel diz "estimado".
+    await recordAiUsage(auth.context.admin, {
+      tenantId: auth.context.profile?.tenant_id ?? null,
+      userId: auth.context.userId,
+      feature: "wolfie_tts",
+      provider: "openai",
+      model,
+      usage: {
+        inputTokens: Math.max(1, Math.ceil(spokenText.length / 4)),
+        outputTokens: 0,
+        cachedTokens: 0,
+      },
+    });
 
     return new Response(
       JSON.stringify({

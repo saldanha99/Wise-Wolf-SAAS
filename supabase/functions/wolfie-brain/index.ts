@@ -2344,6 +2344,7 @@ async function transcribeClassicAudio(
   text: string;
   detectedLanguage: "pt" | "en";
   model: string;
+  usage: AiUsageTokens | null;
 }> {
   const bytes = decodeAudioBase64(input.audioBase64);
   const model = boundedString(
@@ -2423,7 +2424,10 @@ async function transcribeClassicAudio(
     ? "en"
     : resolveWolfieLearnerLanguage(text);
 
-  return { text, detectedLanguage, model };
+  // A transcrição do modo clássico é paga e não aparecia em lugar nenhum: o
+  // painel de custo mostrava só o texto. Quando o provedor devolve `usage`,
+  // registramos; quando não devolve, nada é inventado.
+  return { text, detectedLanguage, model, usage: parseAiUsage(payload) };
 }
 
 async function callOpenRouter(
@@ -6169,6 +6173,14 @@ serve(async (req) => {
         throw new HttpError(503, "AUDIO_TRANSCRIPTION_UNAVAILABLE");
       }
       const transcription = await transcribeClassicAudio(openAiKey, input);
+      await recordAiUsage(supabase, {
+        tenantId: profile.tenant_id,
+        userId: profile.id,
+        feature: "wolfie_transcription",
+        provider: "openai",
+        model: transcription.model,
+        usage: transcription.usage,
+      });
       return jsonResponse(200, {
         transcribedText: transcription.text,
         detectedLanguage: transcription.detectedLanguage,

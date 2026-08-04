@@ -361,6 +361,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
   "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
+  "supabase/migrations/20260803235500_wolfie_free_premium_tiers.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -368,6 +369,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
   "supabase/tests/wolfie_standalone_subscriptions.sql"
+  "supabase/tests/wolfie_free_premium_tiers.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

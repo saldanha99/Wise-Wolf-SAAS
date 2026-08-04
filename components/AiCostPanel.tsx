@@ -23,11 +23,41 @@ interface LiveRow {
 
 const FEATURE_LABELS: Record<string, string> = {
     wolfie_brain: 'Wolfie — conversa (texto)',
+    wolfie_transcription: 'Wolfie — transcrição da fala',
     wolfie_activity: 'Wolfie — atividades',
     wolfie_activity_eval: 'Wolfie — correção',
+    wolfie_activity_speech_assessment: 'Wolfie — avaliação de fala',
+    wolfie_activity_listening_tts: 'Wolfie — áudio de listening',
+    wolfie_meeting_recall: 'Wolfie — memorização de reunião',
+    wolfie_tts: 'Wolfie — voz da resposta (estimado)',
+    wolfie_realtime_post_turn: 'Wolfie ao vivo — análise do turno',
+    wolfie_realtime_rag: 'Wolfie ao vivo — busca de contexto',
     pedagogical_content: 'Geração de material',
     lesson_planner: 'Planner de aula',
 };
+
+/**
+ * A que mundo cada consumo pertence. O aluno do tier gratuito fala e escreve; a
+ * VOZ do Wolfie (resposta falada e conversa ao vivo) é o que se vende. Sem esta
+ * separação o diretor via um total só e não sabia o que era custo de assinatura
+ * e o que era custo da prática incluída na mensalidade.
+ *
+ * `wolfie_activity_listening_tts` é áudio de EXERCÍCIO, não resposta do tutor:
+ * continua no gratuito de propósito.
+ */
+const PREMIUM_FEATURES = new Set([
+    'wolfie_tts',
+    'wolfie_realtime_post_turn',
+    'wolfie_realtime_rag',
+]);
+const INTERNAL_FEATURES = new Set(['pedagogical_content', 'lesson_planner']);
+
+const featureTier = (feature: string): 'premium' | 'interno' | 'gratuito' =>
+    PREMIUM_FEATURES.has(feature)
+        ? 'premium'
+        : INTERNAL_FEATURES.has(feature)
+        ? 'interno'
+        : 'gratuito';
 
 const monthOptions = (): string[] => {
     // Sem lista fixa: o diretor precisa olhar meses anteriores para comparar.
@@ -88,6 +118,13 @@ export const AiCostPanel: React.FC = () => {
 
     const totalUsd = rows.reduce((sum, r) => sum + (r.custo_usd ?? 0), 0);
     const semPreco = rows.filter((r) => !r.tem_preco);
+    const porTier = rows.reduce(
+        (acc, r) => {
+            acc[featureTier(r.feature)] += r.custo_usd ?? 0;
+            return acc;
+        },
+        { gratuito: 0, premium: 0, interno: 0 },
+    );
 
     return (
         <div className="space-y-5">
@@ -135,6 +172,23 @@ export const AiCostPanel: React.FC = () => {
                             Total do mês
                         </p>
                         <p className="mt-1 text-3xl font-black text-brand-text">{usd(totalUsd)}</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            {([
+                                ['gratuito', 'Wolfie gratuito', 'Fala e escrita — incluído na mensalidade'],
+                                ['premium', 'Wolfie premium (voz)', 'Resposta falada e conversa ao vivo'],
+                                ['interno', 'Uso interno', 'Material e planner do professor'],
+                            ] as const).map(([key, titulo, ajuda]) => (
+                                <div key={key} className="rounded-lg border border-brand-border p-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-brand-muted">
+                                        {titulo}
+                                    </p>
+                                    <p className="mt-0.5 text-lg font-black text-brand-text">
+                                        {usd(porTier[key])}
+                                    </p>
+                                    <p className="text-[11px] text-brand-muted">{ajuda}</p>
+                                </div>
+                            ))}
+                        </div>
                         {semPreco.length > 0 && (
                             <p className="mt-2 text-xs text-amber-700">
                                 {semPreco.length} modelo(s) sem preço cadastrado — os tokens aparecem,
