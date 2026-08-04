@@ -306,7 +306,9 @@ npx --yes deno check --no-lock \
   supabase/functions/school-ai-digest/index.ts \
   supabase/functions/hr-ai-screening/index.ts \
   supabase/functions/wolfie-eval/index.ts \
-  supabase/functions/wolfie-live-proxy/index.ts
+  supabase/functions/wolfie-live-proxy/index.ts \
+  supabase/functions/dre-categorize/index.ts \
+  supabase/functions/dre-report/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -360,8 +362,44 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801210000_wolfie_classic_exchange_atomicity.sql"
   "supabase/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
+  "supabase/migrations/20260802000000_teacher_financial_simplified.sql"
+  "supabase/migrations/20260802010000_payable_rule_and_director_margin.sql"
+  "supabase/migrations/20260802020000_flat_rate_and_trainer_bonus.sql"
+  "supabase/migrations/20260802030000_turbo_restored_and_carryover.sql"
+  "supabase/migrations/20260802040000_turbo_por_mes_fechado.sql"
+  "supabase/migrations/20260802050000_nome_das_experimentais.sql"
+  "supabase/migrations/20260802060000_experimental_exige_comparecimento.sql"
+  "supabase/migrations/20260802070000_cobertura_transfere_aula.sql"
+  "supabase/migrations/20260802080000_teste_oral_paga_e_ajustes_fechamento.sql"
+  "supabase/migrations/20260802090000_divergencia_agenda_lancamento.sql"
+  "supabase/migrations/20260802100000_cobertura_funcional.sql"
+  "supabase/migrations/20260802110000_remove_faixa_9_50.sql"
+  "supabase/migrations/20260802120000_versiona_get_cashflow.sql"
+  "supabase/migrations/20260802130000_dre_gerencial_plano_de_contas.sql"
+  "supabase/migrations/20260802140000_despesas_recorrentes.sql"
+  "supabase/migrations/20260802150000_dre_categorizador.sql"
+  "supabase/migrations/20260802160000_dre_relatorio_grupo.sql"
+  "supabase/migrations/20260802170000_balancete_professores.sql"
+  "supabase/migrations/20260802180000_gasto_de_anuncio.sql"
+  "supabase/migrations/20260802190000_vinculo_pagamento_aluno.sql"
+  "supabase/migrations/20260802200000_pagamento_fora_da_receita.sql"
+  "supabase/migrations/20260802210000_mei_radar_reentrante.sql"
+  "supabase/migrations/20260802220000_gestao_snapshot.sql"
+  "supabase/migrations/20260802230000_gestao_snapshot_totais.sql"
+  "supabase/migrations/20260802240000_gestao_faltas_e_cobranca.sql"
+  "supabase/migrations/20260802250000_gestao_faltas_com_mes.sql"
+  "supabase/migrations/20260802260000_aluno_sem_assinatura.sql"
+  "supabase/migrations/20260803010000_balancete_lucro_contratado.sql"
+  "supabase/migrations/20260803020000_ressalva_lucro_atualizada.sql"
+  "supabase/migrations/20260803030000_conta_beneficios.sql"
+  "supabase/migrations/20260803040000_custo_ia_por_aluno.sql"
+  "supabase/migrations/20260803050000_reposicao_falta_aluno_nao_paga.sql"
   "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
   "supabase/migrations/20260803235500_wolfie_free_premium_tiers.sql"
+  "supabase/migrations/20260804030000_ajuste_entra_na_folha.sql"
+  "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
+  "supabase/migrations/20260804040000_ajuste_sincroniza_e_reposicao_rastreavel.sql"
+  "supabase/migrations/20260804050000_gestao_acao_pendente.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -383,6 +421,10 @@ HUB_CHECKOUT_FUNCTION_RELATIVE="supabase/functions/create-hub-checkout"
 HUB_AI_FUNCTION_RELATIVE="supabase/functions/pedagogical-content"
 HUB_TUTOR_FUNCTION_RELATIVE="supabase/functions/wolf-tutor-api"
 ASAAS_WEBHOOK_FUNCTION_RELATIVE="supabase/functions/asaas-webhook"
+# Cobertura de professor: o aceite move o pagamento (apply_coverage_acceptance).
+# Ficava de fora da lista, então a correção não subia pelo deploy.
+COVERAGE_ACCEPT_FUNCTION_RELATIVE="supabase/functions/accept-coverage"
+COVERAGE_ADMIN_FUNCTION_RELATIVE="supabase/functions/coverage-admin"
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
 SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
 SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact-policy.ts"
@@ -418,6 +460,8 @@ HARDENED_FUNCTIONS=(
   hr-ai-screening
   wolfie-eval
   wolfie-live-proxy
+  dre-categorize
+  dre-report
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -448,6 +492,10 @@ done
   die "função de IA do Hub ausente"
 [[ -s "$HUB_TUTOR_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função Wolfie do Hub ausente"
+[[ -s "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "accept-coverage/index.ts ausente"
+[[ -s "$COVERAGE_ADMIN_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "coverage-admin/index.ts ausente"
 [[ -s "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/index.ts" ]] ||
   die "webhook Asaas ausente"
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
@@ -477,6 +525,8 @@ artifact_hash="$(
       "$HUB_CHECKOUT_FUNCTION_RELATIVE" \
       "$HUB_AI_FUNCTION_RELATIVE" \
       "$HUB_TUTOR_FUNCTION_RELATIVE" \
+      "$COVERAGE_ACCEPT_FUNCTION_RELATIVE" \
+      "$COVERAGE_ADMIN_FUNCTION_RELATIVE" \
       "$ASAAS_WEBHOOK_FUNCTION_RELATIVE"; do
       find "$release_input_dir" -type f -print
     done
@@ -585,6 +635,10 @@ rsync -a --delete -- "$HUB_TUTOR_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolf-tutor-api/"
 rsync -a --delete -- "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/asaas-webhook/"
+rsync -a --delete -- "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/accept-coverage/"
+rsync -a --delete -- "$COVERAGE_ADMIN_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/coverage-admin/"
 rsync -a -- "$SHARED_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/request-auth.ts"
 rsync -a -- "$SHARED_ACCOUNT_INVITE_RELATIVE" \
@@ -736,6 +790,8 @@ HARDENED_FUNCTIONS=(
   hr-ai-screening
   wolfie-eval
   wolfie-live-proxy
+  dre-categorize
+  dre-report
 )
 
 restore_previous_release() {

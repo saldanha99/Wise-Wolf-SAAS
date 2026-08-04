@@ -74,6 +74,7 @@ const SKIP_MESSAGES: Record<string, string> = {
     sem_origem: 'sem agendamento de origem',
     reposicao_inexistente: 'a reposição não existe mais',
     agendamento_inexistente: 'o agendamento não existe mais',
+    aula_cedida_para_outro_professor: 'esta aula foi cedida por cobertura — quem lança é quem deu a aula',
 };
 
 /** Motivos de "não entrou na folha" — dito na cara, sem fingir festa. */

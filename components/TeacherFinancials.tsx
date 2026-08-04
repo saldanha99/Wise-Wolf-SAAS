@@ -11,8 +11,15 @@ import {
     Download,
     Search,
     ArrowRight,
+    ChevronDown,
+    ChevronRight,
     ClipboardCheck,
+    Loader2,
     MessageSquare,
+    Pencil,
+    RotateCcw,
+    Check,
+    X,
     FileDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -20,14 +27,35 @@ import { localMonth, monthRange } from '../lib/dateUtils';
 import { User } from '../types';
 import TeacherActivityReport from './TeacherActivityReport';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
+import TeacherPayoutDetails from './TeacherPayoutDetails';
+
+// Linha do resumo por aluno (get_teacher_closing_report → students[]).
+interface StudentRow {
+    student_id: string | null;
+    student: string;
+    tipo: 'Regular' | 'Aula experimental';
+    frequencia: string;
+    duracao_min: number;
+    aulas: number;
+    faltas_aluno: number;
+    valor_base: number;
+    qtd_tarifas: number;
+    valor: number;
+    tem_ajuste: boolean;
+    detalhe: { id: string; date: string; presence: string; subtype: string | null; valor: number; override: boolean }[];
+}
 
 interface TeacherFinancialsProps {
     user: User;
     tenantId?: string;
     viewOnly?: boolean;
+    /** Diretor abrindo a ficha do professor: libera a edição de valor base e duração. */
+    directorMode?: boolean;
 }
 
-const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, viewOnly = false }) => {
+const money = (v: number) => `R$ ${(Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, viewOnly = false, directorMode = false }) => {
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(localMonth());
     const [lessons, setLessons] = useState<any[]>([]);
@@ -43,10 +71,60 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     // usa no painel Pagamentos. Antes o painel calculava aqui (rate flat × aulas, excluindo
     // reposição) e divergia do RPC (tiers por aluno, reposição paga) → contestações em série.
     const [report, setReport] = useState<any>(null);
+    // Resumo por aluno: linhas abertas e edição do diretor (valor base / duração).
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const [editingRow, setEditingRow] = useState<string | null>(null);
+    const [draftRate, setDraftRate] = useState('');
+    const [draftDuration, setDraftDuration] = useState('');
+    const [savingRow, setSavingRow] = useState<string | null>(null);
+    const [rowError, setRowError] = useState<string | null>(null);
+    // Cobertura: aula lançada por um professor que quem deu foi outro.
+    const [transferLog, setTransferLog] = useState<{ id: string; date: string; student: string } | null>(null);
+    const [transferTargets, setTransferTargets] = useState<{ id: string; full_name: string }[]>([]);
+    const [transferTo, setTransferTo] = useState('');
+    const [transferReason, setTransferReason] = useState('');
+    const [transferring, setTransferring] = useState(false);
+    // Ajustes do fechamento: acordos que não são aula (reserva de agenda, bônus,
+    // desconto). Antes a direção editava valor de aula na mão para "encaixar".
+    const [adjustments, setAdjustments] = useState<{ id: string; description: string; amount: number }[]>([]);
+    const [adjOpen, setAdjOpen] = useState(false);
+    const [adjDesc, setAdjDesc] = useState('');
+    const [adjAmount, setAdjAmount] = useState('');
+    const [adjSaving, setAdjSaving] = useState(false);
 
     useEffect(() => {
         fetchFinancials();
     }, [user.id, selectedMonth, tenantId]);
+
+    // Lista de destinos só faz sentido para a direção.
+    useEffect(() => {
+        if (!directorMode) return;
+        supabase.rpc('list_tenant_teachers_for_transfer').then(({ data }) => {
+            setTransferTargets(((data as any[]) || []).filter(t => t.id !== user.id));
+        });
+    }, [directorMode, user.id]);
+
+    const handleTransfer = async () => {
+        if (!transferLog || !transferTo) return;
+        setTransferring(true);
+        setRowError(null);
+        try {
+            const { error } = await supabase.rpc('transfer_class_coverage', {
+                p_log_id: transferLog.id,
+                p_to_teacher: transferTo,
+                p_reason: transferReason || null,
+            });
+            if (error) throw error;
+            setTransferLog(null);
+            setTransferTo('');
+            setTransferReason('');
+            await fetchFinancials();
+        } catch (err: any) {
+            setRowError(err.message || 'Não foi possível transferir a aula.');
+        } finally {
+            setTransferring(false);
+        }
+    };
 
     const fetchFinancials = async () => {
         setLoading(true);
@@ -87,6 +165,11 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 p_month: selectedMonth,
             });
             setReport(reportData || null);
+
+            const { data: adj } = await supabase.rpc('teacher_closing_adjustments', {
+                p_teacher_id: user.id, p_month: selectedMonth,
+            });
+            setAdjustments(((adj as any[]) || []).map(a => ({ ...a, amount: Number(a.amount) })));
 
             // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase
@@ -130,14 +213,94 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         const v = report?.resumo?.total_aulas;
         return v != null ? Number(v) : lessons.filter(isLessonPaid).length;
     };
-    // Valor unitário real da aula (tiers variam por aluno): média do grupo do aluno no relatório
-    const perLessonValue = (log: any): number => {
-        const name = (log.student?.full_name || '').trim();
-        const isExp = log.subtype === 'AULA EXPERIMENTAL';
-        const grp = (report?.students || []).find((s: any) =>
-            s.student === name && (s.tipo === 'Aula experimental') === isExp);
-        if (grp && Number(grp.aulas) > 0) return Number(grp.valor) / Number(grp.aulas);
-        return rate;
+    // Resumo por aluno — é como a escola sempre conferiu a folha (e o que o
+    // professor consegue ler). O extrato aula-a-aula vira o detalhe da linha.
+    const studentRows: StudentRow[] = (report?.students || []) as StudentRow[];
+
+    const rowKey = (row: StudentRow, idx: number) => `${row.student_id ?? 'sem-id'}:${row.tipo}:${idx}`;
+
+    const toggleRow = (key: string) => {
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    };
+
+    const startEdit = (key: string, row: StudentRow) => {
+        setRowError(null);
+        setEditingRow(key);
+        setDraftRate(String(row.valor_base ?? '').replace('.', ','));
+        setDraftDuration(String(row.duracao_min ?? 30));
+    };
+
+    // Diretor ajusta o valor base e/ou a duração do aluno no MÊS INTEIRO.
+    // A RPC revalida o papel no servidor — o flag directorMode é só de UI.
+    const saveRow = async (row: StudentRow, clear = false) => {
+        if (!row.student_id) {
+            setRowError('Este lançamento não tem aluno vinculado — ajuste pelo detalhamento oficial.');
+            return;
+        }
+        const key = editingRow || '';
+        setSavingRow(key);
+        setRowError(null);
+        try {
+            let rate: number | null = null;
+            if (!clear) {
+                rate = Number(draftRate.replace(',', '.'));
+                if (!isFinite(rate) || rate < 0) throw new Error('Informe um valor válido (ex: 8 ou 8,50).');
+            }
+            const duration = Number(draftDuration);
+            if (!clear && (!isFinite(duration) || duration <= 0)) throw new Error('Informe uma duração válida em minutos.');
+
+            const { error } = await supabase.rpc('set_student_month_pay', {
+                p_teacher_id: user.id,
+                p_student_id: row.student_id,
+                p_month: selectedMonth,
+                p_rate: clear ? null : rate,
+                p_duration_minutes: clear ? null : Math.round(duration),
+                p_clear_rate: clear,
+            });
+            if (error) throw error;
+            setEditingRow(null);
+            await fetchFinancials();
+        } catch (err: any) {
+            setRowError(err.message || 'Não foi possível salvar.');
+        } finally {
+            setSavingRow(null);
+        }
+    };
+
+    const adjustmentsTotal = adjustments.reduce((sum, a) => sum + a.amount, 0);
+    const grandTotal = () => officialTotal() + adjustmentsTotal;
+
+    const saveAdjustment = async (deleteId?: string) => {
+        setAdjSaving(true);
+        setRowError(null);
+        try {
+            if (!deleteId) {
+                const value = Number(adjAmount.replace(',', '.'));
+                if (!isFinite(value) || value === 0) throw new Error('Informe um valor (use - para desconto).');
+                if (!adjDesc.trim()) throw new Error('Descreva o motivo do ajuste.');
+                const { error } = await supabase.rpc('set_closing_adjustment', {
+                    p_teacher_id: user.id, p_month: selectedMonth,
+                    p_description: adjDesc.trim(), p_amount: value,
+                });
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.rpc('set_closing_adjustment', {
+                    p_teacher_id: user.id, p_month: selectedMonth,
+                    p_description: '-', p_amount: 0, p_delete_id: deleteId,
+                });
+                if (error) throw error;
+            }
+            setAdjOpen(false); setAdjDesc(''); setAdjAmount('');
+            await fetchFinancials();
+        } catch (err: any) {
+            setRowError(err.message || 'Não foi possível salvar o ajuste.');
+        } finally {
+            setAdjSaving(false);
+        }
     };
 
     const canCloseMonth = () => {
@@ -227,41 +390,31 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         }
     };
 
-    const lessonStatusClass = (log: any) =>
-        (log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor' || log.presence === 'EXPIRED') ? 'bg-red-50 dark:bg-red-900/20 text-red-600' :
-            log.subtype === 'REPOSIÇÃO' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' :
-                (log.presence === 'STUDENT_ABSENCE' || log.presence === 'Falta') ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600' :
-                    log.presence === 'Falta Justificada' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' :
-                        'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600';
-
-    const lessonStatusLabel = (log: any) =>
-        log.subtype === 'REPOSIÇÃO' ? 'Reposição' :
-            log.presence === 'COMPLETED' ? 'Realizada' :
-                log.presence === 'STUDENT_ABSENCE' ? 'Falta Aluno' :
-                    log.presence === 'TEACHER_ABSENCE' ? 'Falta Prof.' :
-                        log.presence === 'EXPIRED' ? 'Expirada (Prazo)' :
-                            log.presence;
-
     const handleDownloadStatement = () => {
         const csvCell = (value: string | number) => {
             const text = String(value);
             const formulaSafe = /^[=+\-@]/.test(text) ? `'${text}` : text;
             return `"${formulaSafe.replace(/"/g, '""')}"`;
         };
-        const rows = lessons.map((log) => [
-            new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
-            log.student?.full_name || 'Aluno não informado',
-            lessonStatusLabel(log),
-            !isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2).replace('.', ','),
+        // Exporta o MESMO recorte da tela (por aluno) — é o formato que a escola
+        // confere. O detalhe por data continua visível ao abrir a linha.
+        const rows = studentRows.map((row) => [
+            row.student,
+            `${row.duracao_min} minutos`,
+            row.aulas,
+            Number(row.valor_base).toFixed(2).replace('.', ','),
+            `${row.aulas} x ${Number(row.valor_base).toFixed(2).replace('.', ',')}`,
+            Number(row.valor).toFixed(2).replace('.', ','),
         ]);
         const csv = [
-            ['Data', 'Aluno', 'Status', 'Valor (R$)'],
+            ['Aluno', 'Tempo', 'Qtd aulas', 'Valor base (R$)', 'Cálculo', 'Valor total (R$)'],
             ...rows,
+            ['TOTAL', '', officialLessons(), '', '', officialTotal().toFixed(2).replace('.', ',')],
         ].map((row) => row.map(csvCell).join(';')).join('\r\n');
         const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
         const link = document.createElement('a');
         link.href = url;
-        link.download = `extrato-aulas-${selectedMonth}.csv`;
+        link.download = `folha-por-aluno-${selectedMonth}.csv`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -446,107 +599,460 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 )
             }
 
-            {/* Lesson List */}
+            {/* Resumo por aluno — substitui o extrato aula-a-aula, que ficava com
+                mais de 100 linhas e ninguém conseguia conferir. */}
             <div className="bg-brand-surface rounded-[2.5rem] border border-brand-border overflow-hidden shadow-sm">
                 <div className="flex items-center justify-between border-b border-slate-50 p-5 dark:border-brand-border sm:p-8">
-                    <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Extrato de Aulas</h3>
+                    <div className="min-w-0">
+                        <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Resumo por aluno</h3>
+                        <p className="mt-1 text-xs font-medium text-brand-muted">
+                            {directorMode
+                                ? 'Clique no lápis para corrigir o valor base ou a duração do aluno no mês.'
+                                : 'Toque na linha para ver as datas das aulas.'}
+                        </p>
+                    </div>
                     <button
                         type="button"
                         onClick={handleDownloadStatement}
-                        disabled={lessons.length === 0}
-                        aria-label="Baixar extrato de aulas em CSV"
-                        title={lessons.length > 0 ? 'Baixar extrato de aulas em CSV' : 'Nenhuma aula para exportar'}
+                        disabled={studentRows.length === 0}
+                        aria-label="Baixar folha por aluno em CSV"
+                        title={studentRows.length > 0 ? 'Baixar folha por aluno em CSV' : 'Nenhuma aula para exportar'}
                         className="rounded-lg bg-brand-surface-2 p-2 text-brand-muted transition-colors hover:text-tenant-primary disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <Download size={18} />
                     </button>
                 </div>
 
+                {rowError && (
+                    <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 sm:mx-8">
+                        <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                        <p className="text-xs font-medium">{rowError}</p>
+                    </div>
+                )}
+
+                {/* Mobile: um cartão por aluno */}
                 <div className="space-y-3 p-4 md:hidden">
-                    {lessons.map((log) => (
-                        <article key={log.id} className="rounded-2xl border border-brand-border bg-brand-surface-2/50 p-4">
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Aluno</p>
-                                    <p className="mt-1 truncate text-sm font-black uppercase text-brand-text">{log.student?.full_name || 'Aluno não informado'}</p>
-                                </div>
-                                <span className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${lessonStatusClass(log)}`}>
-                                    {lessonStatusLabel(log)}
-                                </span>
-                            </div>
-                            <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-brand-border pt-4">
-                                <div>
-                                    <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Data</dt>
-                                    <dd className="mt-1 text-sm font-bold text-brand-text">
-                                        {new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                    </dd>
-                                </div>
-                                <div className="text-right">
-                                    <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor</dt>
-                                    <dd className={`mt-1 text-sm font-black ${!isLessonPaid(log) ? 'text-slate-400 line-through dark:text-brand-muted' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                        R$ {!isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2)}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </article>
-                    ))}
-                    {lessons.length === 0 && (
+                    {studentRows.map((row, idx) => {
+                        const key = rowKey(row, idx);
+                        const isOpen = expanded.has(key);
+                        return (
+                            <article key={key} className="rounded-2xl border border-brand-border bg-brand-surface-2/50 p-4">
+                                <button
+                                    type="button"
+                                    onClick={() => toggleRow(key)}
+                                    className="flex w-full items-start justify-between gap-3 text-left"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Aluno</p>
+                                        <p className="mt-1 text-sm font-black uppercase text-brand-text">{row.student}</p>
+                                    </div>
+                                    <span className="mt-1 shrink-0 text-brand-muted">
+                                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </span>
+                                </button>
+                                <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-brand-border pt-4">
+                                    <div>
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Tempo</dt>
+                                        <dd className="mt-1 text-sm font-bold text-brand-text">{row.duracao_min} minutos</dd>
+                                    </div>
+                                    <div className="text-right">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Qtd aulas</dt>
+                                        <dd className="mt-1 text-sm font-bold text-brand-text">{row.aulas}</dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor base</dt>
+                                        <dd className="mt-1 text-sm font-bold text-brand-text">
+                                            {money(row.valor_base)}
+                                            {row.qtd_tarifas > 1 && <span className="ml-1 text-[10px] font-medium text-brand-muted">(média)</span>}
+                                        </dd>
+                                    </div>
+                                    <div className="text-right">
+                                        <dt className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor total</dt>
+                                        <dd className="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-400">{money(row.valor)}</dd>
+                                        <dd className="mt-0.5 text-[10px] font-medium text-brand-muted">{row.aulas} × {money(row.valor_base)}</dd>
+                                    </div>
+                                </dl>
+                                {directorMode && (
+                                    <button
+                                        type="button"
+                                        onClick={() => startEdit(key, row)}
+                                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-brand-surface px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-brand-text"
+                                    >
+                                        <Pencil size={12} /> Ajustar valor / duração
+                                    </button>
+                                )}
+                                {isOpen && (
+                                    <div className="mt-4 flex flex-col gap-1.5 border-t border-brand-border pt-4">
+                                        {row.detalhe.map((d, i) => (
+                                            <div key={d.id || i} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px] font-bold ${d.presence === 'COMPLETED'
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                                <span>{new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                                <span>{money(d.valor)}{d.override ? ' ✎' : ''}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </article>
+                        );
+                    })}
+                    {studentRows.length === 0 && (
                         <div className="flex flex-col items-center gap-3 py-12 text-center text-brand-muted">
                             <FileText size={40} className="opacity-20" />
-                            <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula registrada neste mês.</p>
+                            <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula remunerada neste mês.</p>
                         </div>
                     )}
                 </div>
 
+                {/* Desktop: Aluno · Tempo · Qtd aulas · Valor base · Valor total */}
                 <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full min-w-[500px]">
+                    <table className="w-full min-w-[720px]">
                         <thead>
                             <tr className="bg-brand-surface-2/50 dark:bg-brand-surface-2/30">
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Data</th>
                                 <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Aluno</th>
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Status</th>
-                                <th className="px-8 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor</th>
+                                <th className="px-6 py-4 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Tempo</th>
+                                <th className="px-6 py-4 text-center text-[10px] font-black text-brand-muted uppercase tracking-widest">Qtd aulas</th>
+                                <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor base</th>
+                                <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Cálculo</th>
+                                <th className="px-8 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Valor total</th>
+                                {directorMode && <th className="px-6 py-4 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Ajustar</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                            {lessons.map((log) => (
-                                <tr key={log.id} className="hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/50 transition-colors">
-                                    <td className="px-8 py-6 text-sm font-bold text-brand-text dark:text-slate-300">
-                                        {/* Use class_date if available, fallback to created_at */}
-                                        {new Date(log.class_date || log.created_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <span className="text-sm font-black text-brand-text dark:text-slate-100 uppercase">{log.student?.full_name}</span>
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <div className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest ${lessonStatusClass(log)}`}>
-                                            {lessonStatusLabel(log)}
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <span className={`text-sm font-black ${!isLessonPaid(log)
-                                            ? 'text-slate-300 dark:text-brand-muted line-through'
-                                            : 'text-emerald-600 dark:text-emerald-400'
-                                            }`}>
-                                            R$ {!isLessonPaid(log) ? '0,00' : perLessonValue(log).toFixed(2)}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            {lessons.length === 0 && (
+                            {studentRows.map((row, idx) => {
+                                const key = rowKey(row, idx);
+                                const isOpen = expanded.has(key);
+                                const isEditing = editingRow === key;
+                                const isSaving = savingRow === key;
+                                const colSpan = directorMode ? 7 : 6;
+                                return (
+                                    <React.Fragment key={key}>
+                                        <tr
+                                            onClick={() => !isEditing && toggleRow(key)}
+                                            className="cursor-pointer transition-colors hover:bg-brand-surface-2/50 dark:hover:bg-brand-surface-2/50"
+                                        >
+                                            <td className="px-8 py-5">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="shrink-0 text-brand-muted">
+                                                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                    </span>
+                                                    <span className="min-w-0">
+                                                        <span className="block text-sm font-black uppercase text-brand-text dark:text-slate-100">{row.student}</span>
+                                                        {row.tipo === 'Aula experimental' && (
+                                                            <span className="mt-1 inline-block whitespace-nowrap rounded-full border border-purple-200 bg-purple-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-purple-700">
+                                                                Experimental
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </span>
+                                            </td>
+                                            <td className="whitespace-nowrap px-6 py-5 text-sm font-bold uppercase text-brand-muted">
+                                                {isEditing ? (
+                                                    <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            value={draftDuration}
+                                                            onChange={(e) => setDraftDuration(e.target.value)}
+                                                            aria-label={`Duração da aula de ${row.student} em minutos`}
+                                                            className="w-16 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                        />
+                                                        <span className="text-xs">min</span>
+                                                    </span>
+                                                ) : (
+                                                    `${row.duracao_min} minutos`
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-5 text-center text-sm font-bold text-brand-text dark:text-slate-300">{row.aulas}</td>
+                                            <td className="px-6 py-5 text-right">
+                                                {isEditing ? (
+                                                    <span className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                        <span className="text-xs text-brand-muted">R$</span>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            autoFocus
+                                                            value={draftRate}
+                                                            onChange={(e) => setDraftRate(e.target.value)}
+                                                            onKeyDown={(e) => { if (e.key === 'Enter') saveRow(row); if (e.key === 'Escape') setEditingRow(null); }}
+                                                            aria-label={`Valor base da aula de ${row.student}`}
+                                                            className="w-20 rounded-md border border-brand-border bg-brand-surface px-2 py-1 text-right text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary"
+                                                        />
+                                                    </span>
+                                                ) : (
+                                                    <span className={`text-sm font-bold ${row.tem_ajuste ? 'text-tenant-primary' : 'text-brand-text dark:text-slate-300'}`}
+                                                        title={row.tem_ajuste ? 'Valor ajustado manualmente pela direção' : undefined}>
+                                                        {money(row.valor_base)}{row.tem_ajuste ? ' ✎' : ''}
+                                                        {row.qtd_tarifas > 1 && (
+                                                            <span className="ml-1 text-[10px] font-medium text-brand-muted">média</span>
+                                                        )}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            {/* Conferência: a conta que gera o valor, do jeito que a
+                                                escola confere na planilha (14 × R$ 8,00). */}
+                                            <td className="whitespace-nowrap px-6 py-5 text-right text-xs font-bold text-brand-muted">
+                                                {row.aulas} × {money(row.valor_base)}
+                                            </td>
+                                            <td className="px-8 py-5 text-right text-sm font-black text-emerald-600 dark:text-emerald-400">
+                                                {money(row.valor)}
+                                            </td>
+                                            {directorMode && (
+                                                <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                                    {isEditing ? (
+                                                        <span className="flex items-center justify-end gap-1">
+                                                            <button type="button" onClick={() => saveRow(row)} disabled={isSaving}
+                                                                title="Salvar" aria-label="Salvar ajuste"
+                                                                className="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50">
+                                                                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                                            </button>
+                                                            {row.tem_ajuste && (
+                                                                <button type="button" onClick={() => saveRow(row, true)} disabled={isSaving}
+                                                                    title="Voltar ao valor automático" aria-label="Voltar ao valor automático"
+                                                                    className="rounded-md p-1.5 text-brand-muted hover:bg-brand-surface-2 disabled:opacity-50">
+                                                                    <RotateCcw size={14} />
+                                                                </button>
+                                                            )}
+                                                            <button type="button" onClick={() => setEditingRow(null)} disabled={isSaving}
+                                                                title="Cancelar" aria-label="Cancelar edição"
+                                                                className="rounded-md p-1.5 text-brand-muted hover:bg-brand-surface-2 disabled:opacity-50">
+                                                                <X size={14} />
+                                                            </button>
+                                                        </span>
+                                                    ) : (
+                                                        <button type="button" onClick={() => startEdit(key, row)}
+                                                            title="Ajustar valor base e duração deste aluno no mês"
+                                                            aria-label={`Ajustar valores de ${row.student}`}
+                                                            className="rounded-md p-1.5 text-brand-muted transition-colors hover:bg-tenant-primary/10 hover:text-tenant-primary">
+                                                            <Pencil size={14} />
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            )}
+                                        </tr>
+                                        {isOpen && (
+                                            <tr className="bg-brand-surface-2/40">
+                                                <td colSpan={colSpan} className="px-10 pb-5 pt-2">
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {row.detalhe.map((d, i) => (
+                                                            <span key={d.id || i}
+                                                                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold ${d.presence === 'COMPLETED'
+                                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                                                    : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                                                {new Date(`${d.date}T12:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                                                {' · '}{money(d.valor)}{d.override ? ' ✎' : ''}
+                                                                {/* Cobertura: se quem deu a aula foi outro professor, a aula
+                                                                    (e o pagamento) muda de dono aqui mesmo. */}
+                                                                {directorMode && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setTransferLog({ id: d.id, date: d.date, student: row.student })}
+                                                                        title="Esta aula foi dada por outro professor"
+                                                                        aria-label={`Transferir a aula de ${row.student} em ${d.date} para outro professor`}
+                                                                        className="rounded p-0.5 opacity-60 transition-opacity hover:bg-black/5 hover:opacity-100"
+                                                                    >
+                                                                        <ArrowRight size={12} />
+                                                                    </button>
+                                                                )}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                            {studentRows.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-8 py-20 text-center">
+                                    <td colSpan={directorMode ? 7 : 6} className="px-8 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3 text-brand-muted">
                                             <FileText size={48} className="opacity-20" />
-                                            <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula registrada neste mês.</p>
+                                            <p className="text-sm font-bold uppercase tracking-widest">Nenhuma aula remunerada neste mês.</p>
                                         </div>
                                     </td>
                                 </tr>
                             )}
                         </tbody>
+                        {studentRows.length > 0 && (
+                            <tfoot>
+                                <tr className="border-t-2 border-brand-border bg-brand-surface-2/60">
+                                    <td className="px-8 py-5 text-xs font-black uppercase tracking-widest text-brand-muted">Total do mês</td>
+                                    <td />
+                                    <td className="px-6 py-5 text-center text-sm font-black text-brand-text">{officialLessons()}</td>
+                                    <td />
+                                    <td />
+                                    <td className="px-8 py-5 text-right text-lg font-black tracking-tight text-tenant-primary">{money(officialTotal())}</td>
+                                    {directorMode && <td />}
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                 </div>
             </div>
+
+            {/* Ajustes do fechamento — o que não é aula */}
+            {(directorMode || adjustments.length > 0) && (
+                <div className="overflow-hidden rounded-[2.5rem] border border-brand-border bg-brand-surface shadow-sm">
+                    <div className="flex flex-col gap-3 border-b border-brand-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+                        <div className="min-w-0">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-brand-text">Ajustes do fechamento</h3>
+                            <p className="mt-1 text-xs font-medium text-brand-muted">
+                                Acordos que não são aula — reserva de agenda, bônus, desconto.
+                            </p>
+                        </div>
+                        {directorMode && !adjOpen && (
+                            <button
+                                type="button"
+                                onClick={() => setAdjOpen(true)}
+                                className="shrink-0 whitespace-nowrap rounded-xl bg-tenant-primary/10 px-4 py-2 text-xs font-bold text-tenant-primary"
+                            >
+                                + Lançar ajuste
+                            </button>
+                        )}
+                    </div>
+
+                    {adjOpen && (
+                        <div className="grid gap-3 border-b border-brand-border bg-brand-surface-2/40 p-5 sm:grid-cols-[1fr_auto_auto] sm:items-end sm:p-6">
+                            <label className="block">
+                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Motivo</span>
+                                <input
+                                    value={adjDesc}
+                                    onChange={(e) => setAdjDesc(e.target.value)}
+                                    list="ajuste-sugestoes"
+                                    placeholder="Ex: Reserva de agenda — aluno começa depois"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                                />
+                                <datalist id="ajuste-sugestoes">
+                                    <option value="Reserva de agenda" />
+                                    <option value="Bônus acordado com a direção" />
+                                    <option value="Desconto acordado" />
+                                    <option value="Ajuste de fechamento anterior" />
+                                </datalist>
+                            </label>
+                            <label className="block">
+                                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Valor (R$)</span>
+                                <input
+                                    value={adjAmount}
+                                    onChange={(e) => setAdjAmount(e.target.value)}
+                                    inputMode="decimal"
+                                    placeholder="30,00"
+                                    className="w-full rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30 sm:w-32"
+                                />
+                            </label>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => { setAdjOpen(false); setAdjDesc(''); setAdjAmount(''); }}
+                                    className="shrink-0 rounded-xl px-4 py-3 text-xs font-bold uppercase tracking-widest text-brand-muted">
+                                    Cancelar
+                                </button>
+                                <button type="button" onClick={() => saveAdjustment()} disabled={adjSaving}
+                                    className="flex shrink-0 items-center gap-2 rounded-xl bg-tenant-primary px-5 py-3 text-xs font-black uppercase tracking-widest text-white disabled:opacity-50">
+                                    {adjSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Lançar
+                                </button>
+                            </div>
+                            <p className="text-[11px] font-medium text-brand-muted sm:col-span-3">
+                                Use valor negativo para desconto. O ajuste aparece na folha do professor com o motivo escrito.
+                            </p>
+                        </div>
+                    )}
+
+                    {adjustments.length === 0 ? (
+                        <p className="p-8 text-center text-xs font-bold uppercase tracking-widest text-brand-muted">
+                            Nenhum ajuste neste mês.
+                        </p>
+                    ) : (
+                        <ul className="divide-y divide-brand-border">
+                            {adjustments.map(a => (
+                                <li key={a.id} className="flex items-center justify-between gap-4 px-5 py-4 sm:px-8">
+                                    <span className="min-w-0 text-sm font-bold text-brand-text">{a.description}</span>
+                                    <span className="flex shrink-0 items-center gap-3">
+                                        <span className={`text-sm font-black ${a.amount < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                            {a.amount < 0 ? '- ' : '+ '}{money(Math.abs(a.amount))}
+                                        </span>
+                                        {directorMode && (
+                                            <button type="button" onClick={() => saveAdjustment(a.id)} disabled={adjSaving}
+                                                aria-label={`Remover ajuste ${a.description}`}
+                                                className="rounded-md p-1.5 text-brand-muted hover:bg-red-50 hover:text-red-500">
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </span>
+                                </li>
+                            ))}
+                            <li className="flex items-center justify-between gap-4 bg-brand-surface-2/60 px-5 py-5 sm:px-8">
+                                <span className="text-xs font-black uppercase tracking-widest text-brand-muted">Total a receber</span>
+                                <span className="text-xl font-black tracking-tight text-tenant-primary">{money(grandTotal())}</span>
+                            </li>
+                        </ul>
+                    )}
+                </div>
+            )}
+
+            {/* Cobertura: mover a aula (e o pagamento) para quem realmente deu */}
+            {transferLog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                    <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-brand-border bg-brand-surface p-6 shadow-2xl sm:p-8">
+                        <h3 className="text-lg font-black uppercase tracking-tight text-brand-text">Quem deu esta aula?</h3>
+                        <p className="mt-1 text-sm font-medium text-brand-muted">
+                            {transferLog.student} · {new Date(`${transferLog.date}T12:00:00`).toLocaleDateString('pt-BR')}
+                        </p>
+                        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+                            A aula sai da folha deste professor e entra na de quem você escolher. O valor vai junto.
+                        </p>
+
+                        <label className="mt-5 block">
+                            <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Professor que cobriu</span>
+                            <select
+                                value={transferTo}
+                                onChange={(e) => setTransferTo(e.target.value)}
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                            >
+                                <option value="">Selecione…</option>
+                                {transferTargets.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+                            </select>
+                        </label>
+
+                        <label className="mt-4 block">
+                            <span className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-brand-muted">Motivo (opcional)</span>
+                            <input
+                                value={transferReason}
+                                onChange={(e) => setTransferReason(e.target.value)}
+                                placeholder="Ex: professor passou mal, cobertura de última hora"
+                                className="w-full rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-medium text-brand-text outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                            />
+                        </label>
+
+                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setTransferLog(null); setTransferTo(''); setTransferReason(''); }}
+                                disabled={transferring}
+                                className="shrink-0 whitespace-nowrap rounded-xl px-5 py-3 text-xs font-bold uppercase tracking-widest text-brand-muted"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleTransfer}
+                                disabled={transferring || !transferTo}
+                                className="flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-tenant-primary px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-tenant-primary/20 disabled:opacity-50"
+                            >
+                                {transferring ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+                                {transferring ? 'Transferindo…' : 'Transferir aula'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Dados de recebimento + nota fiscal, na mesma tela (antes eram outras duas). */}
+            <TeacherPayoutDetails
+                teacherId={user.id}
+                teacherName={(user as any).full_name || user.name}
+                month={selectedMonth}
+                canEdit={!viewOnly && !directorMode}
+                onChanged={fetchFinancials}
+            />
         </div>
     );
 };

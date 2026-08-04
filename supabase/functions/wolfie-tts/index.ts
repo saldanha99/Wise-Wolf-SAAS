@@ -268,10 +268,25 @@ serve(async (req) => {
       throw new Error("WOLFIE_TTS_EMPTY_AUDIO");
     }
 
-    // A API de fala não devolve bloco `usage` — o custo é por token do texto de
-    // entrada. Registramos a ESTIMATIVA (~4 caracteres por token) porque o
-    // painel do diretor ignorava 100% do áudio: aparecia só o texto, e a conta
-    // da voz não existia em lugar nenhum. O rótulo no painel diz "estimado".
+    // A API de fala não devolve bloco `usage`, então estimamos — o painel do
+    // diretor ignorava 100% do áudio e a conta da voz não existia em lugar
+    // nenhum. As duas estimativas, para o preço oficial fechar:
+    //
+    //   entrada (texto)  ≈ 1 token a cada 4 caracteres
+    //   saída  (áudio)   ≈ 40 tokens por segundo de fala × (caracteres / 15)
+    //                    ≈ 2,67 tokens por caractere
+    //
+    // Os 40 tokens/s saem da própria tabela da OpenAI: gpt-4o-mini-transcribe
+    // cobra US$ 0,003/min com áudio a US$ 1,25/1M → 2.400 tokens por minuto.
+    // Os ~15 caracteres/s são fala natural (~150 palavras/min).
+    //
+    // Gravar a saída importa porque o áudio é 20× o texto (US$ 12,00 contra
+    // US$ 0,60 por 1M): registrar só a entrada mostraria uma fração da conta.
+    const estimatedTextTokens = Math.max(1, Math.ceil(spokenText.length / 4));
+    const estimatedAudioTokens = Math.max(
+      1,
+      Math.ceil((spokenText.length * 8) / 3),
+    );
     await recordAiUsage(auth.context.admin, {
       tenantId: auth.context.profile?.tenant_id ?? null,
       userId: auth.context.userId,
@@ -279,8 +294,8 @@ serve(async (req) => {
       provider: "openai",
       model,
       usage: {
-        inputTokens: Math.max(1, Math.ceil(spokenText.length / 4)),
-        outputTokens: 0,
+        inputTokens: estimatedTextTokens,
+        outputTokens: estimatedAudioTokens,
         cachedTokens: 0,
       },
     });

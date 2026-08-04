@@ -184,14 +184,43 @@ begin
       else
         v_kind := 'REGULAR';
 
+        -- COBERTURA: quem lança é quem DEU a aula, não necessariamente o dono do
+        -- agendamento. Aula assumida (`class_coverages.cover_teacher_id`) usa o
+        -- booking do professor original — validar só por `b.teacher_id` recusaria
+        -- o lançamento de quem realmente trabalhou.
         select b.student_id
           into v_student_id
           from public.bookings b
          where b.id::text = v_booking_id
-           and b.teacher_id = v_teacher_id;
+           and (
+             b.teacher_id = v_teacher_id
+             or exists (
+               select 1
+                 from public.class_coverages c
+                where c.booking_id = b.id
+                  and c.class_date = v_class_date
+                  and c.status = 'confirmed'
+                  and c.cover_teacher_id = v_teacher_id
+             )
+           );
 
         if not found then
           v_skip_reason := 'agendamento_inexistente';
+
+        -- E o inverso: quem CEDEU a aula não pode lançá-la. A tela já esconde,
+        -- mas a trava do dinheiro tem de estar no servidor — lançar aula cedida
+        -- pagaria dois professores pela mesma hora.
+        elsif exists (
+          select 1
+            from public.class_coverages c
+           where c.booking_id::text = v_booking_id
+             and c.class_date = v_class_date
+             and c.status = 'confirmed'
+             and c.original_teacher_id = v_teacher_id
+             and c.cover_teacher_id is distinct from v_teacher_id
+        ) then
+          v_skip_reason := 'aula_cedida_para_outro_professor';
+
         else
           -- Motivo da falta (Doença/Trabalho/Viagem/Outros) só quando houve falta.
           v_subtype := case
@@ -271,16 +300,20 @@ begin
       v_inserted_ids := pg_catalog.array_append(v_inserted_ids, v_new_id);
 
       ---------------------------------------------------------------------
-      -- 2d. Consome a reposição usada. Continua sendo DELETE (e não `used_at`)
-      --     de propósito: a view `upcoming_classes` lê `reschedules` sem
-      --     filtrar consumo, então uma linha que sobrevivesse ao lançamento
-      --     faria o aluno receber confirmação de presença por WhatsApp de uma
-      --     aula já lançada. A folha não se importa: 'REPOSIÇÃO_PROF' paga
-      --     mesmo com a origem apagada (verificado em produção).
+      -- 2d. Consome a reposição — MARCA `used_at`, não apaga.
+      --     Apagar destruía a prova de quem faltou (`reschedules.fault_type`),
+      --     e é ela que decide se a reposição paga. Com a linha apagada, 12 dos
+      --     13 class_logs ficaram apontando para nada e a regra nunca disparou
+      --     (diagnóstico do commit 0bd4053). A lista de pendentes já filtra por
+      --     "existe class_log apontando para esta reposição?", então a linha
+      --     consumida não reaparece para lançar.
       ---------------------------------------------------------------------
       if v_kind = 'REPOSICAO' then
-        delete from public.reschedules r
-         where r.id::text = v_reschedule_id and r.teacher_id = v_teacher_id;
+        update public.reschedules r
+           set used_at = pg_catalog.now()
+         where r.id::text = v_reschedule_id
+           and r.teacher_id = v_teacher_id
+           and r.used_at is null;
       end if;
 
       ---------------------------------------------------------------------

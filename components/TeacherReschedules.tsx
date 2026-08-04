@@ -147,8 +147,19 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                             {/* Actions Bar */}
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="flex gap-2">
-                                    <button className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center gap-2">
-                                        <Settings size={14} /> Ajustar Colunas
+                                    {/* Não existia botão de criar: o professor só conseguia mexer
+                                        nas reposições que o sistema já tinha aberto. Resultado —
+                                        84 reposições paradas em "Pendente" e 7 com data marcada. */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData({ studentId: '', date: '', time: '' });
+                                            setEditingId(null);
+                                            setIsModalOpen(true);
+                                        }}
+                                        className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center gap-2"
+                                    >
+                                        <Plus size={14} /> Nova Reposição
                                     </button>
                                 </div>
 
@@ -307,20 +318,28 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                 <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
                                     <User size={12} className="text-brand-accent" /> Aluno Selecionado
                                 </label>
+                                {/* Ficava sempre disabled — mesmo criando uma reposição nova o
+                                    professor não conseguia escolher o aluno. Ao remarcar um
+                                    crédito existente o aluno segue travado (ele já está definido). */}
                                 <select
                                     required
                                     value={formData.studentId}
                                     onChange={e => setFormData({ ...formData, studentId: e.target.value })}
                                     className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    disabled={true}
+                                    disabled={Boolean(editingId)}
                                 >
                                     <option value="">Selecione um aluno...</option>
                                     {students.map(student => (
                                         <option key={student.id} value={student.id}>
-                                            {student.name} ({student.module})
+                                            {student.name}{student.module && student.module !== 'N/A' ? ` (${student.module})` : ''}
                                         </option>
                                     ))}
                                 </select>
+                                {!editingId && students.length === 0 && (
+                                    <p className="ml-1 text-[11px] font-medium text-amber-500">
+                                        Nenhum aluno carregado. Recarregue a página ou fale com a coordenação.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

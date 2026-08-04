@@ -721,6 +721,9 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                 user={teachers.find(t => t.id === viewingFinancialsId) as any}
                                 tenantId={currentTenantId}
                                 viewOnly={true}
+                                /* Direção: libera a edição de valor base e duração por aluno.
+                                   A RPC set_student_month_pay revalida o papel no servidor. */
+                                directorMode={true}
                             />
                         </div>
                     </div>

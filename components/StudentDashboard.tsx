@@ -5,7 +5,6 @@ import { getPedagogicalSuggestion } from '../services/geminiService';
 import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import GamificationHeader from './GamificationHeader';
-import StudentOnboarding, { hasCompletedStudentOnboardingThisSession } from './StudentOnboarding';
 import ContractView from './ContractView';
 import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
@@ -43,9 +42,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   const [contractDownloadFn, setContractDownloadFn] = useState<(() => Promise<void>) | null>(null);
   const [downloadingContract, setDownloadingContract] = useState(false);
   const [minutesToClass, setMinutesToClass] = useState<number | null>(null);
-  const [onboardingDone, setOnboardingDone] = useState(
-    () => hasCompletedStudentOnboardingThisSession(user.id),
-  );
   const [showAllHistory, setShowAllHistory] = useState(false);
   const contractDialogRef = useRef<HTMLDivElement>(null);
   const contractTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -133,10 +129,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       setMinutesToClass(mins);
     }
   }, [nextClass]);
-
-  useEffect(() => {
-    setOnboardingDone(hasCompletedStudentOnboardingThisSession(user.id));
-  }, [user.id]);
 
   useLayoutEffect(() => {
     if (!showContract) return;
@@ -233,14 +225,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   return (
     <div className="space-y-8 animate-fade-in-up pb-20 font-sans">
 
-      {/* Tour de boas-vindas no 1º acesso */}
-      {profile && profile.onboarded === false && !onboardingDone && (
-        <StudentOnboarding
-          userId={profile.id}
-          nome={profile.full_name}
-          onComplete={() => setOnboardingDone(true)}
-        />
-      )}
+      {/* O carrossel de slides do 1º acesso saiu daqui: quem recebe o aluno
+          agora é o tour guiado (components/tour), disparado pelo App com o
+          mesmo gatilho `profiles.onboarded === false`. A diferença é que o tour
+          aponta os elementos REAIS da tela — ele ensina onde as coisas ficam,
+          não só que existem. StudentOnboarding.tsx segue no repo caso se queira
+          voltar aos slides. */}
 
       {/* 0. LEMBRETE DE AUDITORIA (aparece só com pendências) */}
       <StudentAuditReminder />
