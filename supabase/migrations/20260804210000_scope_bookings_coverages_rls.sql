@@ -17,15 +17,19 @@
 -- Sem recursão: `bookings_select` consulta `class_coverages`, e as policies de
 -- `class_coverages` não consultam `bookings`.
 
-begin;
-
 ---------------------------------------------------------------------------
 -- bookings
 ---------------------------------------------------------------------------
+-- ⚠️ SEM `begin;`/`commit;` e RE-EXECUTÁVEL: o release.sh aplica a lista INTEIRA
+-- de migrations a cada deploy, dentro da transação dele. Um `commit;` aqui
+-- fecharia a transação do release no meio, e um `create policy` sem o `drop`
+-- correspondente derruba o deploy no segundo release (foi o que aconteceu).
+
 drop policy if exists "bookings_admin_write" on public.bookings;
 drop policy if exists "bookings_tenant_select" on public.bookings;
 drop policy if exists "Bookings: Access control" on public.bookings;
 
+drop policy if exists bookings_select on public.bookings;
 create policy bookings_select on public.bookings
   for select to authenticated
   using (
@@ -47,6 +51,7 @@ create policy bookings_select on public.bookings
 -- Escrita: o professor mexe na PRÓPRIA agenda; admin/coordenador na da escola.
 -- O `with check` repete a condição porque o `using` só enxerga a linha ANTES do
 -- update — sem ele daria para reatribuir o booking para outro professor.
+drop policy if exists bookings_write on public.bookings;
 create policy bookings_write on public.bookings
   for all to authenticated
   using (
@@ -71,6 +76,7 @@ create policy bookings_write on public.bookings
 ---------------------------------------------------------------------------
 drop policy if exists "cc_write" on public.class_coverages;
 
+drop policy if exists cc_write on public.class_coverages;
 create policy cc_write on public.class_coverages
   for all to authenticated
   using (
@@ -89,5 +95,3 @@ create policy cc_write on public.class_coverages
       or public._my_role() = any (array['SCHOOL_ADMIN', 'COORDINATOR', 'SUPER_ADMIN'])
     )
   );
-
-commit;

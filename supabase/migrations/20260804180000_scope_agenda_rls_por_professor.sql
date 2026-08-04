@@ -23,12 +23,16 @@
 -- (`assumedBookings`). Fechar isso exige liberar leitura via `class_coverages` e
 -- reauditar ~20 pontos de acesso — mudança própria, com verificação própria.
 
-begin;
+-- ⚠️ SEM `begin;`/`commit;` e RE-EXECUTÁVEL: o release.sh aplica a lista INTEIRA
+-- de migrations a cada deploy, dentro da transação dele. Um `commit;` aqui
+-- fecharia a transação do release no meio, e um `create policy` sem o `drop`
+-- correspondente derruba o deploy no segundo release (foi o que aconteceu).
 
 drop policy if exists "reschedules_tenant_scope" on public.reschedules;
 drop policy if exists "Reschedules: Access control" on public.reschedules;
 
 -- Leitura: dono, aluno da reposição, ou admin do tenant.
+drop policy if exists reschedules_select on public.reschedules;
 create policy reschedules_select on public.reschedules
   for select to authenticated
   using (
@@ -44,6 +48,7 @@ create policy reschedules_select on public.reschedules
 -- O `with check` repete a condição de propósito: sem ele dá para gravar a linha já
 -- apontando para OUTRO professor — o `using` só enxerga a linha ANTES do update, e
 -- era justamente reatribuir dono que movia a reposição de agenda.
+drop policy if exists reschedules_write on public.reschedules;
 create policy reschedules_write on public.reschedules
   for all to authenticated
   using (
@@ -60,5 +65,3 @@ create policy reschedules_write on public.reschedules
       or public._my_role() = any (array['SCHOOL_ADMIN', 'COORDINATOR', 'SUPER_ADMIN'])
     )
   );
-
-commit;

@@ -14,13 +14,16 @@
 -- R$ 12,67 A MENOS que o 4x/6m com 25% mais hora de aula. Cadastrado como veio,
 -- porque preço é decisão comercial — mas fica anotado onde a conta não fecha.
 
-begin;
-
 -- Idempotente por (tenant, aulas/semana, carência): rodar de novo atualiza o
 -- preço em vez de duplicar a linha do cardápio.
 -- PARCIAL (`classes_per_week > 0`) porque o tenant `wolfie-direct` tem 4 planos
 -- de assinatura do Wolfie avulso, todos com 0 aula/semana — eles colidiriam
 -- entre si num índice total e a criação falharia.
+-- ⚠️ SEM `begin;`/`commit;` e RE-EXECUTÁVEL: o release.sh aplica a lista INTEIRA
+-- de migrations a cada deploy, dentro da transação dele. Um `commit;` aqui
+-- fecharia a transação do release no meio, e um `create policy` sem o `drop`
+-- correspondente derruba o deploy no segundo release (foi o que aconteceu).
+
 create unique index if not exists uq_pricing_plan_tenant_freq_fidelity
   on public.student_pricing_plans (tenant_id, classes_per_week, fidelity_months)
   where classes_per_week > 0;
@@ -50,5 +53,3 @@ on conflict (tenant_id, classes_per_week, fidelity_months) where classes_per_wee
 
 -- 6x mensal não foi definido pela direção. Fica de fora em vez de ser inventado:
 -- preço chutado no cardápio vira proposta enviada ao aluno.
-
-commit;

@@ -14,7 +14,10 @@
 -- dentro do compromisso que já existe. Ela é só registrada no aditivo para o
 -- documento sair completo.
 
-begin;
+-- ⚠️ SEM `begin;`/`commit;` e RE-EXECUTÁVEL: o release.sh aplica a lista INTEIRA
+-- de migrations a cada deploy, dentro da transação dele. Um `commit;` aqui
+-- fecharia a transação do release no meio, e um `create policy` sem o `drop`
+-- correspondente derruba o deploy no segundo release (foi o que aconteceu).
 
 create table if not exists public.student_plan_changes (
   id               uuid primary key default gen_random_uuid(),
@@ -294,5 +297,3 @@ grant execute on function public.list_student_plan_changes(uuid) to authenticate
 -- O aluno assina deslogado, pelo link — por isso anon.
 grant execute on function public.get_plan_change_public(text) to anon, authenticated;
 grant execute on function public.sign_student_plan_change(text, text) to anon, authenticated;
-
-commit;

@@ -12,7 +12,10 @@
 -- só ENFILEIRA, e um cron sincroniza — com o erro guardado e visível quando
 -- falha, em vez de divergência silenciosa.
 
-begin;
+-- ⚠️ SEM `begin;`/`commit;` e RE-EXECUTÁVEL: o release.sh aplica a lista INTEIRA
+-- de migrations a cada deploy, dentro da transação dele. Um `commit;` aqui
+-- fecharia a transação do release no meio, e um `create policy` sem o `drop`
+-- correspondente derruba o deploy no segundo release (foi o que aconteceu).
 
 alter table public.student_plan_changes
   add column if not exists billing_sync_status text not null default 'NOT_NEEDED',
@@ -285,5 +288,3 @@ grant execute on function public.mark_plan_change_billing(uuid, boolean, text) t
 -- poderia continuar chamando ela e a escolha sobre a fatura já gerada nunca
 -- chegaria ao banco (ficaria sempre no default).
 drop function if exists public.create_student_plan_change(uuid, text, numeric);
-
-commit;
