@@ -463,6 +463,7 @@ HARDENED_FUNCTIONS=(
   wolfie-live-proxy
   dre-categorize
   dre-report
+  sync-plan-change-billing
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -793,6 +794,7 @@ HARDENED_FUNCTIONS=(
   wolfie-live-proxy
   dre-categorize
   dre-report
+  sync-plan-change-billing
 )
 
 restore_previous_release() {
