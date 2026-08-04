@@ -39,6 +39,10 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [error, setError] = useState('');
+    // Cobrança já gerada do mês em curso: entra no valor novo ou fica no antigo?
+    // Ligado por padrão — deixar a fatura velha em pé recria a divergência que
+    // este fluxo existe para matar. Mas é decisão comercial, então dá para tirar.
+    const [atualizarFaturaAberta, setAtualizarFaturaAberta] = useState(true);
     const [link, setLink] = useState('');
     const [copied, setCopied] = useState(false);
 
@@ -114,6 +118,7 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
             p_student_id: student.id,
             p_to_frequency: `${freq}x`,
             p_to_fee: feeNum,
+            p_update_pending_payments: atualizarFaturaAberta,
         });
         setGenerating(false);
 
@@ -220,6 +225,22 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
                                     </p>
                                 )}
                             </div>
+
+                            <label className="flex items-start gap-3 rounded-2xl border border-brand-border bg-brand-surface-2 p-4 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={atualizarFaturaAberta}
+                                    onChange={e => setAtualizarFaturaAberta(e.target.checked)}
+                                    className="mt-0.5 accent-emerald-500 w-4 h-4 shrink-0"
+                                />
+                                <span className="text-[11px] text-brand-text font-medium">
+                                    Atualizar também a cobrança <b>já gerada</b> deste mês.
+                                    <span className="block text-brand-muted font-normal mt-0.5">
+                                        Desmarque para o valor novo valer só a partir da próxima fatura.
+                                        Só tem efeito para aluno com cobrança recorrente na Asaas.
+                                    </span>
+                                </span>
+                            </label>
 
                             {agendaDivergente && (
                                 <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex gap-3">

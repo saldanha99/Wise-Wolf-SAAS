@@ -308,7 +308,8 @@ npx --yes deno check --no-lock \
   supabase/functions/wolfie-eval/index.ts \
   supabase/functions/wolfie-live-proxy/index.ts \
   supabase/functions/dre-categorize/index.ts \
-  supabase/functions/dre-report/index.ts
+  supabase/functions/dre-report/index.ts \
+  supabase/functions/sync-plan-change-billing/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
