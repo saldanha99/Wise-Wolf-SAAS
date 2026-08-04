@@ -608,6 +608,9 @@ const App: React.FC = () => {
       }
 
       // 5. Fetch Reschedules
+      // used_at nulo = ainda não dada. A linha consumida sobrevive ao lançamento
+      // (preserva fault_type p/ folha); sem o filtro, a aba Reposições mostrava
+      // reposição já lançada como pendente de agendamento.
       let reschedulesQuery = supabase
         .from('reschedules')
         .select(`
@@ -620,7 +623,8 @@ const App: React.FC = () => {
             teacher_id,
             student_id
         `)
-        .eq('tenant_id', user.tenantId);
+        .eq('tenant_id', user.tenantId)
+        .is('used_at', null);
 
       if (user.role === UserRole.TEACHER) {
         reschedulesQuery = reschedulesQuery.eq('teacher_id', user.id);

@@ -392,11 +392,24 @@ Ou seja: **nenhuma reposição de falta do professor jamais foi paga**, embora
   o booking do professor original (a RPC aceita via `class_coverages.cover_teacher_id`), e
   quem **cedeu** é barrado (`aula_cedida_para_outro_professor`) — senão a mesma hora pagaria
   dois professores. A tela já escondia; a trava do dinheiro agora está no banco.
-- ⚠️ **Ponto aberto herdado do `0bd4053`:** `upcoming_classes` e
-  `enqueue_attendance_confirmations` **não filtram `used_at`** nem checam se já existe
-  `class_log`. Com a reposição sobrevivendo ao lançamento, vale verificar se ela não passa a
-  gerar confirmação de presença de aula já lançada (o `ON CONFLICT (source_id, source_type,
-  class_date)` pode segurar). Não confirmado como bug — mas ninguém validou depois da mudança.
+- ✅ **Antifraude × `used_at` — VERIFICADO em produção (04/08/2026), não é bug.**
+  `upcoming_classes`/`enqueue_attendance_confirmations` **devem mesmo ignorar `used_at`**:
+  a confirmação de presença é atrelada à **ocorrência** da aula, não ao lançamento
+  (professor lançou + aluno calado = `PENDING`, pago pela confiança). E2E completo testado
+  em `BEGIN…ROLLBACK` com a RPC: lançar reposição → `enqueue` cria a confirmação (2ª rodada
+  cria 0, dedupe pelo unique `(source_id, source_type, class_date)`) →
+  `reconcile_attendance_confirmation` **já casa `source_type='reschedule'`** por
+  `reschedule_id + class_date` → aluno confirma = `CONFIRMED`; aluno desmente = `CONFLICT`
+  + `payment_hold=true` (aula sai da folha até o admin resolver). O DELETE antigo na
+  verdade **furava o antifraude**: reposição lançada antes do cron de 40 min sumia da view
+  e nunca gerava confirmação (12 lançamentos `REPOSIÇÃO` × só 9 confirmações `reschedule`
+  na história). ❌ **NÃO adicione filtro de `used_at` em `upcoming_classes`** — quebraria
+  essa cobertura de propósito.
+- ✅ **Telas que listam reposição "aberta" filtram `.is('used_at', null)`**
+  (`StudentSchedule`, aba Reposições no `App.tsx`) — a linha consumida sobrevive, e sem o
+  filtro a aula já dada aparecia como pendente de agendamento. `LessonLauncher`,
+  `PendingLessons`, `TeacherDashboard` e `pendingLessonsCount` já filtravam por
+  "existe class_log?" e não precisam do filtro.
 - ⚠️ **`PendingLessons` não bloqueia mais mês anterior.** As duas telas tinham regras opostas
   (45 dias x mês corrente). Hoje a janela é 120 dias na RPC, e aula atrasada vai para o
   próximo fechamento aberto via `closing_carryovers` — o mecanismo está vivo (9 registros).

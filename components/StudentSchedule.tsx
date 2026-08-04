@@ -38,13 +38,17 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 .eq('student_id', user.id);
 
             // 3. Fetch Pending Reschedules
+            // used_at nulo = reposição ainda não dada. A linha consumida SOBREVIVE ao
+            // lançamento (marca used_at em vez de DELETE, para preservar fault_type) —
+            // sem este filtro a aula já dada aparecia na agenda como se fosse acontecer.
             const { data: rescheds } = await supabase
                 .from('reschedules')
                 .select(`
           id, date, time,
           teacher:teacher_id(full_name, avatar_url)
         `)
-                .eq('student_id', user.id);
+                .eq('student_id', user.id)
+                .is('used_at', null);
 
             const DAYS_ORDER = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
