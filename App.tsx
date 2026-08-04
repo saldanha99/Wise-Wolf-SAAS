@@ -83,6 +83,7 @@ const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLa
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const ConfirmAttendance = lazy(() => import('./components/ConfirmAttendance'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
+const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
@@ -826,6 +827,14 @@ const App: React.FC = () => {
   if (path === '/confirmar-presenca' || path.startsWith('/confirmar-presenca')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
       <ConfirmAttendance />
+    </Suspense>;
+  }
+
+  // Assinatura do aditivo de plano pelo ALUNO (link público, sem login).
+  // A mensalidade só muda depois que esta página é assinada.
+  if (path === '/mudar-plano' || path.startsWith('/mudar-plano')) {
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
+      <PlanChangeSign />
     </Suspense>;
   }
 

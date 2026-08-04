@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { User as UserType } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
+import StudentPlanChangeModal from './StudentPlanChangeModal';
 
 interface Props {
   studentId: string;
@@ -43,6 +44,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   // Alunos vinculados: perfis que têm este titular como responsável financeiro (guardian_id)
   const [dependents, setDependents] = useState<any[]>([]);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showPlanChange, setShowPlanChange] = useState(false);
   const [serasaBusy, setSerasaBusy] = useState<string | null>(null);
 
   // Negativação Serasa (via Asaas) de uma cobrança vencida — só admin (a aba financeira é gated).
@@ -176,6 +178,12 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                 </p>
               </div>
               {isAdmin && (
+                <button onClick={() => setShowPlanChange(true)} title="Mudar plano (frequência e valor)"
+                  className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0">
+                  <TrendingUp size={14} /> Mudar plano
+                </button>
+              )}
+              {isAdmin && (
                 <button onClick={() => setShowTransfer(true)} title="Transferir de professor"
                   className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-black uppercase tracking-widest flex items-center gap-1.5 shrink-0">
                   <ArrowRightLeft size={14} /> Transferir
@@ -183,6 +191,20 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
               )}
               <button onClick={onClose} className="p-2 rounded-xl hover:bg-brand-surface-2 text-brand-muted"><X size={20} /></button>
             </div>
+
+            {showPlanChange && (
+              <StudentPlanChangeModal
+                tenantId={(user as any)?.tenantId || (user as any)?.tenant_id}
+                student={{
+                  id: studentId,
+                  full_name: p.full_name,
+                  class_frequency: p.class_frequency,
+                  monthly_fee: data.financial?.monthly_fee,
+                  phone: p.phone,
+                }}
+                onClose={() => setShowPlanChange(false)}
+              />
+            )}
 
             {showTransfer && (
               <TeacherTransferGenerator
