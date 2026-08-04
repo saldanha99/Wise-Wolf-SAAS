@@ -401,6 +401,12 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
   "supabase/migrations/20260804040000_ajuste_sincroniza_e_reposicao_rastreavel.sql"
   "supabase/migrations/20260804050000_gestao_acao_pendente.sql"
+  "supabase/migrations/20260804120000_teacher_class_logging_rpc.sql"
+  "supabase/migrations/20260804180000_scope_agenda_rls_por_professor.sql"
+  "supabase/migrations/20260804190000_student_plan_change.sql"
+  "supabase/migrations/20260804191000_catalogo_precos_2026_08.sql"
+  "supabase/migrations/20260804200000_plan_change_billing_sync.sql"
+  "supabase/migrations/20260804210000_scope_bookings_coverages_rls.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
