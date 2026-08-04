@@ -337,6 +337,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260803050000_reposicao_falta_aluno_nao_paga.sql"
   "supabase/migrations/20260804030000_ajuste_entra_na_folha.sql"
   "supabase/migrations/20260804040000_ajuste_sincroniza_e_reposicao_rastreavel.sql"
+  "supabase/migrations/20260804050000_gestao_acao_pendente.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

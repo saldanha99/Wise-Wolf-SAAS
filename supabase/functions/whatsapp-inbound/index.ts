@@ -303,6 +303,46 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
     .eq("tenant_id", tenantId).eq("phone", groupJid).eq("direction", "out").gte("created_at", hourAgo);
   if ((count ?? 0) >= 20) return;
 
+  // ── Confirmação de ação pendente ──
+  // Vem ANTES da IA de propósito: "confirma" é barato de reconhecer e não deve
+  // custar uma chamada de modelo, nem correr o risco de o modelo reinterpretar
+  // a intenção que já foi lida em voz alta e aprovada.
+  const SIM = /^\s*(sim|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato)\b/i;
+  const NAO = /^\s*(n[ãa]o|cancela|deixa|esquece|errado)\b/i;
+  const { data: pend } = await sb.from("gestao_acao_pendente")
+    .select("acao, resumo, expires_at").eq("group_jid", groupJid).maybeSingle();
+
+  if (pend && new Date(pend.expires_at).getTime() > Date.now()) {
+    if (NAO.test(pergunta)) {
+      await sb.from("gestao_acao_pendente").delete().eq("group_jid", groupJid);
+      await sendWhats(instance, groupJid, "Ok, cancelado. Nada foi lançado.");
+      return;
+    }
+    if (SIM.test(pergunta)) {
+      const a = pend.acao as Record<string, unknown>;
+      const { data: res } = await sb.rpc("gestao_lanca_ajuste", {
+        p_tenant: tenantId,
+        p_teacher_id: String(a.teacher_id || ""),
+        p_month: String(a.mes || ""),
+        p_descricao: String(a.motivo || ""),
+        p_valor: Number(a.valor || 0),
+        p_pedido_por: item?.pushName ? String(item.pushName).slice(0, 40) : null,
+      });
+      await sb.from("gestao_acao_pendente").delete().eq("group_jid", groupJid);
+
+      const r = res as Record<string, unknown> | null;
+      const txt = r?.ok
+        ? `✅ Lançado: ${pend.resumo}.` +
+          (r.repasse_atualizado
+            ? " O valor já entrou no repasse do mês."
+            : " ⚠️ O fechamento deste mês não está PENDENTE, então o valor NÃO entrou no repasse — ajuste na tela.")
+        : `Não consegui lançar (${String(r?.error || "erro")}). Faça pela tela Repasse a Profs.`;
+      await sendWhats(instance, groupJid, txt);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", txt);
+      return;
+    }
+  }
+
   const { data: snap } = await sb.rpc("gestao_snapshot", { p_tenant: tenantId });
   if (!snap || snap.error) {
     await sendWhats(instance, groupJid, "Não consegui ler os números da escola agora. Tente de novo em alguns minutos.");
@@ -329,6 +369,13 @@ REGRAS ABSOLUTAS:
 
 QUANDO NÃO RESPONDER: você está num grupo onde pessoas também conversam entre si. Se a mensagem claramente não é dirigida a você nem pede informação da escola (combinar horário entre eles, comentário solto, recado pessoal), devolva {"responder": false} e nada mais. Na dúvida, responda — pergunta sobre a escola é sempre para você, mesmo sem citar seu nome.
 
+LANÇAR AJUSTE NO REPASSE: se pedirem para lançar/adicionar/descontar um valor para um professor (ex.: "lança 30 reais de reserva de agenda pra Lais em julho", "desconta 20 do Mateus"), devolva TAMBÉM o campo acao:
+{"responder": true, "resposta": "<confirmação curta>", "acao": {"tipo": "ajuste_repasse", "professor": "<nome como falado>", "mes": "<AAAA-MM>", "valor": <número, negativo se for desconto>, "motivo": "<motivo curto>"}}
+- Mês: se não disserem, use o mes_fechado dos dados. "julho" vira o AAAA-MM daquele julho.
+- Valor: só o número em reais. Desconto é negativo.
+- NÃO invente professor, valor nem motivo. Se faltar qualquer um dos quatro, não devolva acao — pergunte o que falta.
+- Você NÃO executa nada: quem confirma é a pessoa, na mensagem seguinte. Sua "resposta" aqui deve apenas dizer o que entendeu.
+
 Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
 
   const diag: string[] = [];
@@ -352,6 +399,49 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
   }
 
   await logMsg(sb, tenantId, groupJid, "gestao", "in", pergunta);
+
+  // Intenção de lançar dinheiro: NÃO executa aqui. Guarda, repete em texto o que
+  // entendeu e espera confirmação. Transcrição de áudio erra ordem de grandeza
+  // ("trinta" x "trezentos"), e ler o valor de volta mata o erro antes de virar
+  // pagamento.
+  const acao = (out?.acao ?? null) as Record<string, unknown> | null;
+  if (acao && acao.tipo === "ajuste_repasse") {
+    const { data: prof } = await sb.rpc("gestao_resolve_professor", {
+      p_tenant: tenantId, p_nome: String(acao.professor || ""),
+    });
+    const p = prof as Record<string, unknown> | null;
+    if (!p?.ok) {
+      const msg = p?.error === "nome_ambiguo"
+        ? `Tem mais de um professor com esse nome: ${(p.candidatos as string[] ?? []).join(", ")}. Qual deles?`
+        : "Não encontrei esse professor. Pode repetir o nome completo?";
+      await sendWhats(instance, groupJid, msg);
+      await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
+      return;
+    }
+
+    const valor = Number(acao.valor || 0);
+    const mes = String(acao.mes || "");
+    const motivo = String(acao.motivo || "");
+    const money = (v: number) =>
+      `R$ ${Math.abs(v).toFixed(2).replace(".", ",")}`;
+    const resumo = `${valor < 0 ? "desconto de " : ""}${money(valor)} para ${p.nome} em ${mes} — ${motivo}`;
+
+    await sb.from("gestao_acao_pendente").upsert({
+      group_jid: groupJid, tenant_id: tenantId,
+      acao: { ...acao, teacher_id: p.id, mes, valor, motivo },
+      resumo,
+      pedido_por: item?.pushName ? String(item.pushName).slice(0, 40) : null,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+    }, { onConflict: "group_jid" });
+
+    const pergunta_conf =
+      `Entendi: *${resumo}*.\n\nConfirma? Responda *sim* para lançar ou *não* para cancelar.`;
+    await sendWhats(instance, groupJid, pergunta_conf);
+    await logMsg(sb, tenantId, groupJid, "gestao", "out", pergunta_conf);
+    return;
+  }
+
   const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
   if (ok) await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta);
 }
