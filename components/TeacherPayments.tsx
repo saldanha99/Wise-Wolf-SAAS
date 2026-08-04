@@ -4,6 +4,7 @@ import { localMonth } from '../lib/dateUtils';
 import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
+import AjusteRepasseModal from './AjusteRepasseModal';
 
 interface InvoiceManagerProps {
     tenantId?: string;
@@ -19,6 +20,8 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
     // Fechamento clicado → relatório unificado por professor (formato da folha manual)
     const [reportInvoice, setReportInvoice] = useState<any>(null);
+    // Lançamento manual (reserva de agenda, bônus, desconto) direto no repasse.
+    const [ajusteInvoice, setAjusteInvoice] = useState<any>(null);
 
     useEffect(() => {
         if (tenantId) fetchInvoices();
@@ -235,9 +238,16 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                 key={invoice.id}
                                 onClick={() => setReportInvoice(invoice)}
                                 title="Ver relatório de pagamento do professor"
-                                className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-brand-surface-2 dark:hover:bg-slate-700/30 transition-colors group cursor-pointer"
+                                className="relative grid grid-cols-12 gap-4 p-6 items-center hover:bg-brand-surface-2 dark:hover:bg-slate-700/30 transition-colors group cursor-pointer"
                             >
                                 {/* ... Columns ... */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setAjusteInvoice(invoice); }}
+                                    title="Lançamento manual (reserva de agenda, bônus, desconto)"
+                                    className="absolute right-4 top-4 z-10 p-1.5 rounded-lg text-brand-muted hover:text-emerald-600 hover:bg-emerald-500/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                                >
+                                    <DollarSign size={16} />
+                                </button>
                                 <div className="col-span-3 flex items-center gap-3">
                                     <img
                                         src={invoice.teacher?.avatar_url || `https://ui-avatars.com/api/?name=${invoice.teacher?.full_name}`}
@@ -371,6 +381,17 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     teacherId={reportInvoice.teacher_id}
                     month={reportInvoice.month_year}
                     onClose={() => setReportInvoice(null)}
+                />
+            )}
+
+            {ajusteInvoice && (
+                <AjusteRepasseModal
+                    teacherId={ajusteInvoice.teacher_id}
+                    teacherName={ajusteInvoice.teacher?.full_name || 'Professor'}
+                    month={ajusteInvoice.month_year}
+                    closingStatus={ajusteInvoice.status}
+                    onClose={() => setAjusteInvoice(null)}
+                    onSaved={fetchInvoices}
                 />
             )}
 

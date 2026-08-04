@@ -398,10 +398,18 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           }
         }
 
-        // 2. Clear used Reschedules if any
+        // 2. Marca as reposições como usadas — NÃO apaga.
+        // Apagar destruía a prova de quem faltou (reschedules.fault_type), e é
+        // ela que decide se a reposição paga: falta do ALUNO não paga, falta do
+        // PROFESSOR paga. Com a linha apagada, 12 dos 13 class_logs ficaram
+        // apontando para nada e a regra nunca disparava.
+        // A exclusão também era desnecessária: a lista de pendentes já filtra
+        // por "existe class_log apontando para esta reposição?".
         const completedReschedules = allowed.filter(e => e.reschedule_id).map(e => e.reschedule_id);
         if (completedReschedules.length > 0) {
-          await supabase.from('reschedules').delete().in('id', completedReschedules);
+          await supabase.from('reschedules')
+            .update({ used_at: new Date().toISOString() })
+            .in('id', completedReschedules);
         }
 
         // 3. Create credits for absences
