@@ -4,6 +4,7 @@ import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
+import { fetchPendingLessons } from './lib/pendingLessons';
 import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
@@ -644,58 +645,20 @@ const App: React.FC = () => {
           studentId: r.student_id,
           time: r.time
         }));
-        setReschedules(formattedReschedules as any);
+        // Sem `as any`: o cast escondia que `teacherId` estava tipado como number.
+        // É ele que decide de quem é a reposição na grade do Explorador.
+        setReschedules(formattedReschedules);
       }
 
-      // (Inside loadAppData after fetching teachers and reschedules)
+      // Badge de "Pendentes": EXATAMENTE a mesma regra da tela (lib/pendingLessons.ts).
+      // O contador que vivia aqui tinha regra própria e nunca zerava — mostrava 130
+      // pendências para quem tinha zero. Motivos no cabeçalho do módulo.
       if (user.role === UserRole.TEACHER) {
-        const now = new Date();
-        const threeDaysAgo = new Date();
-        threeDaysAgo.setDate(now.getDate() - 3);
-
-        const { data: logs } = await supabase
-          .from('class_logs')
-          .select('booking_id, reschedule_id, student_id, created_at')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', user.tenantId)
-          .gte('created_at', threeDaysAgo.toISOString());
-
-        const daysOfWeek = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-        let count = 0;
-
-        // Loop through last 7 to 30 days to count PENDING (Critical) lessons
-        // Grace period is 7 days. Older than 30 days is ignored for performance.
-        for (let i = 7; i <= 30; i++) {
-          const checkDate = new Date();
-          checkDate.setDate(now.getDate() - i);
-          const dayName = daysOfWeek[checkDate.getDay()];
-          const dateStr = checkDate.toISOString().split('T')[0];
-
-          if (dayName === 'Domingo') continue;
-
-          const { data: bks } = await supabase.from('bookings').select('id, time_slot, student_id, start_date').eq('teacher_id', user.id).eq('day_of_week', dayName);
-          bks?.forEach(b => {
-            if (b.start_date && dateStr < b.start_date) return;
-            // No time check needed as we are > 7 days ago
-
-            const hasLog = logs?.some(l => {
-              const lDate = l.created_at.split('T')[0];
-              return (l.booking_id && String(l.booking_id) === String(b.id) && lDate === dateStr) ||
-                (String(l.student_id) === String(b.student_id) && lDate === dateStr);
-            });
-            if (!hasLog) count++;
-          });
-
-          const { data: rps } = await supabase.from('reschedules').select('id, time, student_id').eq('teacher_id', user.id).eq('date', dateStr);
-          rps?.forEach(r => {
-            const hasLog = logs?.some(l =>
-              (l.reschedule_id && String(l.reschedule_id) === String(r.id)) ||
-              (String(l.student_id) === String(r.student_id) && l.created_at.split('T')[0] === dateStr)
-            );
-            if (!hasLog) count++;
-          });
-        }
-        setPendingLessonsCount(count);
+        const pendentes = await fetchPendingLessons({
+          teacherId: user.id,
+          tenantId: user.tenantId,
+        });
+        setPendingLessonsCount(pendentes.length);
       }
 
     } catch (error) {
@@ -1134,16 +1097,23 @@ const App: React.FC = () => {
         reschedules={reschedules}
         students={students}
         onAdd={async (data) => {
-          const payload: any = {
-            student_id: data.studentId,
-            teacher_id: user.id,
-            tenant_id: user.tenantId,
-            date: data.date,
-            time: data.time
-          };
-          if (data.id) payload.id = data.id;
-
-          const { error } = await supabase.from('reschedules').upsert(payload);
+          // Agendar uma reposição existente mexe SÓ na data/hora.
+          // O upsert antigo remontava a linha inteira com `teacher_id: user.id` —
+          // então quem clicasse em "Agendar Agora" virava dono da reposição, e ela
+          // sumia da agenda (e da folha) do professor que de fato deu a falta.
+          // O diretor, que enxerga a escola toda, movia a reposição num clique.
+          const { error } = data.id
+            ? await supabase
+                .from('reschedules')
+                .update({ date: data.date, time: data.time })
+                .eq('id', data.id)
+            : await supabase.from('reschedules').insert({
+                student_id: data.studentId,
+                teacher_id: user.id,
+                tenant_id: user.tenantId,
+                date: data.date,
+                time: data.time
+              });
           if (error) {
             console.error('Save Reschedule Error:', error);
             alert(`Erro ao salvar reposição: ${error.message}`);
