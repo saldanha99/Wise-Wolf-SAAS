@@ -362,6 +362,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
   "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
   "supabase/migrations/20260803235500_wolfie_free_premium_tiers.sql"
+  "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

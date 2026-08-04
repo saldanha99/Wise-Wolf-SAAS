@@ -58,11 +58,16 @@ passa pela Vercel (nenhum header `x-vercel-*`; o domínio resolve para a VPS).
   **não cai no Web Speech** ao receber 403 — o fallback do navegador falaria de
   graça e furaria a separação. Tier desconhecido (`null`) segue em frente: quem
   decide é o servidor.
-- **Custo:** `wolfie-tts` e a transcrição do clássico agora gravam em
-  `ai_usage_events` (`wolfie_tts` é **estimativa** por caractere — a API de fala
-  não devolve `usage`). O `AiCostPanel` separa gratuito / premium / interno.
-  Cadastre `gpt-4o-mini-tts` e `gpt-4o-transcribe` em `ai_model_pricing` para o
-  custo sair em dólar em vez de só volume.
+- **Custo:** `wolfie-tts` e a transcrição do clássico gravam em
+  `ai_usage_events`, e o `AiCostPanel` separa gratuito / premium / interno.
+  Preços de `gpt-4o-mini-tts` e `gpt-4o-transcribe` cadastrados em
+  `ai_model_pricing` (migration `20260804034000`, tabela oficial de 04/08/2026).
+- ⚠️ **Os tokens do `wolfie_tts` são ESTIMADOS** — a API de fala não devolve
+  `usage`. Texto ≈ 1 token/4 caracteres; **áudio ≈ 2,67 tokens/caractere**
+  (40 tokens/s de fala × ~15 caracteres/s; os 40 tokens/s saem da própria
+  tabela da OpenAI: US$ 0,003/min ÷ US$ 1,25/1M). Gravar a saída de áudio é o
+  que importa: ela custa **20× o texto** (US$ 12,00 contra US$ 0,60 por 1M).
+  Registrar só a entrada mostraria ~5% da conta real.
 - ⚠️ `wolfie_activity_listening_tts` (áudio de exercício de listening) segue
   **no gratuito** de propósito: é material de atividade, não resposta do tutor.
 
