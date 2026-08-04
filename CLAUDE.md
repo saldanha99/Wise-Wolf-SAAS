@@ -434,8 +434,48 @@ custaria a credibilidade da tela inteira no fechamento.
 `BEGIN … ROLLBACK` contra a VPS (`psql -U supabase_admin`); confira que
 `select sum(rate_efetivo) from v_payable_class_logs` é idêntico antes e depois.
 Testes de UI: `components/ClassLogReward.test.tsx` (11 casos).
-⚠️ **A migration ainda não foi aplicada em produção** — `release.sh` não aplica migration,
-só frontend e edge functions.
+✅ **Aplicada em produção** (confirmado em 04/08/2026: `log_teacher_classes` existe no
+banco da VPS). A nota anterior dizia o oposto e apoiava a afirmação falsa de que o
+`release.sh` não aplica migration — ele aplica; ver a seção de Deploy.
+
+---
+
+## RLS de agenda — policies permissivas são OR ✅
+
+> **Leia antes de criar qualquer policy em `bookings`, `reschedules` ou `class_coverages`.**
+
+**A armadilha (corrigida em 04/08/2026):** no Postgres, políticas permissivas se somam com
+**OR** — basta UMA liberar para as outras não valerem nada. Conviviam em `reschedules`:
+
+```
+Reschedules: Access control  FOR ALL  USING (tenant AND (dono OU admin))   <- certa
+reschedules_tenant_scope     FOR ALL  USING (tenant OU aluno OU professor) <- anulava a de cima
+```
+
+Resultado medido: **todo usuário logado da escola enxergava os 111 agendamentos e as 98
+reposições**, aluno inclusive, e qualquer professor podia **apagar** a agenda de um colega
+pela API do PostgREST. Nenhuma tela explorava isso (todas filtram por `teacher_id`), mas a
+API é pública para quem está logado — bastava o id da linha. E agenda é dinheiro: o
+pagamento é `class_logs` pagáveis × tarifa, e o log nasce do booking.
+
+**Padrão que ficou** (migrations `20260804180000` e `20260804210000`): uma policy `select`
+e uma `all` por tabela — professor no que é dele, aluno no que é dele, admin/coordenador no
+tenant.
+
+- ⚠️ **`with check` tem de repetir a condição do `using`.** O `using` só enxerga a linha
+  **antes** do update; sem o `with check` dá para gravar a linha já apontando para OUTRO
+  professor — que é exatamente como uma reposição migra de agenda.
+- ⚠️ **`bookings_select` PRECISA do ramo de `class_coverages`.** A primeira versão só
+  liberava o booking próprio e **quebrava a cobertura de aula**: o `LessonLauncher` lê de
+  propósito o agendamento de outro professor para montar a aula assumida
+  (`assumedBookings`). Sem isso, quem assume a aula não a vê, não lança e **não recebe**.
+- **Como testar sem derrubar produção:** rode `BEGIN … ROLLBACK` medindo, **pessoa por
+  pessoa real**, quantas linhas cada uma enxerga antes e depois, e compare com o que ela
+  de fato possui. Foi assim que a quebra da cobertura apareceu antes de ir para o ar.
+
+⚠️ **Ainda aberto:** o mesmo padrão `FOR ALL` com `USING` só de tenant pode existir em
+outras tabelas. Ao auditar, procure `polcmd = '*'` com `polpermissive = true` e `USING` que
+só checa tenant.
 
 ---
 
@@ -447,6 +487,67 @@ Funções `RETURNS TABLE(...)` validam tipos em **runtime** (não na criação).
 3. **`commission_rate` é integer** (centavos); declarado `numeric` quebra → `::numeric`. `hourly_rate`/`monthly_fee` são numeric; `xp`/`streak_count` são integer.
 - **Validar SEMPRE chamando a função** (`SELECT count(*) FROM minha_rpc()` com `set_config('request.jwt.claims', '{"sub":"<uid>"}', true)`), NÃO só o SELECT interno.
 - Fichas `get_*_overview` retornam **jsonb** → imunes a esse problema.
+
+---
+
+## Troca de Plano do Aluno — o aluno assina, aí o valor muda ✅
+
+> **Leia antes de mexer em `profiles.monthly_fee`, `class_frequency` ou preço de plano.**
+
+**O problema que originou (04/08/2026):** mudar frequência e valor era `UPDATE` na mão
+no banco. O contrato assinado continuava dizendo outro número — a escola cobrava um valor
+que não estava em documento nenhum. Aconteceu com o Victor Hugo: a agenda virou 6 aulas
+às 17:57 e a mensalidade seguiu a de 4.
+
+**A regra:** o diretor **PROPÕE**, a assinatura do aluno **APLICA**. O `update` em
+`profiles` vive dentro de `sign_student_plan_change` e **em lugar nenhum antes dele** —
+enquanto o aluno não assina, a escola cobra o valor antigo. A carência (`fidelity_plan`)
+não é tocada: a troca é de frequência e valor dentro do compromisso que já existe.
+
+**Fluxo:** ficha do aluno → "Mudar plano" (`StudentPlanChangeModal`, só admin) → link
+`/mudar-plano?token=…` (`PlanChangeSign`, rota pública do SPA) → aluno assina digitando o
+nome → RPC aplica e enfileira a Asaas.
+
+- **Tabela:** `student_plan_changes` (PENDING → SIGNED / CANCELLED). Índice único parcial
+  `uq_plan_change_one_pending`: **uma proposta aberta por aluno** — duas em pé fariam o
+  aluno assinar a que chegasse primeiro no WhatsApp, não a que a escola quis valer.
+- **RPCs:** `create_student_plan_change(uuid,text,numeric,boolean)`,
+  `get_plan_change_public(text)` (anon), `sign_student_plan_change(text,text)` (anon),
+  `list_student_plan_changes(uuid)`. Migrations `20260804190000` e `20260804200000`.
+- ⚠️ **`unaccent` NÃO existe neste banco.** Por isso `normalize_signature_name` faz
+  `translate()` na mão — sem ela, "Guimarães" digitado sem o til é recusado e o aluno
+  trava sem entender por quê.
+- ⚠️ **A página de assinatura fica no SPA, não em edge function** — o gateway força
+  `content-type: text/plain` + CSP sandbox e não renderiza HTML pro usuário final. Mesma
+  pegadinha da confirmação de presença.
+
+### Asaas: fila, nunca chamada direta
+A assinatura acontece numa página **pública, com o aluno deslogado** — ela não tem (nem
+pode ter) credencial da Asaas. E se tivesse, uma instabilidade da Asaas derrubaria a
+assinatura do aluno por um motivo que não é dele.
+
+Então assinar só **enfileira** (`billing_sync_status = 'PENDING'`), e a edge
+`sync-plan-change-billing` (cron `wisewolf-plan-change-billing`, a cada 10 min) faz
+`POST /v3/subscriptions/{id}`. Seis tentativas; depois `FAILED`, com o erro guardado em
+`billing_sync_error` — **erro visível em vez de divergência silenciosa**.
+
+- **`update_pending_payments`** decide se a fatura JÁ gerada do mês entra no valor novo.
+  É escolha do diretor no modal (ligada por padrão): cobrar R$ 90 a mais numa fatura que o
+  aluno já viu rende chamado no WhatsApp.
+- ⚠️ **Sem chave da Asaas a edge devolve 503 e NÃO consome tentativa** — senão um erro de
+  configuração queimaria as 6 tentativas de todos os aditivos na fila.
+- **23 de 53 alunos ativos** têm assinatura recorrente; para os outros o status fica
+  `NOT_NEEDED` e a escola cobra na mão.
+
+### Catálogo de preços (`student_pricing_plans`)
+É **cardápio, não conta**: mexer nele não altera mensalidade de ninguém. Mas ele é lido no
+fluxo de matrícula (`TrialsToContracts`, `StudentAssignmentModal`, `enroll-student`) —
+catálogo defasado = aluno novo matriculado com preço velho (o 12m-3x saía R$ 187 contra os
+R$ 229 praticados até 04/08/2026).
+
+⚠️ O índice único é **parcial** (`where classes_per_week > 0`, por causa dos planos do
+`wolfie-direct` que têm 0 aula/semana) → o `ON CONFLICT` **precisa repetir o predicado**.
+Mesma pedra de `uq_bookings_no_dup_active` e `run_recurring_expenses`.
 
 ---
 
@@ -541,9 +642,42 @@ nem MCP da Supabase. Nada disso chega na produção.
 
 ✅ **Release completo:** `deploy/vps/release.sh` — roda `npm run typecheck`,
 `deno test` e `deno check`, builda o frontend, faz `rsync` para
-`/opt/wisewolf/releases/<timestamp>-<commit>/`, promove e roda smoke test.
-Cada função é copiada com `rsync -a` da **pasta inteira** — arquivo novo dentro
-do diretório da function vai junto sem precisar registrar em lista.
+`/opt/wisewolf/releases/<timestamp>-<commit>/`, **aplica as migrations**,
+promove e roda smoke test.
+
+⚠️ **O release APLICA MIGRATION, sim** (corrigido em 04/08/2026 — este arquivo
+afirmava o contrário e o erro custou um deploy quebrado). Ele percorre
+`MIGRATION_RELATIVES` e roda a lista **inteira a cada deploy**, dentro da
+transação dele. Duas consequências que não são opcionais:
+
+- **Nada de `begin;`/`commit;` dentro da migration.** Um `commit;` fecha a
+  transação do release no meio do caminho.
+- **Toda migration tem de ser RE-EXECUTÁVEL**, porque ela roda de novo em todo
+  release. `create policy` exige o `drop policy if exists` antes (foi
+  exatamente `policy "reschedules_select" already exists` que derrubou o
+  deploy); use `create or replace`, `if not exists`, `on conflict do update`.
+  Teste aplicando a migration **duas vezes seguidas** num `BEGIN … ROLLBACK`
+  contra a VPS antes de commitar.
+
+⚠️ **Três listas explícitas no `release.sh`; arquivo fora delas não sai daqui.**
+Já mordeu duas vezes no mesmo dia:
+
+| Lista | O que registra | Sintoma quando esquece |
+|---|---|---|
+| `MIGRATION_RELATIVES` | migrations aplicadas/enviadas | banco fica sem o objeto, ou o pacote de restauração fica incompleto |
+| `HARDENED_FUNCTIONS` (aparece **2×** no arquivo — edite as duas) | pastas de edge function | "Deploy concluído" e o diretório **nem existe** na VPS |
+| lista do `deno check` | type-check das functions | função nova sobe sem validação |
+
+**Arquivo novo dentro de uma function que JÁ está na lista** vai junto sozinho
+(o `rsync -a` copia a pasta inteira). **Function nova, não** — precisa entrar em
+`HARDENED_FUNCTIONS`.
+
+⚠️ **"Deploy concluído" não é prova.** Confira no servidor o que era o objetivo
+do deploy: `ls` da pasta da function, `grep` do trecho no bundle minificado
+(nomes de função são minificados — grep por *string literal* ou nome de
+propriedade), `psql` para o objeto de banco. E o release **restaura sozinho** o
+frontend e as functions anteriores quando falha no meio: se algo quebrar, a
+produção continua na release anterior, não pela metade.
 
 🔒 **Trava de árvore** (`deploy/vps/lib/release-preflight.sh`, commit `d36c84f`):
 antes de qualquer contato com a VPS, o release recusa **árvore suja** (inclusive
