@@ -400,6 +400,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
   "supabase/migrations/20260804040000_ajuste_sincroniza_e_reposicao_rastreavel.sql"
   "supabase/migrations/20260804050000_gestao_acao_pendente.sql"
+  "supabase/migrations/20260804130000_upcoming_ignora_reposicao_usada.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
