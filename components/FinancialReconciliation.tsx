@@ -138,14 +138,14 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
     }
 
     const b = (k: string) => dados?.[k] || { itens: [], qtd: 0, total: 0 };
-    const nuncaCobrado = b('nunca_cobrado');
+    const semCobertura = b('sem_cobertura');
     const semEstudar = b('cobrado_sem_estudar');
     const arquivado = b('arquivado_com_fatura');
     const semNf = b('pago_sem_nf');
     const paradoNf = b('parado_com_nf');
     const naoLancada = b('aula_nao_lancada');
 
-    const totalPendencias = [nuncaCobrado, semEstudar, arquivado, semNf, paradoNf, naoLancada]
+    const totalPendencias = [semCobertura, semEstudar, arquivado, semNf, paradoNf, naoLancada]
         .reduce((s, x) => s + (x.qtd || 0), 0);
 
     return (
@@ -175,21 +175,26 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                 <>
                     <Bloco
                         icone={<Wallet size={15} className="text-red-500" />}
-                        titulo="Estudando e nunca cobrado"
-                        porque="Aula entregue sem fatura. Não aparece em inadimplência porque o aluno não deve — a escola nunca pediu."
-                        qtd={nuncaCobrado.qtd}
-                        valor={Number(nuncaCobrado.mensal || 0)}
-                        valorRotulo="por mês"
+                        titulo="Aula entregue além do que foi pago"
+                        porque="Meses de aula dados menos meses pagos. Quem pagou o ano à vista não aparece aqui — a conta é dinheiro recebido, não número de boletos."
+                        qtd={semCobertura.qtd}
+                        valor={Number(semCobertura.total || 0)}
+                        valorRotulo="estimado"
                         tom="critico"
                         acao={{ label: 'Ir para Mensalidades', tab: 'student-payments' }}
                         onNavigate={onNavigate}
                     >
                         <Tabela
-                            colunas={['Aluno', 'Mensalidade', 'Aulas 60d', 'Cobranças na vida', 'Matriculado']}
-                            linhas={(nuncaCobrado.itens || []).map((i: any) => [
-                                i.aluno, brl(i.mensalidade), i.aulas_60d, i.cobrancas_vida, i.matriculado,
+                            colunas={['Aluno', 'Mensalidade', 'Meses de aula', 'Meses pagos', 'Déficit', 'Recebido', 'Estimado']}
+                            linhas={(semCobertura.itens || []).map((i: any) => [
+                                i.aluno, brl(i.mensalidade), i.meses_servico, i.meses_pagos,
+                                `${i.deficit_meses} ${Number(i.deficit_meses) === 1 ? 'mês' : 'meses'}`,
+                                brl(i.total_recebido), brl(i.valor_estimado),
                             ])}
                         />
+                        <p className="mt-3 text-[10px] text-brand-muted">
+                            "Estimado" é déficit × mensalidade atual — serve para dimensionar o buraco, não para emitir boleto.
+                        </p>
                     </Bloco>
 
                     <Bloco
