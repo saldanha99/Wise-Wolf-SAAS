@@ -66,6 +66,7 @@ const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
 const DreGerencialPanel = lazy(() => import('./components/DreGerencialPanel'));
 const BalanceteProfessores = lazy(() => import('./components/BalanceteProfessores'));
+const FinancialReconciliation = lazy(() => import('./components/FinancialReconciliation'));
 const DirectorMarginPanel = lazy(() => import('./components/DirectorMarginPanel'));
 const CoveragePanel = lazy(() => import('./components/CoveragePanel'));
 const AiCostPanel = lazy(() => import('./components/AiCostPanel'));
@@ -165,6 +166,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
+    { tab: 'reconciliation', label: 'Reconciliação Financeira', group: 'Financeiro' },
     { tab: 'crm', label: 'CRM & Funil', group: 'Crescimento' },
     { tab: 'marketing', label: 'Site & Vendas', group: 'Crescimento' },
     { tab: 'referral-admin', label: 'Indicações', group: 'Crescimento' },
@@ -1162,6 +1164,7 @@ const App: React.FC = () => {
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
       'dre': <DreGerencialPanel user={user} tenantId={currentTenant?.id} />,
       'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
+      'reconciliation': <FinancialReconciliation user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
       'margin': <DirectorMarginPanel user={user} tenantId={currentTenant?.id} />,
       'coverage': <CoveragePanel user={user} tenantId={currentTenant?.id} />,
       'ai-costs': <AiCostPanel />,
