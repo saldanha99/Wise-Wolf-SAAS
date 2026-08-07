@@ -130,6 +130,14 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
         if (canUpload) {
             return (
                 <div className="relative w-full">
+                    {/* Sem o motivo, "Nota Rejeitada" manda o professor reenviar
+                        exatamente a mesma nota errada. */}
+                    {isRejected && inv.rejection_reason && (
+                        <p className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-left text-[10px] font-bold leading-snug text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                            <span className="block text-[9px] font-black uppercase tracking-widest opacity-70">Motivo</span>
+                            {inv.rejection_reason}
+                        </p>
+                    )}
                     {hasLink && (
                         <a
                             href={inv.nf_link}

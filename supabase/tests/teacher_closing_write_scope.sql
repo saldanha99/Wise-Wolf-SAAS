@@ -198,6 +198,38 @@ select pg_temp.assert_true(
 );
 
 -- ---------------------------------------------------------------------------
+-- [B2] Rejeicao da nota: o motivo chega ao professor e nao sobrevive ao reenvio
+-- ---------------------------------------------------------------------------
+
+-- O diretor rejeita. Antes da coluna existir, este UPDATE falhava inteiro e
+-- NENHUMA rejeicao de NF era registrada.
+update public.teacher_closings
+   set status = 'REJECTED', rejection_reason = 'Valor da nota nao confere com o pago'
+ where id = '00000000-0000-4000-8000-00000000094a';
+
+select pg_temp.assert_true(
+  (select rejection_reason = 'Valor da nota nao confere com o pago'
+     from public.teacher_closings
+    where id = '00000000-0000-4000-8000-00000000094a'),
+  'motivo da rejeicao nao foi gravado'
+);
+
+-- Professor reenvia a nota corrigida: volta para analise e o motivo antigo sai.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000941","role":"authenticated"}';
+select public.teacher_attach_invoice(
+  '00000000-0000-4000-8000-00000000094a', 'https://storage.invalid/nf-julho-v2.pdf');
+reset role;
+
+select pg_temp.assert_true(
+  (select status = 'UNDER_REVIEW' and rejection_reason is null
+          and nf_link = 'https://storage.invalid/nf-julho-v2.pdf'
+     from public.teacher_closings
+    where id = '00000000-0000-4000-8000-00000000094a'),
+  'reenvio nao limpou o motivo da rejeicao anterior'
+);
+
+-- ---------------------------------------------------------------------------
 -- [C] Nenhum caminho de escrita sem checagem de papel sobrou
 -- ---------------------------------------------------------------------------
 

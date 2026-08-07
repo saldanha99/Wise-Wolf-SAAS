@@ -409,6 +409,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260804210000_scope_bookings_coverages_rls.sql"
   "supabase/migrations/20260807120000_nf_issuance_tour.sql"
   "supabase/migrations/20260807130000_professor_nao_escreve_o_proprio_fechamento.sql"
+  "supabase/migrations/20260807140000_motivo_da_rejeicao_da_nota.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

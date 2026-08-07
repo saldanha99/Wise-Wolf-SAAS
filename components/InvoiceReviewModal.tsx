@@ -30,6 +30,9 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                 .from('teacher_closings')
                 .update({
                     status: 'COMPLETED',
+                    // Nota aprovada não pode continuar exibindo o motivo da
+                    // rejeição anterior na tela do professor.
+                    rejection_reason: null,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', invoice.id);
