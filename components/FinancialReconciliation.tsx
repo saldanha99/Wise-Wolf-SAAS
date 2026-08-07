@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
-    AlertTriangle, ArrowUpRight, CalendarClock, CalendarX, CheckCircle2, FileWarning,
-    Loader2, RefreshCw, UserMinus, UserX, Wallet,
+    AlertTriangle, ArrowUpRight, CalendarClock, CalendarX, Check, CheckCircle2, Copy,
+    FileWarning, Loader2, MessageSquare, RefreshCw, UserMinus, UserX, Wallet,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -111,16 +111,22 @@ const Tabela: React.FC<{ colunas: string[]; linhas: (string | number)[][] }> = (
 const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenantId, onNavigate }) => {
     const [dados, setDados] = useState<any>(null);
     const [renovacao, setRenovacao] = useState<any>(null);
+    const [ofertas, setOfertas] = useState<any>(null);
+    const [copiado, setCopiado] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [erro, setErro] = useState('');
 
     const carregar = async () => {
         setLoading(true);
         setErro('');
-        const [recon, renov] = await Promise.all([
+        const [recon, renov, ofer] = await Promise.all([
             supabase.rpc('financial_reconciliation', { p_tenant: tenantId ?? null }),
             supabase.rpc('contratos_para_renovar', { p_tenant: tenantId ?? null }),
+            // Janela ampla aqui: a tela mostra tudo que vence em 90 dias para o
+            // diretor se organizar. O envio automático usa `dias_antes`.
+            supabase.rpc('ofertas_de_renovacao', { p_tenant: tenantId ?? null, p_dias: 90 }),
         ]);
+        if (!ofer.error && !ofer.data?.error) setOfertas(ofer.data);
         if (recon.error) setErro(recon.error.message);
         else if (recon.data?.error) setErro(recon.data.error === 'sem_permissao' ? 'Sem permissão.' : String(recon.data.error));
         else setDados(recon.data);
@@ -225,6 +231,70 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                             ])}
                         />
                     </Bloco>
+
+                    {/* Ofertas prontas. Fica FORA do padrão de "pendência" porque
+                        não é problema a corrigir — é conversa a ter. */}
+                    {(ofertas?.itens || []).length > 0 && (
+                        <section className="rounded-3xl border border-brand-border bg-brand-surface-2/40 p-5 sm:p-6">
+                            <header className="mb-4">
+                                <h3 className="flex items-center gap-2 text-sm font-black tracking-tight text-brand-text">
+                                    <MessageSquare size={15} className="text-tenant-primary" />
+                                    Mensagens de renovação prontas
+                                    <span className="rounded-full bg-brand-surface px-2.5 py-0.5 text-[10px] font-black text-brand-muted">
+                                        {ofertas.itens.length}
+                                    </span>
+                                </h3>
+                                <p className="mt-1 text-xs text-brand-muted">
+                                    Cita o professor e a data, oferece manter 6 meses <strong>ou</strong> migrar para 12,
+                                    sem empurrar. Os valores saem da tabela de preços — nada é inventado.
+                                    {ofertas.ativo === false && (
+                                        <> O envio automático está <strong className="text-brand-text">desligado</strong>:
+                                        copie e mande você mesmo até aprovar o texto.</>
+                                    )}
+                                </p>
+                            </header>
+
+                            <div className="space-y-3">
+                                {ofertas.itens.map((o: any) => (
+                                    <div key={o.student_id} className="rounded-2xl border border-brand-border bg-brand-surface p-4">
+                                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-xs font-black text-brand-text">
+                                                {o.aluno}
+                                                <span className="ml-2 font-bold text-brand-muted">
+                                                    termina {o.termina} · {o.dias} dias
+                                                </span>
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    try {
+                                                        await navigator.clipboard.writeText(o.mensagem);
+                                                        setCopiado(o.student_id);
+                                                        setTimeout(() => setCopiado(null), 2000);
+                                                    } catch { /* sem clipboard: o texto está à vista */ }
+                                                }}
+                                                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                    copiado === o.student_id
+                                                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600'
+                                                        : 'border-brand-border bg-brand-surface-2 text-brand-muted hover:text-brand-text'
+                                                }`}
+                                            >
+                                                {copiado === o.student_id ? <Check size={12} /> : <Copy size={12} />}
+                                                {copiado === o.student_id ? 'Copiado' : 'Copiar'}
+                                            </button>
+                                        </div>
+                                        <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-brand-muted">
+                                            {o.mensagem}
+                                        </pre>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <p className="mt-4 text-[10px] text-brand-muted">
+                                Aluno mensal não aparece aqui de propósito — quem escolheu mensal segue mensal até pedir para parar.
+                            </p>
+                        </section>
+                    )}
 
                     <Bloco
                         icone={<CalendarClock size={15} className="text-amber-500" />}

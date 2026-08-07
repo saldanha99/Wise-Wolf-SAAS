@@ -415,6 +415,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260807150000_reconciliacao_financeira.sql"
   "supabase/migrations/20260807160000_reconciliacao_respeita_pagamento_anual.sql"
   "supabase/migrations/20260807170000_renovacao_de_contrato.sql"
+  "supabase/migrations/20260807180000_ofertas_de_renovacao.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
