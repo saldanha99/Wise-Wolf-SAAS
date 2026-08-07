@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
-    AlertTriangle, ArrowUpRight, CheckCircle2, FileWarning, Loader2,
-    RefreshCw, UserMinus, UserX, Wallet,
+    AlertTriangle, ArrowUpRight, CalendarClock, CalendarX, CheckCircle2, FileWarning,
+    Loader2, RefreshCw, UserMinus, UserX, Wallet,
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -110,16 +110,22 @@ const Tabela: React.FC<{ colunas: string[]; linhas: (string | number)[][] }> = (
 
 const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenantId, onNavigate }) => {
     const [dados, setDados] = useState<any>(null);
+    const [renovacao, setRenovacao] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [erro, setErro] = useState('');
 
     const carregar = async () => {
         setLoading(true);
         setErro('');
-        const { data, error } = await supabase.rpc('financial_reconciliation', { p_tenant: tenantId ?? null });
-        if (error) setErro(error.message);
-        else if (data?.error) setErro(data.error === 'sem_permissao' ? 'Sem permissão.' : String(data.error));
-        else setDados(data);
+        const [recon, renov] = await Promise.all([
+            supabase.rpc('financial_reconciliation', { p_tenant: tenantId ?? null }),
+            supabase.rpc('contratos_para_renovar', { p_tenant: tenantId ?? null }),
+        ]);
+        if (recon.error) setErro(recon.error.message);
+        else if (recon.data?.error) setErro(recon.data.error === 'sem_permissao' ? 'Sem permissão.' : String(recon.data.error));
+        else setDados(recon.data);
+        // Renovação é acessória: falha aqui não pode esconder a reconciliação.
+        if (!renov.error && !renov.data?.error) setRenovacao(renov.data);
         setLoading(false);
     };
 
@@ -145,7 +151,11 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
     const paradoNf = b('parado_com_nf');
     const naoLancada = b('aula_nao_lancada');
 
-    const totalPendencias = [semCobertura, semEstudar, arquivado, semNf, paradoNf, naoLancada]
+    const r = (k: string) => renovacao?.[k] || { itens: [], qtd: 0, mensal: 0 };
+    const vencendo = r('vencendo');
+    const encerrado = r('encerrado');
+
+    const totalPendencias = [semCobertura, semEstudar, arquivado, semNf, paradoNf, naoLancada, vencendo, encerrado]
         .reduce((s, x) => s + (x.qtd || 0), 0);
 
     return (
@@ -195,6 +205,45 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                         <p className="mt-3 text-[10px] text-brand-muted">
                             "Estimado" é déficit × mensalidade atual — serve para dimensionar o buraco, não para emitir boleto.
                         </p>
+                    </Bloco>
+
+                    <Bloco
+                        icone={<CalendarX size={15} className="text-red-500" />}
+                        titulo="Contrato encerrado, aluno ainda tendo aula"
+                        porque="A assinatura na Asaas expirou ou foi desativada, mas o aluno continua estudando. Sem renovar, ele para de ser faturado e ninguém percebe."
+                        qtd={encerrado.qtd}
+                        valor={Number(encerrado.mensal || 0)}
+                        valorRotulo="por mês em risco"
+                        tom="critico"
+                        acao={{ label: 'Ir para Alunos', tab: 'students' }}
+                        onNavigate={onNavigate}
+                    >
+                        <Tabela
+                            colunas={['Aluno', 'Situação', 'Terminou', 'Aulas 60d', 'Mensalidade']}
+                            linhas={(encerrado.itens || []).map((i: any) => [
+                                i.aluno, i.situacao, i.termina || '—', i.aulas_60d, brl(i.mensalidade),
+                            ])}
+                        />
+                    </Bloco>
+
+                    <Bloco
+                        icone={<CalendarClock size={15} className="text-amber-500" />}
+                        titulo="Contrato vencendo em até 90 dias"
+                        porque="Momento de conversar sobre renovação. O professor e os horários aparecem porque é isso que a pessoa não quer perder — não o preço."
+                        qtd={vencendo.qtd}
+                        valor={Number(vencendo.mensal || 0)}
+                        valorRotulo="por mês em jogo"
+                        tom="atencao"
+                        acao={{ label: 'Ir para Alunos', tab: 'students' }}
+                        onNavigate={onNavigate}
+                    >
+                        <Tabela
+                            colunas={['Aluno', 'Termina', 'Em', 'Professor', 'Horários que perde']}
+                            linhas={(vencendo.itens || []).map((i: any) => [
+                                i.aluno, i.termina, `${i.dias} dias`,
+                                i.professor || '—', i.horarios || '—',
+                            ])}
+                        />
                     </Bloco>
 
                     <Bloco

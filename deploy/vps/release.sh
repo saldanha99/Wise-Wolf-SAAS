@@ -307,6 +307,8 @@ npx --yes deno check --no-lock \
   supabase/functions/hr-ai-screening/index.ts \
   supabase/functions/wolfie-eval/index.ts \
   supabase/functions/wolfie-live-proxy/index.ts \
+  supabase/functions/sync-subscription-status/index.ts \
+  supabase/functions/notify-payment-due/index.ts \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts
@@ -412,6 +414,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260807140000_motivo_da_rejeicao_da_nota.sql"
   "supabase/migrations/20260807150000_reconciliacao_financeira.sql"
   "supabase/migrations/20260807160000_reconciliacao_respeita_pagamento_anual.sql"
+  "supabase/migrations/20260807170000_renovacao_de_contrato.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -446,6 +449,8 @@ SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-
 SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 HARDENED_FUNCTIONS=(
+  sync-subscription-status
+  notify-payment-due
   create-wolfie-topup
   lesson-planner
   sync-student-asaas
@@ -777,6 +782,8 @@ hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
 HARDENED_FUNCTIONS=(
+  sync-subscription-status
+  notify-payment-due
   create-wolfie-topup
   lesson-planner
   sync-student-asaas
