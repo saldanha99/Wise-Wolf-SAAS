@@ -333,22 +333,15 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         if (isConfirming) return;
         setIsConfirming(true);
         try {
-            // Totais SEMPRE do RPC oficial — o upsert do professor não pode sobrescrever o
-            // fechamento do admin com um cálculo local divergente (era a origem das contestações)
-            const { error } = await supabase.from('teacher_closings').upsert({
-                teacher_id: user.id,
-                // tenant_id é NOT NULL: fallback no perfil evita quebrar o envio do
-                // fechamento se o tenant não tiver sido resolvido no App.
-                tenant_id: tenantId || user.tenantId,
-                month_year: selectedMonth,
-                total_lessons: officialLessons(),
-                total_amount: officialTotal(),
-                status: 'PENDENTE',
-                teacher_confirmation_status: 'OK',
-                teacher_confirmation_date: new Date().toISOString(),
-                teacher_notes: null,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'teacher_id, month_year' });
+            // A confirmação NÃO carrega valor. O professor não escreve mais direto na
+            // tabela (a RLS de UPDATE/INSERT dele foi revogada): a RPC grava só o
+            // "confiro", e o total quem calcula é o servidor, pela mesma regra do
+            // fechamento. Enquanto a tela mandava o número, o total gravado divergia
+            // do oficial — julho da Lais foi R$ 632,00 gravado contra R$ 608,00 reais.
+            const { error } = await supabase.rpc('teacher_submit_closing', {
+                p_month: selectedMonth,
+                p_confirmation: 'OK',
+            });
 
             if (error) throw error;
             await fetchFinancials();
@@ -364,20 +357,12 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         if (!contestReason) return;
         setIsConfirming(true);
         try {
-            const { error } = await supabase.from('teacher_closings').upsert({
-                teacher_id: user.id,
-                // tenant_id é NOT NULL: fallback no perfil evita quebrar o envio do
-                // fechamento se o tenant não tiver sido resolvido no App.
-                tenant_id: tenantId || user.tenantId,
-                month_year: selectedMonth,
-                total_lessons: officialLessons(),
-                total_amount: officialTotal(),
-                status: 'PENDENTE',
-                teacher_confirmation_status: 'CONTESTADO',
-                teacher_confirmation_date: new Date().toISOString(),
-                teacher_notes: contestReason,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'teacher_id, month_year' });
+            // Contestar é opinião sobre o número, não escrita do número (ver handleConfirm).
+            const { error } = await supabase.rpc('teacher_submit_closing', {
+                p_month: selectedMonth,
+                p_confirmation: 'CONTESTADO',
+                p_notes: contestReason,
+            });
 
             if (error) throw error;
             setIsContesting(false);

@@ -408,6 +408,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260804200000_plan_change_billing_sync.sql"
   "supabase/migrations/20260804210000_scope_bookings_coverages_rls.sql"
   "supabase/migrations/20260807120000_nf_issuance_tour.sql"
+  "supabase/migrations/20260807130000_professor_nao_escreve_o_proprio_fechamento.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -416,6 +417,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
   "supabase/tests/wolfie_standalone_subscriptions.sql"
   "supabase/tests/wolfie_free_premium_tiers.sql"
+  "supabase/tests/teacher_closing_write_scope.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
