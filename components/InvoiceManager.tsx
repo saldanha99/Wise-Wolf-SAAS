@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { localMonth } from '../lib/dateUtils';
-import { FileText, Download, Search, CheckCircle, XCircle, Clock, Calendar, Users, Filter, ChevronRight, DollarSign } from 'lucide-react';
+import { FileText, Download, Search, CheckCircle, XCircle, Clock, Calendar, Users, Filter, ChevronRight, DollarSign, Settings } from 'lucide-react';
+import NfSettingsAdmin from './NfSettingsAdmin';
 
 interface InvoiceManagerProps {
     tenantId?: string;
@@ -9,6 +10,7 @@ interface InvoiceManagerProps {
 
 const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
     const [loading, setLoading] = useState(true);
+    const [showNfSettings, setShowNfSettings] = useState(false);
     const [invoices, setInvoices] = useState<any[]>([]);
     const [selectedMonth, setSelectedMonth] = useState(localMonth()); // YYYY-MM
     const [searchTerm, setSearchTerm] = useState('');
@@ -158,6 +160,15 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                         <h2 className="text-3xl font-black text-brand-text tracking-tight">Gestão de NFs</h2>
                     </div>
                     <p className="text-brand-muted mt-1 ml-1">Central de recebimento e conferência de Notas Fiscais dos professores.</p>
+                    {/* Configuração fiscal mora aqui, e não num item novo de menu:
+                        o menu do diretor já passou de 30 itens. */}
+                    <button
+                        type="button"
+                        onClick={() => setShowNfSettings(v => !v)}
+                        className="mt-3 ml-1 inline-flex items-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface-2 px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted transition-all hover:border-tenant-primary hover:text-brand-text"
+                    >
+                        <Settings size={13} /> {showNfSettings ? 'Fechar dados fiscais' : 'Dados para emissão (tomador)'}
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-4 bg-brand-surface p-2 rounded-2xl border border-brand-border shadow-sm">
@@ -174,6 +185,12 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                     </div>
                 </div>
             </header>
+
+            {showNfSettings && (
+                <div className="rounded-[2rem] border border-brand-border bg-brand-surface-2/40">
+                    <NfSettingsAdmin tenantId={tenantId} />
+                </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6">
                 {/* Filters */}

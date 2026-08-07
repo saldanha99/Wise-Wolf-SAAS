@@ -28,6 +28,7 @@ import { User } from '../types';
 import TeacherActivityReport from './TeacherActivityReport';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 import TeacherPayoutDetails from './TeacherPayoutDetails';
+import NfIssuanceTour from './NfIssuanceTour';
 
 // Linha do resumo por aluno (get_teacher_closing_report → students[]).
 interface StudentRow {
@@ -423,6 +424,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Pagamento autorizado e nota ainda não enviada: as instruções de
+                emissão vêm antes do dinheiro. `viewOnly` é o diretor olhando a
+                tela de um professor — nesse caso não há nada a instruir. */}
+            {!viewOnly && <NfIssuanceTour />}
             {/* Month Selector code ... */}
             <div className="flex flex-col items-stretch justify-between gap-4 bg-brand-surface p-4 sm:p-6 rounded-[2rem] border border-brand-border shadow-sm sm:flex-row sm:items-center">
                 <div className="min-w-0">

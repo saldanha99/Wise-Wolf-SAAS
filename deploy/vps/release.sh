@@ -407,6 +407,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260804191000_catalogo_precos_2026_08.sql"
   "supabase/migrations/20260804200000_plan_change_billing_sync.sql"
   "supabase/migrations/20260804210000_scope_bookings_coverages_rls.sql"
+  "supabase/migrations/20260807120000_nf_issuance_tour.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

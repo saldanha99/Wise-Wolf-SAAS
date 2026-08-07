@@ -916,18 +916,45 @@ serve(async (req) => {
             .select("id", { count: "exact", head: true })
             .eq("tenant_id", tenantId).eq("phone", phone).eq("agent", "support")
             .eq("direction", "out").gte("created_at", since);
+
+          // ⚠️ ESTA RESPOSTA NÃO AFIRMA NADA SOBRE A SITUAÇÃO DO ALUNO.
+          //
+          // A versão anterior dizia "não precisa preencher nada de matrícula
+          // novamente". Ela existia só para impedir que o aluno achasse que
+          // precisava se matricular de novo — mas ela é enviada a QUALQUER
+          // mensagem de aluno, inclusive a quem pergunta a chave PIX ou avisa
+          // que não pagou. Nesse contexto ela lê como "está tudo certo, não
+          // precisa pagar". Aconteceu 12 vezes com 8 alunas (07/08/2026).
+          //
+          // Um recado automático não sabe se o aluno deve, se pausou ou se está
+          // em dia — então não pode encostar no assunto. Ele só confirma que
+          // chegou e que um humano assume. Qualquer frase sobre matrícula,
+          // pagamento, contrato ou cobrança aqui é regressão.
           if (!rateLimited && (recentSupport ?? 0) === 0) {
             const first = greetName(knownProfile.full_name);
-            const reply = `Oi${first ? ", " + first : ""}! Identifiquei que você já é aluno(a) da Wise Wolf 😊 Vou encaminhar sua mensagem para a equipe responsável — não precisa preencher nada de matrícula novamente.`;
+            const reply = `Oi${first ? ", " + first : ""}! Recebi sua mensagem 😊 Já encaminhei para a equipe da Wise Wolf e em breve alguém te responde por aqui.`;
             if (await sendWhats(instance, phone, reply)) {
               await logMsg(sb, tenantId, phone, "support", "out", reply, {
                 student_id: knownProfile.id, kind: "existing_student_handoff",
               });
             }
-            const adm = await adminProfile(sb, tenantId);
-            if (adm.ownerPhone) {
-              await sendWhats(instance, adm.ownerPhone, `🎓 *Atendimento de aluno:* ${knownProfile.full_name || phone} enviou uma mensagem no WhatsApp central.\n\n“${(isMedia ? "[mídia]" : text).slice(0, 300)}”\n\nA IA comercial foi bloqueada e o contato foi encaminhado para atendimento humano.`);
-            }
+          }
+
+          // O aviso ao humano fica FORA do dedupe da resposta automática.
+          // Antes os dois estavam no mesmo `if`: aluno que insistia dentro de
+          // 4 h não gerava aviso nenhum, e a coordenação nunca via a cobrança
+          // do follow-up. Silenciar a resposta é economia de ruído; silenciar o
+          // encaminhamento é perder o atendimento.
+          const adm = await adminProfile(sb, tenantId);
+          if (adm.ownerPhone) {
+            const corpo = (isMedia ? "[mídia]" : text).slice(0, 300);
+            // Assunto de dinheiro entra marcado: é o que não pode esperar.
+            const financeiro = /\bpix\b|pagamen|boleto|fatura|cobran|mensalidade|cart[ãa]o|assinatur|estorn|d[ée]bito|vencimen|valor/i.test(text);
+            await sendWhats(
+              instance,
+              adm.ownerPhone,
+              `🎓 *Atendimento de aluno:* ${knownProfile.full_name || phone} enviou uma mensagem no WhatsApp central.${financeiro ? "\n\n💰 *Assunto financeiro — responder com prioridade.*" : ""}\n\n“${corpo}”\n\nA IA comercial foi bloqueada e o contato foi encaminhado para atendimento humano.`,
+            );
           }
         }
         continue;

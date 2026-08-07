@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, XCircle, FileUp, AlertCircle, RefreshCw, Hash, Calendar } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, XCircle, FileUp, AlertCircle, RefreshCw, Hash, Calendar, HelpCircle } from 'lucide-react';
 import { User as UserType } from '../types';
 import { supabase } from '../lib/supabase';
+import NfIssuanceTour from './NfIssuanceTour';
 
 interface TeacherInvoicesProps {
     user: UserType;
@@ -12,6 +13,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
     const [closings, setClosings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isUploadingFile, setIsUploadingFile] = useState<string | null>(null);
+    const [showNfHelp, setShowNfHelp] = useState(false);
 
     useEffect(() => {
         if (user && tenantId) {
@@ -194,7 +196,19 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                     <h1 className="min-w-0 text-2xl font-black tracking-tight text-brand-text sm:text-3xl">Minhas Notas Fiscais</h1>
                 </div>
                 <p className="text-brand-muted font-medium">Envie suas notas fiscais após o receber o pagamento para regularizar sua situação.</p>
+                <button
+                    type="button"
+                    onClick={() => setShowNfHelp(true)}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface-2 px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted transition-all hover:border-tenant-primary hover:text-brand-text"
+                >
+                    <HelpCircle size={13} /> Como emitir minha nota
+                </button>
             </div>
+
+            {/* Tour obrigatório: aparece sozinho quando há pagamento autorizado sem
+                nota anexada. O botão acima reabre as mesmas instruções por consulta. */}
+            <NfIssuanceTour onDone={fetchInvoicesData} />
+            {showNfHelp && <NfIssuanceTour manual onClose={() => setShowNfHelp(false)} />}
 
             {/* History Table */}
             <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl overflow-hidden">
