@@ -215,8 +215,8 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
 
                     <Bloco
                         icone={<CalendarX size={15} className="text-red-500" />}
-                        titulo="Contrato encerrado, aluno ainda tendo aula"
-                        porque="A assinatura na Asaas expirou ou foi desativada, mas o aluno continua estudando. Sem renovar, ele para de ser faturado e ninguém percebe."
+                        titulo="Aula sendo dada sem pagamento"
+                        porque="O último mês pago já passou e o aluno continua tendo aula. Aqui não é risco futuro — é prejuízo acontecendo agora."
                         qtd={encerrado.qtd}
                         valor={Number(encerrado.mensal || 0)}
                         valorRotulo="por mês em risco"
@@ -225,9 +225,9 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                         onNavigate={onNavigate}
                     >
                         <Tabela
-                            colunas={['Aluno', 'Situação', 'Terminou', 'Aulas 60d', 'Mensalidade']}
+                            colunas={['Aluno', 'Última aula paga', 'Dias sem pagar', 'Aulas 60d', 'Mensalidade']}
                             linhas={(encerrado.itens || []).map((i: any) => [
-                                i.aluno, i.situacao, i.termina || '—', i.aulas_60d, brl(i.mensalidade),
+                                i.aluno, i.termina || '—', i.dias_de_graca ?? '—', i.aulas_60d, brl(i.mensalidade),
                             ])}
                         />
                     </Bloco>
@@ -308,9 +308,12 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                         onNavigate={onNavigate}
                     >
                         <Tabela
-                            colunas={['Aluno', 'Termina', 'Em', 'Professor', 'Horários que perde']}
+                            colunas={['Aluno', 'Última aula paga', 'Em', 'Cobrança', 'Professor', 'Horários que perde']}
                             linhas={(vencendo.itens || []).map((i: any) => [
                                 i.aluno, i.termina, `${i.dias} dias`,
+                                // Cobrança parada = a Asaas não gera mais fatura. Renovar aqui
+                                // não é só vender de novo, é religar o faturamento.
+                                i.cobranca_parada ? '⚠️ já parou' : 'ativa',
                                 i.professor || '—', i.horarios || '—',
                             ])}
                         />
