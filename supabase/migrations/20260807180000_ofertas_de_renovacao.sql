@@ -163,23 +163,39 @@ begin
            -- teacher Débora"). O sistema não guarda o gênero de ninguém, e
            -- deduzir a partir do nome erra com pessoa real na frente — a
            -- primeira versão deste texto escreveu "o teacher Debora".
+           -- ⚠️ O TEXTO CITA SÓ NÚMEROS QUE A ALUNA RECONHECE.
+           --
+           -- A primeira versão dizia "25% abaixo do valor sem compromisso
+           -- (R$ 450,00)". O valor de tabela sem fidelidade é verdadeiro, mas a
+           -- aluna NUNCA pagou aquilo — o número aparece do nada e parece
+           -- inflado de propósito, que é justamente a desconfiança que a oferta
+           -- precisa evitar. O próprio diretor não entendeu de onde vinha.
+           --
+           -- A verdade mais forte estava na frente: a mensalidade dela CAI. Não
+           -- é desconto sobre preço teórico, é redução no que ela paga hoje —
+           -- verificável no próprio boleto dela.
+           --
+           -- ⚠️ "Mantendo tudo como está" usa `monthly_fee`, NÃO o preço de
+           -- catálogo: preços personalizados são intencionais nesta escola, e
+           -- citar o valor de tabela anunciaria à aluna um preço que não é o
+           -- dela.
            'Oi ' || split_part(btrim(p.full_name), ' ', 1) || '! 🐺 '
              || 'Seus horários com '
              || coalesce(split_part(prof.professor, ' ', 1), 'seu professor')
              || ' vão até ' || to_char(p.asaas_subscription_end_date, 'DD/MM') || '.'
              || E'\n\n'
-             || 'Quer seguir com a gente? Dá pra renovar por mais 6 meses mantendo tudo como está'
-             || case when pl.p6 is not null then ' (R$ ' || public.brl_texto(pl.p6) || ')' else '' end
-             || case when pl.p12 is not null
-                     then ', ou por 12 meses e sua mensalidade cai para R$ '
-                          || public.brl_texto(pl.p12)
-                          || case when pl.avulso is not null and pl.avulso > 0
-                                  then ' — ' || round((pl.avulso - pl.p12) / pl.avulso * 100)::int
-                                       || '% abaixo do valor sem compromisso (R$ '
-                                       || public.brl_texto(pl.avulso) || ')'
-                                  else '' end
-                          || '.'
-                     else '.' end
+             || 'Quer seguir com a gente? Pode renovar por mais 6 meses mantendo sua mensalidade de R$ '
+             || public.brl_texto(coalesce(p.monthly_fee, 0))
+             || case
+                  -- Só promete queda quando ela existe de verdade.
+                  when pl.p12 is not null and pl.p12 < coalesce(p.monthly_fee, 0)
+                    then ', ou fechar 12 meses e ela cai para R$ ' || public.brl_texto(pl.p12)
+                         || ' — R$ ' || public.brl_texto(coalesce(p.monthly_fee, 0) - pl.p12)
+                         || ' a menos por mês.'
+                  when pl.p12 is not null
+                    then ', ou fechar 12 meses por R$ ' || public.brl_texto(pl.p12) || '.'
+                  else '.'
+                end
              || E'\n\n'
              || 'Do jeito que for melhor pra você. Me avisa? 😊' as mensagem
       from public.profiles p
