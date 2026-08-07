@@ -84,15 +84,14 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 5); // ~5 anos
             const nfUrl = signed?.signedUrl || filePath;
 
-            // 3. Update teacher_closings (status UNDER_REVIEW = badge "Em Análise")
-            const { error: updateError } = await supabase
-                .from('teacher_closings')
-                .update({
-                    nf_link: nfUrl,
-                    status: 'UNDER_REVIEW',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', closingId);
+            // 3. Anexa pela RPC (badge "Em Análise"). O professor não escreve mais
+            // direto em teacher_closings — pelo PostgREST o mesmo PATCH alcançaria
+            // total_amount e status. A RPC grava só o link e só move o status quando
+            // o fechamento já está na faixa de NF.
+            const { error: updateError } = await supabase.rpc('teacher_attach_invoice', {
+                p_closing_id: closingId,
+                p_nf_link: nfUrl,
+            });
 
             if (updateError) throw updateError;
 

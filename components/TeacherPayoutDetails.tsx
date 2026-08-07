@@ -173,14 +173,12 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
                 .from('invoices')
                 .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 5);
 
-            const { error: updateError } = await supabase
-                .from('teacher_closings')
-                .update({
-                    nf_link: signed?.signedUrl || filePath,
-                    status: 'UNDER_REVIEW',
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', closing.id);
+            // Via RPC: o professor não escreve direto em teacher_closings (o mesmo
+            // PATCH alcançaria total_amount/status). Ver teacher_attach_invoice.
+            const { error: updateError } = await supabase.rpc('teacher_attach_invoice', {
+                p_closing_id: closing.id,
+                p_nf_link: signed?.signedUrl || filePath,
+            });
             if (updateError) throw updateError;
 
             await load();

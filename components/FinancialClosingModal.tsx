@@ -12,7 +12,7 @@ interface FinancialClosingModalProps {
     onSuccess: () => void;
 }
 
-const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, tenantId, month, onClose, onSuccess }) => {
+const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, month, onClose, onSuccess }) => {
     const [loading, setLoading] = useState(true);
     const [totalLessons, setTotalLessons] = useState(0);
     const [totalEarned, setTotalEarned] = useState(0);
@@ -84,27 +84,22 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
         }
     };
 
-    // tenant_id é NOT NULL em teacher_closings: sem este fallback, qualquer falha ao
-    // resolver o tenant no App derruba o fechamento com "null value in column tenant_id".
-    const effectiveTenantId = tenantId || user.tenantId;
+    // O tenant deixou de ser problema da tela: quem insere a linha agora é a RPC,
+    // que lê o tenant do próprio perfil no servidor. Não há mais como o fechamento
+    // quebrar com "null value in column tenant_id" por falha ao resolver o tenant.
 
     const handleConfirm = async () => {
         if (isSubmitting || loadError) return;
         setIsSubmitting(true);
         try {
-            const { error } = await supabase
-                .from('teacher_closings')
-                .upsert({
-                    teacher_id: user.id,
-                    tenant_id: effectiveTenantId,
-                    month_year: month,
-                    total_lessons: totalLessons,
-                    total_amount: totalEarned,
-                    status: 'PENDENTE', // Still pending admin approval
-                    teacher_confirmation_status: 'OK',
-                    teacher_confirmation_date: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'teacher_id, month_year' });
+            // Só o "confiro" vai para o servidor. O valor exibido aqui é uma conta
+            // local (aulas × hourly_rate), que não conhece faixa por aluno, ajuste
+            // nem carry-over — gravá-lo sobrescreveria a folha oficial com um número
+            // menor. Quem calcula é a RPC, pela mesma regra do fechamento mensal.
+            const { error } = await supabase.rpc('teacher_submit_closing', {
+                p_month: month,
+                p_confirmation: 'OK',
+            });
 
             if (error) throw error;
             alert('Fechamento confirmado com sucesso!');
@@ -121,20 +116,11 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, ten
         if (!contestReason.trim() || isSubmitting) return;
         setIsSubmitting(true);
         try {
-            const { error } = await supabase
-                .from('teacher_closings')
-                .upsert({
-                    teacher_id: user.id,
-                    tenant_id: effectiveTenantId,
-                    month_year: month,
-                    total_lessons: totalLessons,
-                    total_amount: totalEarned,
-                    status: 'PENDENTE', // Keep pending until resolved
-                    teacher_confirmation_status: 'CONTESTADO',
-                    teacher_confirmation_date: new Date().toISOString(),
-                    teacher_notes: contestReason,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'teacher_id, month_year' });
+            const { error } = await supabase.rpc('teacher_submit_closing', {
+                p_month: month,
+                p_confirmation: 'CONTESTADO',
+                p_notes: contestReason,
+            });
 
             if (error) throw error;
             alert('Contestação enviada com sucesso.');
