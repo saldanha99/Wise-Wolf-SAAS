@@ -49,6 +49,19 @@ export function montarMensagem(b: Record<string, unknown>): string {
   const mes = nomeDoMes(String(b.month ?? ""));
   const partes: string[] = [];
 
+  // Fora da base (pagamento sem aluno vinculado): aviso curto. O dinheiro
+  // aparece — esconder entrada seria pior que não ratear —, mas sem simular um
+  // rateio que a direção decidiu não fazer. Aporte da dona não gera dízimo.
+  if (b.na_base === false) {
+    return [
+      `💵 *Entrada de ${money(b.valor)}* — sem aluno vinculado`,
+      `_confirmada em ${dataCurta(b.paid_at)}_`,
+      "",
+      `Fora da base do rateio: não gera dízimo nem investimento.`,
+      `_Se for mensalidade de aluno, vincule no Financeiro para entrar na base._`,
+    ].join("\n");
+  }
+
   partes.push(`💰 *${String(b.student_name ?? "Aluno")} pagou ${money(b.valor)}*`);
   partes.push(`_fatura confirmada em ${dataCurta(b.paid_at)}_`);
   partes.push("");

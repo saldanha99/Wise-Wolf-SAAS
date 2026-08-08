@@ -38,6 +38,7 @@ interface Linha {
   investimento?: number;
   sobra?: number;
   sem_aluno?: boolean;
+  na_base?: boolean;
 }
 
 interface Totais {
@@ -48,6 +49,8 @@ interface Totais {
   dizimo?: number;
   investimento?: number;
   sobra?: number;
+  fora_da_base?: number;
+  fora_da_base_n?: number;
 }
 
 interface Relatorio {
@@ -159,7 +162,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
         <div className="rounded-xl border border-brand-border bg-brand-surface-2 p-3">
           <p className="text-[9px] font-black uppercase text-brand-muted">− Professores</p>
           <p className="text-lg font-black text-brand-text">{brl(t.custo_professor)}</p>
-          <p className="text-[10px] text-brand-muted">líquido {brl(t.liquido)}</p>
+          <p className="text-[10px] text-brand-muted">base do rateio {brl(t.liquido)}</p>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1">
@@ -175,12 +178,14 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
         </div>
       </div>
 
-      {(rel?.sem_aluno ?? 0) > 0 && (
-        <div className="mb-3 flex items-start gap-2 text-xs rounded-xl px-3 py-2 border text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/30">
+      {(t.fora_da_base_n ?? 0) > 0 && (
+        <div className="mb-3 flex items-start gap-2 text-xs rounded-xl px-3 py-2 border text-brand-muted bg-brand-surface-2 border-brand-border">
           <AlertCircle size={14} className="shrink-0 mt-0.5" />
           <span>
-            {rel?.sem_aluno} pagamento(s) entraram sem aluno vinculado. Sem aluno não há professor
-            a descontar, então o dízimo desses saiu sobre o valor cheio.
+            <strong>{brl(t.fora_da_base)}</strong> em {t.fora_da_base_n} pagamento(s) entraram{' '}
+            <strong>sem aluno vinculado</strong> e ficaram fora da base — não geraram dízimo nem
+            investimento. É o tratamento de aporte da direção. Se algum for mensalidade de aluno,
+            vincule em Mensalidades e ele passa a entrar na base.
           </span>
         </div>
       )}
@@ -202,15 +207,20 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
               </thead>
               <tbody className="text-brand-text">
                 {linhas.map(l => (
-                  <tr key={l.payment_id} className="border-t border-brand-border">
+                  <tr
+                    key={l.payment_id}
+                    className={`border-t border-brand-border ${l.na_base === false ? 'opacity-60' : ''}`}
+                  >
                     <td className="px-3 py-2">
                       <span className="font-bold">{l.aluno}</span>
                       <span className="text-brand-muted"> · {diaCurto(l.quando)}</span>
                     </td>
                     <td className="px-3 py-2 text-brand-muted">
-                      {l.professores?.length
-                        ? l.professores.map(p => p.teacher_name).join(', ')
-                        : '—'}
+                      {l.na_base === false
+                        ? <span className="italic">fora da base</span>
+                        : (l.professores?.length
+                            ? l.professores.map(p => p.teacher_name).join(', ')
+                            : '—')}
                     </td>
                     <td className="px-3 py-2 text-right">{brl(l.valor)}</td>
                     <td className="px-3 py-2 text-right text-brand-muted">− {brl(l.custo_professor)}</td>

@@ -76,6 +76,7 @@ DECLARE
   v_dizimo_pct numeric; v_investimento_pct numeric; v_ativo boolean;
   v_custo numeric; v_aulas int; v_liquido numeric;
   v_professores jsonb; v_aluno text;
+  v_na_base boolean; v_dizimo numeric; v_investimento numeric;
 BEGIN
   SELECT COALESCE(current_setting('request.jwt.claims', true)::json->>'role','')
     INTO v_jwt_role;
@@ -159,6 +160,25 @@ BEGIN
   -- de mostrar custo zero como se fosse aula de graça.
   v_liquido := GREATEST(COALESCE(v_pay.value,0) - COALESCE(v_custo,0), 0);
 
+  -- FORA DA BASE: pagamento sem aluno vinculado não gera dízimo nem investimento.
+  --
+  -- Decisão da direção em 08/08/2026, e ela tem uma razão concreta: boa parte do
+  -- que entra sem aluno é APORTE DA DONA, dinheiro dela entrando na escola. Tirar
+  -- dízimo em cima disso seria dizimar o mesmo dinheiro duas vezes. Some-se a
+  -- isso que, sem aluno, não há professor a descontar — então a base seria o
+  -- valor cheio, e o dízimo sairia MAIOR justamente onde a conta é menos confiável.
+  --
+  -- ⚠️ O pagamento continua aparecendo, com o valor cheio. Ele não some do
+  -- relatório nem do aviso: some da BASE. Esconder dinheiro que entrou seria
+  -- trocar um erro por outro pior.
+  v_na_base := (v_pay.student_id IS NOT NULL);
+  IF NOT v_na_base THEN
+    v_dizimo := 0; v_investimento := 0;
+  ELSE
+    v_dizimo       := round(v_liquido * v_dizimo_pct       / 100.0, 2);
+    v_investimento := round(v_liquido * v_investimento_pct / 100.0, 2);
+  END IF;
+
   RETURN jsonb_build_object(
     'payment_id',   v_pay.id,
     'tenant_id',    v_tenant,
@@ -176,6 +196,7 @@ BEGIN
     'student_name', COALESCE(v_aluno, 'sem aluno vinculado'),
     'sem_aluno',    (v_pay.student_id IS NULL),
     'sem_agenda',   (v_aulas = 0),
+    'na_base',      v_na_base,
     'description',  v_pay.description,
     'valor',        round(COALESCE(v_pay.value,0),2),
     'aulas_previstas', v_aulas,
@@ -184,11 +205,9 @@ BEGIN
     'liquido',      round(v_liquido,2),
     'dizimo_pct',   v_dizimo_pct,
     'investimento_pct', v_investimento_pct,
-    'dizimo',       round(v_liquido * v_dizimo_pct   / 100.0, 2),
-    'investimento', round(v_liquido * v_investimento_pct / 100.0, 2),
-    'sobra',        round(v_liquido
-                          - round(v_liquido * v_dizimo_pct   / 100.0, 2)
-                          - round(v_liquido * v_investimento_pct / 100.0, 2), 2));
+    'dizimo',       v_dizimo,
+    'investimento', v_investimento,
+    'sobra',        round(v_liquido - v_dizimo - v_investimento, 2));
 END;
 $function$;
 
@@ -261,21 +280,27 @@ BEGIN
                'dizimo',          (r.b->>'dizimo')::numeric,
                'investimento',    (r.b->>'investimento')::numeric,
                'sobra',           (r.b->>'sobra')::numeric,
-               'sem_aluno',       (r.b->>'sem_aluno')::boolean)
+               'sem_aluno',       (r.b->>'sem_aluno')::boolean,
+               'na_base',         (r.b->>'na_base')::boolean)
              ORDER BY r.quando DESC)
         FROM rateado r), '[]'::jsonb),
     'totais', (SELECT jsonb_build_object(
         'pagamentos',      count(*)::int,
+        -- 'recebido' é TUDO que entrou, na base ou não. É o número que tem de
+        -- bater com o DRE; separar sem dizer o total esconderia faturamento.
         'recebido',        round(COALESCE(sum((r.b->>'valor')::numeric),0),2),
         'custo_professor', round(COALESCE(sum((r.b->>'custo_professor')::numeric),0),2),
-        'liquido',         round(COALESCE(sum((r.b->>'liquido')::numeric),0),2),
+        'liquido',         round(COALESCE(sum((r.b->>'liquido')::numeric)
+                                   FILTER (WHERE (r.b->>'na_base')::boolean),0),2),
         'dizimo',          round(COALESCE(sum((r.b->>'dizimo')::numeric),0),2),
         'investimento',    round(COALESCE(sum((r.b->>'investimento')::numeric),0),2),
-        'sobra',           round(COALESCE(sum((r.b->>'sobra')::numeric),0),2)
+        'sobra',           round(COALESCE(sum((r.b->>'sobra')::numeric),0),2),
+        -- Quanto entrou e NÃO gerou dízimo. Sem essa linha, a diferença entre o
+        -- recebido e a base viraria um buraco que ninguém sabe explicar.
+        'fora_da_base',    round(COALESCE(sum((r.b->>'valor')::numeric)
+                                   FILTER (WHERE NOT (r.b->>'na_base')::boolean),0),2),
+        'fora_da_base_n',  count(*) FILTER (WHERE NOT (r.b->>'na_base')::boolean)::int
       ) FROM rateado r),
-    -- Quantos pagamentos entraram sem aluno vinculado. Não é detalhe: sem aluno
-    -- não há professor a descontar, então o líquido é o valor cheio e o dízimo
-    -- daquele pagamento sai maior. O diretor precisa ver que isso aconteceu.
     'sem_aluno', (SELECT count(*)::int FROM rateado r WHERE (r.b->>'sem_aluno')::boolean)));
 END;
 $function$;
