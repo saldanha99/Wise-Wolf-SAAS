@@ -42,6 +42,8 @@ export interface Professor {
   teacher_name?: string;
   aulas?: number;
   custo?: number;
+  /** false = pró-labore da direção: aparece na mensagem, mas não desconta. */
+  descontado?: boolean;
 }
 
 export function montarMensagem(b: Record<string, unknown>): string {
@@ -66,14 +68,23 @@ export function montarMensagem(b: Record<string, unknown>): string {
   partes.push(`_fatura confirmada em ${dataCurta(b.paid_at)}_`);
   partes.push("");
 
-  if (Number(b.custo_professor ?? 0) > 0) {
+  if (professores.length > 0) {
     // Uma linha por professor com o NOME: é o que o diretor lê primeiro
     // ("Professor Mateus, salário tal desse aluno").
     for (const p of professores) {
-      partes.push(
-        `👨‍🏫 Professor ${p.teacher_name ?? "—"} · salário deste aluno: *${money(p.custo)}*`,
-      );
-      partes.push(`      ${p.aulas ?? 0} aulas previstas na agenda de ${mes}`);
+      if (p.descontado === false) {
+        // Pró-labore da direção: o valor aparece, mas dizer "salário" e depois
+        // não descontar faria a conta parecer errada. O motivo vai junto.
+        partes.push(
+          `👑 ${p.teacher_name ?? "—"} · pró-labore da direção: ${money(p.custo)}`,
+        );
+        partes.push(`      ${p.aulas ?? 0} aulas em ${mes} · não desconta da base`);
+      } else {
+        partes.push(
+          `👨‍🏫 Professor ${p.teacher_name ?? "—"} · salário deste aluno: *${money(p.custo)}*`,
+        );
+        partes.push(`      ${p.aulas ?? 0} aulas previstas na agenda de ${mes}`);
+      }
     }
   } else if (b.sem_aluno) {
     // Pagamento que chegou sem aluno vinculado: mostrar custo zero sem explicar
@@ -83,7 +94,7 @@ export function montarMensagem(b: Record<string, unknown>): string {
     partes.push(`👨‍🏫 Professor: *${money(0)}* — aluno sem aulas na agenda de ${mes}`);
   }
 
-  partes.push(`➖ Líquido: *${money(b.liquido)}*`);
+  partes.push(`➖ Base do rateio: *${money(b.liquido)}*`);
   partes.push("");
   partes.push(`🙏 Dízimo (${pct(b.dizimo_pct)}): *${money(b.dizimo)}*`);
   partes.push(`📈 Investimento (${pct(b.investimento_pct)}): *${money(b.investimento)}*`);

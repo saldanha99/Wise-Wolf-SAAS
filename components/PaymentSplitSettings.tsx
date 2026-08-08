@@ -14,6 +14,8 @@ import { PiggyBank, RefreshCw, Check, AlertCircle, TrendingUp, HandCoins } from 
  * disparar mensagem no grupo.
  */
 
+interface ProfessorCfg { id: string; nome: string; pro_labore: boolean }
+
 interface Settings {
   configurado: boolean;
   is_active: boolean;
@@ -21,6 +23,7 @@ interface Settings {
   investimento_pct: number;
   destino: string;
   destino_configurado: boolean;
+  professores?: ProfessorCfg[];
   error?: string;
 }
 
@@ -51,6 +54,7 @@ interface Totais {
   sobra?: number;
   fora_da_base?: number;
   fora_da_base_n?: number;
+  pro_labore?: number;
 }
 
 interface Relatorio {
@@ -77,6 +81,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [marcando, setMarcando] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -112,6 +117,21 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
       return;
     }
     setAviso({ tipo: 'ok', texto: 'Rateio salvo.' });
+    await load();
+  };
+
+  /** Marcar/desmarcar recalcula a base do mês inteiro, então recarrega o relatório. */
+  const alternarProLabore = async (p: ProfessorCfg) => {
+    setMarcando(p.id); setAviso(null);
+    const { data } = await supabase.rpc('set_payment_split_owner_teacher', {
+      p_teacher: p.id,
+      p_pro_labore: !p.pro_labore,
+    });
+    setMarcando(null);
+    if (data?.error) {
+      setAviso({ tipo: 'erro', texto: 'Não foi possível alterar este professor.' });
+      return;
+    }
     await load();
   };
 
@@ -162,7 +182,10 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
         <div className="rounded-xl border border-brand-border bg-brand-surface-2 p-3">
           <p className="text-[9px] font-black uppercase text-brand-muted">− Professores</p>
           <p className="text-lg font-black text-brand-text">{brl(t.custo_professor)}</p>
-          <p className="text-[10px] text-brand-muted">base do rateio {brl(t.liquido)}</p>
+          <p className="text-[10px] text-brand-muted">
+            base do rateio {brl(t.liquido)}
+            {(t.pro_labore ?? 0) > 0 && ` · pró-labore ${brl(t.pro_labore)} não descontado`}
+          </p>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1">
@@ -282,6 +305,35 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
           </span>
         </div>
       </div>
+
+      {/* Pró-labore: aula da direção não é custo, então não desconta da base. */}
+      {(s.professores?.length ?? 0) > 0 && (
+        <div className="mt-4 pt-4 border-t border-brand-border">
+          <p className="text-[10px] font-black uppercase text-brand-muted mb-1">
+            Professores que são pró-labore da direção
+          </p>
+          <p className="text-[11px] text-brand-muted mb-2">
+            A aula destes não é descontada antes do dízimo — o dinheiro não sai da escola,
+            então descontar reduziria a base por uma despesa que não existe.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {s.professores?.map(p => (
+              <button
+                key={p.id}
+                onClick={() => void alternarProLabore(p)}
+                disabled={marcando === p.id}
+                className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-colors disabled:opacity-50 ${
+                  p.pro_labore
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/40'
+                    : 'bg-brand-surface-2 text-brand-muted border-brand-border hover:border-brand-muted'
+                }`}
+              >
+                {p.pro_labore ? '👑 ' : ''}{p.nome}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mt-4 flex-wrap">
         <button

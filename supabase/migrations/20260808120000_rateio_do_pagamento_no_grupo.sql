@@ -61,6 +61,37 @@ CREATE POLICY payment_split_settings_read ON public.payment_split_settings
                          OR p.tenant_id = payment_split_settings.tenant_id)));
 GRANT SELECT ON public.payment_split_settings TO authenticated, service_role;
 
+-- 1b. Professor que é pró-labore, não custo -----------------------------------
+-- A dona da escola também dá aula. O que ela "recebe" por essas aulas não sai da
+-- escola: é pró-labore dela. Descontar isso antes do dízimo reduziria a base sem
+-- que dinheiro nenhum tivesse saído — o dízimo sairia menor por uma despesa que
+-- não existe.
+--
+-- ⚠️ Lista configurável, NUNCA um id chumbado na migration. Quem é dono muda,
+-- escola nova não tem a mesma pessoa, e um uuid dentro do SQL é exatamente o
+-- tipo de regra que ninguém acha depois. O diretor marca no painel.
+-- Nasce VAZIA: sem ninguém marcado, o comportamento é o de antes (desconta tudo).
+CREATE TABLE IF NOT EXISTS public.payment_split_owner_teachers (
+  tenant_id  text NOT NULL,
+  teacher_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, teacher_id)
+);
+
+COMMENT ON TABLE public.payment_split_owner_teachers IS
+  'Professores cuja remuneração é pró-labore da direção, não custo. As aulas deles NÃO são descontadas da base do dízimo/investimento — o dinheiro não sai da escola.';
+
+ALTER TABLE public.payment_split_owner_teachers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS payment_split_owner_read ON public.payment_split_owner_teachers;
+CREATE POLICY payment_split_owner_read ON public.payment_split_owner_teachers
+  FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.profiles p
+                  WHERE p.id = auth.uid()
+                    AND p.role IN ('SCHOOL_ADMIN','SUPER_ADMIN')
+                    AND (p.role = 'SUPER_ADMIN'
+                         OR p.tenant_id = payment_split_owner_teachers.tenant_id)));
+GRANT SELECT ON public.payment_split_owner_teachers TO authenticated, service_role;
+
 -- 2. A conta ------------------------------------------------------------------
 -- Uma função só, chamada pela edge (envio) e pelo painel (prévia). Duas cópias
 -- da regra em lugares diferentes foi como o lançamento de aula divergiu entre
@@ -76,7 +107,7 @@ DECLARE
   v_dizimo_pct numeric; v_investimento_pct numeric; v_ativo boolean;
   v_custo numeric; v_aulas int; v_liquido numeric;
   v_professores jsonb; v_aluno text;
-  v_na_base boolean; v_dizimo numeric; v_investimento numeric;
+  v_na_base boolean; v_dizimo numeric; v_investimento numeric; v_pro_labore numeric;
 BEGIN
   SELECT COALESCE(current_setting('request.jwt.claims', true)::json->>'role','')
     INTO v_jwt_role;
@@ -123,10 +154,16 @@ BEGIN
   -- Custo PREVISTO: a agenda vigente do aluno expandida sobre os dias do mês.
   -- Mesmo padrão de teacher_pay_projection — e a tarifa vem de
   -- teacher_student_rate (faixa de antiguidade + turbo), nunca de valor fixo.
+  -- ⚠️ v_custo soma SÓ o que é custo de verdade. Aula dada por professor marcado
+  -- como pró-labore da direção continua sendo contada e mostrada (o diretor
+  -- precisa ver quem atende o aluno), mas NÃO reduz a base do dízimo: aquele
+  -- dinheiro não sai da escola.
   WITH aulas AS (
     SELECT b.teacher_id,
            d::date AS dia,
-           teacher_student_rate(b.teacher_id, b.student_id, d::date) AS rate
+           teacher_student_rate(b.teacher_id, b.student_id, d::date) AS rate,
+           EXISTS (SELECT 1 FROM payment_split_owner_teachers o
+                    WHERE o.tenant_id = v_tenant AND o.teacher_id = b.teacher_id) AS pro_labore
       FROM bookings b
       CROSS JOIN generate_series(v_ini, v_fim, '1 day') d
      WHERE b.student_id = v_pay.student_id
@@ -134,18 +171,24 @@ BEGIN
        AND dow_name_to_int(b.day_of_week) = EXTRACT(dow FROM d)::int
        AND (b.start_date IS NULL OR d >= b.start_date)
   )
-  SELECT COALESCE(count(*),0)::int, COALESCE(sum(a.rate),0)
-    INTO v_aulas, v_custo
+  SELECT COALESCE(count(*),0)::int,
+         COALESCE(sum(a.rate) FILTER (WHERE NOT a.pro_labore), 0),
+         COALESCE(sum(a.rate) FILTER (WHERE a.pro_labore), 0)
+    INTO v_aulas, v_custo, v_pro_labore
     FROM aulas a;
 
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'teacher_id', z.teacher_id,
            'teacher_name', COALESCE(btrim(t.full_name), 'Professor não identificado'),
-           'aulas', z.n, 'custo', round(z.custo,2)) ORDER BY z.custo DESC), '[]'::jsonb)
+           'aulas', z.n, 'custo', round(z.custo,2),
+           -- false = pró-labore da direção: aparece, mas não desconta.
+           'descontado', NOT z.pro_labore) ORDER BY z.custo DESC), '[]'::jsonb)
     INTO v_professores
     FROM (
       SELECT b.teacher_id, count(*)::int AS n,
-             sum(teacher_student_rate(b.teacher_id, b.student_id, d::date)) AS custo
+             sum(teacher_student_rate(b.teacher_id, b.student_id, d::date)) AS custo,
+             EXISTS (SELECT 1 FROM payment_split_owner_teachers o
+                      WHERE o.tenant_id = v_tenant AND o.teacher_id = b.teacher_id) AS pro_labore
         FROM bookings b
         CROSS JOIN generate_series(v_ini, v_fim, '1 day') d
        WHERE b.student_id = v_pay.student_id
@@ -201,6 +244,10 @@ BEGIN
     'valor',        round(COALESCE(v_pay.value,0),2),
     'aulas_previstas', v_aulas,
     'custo_professor', round(COALESCE(v_custo,0),2),
+    -- Pró-labore da direção previsto no mês para este aluno. Não entra em
+    -- custo_professor de propósito; vai separado para o relatório mostrar que
+    -- existe, em vez de virar diferença inexplicada entre valor e base.
+    'pro_labore',   round(COALESCE(v_pro_labore,0),2),
     'professores',  v_professores,
     'liquido',      round(v_liquido,2),
     'dizimo_pct',   v_dizimo_pct,
@@ -275,6 +322,7 @@ BEGIN
                'quando',          r.quando,
                'valor',           (r.b->>'valor')::numeric,
                'custo_professor', (r.b->>'custo_professor')::numeric,
+               'pro_labore',      (r.b->>'pro_labore')::numeric,
                'professores',     r.b->'professores',
                'liquido',         (r.b->>'liquido')::numeric,
                'dizimo',          (r.b->>'dizimo')::numeric,
@@ -290,6 +338,9 @@ BEGIN
         -- bater com o DRE; separar sem dizer o total esconderia faturamento.
         'recebido',        round(COALESCE(sum((r.b->>'valor')::numeric),0),2),
         'custo_professor', round(COALESCE(sum((r.b->>'custo_professor')::numeric),0),2),
+        -- Pró-labore previsto: aparece para o diretor saber quanto do atendimento
+        -- é dele próprio, mas não reduziu a base.
+        'pro_labore',      round(COALESCE(sum((r.b->>'pro_labore')::numeric),0),2),
         'liquido',         round(COALESCE(sum((r.b->>'liquido')::numeric)
                                    FILTER (WHERE (r.b->>'na_base')::boolean),0),2),
         'dizimo',          round(COALESCE(sum((r.b->>'dizimo')::numeric),0),2),
@@ -318,7 +369,7 @@ RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path TO 'public'
 AS $function$
-DECLARE v_role text; v_tenant text; r record; v_destino text;
+DECLARE v_role text; v_tenant text; r record; v_destino text; v_professores jsonb;
 BEGIN
   SELECT role, tenant_id INTO v_role, v_tenant FROM profiles WHERE id = auth.uid();
   IF v_role IS NULL OR v_role NOT IN ('SCHOOL_ADMIN','SUPER_ADMIN') THEN
@@ -329,14 +380,27 @@ BEGIN
   -- gerencial. Mostrado só para o diretor saber para onde o aviso vai.
   SELECT d.destino INTO v_destino FROM dre_report_settings d WHERE d.tenant_id = v_tenant;
 
+  -- Professores da escola + quem está marcado como pró-labore. Vai junto para o
+  -- painel montar a lista sem uma segunda chamada.
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', p.id, 'nome', btrim(p.full_name),
+           'pro_labore', EXISTS (SELECT 1 FROM payment_split_owner_teachers o
+                                  WHERE o.tenant_id = v_tenant AND o.teacher_id = p.id))
+         ORDER BY btrim(p.full_name)), '[]'::jsonb)
+    INTO v_professores
+    FROM profiles p
+   WHERE p.tenant_id = v_tenant AND p.role = 'TEACHER'
+     AND COALESCE(p.status,'Ativo') NOT IN ('Inativo','INACTIVE','Inactive');
+
   SELECT * INTO r FROM payment_split_settings WHERE tenant_id = v_tenant;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('configurado', false, 'is_active', false,
-      'dizimo_pct', 10.00, 'investimento_pct', 10.00,
+      'dizimo_pct', 10.00, 'investimento_pct', 10.00, 'professores', v_professores,
       'destino', COALESCE(v_destino,''), 'destino_configurado', v_destino IS NOT NULL);
   END IF;
   RETURN jsonb_build_object('configurado', true, 'is_active', r.is_active,
     'dizimo_pct', r.dizimo_pct, 'investimento_pct', r.investimento_pct,
+    'professores', v_professores,
     'destino', COALESCE(v_destino,''), 'destino_configurado', v_destino IS NOT NULL,
     'updated_at', r.updated_at);
 END;
@@ -385,6 +449,44 @@ $function$;
 ALTER FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) TO authenticated;
+
+-- Marca/desmarca um professor como pró-labore da direção.
+CREATE OR REPLACE FUNCTION public.set_payment_split_owner_teacher(
+  p_teacher uuid, p_pro_labore boolean)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE v_role text; v_tenant text; v_t_tenant text;
+BEGIN
+  SELECT role, tenant_id INTO v_role, v_tenant FROM profiles WHERE id = auth.uid();
+  IF v_role IS NULL OR v_role NOT IN ('SCHOOL_ADMIN','SUPER_ADMIN') THEN
+    RETURN jsonb_build_object('error','sem_permissao');
+  END IF;
+
+  -- O professor tem de ser da MESMA escola. Sem isso, um diretor marcaria
+  -- professor de outra escola e mexeria na base do dízimo dela.
+  SELECT tenant_id INTO v_t_tenant FROM profiles WHERE id = p_teacher AND role = 'TEACHER';
+  IF v_t_tenant IS NULL THEN RETURN jsonb_build_object('error','professor_invalido'); END IF;
+  IF v_role <> 'SUPER_ADMIN' AND v_t_tenant IS DISTINCT FROM v_tenant THEN
+    RETURN jsonb_build_object('error','sem_permissao');
+  END IF;
+
+  IF COALESCE(p_pro_labore,false) THEN
+    INSERT INTO payment_split_owner_teachers (tenant_id, teacher_id)
+    VALUES (v_t_tenant, p_teacher) ON CONFLICT DO NOTHING;
+  ELSE
+    DELETE FROM payment_split_owner_teachers
+     WHERE tenant_id = v_t_tenant AND teacher_id = p_teacher;
+  END IF;
+
+  RETURN jsonb_build_object('ok', true);
+END;
+$function$;
+
+ALTER FUNCTION public.set_payment_split_owner_teacher(uuid,boolean) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.set_payment_split_owner_teacher(uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.set_payment_split_owner_teacher(uuid,boolean) TO authenticated;
 
 -- 4. Quem ainda não foi avisado ----------------------------------------------
 -- Rede de segurança do cron: pagamento que entrou e cujo aviso não saiu (pg_net
