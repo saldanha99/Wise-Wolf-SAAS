@@ -311,6 +311,7 @@ npx --yes deno check --no-lock \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
+  supabase/functions/payment-split-notify/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
@@ -417,6 +418,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260807170000_renovacao_de_contrato.sql"
   "supabase/migrations/20260807180000_ofertas_de_renovacao.sql"
   "supabase/migrations/20260807190000_fim_do_contrato_e_a_ultima_aula_paga.sql"
+  "supabase/migrations/20260808120000_rateio_do_pagamento_no_grupo.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -482,6 +484,7 @@ HARDENED_FUNCTIONS=(
   wolfie-live-proxy
   dre-categorize
   dre-report
+  payment-split-notify
   sync-plan-change-billing
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
@@ -815,6 +818,7 @@ HARDENED_FUNCTIONS=(
   wolfie-live-proxy
   dre-categorize
   dre-report
+  payment-split-notify
   sync-plan-change-billing
 )
 

@@ -9,6 +9,7 @@ import { User as UserType } from '../types';
 import RecurringExpensesManager from './RecurringExpensesManager';
 import DreCategorizer from './DreCategorizer';
 import DreReportSettings from './DreReportSettings';
+import PaymentSplitSettings from './PaymentSplitSettings';
 
 /**
  * DRE gerencial — resultado do mês por COMPETÊNCIA.
@@ -243,6 +244,7 @@ const DreGerencialPanel: React.FC<Props> = () => {
 
           <DreCategorizer onChanged={() => void load(month)} />
           <RecurringExpensesManager month={month} onChanged={() => void load(month)} />
+          <PaymentSplitSettings month={month} />
           <DreReportSettings />
         </>
       )}
