@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { PiggyBank, RefreshCw, Check, AlertCircle, TrendingUp, HandCoins } from 'lucide-react';
+import PagamentosSemAluno from './PagamentosSemAluno';
 
 /**
  * Dízimo e investimento a cada pagamento — configuração + relatório do mês.
@@ -74,6 +75,11 @@ const brl = (v: unknown) => {
 const diaCurto = (iso?: string) => {
   const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}` : '—';
+};
+
+const mesAtual = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
 const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
@@ -207,9 +213,19 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
           <span>
             <strong>{brl(t.fora_da_base)}</strong> em {t.fora_da_base_n} pagamento(s) entraram{' '}
             <strong>sem aluno vinculado</strong> e ficaram fora da base — não geraram dízimo nem
-            investimento. É o tratamento de aporte da direção. Se algum for mensalidade de aluno,
-            vincule em Mensalidades e ele passa a entrar na base.
+            investimento. É o tratamento de aporte da direção. Confirme abaixo quem pagou: ao
+            vincular, o pagamento entra na base e o dízimo é recalculado.
           </span>
+        </div>
+      )}
+
+      {/* Confirmar de quem é o pagamento.
+          Reaproveita a tela que já existe no Balancete (mesma RPC, mesmo alerta de
+          duplicata) em vez de uma segunda cópia da regra — e fica aqui porque é
+          aqui que o dinheiro fora da base aparece. */}
+      {(t.fora_da_base_n ?? 0) > 0 && (
+        <div className="mb-4">
+          <PagamentosSemAluno month={month ?? mesAtual()} onChanged={() => void load()} />
         </div>
       )}
 
