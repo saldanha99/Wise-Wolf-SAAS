@@ -5,6 +5,13 @@ import {
   loadCommercialContactFacts,
   reconcileSuppressedLead,
 } from "../_shared/commercial-contact-policy.ts";
+import {
+  ETAPAS,
+  etapasRespondidas,
+  mergeRespostas,
+  promptTriagem,
+  triagemCompleta,
+} from "./triagem.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
 // v13 — HANDOFF HUMANO: quando o humano responde manualmente para um lead OU candidato,
@@ -494,6 +501,32 @@ async function logMsg(sb: any, tenantId: string, phone: string, agent: string, d
   await sb.from("ai_wa_messages").insert({ tenant_id: tenantId, phone, agent, direction, content: String(content || "").slice(0, 4000), meta });
 }
 
+// O handoff humano DURA 72 HORAS, não para sempre.
+//
+// Ele era booleano e sem volta: uma única resposta manual calava a IA naquele
+// contato para o resto da vida. Medido em 09/08/2026 — a Michelle recebeu 132
+// mensagens em 30 dias e respondeu 12; as outras 120 morreram em
+// `skipped: human_handoff`. 26 de 67 candidaturas e 34 de 103 leads estavam
+// permanentemente mudas, e ninguém tinha como perceber.
+//
+// 72h é o tempo de um atendimento humano vivo (inclusive atravessando um fim de
+// semana). Passado isso, quem escrever de novo volta a ser atendido.
+//
+// ⚠️ Vale só para o caminho REATIVO. A prospecção ativa (`sdr-followups`)
+// continua exigindo `ai_handoff = false`: se um humano assumiu, o robô não volta
+// a cutucar sozinho — no máximo volta a responder quem procurou.
+const HANDOFF_TTL_MS = 72 * 3600 * 1000;
+
+function handoffAtivo(row: { ai_handoff?: boolean | null; ai_handoff_at?: string | null }): boolean {
+  if (row?.ai_handoff !== true) return false;
+  // Sem carimbo (linha anterior à migration) o handoff é tratado como VENCIDO:
+  // manter mudo sem saber desde quando é o próprio defeito que estamos corrigindo.
+  if (!row.ai_handoff_at) return false;
+  const at = new Date(row.ai_handoff_at).getTime();
+  if (Number.isNaN(at)) return false;
+  return Date.now() - at < HANDOFF_TTL_MS;
+}
+
 // HANDOFF HUMANO: quando o humano responde manualmente pela instância (fromMe) para um
 // lead OU candidato, a IA correspondente (SDR/RH) se cala nesse contato (ai_handoff=true).
 // Diferencia o ECO da própria IA (mesmo texto enviado nos últimos ~20min) de um humano.
@@ -506,20 +539,24 @@ async function maybeHumanTakeover(sb: any, tenantId: string, phone: string, text
       .gte("created_at", since).eq("content", text).limit(1);
     if (mine && mine.length) return; // eco da própria IA, não é humano
   }
+  const agora = new Date().toISOString();
   // 2) LEAD (SDR/Bia) → cala a IA nesse contato.
+  // O filtro `ai_handoff = false` saiu: quem já está em handoff precisa ter o
+  // carimbo RENOVADO a cada resposta humana, senão o atendimento em curso
+  // venceria no meio por causa de um toque antigo.
   const { data: leads } = await sb.from("crm_leads")
-    .select("id, phone").eq("tenant_id", tenantId).eq("ai_handoff", false).not("phone", "is", null);
+    .select("id, phone").eq("tenant_id", tenantId).not("phone", "is", null);
   const lead = (leads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (lead) {
-    await sb.from("crm_leads").update({ ai_handoff: true, last_status_change: new Date().toISOString() }).eq("id", lead.id);
+    await sb.from("crm_leads").update({ ai_handoff: true, ai_handoff_at: agora, last_status_change: agora }).eq("id", lead.id);
     await logMsg(sb, tenantId, phone, "sdr", "out", hasMedia ? "[humano assumiu o contato — mídia]" : text, { lead_id: lead.id, kind: "human_takeover" });
   }
   // 3) CANDIDATO (RH/Michelle) → cala a triagem nesse contato.
   const { data: apps } = await sb.from("job_applications")
-    .select("id, whatsapp").eq("tenant_id", tenantId).eq("ai_handoff", false).not("whatsapp", "is", null);
+    .select("id, whatsapp").eq("tenant_id", tenantId).not("whatsapp", "is", null);
   const cand = (apps || []).find((a: any) => phonesMatch(a.whatsapp, phone));
   if (cand) {
-    await sb.from("job_applications").update({ ai_handoff: true }).eq("id", cand.id);
+    await sb.from("job_applications").update({ ai_handoff: true, ai_handoff_at: agora }).eq("id", cand.id);
     await logMsg(sb, tenantId, phone, "rita", "out", hasMedia ? "[humano assumiu o contato — mídia]" : text, { application_id: cand.id, kind: "human_takeover" });
   }
 }
@@ -639,7 +676,7 @@ async function dispatchTrial(
 }
 
 async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, phone: string, pushName: string, text: string, isMedia: boolean, msgId: string) {
-  const { data: allLeads } = await sb.from("crm_leads").select("id, name, phone, status, goal, level, notes, ai_handoff, followup_count").eq("tenant_id", tenantId).not("phone", "is", null);
+  const { data: allLeads } = await sb.from("crm_leads").select("id, name, phone, status, goal, level, notes, ai_handoff, ai_handoff_at, followup_count").eq("tenant_id", tenantId).not("phone", "is", null);
   let lead = (allLeads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (!lead) {
     const { data: created } = await sb.from("crm_leads").insert({ tenant_id: tenantId, name: pushName || null, phone, status: "NEW", source: "WhatsApp (IA)", ai_handled: true }).select("id, name, phone, status, goal, level, notes, ai_handoff").single();
@@ -665,11 +702,19 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   const hist = await history(sb, tenantId, phone, "sdr");
   await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia/áudio]" : text, { lead_id: lead.id, msg_id: msgId });
   await sb.from("crm_leads").update({ last_inbound_at: new Date().toISOString(), ai_handled: true }).eq("id", lead.id);
-  if (lead.ai_handoff) return;
+  if (handoffAtivo(lead)) return;
+  // Handoff vencido: a IA reassume e o registro fica limpo, senão a linha
+  // continuaria marcada como "humano atendendo" e confundiria a leitura no CRM.
+  if (lead.ai_handoff === true) {
+    await sb.from("crm_leads").update({ ai_handoff: false, ai_handoff_at: null }).eq("id", lead.id);
+    await logMsg(sb, tenantId, phone, "sdr", "in", "[handoff humano venceu — IA reassumiu]", { lead_id: lead.id, kind: "handoff_expirado" });
+  }
 
   const adm = await adminProfile(sb, tenantId);
   if (isMedia) {
-    const reply = "Recebi! 😊 Por enquanto só consigo ler mensagens de texto por aqui — consegue me escrever rapidinho?";
+    // Áudio já é transcrito antes de chegar aqui; isto cobre imagem, vídeo,
+    // documento, figurinha — e o áudio que o Whisper não conseguiu entender.
+    const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me mandar por escrito ou num áudio curtinho?";
     if (await sendWhats(instance, phone, reply)) await logMsg(sb, tenantId, phone, "sdr", "out", reply, { lead_id: lead.id, kind: "ask_text" });
     return;
   }
@@ -750,20 +795,25 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
   await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia/áudio]" : text, { application_id: app.id, msg_id: msgId });
   const adm = await adminProfile(sb, tenantId);
   if (isMedia) {
-    const reply = "Recebi! 😊 Por aqui só consigo ler texto — consegue me responder por escrito?";
+    const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me responder por escrito ou num áudio curtinho?";
     if (await sendWhats(instance, phone, reply)) await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id });
     return;
   }
 
   const collecting = ["SENT", "IN_PROGRESS"].includes(app.preinterview_status);
   const answers = app.preinterview_answers || {};
-  const semRespostas = !answers || Object.keys(answers).length === 0;
   const primeiraInteracao = hist.length === 0;
-  const phase = collecting
-    ? "TRIAGEM ATIVA: conduza a conversa de forma humana e colete o que ainda falta, UMA única etapa por mensagem. Nunca envie várias perguntas juntas nem repita etapa já preenchida."
-    : "PÓS-TRIAGEM: a triagem já foi concluída e está com o diretor. Seja cordial e breve; se pedir algo, diga que vai avisar o diretor.";
 
-  const system = `Você é Michelle, recrutadora (simpática, calorosa e humana; admite ser uma IA se perguntarem) da WISE WOLF LANGUAGE — escola de inglês com aulas particulares 1:1 online. Conversa com o(a) candidato(a) ${app.name} para a vaga de PROFESSOR(A) de inglês (contratação PJ).\nFASE: ${phase}\nContexto: primeira interação=${primeiraInteracao}; ainda sem respostas coletadas=${semRespostas}. Respostas já coletadas: ${JSON.stringify(answers)}.\n\nETAPA 0 (CONEXÃO): se for a primeira interação OU o candidato só mandou um cumprimento (ex.: \"Oi\") e ainda NÃO há respostas coletadas, NÃO faça nenhuma pergunta da lista ainda. Apenas se apresente com calor humano (ex.: \"Oi! Tudo bem? 😊 Aqui é a Michelle, do time de recrutamento da Wise Wolf. Recebi sua candidatura para professor(a) de inglês!\"), diga que são algumas perguntas rápidas (uns 5 a 10 minutos, aqui mesmo) e pergunte se pode começar agora. Só avance para a etapa 1 depois que a pessoa confirmar que pode.\n\nDEPOIS DA CONFIRMAÇÃO, CONDUZA A TRIAGEM NESTA ORDEM — UMA ÚNICA pergunta por mensagem, jamais várias juntas, e sem repetir etapa já respondida. Após apresentar um bloco (metodologia/remuneração), faça só a pergunta daquele bloco e AGUARDE a resposta antes de seguir:\n1) nacionalidade — \"Você tem nacionalidade brasileira?\"\n2) idade — \"Qual a sua idade?\"\n3) modelo_ok — Apresente a METODOLOGIA e pergunte se faz sentido: \"Nosso modelo são aulas particulares 1:1, focadas no objetivo de cada aluno (viagem, trabalho, conversação...). Você adapta cada aula ao nível e à necessidade do aluno, com plataforma, materiais prontos, agenda flexível e suporte da coordenação — é só focar em ensinar. Esse formato faz sentido pra você?\"\n4) formacao — \"Qual a sua formação? Está cursando ou já concluiu?\"\n5) computador_internet — \"Você tem computador ou notebook com internet estável para dar as aulas online?\"\n6) remuneracao_ok — Apresente a REMUNERAÇÃO e pergunte se faz sentido: \"Sobre a remuneração: o pagamento é mensal e por aluno, conforme a frequência de aulas de 30 min. É R$8,00 por aula — ou seja, por aluno/mês: 2x/semana = R$64, 3x = R$96, 4x = R$128, 5x = R$160. Exemplo: com 8 alunos fazendo 5 aulas por semana, são 8 x R$160 = R$1.280/mês. Faz sentido esse modelo pra você?\"\n7) faixa_ok — \"Você se sente confortável com uma faixa de ganhos entre R$640 e R$1.280 por mês (crescendo conforme sua agenda enche)?\"\n8) niveis — \"Quais níveis de inglês você consegue ensinar? Básico, intermediário, avançado ou todos?\"\n9) turno — Apresente os turnos e pergunte: \"Sobre disponibilidade: nossa maior demanda hoje é à TARDE (13h30–18h) e à NOITE (18h–22h). Também temos manhã (07h–11h), com menos vagas. Qual turno se encaixa melhor na sua rotina? (manhã, tarde, noite ou mais de um)\"\n10) apresentacao_en — \"Para finalizar, escreva um parágrafo curto EM INGLÊS se apresentando (sua experiência e por que quer dar aulas).\" Avalie o inglês dessa resposta em nota_ingles (0-10).\n\nESTILO: calorosa, natural e breve (2-4 frases, no máx 1 emoji), pt-BR, tom de WhatsApp. Reaja à resposta anterior antes de emendar a próxima pergunta (ex.: \"Que ótimo!\", \"Perfeito, obrigada!\") para soar humana. NÃO prometa contratação nem invente benefícios além dos citados. O que não souber, diga que o diretor esclarece na entrevista. Ao concluir a etapa 10, defina done=true e finalize com um encerramento gentil: agradeça, diga que a triagem foi concluída, que o time vai analisar o perfil e que *em breve entramos em contato* com os próximos passos. Se a disponibilidade for SOMENTE manhã, diga com gentileza que hoje a maior demanda é tarde/noite e que avisaremos assim que abrir vaga de manhã.\nHOJE: ${todayBRT()}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"sua mensagem ao candidato\", \"answers\": {\"nacionalidade\": null, \"idade\": null, \"modelo_ok\": null, \"formacao\": null, \"computador_internet\": null, \"remuneracao_ok\": null, \"faixa_ok\": null, \"niveis\": null, \"turno\": null, \"apresentacao_en\": null, \"nota_ingles\": null}, \"done\": false, \"notify_director\": null}\nEm answers, só os campos NOVOS aprendidos NESTA mensagem (o resto null). Na ETAPA 0 (apresentação), todos os answers ficam null. done=true só quando as 10 etapas estiverem completas.`;
+  // A ETAPA é decidida aqui (triagem.ts), não pelo modelo. O prompt antigo
+  // listava as 10 etapas de uma vez e pedia ao modelo que descobrisse onde
+  // estava — 67 candidaturas renderam 3 triagens completas.
+  const system = promptTriagem({
+    nomeCandidato: app.name,
+    answers,
+    primeiraInteracao,
+    coletando: collecting,
+    hoje: todayBRT(),
+  });
 
   const diag: string[] = [];
   const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
@@ -773,18 +823,27 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
     return;
   }
 
-  const merged: Record<string, unknown> = { ...answers };
-  for (const [k, v] of Object.entries(ai.answers || {})) if (v !== null && v !== undefined && v !== "") (merged as any)[k] = v;
+  // `mergeRespostas` descarta chave inventada pelo modelo e não sobrescreve o
+  // que a pessoa já respondeu.
+  const merged = mergeRespostas(answers, ai.answers);
   const upd: Record<string, unknown> = { preinterview_answers: merged };
   if (app.preinterview_status === "SENT") upd.preinterview_status = "IN_PROGRESS";
 
-  if (ai.done === true && collecting) {
+  // O FIM é contagem de campos, não opinião do modelo. Antes vinha de
+  // `ai.done`, e o modelo tanto encerrava cedo quanto nunca encerrava.
+  if (collecting && triagemCompleta(merged)) {
     upd.preinterview_status = "DONE";
     upd.preinterview_done_at = new Date().toISOString();
     if (adm.ownerPhone) {
-      const digest = Object.entries(merged).map(([k, v]) => `• ${k}: ${String(v).slice(0, 160)}`).join("\n");
+      const rotulo = new Map(ETAPAS.map((e) => [e.key, e.rotulo]));
+      const digest = Object.entries(merged)
+        .map(([k, v]) => `• ${rotulo.get(k) || k}: ${String(v).slice(0, 160)}`).join("\n");
       await sendWhats(instance, adm.ownerPhone, `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`);
     }
+  } else if (collecting) {
+    // Progresso visível no log: sem isto não dá para saber em que etapa as
+    // triagens morrem, e era exatamente esse o ponto cego.
+    console.log(`[rita] ${app.id}: ${etapasRespondidas(merged)}/${ETAPAS.length} etapas`);
   }
 
   if (ai.notify_director && adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `🧑‍💼 *RH (IA):* recado do candidato *${app.name}*: ${String(ai.notify_director).slice(0, 300)}\nWhatsApp: ${phone}`);
@@ -859,8 +918,24 @@ serve(async (req) => {
       }
 
       const msg = item?.message || {};
-      const text = String(msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.videoMessage?.caption || "").trim();
-      const isMedia = !text && !!(msg.audioMessage || msg.imageMessage || msg.videoMessage || msg.documentMessage || msg.stickerMessage);
+      let text = String(msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.videoMessage?.caption || "").trim();
+      let isMedia = !text && !!(msg.audioMessage || msg.imageMessage || msg.videoMessage || msg.documentMessage || msg.stickerMessage);
+
+      // ÁUDIO VIRA TEXTO para lead e candidato também.
+      //
+      // A transcrição (Whisper) já existia e já estava paga, mas só o grupo da
+      // direção usava: lead e candidato que mandavam nota de voz recebiam
+      // "só consigo ler texto". No WhatsApp brasileiro isso é metade das
+      // respostas — e um candidato que grava áudio para a pergunta de
+      // apresentação em inglês era justamente o sinal mais útil da triagem.
+      //
+      // Só áudio entra: imagem, vídeo, documento e figurinha continuam pedindo
+      // texto (transcrever não resolveria, e OCR é outro custo).
+      const ehAudio = !text && !!(msg.audioMessage || msg.pttMessage);
+      if (ehAudio) {
+        const transcrito = await transcreverAudio(instance, msgId);
+        if (transcrito) { text = transcrito; isMedia = false; }
+      }
       if (!text && !isMedia) continue;
 
       // TENANT DETERMINÍSTICO: a mesma instância pode ter vários admins/tenants.
@@ -881,10 +956,15 @@ serve(async (req) => {
       const { data: apps } = await sb.from("job_applications").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(150);
       const candidate = (apps || []).find((a: any) => phonesMatch(a.whatsapp, phone));
       if (candidate) {
-        // Humano assumiu a triagem deste candidato → Michelle se cala.
-        if (candidate.ai_handoff === true) {
+        // Humano assumiu a triagem deste candidato → Michelle se cala, mas só
+        // enquanto o atendimento humano está vivo (72h).
+        if (handoffAtivo(candidate)) {
           await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia]" : text, { application_id: candidate.id, skipped: "human_handoff", msg_id: msgId });
           continue;
+        }
+        if (candidate.ai_handoff === true) {
+          await sb.from("job_applications").update({ ai_handoff: false, ai_handoff_at: null }).eq("id", candidate.id);
+          await logMsg(sb, tenantId, phone, "rita", "in", "[handoff humano venceu — IA reassumiu]", { application_id: candidate.id, kind: "handoff_expirado" });
         }
         const candRole = String(candidate.role || "professor").toLowerCase();
         if (candRole !== "professor") {
