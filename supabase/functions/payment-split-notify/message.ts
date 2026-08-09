@@ -41,8 +41,9 @@ export function dataCurta(iso: unknown): string {
 export interface Professor {
   teacher_name?: string;
   aulas?: number;
-  custo?: number;
-  /** false = pró-labore da direção: aparece na mensagem, mas não desconta. */
+  /** null quando é a direção: ela não recebe por aula, fica com o resto. */
+  custo?: number | null;
+  /** false = direção: aparece na mensagem, mas não desconta da base. */
   descontado?: boolean;
 }
 
@@ -73,12 +74,10 @@ export function montarMensagem(b: Record<string, unknown>): string {
     // ("Professor Mateus, salário tal desse aluno").
     for (const p of professores) {
       if (p.descontado === false) {
-        // Pró-labore da direção: o valor aparece, mas dizer "salário" e depois
-        // não descontar faria a conta parecer errada. O motivo vai junto.
-        partes.push(
-          `👑 ${p.teacher_name ?? "—"} · pró-labore da direção: ${money(p.custo)}`,
-        );
-        partes.push(`      ${p.aulas ?? 0} aulas em ${mes} · não desconta da base`);
+        // Direção: sem valor por aula, de propósito. Ela não recebe tarifa —
+        // fica com o resto do pagamento, que sai na linha de pró-labore abaixo.
+        partes.push(`👑 Aula com ${p.teacher_name ?? "—"} (direção)`);
+        partes.push(`      ${p.aulas ?? 0} aulas em ${mes} · sem salário a descontar`);
       } else {
         partes.push(
           `👨‍🏫 Professor ${p.teacher_name ?? "—"} · salário deste aluno: *${money(p.custo)}*`,
@@ -98,7 +97,13 @@ export function montarMensagem(b: Record<string, unknown>): string {
   partes.push("");
   partes.push(`🙏 Dízimo (${pct(b.dizimo_pct)}): *${money(b.dizimo)}*`);
   partes.push(`📈 Investimento (${pct(b.investimento_pct)}): *${money(b.investimento)}*`);
-  partes.push(`✅ Fica na escola: *${money(b.sobra)}*`);
+
+  // O que sobra do aluno da direção é PRÓ-LABORE dela, não caixa da escola.
+  // Chamar de "fica na escola" faria ela somar errado o próprio rendimento.
+  const proLabore = Number(b.pro_labore ?? 0);
+  const escola = Number(b.sobra ?? 0);
+  if (proLabore > 0) partes.push(`👑 Pró-labore da direção: *${money(proLabore)}*`);
+  if (escola > 0 || proLabore === 0) partes.push(`✅ Fica na escola: *${money(escola)}*`);
 
   // A ressalva vai SEMPRE. O custo do professor é o do calendário do mês, e o
   // mês ainda não terminou — quem ler isto como fechamento vai pagar dízimo

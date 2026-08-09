@@ -28,7 +28,13 @@ interface Settings {
   error?: string;
 }
 
-interface Professor { teacher_name?: string; aulas?: number; custo?: number }
+interface Professor {
+  teacher_name?: string;
+  aulas?: number;
+  custo?: number | null;
+  /** false = direção: não recebe por aula, fica com o resto do pagamento. */
+  descontado?: boolean;
+}
 
 interface Linha {
   payment_id: string;
@@ -188,10 +194,7 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
         <div className="rounded-xl border border-brand-border bg-brand-surface-2 p-3">
           <p className="text-[9px] font-black uppercase text-brand-muted">− Professores</p>
           <p className="text-lg font-black text-brand-text">{brl(t.custo_professor)}</p>
-          <p className="text-[10px] text-brand-muted">
-            base do rateio {brl(t.liquido)}
-            {(t.pro_labore ?? 0) > 0 && ` · pró-labore ${brl(t.pro_labore)} não descontado`}
-          </p>
+          <p className="text-[10px] text-brand-muted">base do rateio {brl(t.liquido)}</p>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="text-[9px] font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1">
@@ -206,6 +209,22 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
           <p className="text-lg font-black text-emerald-700 dark:text-emerald-400">{brl(t.investimento)}</p>
         </div>
       </div>
+
+      {/* Pró-labore só aparece quando existe: escola sem direção dando aula não
+          precisa de uma linha zerada ocupando espaço. */}
+      {(t.pro_labore ?? 0) > 0 && (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="text-[9px] font-black uppercase text-brand-muted">👑 Pró-labore da direção</p>
+            <p className="text-lg font-black text-brand-text">{brl(t.pro_labore)}</p>
+            <p className="text-[10px] text-brand-muted">o que sobra dos alunos dela</p>
+          </div>
+          <div className="rounded-xl border border-brand-border bg-brand-surface-2 p-3">
+            <p className="text-[9px] font-black uppercase text-brand-muted">Fica na escola</p>
+            <p className="text-lg font-black text-brand-text">{brl(t.sobra)}</p>
+          </div>
+        </div>
+      )}
 
       {(t.fora_da_base_n ?? 0) > 0 && (
         <div className="mb-3 flex items-start gap-2 text-xs rounded-xl px-3 py-2 border text-brand-muted bg-brand-surface-2 border-brand-border">
@@ -258,11 +277,14 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
                       {l.na_base === false
                         ? <span className="italic">fora da base</span>
                         : (l.professores?.length
-                            ? l.professores.map(p => p.teacher_name).join(', ')
+                            ? l.professores.map(p =>
+                                `${p.descontado === false ? '👑 ' : ''}${p.teacher_name}`).join(', ')
                             : '—')}
                     </td>
                     <td className="px-3 py-2 text-right">{brl(l.valor)}</td>
-                    <td className="px-3 py-2 text-right text-brand-muted">− {brl(l.custo_professor)}</td>
+                    <td className="px-3 py-2 text-right text-brand-muted">
+                      {(l.custo_professor ?? 0) > 0 ? `− ${brl(l.custo_professor)}` : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right text-amber-600">{brl(l.dizimo)}</td>
                     <td className="px-3 py-2 text-right text-emerald-600">{brl(l.investimento)}</td>
                   </tr>
@@ -329,8 +351,9 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
             Professores que são pró-labore da direção
           </p>
           <p className="text-[11px] text-brand-muted mb-2">
-            A aula destes não é descontada antes do dízimo — o dinheiro não sai da escola,
-            então descontar reduziria a base por uma despesa que não existe.
+            Quem for marcado não recebe por aula: o pró-labore dele é o que sobra do que os
+            alunos dele pagam, depois do dízimo e do investimento. Por isso a aula dele não
+            é descontada antes do rateio.
           </p>
           <div className="flex flex-wrap gap-2">
             {s.professores?.map(p => (

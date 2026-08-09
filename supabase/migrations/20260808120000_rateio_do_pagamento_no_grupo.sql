@@ -107,7 +107,8 @@ DECLARE
   v_dizimo_pct numeric; v_investimento_pct numeric; v_ativo boolean;
   v_custo numeric; v_aulas int; v_liquido numeric;
   v_professores jsonb; v_aluno text;
-  v_na_base boolean; v_dizimo numeric; v_investimento numeric; v_pro_labore numeric;
+  v_na_base boolean; v_dizimo numeric; v_investimento numeric;
+  v_pro_labore numeric; v_aulas_pl int; v_resto numeric;
 BEGIN
   SELECT COALESCE(current_setting('request.jwt.claims', true)::json->>'role','')
     INTO v_jwt_role;
@@ -173,15 +174,20 @@ BEGIN
   )
   SELECT COALESCE(count(*),0)::int,
          COALESCE(sum(a.rate) FILTER (WHERE NOT a.pro_labore), 0),
-         COALESCE(sum(a.rate) FILTER (WHERE a.pro_labore), 0)
-    INTO v_aulas, v_custo, v_pro_labore
+         COALESCE(count(*) FILTER (WHERE a.pro_labore),0)::int
+    INTO v_aulas, v_custo, v_aulas_pl
     FROM aulas a;
 
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'teacher_id', z.teacher_id,
            'teacher_name', COALESCE(btrim(t.full_name), 'Professor não identificado'),
-           'aulas', z.n, 'custo', round(z.custo,2),
-           -- false = pró-labore da direção: aparece, mas não desconta.
+           'aulas', z.n,
+           -- Professor contratado tem custo por aula. A direção NÃO: o valor
+           -- dela é o resto do pagamento, não uma tarifa. Mandar a tarifa aqui
+           -- faria a mensagem anunciar um "pró-labore" de R$ 104,00 quando ela
+           -- fica com R$ 301,60 — por isso vai nulo, e quem exibe usa o campo
+           -- pro_labore do pagamento.
+           'custo', CASE WHEN z.pro_labore THEN NULL ELSE round(z.custo,2) END,
            'descontado', NOT z.pro_labore) ORDER BY z.custo DESC), '[]'::jsonb)
     INTO v_professores
     FROM (
@@ -222,6 +228,25 @@ BEGIN
     v_investimento := round(v_liquido * v_investimento_pct / 100.0, 2);
   END IF;
 
+  -- PRÓ-LABORE DA DIREÇÃO = o que sobra do que o aluno dela paga.
+  --
+  -- ⚠️ NÃO é a tarifa por aula (R$ 8,00 e faixas). Aquela tarifa é quanto a
+  -- escola paga a um professor CONTRATADO. A dona não recebe por aula: ela fica
+  -- com o que o aluno pagou, depois do dízimo e do investimento. Tratar os dois
+  -- da mesma forma mostraria "pró-labore R$ 104,00" onde ela na verdade fica com
+  -- R$ 301,60 — número errado na tela de quem decide.
+  --
+  -- Aluno dividido entre a direção e um professor contratado (existe 1 hoje:
+  -- Verônica, com Debora e Mateus) é rateado por número de aulas, o mesmo
+  -- critério que balancete_professores usa para receita. Aluno só dela → tudo é
+  -- pró-labore; aluno sem aula dela → nada é.
+  v_resto := GREATEST(v_liquido - v_dizimo - v_investimento, 0);
+  v_pro_labore := CASE
+    WHEN v_aulas > 0 AND v_aulas_pl > 0
+      THEN round(v_resto * v_aulas_pl::numeric / v_aulas, 2)
+    ELSE 0
+  END;
+
   RETURN jsonb_build_object(
     'payment_id',   v_pay.id,
     'tenant_id',    v_tenant,
@@ -243,10 +268,9 @@ BEGIN
     'description',  v_pay.description,
     'valor',        round(COALESCE(v_pay.value,0),2),
     'aulas_previstas', v_aulas,
+    'aulas_pro_labore', v_aulas_pl,
     'custo_professor', round(COALESCE(v_custo,0),2),
-    -- Pró-labore da direção previsto no mês para este aluno. Não entra em
-    -- custo_professor de propósito; vai separado para o relatório mostrar que
-    -- existe, em vez de virar diferença inexplicada entre valor e base.
+    -- Quanto DESTE pagamento vira pró-labore da direção.
     'pro_labore',   round(COALESCE(v_pro_labore,0),2),
     'professores',  v_professores,
     'liquido',      round(v_liquido,2),
@@ -254,7 +278,8 @@ BEGIN
     'investimento_pct', v_investimento_pct,
     'dizimo',       v_dizimo,
     'investimento', v_investimento,
-    'sobra',        round(v_liquido - v_dizimo - v_investimento, 2));
+    -- 'sobra' é o que fica com a ESCOLA: o resto menos o pró-labore da direção.
+    'sobra',        round(v_resto - COALESCE(v_pro_labore,0), 2));
 END;
 $function$;
 
