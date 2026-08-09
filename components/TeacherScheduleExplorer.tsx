@@ -17,7 +17,16 @@ import {
 } from 'lucide-react';
 import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../constants';
 import { Teacher, Reschedule } from '../types';
-import { findRescheduleForSlot, reschedulesForTeacherGrid } from '../lib/scheduleGrid';
+import {
+  dateForDayIndex,
+  findRescheduleForSlot,
+  findTrialForSlot,
+  reschedulesForTeacherGrid,
+  trialsForGrid,
+  weekStartOf,
+  type GridTrial,
+} from '../lib/scheduleGrid';
+import { localYMD } from '../lib/dateUtils';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 
@@ -51,6 +60,17 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   const [editingBooking, setEditingBooking] = useState<any | null>(null);
   const [conflicts, setConflicts] = useState<Set<string>>(new Set());
   const [slotSearch, setSlotSearch] = useState('');
+  // A grade é de uma SEMANA concreta. Sem isso, reposição e experimental — que
+  // são eventos de um dia — eram desenhadas num molde perpétuo e ocupavam o
+  // horário para sempre. `weekOffset` em semanas a partir da atual.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [trials, setTrials] = useState<GridTrial[]>([]);
+
+  const weekStart = React.useMemo(() => {
+    const base = weekStartOf();
+    base.setDate(base.getDate() + weekOffset * 7);
+    return base;
+  }, [weekOffset]);
 
   useEffect(() => {
     if (teachers && teachers.length > 0) {
@@ -78,9 +98,12 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .from('teacher_availability')
         .select('*')
         .eq('teacher_id', selectedTeacher.id),
+      // `appointments` guarda o horário em start_time (timestamptz). Não existe
+      // coluna `date` nem `time` — ler t.date/t.time devolvia undefined e o
+      // bloco da experimental nunca era desenhado.
       supabase
         .from('appointments')
-        .select('*')
+        .select('id, start_time, student_name, status')
         .eq('teacher_id', selectedTeacher.id)
         .eq('type', 'experimental'),
       supabase
@@ -120,24 +143,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       });
     }
 
-    if (trialsRes.data) {
-      trialsRes.data.forEach((t: any) => {
-        const dateObj = new Date(t.date);
-        const day = dateObj.getDay(); 
-        const dIdx = day === 0 ? -1 : day - 1; 
-
-        if (dIdx >= 0 && dIdx <= 5 && t.time) {
-          const timeKey = t.time.substring(0, 5);
-          newBookings[`${dIdx}-${timeKey}`] = {
-            id: `trial-${t.id}`,
-            student: t.student_name || 'Aula Experimental',
-            module: 'TRIAL',
-            type: 'AULA EXPERIMENTAL',
-            isTrial: true
-          };
-        }
-      });
-    }
+    // A experimental NÃO entra em `bookings`: ela é evento de um dia e antes
+    // sobrescrevia a célula, apagando o aluno fixo daquele horário. Vai para um
+    // estado próprio e é desenhada como camada temporária, filtrada por semana.
+    setTrials((trialsRes.data as unknown as GridTrial[]) || []);
 
     setBookings(newBookings);
     setConflicts(conflictKeys);
@@ -547,12 +556,24 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   // desenha a reposição ANTES do booking, a reposição de um professor escondia o
   // aluno real do outro naquele horário.
   const teacherReschedules = React.useMemo(
-    () => reschedulesForTeacherGrid(reschedules, selectedTeacher?.id),
-    [reschedules, selectedTeacher],
+    () => reschedulesForTeacherGrid(reschedules, selectedTeacher?.id, weekStart),
+    [reschedules, selectedTeacher, weekStart],
   );
 
+  const weekTrials = React.useMemo(() => trialsForGrid(trials, weekStart), [trials, weekStart]);
+
   const getRescheduleForSlot = (dayIdx: number, hour: number | string) =>
-    findRescheduleForSlot(teacherReschedules, dayIdx, typeof hour === 'number' ? `${hour}:00` : hour);
+    findRescheduleForSlot(teacherReschedules, dayIdx, typeof hour === 'number' ? `${hour}:00` : hour, weekStart);
+
+  const getTrialForSlot = (dayIdx: number, hour: number | string) =>
+    findTrialForSlot(weekTrials, dayIdx, typeof hour === 'number' ? `${hour}:00` : hour, weekStart);
+
+  // Rótulo da semana exibida ("11/08 – 16/08"), para a grade nunca parecer um
+  // molde perpétuo.
+  const weekLabel = React.useMemo(() => {
+    const fmt = (ymd: string) => ymd.split('-').slice(1).reverse().join('/');
+    return `${fmt(dateForDayIndex(weekStart, 0))} – ${fmt(dateForDayIndex(weekStart, 5))}`;
+  }, [weekStart]);
 
   const filteredTeachers = (teachers || []).filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -669,6 +690,36 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                     </>
                   );
                 })()}
+                {/* Navegação de semana: a grade mostra UMA semana concreta. */}
+                <div className="col-span-2 sm:col-span-3 lg:col-span-1 flex items-center gap-1 rounded-lg border border-brand-border bg-brand-surface-2 px-1 py-1">
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(w => w - 1)}
+                    aria-label="Semana anterior"
+                    className="px-2 py-1 rounded-md text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors font-black text-xs"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(0)}
+                    title="Voltar para a semana atual"
+                    className="flex-1 min-w-0 px-2 text-center"
+                  >
+                    <span className="block text-[8px] font-black uppercase tracking-wide text-brand-muted">
+                      {weekOffset === 0 ? 'Esta semana' : 'Semana'}
+                    </span>
+                    <span className="block text-[11px] font-black leading-none text-brand-text whitespace-nowrap">{weekLabel}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(w => w + 1)}
+                    aria-label="Próxima semana"
+                    className="px-2 py-1 rounded-md text-brand-muted hover:bg-brand-surface hover:text-brand-text transition-colors font-black text-xs"
+                  >
+                    ›
+                  </button>
+                </div>
                 <input
                   value={slotSearch}
                   onChange={e => setSlotSearch(e.target.value)}
@@ -694,21 +745,24 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                       time,
                       booking: bookings[`${dIdx}-${time}`],
                       reschedule: getRescheduleForSlot(dIdx, time),
+                      trial: getTrialForSlot(dIdx, time),
                       conflict: conflicts.has(`${dIdx}-${time}`),
                     }));
-                  const dayEntries = daySlots.filter(entry => entry.booking || entry.reschedule);
+                  const dayEntries = daySlots.filter(entry => entry.booking || entry.reschedule || entry.trial);
                   const freeTimes = daySlots
                     .filter(entry => (
                       availableSlots.has(`${dIdx}-${entry.time}`)
                       && !entry.booking
                       && !entry.reschedule
+                      && !entry.trial
                     ))
                     .map(entry => entry.time);
+                  const dayDate = dateForDayIndex(weekStart, dIdx).split('-').slice(1).reverse().join('/');
                   return (
                     <div key={day} className="bg-brand-surface-2/40 border border-brand-border rounded-xl p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="text-[10px] font-black text-brand-muted uppercase tracking-widest">
-                          {day} · {dayEntries.length} compromisso(s)
+                          {day} {dayDate} · {dayEntries.length} compromisso(s)
                         </p>
                         <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400">
                           {freeTimes.length} livre{freeTimes.length === 1 ? '' : 's'}
@@ -718,36 +772,46 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                         <p className="text-[11px] text-brand-muted italic">Sem aulas</p>
                       ) : (
                         <div className="space-y-1.5">
-                          {dayEntries.map(({ time, booking, reschedule, conflict }) => {
-                            const searchableName = reschedule?.studentName || booking?.student || '';
-                            const match = slotSearch.trim() !== '' && searchableName.toLowerCase().includes(slotSearch.toLowerCase());
+                          {dayEntries.map(({ time, booking, reschedule, trial, conflict }) => {
+                            const hit = (name?: string) =>
+                              slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
+                            const match = hit(reschedule?.studentName) || hit(trial?.studentName) || hit(booking?.student);
                             const dim = slotSearch.trim() !== '' && !match;
-                            if (reschedule) {
-                              return (
-                                <div
-                                  key={time}
-                                  className={`flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-100 px-2.5 py-2 text-yellow-900 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-100 ${match ? 'ring-2 ring-yellow-400' : ''} ${dim ? 'opacity-30' : ''}`}
-                                >
-                                  <Clock size={13} aria-hidden="true" className="shrink-0" />
-                                  <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
-                                  <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{reschedule.studentName}</span>
-                                  <span className="text-[9px] font-bold uppercase opacity-80">Reposição</span>
-                                </div>
-                              );
-                            }
+                            // Reposição e experimental são de UM dia: aparecem
+                            // JUNTO da aula fixa, nunca no lugar dela. Substituir
+                            // a célula fazia o aluno regular sumir da tela do
+                            // diretor enquanto a reposição estivesse marcada.
                             return (
-                              <button
-                                key={time}
-                                type="button"
-                                disabled={booking.isTrial}
-                                onClick={() => setEditingBooking(booking)}
-                                aria-label={`${booking.isTrial ? 'Aula experimental' : 'Editar aula'} de ${booking.student}, ${day} às ${time}`}
-                                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left ${booking.isTrial ? 'cursor-default bg-purple-600 text-white' : 'cursor-pointer bg-emerald-500 text-white'} ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''} ${dim ? 'opacity-30' : ''}`}
-                              >
-                                <span className="text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
-                                <span className="text-[11px] font-black uppercase truncate flex-1">{booking.student}</span>
-                                <span className="text-[9px] font-bold opacity-80">{booking.module}</span>
-                              </button>
+                              <div key={time} className={`space-y-1 ${dim ? 'opacity-30' : ''}`}>
+                                {reschedule && (
+                                  <div className={`flex items-center gap-2 rounded-lg border border-dashed border-yellow-400 bg-yellow-100 px-2.5 py-2 text-yellow-900 dark:border-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-100 ${match ? 'ring-2 ring-yellow-400' : ''}`}>
+                                    <Clock size={13} aria-hidden="true" className="shrink-0" />
+                                    <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
+                                    <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{reschedule.studentName}</span>
+                                    <span className="text-[9px] font-bold uppercase opacity-80">Reposição · só hoje</span>
+                                  </div>
+                                )}
+                                {trial && (
+                                  <div className={`flex items-center gap-2 rounded-lg border border-dashed border-purple-400 bg-purple-100 px-2.5 py-2 text-purple-900 dark:border-purple-600 dark:bg-purple-900/30 dark:text-purple-100 ${match ? 'ring-2 ring-purple-400' : ''}`}>
+                                    <Zap size={13} aria-hidden="true" className="shrink-0" />
+                                    <span className="w-10 shrink-0 font-mono text-[10px] font-bold">{time}</span>
+                                    <span className="min-w-0 flex-1 truncate text-[11px] font-black uppercase">{trial.studentName}</span>
+                                    <span className="text-[9px] font-bold uppercase opacity-80">Experimental · só hoje</span>
+                                  </div>
+                                )}
+                                {booking && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingBooking(booking)}
+                                    aria-label={`Editar aula de ${booking.student}, ${day} às ${time}`}
+                                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left cursor-pointer bg-emerald-500 text-white ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''}`}
+                                  >
+                                    <span className="text-[10px] font-mono font-bold w-10 shrink-0">{time}</span>
+                                    <span className="text-[11px] font-black uppercase truncate flex-1">{booking.student}</span>
+                                    <span className="text-[9px] font-bold opacity-80">{booking.module}</span>
+                                  </button>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
@@ -782,9 +846,16 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                   <thead>
                     <tr>
                       <th className="w-14"></th>
-                      {DAYS.map(day => (
-                        <th key={day} className="p-2 text-[9px] text-gray-400 dark:text-brand-muted font-black uppercase tracking-[0.1em]">{day}</th>
-                      ))}
+                      {DAYS.map((day, dIdx) => {
+                        const ymd = dateForDayIndex(weekStart, dIdx);
+                        const isToday = ymd === localYMD(new Date());
+                        return (
+                          <th key={day} className={`p-2 text-[9px] font-black uppercase tracking-[0.1em] ${isToday ? 'text-tenant-primary' : 'text-gray-400 dark:text-brand-muted'}`}>
+                            {day}
+                            <span className="block text-[8px] font-bold opacity-70">{ymd.split('-').slice(1).reverse().join('/')}</span>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -798,38 +869,54 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                           const booking = bookings[key];
                           const isAvailable = availableSlots.has(key);
                           const reschedule = getRescheduleForSlot(dIdx, time);
+                          const trial = getTrialForSlot(dIdx, time);
                           const isConflict = conflicts.has(key);
-                          const matchSearch = slotSearch.trim() !== '' && booking && (booking.student || '').toLowerCase().includes(slotSearch.toLowerCase());
-                          const dimmed = slotSearch.trim() !== '' && booking && !matchSearch;
+                          const hitName = (name?: string) =>
+                            slotSearch.trim() !== '' && (name || '').toLowerCase().includes(slotSearch.toLowerCase());
+                          const matchSearch = hitName(booking?.student) || hitName(reschedule?.studentName) || hitName(trial?.studentName);
+                          const dimmed = slotSearch.trim() !== '' && (booking || reschedule || trial) && !matchSearch;
+                          // O evento de UM dia (reposição/experimental) é uma
+                          // faixa POR CIMA da célula, não a célula inteira: a
+                          // aula fixa daquele horário continua visível embaixo.
+                          const overlay = reschedule
+                            ? { label: 'Reposição', name: reschedule.studentName, tone: 'yellow' as const }
+                            : trial
+                              ? { label: 'Experimental', name: trial.studentName, tone: 'purple' as const }
+                              : null;
 
                           return (
                             <td key={dIdx} className="h-8 relative">
-                              {reschedule ? (
-                                <div className="absolute inset-0 m-0.5 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 dark:border-yellow-600 rounded-md p-1 flex flex-col justify-center shadow-sm z-10 cursor-help group/reschedule" title={`Reposição: ${reschedule.studentName}`}>
-                                  <div className="flex items-center gap-1">
-                                    <Clock size={8} className="text-yellow-700 dark:text-yellow-400" />
-                                    <span className="text-[7px] font-black text-yellow-700 dark:text-yellow-400 uppercase tracking-wider truncate">Reposição</span>
-                                  </div>
-                                  <p className="text-[7px] font-bold text-yellow-800 dark:text-yellow-200 truncate leading-none mt-0.5">{reschedule.studentName}</p>
+                              {overlay && (
+                                <div
+                                  className={`absolute inset-x-0 top-0 z-20 m-0.5 flex items-center gap-1 rounded-t-md border border-dashed px-1 py-[1px] shadow-sm cursor-help ${overlay.tone === 'yellow'
+                                    ? 'bg-yellow-100 border-yellow-500 dark:bg-yellow-900/70 dark:border-yellow-500'
+                                    : 'bg-purple-100 border-purple-500 dark:bg-purple-900/70 dark:border-purple-500'}`}
+                                  title={`${overlay.label} de ${overlay.name} — só em ${dateForDayIndex(weekStart, dIdx).split('-').reverse().join('/')}, não ocupa este horário nas outras semanas`}
+                                >
+                                  {overlay.tone === 'yellow'
+                                    ? <Clock size={7} className="shrink-0 text-yellow-700 dark:text-yellow-300" />
+                                    : <Zap size={7} className="shrink-0 text-purple-700 dark:text-purple-300" />}
+                                  <span className={`truncate text-[6px] font-black uppercase tracking-wider ${overlay.tone === 'yellow' ? 'text-yellow-800 dark:text-yellow-200' : 'text-purple-800 dark:text-purple-200'}`}>
+                                    {overlay.name}
+                                  </span>
                                 </div>
-                              ) : booking ? (
+                              )}
+                              {booking ? (
                                 <button
                                   type="button"
-                                  disabled={booking.isTrial}
-                                  onClick={() => !booking.isTrial && setEditingBooking(booking)}
-                                  aria-label={`${booking.isTrial ? 'Aula experimental' : 'Editar aula'} de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
-                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking ${booking.isTrial
-                                    ? 'cursor-default bg-purple-600 dark:bg-purple-700 border-purple-700 dark:border-purple-600 animate-pulse'
-                                    : 'bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02]'} ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
+                                  onClick={() => setEditingBooking(booking)}
+                                  aria-label={`Editar aula de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
+                                  className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02] ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
                                 >
                                   <div className="flex items-center gap-1 overflow-hidden">
-                                     {booking.isTrial && <Zap size={6} className="text-white fill-current shrink-0" />}
                                      <p className="text-[7px] font-black text-white uppercase truncate leading-tight">{booking.student}</p>
                                   </div>
                                   <div className="flex justify-between items-center mt-0.5">
                                     <p className="text-[6px] font-bold text-emerald-100 uppercase">{booking.module}</p>
                                   </div>
                                 </button>
+                              ) : overlay ? (
+                                <div className="w-full h-full rounded-md border border-dashed border-brand-border bg-brand-surface" />
                               ) : isAvailable ? (
                                 <div className="w-full h-full bg-brand-surface border border-dashed border-emerald-500/50 rounded-md flex items-center justify-center hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-colors cursor-default">
                                   <span className="text-[7px] font-bold text-emerald-500/70 uppercase tracking-wider">LIVRE</span>
