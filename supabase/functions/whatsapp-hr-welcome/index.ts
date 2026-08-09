@@ -46,7 +46,7 @@ serve(async (req) => {
     allowService: true,
     corsHeaders,
   });
-  if (!auth.ok) return auth.response;
+  if (auth.ok === false) return auth.response;
   if (!auth.context.isService) return json({ error: "Service access required" }, 403);
 
   let claimedApplication: ApplicationRow | null = null;

@@ -49,7 +49,7 @@ serve(async (req) => {
       "SUPER_ADMIN",
     ],
   });
-  if (!auth.ok) return auth.response;
+  if (auth.ok === false) return auth.response;
 
   let requestBody: unknown;
   try {

@@ -26,6 +26,12 @@ cleanup() {
   if [[ -n "$LOCAL_STAGE" && -d "$LOCAL_STAGE" ]]; then
     rm -rf -- "$LOCAL_STAGE"
   fi
+  # Fecha a conexão SSH compartilhada, se ela chegou a ser aberta. Definida mais
+  # abaixo, então o teste de existência é obrigatório: o cleanup também roda em
+  # falhas precoces, antes de a função existir.
+  if declare -F close_release_ssh >/dev/null; then
+    close_release_ssh
+  fi
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -111,6 +117,32 @@ validate_https_url "$DEPLOY_API_URL" ||
   die "DEPLOY_API_URL deve ser uma URL HTTPS segura"
 [[ "$DEPLOY_API_URL" != *".supabase.co"* ]] ||
   die "DEPLOY_API_URL não pode apontar para o Supabase hospedado"
+
+# ── Uma conexão SSH para o release inteiro ───────────────────────────────────
+#
+# A etapa de preparação dispara ~90 `rsync` sequenciais (um por function, por
+# migration, por teste). Sem multiplexação são ~90 handshakes TCP, e o servidor
+# corta por volta do 11º: o release morria com «ssh: connect to host ...
+# Operation timed out» ANTES de publicar qualquer coisa. Medido em 09/08/2026:
+# 1 falha em 60 conexões soltas, 0 em 60 multiplexadas — e o deploy falhou 4×
+# seguidas até isto entrar.
+#
+# Fica AQUI, e não no ~/.ssh/config de quem publica, porque o release tem de
+# funcionar em qualquer máquina — inclusive numa que nunca foi configurada.
+# `ssh` vira função de shell (o binário real continua acessível via `command
+# ssh`); o rsync usa RSYNC_RSH, que o openrsync do macOS também honra.
+RELEASE_SSH_SOCKET="${TMPDIR:-/tmp}/wisewolf-release-ssh-$$"
+RELEASE_SSH_MUX=(-o ControlMaster=auto -o "ControlPath=$RELEASE_SSH_SOCKET" -o ControlPersist=120)
+ssh() { command ssh "${RELEASE_SSH_MUX[@]}" "$@"; }
+export RSYNC_RSH="ssh -o ControlMaster=auto -o ControlPath=$RELEASE_SSH_SOCKET -o ControlPersist=120"
+close_release_ssh() {
+  [[ -S "$RELEASE_SSH_SOCKET" ]] || return 0
+  command ssh -O exit -o "ControlPath=$RELEASE_SSH_SOCKET" "$DEPLOY_SSH_HOST" >/dev/null 2>&1 || true
+}
+# ⚠️ Sem `trap ... EXIT` aqui: já existe um (`cleanup`, no topo) e um segundo
+# SUBSTITUI o primeiro em vez de somar — o diretório de stage ficaria para trás e
+# as variáveis VITE_* vazariam para o shell de quem publicou. O fechamento do
+# socket entra DENTRO do cleanup existente.
 
 # shellcheck source=lib/release-preflight.sh
 source "$SCRIPT_DIR/lib/release-preflight.sh"
@@ -314,13 +346,14 @@ npx --yes deno check --no-lock \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
-  supabase/functions/search-slots/index.ts
-# ⚠️ sync-payments está em HARDENED_FUNCTIONS (é publicada), mas FORA do
-# `deno check`: ela tem um erro de tipo ANTERIOR a esta mudança —
-# «Property 'response' does not exist on type 'RequestAuthResult'» no
-# `if (!auth.ok) return auth.response`, apesar de o tipo ser uma união
-# discriminada. Incluí-la aqui derrubaria o release por um defeito alheio.
-# Resolver e então mover para a lista acima.
+  supabase/functions/search-slots/index.ts \
+  supabase/functions/sync-payments/index.ts \
+  supabase/functions/whatsapp-hr-welcome/index.ts \
+  supabase/functions/generate-student-insights/index.ts \
+  supabase/functions/send-rejection-email/index.ts \
+  supabase/functions/register-user/index.ts \
+  supabase/functions/reconcile-ledger/index.ts \
+  supabase/functions/whatsapp-notificacao-wise/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -430,6 +463,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260809120000_reposicoes_no_painel_de_pendencias.sql"
   "supabase/migrations/20260809130000_handoff_da_ia_tem_validade.sql"
   "supabase/migrations/20260809140000_mensalidade_tem_uma_coluna_so.sql"
+  "supabase/migrations/20260809150000_escopo_de_tenant_na_escrita_de_aluno.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

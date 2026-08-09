@@ -17,7 +17,7 @@ serve(async (req) => {
         allowService: true,
         allowedRoles: ['SUPER_ADMIN'],
     })
-    if (!auth.ok) return auth.response
+    if (auth.ok === false) return auth.response
 
     try {
         const supabase = auth.context.admin

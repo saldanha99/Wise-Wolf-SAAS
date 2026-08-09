@@ -42,7 +42,7 @@ serve(async (req) => {
     corsHeaders,
     allowedRoles: ["STUDENT", "SCHOOL_ADMIN", "SUPER_ADMIN"],
   });
-  if (!auth.ok) return auth.response;
+  if (auth.ok === false) return auth.response;
 
   let rawBody: unknown;
   try {

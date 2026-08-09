@@ -63,6 +63,15 @@ export function isAuthorizedTenantlessProfile(
   return profile.role === "NON_STUDENT" && profile.tenant_id === null;
 }
 
+/**
+ * ⚠️ Escreva sempre `if (auth.ok === false) return auth.response`.
+ *
+ * `if (!auth.ok)` NÃO estreita o tipo no TypeScript que o Deno usa aqui, e o
+ * type-check morre com «Property 'response' does not exist on type
+ * 'RequestAuthResult'». Sete funções carregavam esse erro e, por causa dele,
+ * ficavam de fora do `deno check` do release — ou seja, subiam sem validação
+ * nenhuma. A comparação explícita custa três caracteres e resolve.
+ */
 export type RequestAuthResult =
   | { ok: true; context: RequestAuthContext }
   | { ok: false; response: Response };
