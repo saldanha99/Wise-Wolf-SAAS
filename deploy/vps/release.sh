@@ -315,6 +315,12 @@ npx --yes deno check --no-lock \
   supabase/functions/payment-split-notify/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/search-slots/index.ts
+# ⚠️ sync-payments está em HARDENED_FUNCTIONS (é publicada), mas FORA do
+# `deno check`: ela tem um erro de tipo ANTERIOR a esta mudança —
+# «Property 'response' does not exist on type 'RequestAuthResult'» no
+# `if (!auth.ok) return auth.response`, apesar de o tipo ser uma união
+# discriminada. Incluí-la aqui derrubaria o release por um defeito alheio.
+# Resolver e então mover para a lista acima.
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -423,6 +429,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260808120000_rateio_do_pagamento_no_grupo.sql"
   "supabase/migrations/20260809120000_reposicoes_no_painel_de_pendencias.sql"
   "supabase/migrations/20260809130000_handoff_da_ia_tem_validade.sql"
+  "supabase/migrations/20260809140000_mensalidade_tem_uma_coluna_so.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -491,6 +498,7 @@ HARDENED_FUNCTIONS=(
   payment-split-notify
   sync-plan-change-billing
   search-slots
+  sync-payments
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -826,6 +834,7 @@ HARDENED_FUNCTIONS=(
   payment-split-notify
   sync-plan-change-billing
   search-slots
+  sync-payments
 )
 
 restore_previous_release() {

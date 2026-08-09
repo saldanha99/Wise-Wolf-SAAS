@@ -236,7 +236,9 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         professor_id: profileData.professor_id
       };
 
-      if (profileData.monthly_fee !== undefined) updates.monthly_tuition = profileData.monthly_fee;
+      // A mensalidade é `monthly_fee`. `monthly_tuition` virou espelho mantido
+      // pelo banco (trg_mirror_monthly_tuition) — gravar aqui recria a divergência.
+      if (profileData.monthly_fee !== undefined) updates.monthly_fee = profileData.monthly_fee;
       if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
       if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
       if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;

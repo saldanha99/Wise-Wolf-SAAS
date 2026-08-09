@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, BookOpen, MessageCircle, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Lock, Mail } from 'lucide-react';
+import { X, Save, BookOpen, Briefcase, Phone, User, Check, Plus, Trash2, Calendar, FileText, CreditCard, DollarSign, Clock, Lock, Mail } from 'lucide-react';
 import { asaasService } from '../services/asaasService';
 import { supabase } from '../lib/supabase';
 import StudentScheduleManager from './StudentScheduleManager';
@@ -42,7 +42,6 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
         levelBadge: 'B1',
         currentModuleStatus: '',
         interests: [] as string[],
-        correctionPreference: 'TODOS',
         occupation: '',
         phone: '',
         attendance_phone: '',
@@ -141,7 +140,6 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                 levelBadge: initialData.levelBadge || 'B1',
                 currentModuleStatus: initialData.currentModuleStatus || '',
                 interests: initialData.interests || [],
-                correctionPreference: initialData.correctionPreference || 'TODOS',
                 occupation: initialData.occupation || '',
                 phone: initialData.phone || '',
                 attendance_phone: initialData.attendance_phone || '',
@@ -528,25 +526,17 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
                         </div>
 
-                        {/* Correction & Occupation */}
+                        {/* Ocupação.
+                            Aqui havia um campo "Preferência de Correção" que NUNCA foi
+                            salvo: `profiles` não tem a coluna, o StudentsList o descartava
+                            em silêncio e as outras duas telas derrubavam o UPDATE inteiro
+                            ao tentar gravá-lo. O diretor escolhia e nada acontecia.
+                            O modo de correção do Wolfie é por SESSÃO (`correctionMode` vai
+                            no corpo da chamada ao wolfie-brain: selective/end/examiner) e
+                            nem usa este vocabulário — fixá-lo no perfil é decisão de
+                            produto, não conserto. Melhor não ter o campo do que ter um que
+                            mente. */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
-                                    <MessageCircle size={12} /> Preferência de Correção
-                                </label>
-                                <select
-                                    disabled={!isDirector}
-                                    value={formData.correctionPreference}
-                                    onChange={e => setFormData({ ...formData, correctionPreference: e.target.value })}
-                                    className="w-full px-4 py-3 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-xl text-xs font-black text-emerald-700 dark:text-emerald-400 focus:ring-2 focus:ring-emerald-500 outline-none uppercase"
-                                >
-                                    <option>TODOS</option>
-                                    <option>AO FINAL</option>
-                                    <option>SEMPRE</option>
-                                    <option>NUNCA</option>
-                                </select>
-                            </div>
-
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <Briefcase size={12} /> Ocupação

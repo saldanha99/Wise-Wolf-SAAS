@@ -325,8 +325,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
         // Add Financial Data if present
         if (data.financial) {
-          profilePayload.monthly_tuition = data.financial.price;
-          profilePayload.monthly_fee = data.financial.price; // Billing page reads this column
+          // `monthly_tuition` é espelho mantido pelo banco (trg_mirror_monthly_tuition).
+          profilePayload.monthly_fee = data.financial.price;
           profilePayload.fidelity_plan = data.financial.planName;
           profilePayload.due_day = 10; // Default due day
           profilePayload.status_financial = 'ACTIVE';
@@ -521,7 +521,9 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       // Only update financial data if present and user has permission (implicit by checking if fields exist in data)
       // Since StudentProfileForm only shows these fields to Directors, we can trust the data if present,
       // but RLS will ultimately block it if unauthorized.
-      if (profileData.monthly_fee !== undefined) updates.monthly_tuition = profileData.monthly_fee;
+      // A mensalidade é `monthly_fee`. `monthly_tuition` virou espelho mantido
+      // pelo banco (trg_mirror_monthly_tuition) — gravar aqui recria a divergência.
+      if (profileData.monthly_fee !== undefined) updates.monthly_fee = profileData.monthly_fee;
       if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
       if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
       if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;

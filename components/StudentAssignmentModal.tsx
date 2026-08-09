@@ -16,6 +16,8 @@ interface Student {
     id: string;
     full_name: string;
     module?: string;
+    monthly_fee?: number;
+    /** @deprecated espelho de monthly_fee — ver trg_mirror_monthly_tuition. */
     monthly_tuition?: number;
     fidelity_plan?: string;
 }
@@ -92,8 +94,11 @@ const StudentAssignmentModal: React.FC<StudentAssignmentModalProps> = ({ student
     useEffect(() => {
         if (!isNewStudent && selectedStudentId) {
             const std = students.find(s => s.id === selectedStudentId);
-            if (std?.monthly_tuition && std.monthly_tuition > 0) {
-                setExistingTuition(std.monthly_tuition);
+            // A mensalidade é `monthly_fee`. `monthly_tuition` fica só como
+            // reserva para linha antiga que o espelho ainda não tocou.
+            const mensalidade = Number(std?.monthly_fee ?? std?.monthly_tuition ?? 0);
+            if (mensalidade > 0) {
+                setExistingTuition(mensalidade);
                 // Default to FALSE (do not overwrite) if existing tuition is present
                 setUpdateFinancials(false);
             } else {

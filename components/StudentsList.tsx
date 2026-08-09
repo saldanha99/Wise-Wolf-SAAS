@@ -151,7 +151,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             levelBadge: s.module?.split(' ')[0] || 'N/A',
             currentModuleStatus: s.module || 'Não iniciado',
             interests: s.interests || [],
-            correctionPreference: 'PADRÃO',
             occupation: s.occupation || 'Não informado',
             phone: s.phone || '',
             img: s.avatar_url || `https://ui-avatars.com/api/?name=${s.full_name}`,
@@ -311,7 +310,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
         // Adiciona dados financeiros se existir valor
         if (formData.monthly_fee > 0) {
-          profilePayload.monthly_tuition = formData.monthly_fee;
+          // `monthly_tuition` é espelho mantido pelo banco (trg_mirror_monthly_tuition).
           profilePayload.monthly_fee = formData.monthly_fee;
           profilePayload.fidelity_plan = formData.planDuration;
           profilePayload.due_day = formData.due_day || 10;

@@ -32,7 +32,7 @@ serve(async (req) => {
         // 1. Get active students
         const { data: students, error: stError } = await supabase
             .from('profiles')
-            .select('id, tenant_id, monthly_fee, monthly_tuition, due_day, full_name')
+            .select('id, tenant_id, monthly_fee, due_day, full_name')
             .eq('role', 'STUDENT')
             .eq('status', 'Ativo');
 
@@ -42,10 +42,16 @@ serve(async (req) => {
         const logs = [];
 
         for (const student of students || []) {
-            // Determine Fee: Prefer monthly_tuition, fallback to monthly_fee
-            const feeValue = Number(student.monthly_tuition) > 0
-                ? Number(student.monthly_tuition)
-                : Number(student.monthly_fee);
+            // A mensalidade é `monthly_fee` — fonte única.
+            //
+            // ⚠️ Antes preferia `monthly_tuition` e só caía em `monthly_fee` como
+            // reserva. Em 09/08/2026 dois alunos tinham `monthly_fee = 0` (sem
+            // mensalidade) com `monthly_tuition` antigo de R$ 169 e R$ 187: este
+            // laço estava a um sync de faturar quem não deve nada. Nunca disparou
+            // por sorte — as cobranças reais sempre seguiram `monthly_fee`.
+            // A coluna virou espelho (trg_mirror_monthly_tuition) e não deve mais
+            // ser lida.
+            const feeValue = Number(student.monthly_fee);
 
             if (!feeValue || feeValue <= 0) {
                 // logs.push(`Skipped ${student.full_name}: No fee defined`);
