@@ -114,7 +114,7 @@ async function seedAdmins() {
                     role: admin.role,
                     tenant_id: admin.tenantId,
                     status_financial: 'ACTIVE',
-                    updated_at: new Date().toISOString()
+                    // ⚠️ `profiles` não tem `updated_at` — o upsert falhava inteiro.
                 }, { onConflict: 'id' });
 
             if (profileError) {

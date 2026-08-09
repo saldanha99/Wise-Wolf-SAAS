@@ -231,7 +231,8 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         interests: profileData.interests,
         private_notes: profileData.private_notes,
         fixed_schedule: profileData.fixed_schedule,
-        correction_preference: profileData.correctionPreference,
+        // ⚠️ `correction_preference` não existe em `profiles` — mandá-la
+        // derrubava o UPDATE inteiro e nada era salvo por esta tela.
         professor_id: profileData.professor_id
       };
 

@@ -507,7 +507,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         interests: profileData.interests,
         private_notes: profileData.private_notes,
         fixed_schedule: profileData.fixed_schedule,
-        correction_preference: profileData.correctionPreference,
+        // ⚠️ NÃO grave `correction_preference` aqui: a coluna não existe em
+        // `profiles`. O PostgREST derruba o UPDATE INTEIRO com
+        // «column "correction_preference" of relation "profiles" does not exist»,
+        // então salvar qualquer coisa por esta tela falhava — inclusive o
+        // telefone do aluno, que era o sintoma relatado. O campo continua no
+        // formulário, mas hoje não tem onde ser persistido (o StudentsList
+        // também o descarta em silêncio).
         // Professor Link
         professor_id: profileData.professor_id
       };

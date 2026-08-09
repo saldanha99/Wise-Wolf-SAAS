@@ -68,7 +68,10 @@ const TeacherPixSettings: React.FC<TeacherPixSettingsProps> = ({ user }) => {
                     pix_key_type: pixKeyType,
                     cnpj: cnpj || null,
                     cnpj_company_name: companyName || null,
-                    updated_at: new Date().toISOString()
+                    // ⚠️ `profiles` NÃO tem `updated_at`. Mandá-la derrubava o
+                    // UPDATE inteiro — o professor não conseguia salvar a chave
+                    // PIX, que é por onde ele recebe. A trilha de alteração já
+                    // existe em `profile_audit_log` (trigger trg_audit_profiles).
                 })
                 .eq('id', user.id);
 

@@ -125,7 +125,8 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
                     account_number: draft.accountNumber || null,
                     pix_key: draft.pixKey || null,
                     pix_key_type: draft.pixKeyType || null,
-                    updated_at: new Date().toISOString(),
+                    // ⚠️ `profiles` NÃO tem `updated_at` — ver TeacherPixSettings.
+                    // A alteração fica registrada em `profile_audit_log`.
                 })
                 .eq('id', teacherId);
             if (updateError) throw updateError;
