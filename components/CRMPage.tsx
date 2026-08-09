@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import {
     Kanban, User, Phone, Mail, MessageCircle, Search, Filter, Plus,
     X, Clock, DollarSign, MoreHorizontal, Edit2, Tag, ChevronDown,
-    TrendingUp, Users, Target, AlertCircle, Check, Trash2, RefreshCw
+    TrendingUp, Users, Target, AlertCircle, Check, Trash2, RefreshCw, Bot, BotOff
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -359,6 +359,35 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     const filterBtnRef = useRef<HTMLDivElement>(null);
 
     // ---------------------------------------------------------
+    // HANDOFF DA IA
+    //
+    // `ai_handoff` era permanente: uma resposta manual pelo WhatsApp central
+    // calava a Bia naquele lead para sempre — 34 dos 103 leads estavam assim em
+    // 09/08/2026, sem nada na tela indicando isso. Agora vale 72h e o card mostra
+    // o estado, com um clique para devolver o lead à IA.
+    // ---------------------------------------------------------
+    const HANDOFF_TTL_MS = 72 * 3600 * 1000;
+    const leadHandoffAtivo = (lead: any): boolean => {
+        if (lead?.ai_handoff !== true || !lead?.ai_handoff_at) return false;
+        const at = new Date(lead.ai_handoff_at).getTime();
+        return !Number.isNaN(at) && Date.now() - at < HANDOFF_TTL_MS;
+    };
+
+    const toggleLeadHandoff = async (lead: any) => {
+        const querSilenciar = !leadHandoffAtivo(lead);
+        const { data, error } = await supabase.rpc('set_ai_handoff', {
+            p_kind: 'lead', p_id: lead.id, p_handoff: querSilenciar,
+        });
+        if (error || !(data as any)?.ok) {
+            alert('Não consegui alterar: ' + (error?.message || (data as any)?.error || 'erro'));
+            return;
+        }
+        setLeads(prev => prev.map(l => l.id === lead.id
+            ? { ...l, ai_handoff: querSilenciar, ai_handoff_at: querSilenciar ? new Date().toISOString() : null }
+            : l));
+    };
+
+    // ---------------------------------------------------------
     // FETCH
     // ---------------------------------------------------------
     const fetchLeads = async () => {
@@ -676,6 +705,17 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                                 {lead.level ? ` • ${lead.level}` : ''}
                                                             </p>
                                                         </div>
+                                                        <button
+                                                            onClick={() => toggleLeadHandoff(lead)}
+                                                            className={`p-1 rounded-lg transition-all ${leadHandoffAtivo(lead)
+                                                                ? 'text-amber-500 hover:bg-amber-500/10'
+                                                                : 'opacity-0 group-hover:opacity-100 text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10'}`}
+                                                            title={leadHandoffAtivo(lead)
+                                                                ? 'Atendimento humano: a Bia não responde este lead. Clique para devolver à IA.'
+                                                                : 'Silenciar a Bia neste lead (assumir o atendimento)'}
+                                                        >
+                                                            {leadHandoffAtivo(lead) ? <BotOff size={13} /> : <Bot size={13} />}
+                                                        </button>
                                                         <button
                                                             onClick={() => setEditLead(lead)}
                                                             className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-all"

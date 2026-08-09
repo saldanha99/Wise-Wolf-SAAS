@@ -219,4 +219,8 @@ export interface JobApplication {
   preinterview_status?: "SENT" | "IN_PROGRESS" | "DONE" | null;
   preinterview_answers?: Record<string, string | number> | null;
   interview_slot?: string | null;
+  // Handoff humano: `ai_handoff` sozinho era permanente e calou 26 de 67
+  // candidaturas. O carimbo é o que dá validade (72h) e permite devolver à IA.
+  ai_handoff?: boolean | null;
+  ai_handoff_at?: string | null;
 }

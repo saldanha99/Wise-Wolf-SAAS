@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, JobApplication, JobStatus } from '../types';
-import { Briefcase, FileText, Search, ChevronDown, ChevronUp, Bot, Sparkles, Calendar, MessageCircle, Loader2 } from 'lucide-react';
+import { Briefcase, FileText, Search, ChevronDown, ChevronUp, Bot, Sparkles, Calendar, MessageCircle, Loader2, BotOff } from 'lucide-react';
+
+// Handoff humano vale 72h (mesma constante do whatsapp-inbound). Depois disso a
+// Michelle volta a responder quem escrever — o painel mostra o estado REAL, não
+// só o booleano, senão o diretor não entende por que a IA voltou a falar.
+const HANDOFF_TTL_MS = 72 * 3600 * 1000;
+const handoffAtivo = (app: any): boolean => {
+    if (app?.ai_handoff !== true || !app?.ai_handoff_at) return false;
+    const at = new Date(app.ai_handoff_at).getTime();
+    return !Number.isNaN(at) && Date.now() - at < HANDOFF_TTL_MS;
+};
 
 // Painel de RH com a triagem da RITA (IA de RH):
 // - score 0-10 + recomendação + resumo + red flags por candidato (edge hr-ai-screening)
@@ -50,6 +60,21 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
     useEffect(() => {
         fetchApplications();
     }, [tenantId]);
+
+    // Devolver o candidato à Michelle (ou tirar dela) na hora, sem esperar as 72h.
+    const toggleHandoff = async (app: any) => {
+        const querSilenciar = !handoffAtivo(app);
+        const { data, error } = await supabase.rpc('set_ai_handoff', {
+            p_kind: 'candidato', p_id: app.id, p_handoff: querSilenciar,
+        });
+        if (error || !(data as any)?.ok) {
+            alert('Não consegui alterar: ' + (error?.message || (data as any)?.error || 'erro'));
+            return;
+        }
+        setApplications(prev => prev.map(a => a.id === app.id
+            ? { ...a, ai_handoff: querSilenciar, ai_handoff_at: querSilenciar ? new Date().toISOString() : null } as JobApplication
+            : a));
+    };
 
     const updateStatus = async (id: string, newStatus: JobStatus) => {
         try {
@@ -235,6 +260,11 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                                                             <Calendar size={9} /> Entrevista {new Date(app.interview_slot).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     )}
+                                                    {handoffAtivo(app) && (
+                                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400" title="Um humano assumiu este contato — a Michelle não responde até 72h após o último toque manual">
+                                                            <BotOff size={9} /> Atendimento humano
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">{getScoreBadge(app)}</td>
@@ -261,6 +291,17 @@ const HRModule: React.FC<HRModuleProps> = ({ user, tenantId }) => {
                                                         title="Visualizar Currículo (PDF)"
                                                     >
                                                         <FileText className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleHandoff(app)}
+                                                        className={`p-2 rounded-lg transition-colors font-medium text-xs flex items-center gap-1.5 ${handoffAtivo(app)
+                                                            ? 'text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-500/20'
+                                                            : 'text-gray-500 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-500/20'}`}
+                                                        title={handoffAtivo(app)
+                                                            ? 'Devolver este candidato para a Michelle responder'
+                                                            : 'Silenciar a Michelle neste contato (atendimento humano)'}
+                                                    >
+                                                        {handoffAtivo(app) ? <Bot className="w-4 h-4" /> : <BotOff className="w-4 h-4" />}
                                                     </button>
                                                     <div className="h-6 w-px bg-gray-200 dark:bg-gray-700"></div>
                                                     <select
