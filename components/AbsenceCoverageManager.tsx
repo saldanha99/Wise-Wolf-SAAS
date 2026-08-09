@@ -64,9 +64,18 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
     const key = keyOf(c);
     setSearchingKey(key);
     try {
+      // `date` é o que permite à busca descartar quem já tem aula avulsa ou
+      // reposição naquele dia — sem ela, só a agenda fixa é checada e o
+      // "substituto livre" pode estar ocupado. `excludeTeacherId` tira o próprio
+      // ausente no servidor (antes era filtrado só na tela).
       const { data } = await supabase.functions.invoke('search-slots', {
-        body: { day: c.dow, time: c.classTime },
+        body: { day: c.dow, time: c.classTime, date: c.classDate, excludeTeacherId: teacher.id },
       });
+      if (data?.error) {
+        setError(`Busca de substitutos falhou: ${data.error}`);
+        setCandidatesByKey(prev => ({ ...prev, [key]: [] }));
+        return;
+      }
       const cands: Candidate[] = (data?.slots || []).filter((s: Candidate) => s.teacher_id !== teacher.id);
       setCandidatesByKey(prev => ({ ...prev, [key]: cands }));
     } catch {
