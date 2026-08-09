@@ -22,6 +22,7 @@ interface Settings {
   is_active: boolean;
   dizimo_pct: number;
   investimento_pct: number;
+  escola_pct: number;
   destino: string;
   destino_configurado: boolean;
   professores?: ProfessorCfg[];
@@ -115,13 +116,14 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
     const { data } = await supabase.rpc('save_payment_split_settings', {
       p_dizimo_pct: s.dizimo_pct,
       p_investimento_pct: s.investimento_pct,
+      p_escola_pct: s.escola_pct,
       p_is_active: s.is_active,
     });
     setSalvando(false);
     if (data?.error) {
       const mapa: Record<string, string> = {
         percentual_invalido: 'Percentual inválido.',
-        percentual_acima_de_100: 'Dízimo + investimento não pode passar de 100% do líquido.',
+        percentual_acima_de_100: 'Dízimo + investimento + escola não pode passar de 100% do líquido.',
         sem_grupo_configurado: 'Configure o grupo no "Relatório automático no WhatsApp" antes de ligar o aviso.',
         sem_permissao: 'Só a direção pode configurar o rateio.',
       };
@@ -333,7 +335,21 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
             className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
           />
         </div>
-        <div className="sm:col-span-2">
+        <div>
+          <label className="block text-[10px] font-black uppercase text-brand-muted mb-1">
+            Escola, no aluno da direção (%)
+          </label>
+          <input
+            type="number" min={0} max={100} step={0.5}
+            value={s.escola_pct}
+            onChange={e => setS({ ...s, escola_pct: Number(e.target.value) })}
+            className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+          />
+          <span className="text-[10px] text-brand-muted">
+            só incide no aluno de quem está marcado com 👑
+          </span>
+        </div>
+        <div>
           <label className="block text-[10px] font-black uppercase text-brand-muted mb-1">Avisa no grupo</label>
           <div className="w-full text-sm bg-brand-surface-2 text-brand-muted rounded-xl px-3 py-2 border border-brand-border truncate">
             {s.destino_configurado ? s.destino : 'nenhum grupo configurado'}

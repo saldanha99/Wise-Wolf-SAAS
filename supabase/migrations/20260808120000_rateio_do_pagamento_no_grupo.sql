@@ -35,13 +35,21 @@ CREATE TABLE IF NOT EXISTS public.payment_split_settings (
   tenant_id      text PRIMARY KEY,
   dizimo_pct     numeric(5,2) NOT NULL DEFAULT 10.00 CHECK (dizimo_pct   >= 0 AND dizimo_pct   <= 100),
   investimento_pct   numeric(5,2) NOT NULL DEFAULT 10.00 CHECK (investimento_pct >= 0 AND investimento_pct <= 100),
+  -- Fatia da ESCOLA sobre o aluno da direção. Só existe aí: no aluno de professor
+  -- contratado, o que sobra já é todo da escola — cobrar uma fatia de si mesma
+  -- seria mover dinheiro de um bolso para o mesmo bolso.
+  escola_pct     numeric(5,2) NOT NULL DEFAULT 10.00 CHECK (escola_pct >= 0 AND escola_pct <= 100),
   is_active      boolean NOT NULL DEFAULT false,
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now(),
   -- Soma acima de 100% do líquido não é erro de digitação a ser adivinhado —
   -- é conta que não fecha. Barra na origem.
-  CONSTRAINT ck_payment_split_total CHECK (dizimo_pct + investimento_pct <= 100)
+  CONSTRAINT ck_payment_split_total CHECK (dizimo_pct + investimento_pct + escola_pct <= 100)
 );
+
+-- Coluna nova em base que já tenha a tabela (a migration roda a cada release).
+ALTER TABLE public.payment_split_settings
+  ADD COLUMN IF NOT EXISTS escola_pct numeric(5,2) NOT NULL DEFAULT 10.00;
 
 COMMENT ON TABLE public.payment_split_settings IS
   'Percentuais de dízimo e investimento (caixinha da escola) aplicados sobre o líquido de cada pagamento (valor - custo previsto do professor). Sem linha ativa, nenhum aviso é enviado. NÃO é lançamento contábil.';
@@ -109,6 +117,7 @@ DECLARE
   v_professores jsonb; v_aluno text;
   v_na_base boolean; v_dizimo numeric; v_investimento numeric;
   v_pro_labore numeric; v_aulas_pl int; v_resto numeric;
+  v_escola_pct numeric; v_share numeric; v_escola_corte numeric;
 BEGIN
   SELECT COALESCE(current_setting('request.jwt.claims', true)::json->>'role','')
     INTO v_jwt_role;
@@ -137,11 +146,12 @@ BEGIN
     END IF;
   END IF;
 
-  SELECT s.dizimo_pct, s.investimento_pct, s.is_active
-    INTO v_dizimo_pct, v_investimento_pct, v_ativo
+  SELECT s.dizimo_pct, s.investimento_pct, s.escola_pct, s.is_active
+    INTO v_dizimo_pct, v_investimento_pct, v_escola_pct, v_ativo
     FROM payment_split_settings s WHERE s.tenant_id = v_tenant;
   IF NOT FOUND THEN
-    v_dizimo_pct := 10.00; v_investimento_pct := 10.00; v_ativo := false;
+    v_dizimo_pct := 10.00; v_investimento_pct := 10.00;
+    v_escola_pct := 10.00; v_ativo := false;
   END IF;
 
   -- Mês de referência = mês em que o dinheiro entrou. É ele que define quantas
@@ -241,11 +251,14 @@ BEGIN
   -- critério que balancete_professores usa para receita. Aluno só dela → tudo é
   -- pró-labore; aluno sem aula dela → nada é.
   v_resto := GREATEST(v_liquido - v_dizimo - v_investimento, 0);
-  v_pro_labore := CASE
-    WHEN v_aulas > 0 AND v_aulas_pl > 0
-      THEN round(v_resto * v_aulas_pl::numeric / v_aulas, 2)
-    ELSE 0
-  END;
+
+  -- A escola também fica com uma fatia do aluno da direção. Sem ela, os alunos
+  -- dela não constroem caixa nenhum para a empresa: a operação inteira da dona
+  -- passaria pelo bolso pessoal dela, e um mês ruim não teria de onde ser
+  -- absorvido. Com 10/10/10, ela fica com 70% e a empresa guarda 10%.
+  v_share := CASE WHEN v_aulas > 0 THEN v_aulas_pl::numeric / v_aulas ELSE 0 END;
+  v_escola_corte := round(v_liquido * v_share * v_escola_pct / 100.0, 2);
+  v_pro_labore   := GREATEST(round(v_resto * v_share, 2) - v_escola_corte, 0);
 
   RETURN jsonb_build_object(
     'payment_id',   v_pay.id,
@@ -276,6 +289,7 @@ BEGIN
     'liquido',      round(v_liquido,2),
     'dizimo_pct',   v_dizimo_pct,
     'investimento_pct', v_investimento_pct,
+    'escola_pct',   v_escola_pct,
     'dizimo',       v_dizimo,
     'investimento', v_investimento,
     -- 'sobra' é o que fica com a ESCOLA: o resto menos o pró-labore da direção.
@@ -420,12 +434,13 @@ BEGIN
   SELECT * INTO r FROM payment_split_settings WHERE tenant_id = v_tenant;
   IF NOT FOUND THEN
     RETURN jsonb_build_object('configurado', false, 'is_active', false,
-      'dizimo_pct', 10.00, 'investimento_pct', 10.00, 'professores', v_professores,
+      'dizimo_pct', 10.00, 'investimento_pct', 10.00, 'escola_pct', 10.00,
+      'professores', v_professores,
       'destino', COALESCE(v_destino,''), 'destino_configurado', v_destino IS NOT NULL);
   END IF;
   RETURN jsonb_build_object('configurado', true, 'is_active', r.is_active,
     'dizimo_pct', r.dizimo_pct, 'investimento_pct', r.investimento_pct,
-    'professores', v_professores,
+    'escola_pct', r.escola_pct, 'professores', v_professores,
     'destino', COALESCE(v_destino,''), 'destino_configurado', v_destino IS NOT NULL,
     'updated_at', r.updated_at);
 END;
@@ -436,7 +451,8 @@ REVOKE ALL ON FUNCTION public.get_payment_split_settings() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_payment_split_settings() TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.save_payment_split_settings(
-  p_dizimo_pct numeric, p_investimento_pct numeric, p_is_active boolean DEFAULT true)
+  p_dizimo_pct numeric, p_investimento_pct numeric, p_is_active boolean DEFAULT true,
+  p_escola_pct numeric DEFAULT 10.00)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public'
@@ -447,11 +463,11 @@ BEGIN
   IF v_role IS NULL OR v_role NOT IN ('SCHOOL_ADMIN','SUPER_ADMIN') THEN
     RETURN jsonb_build_object('error','sem_permissao');
   END IF;
-  IF p_dizimo_pct IS NULL OR p_investimento_pct IS NULL
-     OR p_dizimo_pct < 0 OR p_investimento_pct < 0 THEN
+  IF p_dizimo_pct IS NULL OR p_investimento_pct IS NULL OR p_escola_pct IS NULL
+     OR p_dizimo_pct < 0 OR p_investimento_pct < 0 OR p_escola_pct < 0 THEN
     RETURN jsonb_build_object('error','percentual_invalido');
   END IF;
-  IF p_dizimo_pct + p_investimento_pct > 100 THEN
+  IF p_dizimo_pct + p_investimento_pct + p_escola_pct > 100 THEN
     RETURN jsonb_build_object('error','percentual_acima_de_100');
   END IF;
   -- Ligar sem destino deixaria o aviso morrendo em silêncio a cada pagamento.
@@ -461,19 +477,24 @@ BEGIN
     RETURN jsonb_build_object('error','sem_grupo_configurado');
   END IF;
 
-  INSERT INTO payment_split_settings (tenant_id, dizimo_pct, investimento_pct, is_active)
-  VALUES (v_tenant, p_dizimo_pct, p_investimento_pct, COALESCE(p_is_active,true))
+  INSERT INTO payment_split_settings
+    (tenant_id, dizimo_pct, investimento_pct, escola_pct, is_active)
+  VALUES (v_tenant, p_dizimo_pct, p_investimento_pct, p_escola_pct, COALESCE(p_is_active,true))
   ON CONFLICT (tenant_id) DO UPDATE
     SET dizimo_pct = EXCLUDED.dizimo_pct, investimento_pct = EXCLUDED.investimento_pct,
+        escola_pct = EXCLUDED.escola_pct,
         is_active = EXCLUDED.is_active, updated_at = now();
 
   RETURN jsonb_build_object('ok', true);
 END;
 $function$;
 
-ALTER FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean) TO authenticated;
+ALTER FUNCTION public.save_payment_split_settings(numeric,numeric,boolean,numeric) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean,numeric) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.save_payment_split_settings(numeric,numeric,boolean,numeric) TO authenticated;
+-- A assinatura de 3 argumentos existiu em release anterior; some para não ficar
+-- uma versão antiga respondendo por engano.
+DROP FUNCTION IF EXISTS public.save_payment_split_settings(numeric,numeric,boolean);
 
 -- Marca/desmarca um professor como pró-labore da direção.
 CREATE OR REPLACE FUNCTION public.set_payment_split_owner_teacher(
