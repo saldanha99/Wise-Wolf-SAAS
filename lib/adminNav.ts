@@ -100,9 +100,15 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    id: 'coverage', label: 'Cobertura e Salas', icon: CalendarOff, section: 'Aulas',
+    // Reposição entrou aqui porque o diretor não tinha NENHUMA porta para ela:
+    // a aba 'reschedules' só existia no menu do professor, então o passivo de
+    // 102 reposições sem data (a mais antiga de 04/03/2026) não tinha dono nem
+    // contador. Sem esta entrada, o link da Central de Pendências cairia na
+    // allowlist e voltaria para o dashboard.
+    id: 'coverage', label: 'Cobertura e Reposições', icon: CalendarOff, section: 'Aulas', badgeKey: 'reposicoes',
     tabs: [
       { id: 'coverage', label: 'Cobertura de profs' },
+      { id: 'reschedules', label: 'Reposições', badgeKey: 'reposicoes' },
       { id: 'verify-rooms', label: 'Verificar salas' },
     ],
   },
