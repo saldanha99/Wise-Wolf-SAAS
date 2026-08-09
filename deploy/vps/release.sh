@@ -249,6 +249,7 @@ npm test
 npm run wolfie:assets:verify
 npx --yes deno test --no-lock \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
@@ -312,7 +313,8 @@ npx --yes deno check --no-lock \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
-  supabase/functions/sync-plan-change-billing/index.ts
+  supabase/functions/sync-plan-change-billing/index.ts \
+  supabase/functions/search-slots/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -419,6 +421,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260807180000_ofertas_de_renovacao.sql"
   "supabase/migrations/20260807190000_fim_do_contrato_e_a_ultima_aula_paga.sql"
   "supabase/migrations/20260808120000_rateio_do_pagamento_no_grupo.sql"
+  "supabase/migrations/20260809120000_reposicoes_no_painel_de_pendencias.sql"
+  "supabase/migrations/20260809130000_handoff_da_ia_tem_validade.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -486,6 +490,7 @@ HARDENED_FUNCTIONS=(
   dre-report
   payment-split-notify
   sync-plan-change-billing
+  search-slots
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -820,6 +825,7 @@ HARDENED_FUNCTIONS=(
   dre-report
   payment-split-notify
   sync-plan-change-billing
+  search-slots
 )
 
 restore_previous_release() {
