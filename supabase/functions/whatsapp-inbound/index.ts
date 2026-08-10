@@ -12,6 +12,11 @@ import {
   promptTriagem,
   triagemCompleta,
 } from "./triagem.ts";
+import {
+  applyCommercialReplyPolicy,
+  resolveAtendenteTraining,
+  resolveCommercialPolicy,
+} from "./commercial-response-policy.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
 // v13 — HANDOFF HUMANO: quando o humano responde manualmente para um lead OU candidato,
@@ -720,9 +725,13 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   }
 
   const sdrName = cfg?.agents?.atendente?.name || "Bia";
-  const training = cfg?.sdr?.training || "";
+  const training = resolveAtendenteTraining(cfg);
+  const commercialConfig = resolveCommercialPolicy(cfg);
+  const commercialRules = commercialConfig
+    ? `- TODAS as aulas duram ${commercialConfig.classDurationMinutes} minutos, inclusive a experimental. NUNCA diga outra duração.\n- Na PRIMEIRA pergunta sobre preço, NÃO informe nenhum valor: explique que os planos variam e conduza para a aula experimental gratuita.\n- Somente se o lead INSISTIR em preço numa mensagem posterior, informe apenas: \"planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês\". NUNCA liste a tabela completa e NUNCA informe outro valor.`
+    : `- NUNCA invente preços, descontos, promoções ou duração das aulas. Se perguntarem, diga que o diretor confirma essas informações e siga oferecendo a experimental.`;
   const menu = await availabilityMenu(sb, tenantId);
-  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS:\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e confirma em seguida (ex.: \"Vou verificar o professor desse horário e já te confirmo, tá? 😊\").\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- NUNCA invente preços/descontos/promoções. Se perguntarem valores, diga que o diretor confirma os planos e siga oferecendo a experimental.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (siga à risca): ${training}` : ""}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e confirma em seguida (ex.: \"Vou verificar o professor desse horário e já te confirmo, tá? 😊\").\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
@@ -748,6 +757,14 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   let dispatchMeta: any = null;
 
   const st = ai.schedule_trial;
+  const commercialReply = applyCommercialReplyPolicy({
+    history: hist,
+    currentMessage: text,
+    modelReply: reply,
+    trialRequested: Boolean(st?.date && st?.time),
+    commercialPolicy: commercialConfig,
+  });
+  reply = commercialReply.reply;
   if (st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) && /^\d{2}:\d{2}$/.test(st.time)) {
     const max = new Date(nowBRT().getTime() + 21 * 86400000).toISOString().split("T")[0];
     if (st.date >= todayBRT() && st.date <= max) {
@@ -784,7 +801,11 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   }
 
   if (await sendWhats(instance, phone, reply)) {
-    await logMsg(sb, tenantId, phone, "sdr", "out", reply, { lead_id: lead.id, dispatch: dispatchMeta });
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      lead_id: lead.id,
+      dispatch: dispatchMeta,
+      commercial_policy: commercialReply.policy,
+    });
     await sb.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
   }
 }
