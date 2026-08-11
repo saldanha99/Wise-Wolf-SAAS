@@ -148,6 +148,20 @@ const logSafeFailure = (operation: string, error: AsaasServiceError): void => {
     });
 };
 
+export type ManualPixResult = {
+    success: true;
+    paymentId: string;
+    value: number;
+    dueDate: string;
+    pixPayload: string;
+    encodedImage?: string | null;
+    expiresAt?: string | null;
+    reused: boolean;
+    whatsappSent: boolean;
+    whatsappSuppressed?: boolean;
+    whatsappUnavailable?: boolean;
+};
+
 export const asaasService = {
     syncStudent: async (studentData: {
         user_id: string;
@@ -310,6 +324,23 @@ export const asaasService = {
         } catch (error) {
             const safeError = await toSafeError(error, 'Não foi possível atualizar a forma de pagamento.');
             logSafeFailure('atualização da forma de pagamento', safeError);
+            throw safeError;
+        }
+    },
+
+    generateStudentManualPix: async (studentId: string): Promise<ManualPixResult> => {
+        try {
+            const { data, error } = await supabase.functions.invoke('generate-student-manual-pix', {
+                body: { student_id: studentId },
+            });
+            if (error) throw await toSafeError(error, 'Não foi possível gerar o Pix manual.');
+            if (!data || data.success === false || data.error) {
+                throw await toSafeError(data, 'Não foi possível gerar o Pix manual.');
+            }
+            return data as ManualPixResult;
+        } catch (error) {
+            const safeError = await toSafeError(error, 'Não foi possível gerar o Pix manual.');
+            logSafeFailure('geração do Pix manual vinculado', safeError);
             throw safeError;
         }
     },

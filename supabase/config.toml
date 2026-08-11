@@ -19,3 +19,8 @@ entrypoint = "./functions/asaas-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/kiwify-webhook/index.ts"
+
+[functions.generate-student-manual-pix]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/generate-student-manual-pix/index.ts"

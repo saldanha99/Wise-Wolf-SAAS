@@ -7,6 +7,7 @@ import {
 import { User as UserType } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
+import StudentManualPixManager from './StudentManualPixManager';
 
 interface Props {
   studentId: string;
@@ -347,6 +348,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
               {/* FINANCIAL (admin) */}
               {tab === 'financial' && isAdmin && (
                 <div className="space-y-2">
+                  <StudentManualPixManager studentId={studentId} onGenerated={() => void load()} />
                   {creditBalance > 0 && (
                     <div className="bg-emerald-50/60 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 rounded-xl p-3 flex items-center justify-between gap-2 mb-2">
                       <div className="text-sm">

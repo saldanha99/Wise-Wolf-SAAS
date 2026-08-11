@@ -282,6 +282,7 @@ npm run wolfie:assets:verify
 npx --yes deno test --no-lock \
   supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/update-student-billing-method/core.test.ts \
+  supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
@@ -317,6 +318,7 @@ npx --yes deno check --no-lock \
   supabase/functions/sync-student-asaas/index.ts \
   supabase/functions/create-asaas-subscription/index.ts \
   supabase/functions/update-student-billing-method/index.ts \
+  supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/create-enrollment-pix/index.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
@@ -468,6 +470,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260809140000_mensalidade_tem_uma_coluna_so.sql"
   "supabase/migrations/20260809150000_escopo_de_tenant_na_escrita_de_aluno.sql"
   "supabase/migrations/20260811021018_teacher_change_student_schedule.sql"
+  "supabase/migrations/20260811031056_student_manual_pix_claims.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -478,6 +481,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_free_premium_tiers.sql"
   "supabase/tests/teacher_closing_write_scope.sql"
   "supabase/tests/teacher_schedule_change_scope.sql"
+  "supabase/tests/student_manual_pix_claims.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -510,6 +514,7 @@ HARDENED_FUNCTIONS=(
   sync-student-asaas
   create-asaas-subscription
   update-student-billing-method
+  generate-student-manual-pix
   create-enrollment-pix
   create-saas-checkout
   create-student-account
@@ -848,6 +853,7 @@ HARDENED_FUNCTIONS=(
   sync-student-asaas
   create-asaas-subscription
   update-student-billing-method
+  generate-student-manual-pix
   create-enrollment-pix
   create-saas-checkout
   create-student-account
@@ -1135,6 +1141,7 @@ database_tests=(
   "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
   "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
   "$release_dir/tests/teacher_schedule_change_scope.sql"
+  "$release_dir/tests/student_manual_pix_claims.sql"
 )
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]

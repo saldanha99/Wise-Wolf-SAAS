@@ -4,6 +4,7 @@ import { asaasService } from '../services/asaasService';
 import { supabase } from '../lib/supabase';
 import StudentScheduleManager from './StudentScheduleManager';
 import BillingMethodManager from './BillingMethodManager';
+import StudentManualPixManager from './StudentManualPixManager';
 
 interface StudentProfileFormProps {
     initialData?: any;
@@ -829,6 +830,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             <div className="p-6 bg-brand-surface-2 rounded-2xl border border-dashed border-brand-border text-center">
                                 <p className="text-brand-muted text-sm font-bold">Nenhuma assinatura ativa encontrada.</p>
                             </div>
+                        )}
+
+                        {isDirector && initialData?.id && (
+                            <StudentManualPixManager studentId={initialData.id} />
                         )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
