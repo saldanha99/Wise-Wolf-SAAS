@@ -1,3 +1,4 @@
+/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.93.3'
 import { authorizeAutomation } from '../_shared/automation-auth.ts'
@@ -53,9 +54,14 @@ function relationOne<T>(value: QueueRelation<T>): T | null {
     return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-// Normaliza telefone BR para o formato aceito pela Evolution (55 + DDD + número).
-function normalizePhone(raw: string): string | null {
-    let phone = (raw || '').replace(/\D/g, '');
+// Normaliza telefone BR ou JID de grupo para o formato aceito pela Evolution.
+function normalizeDestination(raw: string): string | null {
+    const destination = (raw || '').trim();
+    // Grupos da Evolution usam JID (ex.: 1203...@g.us). A fila também atende
+    // telefones comuns, então preservamos somente o formato estrito de grupo.
+    if (/^\d{10,25}@g\.us$/.test(destination)) return destination;
+
+    let phone = destination.replace(/\D/g, '');
     if (phone.length === 10 || phone.length === 11) phone = '55' + phone;
     if (phone.length < 12) return null;
     return phone;
@@ -224,8 +230,11 @@ serve(async (req) => {
                 continue;
             }
 
-            // Resolve instância: professor → fallback central
-            let instanceId: string | null = teacher?.tenant_id === tenant_id
+            // Aviso em grupo sempre sai da conexão central, que é a participante
+            // configurada no grupo da escola. Mensagem individual mantém o fluxo
+            // professor → fallback central.
+            const isGroupNotification = item.notification_kind === 'SCHEDULE_CHANGE_GROUP';
+            let instanceId: string | null = !isGroupNotification && teacher?.tenant_id === tenant_id
                 ? teacher?.whatsapp_instance || null
                 : null;
             if (!instanceId) {
@@ -248,8 +257,8 @@ serve(async (req) => {
                 continue;
             }
 
-            const phone = normalizePhone(student_phone);
-            if (!phone) {
+            const destination = normalizeDestination(student_phone);
+            if (!destination) {
                 const marked = await markClaim(
                     supabaseClient,
                     id,
@@ -272,7 +281,7 @@ serve(async (req) => {
                     response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'apikey': key },
-                        body: JSON.stringify({ number: phone, text: message_body, delay: 1000 }),
+                        body: JSON.stringify({ number: destination, text: message_body, delay: 1000 }),
                         signal: AbortSignal.timeout(15_000),
                     });
                     if (response.status !== 401) break; // 401 = chave rotacionada → tenta a próxima

@@ -355,7 +355,8 @@ npx --yes deno check --no-lock \
   supabase/functions/send-rejection-email/index.ts \
   supabase/functions/register-user/index.ts \
   supabase/functions/reconcile-ledger/index.ts \
-  supabase/functions/whatsapp-notificacao-wise/index.ts
+  supabase/functions/whatsapp-notificacao-wise/index.ts \
+  supabase/functions/process-notification-queue/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -466,6 +467,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260809130000_handoff_da_ia_tem_validade.sql"
   "supabase/migrations/20260809140000_mensalidade_tem_uma_coluna_so.sql"
   "supabase/migrations/20260809150000_escopo_de_tenant_na_escrita_de_aluno.sql"
+  "supabase/migrations/20260811021018_teacher_change_student_schedule.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -475,6 +477,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_standalone_subscriptions.sql"
   "supabase/tests/wolfie_free_premium_tiers.sql"
   "supabase/tests/teacher_closing_write_scope.sql"
+  "supabase/tests/teacher_schedule_change_scope.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -516,6 +519,7 @@ HARDENED_FUNCTIONS=(
   send-whatsapp
   whatsapp-wise-wolf
   send-contract-confirmation
+  process-notification-queue
   process-outbox
   notify-claim
   whatsapp-lead-notification
@@ -853,6 +857,7 @@ HARDENED_FUNCTIONS=(
   send-whatsapp
   whatsapp-wise-wolf
   send-contract-confirmation
+  process-notification-queue
   process-outbox
   notify-claim
   whatsapp-lead-notification
@@ -1129,6 +1134,7 @@ database_tests=(
   "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
   "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
   "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
+  "$release_dir/tests/teacher_schedule_change_scope.sql"
 )
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]

@@ -9,6 +9,7 @@ import { User as UserType, UserRole, Teacher } from '../types';
 import StudentProfileForm from './StudentProfileForm';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import StudentProfileEditor from './StudentProfileEditor';
+import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
 
 interface StudentsListProps {
   tenantId?: string;
@@ -30,6 +31,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [pedagogicalStudent, setPedagogicalStudent] = useState<any | null>(null);
   const [wolfProfileStudent, setWolfProfileStudent] = useState<any | null>(null);
+  const [scheduleStudent, setScheduleStudent] = useState<any | null>(null);
 
   // Deletion Modal State
   const [studentToDelete, setStudentToDelete] = useState<any>(null);
@@ -809,7 +811,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+                  <div className={`grid grid-cols-2 gap-2 pt-2 ${user?.role === UserRole.TEACHER ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
                     {/* WhatsApp */}
                     <button
                       onClick={() => {
@@ -854,6 +856,17 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                       <Brain size={18} className="text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform" />
                       <span className="text-[9px] font-black text-violet-700 dark:text-violet-300 uppercase tracking-wide">Wolf AI</span>
                     </button>
+
+                    {user?.role === UserRole.TEACHER && (
+                      <button
+                        onClick={() => setScheduleStudent(student)}
+                        className="flex flex-col items-center justify-center gap-1 p-2 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 border border-cyan-100 dark:border-cyan-900/30 rounded-xl transition-colors group"
+                        title="Trocar dia ou horário combinado com o aluno"
+                      >
+                        <CalendarCheck size={18} className="text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform" />
+                        <span className="text-[9px] font-black text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">Agenda</span>
+                      </button>
+                    )}
                   </div>
 
                 </div>
@@ -950,6 +963,19 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           studentName={wolfProfileStudent.name}
           onClose={() => setWolfProfileStudent(null)}
           onSaved={fetchStudents}
+        />
+      )}
+
+      {/* O professor altera apenas bookings próprios; a função no banco valida
+          disponibilidade/conflitos, audita e enfileira o aviso ao grupo. */}
+      {scheduleStudent && user?.role === UserRole.TEACHER && tenantId && (
+        <TeacherStudentScheduleEditor
+          studentId={scheduleStudent.id}
+          studentName={scheduleStudent.name}
+          tenantId={tenantId}
+          teacherId={user.id}
+          onClose={() => setScheduleStudent(null)}
+          onChanged={fetchStudents}
         />
       )}
 
