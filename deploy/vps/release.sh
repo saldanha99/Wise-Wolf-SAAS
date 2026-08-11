@@ -471,6 +471,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260809150000_escopo_de_tenant_na_escrita_de_aluno.sql"
   "supabase/migrations/20260811021018_teacher_change_student_schedule.sql"
   "supabase/migrations/20260811031056_student_manual_pix_claims.sql"
+  "supabase/migrations/20260811112940_student_overdue_card_charge_claims.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -482,6 +483,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/teacher_closing_write_scope.sql"
   "supabase/tests/teacher_schedule_change_scope.sql"
   "supabase/tests/student_manual_pix_claims.sql"
+  "supabase/tests/student_overdue_card_charge_claims.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1142,6 +1144,7 @@ database_tests=(
   "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
   "$release_dir/tests/teacher_schedule_change_scope.sql"
   "$release_dir/tests/student_manual_pix_claims.sql"
+  "$release_dir/tests/student_overdue_card_charge_claims.sql"
 )
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]

@@ -287,6 +287,12 @@ export const asaasService = {
                 success: true;
                 billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
                 subscriptionStatus?: string;
+                overdue?: {
+                    count: number;
+                    total: number;
+                    oldestDueDate: string | null;
+                    confirmationKey: string;
+                };
             };
         } catch (error) {
             const safeError = await toSafeError(error, 'Não foi possível consultar a forma de pagamento.');
@@ -305,6 +311,7 @@ export const asaasService = {
             expiryYear: string;
             ccv: string;
         };
+        overdueConfirmationKey?: string;
     }) => {
         try {
             const { data: responseData, error } = await supabase.functions.invoke('update-student-billing-method', {
@@ -319,6 +326,8 @@ export const asaasService = {
                 billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
                 pendingPaymentsUpdated?: boolean;
                 cardChargedNow?: boolean;
+                chargedNowCount?: number;
+                chargedNowTotal?: number;
                 unchanged?: boolean;
             };
         } catch (error) {

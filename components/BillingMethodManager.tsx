@@ -8,6 +8,8 @@ interface BillingMethodManagerProps {
   studentId: string;
   selfService?: boolean;
   onChanged?: (billingType: BillingType) => void;
+  loadBillingMethod?: typeof asaasService.getStudentBillingMethod;
+  updateBillingMethod?: typeof asaasService.updateStudentBillingMethod;
 }
 
 const label: Record<BillingType, string> = {
@@ -16,16 +18,28 @@ const label: Record<BillingType, string> = {
   CREDIT_CARD: 'Cartão de crédito',
 };
 
+const money = (value: number) => new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+}).format(value || 0);
+
+const date = (value: string | null) => value
+  ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`))
+  : '';
+
 const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
   studentId,
   selfService = false,
   onChanged,
+  loadBillingMethod = asaasService.getStudentBillingMethod,
+  updateBillingMethod = asaasService.updateStudentBillingMethod,
 }) => {
   const [current, setCurrent] = useState<BillingType | null>(null);
   const [selected, setSelected] = useState<BillingType>('PIX');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [overdue, setOverdue] = useState({ count: 0, total: 0, oldestDueDate: null as string | null, confirmationKey: '' });
   const [card, setCard] = useState({
     holderName: '',
     number: '',
@@ -38,11 +52,12 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
     let active = true;
     setLoading(true);
     setFeedback(null);
-    void asaasService.getStudentBillingMethod(studentId)
+    void loadBillingMethod(studentId)
       .then((result) => {
         if (!active) return;
         setCurrent(result.billingType);
         setSelected(result.billingType);
+        setOverdue(result.overdue ?? { count: 0, total: 0, oldestDueDate: null, confirmationKey: '' });
       })
       .catch((error: Error) => {
         if (active) setFeedback({ tone: 'error', text: error.message });
@@ -51,7 +66,7 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [studentId]);
+  }, [studentId, loadBillingMethod]);
 
   const changeCard = (field: keyof typeof card, value: string) => {
     const sanitized = field === 'holderName'
@@ -62,18 +77,38 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
 
   const submit = async () => {
     if (selected === current && selected !== 'CREDIT_CARD') return;
+    let confirmedOverdue = overdue;
+    if (selected === 'CREDIT_CARD') {
+      setSaving(true);
+      setFeedback(null);
+      try {
+        const latest = await loadBillingMethod(studentId);
+        confirmedOverdue = latest.overdue ?? { count: 0, total: 0, oldestDueDate: null, confirmationKey: '' };
+        setOverdue(confirmedOverdue);
+      } catch (error) {
+        setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Não foi possível conferir as faturas.' });
+        setSaving(false);
+        return;
+      }
+    }
     const message = selected === 'CREDIT_CARD'
-      ? 'Confirma a troca para cartão? O cartão será validado, mas não será cobrado agora.'
+      ? confirmedOverdue.count > 0
+        ? `Confirma o cartão e a cobrança imediata de ${money(confirmedOverdue.total)} referente a ${confirmedOverdue.count === 1 ? `fatura vencida em ${date(confirmedOverdue.oldestDueDate)}` : `${confirmedOverdue.count} faturas vencidas`}? As próximas mensalidades continuarão na recorrência.`
+        : 'Confirma a troca para cartão? O aluno está em dia: nenhuma cobrança será feita agora. O cartão será usado automaticamente nas próximas mensalidades.'
       : `Confirma a troca para ${label[selected]}? As cobranças pendentes também serão atualizadas.`;
-    if (!window.confirm(message)) return;
+    if (!window.confirm(message)) {
+      setSaving(false);
+      return;
+    }
 
     setSaving(true);
     setFeedback(null);
     try {
-      const result = await asaasService.updateStudentBillingMethod({
+      const result = await updateBillingMethod({
         user_id: studentId,
         billingType: selected,
         ...(selected === 'CREDIT_CARD' ? { creditCard: card } : {}),
+        ...(selected === 'CREDIT_CARD' ? { overdueConfirmationKey: confirmedOverdue.confirmationKey } : {}),
       });
       setCurrent(result.billingType);
       setSelected(result.billingType);
@@ -81,9 +116,14 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
       setFeedback({
         tone: 'success',
         text: result.billingType === 'CREDIT_CARD'
-          ? 'Cartão validado e forma de pagamento atualizada. Nenhuma cobrança foi feita agora.'
+          ? result.cardChargedNow
+            ? `${result.chargedNowCount === 1 ? 'Fatura vencida cobrada' : `${result.chargedNowCount} faturas vencidas cobradas`} agora no total de ${money(result.chargedNowTotal ?? 0)}. Cartão salvo para as próximas mensalidades.`
+            : 'Cartão validado e salvo para as próximas mensalidades. O aluno estava em dia, então nenhuma cobrança foi feita agora.'
           : `Forma de pagamento atualizada para ${label[result.billingType]}.`,
       });
+      if (result.billingType === 'CREDIT_CARD' && result.cardChargedNow) {
+        setOverdue({ count: 0, total: 0, oldestDueDate: null, confirmationKey: 'NO_OVERDUE_PAYMENTS' });
+      }
       onChanged?.(result.billingType);
     } catch (error) {
       setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Não foi possível concluir a alteração.' });
@@ -137,7 +177,12 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
         <div className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
           <div className="flex items-start gap-2 text-xs font-medium text-blue-800 dark:text-blue-300">
             <ShieldCheck className="mt-0.5 shrink-0" size={16} />
-            <p>Os dados seguem direto para o Asaas, não ficam salvos no sistema e a troca não faz cobrança imediata.</p>
+            <p>
+              Os dados seguem direto para o Asaas e não ficam salvos no sistema.{' '}
+              {overdue.count > 0
+                ? <><b>{money(overdue.total)}</b> {overdue.count === 1 ? `da fatura vencida em ${date(overdue.oldestDueDate)}` : `de ${overdue.count} faturas vencidas`} será cobrado agora. As próximas mensalidades seguirão na recorrência.</>
+                : <>O aluno está em dia: nada será cobrado agora. O cartão será usado nas próximas mensalidades.</>}
+            </p>
           </div>
           <input
             value={card.holderName}
@@ -178,7 +223,9 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
         {saving ? 'Atualizando no Asaas...' : selected === 'CREDIT_CARD' && current === 'CREDIT_CARD' ? 'Trocar cartão' : `Mudar para ${label[selected]}`}
       </button>
       <p className="text-center text-[10px] font-medium text-brand-muted">
-        {selfService ? 'A alteração vale para as próximas cobranças e para cobranças pendentes.' : 'A alteração é registrada na auditoria financeira e aplicada às cobranças pendentes.'}
+        {selected === 'CREDIT_CARD'
+          ? 'Fatura vencida é cobrada agora; cobrança futura permanece agendada para o vencimento.'
+          : selfService ? 'A alteração vale para as próximas cobranças e para cobranças pendentes.' : 'A alteração é registrada na auditoria financeira e aplicada às cobranças pendentes.'}
       </p>
     </section>
   );

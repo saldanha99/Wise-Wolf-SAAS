@@ -10,6 +10,14 @@ export type CreditCardInput = {
   ccv: string;
 };
 
+export type SubscriptionPayment = {
+  id: string;
+  subscription: string;
+  status: string;
+  dueDate: string;
+  value: number;
+};
+
 export const text = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
@@ -65,4 +73,59 @@ export function safeProviderMessage(value: unknown): string {
   return raw
     ? raw.slice(0, 240)
     : "Operacao recusada pelo provedor de pagamento.";
+}
+
+export function parseSubscriptionPayments(
+  value: unknown,
+  subscriptionId: string,
+): SubscriptionPayment[] {
+  const source = Array.isArray(value) ? value : [];
+  return source.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const payment = entry as Record<string, unknown>;
+    const id = text(payment.id);
+    const subscription = text(payment.subscription);
+    const status = text(payment.status).toUpperCase();
+    const dueDate = text(payment.dueDate);
+    const amount = Number(payment.value);
+    if (
+      !id || subscription !== subscriptionId || status !== "OVERDUE" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(amount) ||
+      amount <= 0 || payment.deleted === true
+    ) return [];
+    return [{ id, subscription, status, dueDate, value: amount }];
+  }).sort((left, right) =>
+    left.dueDate.localeCompare(right.dueDate) || left.id.localeCompare(right.id)
+  );
+}
+
+export function overdueSummary(payments: SubscriptionPayment[]) {
+  return {
+    count: payments.length,
+    total: Math.round(
+      payments.reduce((sum, payment) => sum + payment.value, 0) * 100,
+    ) / 100,
+    oldestDueDate: payments[0]?.dueDate ?? null,
+    confirmationKey: overdueConfirmationKey(payments),
+  };
+}
+
+export function overdueConfirmationKey(payments: SubscriptionPayment[]) {
+  return payments.length === 0
+    ? "NO_OVERDUE_PAYMENTS"
+    : payments.map((payment) => payment.id).sort().join("|");
+}
+
+const SETTLED_OR_PROCESSING_STATUSES = new Set([
+  "CONFIRMED",
+  "RECEIVED",
+  "RECEIVED_IN_CASH",
+  "AWAITING_RISK_ANALYSIS",
+  "APPROVED_BY_RISK_ANALYSIS",
+  "AUTHORIZED",
+  "DUNNING_RECEIVED",
+]);
+
+export function paymentNoLongerNeedsCharge(status: unknown): boolean {
+  return SETTLED_OR_PROCESSING_STATUSES.has(text(status).toUpperCase());
 }
