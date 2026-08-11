@@ -3,6 +3,7 @@ import { X, Save, BookOpen, Briefcase, Phone, User, Check, Plus, Trash2, Calenda
 import { asaasService } from '../services/asaasService';
 import { supabase } from '../lib/supabase';
 import StudentScheduleManager from './StudentScheduleManager';
+import BillingMethodManager from './BillingMethodManager';
 
 interface StudentProfileFormProps {
     initialData?: any;
@@ -808,15 +809,21 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
                         )}
                         {formData.subscription_id ? (
-                            <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-2xl flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                                    <Check size={24} />
+                            <div className="space-y-4">
+                                <div className="p-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-2xl flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                        <Check size={24} />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-emerald-800 dark:text-emerald-200 text-lg">Assinatura Ativa</h4>
+                                        <p className="text-sm text-emerald-600 dark:text-emerald-400 font-bold">Cobrança automática configurada no Asaas.</p>
+                                        <p className="text-xs text-emerald-500/80 mt-1 uppercase tracking-widest">ID: {formData.subscription_id}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 className="font-black text-emerald-800 dark:text-emerald-200 text-lg">Assinatura Ativa</h4>
-                                    <p className="text-sm text-emerald-600 dark:text-emerald-400 font-bold">Cobrança automática configurada no Asaas.</p>
-                                    <p className="text-xs text-emerald-500/80 mt-1 uppercase tracking-widest">ID: {formData.subscription_id}</p>
-                                </div>
+                                <BillingMethodManager
+                                    studentId={initialData.id}
+                                    onChanged={(billingType) => setFormData(prev => ({ ...prev, billingType }))}
+                                />
                             </div>
                         ) : (
                             <div className="p-6 bg-brand-surface-2 rounded-2xl border border-dashed border-brand-border text-center">
@@ -871,7 +878,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 </select>
                             </div>
 
-                            <div className="space-y-2">
+                            {!formData.subscription_id && <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-brand-muted flex items-center gap-1.5">
                                     <CreditCard size={12} /> Forma de Pagamento
                                 </label>
@@ -883,7 +890,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <option value="PIX">PIX</option>
                                     <option value="BOLETO">BOLETO</option>
                                 </select>
-                            </div>
+                            </div>}
                         </div>
 
                         <div className="pt-6 border-t border-brand-border space-y-4">

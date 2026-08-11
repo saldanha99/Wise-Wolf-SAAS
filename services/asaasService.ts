@@ -260,6 +260,60 @@ export const asaasService = {
         }
     },
 
+    getStudentBillingMethod: async (userId: string) => {
+        try {
+            const { data, error } = await supabase.functions.invoke('update-student-billing-method', {
+                body: { action: 'GET', user_id: userId }
+            });
+            if (error) throw await toSafeError(error, 'Não foi possível consultar a forma de pagamento.');
+            if (!data || data.success === false || data.error) {
+                throw await toSafeError(data, 'Não foi possível consultar a forma de pagamento.');
+            }
+            return data as {
+                success: true;
+                billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+                subscriptionStatus?: string;
+            };
+        } catch (error) {
+            const safeError = await toSafeError(error, 'Não foi possível consultar a forma de pagamento.');
+            logSafeFailure('consulta da forma de pagamento', safeError);
+            throw safeError;
+        }
+    },
+
+    updateStudentBillingMethod: async (data: {
+        user_id: string;
+        billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+        creditCard?: {
+            holderName: string;
+            number: string;
+            expiryMonth: string;
+            expiryYear: string;
+            ccv: string;
+        };
+    }) => {
+        try {
+            const { data: responseData, error } = await supabase.functions.invoke('update-student-billing-method', {
+                body: { ...data, action: 'UPDATE' }
+            });
+            if (error) throw await toSafeError(error, 'Não foi possível atualizar a forma de pagamento.');
+            if (!responseData || responseData.success === false || responseData.error) {
+                throw await toSafeError(responseData, 'Não foi possível atualizar a forma de pagamento.');
+            }
+            return responseData as {
+                success: true;
+                billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+                pendingPaymentsUpdated?: boolean;
+                cardChargedNow?: boolean;
+                unchanged?: boolean;
+            };
+        } catch (error) {
+            const safeError = await toSafeError(error, 'Não foi possível atualizar a forma de pagamento.');
+            logSafeFailure('atualização da forma de pagamento', safeError);
+            throw safeError;
+        }
+    },
+
     createEnrollmentPix: async () => {
         try {
             const { data, error } = await supabase.functions.invoke('create-enrollment-pix', {

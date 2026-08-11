@@ -281,6 +281,7 @@ npm test
 npm run wolfie:assets:verify
 npx --yes deno test --no-lock \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/update-student-billing-method/core.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
@@ -315,6 +316,7 @@ npx --yes deno check --no-lock \
   supabase/functions/create-saas-checkout/index.ts \
   supabase/functions/sync-student-asaas/index.ts \
   supabase/functions/create-asaas-subscription/index.ts \
+  supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/create-enrollment-pix/index.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
@@ -504,6 +506,7 @@ HARDENED_FUNCTIONS=(
   lesson-planner
   sync-student-asaas
   create-asaas-subscription
+  update-student-billing-method
   create-enrollment-pix
   create-saas-checkout
   create-student-account
@@ -840,6 +843,7 @@ HARDENED_FUNCTIONS=(
   lesson-planner
   sync-student-asaas
   create-asaas-subscription
+  update-student-billing-method
   create-enrollment-pix
   create-saas-checkout
   create-student-account

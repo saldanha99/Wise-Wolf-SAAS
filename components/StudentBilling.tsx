@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase';
 import { User as UserType } from '../types';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { buildSchoolSupportContact, type SupportContact } from '../lib/supportContact';
+import BillingMethodManager from './BillingMethodManager';
 
 interface StudentBillingProps {
   user: UserType;
@@ -381,6 +382,8 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         </div>
 
       </div>
+
+      <BillingMethodManager studentId={user.id} selfService />
 
       {/* History Table */}
       <div className="bg-brand-surface rounded-[3rem] border border-brand-border shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
