@@ -126,7 +126,7 @@ const BillingMethodManager: React.FC<BillingMethodManagerProps> = ({
             key={value}
             type="button"
             onClick={() => { setSelected(value); setFeedback(null); }}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-xs font-black transition-colors ${selected === value ? 'border-tenant-primary bg-tenant-primary/10 text-tenant-primary' : 'border-brand-border bg-brand-surface text-brand-muted hover:border-tenant-primary/50'}`}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-left text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tenant-primary ${selected === value ? 'border-tenant-primary bg-tenant-primary/10 text-tenant-primary dark:border-indigo-300 dark:bg-indigo-500/25 dark:text-white' : 'border-brand-border bg-brand-surface text-brand-muted hover:border-tenant-primary/50 dark:text-slate-200 dark:hover:border-indigo-300 dark:hover:text-white'}`}
           >
             <Icon size={17} /> {text}
           </button>
