@@ -124,7 +124,11 @@ export function applyCommercialReplyPolicy(opts: {
 
   facts.push(
     opts.trialRequested
-      ? "Vou verificar o professor para esse horário e já te confirmo, tá?"
+      // O prazo é a parte que faltava. Metade das experimentais expira sem
+      // professor (medido em 13/08/2026), e o lead ficava esperando um retorno
+      // que ninguém tinha prometido em prazo nenhum. O `funnel-sweeper` agora
+      // cumpre essa promessa com as alternativas da grade.
+      ? "Vou verificar o professor para esse horário e te confirmo hoje mesmo — se ninguém puder nesse horário, eu te aviso e ofereço outras opções, combinado?"
       : "Vamos primeiro marcar sua aula experimental gratuita? Qual dia e horário fica melhor para você?",
   );
 

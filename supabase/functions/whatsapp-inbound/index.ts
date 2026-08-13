@@ -475,8 +475,9 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     return;
   }
 
+  // Log sempre, entrega como campo — mesma regra do caminho da atendente.
   const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
-  if (ok) await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta);
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, { entregue: ok });
 }
 
 function phonesMatch(a: string, b: string): boolean {
@@ -869,7 +870,8 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
     // Áudio já é transcrito antes de chegar aqui; isto cobre imagem, vídeo,
     // documento, figurinha — e o áudio que o Whisper não conseguiu entender.
     const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me mandar por escrito ou num áudio curtinho?";
-    if (await sendWhats(instance, phone, reply)) await logMsg(sb, tenantId, phone, "sdr", "out", reply, { lead_id: lead.id, kind: "ask_text" });
+    const entregueMidia = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, { lead_id: lead.id, kind: "ask_text", entregue: entregueMidia });
     return;
   }
 
@@ -890,7 +892,7 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
     ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${formatSlot(trialSlot)}.\n- Se ele pedir OUTRO dia/horário, isso é REMARCAÇÃO da mesma aula, com a MESMA professora. Preencha schedule_trial com o horário novo e diga que vai ajustar — NUNCA fale em procurar/verificar professor, e NUNCA sugira marcar outra aula.\n- Se ele apenas confirmar o horário que já está marcado, confirme com a Teacher ${activeTrial.teacherName} e não peça nada de novo.\n- Aqui você PODE citar a professora pelo nome e PODE dizer que a aula está marcada: ela está.`
     : "";
 
-  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e confirma em seguida (ex.: \"Vou verificar o professor desse horário e já te confirmo, tá? 😊\").\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te confirmo hoje mesmo — se ninguém puder, eu te aviso e ofereço outros horários 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
@@ -1033,7 +1035,8 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
   const adm = await adminProfile(sb, tenantId);
   if (isMedia) {
     const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me responder por escrito ou num áudio curtinho?";
-    if (await sendWhats(instance, phone, reply)) await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id });
+    const entregueMidiaRh = await sendWhats(instance, phone, reply);
+    await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id, entregue: entregueMidiaRh });
     return;
   }
 
@@ -1087,7 +1090,8 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
 
   await sb.from("job_applications").update(upd).eq("id", app.id);
   const reply = String(ai.reply).slice(0, 1500);
-  if (await sendWhats(instance, phone, reply)) await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id });
+  const entregueRh = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id, entregue: entregueRh });
 }
 
 // ---------------- HTTP ----------------
@@ -1250,11 +1254,10 @@ serve(async (req) => {
           if (!rateLimited && (recentSupport ?? 0) === 0) {
             const first = greetName(knownProfile.full_name);
             const reply = `Oi${first ? ", " + first : ""}! Recebi sua mensagem 😊 Já encaminhei para a equipe da Wise Wolf e em breve alguém te responde por aqui.`;
-            if (await sendWhats(instance, phone, reply)) {
-              await logMsg(sb, tenantId, phone, "support", "out", reply, {
-                student_id: knownProfile.id, kind: "existing_student_handoff",
-              });
-            }
+            const entregueAluno = await sendWhats(instance, phone, reply);
+            await logMsg(sb, tenantId, phone, "support", "out", reply, {
+              student_id: knownProfile.id, kind: "existing_student_handoff", entregue: entregueAluno,
+            });
           }
 
           // O aviso ao humano fica FORA do dedupe da resposta automática.

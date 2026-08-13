@@ -771,6 +771,8 @@ decisão pura e testada; a I/O fica no `index.ts`):
   ⚠️ Tentativa falha passa a contar no teto de 12 respostas/hora — cada uma
   custou uma chamada de modelo, que é o que o teto protege. E `last_outbound_at`
   (que alimenta o `sdr-followups`) só avança quando a mensagem chega.
+  A convenção vale para **todos os agentes** (atendente, RH, assistente de
+  gestão, atendimento de aluno) e para o retorno do `funnel-sweeper`.
 - **Testes:** `trial-reschedule.test.ts` (11 casos, incluindo o caso do Rafael
   como regressão), registrado no `release.sh`.
   ⚠️ O arquivo tem `/// <reference lib="deno.ns" />` porque o `tsconfig.json` da
@@ -903,6 +905,25 @@ Já mordeu duas vezes no mesmo dia:
 **Arquivo novo dentro de uma function que JÁ está na lista** vai junto sozinho
 (o `rsync -a` copia a pasta inteira). **Function nova, não** — precisa entrar em
 `HARDENED_FUNCTIONS`.
+
+⚠️ **Arquivo novo em `_shared` precisa de CINCO registros, não de um.**
+Descoberto em 13/08/2026 ao criar `_shared/lead-contact.ts`: o `_shared` **não**
+segue o rsync de pasta das functions — cada arquivo tem um ritual próprio,
+espalhado pelo script. Faltando o quinto, o deploy publica o pacote, o worker
+sobe com `Module not found` e o smoke test derruba a release inteira (a produção
+volta sozinha para a anterior — foi o que aconteceu).
+
+| Ponto | Onde | O que faz |
+|---|---|---|
+| `SHARED_*_RELATIVE=` | junto das outras declarações | nomeia o arquivo |
+| `[[ -s "$SHARED_*" ]] \|\| die` | bloco de guardas | recusa deploy sem o arquivo |
+| `rsync -a -- "$SHARED_*"` | envio para `remote_release` | põe no pacote da release |
+| `[[ -s "$release_dir/functions/_shared/<arq>" ]]` | asserções do pacote | confere que chegou |
+| `cp -a -- "$release_dir/..." "$functions_dir/_shared/<arq>"` + flag `*_shared_swapped` e o bloco de rollback | promoção | **é o que coloca o arquivo no ar** |
+
+Espelhe um arquivo existente (`wolfie-product-access.ts` é o mais recente) com
+`grep -n "wolfie-product-access\|wolfie_product_access" deploy/vps/release.sh`
+antes de criar qualquer coisa em `_shared`.
 
 ⚠️ **Function ANTIGA também pode estar fora das listas.** Não é problema só de
 arquivo novo: em 09/08/2026, `search-slots` e `sync-payments` — as duas em
@@ -1269,6 +1290,21 @@ alternativas reais da grade (`pickAlternatives`, o mesmo cálculo que a atendent
   para o mesmo telefone. Dizer "não achei professor" a quem tem aula marcada derruba a aula.
 - Trava comercial (virou aluno), telefone de candidato e teto diário de 15 valem aqui como em
   todo contato de venda — o número da escola já foi restringido uma vez.
+- **A atendente agora DÁ PRAZO** ("te confirmo hoje mesmo; se ninguém puder, eu te aviso e
+  ofereço outros horários"). A promessa só é honesta porque esta varredura existe — mudar uma
+  sem a outra volta a criar lead esperando retorno que não vem.
+
+### ⚠️ Aluno em rajada NÃO é aluno sem resposta
+
+Uma auditoria de 13/08/2026 apontou "34 de 47 mensagens de aluno sem resposta (72%)" e quase
+virou mudança na janela de dedupe do atendimento. **A medição estava mal recortada.** Abrindo
+o intervalo entre mensagens do mesmo aluno em 60 dias: **32 são rajada (<15 min)** — a pessoa
+mandando 3-4 mensagens seguidas na mesma conversa —, 9 são a primeira da conversa, e só
+**3 chegaram mais de 4h depois**. Responder cada mensagem de uma rajada com o mesmo recado
+automático é pior que não responder.
+
+A janela de 4h fica como está. Antes de mexer nela, refaça esse recorte: o número de
+"mensagens sem resposta" sozinho não distingue silêncio de bom senso.
 
 ### `outbox_messages` está APOSENTADA — não religue o cron sem ler isto
 
