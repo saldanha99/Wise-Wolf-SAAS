@@ -1300,9 +1300,16 @@ DDD antigo costuma estar registrado no WhatsApp **sem o 9º dígito**. Mandar pa
 como está no cadastro não bate com o JID real e a mensagem **nunca chega — com a Evolution
 respondendo 200/PENDING**, então o envio parece ter dado certo.
 
-O `funnel-sweeper` já resolvia o JID; `sdr-followups` e `whatsapp-inbound` não. Flagrado em
-13/08/2026, na primeira rodada da prospecção reativada: o follow-up da lead Cléria
-(`553399975104`, 12 dígitos) falhou, e **9 leads da base** têm telefone nesse formato.
+O `funnel-sweeper` já resolvia o JID; `sdr-followups` e `whatsapp-inbound` não — três cópias,
+uma com comportamento diferente. Unificadas em 13/08/2026.
+
+⚠️ **A suspeita que originou isto foi MEDIDA E NÃO SE CONFIRMOU.** O gatilho foi o follow-up
+da lead Cléria (`553399975104`, 12 dígitos) falhar na primeira rodada da prospecção
+reativada. Consultando `chat/whatsappNumbers`, os **9 leads de 12 dígitos resolvem para o
+MESMO número** — existem assim mesmo no WhatsApp. Logo, o 9º dígito **não explica** aquela
+falha, que segue sem causa conhecida. O valor da unificação é consistência e cobrir o caso
+quando ele aparecer; **não conte isto como correção de entrega.** Antes de culpar o 9º
+dígito, consulte o endpoint e confirme.
 
 - Envio e resolução vivem em **`_shared/evolution-send.ts`**, usado pelos três.
 - ⚠️ **Falha ao resolver NÃO cancela o envio** — cai no número original. A resolução melhora o
@@ -1310,6 +1317,10 @@ O `funnel-sweeper` já resolvia o JID; `sdr-followups` e `whatsapp-inbound` não
   enviada.
 - ⚠️ **Grupo (`@g.us`) e JID pronto pulam a consulta**: o endpoint responde para NÚMERO, e uma
   chamada extra por mensagem de grupo só adiciona latência a cada disparo.
+- **Recusa da Evolution agora diz o motivo** (`console.warn "[evolution] envio recusado"` com
+  status e corpo). Sem isso, envio recusado virava só um `false` e não dava para distinguir
+  limite de sessão caída — exatamente o beco em que a falha da Cléria parou.
+  Diagnóstico: `ssh wisewolf-vps 'docker logs supabase-edge-functions --since 1h | grep evolution'`.
 - Testes com `fetch` dublado em `_shared/evolution-send.test.ts` (8 casos).
 
 ### ⚠️ Aluno em rajada NÃO é aluno sem resposta
