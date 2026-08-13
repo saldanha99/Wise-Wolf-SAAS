@@ -17,6 +17,15 @@ import {
   resolveAtendenteTraining,
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
+import {
+  type ActiveTrial,
+  brtSlotFromIso,
+  brtStartIso,
+  type BusyBlock,
+  decideTrialAction,
+  isTrialAppointmentActive,
+  type Slot,
+} from "./trial-reschedule.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
 // v13 — HANDOFF HUMANO: quando o humano responde manualmente para um lead OU candidato,

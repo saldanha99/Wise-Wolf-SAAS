@@ -547,6 +547,39 @@ HARDENED_FUNCTIONS=(
   sync-plan-change-billing
   search-slots
   sync-payments
+  accept-opportunity
+  book-interview
+  broadcast-opportunity
+  confirm-attendance
+  confirm-vendor-trial
+  create-public-resume-upload
+  daily-automations
+  delete-student-account
+  generate-student-insights
+  kiwify-webhook
+  model-probe
+  monthly-teacher-closing
+  oral-test-scan
+  prepare-daily-reminders
+  reconcile-ledger
+  register-teacher
+  register-user
+  register-vendor
+  resolve-offer
+  school-admin
+  send-attendance-confirmations
+  send-class-notification
+  send-rejection-email
+  send-welcome-contract
+  sign-offer
+  teacher-daily-agenda
+  transfer-teacher-pay
+  weekly-director-digest
+  whatsapp-evolution-proxy
+  whatsapp-hr-welcome
+  whatsapp-notificacao-matricula
+  whatsapp-notificacao-wise
+  wolfie-healthcheck
 )
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   [[ -s "$migration_relative" ]] ||
@@ -886,6 +919,39 @@ HARDENED_FUNCTIONS=(
   sync-plan-change-billing
   search-slots
   sync-payments
+  accept-opportunity
+  book-interview
+  broadcast-opportunity
+  confirm-attendance
+  confirm-vendor-trial
+  create-public-resume-upload
+  daily-automations
+  delete-student-account
+  generate-student-insights
+  kiwify-webhook
+  model-probe
+  monthly-teacher-closing
+  oral-test-scan
+  prepare-daily-reminders
+  reconcile-ledger
+  register-teacher
+  register-user
+  register-vendor
+  resolve-offer
+  school-admin
+  send-attendance-confirmations
+  send-class-notification
+  send-rejection-email
+  send-welcome-contract
+  sign-offer
+  teacher-daily-agenda
+  transfer-teacher-pay
+  weekly-director-digest
+  whatsapp-evolution-proxy
+  whatsapp-hr-welcome
+  whatsapp-notificacao-matricula
+  whatsapp-notificacao-wise
+  wolfie-healthcheck
 )
 
 restore_previous_release() {

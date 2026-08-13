@@ -54,7 +54,7 @@ serve(async (req) => {
 
     const { data: pending, error } = await supabase
       .from("attendance_confirmations")
-      .select("id, tenant_id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts")
+      .select("id, tenant_id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts, source_id, source_type")
       .is("sent_at", null)
       .eq("status", "PENDING")
       .lte("class_date", todayISO)
@@ -69,12 +69,50 @@ serve(async (req) => {
       });
     }
 
+    // REVALIDAÇÃO ANTI-FANTASMA: uma confirmação é criada válida (aula ocorreu),
+    // mas o agendamento pode ser DELETADO/cancelado/reposto ANTES do envio. Se enviarmos
+    // assim mesmo, o aluno recebe "você teve aula" num dia em que não tem mais aula.
+    // upcoming_classes já aplica TODAS as regras (dia da semana, start_date, status
+    // SCHEDULED, appointments não cancelados, reposições). Só enviamos confirmações cuja
+    // (source_id, source_type, class_date) ainda exista lá; as órfãs viram CANCELLED.
+    const validKeys = new Set<string>();
+    let validationOk = false;
+    try {
+      const { data: valid, error: vErr } = await supabase
+        .from("upcoming_classes")
+        .select("source_id, source_type, class_date")
+        .gte("class_date", minDateISO)
+        .lte("class_date", todayISO);
+      if (vErr) throw vErr;
+      for (const v of valid || []) {
+        validKeys.add(`${v.source_id}|${v.source_type}|${v.class_date}`);
+      }
+      validationOk = true;
+    } catch (vErr) {
+      // Fail-safe: se não conseguir validar, NÃO suprime tudo (quebraria o anti-fraude).
+      // Mantém o comportamento antigo (envia) e registra o aviso.
+      console.error("Revalidação upcoming_classes falhou, enviando sem filtrar:", vErr);
+    }
+
     let sent = 0;
+    let canceladas = 0;
     const failures: string[] = [];
     const instanceCache: Record<string, string | null> = {};
 
     for (const c of pending) {
       try {
+        // Pula (e cancela) confirmações cuja aula não existe mais na agenda atual.
+        if (validationOk && c.source_id) {
+          const key = `${c.source_id}|${c.source_type}|${c.class_date}`;
+          if (!validKeys.has(key)) {
+            await supabase
+              .from("attendance_confirmations")
+              .update({ status: "CANCELLED" })
+              .eq("id", c.id);
+            canceladas++;
+            continue;
+          }
+        }
         let phone = (c.student_phone || "").replace(/\D/g, "");
         if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
         if (phone.length < 12) {
@@ -135,7 +173,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ sent, failures: failures.length, failure_reasons: failures.slice(0, 10) }),
+      JSON.stringify({ sent, canceladas, failures: failures.length, failure_reasons: failures.slice(0, 10) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e: any) {
