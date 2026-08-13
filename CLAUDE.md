@@ -241,7 +241,7 @@ onClick texto → sendMessage() → unlockAudio()
 6. Admin resolve em **"Verificar Presença"** (`components/AttendanceDisputes.tsx`) → RPC `resolve_attendance_conflict(id, pagar bool)`.
 
 **Regras críticas / pegadinhas:**
-- ❌ **Edge functions do Supabase NÃO renderizam HTML** — o gateway força `content-type: text/plain` + CSP `sandbox`. Páginas para o usuário final ficam no SPA (rota pública em `App.tsx`), não em edge function.
+- ⚠️ **Página para o usuário final vai no SPA** (rota pública em `App.tsx`), não em edge function. Mas o motivo registrado aqui — "o gateway força `content-type: text/plain` + CSP `sandbox`" — **não se confirma hoje** (medido em 09/08/2026): `GET https://api.wisewolflanguage.com.br/functions/v1/accept-coverage?token=…` devolve `content-type: text/html; charset=utf-8`, sem CSP, e o HTML renderiza — é assim que a confirmação de cobertura funciona. Ou a configuração do gateway mudou, ou o diagnóstico original era outro. A recomendação continua de pé por razões próprias (rota versionada com o app, sem duplicar layout e sessão); **o que não vale é repetir a causa sem medir de novo**.
 - ✅ **Evolution API (`api.2b.app.br`) usa formato v2**: `{ number, text, delay, linkPreview }`. O formato v1 (`{ textMessage: { text } }`) é rejeitado com 400.
 - ✅ **apikey global** `d037...` funciona para qualquer instância (não use tokens específicos de instância).
 - Estados de `attendance_confirmations.status`: `PENDING` → `AWAITING_TEACHER` (aluno respondeu, prof não lançou) / `CONFIRMED` / `CONFLICT` → `RESOLVED_PAID` / `RESOLVED_UNPAID`.
@@ -473,9 +473,99 @@ tenant.
   pessoa real**, quantas linhas cada uma enxerga antes e depois, e compare com o que ela
   de fato possui. Foi assim que a quebra da cobertura apareceu antes de ir para o ar.
 
-⚠️ **Ainda aberto:** o mesmo padrão `FOR ALL` com `USING` só de tenant pode existir em
-outras tabelas. Ao auditar, procure `polcmd = '*'` com `polpermissive = true` e `USING` que
-só checa tenant.
+⚠️ **O mesmo padrão apareceu em `profiles`** (achado e corrigido em 09/08/2026, migration
+`20260809150000_escopo_de_tenant_na_escrita_de_aluno`). `Teachers update unlocked_tests`
+tinha `USING (role = 'STUDENT')` — **sem filtro de tenant nenhum**. Medido por pessoa real,
+contando linhas graváveis: Prof. Lobo (`wise-wolf-school`) e Ricardo Silva
+(`royal-british`) tinham escopo legítimo de **2** linhas e a policy dava **57** — os 55
+alunos da Wise Wolf ficavam graváveis por professor e diretor de outra escola.
+
+- **O estrago não acontecia**, porque a policy de LEITURA (`profiles_scoped_read_p0`) é
+  escopada e os triggers de campo (`enforce_profile_authorization_fields`) barram o resto.
+  Defesa apoiada na peça errada: mexer na leitura um dia abriria isto sozinho.
+- ⚠️ **Apagar a policy teria sido o conserto errado.** Ela era a **única** que dava ao
+  SUPER_ADMIN escrita em aluno fora do tenant `master` — as outras cinco exigem
+  `tenant_id = _my_tenant_id()`. Remover sem repor tiraria do suporte da plataforma a
+  capacidade de corrigir aluno de escola cliente, **sem erro visível, só um "não salvou"**.
+  Antes de derrubar policy frouxa, meça o que ela é a única a conceder.
+- **O nome mentia:** falava de `unlocked_tests`, mas policy não restringe COLUNA — liberava
+  a linha inteira.
+- Depois: Wise Wolf segue em 81 (ninguém que opera perdeu nada), os de fora caíram para 2,
+  SUPER_ADMIN manteve 56.
+
+⚠️ **Ainda aberto:** o mesmo padrão pode existir em outras tabelas. Ao auditar, procure
+`polcmd = '*'` com `polpermissive = true`, e também `polcmd = 'w'` cujo `USING` **não**
+menciona tenant.
+
+---
+
+## ⚠️ Campo que não é coluna DERRUBA O UPDATE INTEIRO ✅
+
+> **Leia antes de mexer em qualquer tela que salva perfil.** É a classe de bug mais
+> silenciosa deste projeto: já quebrou **cinco** caminhos de salvamento ao mesmo tempo, e
+> ninguém ligou uma coisa à outra por meses.
+
+O PostgREST **não ignora** campo desconhecido no `update`/`insert` — ele **derruba o comando
+inteiro**. E a mensagem cita um campo que o usuário nem editou:
+
+```
+ERROR: column "correction_preference" of relation "profiles" does not exist
+```
+
+O diretor tentava trocar o **telefone do aluno** pelo Mapa de Aulas, o UPDATE inteiro morria,
+e o erro falava de "preferência de correção". Encontrado em 09/08/2026:
+
+| Campo fantasma | Telas | O que travava |
+|---|---|---|
+| `correction_preference` | `TeacherScheduleExplorer`, `TeacherAvailabilityEditor` | **telefone do aluno** |
+| `updated_at` | `TeacherPixSettings`, `TeacherPayoutDetails`, `seeds/create-admins.ts` | **chave PIX do professor** — por onde ele recebe |
+
+- ✅ **`profiles` NÃO tem `updated_at`.** A trilha de alteração é `profile_audit_log`
+  (trigger `log_profile_changes`). Não invente a coluna: use a auditoria que existe.
+- ✅ **Guarda contra reincidência:** `lib/profileColumns.ts` (as 140 colunas reais) +
+  `lib/profileColumns.test.ts`, que varre o **código-fonte** atrás de escrita em `profiles`
+  com campo que não é coluna. Roda offline, no CI, antes de chegar na tela.
+- ⚠️ **Ao adicionar coluna em `profiles`, atualize `lib/profileColumns.ts`**, senão o teste
+  acusa falso positivo na tela que já está certa.
+- ⚠️ O teste tem uma **âncora** que falha se a própria varredura parar de enxergar as
+  escritas — sem ela, um regex quebrado faria o teste "passar" sempre.
+- ⚠️ Ao escrever varredura assim, `payload.campo\s*=` casa com `payload.campo ===`. Use
+  `=(?!=)`, senão comparação vira "atribuição" e gera falso positivo.
+
+**Como auditar rápido:** compare as chaves gravadas com
+`select column_name from information_schema.columns where table_name='profiles'`. Cuidado:
+o payload costuma ser declarado em variável (`const updates = {…}`) longe do
+`.from('profiles').update(updates)`, então grep ingênuo no `.update({` não acha.
+
+---
+
+## Mensalidade do aluno — uma coluna só (`monthly_fee`) ✅
+
+> **`profiles.monthly_tuition` é DEPRECADA.** É espelho, não fonte.
+
+Conviviam duas colunas para o mesmo número: `monthly_fee` (21 funções do banco, 23 arquivos
+do frontend) e `monthly_tuition` (2 funções, 3 telas) — e telas diferentes gravavam colunas
+diferentes. Medido em 09/08/2026, três alunos divergentes:
+
+| Aluno | `monthly_fee` | `monthly_tuition` | Cobrança real |
+|---|---|---|---|
+| Yasmin | 188,00 | 189,00 | **188,00** |
+| Beatriz | **0,00** | 169,00 | nenhuma |
+| EVI | **0,00** | 187,00 | nenhuma |
+
+A cobrança sempre seguiu `monthly_fee`. O perigo estava do outro lado: **`sync-payments`
+PREFERIA `monthly_tuition`** quando > 0 — estava a um sync de faturar R$ 169 e R$ 187 de
+dois alunos cuja mensalidade é zero. Não disparou por sorte, não por desenho.
+
+- **Fonte única:** `monthly_fee`. Migration `20260809140000_mensalidade_tem_uma_coluna_so`
+  reconcilia e instala `trg_mirror_monthly_tuition`, que mantém o espelho para leitor legado.
+- ⚠️ **O espelho age no INSERT e SÓ quando `monthly_fee` MUDA no UPDATE.** Se agisse em todo
+  UPDATE, editar o telefone de um aluno divergente mexeria num campo financeiro e
+  `enforce_profile_authorization_fields` barraria a edição — **o bug da seção anterior,
+  reintroduzido pela porta dos fundos**. Verificado: telefone → 261/261 intacto;
+  mensalidade → 333/333 espelhado.
+- ⚠️ Em `BEFORE INSERT` o registro `OLD` não existe — daí o `TG_OP` na função.
+- Derrubar a coluna é passo separado, depois que ninguém mais a ler.
 
 ---
 
@@ -619,6 +709,78 @@ Mesma pedra de `uq_bookings_no_dup_active` e `run_recurring_expenses`.
 
 ---
 
+## Transferir aula para outro professor — `search-slots` e a disponibilidade ✅
+
+> **A disponibilidade do professor é SLOT DISCRETO de 30 min, não intervalo.**
+
+`teacher_availability.end_time` é **NULL nas 322 linhas** do banco. Quem tratar a tabela como
+intervalo (`start_time <= t AND end_time > t`) recebe lista vazia **sempre** — em SQL,
+`NULL > '15:30'` não é falso, é NULL, e a linha nunca entra no resultado.
+
+Foi o que aconteceu com `search-slots`, que alimenta o botão **"Substitutos"** do
+`AbsenceCoverageManager`: devolvia `{"slots":[]}` em 100% das chamadas, então a coordenação
+nunca conseguia escolher quem cobre e **transferir aula era inalcançável desde sempre**
+(`teacher_absences` estava com **0 linhas** em produção). Medido: a query antiga devolvia 0
+professores para Terça 15:30; o slot discreto devolve 3.
+
+- ⚠️ **`search-slots` rodava com service role e SEM autenticação nenhuma** — devolvia nome e
+  **telefone** de professor de qualquer escola para quem tivesse a chave anon. Hoje exige
+  JWT e escopa pelo tenant de quem chamou.
+- **Conflito é checado em três frentes:** aula fixa (booking recorrente), aula avulsa daquela
+  data e reposição já marcada naquela data. Cobertura só é honesta se o substituto estiver
+  mesmo livre.
+- O resto do código já tratava a tabela como slot discreto (`dispatchTrial` usa
+  `.eq("start_time", …)`); só o `search-slots` divergia.
+- ⚠️ **`accept-coverage` devolve HTML e funciona** — testado, o gateway entrega
+  `text/html`. É exceção à regra "edge function não renderiza HTML" (que vale para o que o
+  Kong serve nas rotas do SPA). Não "conserte" movendo para o SPA sem medir.
+
+---
+
+## A grade do Explorador de Agenda TEM SEMANA ✅
+
+> **Reposição e experimental são eventos de UM DIA. A grade é semanal.** Misturar os dois é
+> o que fazia a reposição parecer "chumbada".
+
+Antes as colunas eram só "Segunda…Sábado", sem semana, e a reposição era casada pelo **dia da
+semana** da data dela. Uma reposição marcada para quinta 20/08 pintava a célula "Quinta" em
+**toda semana** até a data passar — indistinguível de aula fixa. Pior: a célula desenha a
+reposição **antes** do booking, então ela **escondia o aluno fixo** daquele horário.
+
+- Hoje cada coluna tem **data concreta** (`weekStartOf`, `dateForDayIndex`,
+  `dayLabelWithDate` em `lib/scheduleGrid.ts`) e o rótulo mostra "Segunda 11/08" — é o que
+  deixa explícito, na tela, que a grade é de uma semana e não de um molde perpétuo.
+- ⚠️ O paliativo anterior (mostrar só `date >= hoje`) **escondia o sintoma no passado e
+  deixava o futuro intacto**. Não confunda com correção.
+- ⚠️ **Domingo pertence à semana que ACABA nele**, senão quem abre a tela no domingo vê a
+  semana seguinte e acha que perdeu as aulas da semana corrente.
+- ⚠️ **`appointments` NÃO tem colunas `date`/`time`** — tem `start_time` (timestamptz). O
+  código da experimental lia `t.date`/`t.time`, que são `undefined`: `new Date(undefined)`
+  vira Invalid Date, `dIdx` vira NaN e o bloco nunca renderiza. **A experimental era código
+  morto na grade** — por isso ela "parecia" temporária. Regra do projeto continua valendo:
+  antes de espelhar um comportamento, confirme que ele existe.
+
+---
+
+## Reposição parada é passivo — e não aparecia em contador nenhum ✅
+
+Medido em 09/08/2026: **109 reposições abertas, 102 SEM DATA** — a mais antiga de
+04/03/2026, cinco meses parada; um único professor acumulava **71**.
+
+Reposição sem data é dívida com o aluno: a aula foi paga (falta dele) ou é obrigação do
+professor (falta dele), e ainda não aconteceu. Sem data ela **não aparece** em "Lançar Aula"
+nem em "Pendentes" — só na aba Reposições, que ninguém abre sem motivo. Por isso o passivo
+cresceu em silêncio: `director_pending_counts` media acolhimento, presença, materiais,
+experimentais, fechamentos e reconciliação, e **ignorava reposição por completo**.
+
+- **Duas contagens, porque pedem ações opostas:** `reposicoes` (falta agendar) e
+  `reposicoes_vencidas` (a data passou e ninguém lançou).
+- ⚠️ A aba `reschedules` só existia no menu do professor. Sem entrar em `ADMIN_NAV`, o link
+  da Central de Pendências cairia na allowlist do `renderContent` e voltaria ao dashboard —
+  a mesma pegadinha já documentada em `allowedAdminTabs`.
+
+---
+
 ## Planner de Aula com IA (LessonPlannerAI) ✅
 
 > Antes era um **template estático** (não chamava IA). Agora usa IA real via edge `lesson-planner`.
@@ -671,6 +833,40 @@ Já mordeu duas vezes no mesmo dia:
 **Arquivo novo dentro de uma function que JÁ está na lista** vai junto sozinho
 (o `rsync -a` copia a pasta inteira). **Function nova, não** — precisa entrar em
 `HARDENED_FUNCTIONS`.
+
+⚠️ **Function ANTIGA também pode estar fora das listas.** Não é problema só de
+arquivo novo: em 09/08/2026, `search-slots` e `sync-payments` — as duas em
+produção há meses — não estavam em lista nenhuma. Corrigi-las localmente não
+teria efeito nenhum no ar. Antes de editar uma function, confira:
+`grep -c "<nome>" deploy/vps/release.sh`.
+
+⚠️ **`if (!auth.ok)` NÃO estreita o tipo** no TypeScript que o Deno usa aqui,
+apesar de `RequestAuthResult` ser união discriminada. O `deno check` morre com
+«Property 'response' does not exist on type 'RequestAuthResult'». Use sempre
+**`if (auth.ok === false) return auth.response`**. Sete funções carregavam esse
+erro e, por causa dele, estavam **fora do `deno check`** — subiam para produção
+sem validação nenhuma (`sync-payments`, `whatsapp-hr-welcome`,
+`generate-student-insights`, `send-rejection-email`, `register-user`,
+`reconcile-ledger`, `whatsapp-notificacao-wise`). Corrigidas e inscritas em
+09/08/2026. Quando o type-check de uma function reclamar, **conserte a function**
+— tirá-la da lista é o que criou o buraco.
+
+### O release abre ~90 conexões SSH — e o servidor corta na 11ª
+
+A etapa de preparação dispara um `rsync` por function, por migration e por teste.
+Sem multiplexação são ~90 handshakes, e o deploy morre com
+`ssh: connect to host ... Operation timed out` **antes de publicar qualquer
+coisa** (falhou 4× seguidas em 09/08/2026). Medido: 1 falha em 60 conexões
+soltas, 0 em 60 multiplexadas.
+
+A multiplexação vive **dentro do `release.sh`** (função de shell `ssh` +
+`RSYNC_RSH`, que o openrsync do macOS honra), e **não** no `~/.ssh/config` de
+quem publica — o release tem de funcionar em máquina recém-clonada.
+
+⚠️ **Não acrescente um `trap … EXIT` novo.** Já existe um (`cleanup`, no topo) e
+um segundo **substitui** o primeiro em vez de somar: o diretório de stage ficaria
+para trás e as variáveis `VITE_*` vazariam para o shell de quem publicou. O
+fechamento do socket entra **dentro** do `cleanup` existente.
 
 ⚠️ **"Deploy concluído" não é prova.** Confira no servidor o que era o objetivo
 do deploy: `ls` da pasta da function, `grep` do trecho no bundle minificado
@@ -896,3 +1092,81 @@ Preço conhecido: **o que não estiver no snapshot, o assistente não sabe** —
 ⚠️ A pergunta vem de um grupo de WhatsApp = **entrada não confiável**: vai dentro de `<pergunta>` e o system prompt manda tratar como dado, recusar pedido de ignorar regras, de revelar o prompt ou de agir no sistema (o assistente não executa nada — só informa em que tela se faz).
 
 ⚠️ **Privacidade:** todo mundo no grupo passa a ver faturamento, margem e quanto cada professor recebe. Conferir participantes antes de ativar. A API devolve os participantes como `@lid`, então **não dá para identificá-los pelo servidor**.
+
+---
+
+## Os três agentes de WhatsApp (`whatsapp-inbound`) ✅
+
+> **Uma function, três agentes, roteamento por identidade do telefone.** A ordem do
+> roteamento importa e não é arbitrária: candidato → aluno contratado → lead.
+
+| Agente | Quem atende | Onde mora |
+|---|---|---|
+| **Bia (SDR)** | quem não é candidato nem aluno = lead | `handleSDR` |
+| **Michelle (RH)** | telefone casa com `job_applications` | `handleRita` + `triagem.ts` |
+| **Atendimento ao aluno** | telefone casa com `profiles` de STUDENT com `contract_accepted` | rota `support` |
+
+- ⚠️ **O aluno contratado NÃO fala com IA.** A resposta é um recado curto que confirma
+  recebimento e encaminha a humano — e **não pode encostar** em matrícula, pagamento,
+  contrato ou cobrança. A versão antiga dizia "não precisa preencher nada de matrícula
+  novamente" e, para quem perguntava a chave PIX ou avisava que não pagou, isso lia como
+  "está tudo certo, não precisa pagar". Aconteceu 12 vezes com 8 alunas (07/08/2026).
+- ⚠️ **O aviso ao humano fica FORA do dedupe da resposta automática.** Silenciar a resposta
+  é economia de ruído; silenciar o encaminhamento é perder o atendimento.
+
+### Handoff humano tem validade e volta atrás
+
+Medido em 09/08/2026: a Michelle recebeu **132 mensagens em 30 dias e respondeu 12**. As
+outras 120 saíram como `skipped: human_handoff`. 26 das 67 candidaturas e 34 dos 103 leads
+estavam com `ai_handoff = true`.
+
+O handoff foi desenhado para "a IA sai de cena NESTA conversa" quando um humano responde
+manualmente pela instância central. Só que era **booleano e sem volta**: uma única resposta
+manual calava a IA naquele contato **para sempre**, sem expiração, botão ou aviso. A base foi
+emudecendo em silêncio.
+
+- `ai_handoff_at` (migration `20260809130000_handoff_da_ia_tem_validade`) carimba **quando** o
+  humano assumiu, para o inbound perguntar "isto ainda é um atendimento humano vivo?" em vez
+  de "alguém já respondeu aqui alguma vez na história?".
+- ⚠️ **A expiração vale só para o caminho REATIVO** (o contato escreveu de novo). A prospecção
+  ativa (`sdr-followups`) continua exigindo `ai_handoff = false`: se um humano assumiu, o robô
+  não volta a **cutucar** sozinho — no máximo volta a atender quem procurou.
+- ⚠️ **O backfill usa a ÚLTIMA mensagem trocada, não `now()`.** Carimbar `now()` prorrogaria o
+  silêncio por mais uma janela inteira — exatamente o problema que a migration existe para
+  acabar.
+- RPC `set_ai_handoff(p_kind, p_id, p_handoff)` devolve o contato à IA (ou tira) pela tela.
+  Escrita fechada numa RPC estreita em vez de policy de update ampla nas duas tabelas.
+
+### A etapa da triagem é decidida no SERVIDOR, não pelo modelo
+
+Medido em 09/08/2026: **67 candidaturas, 3 triagens concluídas (4,5%)**. O roteiro de 10
+etapas vivia inteiro num system prompt de ~2.500 tokens, e o modelo tinha de reconstruir a
+cada mensagem em que ponto estava, lendo o JSON de respostas já coletadas.
+
+**Modelo bom em conversa não é bom em contabilidade de estado.** Hoje `triagem.ts` faz a
+parte determinística — qual é a próxima pergunta, o que já foi respondido, quando acabou — e
+o modelo recebe **uma etapa por vez**, para fazer só o que faz bem: virar aquela pergunta
+numa frase humana que reage ao que a pessoa acabou de dizer.
+
+- `done` deixou de ser opinião do modelo e virou **contagem de campos**.
+- `mergeRespostas` descarta chave inventada e **não sobrescreve resposta já dada**.
+- Pular ou repetir etapa deixou de ser possível **por construção**.
+- Log de progresso por etapa: sem ele não dá para saber onde as triagens morrem — e era esse
+  o ponto cego.
+- ⚠️ Os números de remuneração nos blocos são **comerciais**. Não invente nem arredonde ao
+  editar `ETAPAS`.
+- Testes: `supabase/functions/whatsapp-inbound/triagem.test.ts` (24 casos).
+
+### Áudio vale para lead e candidato, não só para a direção
+
+O Whisper já estava pago e ligado, mas **só o grupo da direção usava**: lead e candidato que
+mandavam nota de voz recebiam "só consigo ler texto". No WhatsApp brasileiro isso é metade
+das respostas — e um candidato que grava áudio para a pergunta de apresentação **em inglês**
+era o sinal mais útil da triagem inteira.
+
+- ⚠️ **Só áudio entra.** Imagem, vídeo e documento continuam pedindo texto.
+- ⚠️ O Whisper decide o decoder pela **extensão do arquivo**, não pelo mimetype do form —
+  nota de voz do WhatsApp é ogg/opus e sem o nome certo ele recusa.
+- ⚠️ A mídia do WhatsApp é criptografada: a Evolution devolve o arquivo decifrado em base64 a
+  partir da chave da mensagem (`chat/getBase64FromMediaMessage`), e só então dá para
+  transcrever.
