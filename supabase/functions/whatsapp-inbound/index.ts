@@ -17,6 +17,7 @@ import {
   resolveAtendenteTraining,
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
+import { sendWhatsText } from "../_shared/evolution-send.ts";
 import { handoffAtivo, pickAlternatives } from "../_shared/lead-contact.ts";
 import { historicoParaModelo } from "./conversation-log.ts";
 import {
@@ -77,19 +78,10 @@ const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
 const DAY_MAP: Record<number, string> = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 0: "Domingo" };
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
-  for (const key of EVOLUTION_KEYS) {
-    try {
-      const resp = await fetch(`${EVOLUTION_BASE}/message/sendText/${encodeURIComponent(instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ number, text, delay: 1200, linkPreview: false }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (resp.status === 401) continue;
-      return resp.ok;
-    } catch { return false; }
-  }
-  return false;
+  // Resolve o JID antes de enviar (DDD antigo sem o 9º dígito) — a Evolution
+  // responde 200/PENDING para número que não bate, então o envio "no chute"
+  // falha em silêncio. Grupo e JID pronto pulam a consulta.
+  return await sendWhatsText({ base: EVOLUTION_BASE, keys: EVOLUTION_KEYS, instance, to: number, text });
 }
 
 function normalizePhone(raw: string): string | null {

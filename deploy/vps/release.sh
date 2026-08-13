@@ -294,6 +294,7 @@ npx --yes deno test --no-lock \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
+  supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
@@ -519,6 +520,7 @@ SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-
 SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
+SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
 HARDENED_FUNCTIONS=(
   sync-subscription-status
   notify-payment-due
@@ -634,6 +636,7 @@ done
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
+[[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -670,7 +673,8 @@ artifact_hash="$(
       "$SHARED_AI_USAGE_RELATIVE" \
       "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
       "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
-      "$SHARED_LEAD_CONTACT_RELATIVE"
+      "$SHARED_LEAD_CONTACT_RELATIVE" \
+      "$SHARED_EVOLUTION_SEND_RELATIVE"
     printf '%s\n' "${MIGRATION_RELATIVES[@]}"
     printf '%s\n' "${DATABASE_TEST_RELATIVES[@]}"
   } |
@@ -788,6 +792,8 @@ rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
 rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
+rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
@@ -895,6 +901,7 @@ global_meeting_policy_shared_swapped=0
 hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
 lead_contact_shared_swapped=0
+evolution_send_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
@@ -1168,6 +1175,14 @@ restore_previous_release() {
       rm -f -- "$functions_dir/_shared/lead-contact.ts"
     fi
   fi
+  if [[ "$evolution_send_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/evolution-send.ts" ]]; then
+      cp -a -- "$backup_dir/evolution-send.ts" \
+        "$functions_dir/_shared/evolution-send.ts"
+    else
+      rm -f -- "$functions_dir/_shared/evolution-send.ts"
+    fi
+  fi
   if ((${#hardened_functions_swapped[@]} > 0)); then
     for function_name in "${hardened_functions_swapped[@]}"; do
       if [[ -d "$functions_dir/$function_name" ]]; then
@@ -1227,6 +1242,7 @@ fi
 [[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
+[[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -1602,6 +1618,14 @@ fi
 lead_contact_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/lead-contact.ts" \
   "$functions_dir/_shared/lead-contact.ts"
+
+if [[ -f "$functions_dir/_shared/evolution-send.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/evolution-send.ts" \
+    "$backup_dir/evolution-send.ts"
+fi
+evolution_send_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/evolution-send.ts" \
+  "$functions_dir/_shared/evolution-send.ts"
 
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   if [[ -d "$functions_dir/$function_name" ]]; then

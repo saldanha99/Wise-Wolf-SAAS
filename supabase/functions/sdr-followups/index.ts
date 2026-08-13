@@ -4,6 +4,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { handoffAtivo } from "../_shared/lead-contact.ts";
+import { sendWhatsText } from "../_shared/evolution-send.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -17,25 +18,16 @@ import {
 // TRAVA: leads cujo telefone é de um CANDIDATO (job_applications) nunca recebem
 // follow-up de SDR — evita cruzamento RH x comercial.
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_URL = "https://api.2b.app.br";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
 ].filter(Boolean)));
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
-  for (const key of EVOLUTION_KEYS) {
-    try {
-      const resp = await fetch(`${EVOLUTION_API_BASE}/${encodeURIComponent(instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ number, text, delay: 1000, linkPreview: false }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (resp.status === 401) continue;
-      return resp.ok;
-    } catch { return false; }
-  }
-  return false;
+  // Resolve o JID antes de enviar: 9 leads da base têm telefone de 12 dígitos
+  // (DDD antigo, sem o 9º) e o envio "no chute" nunca chega. Ver
+  // `_shared/evolution-send.ts`.
+  return await sendWhatsText({ base: EVOLUTION_API_URL, keys: EVOLUTION_KEYS, instance, to: number, text });
 }
 
 const nowBRT = () => new Date(Date.now() - 3 * 3600 * 1000);
@@ -143,9 +135,13 @@ serve(async (req) => {
       const msg = (lead.followup_count ?? 0) === 0
         ? `Oi${first ? ", " + first : ""}! 😊 Passando pra saber se ainda tem interesse na aula experimental de inglês da Wise Wolf. Posso te ajudar a escolher um dia e horário?`
         : `Oi${first ? ", " + first : ""}! Vou deixar seu atendimento por aqui pra não incomodar 🙏 Quando quiser retomar, é só mandar um \"oi\" que a gente agenda sua aula experimental! 🐺`;
-      if (await sendWhats(t.instance, phone, msg)) {
+      // Log sempre, entrega como campo (mesma convenção do `whatsapp-inbound`):
+      // sem isso, o follow-up que a Evolution recusa não deixa rastro nenhum e
+      // parece que o lead nunca foi procurado.
+      const entregue = await sendWhats(t.instance, phone, msg);
+      await sb.from("ai_wa_messages").insert({ tenant_id: lead.tenant_id, phone, agent: "sdr", direction: "out", content: msg, meta: { lead_id: lead.id, kind: "followup", entregue } });
+      if (entregue) {
         await sb.from("crm_leads").update({ followup_count: (lead.followup_count ?? 0) + 1, last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
-        await sb.from("ai_wa_messages").insert({ tenant_id: lead.tenant_id, phone, agent: "sdr", direction: "out", content: msg, meta: { lead_id: lead.id, kind: "followup" } });
         await markSent(sb, "SDR_FOLLOWUP", String(lead.id));
         result.followups++;
       } else result.failures.push(`followup ${lead.id}`);

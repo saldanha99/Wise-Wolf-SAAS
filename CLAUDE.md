@@ -1294,6 +1294,24 @@ alternativas reais da grade (`pickAlternatives`, o mesmo cálculo que a atendent
   ofereço outros horários"). A promessa só é honesta porque esta varredura existe — mudar uma
   sem a outra volta a criar lead esperando retorno que não vem.
 
+### Envio no chute falha em SILÊNCIO — resolva o JID antes ✅
+
+DDD antigo costuma estar registrado no WhatsApp **sem o 9º dígito**. Mandar para o número
+como está no cadastro não bate com o JID real e a mensagem **nunca chega — com a Evolution
+respondendo 200/PENDING**, então o envio parece ter dado certo.
+
+O `funnel-sweeper` já resolvia o JID; `sdr-followups` e `whatsapp-inbound` não. Flagrado em
+13/08/2026, na primeira rodada da prospecção reativada: o follow-up da lead Cléria
+(`553399975104`, 12 dígitos) falhou, e **9 leads da base** têm telefone nesse formato.
+
+- Envio e resolução vivem em **`_shared/evolution-send.ts`**, usado pelos três.
+- ⚠️ **Falha ao resolver NÃO cancela o envio** — cai no número original. A resolução melhora o
+  acerto; exigir que ela funcione transformaria instabilidade da Evolution em mensagem não
+  enviada.
+- ⚠️ **Grupo (`@g.us`) e JID pronto pulam a consulta**: o endpoint responde para NÚMERO, e uma
+  chamada extra por mensagem de grupo só adiciona latência a cada disparo.
+- Testes com `fetch` dublado em `_shared/evolution-send.test.ts` (8 casos).
+
 ### ⚠️ Aluno em rajada NÃO é aluno sem resposta
 
 Uma auditoria de 13/08/2026 apontou "34 de 47 mensagens de aluno sem resposta (72%)" e quase

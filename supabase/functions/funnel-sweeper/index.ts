@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { pickAlternatives } from "../_shared/lead-contact.ts";
+import { sendWhatsText } from "../_shared/evolution-send.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -21,7 +22,6 @@ import {
 //
 // Dedupe: automation_sent com verificação "ever" — cada lead/opp recebe cada tipo UMA vez.
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const EVOLUTION_API_URL = "https://api.2b.app.br";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
@@ -45,47 +45,11 @@ const ORPHAN_LEAD_DAILY_CAP = 15;
 // mesma regra do is_teacher_notifiable. lifecycle_status é a fonte de verdade.
 const INACTIVE_STATUS = ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"];
 
-// Resolve o JID real cadastrado no WhatsApp antes de enviar. Muitas contas
-// brasileiras (DDDs mais antigos) ainda estão registradas SEM o 9º dígito
-// extra do celular — mandar pro número "no chute" não bate com o JID real e
-// a mensagem nunca chega, mesmo a Evolution respondendo 200/PENDING.
-async function resolveJid(instance: string, phone: string): Promise<string | null> {
-  for (const key of EVOLUTION_KEYS) {
-    try {
-      const resp = await fetch(`${EVOLUTION_API_URL}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ numbers: [phone] }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (resp.status === 401) continue;
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const entry = Array.isArray(data) ? data[0] : null;
-      if (entry?.exists && entry.jid) return String(entry.jid).split("@")[0];
-      return null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
+// Resolução de JID + envio vivem em `_shared/evolution-send.ts` — o
+// `sdr-followups` e o `whatsapp-inbound` precisam exatamente do mesmo
+// comportamento (DDD antigo registrado sem o 9º dígito).
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
-  const target = (await resolveJid(instance, number)) || number;
-  for (const key of EVOLUTION_KEYS) {
-    try {
-      const resp = await fetch(`${EVOLUTION_API_BASE}/${encodeURIComponent(instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ number: target, text, delay: 1200, linkPreview: false }),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (resp.status === 401) continue;
-      return resp.ok;
-    } catch { return false; }
-  }
-  return false;
+  return await sendWhatsText({ base: EVOLUTION_API_URL, keys: EVOLUTION_KEYS, instance, to: number, text });
 }
 
 const nowBRT = () => new Date(Date.now() - 3 * 3600 * 1000);
