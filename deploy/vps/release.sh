@@ -284,6 +284,7 @@ npx --yes deno test --no-lock \
   supabase/functions/update-student-billing-method/core.test.ts \
   supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
+  supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \

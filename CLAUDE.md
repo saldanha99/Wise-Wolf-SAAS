@@ -709,6 +709,63 @@ Mesma pedra de `uq_bookings_no_dup_active` e `run_recurring_expenses`.
 
 ---
 
+## Experimental com dono se REMARCA — não se redispara ✅
+
+> **Leia antes de mexer em `dispatchTrial` (`whatsapp-inbound`) ou no leilão de experimental.**
+
+**O caso (13/08/2026, lead Rafael Varela):** ele marcou a experimental para
+quinta às 12:00 e a Teacher Lais **aceitou** (opportunity `CLAIMED` + appointment
+`experimental` na agenda dela). Depois ele falou **direto com a professora** que
+não dava meio-dia e sim 16:00 — e os dois já tinham resolvido. Quando ele contou
+a mesma coisa no WhatsApp central, a atendente criou uma **segunda** oportunidade
+às 16:00 e mandou o link de aceite para todos os professores livres.
+
+**Causa:** `dispatchTrial` só deduplicava contra oportunidade **ainda OPEN** e com
+data+hora **idênticas**. Assim que um professor aceitava, qualquer horário novo
+virava leilão novo — e o `funnel-sweeper` ainda re-disparava a sobra 20 min
+depois, para a escola inteira.
+
+**A regra agora** (`supabase/functions/whatsapp-inbound/trial-reschedule.ts`,
+decisão pura e testada; a I/O fica no `index.ts`):
+
+| Situação | O que o agente faz |
+|---|---|
+| Não há experimental com dono | leilão normal (`dispatchTrial`), como sempre |
+| Já tem dono e o horário pedido é o MESMO | não faz nada — só confirma ao aluno |
+| Já tem dono e o dono está livre no horário novo | **move o appointment**, avisa professora + diretor |
+| Já tem dono e o dono tem conflito real | **não move e não leiloa** — avisa professora + diretor |
+
+- ⚠️ **Disponibilidade DECLARADA (`teacher_availability`) NÃO entra na remarcação.**
+  Professora e aluno combinam por fora; exigir a grade cadastrada recusaria
+  justamente o caso que existe para ser atendido. O que barra é conflito de
+  verdade (30 min de início a início, a mesma regra da tela de aceite), contra
+  appointment do dia, aula fixa do mesmo dia da semana e booking com data própria.
+- ⚠️ **Conflito escala para gente, não para leilão.** Redisparar ali daria a mesma
+  aula a dois professores — e é exatamente o defeito que estamos consertando.
+- ⚠️ **Só appointment `scheduled` segura o agendamento**, e com janela de 7 dias
+  para trás: aula cancelada/dada/furada encerrou o ciclo, e aula velha esquecida
+  em `scheduled` não pode sequestrar um pedido novo. O update carrega
+  `.eq("status","scheduled")` — cancelamento no meio do caminho não vira
+  remarcação sobre agendamento morto.
+- **Leilão órfão morre junto** (`supersedeOpenTrials`): antes de abrir um novo, e
+  também ao remarcar, as oportunidades `OPEN` do mesmo telefone viram `EXPIRED`.
+  Dois leilões vivos = dois professores aceitando horários diferentes para a
+  mesma pessoa. ⚠️ **Não mexe em `conversion_status`** — `LOST` ali é lead perdido
+  no funil, e quem só remarcou não perdeu nada.
+- **O prompt da atendente muda quando existe aula aceita:** ela pode citar a
+  professora pelo nome e dizer que a aula ESTÁ marcada (a regra dura de "nunca
+  diga que está agendada" vale para quando ainda não há dono).
+- **Fuso:** `appointments.start_time` é UTC e a escola pensa em BRT
+  (12:00 BRT = 15:00Z). Use `brtStartIso` / `brtSlotFromIso` — a tela de aceite
+  monta o ISO pelo relógio do navegador do professor, a edge function roda em UTC.
+- **Testes:** `trial-reschedule.test.ts` (11 casos, incluindo o caso do Rafael
+  como regressão), registrado no `release.sh`.
+  ⚠️ O arquivo tem `/// <reference lib="deno.ns" />` porque o `tsconfig.json` da
+  raiz (lib DOM, do Vite) é lido pelo Deno e apaga `deno.ns` quando o teste roda
+  sozinho.
+
+---
+
 ## Transferir aula para outro professor — `search-slots` e a disponibilidade ✅
 
 > **A disponibilidade do professor é SLOT DISCRETO de 30 min, não intervalo.**

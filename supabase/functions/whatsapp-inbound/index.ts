@@ -630,9 +630,155 @@ async function suggestAlternatives(sb: any, tenantId: string, date: string, time
   };
 }
 
+/** Dia da semana sem acento, porque `bookings.day_of_week` tem "Terça" e "Terca". */
+function normalizeDayName(raw: string): string {
+  return String(raw || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+function formatSlot(slot: Slot): string {
+  return `${slot.date.split("-").reverse().join("/")} (${DAY_MAP[dowOf(slot.date)] || "Dia"}) às ${slot.time}`;
+}
+
+/**
+ * A experimental deste lead que JÁ TEM PROFESSOR — se existir.
+ *
+ * É o que separa "leiloar a aula" de "remarcar a aula". Enquanto essa linha
+ * existir e o appointment estiver de pé, ninguém mais precisa ser chamado.
+ */
+async function findActiveTrial(sb: any, tenantId: string, phone: string): Promise<ActiveTrial | null> {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const { data: opps } = await sb.from("opportunities")
+    .select("id, student_phone, winner_teacher_id, trial_appointment_id, created_at")
+    .eq("tenant_id", tenantId).eq("kind", "TRIAL")
+    .in("status", ["CLAIMED", "FILLED", "TAKEN"])
+    .not("trial_appointment_id", "is", null)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false }).limit(20);
+
+  const nowIso = new Date().toISOString();
+  for (const o of (opps || [])) {
+    if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
+    const { data: appt } = await sb.from("appointments")
+      .select("id, start_time, status, teacher_id, professor_id")
+      .eq("id", o.trial_appointment_id).maybeSingle();
+    if (!appt) continue;
+    if (!isTrialAppointmentActive(appt.status, appt.start_time, nowIso)) continue;
+
+    const teacherId = appt.teacher_id || appt.professor_id || o.winner_teacher_id;
+    if (!teacherId) continue;
+    const { data: prof } = await sb.from("profiles").select("full_name, phone").eq("id", teacherId).maybeSingle();
+    return {
+      opportunityId: o.id,
+      appointmentId: appt.id,
+      teacherId,
+      teacherName: String(prof?.full_name || "Professor").trim(),
+      teacherPhone: normalizePhone(String(prof?.phone || "")),
+      startIso: appt.start_time,
+    };
+  }
+  return null;
+}
+
+/**
+ * O que já ocupa a agenda da professora naquele dia.
+ *
+ * Cobre os três formatos que convivem: appointment avulso (experimental,
+ * treinamento), aula fixa recorrente (`day_of_week`) e booking com data
+ * própria. A aula que está sendo remarcada sai da lista — senão ela colidiria
+ * consigo mesma.
+ */
+async function teacherBusyBlocks(
+  sb: any, teacherId: string, date: string, skipAppointmentId: string,
+): Promise<BusyBlock[]> {
+  const blocks: BusyBlock[] = [];
+
+  const { data: appts } = await sb.from("appointments")
+    .select("id, start_time, status, student_name, type")
+    .or(`teacher_id.eq.${teacherId},professor_id.eq.${teacherId}`)
+    .neq("status", "cancelled")
+    .gte("start_time", brtStartIso(date, "00:00"))
+    .lte("start_time", brtStartIso(date, "23:59"));
+  for (const a of (appts || [])) {
+    if (a.id === skipAppointmentId) continue;
+    const s = brtSlotFromIso(a.start_time);
+    blocks.push({ startIso: new Date(a.start_time).toISOString(), label: `${a.student_name || a.type || "compromisso"} às ${s.time}` });
+  }
+
+  const alvo = normalizeDayName(DAY_MAP[dowOf(date)] || "");
+  const { data: bks } = await sb.from("bookings")
+    .select("time_slot, day_of_week, date, status").eq("teacher_id", teacherId).neq("status", "CANCELLED");
+  for (const b of (bks || [])) {
+    const mesmoDia = String(b.date || "") === date || normalizeDayName(String(b.day_of_week || "")) === alvo;
+    if (!mesmoDia) continue;
+    const t = String(b.time_slot || "").slice(0, 5);
+    if (!/^\d{2}:\d{2}$/.test(t)) continue;
+    blocks.push({ startIso: brtStartIso(date, t), label: `aula fixa das ${t}` });
+  }
+  return blocks;
+}
+
+/**
+ * Move a experimental para o horário novo e avisa quem precisa saber.
+ *
+ * O `eq("status","scheduled")` é a trava: se alguém cancelou a aula entre a
+ * leitura e a escrita, o update não casa e a remarcação não acontece em cima de
+ * um agendamento morto.
+ */
+async function moveTrial(
+  sb: any, instance: string, trial: ActiveTrial, from: Slot, to: Slot, newStartIso: string,
+  leadName: string, ownerPhone: string | null,
+): Promise<boolean> {
+  const { data: moved, error } = await sb.from("appointments")
+    .update({ start_time: newStartIso })
+    .eq("id", trial.appointmentId).eq("status", "scheduled").select("id");
+  if (error || !moved || moved.length === 0) return false;
+
+  const dow = dowOf(to.date);
+  await sb.from("opportunities").update({
+    slots_proposed: [{ day: dow, time: to.time, date: to.date, formatted: `${to.date.split("-").reverse().join("/")} (${DAY_MAP[dow] || "Dia"})` }],
+  }).eq("id", trial.opportunityId);
+
+  if (trial.teacherPhone) {
+    await sendWhats(instance, trial.teacherPhone,
+      `🔄 *Experimental remarcada*\n\n📋 *Aluno:* ${leadName}\n⏰ De: ${formatSlot(from)}\n✅ Para: ${formatSlot(to)}\n\nO aluno pediu a mudança no WhatsApp da escola e sua agenda já foi atualizada — a aula continua sendo sua.\nSe esse horário não der, fale com a coordenação. 🐺`);
+  }
+  if (ownerPhone) {
+    await sendWhats(instance, ownerPhone,
+      `🔄 *Atendente IA:* experimental REMARCADA (sem novo disparo)\n\n*${leadName}* — de ${formatSlot(from)} para ${formatSlot(to)}\nProfessora: ${trial.teacherName}\n\n_A aula já tinha dono, então mudei o horário em vez de chamar a equipe de novo._`);
+  }
+  return true;
+}
+
+/**
+ * Fecha as experimentais AINDA ABERTAS deste lead antes de abrir outra.
+ *
+ * Sem isso, o lead que troca de horário duas vezes deixa dois leilões vivos: o
+ * `funnel-sweeper` re-dispara os dois 20 min depois e dois professores podem
+ * aceitar horários diferentes para a mesma pessoa.
+ *
+ * ⚠️ NÃO mexe em `conversion_status`: "LOST" ali é lead perdido no funil, e o
+ * aluno que só remarcou não perdeu nada.
+ */
+async function supersedeOpenTrials(sb: any, tenantId: string, phone: string, keepId: string | null): Promise<number> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: abertas } = await sb.from("opportunities")
+    .select("id, student_phone").eq("tenant_id", tenantId).eq("kind", "TRIAL")
+    .eq("status", "OPEN").gte("created_at", since);
+  let fechadas = 0;
+  for (const o of (abertas || [])) {
+    if (o.id === keepId) continue;
+    if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
+    const { data: upd } = await sb.from("opportunities")
+      .update({ status: "EXPIRED", lost_reason: "substituída — o aluno pediu outro horário" })
+      .eq("id", o.id).eq("status", "OPEN").select("id");
+    fechadas += (upd || []).length;
+  }
+  return fechadas;
+}
+
 async function dispatchTrial(
   sb: any, instance: string, tenantId: string, lead: any, date: string, time: string, goal: string | null,
-): Promise<{ dispatched: number; teachers: string[]; noTeacher?: boolean }> {
+): Promise<{ dispatched: number; teachers: string[]; noTeacher?: boolean; superseded?: number }> {
   const dow = dowOf(date);
   const timeFull = `${time}:00`;
 
@@ -678,6 +824,11 @@ async function dispatchTrial(
     oppId = opp.id;
   }
 
+  // Leilão antigo do mesmo lead morre AQUI, antes de o novo sair. Dois leilões
+  // vivos para a mesma pessoa terminam com dois professores aceitando horários
+  // diferentes — e o `funnel-sweeper` ainda re-dispara os dois.
+  const superseded = await supersedeOpenTrials(sb, tenantId, lead.phone || "", oppId);
+
   const params = new URLSearchParams({ id: oppId!, date, time, studentName: lead.name || "Lead WhatsApp", studentPhone: lead.phone || "", kind: "TRIAL" });
   const claimLink = `${CLAIM_BASE}?${params.toString()}`;
   let dispatched = 0;
@@ -686,7 +837,7 @@ async function dispatchTrial(
     const msg = `🐺⚡ *Experimental disponível — ${formatted} às ${time}*\n\nOlá, Teacher ${t.name.split(" ")[0]}! Vi que você tem esse horário livre.\n\n📋 *Aluno:* ${lead.name || "Lead WhatsApp"}\n🎯 *Objetivo:* ${goal || lead.goal || "Não informado"}\n\n🏆 *Quer pegar essa aula?* O primeiro a clicar garante:\n👇 ${claimLink}`;
     if (await sendWhats(instance, t.phone, msg)) { dispatched++; names.push(t.name); }
   }
-  return { dispatched, teachers: names };
+  return { dispatched, teachers: names, superseded };
 }
 
 async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, phone: string, pushName: string, text: string, isMedia: boolean, msgId: string) {
@@ -740,7 +891,17 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
     ? `- TODAS as aulas duram ${commercialConfig.classDurationMinutes} minutos, inclusive a experimental. NUNCA diga outra duração.\n- Na PRIMEIRA pergunta sobre preço, NÃO informe nenhum valor: explique que os planos variam e conduza para a aula experimental gratuita.\n- Somente se o lead INSISTIR em preço numa mensagem posterior, informe apenas: \"planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês\". NUNCA liste a tabela completa e NUNCA informe outro valor.`
     : `- NUNCA invente preços, descontos, promoções ou duração das aulas. Se perguntarem, diga que o diretor confirma essas informações e siga oferecendo a experimental.`;
   const menu = await availabilityMenu(sb, tenantId);
-  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e confirma em seguida (ex.: \"Vou verificar o professor desse horário e já te confirmo, tá? 😊\").\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+
+  // A experimental deste lead já tem professor? Isso muda o que a atendente pode
+  // dizer: com aula já aceita, "vou verificar qual professor pega" é mentira — a
+  // professora é conhecida, e o que o aluno está pedindo é REMARCAÇÃO.
+  const activeTrial = await findActiveTrial(sb, tenantId, phone);
+  const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
+  const trialContext = activeTrial && trialSlot
+    ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${formatSlot(trialSlot)}.\n- Se ele pedir OUTRO dia/horário, isso é REMARCAÇÃO da mesma aula, com a MESMA professora. Preencha schedule_trial com o horário novo e diga que vai ajustar — NUNCA fale em procurar/verificar professor, e NUNCA sugira marcar outra aula.\n- Se ele apenas confirmar o horário que já está marcado, confirme com a Teacher ${activeTrial.teacherName} e não peça nada de novo.\n- Aqui você PODE citar a professora pelo nome e PODE dizer que a aula está marcada: ela está.`
+    : "";
+
+  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e confirma em seguida (ex.: \"Vou verificar o professor desse horário e já te confirmo, tá? 😊\").\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
@@ -777,26 +938,69 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   if (st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) && /^\d{2}:\d{2}$/.test(st.time)) {
     const max = new Date(nowBRT().getTime() + 21 * 86400000).toISOString().split("T")[0];
     if (st.date >= todayBRT() && st.date <= max) {
-      const res = await dispatchTrial(sb, instance, tenantId, freshLead, st.date, st.time, u.goal || null);
-      dispatchMeta = res;
-      if (res.noTeacher) {
-        const dow = dowOf(st.date);
-        const alt = await suggestAlternatives(sb, tenantId, st.date, st.time);
-        const parts: string[] = [];
-        if (alt.days.length) parts.push(`o horário das ${st.time} eu tenho livre na ${alt.days.join(", ")}`);
-        if (alt.times.length) parts.push(`na ${DAY_MAP[dow]} consigo nesses horários: ${alt.times.slice(0, 8).join(", ")}`);
-        reply = parts.length
-          ? `Nesse dia e horário eu não tenho professor livre 😕 Mas ${parts.join("; e ")}. Qual fica melhor pra você?`
-          : `Nesse horário eu não tenho professor livre 😕 Me diz outro dia/horário que eu verifico a disponibilidade pra você!`;
-      } else if (res.dispatched > 0) {
-        await sb.from("crm_leads").update({
-          notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] aguardando aceite de professor p/ experimental ${st.date} ${st.time}`).slice(0, 3000),
-          last_status_change: new Date().toISOString(),
-        }).eq("id", freshLead.id);
-        if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `🎯 *Atendente IA:* experimental EM VALIDAÇÃO\n\n*${freshLead.name || phone}* — ${st.date.split("-").reverse().join("/")} às ${st.time}\nObjetivo: ${freshLead.goal || "-"} | Nível: ${freshLead.level || "-"}\n\nDisparei o link individual para ${res.dispatched} professor(es) com o horário livre: ${res.teachers.join(", ")}.\n_O aluno só será avisado quando um professor aceitar._ 🐺`);
+      // ── EXPERIMENTAL COM DONO SE REMARCA, NÃO SE REDISPARA ──
+      // O leilão (dispatchTrial) só acontece quando a aula ainda não tem
+      // professor. Ver `trial-reschedule.ts` para o caso real que criou a regra.
+      const requested: Slot = { date: st.date, time: st.time };
+      const busy = activeTrial
+        ? await teacherBusyBlocks(sb, activeTrial.teacherId, st.date, activeTrial.appointmentId)
+        : [];
+      const decision = decideTrialAction({ existing: activeTrial, requested, busy });
+
+      if (decision.action === "keep") {
+        // Aula com dono torna obsoleto qualquer leilão ainda aberto deste lead.
+        const fechadas = await supersedeOpenTrials(sb, tenantId, phone, null);
+        dispatchMeta = { action: "keep", opportunity_id: decision.trial.opportunityId, superseded: fechadas };
+        reply = `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${formatSlot(decision.slot)} 😊 Qualquer coisa é só me avisar por aqui!`;
+      } else if (decision.action === "reschedule") {
+        const ok = await moveTrial(
+          sb, instance, decision.trial, decision.from, decision.to, decision.newStartIso,
+          freshLead.name || phone, adm.ownerPhone,
+        );
+        const fechadas = ok ? await supersedeOpenTrials(sb, tenantId, phone, null) : 0;
+        dispatchMeta = { action: ok ? "rescheduled" : "reschedule_failed", opportunity_id: decision.trial.opportunityId, from: decision.from, to: decision.to, superseded: fechadas };
+        if (ok) {
+          reply = `Prontinho! Remarquei sua experimental com a Teacher ${decision.trial.teacherName} para ${formatSlot(decision.to)} 😊`;
+          await sb.from("crm_leads").update({
+            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] experimental remarcada de ${decision.from.date} ${decision.from.time} para ${decision.to.date} ${decision.to.time} (Teacher ${decision.trial.teacherName})`).slice(0, 3000),
+            last_status_change: new Date().toISOString(),
+          }).eq("id", freshLead.id);
+        } else {
+          // Alguém cancelou a aula no meio do caminho. Não vira leilão automático:
+          // o aluno acha que tem aula marcada e quem sabe a história é a escola.
+          reply = `Deixa eu confirmar esse horário com a teacher e já te retorno, tá? 😊`;
+          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui remarcar a experimental de *${freshLead.name || phone}* para ${formatSlot(decision.to)} — o agendamento com ${decision.trial.teacherName} não está mais ativo. Verifique na agenda.`);
+        }
+      } else if (decision.action === "escalate") {
+        // A professora dona tem compromisso em cima do horário novo. Redisparar
+        // aqui daria a mesma aula a dois professores; quem desempata é gente.
+        dispatchMeta = { action: "escalate", opportunity_id: decision.trial.opportunityId, conflict: decision.conflict };
+        reply = `Vou confirmar esse horário com a teacher e já te retorno, tá? 😊`;
+        const aviso = `⚠️ *Experimental precisa de decisão*\n\n*${freshLead.name || phone}* pediu para mudar de ${formatSlot(decision.from)} para ${formatSlot(decision.to)}.\nProfessora: ${decision.trial.teacherName} — mas ela tem *${decision.conflict}* no horário novo.\n\nNão remarquei nem chamei outro professor. Combine com ela ou reatribua a aula.`;
+        if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, aviso);
+        if (decision.trial.teacherPhone) await sendWhats(instance, decision.trial.teacherPhone, `🔄 *Aluno pediu para remarcar*\n\n📋 ${freshLead.name || phone}\n⏰ De: ${formatSlot(decision.from)}\n➡️ Quer: ${formatSlot(decision.to)}\n\nSua agenda tem *${decision.conflict}* nesse horário, então NÃO mudei nada. Fale com a coordenação. 🐺`);
       } else {
-        reply = `Deixa eu confirmar a disponibilidade certinho e já te retorno, tá? 😊`;
-        if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui disparar a experimental de *${freshLead.name || phone}* (${st.date} ${st.time}) para os professores. Verifique a conexão do WhatsApp.`);
+        const res = await dispatchTrial(sb, instance, tenantId, freshLead, st.date, st.time, u.goal || null);
+        dispatchMeta = res;
+        if (res.noTeacher) {
+          const dow = dowOf(st.date);
+          const alt = await suggestAlternatives(sb, tenantId, st.date, st.time);
+          const parts: string[] = [];
+          if (alt.days.length) parts.push(`o horário das ${st.time} eu tenho livre na ${alt.days.join(", ")}`);
+          if (alt.times.length) parts.push(`na ${DAY_MAP[dow]} consigo nesses horários: ${alt.times.slice(0, 8).join(", ")}`);
+          reply = parts.length
+            ? `Nesse dia e horário eu não tenho professor livre 😕 Mas ${parts.join("; e ")}. Qual fica melhor pra você?`
+            : `Nesse horário eu não tenho professor livre 😕 Me diz outro dia/horário que eu verifico a disponibilidade pra você!`;
+        } else if (res.dispatched > 0) {
+          await sb.from("crm_leads").update({
+            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] aguardando aceite de professor p/ experimental ${st.date} ${st.time}`).slice(0, 3000),
+            last_status_change: new Date().toISOString(),
+          }).eq("id", freshLead.id);
+          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `🎯 *Atendente IA:* experimental EM VALIDAÇÃO\n\n*${freshLead.name || phone}* — ${st.date.split("-").reverse().join("/")} às ${st.time}\nObjetivo: ${freshLead.goal || "-"} | Nível: ${freshLead.level || "-"}\n\nDisparei o link individual para ${res.dispatched} professor(es) com o horário livre: ${res.teachers.join(", ")}.\n_O aluno só será avisado quando um professor aceitar._ 🐺`);
+        } else {
+          reply = `Deixa eu confirmar a disponibilidade certinho e já te retorno, tá? 😊`;
+          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui disparar a experimental de *${freshLead.name || phone}* (${st.date} ${st.time}) para os professores. Verifique a conexão do WhatsApp.`);
+        }
       }
     }
   }
