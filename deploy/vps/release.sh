@@ -894,6 +894,7 @@ ai_usage_shared_swapped=0
 global_meeting_policy_shared_swapped=0
 hub_billing_safety_shared_swapped=0
 wolfie_product_access_shared_swapped=0
+lead_contact_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
@@ -1159,6 +1160,14 @@ restore_previous_release() {
       rm -f -- "$functions_dir/_shared/wolfie-product-access.ts"
     fi
   fi
+  if [[ "$lead_contact_shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/lead-contact.ts" ]]; then
+      cp -a -- "$backup_dir/lead-contact.ts" \
+        "$functions_dir/_shared/lead-contact.ts"
+    else
+      rm -f -- "$functions_dir/_shared/lead-contact.ts"
+    fi
+  fi
   if ((${#hardened_functions_swapped[@]} > 0)); then
     for function_name in "${hardened_functions_swapped[@]}"; do
       if [[ -d "$functions_dir/$function_name" ]]; then
@@ -1217,6 +1226,7 @@ fi
 [[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
+[[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -1584,6 +1594,14 @@ fi
 wolfie_product_access_shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/wolfie-product-access.ts" \
   "$functions_dir/_shared/wolfie-product-access.ts"
+
+if [[ -f "$functions_dir/_shared/lead-contact.ts" ]]; then
+  cp -a -- "$functions_dir/_shared/lead-contact.ts" \
+    "$backup_dir/lead-contact.ts"
+fi
+lead_contact_shared_swapped=1
+cp -a -- "$release_dir/functions/_shared/lead-contact.ts" \
+  "$functions_dir/_shared/lead-contact.ts"
 
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   if [[ -d "$functions_dir/$function_name" ]]; then
