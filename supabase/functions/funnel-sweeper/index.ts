@@ -1,5 +1,8 @@
+// O `tsconfig.json` da raiz (lib DOM, do Vite) é lido pelo Deno e apaga `deno.ns`.
+/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { pickAlternatives } from "../_shared/lead-contact.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -26,11 +29,17 @@ const EVOLUTION_KEYS = Array.from(new Set([
 const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
 const BOOK_BASE = "https://system.wisewolflanguage.com.br/book-interview";
 const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
+const DAY_MAP: Record<number, string> = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 0: "Domingo" };
+const dowOf = (dateStr: string): number => new Date(`${dateStr}T12:00:00Z`).getUTCDay();
 // Anti-ban: primeiro contato frio é o maior risco de restrição do número. Volume baixo e
 // espaçado (o número já foi restringido uma vez). Lote pequeno por run + teto diário menor.
 const FIRST_TOUCH_BATCH = 2;
 const FIRST_TOUCH_DAILY_CAP = 12;
 const INTERVIEW_INVITE_DAILY_CAP = 5;
+// Retorno ao lead cuja experimental não teve professor. Cabe mais volume que o
+// primeiro toque (é gente que JÁ conversou com a escola, não contato frio),
+// mas segue com teto — o número já foi restringido uma vez.
+const ORPHAN_LEAD_DAILY_CAP = 15;
 
 // Professor inativo (suspenso/desligado) NUNCA recebe convite de experimental —
 // mesma regra do is_teacher_notifiable. lifecycle_status é a fonte de verdade.
@@ -151,7 +160,7 @@ serve(async (req) => {
       first_touch: 0, first_touch_skipped: 0, first_touch_suppressed: 0,
       rebroadcasts: 0, director_alerts: 0,
       interview_invites: 0, interview_followups: 0,
-      expired: 0, failures: [] as string[],
+      expired: 0, orphan_leads: 0, orphan_skipped: 0, failures: [] as string[],
     };
 
     const { data: admins } = await sb.from("profiles")
@@ -361,6 +370,114 @@ serve(async (req) => {
           const msg = `⚠️ *Experimental sem aceite há ${ageMin} min*\n\n📋 *${opp.student_name || "-"}* — ${formatted} às ${slot.time}\n🎯 ${opp.interests || "-"}\n📱 Lead: ${cleanPhone(opp.student_phone || "") || "-"}\n\nNenhum professor pegou (equipe já foi avisada 2x). Vale atribuir manualmente ou falar com o lead.\n${claimLink}`;
           if (await sendWhats(t.instance, t.ownerPhone, msg)) result.director_alerts++;
           else { await c2.undo(); result.failures.push(`alert ${opp.id}`); }
+        }
+      }
+    }
+
+    // ============ C2) LEAD ÓRFÃO — a experimental expirou sem professor ============
+    //
+    // Medido em 13/08/2026: de 125 experimentais da história, **69 expiraram sem
+    // ninguém aceitar** (55%). O lead tinha ouvido "vou verificar o professor e
+    // já te confirmo" — e depois disso 18 ficaram em silêncio TOTAL e 16
+    // tiveram que cobrar. A escola avisava o diretor aos 60 min e marcava LOST
+    // em 48h, mas nunca falava com quem pediu a aula.
+    //
+    // Esta varredura fecha o circuito: quem ficou sem professor recebe o que a
+    // escola de fato tem. É a mensagem mais barata do funil — o interesse já
+    // existe, só o horário não deu.
+    //
+    // ⚠️ Roda separada do momento da expiração de propósito. Expirar às 3h da
+    // manhã e mandar mensagem na hora seria pior que não mandar; aqui a
+    // oportunidade só é varrida no horário comercial seguinte, e a idempotência
+    // (`automation_sent`) garante um único toque por experimental.
+    if (businessHours) {
+      const { count: orfaosHoje } = await sb.from("automation_sent")
+        .select("id", { count: "exact", head: true })
+        .eq("kind", "TRIAL_NO_TEACHER").eq("ref_date", todayBRT());
+      let restam = Math.max(0, ORPHAN_LEAD_DAILY_CAP - (orfaosHoje ?? 0));
+
+      // Janela de 3 dias: passar disso é remexer em lead frio com uma desculpa
+      // velha — e evita que a primeira execução dispare para os 69 do histórico.
+      const desde = new Date(Date.now() - 3 * 86400000).toISOString();
+      const { data: orfas } = await sb.from("opportunities")
+        .select("id, tenant_id, student_name, student_phone, slots_proposed, lost_reason, created_at")
+        .eq("kind", "TRIAL").eq("status", "EXPIRED").gte("created_at", desde)
+        .order("created_at", { ascending: false }).limit(40);
+
+      for (const opp of (orfas || [])) {
+        if (restam <= 0) break;
+        // Expirada porque o PRÓPRIO aluno remarcou (supersedeOpenTrials marca o
+        // motivo): ele já tem aula com professor. Dizer "não achei professor"
+        // aqui seria mentira, e assustaria quem está tudo certo.
+        if (opp.lost_reason) { result.orphan_skipped++; continue; }
+
+        const slot = Array.isArray(opp.slots_proposed) ? opp.slots_proposed[0] : null;
+        if (!slot?.date || !slot?.time) { result.orphan_skipped++; continue; }
+
+        const t = byTenant[opp.tenant_id];
+        if (!t || cfgOf(opp.tenant_id)?.sdr?.enabled === false) continue;
+
+        const phone = cleanPhone(opp.student_phone || "");
+        if (phone.length < 12) { result.orphan_skipped++; continue; }
+        if (isCandidatePhone(opp.tenant_id, opp.student_phone || "")) { result.orphan_skipped++; continue; }
+
+        // Conseguiu aula por outro caminho (outra oportunidade aceita)? Então
+        // não existe órfão nenhum — e mandar isso derrubaria uma aula marcada.
+        const { data: comDono } = await sb.from("opportunities")
+          .select("id, student_phone").eq("tenant_id", opp.tenant_id).eq("kind", "TRIAL")
+          .in("status", ["CLAIMED", "FILLED", "TAKEN"]).gte("created_at", desde);
+        if ((comDono || []).some((o: any) => phonesMatch(String(o.student_phone || ""), phone))) {
+          result.orphan_skipped++;
+          continue;
+        }
+
+        // Virou aluno no meio do caminho? A trava comercial vale aqui como em
+        // todo contato de venda — e falha fechada quando não há fonte de verdade.
+        const facts = commercialFacts.get(opp.tenant_id);
+        if (!facts) { result.orphan_skipped++; continue; }
+        const { data: leadRows } = await sb.from("crm_leads")
+          .select("id, phone, status").eq("tenant_id", opp.tenant_id).not("phone", "is", null);
+        const lead = (leadRows || []).find((l: any) => phonesMatch(String(l.phone || ""), phone));
+        const suppression = evaluateCommercialSuppression({
+          tenantId: opp.tenant_id, phone: opp.student_phone || "", leadStatus: lead?.status,
+        }, facts);
+        if (suppression.suppressed) {
+          if (lead?.id) await reconcileSuppressedLead(sb, lead.id, suppression);
+          result.orphan_skipped++;
+          continue;
+        }
+
+        const c = await claim(sb, "TRIAL_NO_TEACHER", String(opp.id));
+        if (!c.ok) continue;
+
+        const dow = dowOf(String(slot.date));
+        const { data: grade } = await sb.from("teacher_availability")
+          .select("day_of_week, start_time").eq("tenant_id", opp.tenant_id);
+        const alt = pickAlternatives(grade || [], dow, String(slot.time));
+        const partes: string[] = [];
+        if (alt.days.length) partes.push(`o horário das ${slot.time} eu tenho livre na ${alt.days.map((d) => DAY_MAP[d]).join(", ")}`);
+        if (alt.times.length) partes.push(`na ${DAY_MAP[dow]} consigo nesses horários: ${alt.times.slice(0, 8).join(", ")}`);
+
+        const first = greetName(opp.student_name);
+        const quando = `${String(slot.date).split("-").reverse().join("/")} às ${slot.time}`;
+        const msg = partes.length
+          ? `Oi${first ? ", " + first : ""}! Sobre sua aula experimental de ${quando}: não consegui encaixar um professor nesse horário 😕 Mas ${partes.join("; e ")}. Qual fica melhor pra você?`
+          : `Oi${first ? ", " + first : ""}! Sobre sua aula experimental de ${quando}: não consegui encaixar um professor nesse horário 😕 Me diz outro dia e horário que eu verifico a disponibilidade pra você!`;
+
+        const entregue = await sendWhats(t.instance, phone, msg);
+        // O registro não depende do envio — mesma regra do `whatsapp-inbound`:
+        // envio é entrega, log é memória.
+        await sb.from("ai_wa_messages").insert({
+          tenant_id: opp.tenant_id, phone, agent: "sdr", direction: "out", content: msg,
+          meta: { lead_id: lead?.id ?? null, opportunity_id: opp.id, kind: "trial_no_teacher", entregue },
+        });
+        if (entregue) {
+          if (lead?.id) await sb.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+          result.orphan_leads++;
+          restam--;
+        } else {
+          await c.undo();
+          result.failures.push(`orphan_lead ${opp.id}`);
         }
       }
     }

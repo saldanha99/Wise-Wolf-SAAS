@@ -17,6 +17,7 @@ import {
   resolveAtendenteTraining,
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
+import { handoffAtivo, pickAlternatives } from "../_shared/lead-contact.ts";
 import { historicoParaModelo } from "./conversation-log.ts";
 import {
   type ActiveTrial,
@@ -531,20 +532,10 @@ async function logMsg(sb: any, tenantId: string, phone: string, agent: string, d
 // 72h é o tempo de um atendimento humano vivo (inclusive atravessando um fim de
 // semana). Passado isso, quem escrever de novo volta a ser atendido.
 //
-// ⚠️ Vale só para o caminho REATIVO. A prospecção ativa (`sdr-followups`)
-// continua exigindo `ai_handoff = false`: se um humano assumiu, o robô não volta
-// a cutucar sozinho — no máximo volta a responder quem procurou.
-const HANDOFF_TTL_MS = 72 * 3600 * 1000;
-
-function handoffAtivo(row: { ai_handoff?: boolean | null; ai_handoff_at?: string | null }): boolean {
-  if (row?.ai_handoff !== true) return false;
-  // Sem carimbo (linha anterior à migration) o handoff é tratado como VENCIDO:
-  // manter mudo sem saber desde quando é o próprio defeito que estamos corrigindo.
-  if (!row.ai_handoff_at) return false;
-  const at = new Date(row.ai_handoff_at).getTime();
-  if (Number.isNaN(at)) return false;
-  return Date.now() - at < HANDOFF_TTL_MS;
-}
+// Desde 13/08/2026 o prazo vale TAMBÉM para a prospecção ativa
+// (`sdr-followups`), que exigia `ai_handoff = false` sem prazo nenhum e deixava
+// 28 dos 47 leads CONTACTED fora do follow-up para sempre. A regra mora em
+// `_shared/lead-contact.ts` justamente para os dois caminhos não divergirem.
 
 // HANDOFF HUMANO: quando o humano responde manualmente pela instância (fromMe) para um
 // lead OU candidato, a IA correspondente (SDR/RH) se cala nesse contato (ai_handoff=true).
@@ -619,20 +610,13 @@ async function availabilityMenu(sb: any, tenantId: string): Promise<string> {
   return lines.join(" | ") || "(sem horários cadastrados)";
 }
 
+// A escolha das alternativas vive em `_shared/lead-contact.ts`: o
+// `funnel-sweeper` oferece exatamente as mesmas ao lead que ficou sem professor,
+// e duas cópias divergiriam na primeira vez que alguém mexesse em uma delas.
 async function suggestAlternatives(sb: any, tenantId: string, date: string, time: string): Promise<{ days: string[]; times: string[] }> {
   const { data } = await sb.from("teacher_availability").select("day_of_week, start_time").eq("tenant_id", tenantId);
-  const reqDow = dowOf(date);
-  const daysWithTime = new Set<number>();
-  const timesOnReqDay = new Set<string>();
-  for (const r of (data || [])) {
-    const t = String(r.start_time).slice(0, 5);
-    if (t === time && r.day_of_week !== reqDow && r.day_of_week >= 1 && r.day_of_week <= 6) daysWithTime.add(r.day_of_week);
-    if (r.day_of_week === reqDow && t >= "07:00" && t <= "21:30") timesOnReqDay.add(t);
-  }
-  return {
-    days: [...daysWithTime].sort((a, b) => a - b).map((d) => DAY_MAP[d]),
-    times: [...timesOnReqDay].sort(),
-  };
+  const alt = pickAlternatives(data || [], dowOf(date), time);
+  return { days: alt.days.map((d) => DAY_MAP[d]), times: alt.times };
 }
 
 /** Dia da semana sem acento, porque `bookings.day_of_week` tem "Terça" e "Terca". */

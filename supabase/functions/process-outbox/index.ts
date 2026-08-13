@@ -25,6 +25,24 @@ const BATCH_SIZE = 10;
 // Retry intervals in seconds: 30s, 2min, 10min, 1h
 const RETRY_INTERVALS = [30, 120, 600, 3600];
 
+/**
+ * VALIDADE DA MENSAGEM — mensagem de fila não envelhece bem.
+ *
+ * Achado em 13/08/2026: a fila tinha **12 mensagens PENDING desde MAIO**, todas
+ * convites de experimental para o grupo dos professores ("EXPERIMENTAL —
+ * 02/05/2026 às 19:00", com link de aceite de uma vaga que não existe mais).
+ * Não havia cron chamando este worker, e ninguém no código escreve mais nesta
+ * fila — ela foi abandonada quando o broadcast passou a enviar direto.
+ *
+ * O risco não é o passado: é alguém religar o cron um dia e a escola inteira
+ * receber convites de três meses atrás. Mensagem vencida não é enviada — vai
+ * para a DLQ com o motivo, onde dá para auditar.
+ *
+ * ⚠️ Se um dia esta fila voltar a ser usada para algo que TOLERA atraso longo,
+ * este teto tem de ser revisto junto — não é uma constante inofensiva.
+ */
+const MAX_AGE_MS = 2 * 3600 * 1000;
+
 function log(level: string, msg: string, ctx: Record<string, unknown> = {}) {
     const entry = { ts: new Date().toISOString(), level, msg, fn: 'process-outbox', ...ctx };
     if (level === 'error') console.error(JSON.stringify(entry));
@@ -77,8 +95,18 @@ serve(async (req) => {
         // ── PROCESS EACH MESSAGE ─────────────────────────────────────
         for (const msg of messages) {
             processed++;
-            const { id, payload, destination, attempt_count, max_attempts, tenant_id, correlation_id } = msg;
+            const { id, payload, destination, attempt_count, max_attempts, tenant_id, correlation_id, created_at } = msg;
             const msgCtx = { msg_id: id, tenant_id, opp_id: correlation_id, attempt: attempt_count + 1 };
+
+            // Vencida: não envia, arquiva com o motivo. Ver MAX_AGE_MS.
+            const idadeMs = created_at ? Date.now() - new Date(created_at).getTime() : 0;
+            if (idadeMs > MAX_AGE_MS) {
+                const horas = Math.round(idadeMs / 3600000);
+                log('warn', 'Mensagem vencida — arquivada sem enviar', { ...msgCtx, idade_horas: horas });
+                await markDLQ(supabaseAdmin, id, `Mensagem vencida (${horas}h na fila) — não enviada`);
+                dlq++;
+                continue;
+            }
 
             try {
                 // Send via Evolution API

@@ -293,6 +293,7 @@ npx --yes deno test --no-lock \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
+  supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
@@ -517,6 +518,7 @@ SHARED_AI_USAGE_RELATIVE="supabase/functions/_shared/ai-usage.ts"
 SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-meeting-policy.ts"
 SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
+SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 HARDENED_FUNCTIONS=(
   sync-subscription-status
   notify-payment-due
@@ -631,6 +633,7 @@ done
 [[ -s "$SHARED_AI_USAGE_RELATIVE" ]] || die "telemetria compartilhada de IA ausente"
 [[ -s "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" ]] || die "política de reunião global ausente"
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
+[[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -666,7 +669,8 @@ artifact_hash="$(
       "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
       "$SHARED_AI_USAGE_RELATIVE" \
       "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
-      "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE"
+      "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
+      "$SHARED_LEAD_CONTACT_RELATIVE"
     printf '%s\n' "${MIGRATION_RELATIVES[@]}"
     printf '%s\n' "${DATABASE_TEST_RELATIVES[@]}"
   } |
@@ -782,6 +786,8 @@ rsync -a -- "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-billing-safety.ts"
 rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
+rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"

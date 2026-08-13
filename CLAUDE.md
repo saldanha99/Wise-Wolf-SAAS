@@ -1236,14 +1236,53 @@ emudecendo em silêncio.
 - `ai_handoff_at` (migration `20260809130000_handoff_da_ia_tem_validade`) carimba **quando** o
   humano assumiu, para o inbound perguntar "isto ainda é um atendimento humano vivo?" em vez
   de "alguém já respondeu aqui alguma vez na história?".
-- ⚠️ **A expiração vale só para o caminho REATIVO** (o contato escreveu de novo). A prospecção
-  ativa (`sdr-followups`) continua exigindo `ai_handoff = false`: se um humano assumiu, o robô
-  não volta a **cutucar** sozinho — no máximo volta a atender quem procurou.
+- ✅ **Desde 13/08/2026 a expiração vale nos DOIS caminhos.** Ela nasceu só no reativo (o
+  contato escreveu de novo), e a prospecção ativa seguiu exigindo `ai_handoff = false` **sem
+  prazo** — o mesmo defeito, um andar abaixo. Medido antes da mudança: **28 dos 47 leads
+  `CONTACTED` estavam nesse limbo** e 73 leads nunca tinham recebido follow-up. Depois de 72h
+  em silêncio, "um humano assumiu" só significa "ninguém está cuidando deste lead".
+  A regra virou `handoffAtivo` em **`_shared/lead-contact.ts`**, usada pelo `whatsapp-inbound`
+  e pelo `sdr-followups` — duas cópias divergiriam no primeiro ajuste.
 - ⚠️ **O backfill usa a ÚLTIMA mensagem trocada, não `now()`.** Carimbar `now()` prorrogaria o
   silêncio por mais uma janela inteira — exatamente o problema que a migration existe para
   acabar.
 - RPC `set_ai_handoff(p_kind, p_id, p_handoff)` devolve o contato à IA (ou tira) pela tela.
   Escrita fechada numa RPC estreita em vez de policy de update ampla nas duas tabelas.
+
+### Experimental sem professor não pode virar silêncio ✅
+
+Medido em 13/08/2026: de 125 experimentais da história, **69 expiraram sem nenhum professor
+aceitar (55%)**. O lead tinha ouvido *"vou verificar o professor e já te confirmo"* — e depois
+disso **18 ficaram em silêncio total** e **16 tiveram que cobrar** (a mensagem seguinte foi
+deles). O `funnel-sweeper` avisava o diretor aos 60 min e marcava `LOST` em 48h, mas **nunca
+falava com quem pediu a aula**.
+
+A varredura **C2) LEAD ÓRFÃO** fecha o circuito: quem ficou sem professor recebe as
+alternativas reais da grade (`pickAlternatives`, o mesmo cálculo que a atendente usa).
+
+- ⚠️ **Roda separada do momento da expiração.** Expirar às 3h e mandar mensagem na hora seria
+  pior que não mandar; a oportunidade é varrida no horário comercial seguinte, com
+  idempotência por `automation_sent (TRIAL_NO_TEACHER)` — um único toque por experimental.
+- ⚠️ **Janela de 3 dias.** Sem ela, a primeira execução dispararia para os 69 do histórico.
+- ⚠️ **Não fala com quem já tem aula.** Pula quando a oportunidade tem `lost_reason` (foi
+  substituída porque o próprio aluno remarcou) e quando existe outra experimental `CLAIMED`
+  para o mesmo telefone. Dizer "não achei professor" a quem tem aula marcada derruba a aula.
+- Trava comercial (virou aluno), telefone de candidato e teto diário de 15 valem aqui como em
+  todo contato de venda — o número da escola já foi restringido uma vez.
+
+### `outbox_messages` está APOSENTADA — não religue o cron sem ler isto
+
+Medido em 13/08/2026: **12 mensagens `PENDING` desde MAIO** — convites de experimental para o
+grupo dos professores ("EXPERIMENTAL — 02/05/2026 às 19:00", com link de vaga que não existe
+mais). Não há cron chamando `process-outbox`, e **nenhum código escreve mais nessa fila**: o
+broadcast passou a enviar direto.
+
+- ✅ O worker ganhou **validade (`MAX_AGE_MS`, 2h)**: mensagem vencida vai para a **DLQ com o
+  motivo, sem ser enviada**. O risco nunca foi o passado parado — era alguém religar o cron e
+  a escola inteira receber convite de três meses atrás.
+- ⚠️ Se um dia a fila voltar a ser usada para algo que tolera atraso longo, **esse teto tem de
+  ser revisto junto**. Não é constante inofensiva.
+- As 12 antigas foram marcadas `DLQ` (motivo registrado), não apagadas nem enviadas.
 
 ### A etapa da triagem é decidida no SERVIDOR, não pelo modelo
 

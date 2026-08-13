@@ -1,5 +1,9 @@
+// O `tsconfig.json` da raiz (lib DOM, do Vite) é lido pelo Deno e apaga
+// `deno.ns`. Mesma diretiva que o `process-outbox` já carrega.
+/// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { handoffAtivo } from "../_shared/lead-contact.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -77,7 +81,7 @@ serve(async (req) => {
     const hourBRT = nowBRT().getUTCHours();
     if (hourBRT < 9 || hourBRT >= 20) return new Response(JSON.stringify({ ok: true, skipped: "fora do horário" }), { status: 200 });
 
-    const result = { followups: 0, preinterview_reminders: 0, interview_reminders: 0, skipped_candidates: 0, skipped_contracted: 0, failures: [] as string[] };
+    const result = { followups: 0, preinterview_reminders: 0, interview_reminders: 0, skipped_candidates: 0, skipped_contracted: 0, skipped_handoff: 0, failures: [] as string[] };
 
     const { data: admins } = await sb.from("profiles").select("tenant_id, phone, whatsapp_instance").in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
     const byTenant: Record<string, { instance: string; ownerPhone: string }> = {};
@@ -99,10 +103,23 @@ serve(async (req) => {
       (allApps || []).some((a: any) => a.tenant_id === tenantId && phonesMatch(a.whatsapp, phone));
 
     // ---- 1) Follow-up de leads ----
+    //
+    // O HANDOFF HUMANO AQUI TAMBÉM VENCE (mudou em 13/08/2026).
+    //
+    // O filtro era `ai_handoff = false` sem prazo nenhum: uma única resposta
+    // manual tirava o lead da prospecção ATIVA para sempre. Medido antes da
+    // mudança: 28 dos 47 leads CONTACTED estavam nesse limbo, e 73 leads nunca
+    // receberam follow-up nenhum. "O humano assumiu" vira, depois de 72h em
+    // silêncio, apenas "ninguém está cuidando deste lead".
+    //
+    // O filtro sai do SQL e vira `handoffAtivo` (mesma regra do caminho
+    // reativo, em `_shared/lead-contact.ts`), porque a decisão depende do
+    // carimbo e não só do booleano.
     const cutoff = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
-    const { data: leads } = await sb.from("crm_leads").select("id, tenant_id, name, phone, status, last_inbound_at, last_outbound_at, followup_count, ai_handoff, ai_handled")
-      .eq("ai_handled", true).eq("ai_handoff", false).in("status", ["NEW", "CONTACTED"]).not("last_outbound_at", "is", null).lt("last_outbound_at", cutoff);
+    const { data: leads } = await sb.from("crm_leads").select("id, tenant_id, name, phone, status, last_inbound_at, last_outbound_at, followup_count, ai_handoff, ai_handoff_at, ai_handled")
+      .eq("ai_handled", true).in("status", ["NEW", "CONTACTED"]).not("last_outbound_at", "is", null).lt("last_outbound_at", cutoff);
     for (const lead of (leads || [])) {
+      if (handoffAtivo(lead)) { result.skipped_handoff++; continue; }
       if ((lead.followup_count ?? 0) >= 2) continue;
       if (lead.last_inbound_at && lead.last_inbound_at > lead.last_outbound_at) continue;
       const t = byTenant[lead.tenant_id];
