@@ -17,6 +17,7 @@ import {
   resolveAtendenteTraining,
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
+import { historicoParaModelo } from "./conversation-log.ts";
 import {
   type ActiveTrial,
   brtSlotFromIso,
@@ -505,10 +506,14 @@ function next7DaysMap(): string {
 }
 
 async function history(sb: any, tenantId: string, phone: string, agent: string, limit = 22) {
-  const { data } = await sb.from("ai_wa_messages").select("direction, content, created_at")
+  // `meta` entra no select porque o histórico só pode conter o que a pessoa
+  // REALMENTE recebeu — ver `conversation-log.ts`. A filtragem é feita aqui, em
+  // memória, e não no PostgREST: `meta->>entregue neq false` descartaria toda
+  // linha antiga (sem o campo), porque comparação com NULL não é verdadeira.
+  const { data } = await sb.from("ai_wa_messages").select("direction, content, meta, created_at")
     .eq("tenant_id", tenantId).eq("agent", agent).eq("phone", phone)
     .order("created_at", { ascending: false }).limit(limit);
-  return (data || []).reverse().map((m: any) => ({ role: m.direction === "in" ? "user" : "assistant", content: String(m.content || "").slice(0, 900) }));
+  return historicoParaModelo(data || []);
 }
 
 async function logMsg(sb: any, tenantId: string, phone: string, agent: string, direction: string, content: string, meta: any = {}) {
@@ -1013,12 +1018,26 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
     }
   }
 
-  if (await sendWhats(instance, phone, reply)) {
-    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
-      lead_id: lead.id,
-      dispatch: dispatchMeta,
-      commercial_policy: commercialReply.policy,
-    });
+  // O REGISTRO NÃO DEPENDE DO ENVIO.
+  //
+  // Antes o log vivia dentro do `if (sendWhats(...))`: quando o WhatsApp
+  // recusava a mensagem, sumia junto a única prova do que o agente tinha
+  // decidido — inclusive uma remarcação de experimental já gravada no banco.
+  // Envio é entrega; log é memória. São coisas diferentes.
+  //
+  // ⚠️ Consequência deliberada: tentativa que falhou passa a contar no teto de
+  // 12 respostas/hora, porque cada uma custou uma chamada de modelo — que é
+  // justamente o que o teto protege.
+  const entregue = await sendWhats(instance, phone, reply);
+  await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+    lead_id: lead.id,
+    dispatch: dispatchMeta,
+    commercial_policy: commercialReply.policy,
+    entregue,
+  });
+  // `last_outbound_at` alimenta a prospecção ativa (`sdr-followups`) e significa
+  // "a última vez que falamos com o lead". Mensagem não entregue não é conversa.
+  if (entregue) {
     await sb.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
   }
 }

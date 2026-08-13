@@ -758,6 +758,19 @@ decisão pura e testada; a I/O fica no `index.ts`):
 - **Fuso:** `appointments.start_time` é UTC e a escola pensa em BRT
   (12:00 BRT = 15:00Z). Use `brtStartIso` / `brtSlotFromIso` — a tela de aceite
   monta o ISO pelo relógio do navegador do professor, a edge function roda em UTC.
+- **O registro não depende do envio** (`conversation-log.ts`, achado no teste
+  ponta a ponta de 13/08/2026): a resposta ao lead só era gravada em
+  `ai_wa_messages` **se o WhatsApp aceitasse** — uma remarcação acontecia no
+  banco e não sobrava prova nenhuma da decisão. Hoje toda resposta é registrada
+  com `entregue: true|false`.
+  ⚠️ **E o histórico enviado ao modelo filtra o que não foi entregue** — senão a
+  atendente leria "eu já expliquei isso" sobre uma mensagem que o aluno nunca
+  recebeu. O filtro roda **em memória, não no PostgREST**: `meta->>entregue neq
+  false` descartaria toda linha antiga (sem o campo), porque comparação com NULL
+  não é verdadeira.
+  ⚠️ Tentativa falha passa a contar no teto de 12 respostas/hora — cada uma
+  custou uma chamada de modelo, que é o que o teto protege. E `last_outbound_at`
+  (que alimenta o `sdr-followups`) só avança quando a mensagem chega.
 - **Testes:** `trial-reschedule.test.ts` (11 casos, incluindo o caso do Rafael
   como regressão), registrado no `release.sh`.
   ⚠️ O arquivo tem `/// <reference lib="deno.ns" />` porque o `tsconfig.json` da
