@@ -119,7 +119,7 @@ serve(async (req) => {
       const facts = commercialFacts.get(lead.tenant_id);
       if (!facts) continue; // fail closed: sem fonte de verdade, não envia venda
       const suppression = evaluateCommercialSuppression({
-        tenantId: lead.tenant_id, phone: lead.phone, leadStatus: lead.status,
+        tenantId: lead.tenant_id, phone: lead.phone, name: lead.name, leadStatus: lead.status,
       }, facts);
       if (suppression.suppressed) {
         await reconcileSuppressedLead(sb, lead.id, suppression);

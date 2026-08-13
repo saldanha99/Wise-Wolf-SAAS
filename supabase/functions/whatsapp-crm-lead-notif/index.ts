@@ -79,6 +79,7 @@ serve(async (req) => {
       tenantId: lead.tenant_id,
       phone: lead.phone,
       email: lead.email,
+      name: lead.name,
       leadStatus: lead.status,
     }, facts);
     if (suppression.suppressed) {

@@ -836,7 +836,7 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   // pode recolocar aluno contratado no fluxo de venda.
   const commercialFacts = await loadCommercialContactFacts(sb, tenantId);
   const suppression = evaluateCommercialSuppression({
-    tenantId, phone, leadStatus: lead.status,
+    tenantId, phone, name: lead.name, leadStatus: lead.status,
   }, commercialFacts);
   if (suppression.suppressed) {
     await reconcileSuppressedLead(sb, lead.id, suppression);

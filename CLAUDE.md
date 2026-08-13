@@ -1394,6 +1394,28 @@ dígito, consulte o endpoint e confirme.
   Diagnóstico: `ssh wisewolf-vps 'docker logs supabase-edge-functions --since 1h | grep evolution'`.
 - Testes com `fetch` dublado em `_shared/evolution-send.test.ts` (8 casos).
 
+### ⚠️ Aluno matriculado recebendo oferta de experimental — a trava de sósia
+
+Aconteceu em 13/08/2026: a aluna **Penha Vilani** (matriculada, contrato aceito) recebeu
+*"ainda tem interesse na aula experimental?"*. O CRM tinha **"Penha Valani"** com telefone
+`27 999247902` contra `27 99924792` no cadastro dela — **um dígito de diferença**. Para o
+casamento por telefone eram dois estranhos; para quem recebeu, foi a escola perguntando se
+ela quer conhecer a escola em que estuda.
+
+- A supressão comercial casava lead↔aluno **só por telefone/e-mail**. Agora, quando esse
+  caminho não acha ninguém, entra `provavelSosiaDeAluno`: **nome quase idêntico (distância
+  ≤ 2) + MESMO DDD + mesma escola ⇒ não manda venda**.
+- ⚠️ **Ela BLOQUEIA, não vincula** (`studentId` volta nulo). Vincular cadastro por semelhança
+  de nome mexeria em cobrança a partir de um palpite; recusar uma mensagem de venda, no pior
+  caso, custa um lead não prospectado — e isso um humano conserta em dez segundos.
+- ⚠️ Nome com menos de 6 letras fica fora da regra, senão "Ana" bloquearia "Ane".
+- **Auditoria para achar os próximos** (leads que são alunos com telefone divergente):
+  `levenshtein` sobre nome normalizado + mesmo tenant, filtrando quem já casa por telefone.
+  Rodada em 13/08/2026: só a Penha entre os registros reais.
+- ⚠️ A trava não conserta o cadastro duplicado — ela só impede a mensagem. **Quem reconcilia
+  os dois telefones é gente**, e enquanto não reconciliar o lead segue no CRM como pessoa
+  separada.
+
 ### ⚠️ Aluno em rajada NÃO é aluno sem resposta
 
 Uma auditoria de 13/08/2026 apontou "34 de 47 mensagens de aluno sem resposta (72%)" e quase

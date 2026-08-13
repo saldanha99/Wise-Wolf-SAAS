@@ -174,7 +174,7 @@ serve(async (req) => {
         const facts = commercialFacts.get(lead.tenant_id);
         if (!facts) { result.first_touch_skipped++; continue; }
         const suppression = evaluateCommercialSuppression({
-          tenantId: lead.tenant_id, phone: lead.phone, leadStatus: lead.status,
+          tenantId: lead.tenant_id, phone: lead.phone, name: lead.name, leadStatus: lead.status,
         }, facts);
         if (suppression.suppressed) {
           await reconcileSuppressedLead(sb, lead.id, suppression);
@@ -400,10 +400,11 @@ serve(async (req) => {
         const facts = commercialFacts.get(opp.tenant_id);
         if (!facts) { result.orphan_skipped++; continue; }
         const { data: leadRows } = await sb.from("crm_leads")
-          .select("id, phone, status").eq("tenant_id", opp.tenant_id).not("phone", "is", null);
+          .select("id, name, phone, status").eq("tenant_id", opp.tenant_id).not("phone", "is", null);
         const lead = (leadRows || []).find((l: any) => phonesMatch(String(l.phone || ""), phone));
         const suppression = evaluateCommercialSuppression({
-          tenantId: opp.tenant_id, phone: opp.student_phone || "", leadStatus: lead?.status,
+          tenantId: opp.tenant_id, phone: opp.student_phone || "",
+          name: lead?.name ?? opp.student_name, leadStatus: lead?.status,
         }, facts);
         if (suppression.suppressed) {
           if (lead?.id) await reconcileSuppressedLead(sb, lead.id, suppression);

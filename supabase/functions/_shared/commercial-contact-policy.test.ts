@@ -2,7 +2,9 @@
 
 import {
   commercialPhonesMatch,
+  distanciaNome,
   evaluateCommercialSuppression,
+  provavelSosiaDeAluno,
   type CommercialContactFacts,
 } from "./commercial-contact-policy.ts";
 
@@ -46,4 +48,72 @@ Deno.test("an unrelated prospect remains contactable", () => {
   facts.students.push({ id: "student-1", phone: "5511987654321", contract_accepted: true });
   const result = evaluateCommercialSuppression({ tenantId: "t1", phone: "5512987654321", leadStatus: "NEW" }, facts);
   if (result.suppressed) throw new Error("unrelated DDD was suppressed");
+});
+
+
+// ── TRAVA DE SÓSIA ──────────────────────────────────────────────────────────
+// Caso real de 13/08/2026: a aluna matriculada Penha Vilani (27 99924792)
+// recebeu "ainda tem interesse na aula experimental?" porque o CRM tinha
+// "Penha Valani" com 27 999247902 — um dígito de diferença.
+const ALUNA_PENHA = {
+  id: "aluna-penha", full_name: "Penha Vilani", phone: "2799924792",
+  contract_accepted: true,
+};
+
+Deno.test("REGRESSÃO: aluna matriculada com telefone divergente NÃO recebe venda", () => {
+  const facts = emptyFacts();
+  facts.students.push(ALUNA_PENHA);
+  const r = evaluateCommercialSuppression(
+    { tenantId: "t1", phone: "5527999247902", name: "Penha Valani", leadStatus: "CONTACTED" },
+    facts,
+  );
+  if (!r.suppressed) throw new Error("deveria bloquear a mensagem de venda");
+  if (r.reason !== "nome_e_ddd_de_aluno") throw new Error("motivo errado: " + r.reason);
+  // Bloqueia sem vincular: semelhança de nome não pode mexer em cadastro.
+  if (r.studentId !== null) throw new Error("não pode vincular por semelhança");
+});
+
+Deno.test("DDD diferente derruba a trava — homônimo de outro estado é lead de verdade", () => {
+  if (provavelSosiaDeAluno({ tenantId: "t1", phone: "5511999247902", name: "Penha Valani" }, ALUNA_PENHA)) {
+    throw new Error("não pode bloquear com DDD diferente");
+  }
+});
+
+Deno.test("nome curto fica fora da regra", () => {
+  const aluno = { full_name: "Ana", phone: "2799924792", contract_accepted: true };
+  if (provavelSosiaDeAluno({ tenantId: "t1", phone: "27999247902", name: "Ane" }, aluno)) {
+    throw new Error("nome curto não pode acionar a trava");
+  }
+});
+
+Deno.test("nome distante demais não bloqueia", () => {
+  if (provavelSosiaDeAluno({ tenantId: "t1", phone: "27999247902", name: "Roberto Carlos" }, ALUNA_PENHA)) {
+    throw new Error("nomes diferentes não podem bloquear");
+  }
+});
+
+Deno.test("acento e caixa não atrapalham a comparação", () => {
+  if (distanciaNome("Verônica Souza", "veronica souza") !== 0) throw new Error("deveria ser idêntico");
+  if (distanciaNome("Penha Valani", "Penha Vilani") !== 1) throw new Error("distância errada");
+});
+
+Deno.test("aluno SEM contrato aceito não aciona a trava de sósia", () => {
+  const facts = emptyFacts();
+  facts.students.push({ ...ALUNA_PENHA, contract_accepted: false });
+  const r = evaluateCommercialSuppression(
+    { tenantId: "t1", phone: "5527999247902", name: "Penha Valani" },
+    facts,
+  );
+  if (r.suppressed) throw new Error("interessado ainda não matriculado pode receber venda");
+});
+
+Deno.test("casamento por telefone continua tendo precedência e vincula o aluno", () => {
+  const facts = emptyFacts();
+  facts.students.push(ALUNA_PENHA);
+  const r = evaluateCommercialSuppression(
+    { tenantId: "t1", phone: "2799924792", name: "Penha Valani" },
+    facts,
+  );
+  if (r.reason !== "contract_accepted") throw new Error("motivo errado: " + r.reason);
+  if (r.studentId !== "aluna-penha") throw new Error("deveria vincular pelo telefone");
 });

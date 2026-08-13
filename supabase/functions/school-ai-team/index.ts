@@ -203,7 +203,7 @@ async function buildAtendente(sb: any, tenantId: string): Promise<{ md: string; 
       .select("name, phone, email, status, created_at").eq("tenant_id", tenantId);
     const actionable = (leads || []).filter((lead: any) =>
       !evaluateCommercialSuppression({
-        tenantId, phone: lead.phone, email: lead.email, leadStatus: lead.status,
+        tenantId, phone: lead.phone, email: lead.email, name: lead.name, leadStatus: lead.status,
       }, facts).suppressed
     );
     const weekStart = new Date(daysAgoISO(7) + "T00:00:00").getTime();

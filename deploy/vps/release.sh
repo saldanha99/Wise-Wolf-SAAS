@@ -294,6 +294,7 @@ npx --yes deno test --no-lock \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
+  supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/lesson-planner/core.test.ts \

@@ -14,12 +14,15 @@ export type CommercialSuppressionReason =
   | "active_contract"
   | "opportunity_converted"
   | "enrollment_in_progress"
-  | "enrollment_completed";
+  | "enrollment_completed"
+  | "nome_e_ddd_de_aluno";
 
 export interface CommercialIdentity {
   tenantId: string;
   phone?: string | null;
   email?: string | null;
+  /** Nome como está no CRM. Usado só para a trava de sósia (ver abaixo). */
+  name?: string | null;
   leadStatus?: string | null;
   opportunityId?: string | null;
 }
@@ -28,6 +31,7 @@ export interface ContractedStudentFact {
   id: string;
   phone?: string | null;
   email?: string | null;
+  full_name?: string | null;
   contract_accepted?: boolean | null;
 }
 
@@ -88,6 +92,75 @@ export function commercialPhonesMatch(
   return Boolean(areaA && areaB && areaA === areaB);
 }
 
+/** Minúsculas, sem acento e sem espaço sobrando. */
+export function normalizarNome(valor: string | null | undefined): string {
+  return String(valor || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Distância de edição (Levenshtein), suficiente para "Valani" x "Vilani". */
+export function distanciaNome(a: string, b: string): number {
+  const s1 = normalizarNome(a), s2 = normalizarNome(b);
+  if (s1 === s2) return 0;
+  if (!s1 || !s2) return Math.max(s1.length, s2.length);
+  const linha = Array.from({ length: s2.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= s1.length; i++) {
+    let anterior = linha[0];
+    linha[0] = i;
+    for (let j = 1; j <= s2.length; j++) {
+      const tmp = linha[j];
+      linha[j] = Math.min(
+        linha[j] + 1,
+        linha[j - 1] + 1,
+        anterior + (s1[i - 1] === s2[j - 1] ? 0 : 1),
+      );
+      anterior = tmp;
+    }
+  }
+  return linha[s2.length];
+}
+
+/** DDD do número, ou "" quando não dá para saber. */
+export function dddDe(valor: string | null | undefined): string {
+  const d = cleanCommercialPhone(valor);
+  if (d.length < 10) return "";
+  return d.slice(0, -8).replace(/^55/, "").replace(/9$/, "").slice(-2);
+}
+
+/**
+ * TRAVA DE SÓSIA — o mesmo humano cadastrado duas vezes com telefones diferentes.
+ *
+ * Aconteceu em 13/08/2026: a aluna **Penha Vilani** (matriculada, contrato
+ * aceito) recebeu "ainda tem interesse na aula experimental?". O CRM tinha
+ * "Penha Valani" com um telefone que difere do cadastro dela em UM dígito
+ * (27 99924792 x 27 999247902). Para o casamento por telefone eram dois
+ * estranhos; para quem recebeu, foi a escola perguntando se ela quer conhecer
+ * a escola em que estuda.
+ *
+ * A regra: nome quase idêntico + MESMO DDD + mesma escola ⇒ não manda venda.
+ *
+ * ⚠️ Ela BLOQUEIA, não vincula. Vincular lead a aluno por semelhança de nome
+ * mexeria em cadastro e cobrança a partir de um palpite; recusar uma mensagem
+ * de venda, no pior caso, custa um lead não prospectado — e isso um humano
+ * conserta em dez segundos.
+ *
+ * ⚠️ Distância 2 é o limite de propósito. "Ana Silva" e "Ana Souza" distam 2 e
+ * seriam bloqueadas; nome curto demais (< 6 letras) fica fora da regra, senão
+ * "Ana" bloquearia "Ane".
+ */
+export function provavelSosiaDeAluno(
+  identity: CommercialIdentity,
+  aluno: { full_name?: string | null; phone?: string | null },
+): boolean {
+  const nomeLead = normalizarNome(identity.name);
+  const nomeAluno = normalizarNome(aluno.full_name);
+  if (nomeLead.length < 6 || nomeAluno.length < 6) return false;
+  const ddd = dddDe(identity.phone);
+  if (!ddd || ddd !== dddDe(aluno.phone)) return false;
+  return distanciaNome(nomeLead, nomeAluno) <= 2;
+}
+
 function identityMatches(
   identity: CommercialIdentity,
   row: { phone?: string | null; email?: string | null },
@@ -116,6 +189,19 @@ export function evaluateCommercialSuppression(
       reason: "contract_accepted",
       studentId: matchedStudent.id,
     };
+  }
+
+  // Sósia: telefone diverge, mas é a mesma pessoa. Vem DEPOIS do casamento por
+  // telefone/e-mail — só entra quando o caminho confiável não achou ninguém —
+  // e devolve studentId NULO de propósito: bloqueia a venda sem vincular
+  // cadastro a partir de uma semelhança.
+  if (!matchedStudent) {
+    const sosia = facts.students.find((student) =>
+      student.contract_accepted === true && provavelSosiaDeAluno(identity, student)
+    );
+    if (sosia) {
+      return { suppressed: true, reason: "nome_e_ddd_de_aluno", studentId: null };
+    }
   }
 
   const activeStudentIds = new Set(
@@ -173,7 +259,8 @@ export async function loadCommercialContactFacts(
 ): Promise<CommercialContactFacts> {
   const [studentsRes, contractsRes, opportunitiesRes, linksRes] = await Promise.all([
     sb.from("profiles")
-      .select("id, phone, email, contract_accepted")
+      // `full_name` entra para a trava de sósia (nome + DDD).
+      .select("id, phone, email, full_name, contract_accepted")
       .eq("tenant_id", tenantId)
       .in("role", ["STUDENT", "student"]),
     sb.from("student_contracts")
