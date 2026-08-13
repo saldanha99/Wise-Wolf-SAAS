@@ -148,6 +148,9 @@ close_release_ssh() {
 source "$SCRIPT_DIR/lib/release-preflight.sh"
 assert_release_tree_is_publishable "$PROJECT_DIR"
 
+# shellcheck source=lib/function-drift-guard.sh
+source "$SCRIPT_DIR/lib/function-drift-guard.sh"
+
 cd "$PROJECT_DIR"
 
 echo "== Preflight da VPS =="
@@ -225,6 +228,8 @@ end
 $preflight$;
 SQL
 REMOTE
+
+assert_no_out_of_band_function_changes "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR"
 
 read_remote_public_env() {
   local key=$1
@@ -1787,3 +1792,9 @@ echo "Backup reversível: $backup_dir"
 REMOTE
 
 echo "Deploy concluído: $release_id"
+
+# Linha de base para o PRÓXIMO release. Vem do que de fato ficou no servidor, não
+# do que julgamos ter enviado — é o que transforma hotfix por `scp` em erro
+# visível na próxima publicação, em vez de perda silenciosa.
+update_published_function_manifest "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR" ||
+  echo "AVISO: não consegui gravar o manifesto de functions; o próximo release avisará que não tem linha de base." >&2
