@@ -1191,6 +1191,12 @@ quase tudo saía como pró-labore e **R$ 27,10 ficavam na escola**. Decisão da 
 | **Direção** (👑 em `payment_split_owner_teachers`) | 10% | 10% | **80%** | 0% |
 | **Professor contratado** | 10% | **70%** | **20%** | 0% |
 
+⚠️ **Ao conferir totais do mês, separe `na_base`.** Pagamento sem aluno vinculado entra na
+régua "professor" (não há aula, logo `share = 0`) com o valor cheio e dízimo ZERO. Somar o
+líquido dos dois grupos faz o dízimo parecer errado — aconteceu em 13/08/2026: R$ 3.632,95 de
+"base" com R$ 120,00 de dízimo, porque R$ 2.433,00 daquilo estava fora da base. A base real
+era R$ 1.199,95, e 10% dela é exatamente R$ 120,00.
+
 - **A base é o LÍQUIDO** (pagamento − salário previsto do professor), como sempre foi. Na
   régua do professor os percentuais incidem sobre o que sobra **depois** do salário dele.
 - **Aluno partido entre as duas** (existe: Verônica, com Debora e Mateus) tem o líquido
@@ -1199,11 +1205,18 @@ quase tudo saía como pró-labore e **R$ 27,10 ficavam na escola**. Decisão da 
 - ⚠️ **`dizimo_pct`/`investimento_pct` no retorno são EFETIVOS**, não os configurados: num
   pagamento partido, repetir o configurado anunciaria "Dízimo (10%)" ao lado de um valor que
   não é 10% da base mostrada.
-- ⚠️ **"Fica na escola" aparece mesmo valendo R$ 0,00.** Com 10/70/20 ela dá zero por
-  desenho; esconder a linha faria as quatro parcelas não fecharem com a base para quem
-  confere no fim do mês.
+- **O aviso tem TRÊS linhas, não quatro** (13/08/2026): dízimo · *investimento que fica na
+  escola* · pró-labore. "Investimento" e "fica na escola" eram o mesmo dinheiro em duas
+  linhas, e a segunda dava sempre R$ 0,00 na régua do professor — linha zerada em todo aviso
+  vira ruído. O percentual dessa linha é calculado **sobre a base real**, não copiado da
+  configuração: num pagamento partido entre as duas réguas, nenhum dos percentuais
+  configurados descreve o total.
 - ⚠️ **A sobra é RESÍDUO** (`líquido − dízimo − investimento − pró-labore`), não um percentual
   próprio: é o que impede centavo de arredondamento de sumir ou de ser inventado.
+- ⚠️ **Resíduo negativo existe e é tratado.** As três fatias são arredondadas de forma
+  independente e juntas estouram a base por um centavo — agosto/2026 exibia
+  "escola: −R$ 0,01". O centavo sai do **pró-labore**, nunca da escola: inflar a parte da
+  empresa com arredondamento seria criar dinheiro que não existe.
 - **Configurável na tela** (Financeiro → Rateio): a régua do professor tem os três campos
   próprios. `save_payment_split_settings` ganhou 3 parâmetros — a assinatura de 4 argumentos
   foi **derrubada** de propósito, senão o PostgREST teria duas candidatas e recusaria a

@@ -28,24 +28,41 @@ Deno.test("aula da direção: pró-labore fica com o líquido menos dízimo e in
   const msg = montarMensagem(AULA_DA_DIRECAO);
   assertStringIncludes(msg, "Pró-labore da direção: *R$ 216,80*");
   assertStringIncludes(msg, "Dízimo (10%): *R$ 27,10*");
-  assertStringIncludes(msg, "Investimento (10%): *R$ 27,10*");
+  assertStringIncludes(msg, "Investimento que fica na escola (10%): *R$ 27,10*");
   assertStringIncludes(msg, "sem salário a descontar");
   assertEquals(somaDestinos(AULA_DA_DIRECAO), Number(AULA_DA_DIRECAO.liquido));
 });
 
 Deno.test("aula de professor contratado: investimento 70% e pró-labore 20%", () => {
   const msg = montarMensagem(AULA_DE_PROFESSOR);
-  assertStringIncludes(msg, "Investimento (70%): *R$ 109,90*");
+  assertStringIncludes(msg, "Investimento que fica na escola (70%): *R$ 109,90*");
   assertStringIncludes(msg, "Pró-labore da direção: *R$ 31,40*");
   assertStringIncludes(msg, "salário deste aluno: *R$ 104,00*");
   assertEquals(somaDestinos(AULA_DE_PROFESSOR), Number(AULA_DE_PROFESSOR.liquido));
 });
 
-Deno.test("REGRESSÃO: 'fica na escola' aparece mesmo valendo zero", () => {
-  // Some a linha e as quatro parcelas deixam de fechar com a base na tela de
-  // quem confere — foi por isso que ela passou a ser incondicional.
-  assertStringIncludes(montarMensagem(AULA_DE_PROFESSOR), "Fica na escola: *R$ 0,00*");
-  assertStringIncludes(montarMensagem(AULA_DA_DIRECAO), "Fica na escola: *R$ 0,00*");
+Deno.test("investimento e sobra viram UMA linha só", () => {
+  // Eram duas ("Investimento" e "Fica na escola") para o mesmo dinheiro, e a
+  // segunda dava sempre zero na régua do professor.
+  const msg = montarMensagem(AULA_DE_PROFESSOR);
+  assertEquals(msg.includes("Fica na escola"), false);
+  assertEquals((msg.match(/Investimento/g) || []).length, 1);
+});
+
+Deno.test("REGRESSÃO: linha única soma investimento + sobra e mostra o % da base", () => {
+  // Régua antiga (investimento 10% + sobra 70%) tem de aparecer como 80% numa
+  // linha só — senão o diretor lê 10% ao lado de um valor que é 80% da base.
+  const msg = montarMensagem({
+    ...AULA_DE_PROFESSOR, investimento: 15.70, sobra: 109.90, pro_labore: 15.70,
+  });
+  assertStringIncludes(msg, "Investimento que fica na escola (80%): *R$ 125,60*");
+});
+
+Deno.test("REGRESSÃO: o centavo do arredondamento não vira sobra negativa", () => {
+  // O rateio devolve pró-labore já ajustado; a mensagem nunca deve exibir
+  // valor negativo em nenhuma das três linhas.
+  const msg = montarMensagem({ ...AULA_DE_PROFESSOR, sobra: 0, pro_labore: 31.39 });
+  assertEquals(msg.includes("-R$"), false);
 });
 
 Deno.test("entrada sem aluno vinculado não simula rateio", () => {

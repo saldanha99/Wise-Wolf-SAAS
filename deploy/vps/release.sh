@@ -478,6 +478,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260807190000_fim_do_contrato_e_a_ultima_aula_paga.sql"
   "supabase/migrations/20260808120000_rateio_do_pagamento_no_grupo.sql"
   "supabase/migrations/20260813140000_rateio_por_origem_da_aula.sql"
+  "supabase/migrations/20260813160000_rateio_centavo_do_arredondamento.sql"
   "supabase/migrations/20260809120000_reposicoes_no_painel_de_pendencias.sql"
   "supabase/migrations/20260809130000_handoff_da_ia_tem_validade.sql"
   "supabase/migrations/20260809140000_mensalidade_tem_uma_coluna_so.sql"
