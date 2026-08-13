@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { X, CalendarClock, FileText, ShieldAlert, Flame, AlertTriangle, BellRing } from 'lucide-react';
+import { describePayTiers } from '../lib/payTiers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DE AVISOS DO PROFESSOR (funil pós-contratação)
@@ -108,27 +109,37 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                 }
 
                 // 5. Turbo (assiduidade → remuneração progressiva)
-                const { data: turbo } = await supabase.rpc('teacher_turbo_status', { p_teacher: userId });
+                //
+                // A projeção traz o status E as faixas reais da escola. Os textos
+                // daqui citavam "R$ 9,50 do 5º ao 9º" e "30 dias sem falta": a
+                // faixa de R$ 9,50 não existe na tabela, e a apuração passou a ser
+                // por MÊS FECHADO em 02/08/2026 (mês corrente + anterior sem falta).
+                const { data: proj } = await supabase.rpc('teacher_pay_projection', { p_teacher: userId });
+                const turbo = proj?.turbo;
                 if (turbo) {
+                    const faixas = describePayTiers(proj?.tiers);
+                    const comFaixas = (frase: string) => faixas ? `${frase} Na sua carteira: ${faixas}.` : frase;
                     const studentsMissing = Number(turbo.students_missing || 0);
                     if (turbo.active) {
                         found.push({
                             id: 'turboOn', tone: 'emerald', icon: <Flame size={18} />,
                             title: 'Turbo ATIVO 🔥 — não pode faltar!',
-                            text: 'Seus alunos do 5º ao 9º valem R$ 9,50 e do 10º em diante R$ 10,50 por aula. Uma falta OU um conflito de lançamento (aula que o aluno não confirmou) zera o turbo por 30 dias.',
+                            text: comFaixas('O turbo vale para o mês inteiro. Uma falta sua OU um conflito de lançamento (aula que o aluno não confirmou) trava o turbo neste mês e no próximo — falta do aluno não trava.'),
                         });
                     } else if (studentsMissing > 0) {
-                        // Regra 04/07/2026: turbo só ativa a partir de 10 alunos ativos
+                        // Regra 04/07/2026: turbo só ativa a partir de 10 alunos na carteira
                         found.push({
                             id: 'turboLockedStudents', tone: 'amber', icon: <Flame size={18} />,
                             title: `Faltam ${studentsMissing} aluno${studentsMissing === 1 ? '' : 's'} para você poder ativar o turbo`,
-                            text: `O turbo (R$ 9,50/10,50 por aula) destrava a partir de 10 alunos na sua agenda — hoje você tem ${Number(turbo.students_active || 0)}. Também é preciso 30 dias sem falta e sem conflito de lançamento.`,
+                            text: comFaixas(`O turbo destrava a partir de 10 alunos na sua carteira — hoje você tem ${Number(turbo.students_active || 0)}. Também é preciso fechar o mês sem falta sua e sem conflito de lançamento.`),
                         });
-                    } else if (Number(turbo.days_to_activate) > 0 && Number(turbo.days_clean) > 0) {
+                    } else if (turbo.blocked_by === 'falta_neste_mes' || turbo.blocked_by === 'falta_mes_passado') {
                         found.push({
                             id: 'turboOff', tone: 'amber', icon: <Flame size={18} />,
-                            title: `Faltam ${turbo.days_to_activate} dias sem falta para destravar o turbo`,
-                            text: 'Assiduidade paga: 30 dias sem falta e sem conflito de lançamento destravam R$ 9,50/10,50 por aula a partir do seu 5º aluno.',
+                            title: 'Turbo travado por falta lançada',
+                            text: comFaixas(turbo.blocked_by === 'falta_neste_mes'
+                                ? 'Você tem falta lançada neste mês: o turbo só volta no mês que fechar sem nenhuma falta sua.'
+                                : 'Houve falta sua no mês passado. Fechando este mês inteiro sem faltar, o turbo volta no mês seguinte.'),
                         });
                     }
                 }

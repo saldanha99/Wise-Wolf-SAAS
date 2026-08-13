@@ -1,12 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Flame, TrendingUp, Lock, Users, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { describePayTiers, brl } from '../lib/payTiers';
 
-// Card de retenção/dopamina do professor: mostra o "turbo" (1 mês sem faltar destrava
+// Card de retenção/dopamina do professor: mostra o "turbo" (mês sem faltar destrava
 // faixas por antiguidade) + ganhos lançados vs potencial. Lê teacher_pay_projection.
+//
+// ⚠️ Duas coisas que este card já errou e não podem voltar:
+//  1. Falava "você está há {days_clean} dias sem faltar". A apuração virou MENSAL
+//     em 02/08/2026 e `teacher_turbo_status` deixou de devolver esse campo — a
+//     tela mostrava "há undefined dias". Pior: como `days_to_activate` também
+//     sumiu, o professor BLOQUEADO POR FALTA lia "Requisitos completos".
+//  2. Prometia "5º ao 9º: R$ 9,50" em texto fixo, faixa que não existe na tabela
+//     da escola. Agora o texto sai de `tiers` (o que a folha realmente paga).
 
 interface Props { teacherId: string; }
-const brl = (v: number) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
 const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const [p, setP] = useState<any>(null);
@@ -32,7 +40,16 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   // Regra 04/07/2026: turbo só destrava a partir de 10 alunos ativos
   const studentsActive = Number(turbo.students_active || 0);
   const studentsMissing = Number(turbo.students_missing || 0);
-  const daysToActivate = Number(turbo.days_to_activate || 0);
+  // A tabela de faixas vem do servidor — nenhum valor de aula é escrito aqui.
+  const faixas = describePayTiers(p.tiers);
+  // Por que o turbo está desligado, na linguagem da regra vigente (mês fechado).
+  const bloqueio: Record<string, string> = {
+    falta_neste_mes: 'Você tem falta lançada neste mês: o turbo só volta no mês que fechar sem nenhuma falta sua.',
+    falta_mes_passado: 'Houve falta sua no mês passado. Fechando este mês inteiro sem faltar, o turbo volta no mês seguinte.',
+    conflito: 'Há aula em análise por divergência com o aluno. Resolvido isso, o turbo destrava.',
+    sem_aula_lancada_no_mes: 'Assim que você lançar a primeira aula do mês, o turbo é reavaliado.',
+  };
+  const motivo = bloqueio[String(turbo.blocked_by || '')] || null;
 
   return (
     <div className={`relative overflow-hidden rounded-3xl p-6 border ${active
@@ -85,21 +102,22 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
         {/* Estado do turbo */}
         {active ? (
           <p className="text-xs font-bold text-white/90">
-            Você está há <b>{turbo.days_clean} dias</b> sem faltar, com <b>{studentsActive} alunos ativos</b>. Mantendo a ofensiva, seus alunos do 5º ao 9º valem <b>R$ 9,50</b> e do 10º em diante <b>R$ 10,50</b> por aula. Uma falta zera o turbo!
+            Turbo valendo <b>neste mês inteiro</b>, com <b>{studentsActive} aluno{studentsActive === 1 ? '' : 's'} na carteira</b>.
+            {faixas ? <> Na sua carteira, <b>{faixas}</b>.</> : null} Uma falta sua trava o turbo neste mês e no próximo — falta do aluno não trava.
           </p>
         ) : (
           <div className="space-y-2">
             {studentsMissing > 0 && (
               <div className="text-xs font-bold rounded-xl px-3 py-2 bg-brand-surface-2 border border-brand-border text-brand-text">
-                🎯 Faltam <b>{studentsMissing} aluno{studentsMissing === 1 ? '' : 's'}</b> para você poder ativar o turbo: o benefício destrava a partir de <b>10 alunos ativos</b> (hoje você tem {studentsActive}). Quanto mais assiduidade e qualidade, mais alunos a escola te envia.
+                🎯 Faltam <b>{studentsMissing} aluno{studentsMissing === 1 ? '' : 's'}</b> para você poder ativar o turbo: o benefício destrava a partir de <b>10 alunos na carteira</b> (hoje você tem {studentsActive}). Quanto mais assiduidade e qualidade, mais alunos a escola te envia.
               </div>
             )}
-            {daysToActivate > 0 && (
+            {motivo && (
               <p className="text-xs font-bold text-brand-muted">
-                {studentsMissing > 0 ? 'Além disso, são necessários ' : 'Faltam '}<b className="text-brand-text">{daysToActivate} dias</b> sem faltar pra destravar o turbo e ganhar mais por aluno (5º-9º: R$9,50 · 10º+: R$10,50).
+                {motivo}{faixas ? <> Com o turbo ligado, <b className="text-brand-text">{faixas}</b>.</> : null}
               </p>
             )}
-            {studentsMissing === 0 && daysToActivate === 0 && (
+            {studentsMissing === 0 && !motivo && (
               <p className="text-xs font-bold text-brand-muted">
                 Requisitos completos — o turbo ativa automaticamente no próximo cálculo. Continue sem faltar!
               </p>

@@ -127,28 +127,46 @@ export const computePendingLessons = (input: {
         }
     }
 
-    return expected.filter(exp => {
-        // Corte no mês corrente: aula de mês fechado não se regulariza por aqui
-        // (vai para o próximo fechamento aberto via `closing_carryovers`). Sem o
-        // corte, uma agenda antiga que ficou SCHEDULED vira dezenas de aulas
-        // "lançáveis" que nunca aconteceram — dinheiro saindo por engano.
-        if (exp.rawDate.substring(0, 7) < currentMonth) return false;
+    // Corte no mês corrente: aula de mês fechado não se regulariza por aqui
+    // (vai para o próximo fechamento aberto via `closing_carryovers`). Sem o
+    // corte, uma agenda antiga que ficou SCHEDULED vira dezenas de aulas
+    // "lançáveis" que nunca aconteceram — dinheiro saindo por engano.
+    const noMes = expected.filter(exp => exp.rawDate.substring(0, 7) >= currentMonth);
 
-        const hasLog = input.logs.some(log => {
-            if (exp.type === 'REGULAR' && sameId(log.booking_id, exp.bookingId)) {
-                return log.class_date === exp.rawDate;
-            }
-            if (exp.type === 'REPOSIÇÃO' && sameId(log.reschedule_id, exp.rescheduleId)) {
-                return true; // reposição é lançada uma vez só, a data pode divergir
-            }
-            // Rede: mesmo aluno, mesma data, outra origem — evita lançar duas vezes.
-            // `sameId` exige os DOIS lados preenchidos: sem isso, um log de aula
-            // experimental (student_id nulo) casava com qualquer pendência de aluno
-            // nulo e escondia a pendência de verdade.
-            return sameId(log.student_id, exp.studentId) && log.class_date === exp.rawDate;
-        });
+    // Cada lançamento cobre UMA aula — o `some()` de antes não consumia nada, e a
+    // rede por aluno+data escondia as duas metades de uma aula de 1h partida
+    // (16:30 + 17:00, dois agendamentos legítimos) quando só uma tinha sido
+    // lançada. O professor deixava de lançar — e de receber — a outra metade.
+    const consumidos = new Set<PendingLogRow>();
+    const cobre = (exp: PendingLesson, log: PendingLogRow): boolean => {
+        if (consumidos.has(log)) return false;
+        if (exp.type === 'REGULAR' && sameId(log.booking_id, exp.bookingId)) {
+            return log.class_date === exp.rawDate;
+        }
+        if (exp.type === 'REPOSIÇÃO' && sameId(log.reschedule_id, exp.rescheduleId)) {
+            return true; // reposição é lançada uma vez só, a data pode divergir
+        }
+        return false;
+    };
 
-        return !hasLog;
+    // 1ª passada — casamento pela ORIGEM (agendamento ou reposição).
+    const semOrigem = noMes.filter(exp => {
+        const log = input.logs.find(l => cobre(exp, l));
+        if (log) { consumidos.add(log); return false; }
+        return true;
+    });
+
+    // 2ª passada — mesmo aluno, mesma data, outra origem: cobre o agendamento
+    // trocado (log preso no booking antigo, que pode nem existir mais).
+    // `sameId` exige os DOIS lados preenchidos: sem isso, um log de aula
+    // experimental (student_id nulo) casava com qualquer pendência de aluno
+    // nulo e escondia a pendência de verdade.
+    return semOrigem.filter(exp => {
+        const log = input.logs.find(l =>
+            !consumidos.has(l) && sameId(l.student_id, exp.studentId) && l.class_date === exp.rawDate,
+        );
+        if (log) { consumidos.add(log); return false; }
+        return true;
     });
 };
 

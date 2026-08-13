@@ -4,6 +4,7 @@ import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
 import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
+import { bookingsAindaNaoLancados } from '../lib/lessonMatching';
 import ClassLogReward from './ClassLogReward';
 import { User as UserType } from '../types';
 
@@ -13,10 +14,30 @@ interface LessonLauncherProps {
   onRefresh?: () => void;
 }
 
+// Uma aula é identificada por AGENDAMENTO + DATA. Usar só o id do booking (como
+// era até 13/08/2026) fazia o mesmo agendamento semanal virar N itens com o
+// MESMO id dentro da janela de 45 dias: o React repetia a chave, o formulário
+// sobrescrevia os campos e o `find` do envio pegava sempre o primeiro. Resultado
+// medido na conta do Flávio: 78 itens na tela para 21 agendamentos — ele
+// preenchia 6 aulas do mesmo aluno e só 1 era lançada; as outras 5 voltavam.
+const lessonRef = (bookingId: string, dateStr: string) => `${bookingId}|${dateStr}`;
+const bookingFromRef = (ref: string) => ref.split('|')[0];
+
+interface NotStartedRow {
+  bookingId: string;
+  name: string;
+  time: string;
+  dayOfWeek: string;
+  startsOn: string;
+}
+
 const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefresh }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [todayLessons, setTodayLessons] = useState<any[]>([]);
+  // Agendamentos que existem mas cuja matrícula ainda não começou: uma linha por
+  // agendamento, não uma por dia da janela.
+  const [notStarted, setNotStarted] = useState<NotStartedRow[]>([]);
   const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
   const [loadError, setLoadError] = useState<string | null>(null);
   // Recompensa do lançamento: caixa real (servidor) + XP (arcade). Substitui o
@@ -127,13 +148,19 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .eq('teacher_id', user.id)
         .gte('date', startStr);
 
+      // `student_id` entra aqui porque o casamento por booking_id não basta: quando
+      // o agendamento é trocado (aluno muda de horário), o log antigo continua
+      // apontando para um booking que não existe mais e a aula JÁ LANÇADA voltava
+      // para a lista. Medido no Flávio: 12 aulas de julho nessa situação.
       const { data: allLogs } = await supabase
         .from('class_logs')
-        .select('booking_id, reschedule_id, appointment_id, class_date')
+        .select('booking_id, reschedule_id, appointment_id, student_id, class_date')
         .eq('teacher_id', user.id)
         .gte('class_date', startStr);
 
       launchedToday = (allLogs || []).filter((l: any) => l.class_date === todayStr).length;
+
+      const naoIniciados = new Map<string, NotStartedRow>();
 
       for (let i = 0; i < LOOKBACK_DAYS; i++) {
         const checkDate = new Date();
@@ -155,7 +182,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);
 
         // Helper to process lesson
-        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string, notStartedUntil?: string | null) => {
+        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
           const student = b.student as any;
           if (!student) return;
 
@@ -173,7 +200,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           const isTrial = student.status === 'TRIAL' || student.status === 'Aula Experimental';
 
           allLessons.push({
-            id: type === 'REGULAR' ? b.id : `repo-${b.id}`,
+            id: type === 'REGULAR' ? lessonRef(b.id, dateStr) : `repo-${b.id}`,
             studentId: student.id,
             name: student.full_name || 'Estudante',
             email: student.email, // Added email
@@ -188,12 +215,6 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             // Origem da reposição (só relevante para REPOSIÇÃO): TEACHER paga, STUDENT não
             faultType: type === 'REPOSIÇÃO' ? (b.fault_type || 'STUDENT') : null,
             isLate: i > 0,
-            // Aluno matriculado com início futuro: aparece na agenda, mas o
-            // lançamento fica bloqueado até a data que veio do link de matrícula.
-            // Antes a aula era simplesmente ocultada — o professor não sabia que o
-            // aluno existia, e quando a data vinha errada (Flavio Ramyres, julho/2026)
-            // ele lançava falta justificada de quem nem tinha começado.
-            notStartedUntil: notStartedUntil || null,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
             suggestedMaterialUrl: topicInfo?.base_material?.file_url || null
@@ -218,18 +239,43 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           // Defesa contra agendamentos duplicados: no mesmo dia, só processa 1 aula
           // por horário (evita que bookings redundantes virem várias aulas a lançar).
           const slotSeen = new Set<string>();
+          const candidatos: any[] = [];
           for (const b of bookings) {
             // Cedida por cobertura: quem dá a aula é outro professor.
             if (cedidas.has(`${b.id}|${dateStr}`)) continue;
-            const notStarted = b.start_date && dateStr < b.start_date ? b.start_date : null;
+            // Matrícula que ainda não começou nesta data: não vira aula a lançar.
+            // O professor continua sabendo que o aluno existe — o agendamento é
+            // listado UMA vez no bloco "Ainda não começaram", e não uma vez por dia
+            // da janela (eram 72 linhas na conta do Flávio, 14 do mesmo aluno).
+            if (b.start_date && dateStr < b.start_date) {
+              if (!naoIniciados.has(b.id) && b.student) {
+                naoIniciados.set(b.id, {
+                  bookingId: b.id,
+                  name: (b.student as any).full_name || 'Aluno',
+                  time: b.time_slot || '',
+                  dayOfWeek: b.day_of_week || '',
+                  startsOn: b.start_date,
+                });
+              }
+              continue;
+            }
             // Hoje: ocultar aulas que ainda não chegou o horário
             if (i === 0 && isStillFutureToday(b.time_slot)) continue;
             if (!b.time_slot) continue; // booking sem horário definido: ignorar
             if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
             slotSeen.add(b.time_slot);
-            if (!logs?.some(l => l.booking_id === b.id)) {
-              await processLesson(b, 'REGULAR', b.time_slot, notStarted);
-            }
+            candidatos.push(b);
+          }
+
+          // A regra de "esta aula já foi lançada?" vive em lib/lessonMatching.ts,
+          // com teste. Ela cobre o agendamento trocado (log preso no booking
+          // antigo, apagado) sem esconder a segunda metade de uma aula de 1h.
+          const faltando = bookingsAindaNaoLancados(
+            candidatos.map(b => ({ id: b.id, studentId: (b.student as any)?.id ?? null, raw: b })),
+            (logs || []) as any[],
+          );
+          for (const item of faltando) {
+            await processLesson(item.raw, 'REGULAR', item.raw.time_slot);
           }
         }
 
@@ -286,6 +332,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       }
 
       setLaunchedTodayCount(launchedToday);
+      setNotStarted(Array.from(naoIniciados.values()));
       // Mostra tudo dentro da janela de 45 dias (inclui mês anterior). Antes filtrava só o
       // mês atual, escondendo aulas atrasadas da virada de mês e impedindo o lançamento.
       setTodayLessons(allLessons
@@ -296,6 +343,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       // Limpa o estado para evitar que aulas "fantasma" (stale) fiquem visíveis
       // após um erro, o que causava relançamentos duplicados.
       setTodayLessons([]);
+      setNotStarted([]);
       // Erro visível: "sem aulas hoje" escondia falha de carregamento e o professor
       // achava que não tinha nada para lançar.
       setLoadError(err?.message || 'Não foi possível carregar sua agenda agora.');
@@ -326,7 +374,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         entries.push({
           ref,
-          bookingId: (!isReschedule && !isTrial) ? ref : null,
+          // O ref carrega agendamento + data (`<booking>|<YYYY-MM-DD>`); o servidor
+          // recebe só o agendamento, e a data vem de `item.dateObj`.
+          bookingId: (!isReschedule && !isTrial) ? bookingFromRef(ref) : null,
           rescheduleId: isReschedule ? ref.replace('repo-', '') : null,
           appointmentId: isTrial ? ref.replace('trial-', '') : null,
           classDate: item.dateObj,
@@ -408,7 +458,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               <RefreshCw size={14} /> Tentar de novo
             </button>
           </div>
-        ) : todayLessons.length > 0 ? (
+        ) : (todayLessons.length > 0 || notStarted.length > 0) ? (
           <div className="space-y-4">
             {/* Resumo: hoje · atrasadas · já lançadas (confirmação visual) */}
             {(() => {
@@ -436,29 +486,27 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             {(() => {
               // Separa as reposições numa seção dedicada — depois de agendadas e feitas, o
               // professor confirma aqui o que aconteceu (presença / falta do aluno / falta do prof).
-              // Aluno matriculado com início futuro: fica VISÍVEL (o professor
-              // precisa saber que ele existe e quando começa) mas FORA do formulário
-              // de lançamento — não vai para o ClassLogForm.
-              const naoIniciadas = todayLessons.filter(l => l.notStartedUntil);
-              const lancaveis = todayLessons.filter(l => !l.notStartedUntil);
-              const repos = lancaveis.filter(l => l.type === 'REPOSIÇÃO');
-              const regular = lancaveis.filter(l => l.type !== 'REPOSIÇÃO');
+              const repos = todayLessons.filter(l => l.type === 'REPOSIÇÃO');
+              const regular = todayLessons.filter(l => l.type !== 'REPOSIÇÃO');
               return (
                 <div className="space-y-6">
-                  {naoIniciadas.length > 0 && (
+                  {/* Aluno matriculado com início futuro: fica VISÍVEL (o professor
+                      precisa saber que ele existe e quando começa) mas FORA do
+                      formulário — uma linha por agendamento, não uma por dia. */}
+                  {notStarted.length > 0 && (
                     <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
                       <p className="text-xs font-black uppercase tracking-widest text-blue-800">
-                        Ainda não começaram ({naoIniciadas.length})
+                        Ainda não começaram ({notStarted.length})
                       </p>
                       <p className="mt-1 text-xs font-medium text-blue-700">
                         Já estão na sua agenda, mas o lançamento abre só na data de início da matrícula.
                       </p>
                       <ul className="mt-3 space-y-1.5">
-                        {naoIniciadas.map((l: any) => (
-                          <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-blue-900">
-                            <span>{l.name} · {l.time}</span>
+                        {notStarted.map(l => (
+                          <li key={l.bookingId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-blue-900">
+                            <span>{l.name} · {l.dayOfWeek} {l.time}</span>
                             <span className="whitespace-nowrap text-[11px] font-medium">
-                              começa em {new Date(`${l.notStartedUntil}T12:00:00`).toLocaleDateString('pt-BR')}
+                              começa em {new Date(`${l.startsOn}T12:00:00`).toLocaleDateString('pt-BR')}
                             </span>
                           </li>
                         ))}

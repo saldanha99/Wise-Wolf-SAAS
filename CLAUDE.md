@@ -1178,6 +1178,84 @@ como regressão). Registrado em `deploy/vps/release.sh` e `release-wolfie.sh`.
 
 ---
 
+## Aula que reaparece para lançar, e o dinheiro que não bate entre telas ✅
+
+> **Leia antes de mexer em `LessonLauncher`, `lib/pendingLessons.ts` ou em qualquer
+> tela que mostre "quanto ganhei" / "quantos alunos tenho".**
+
+**O relato (Flávio, 13/08/2026):** aulas do mês passado que ele já tinha lançado
+voltaram para a tela de lançamento; o Financeiro dizia R$ 301,00 e o Dashboard
+R$ 304,00; o perfil mostrava 11 alunos e ele tem 10.
+
+### 1. A aula é (agendamento + data) — nunca só o agendamento
+O `LessonLauncher` usava `b.id` como id do item. Dentro da janela de 45 dias o
+MESMO agendamento semanal vira ~6 itens com o **mesmo id**: o React repete a
+chave, o formulário sobrescreve os campos e o `find` do envio pega sempre o
+primeiro. Medido: **78 itens na tela para 21 agendamentos** — ele preenchia 6
+aulas e só 1 era lançada, as outras 5 voltavam. Hoje o ref é
+`<booking>|<YYYY-MM-DD>` (`lessonRef`).
+
+### 2. Agendamento trocado deixava a aula lançada voltar
+O casamento era só por `booking_id`. Quando o aluno muda de horário, a escola
+cria um agendamento novo e o antigo costuma ser **apagado** — o `class_logs`
+continua apontando para o que não existe mais (na conta do Flávio: 8 logs de
+julho, 40 de junho). A tela lia "nunca lançada" e reoferecia.
+
+⚠️ **Relançar não é inofensivo:** a trava do servidor é `(booking_id, class_date)`
+e **não barra agendamentos diferentes** — de propósito, porque aula de 1h partida
+(16:30 + 17:00) são dois agendamentos legítimos que pagam os dois. Ou seja, a
+tela deixava a mesma aula ser paga duas vezes.
+
+A regra vive em **`lib/lessonMatching.ts`** (com teste) e consome os lançamentos
+do dia em duas passadas — pela origem, depois pelo aluno. `some()` **não serve**:
+sem consumir, um único log esconde as duas metades de uma aula de 1h e o
+professor deixa de lançar (e de receber) a outra. Era esse o defeito espelhado em
+`pendingLessons.ts`, corrigido junto.
+
+⚠️ Só log de aula REGULAR entra na conta: reposição e experimental do mesmo aluno
+no mesmo dia são **outra** aula.
+
+### 3. Matrícula que ainda não começou não é aula a lançar
+Aula anterior ao `start_date` do agendamento entrava na lista uma vez **por dia
+da janela** — 72 linhas, 14 do mesmo aluno. Agora é **uma linha por
+agendamento** no bloco "Ainda não começaram" (o professor precisa saber que o
+aluno existe; não precisa ver 14 vezes).
+
+Resultado no Flávio: **78 itens → 6**, e os 6 são aulas que ele de fato não
+lançou (Victor Hugo, quarta 16:30, desde 08/07).
+
+### 4. Uma conta só para aluno e para dinheiro
+`aulas × hourly_rate` calculado no navegador ignora a faixa por antiguidade,
+ignora override do diretor e conta aula que não paga (perfil não faturável,
+experimental sem comparecimento, duplicata). Havia **três respostas** para a
+mesma pergunta — Dashboard R$ 392,00 · ficha do diretor R$ 368,00 · Financeiro
+R$ 375,50 — e o print do professor (R$ 304 x R$ 301) foi reproduzido exatamente.
+`TeacherDashboard`, `get_teacher_overview` e `list_teachers_overview` passaram a
+ler `v_payable_class_logs` / `teacher_pay_projection`.
+
+⚠️ **Sem resposta do servidor a tela mostra "—"**, nunca um número estimado.
+
+O "11 alunos" era o perfil **TREINAMENTO** (offboarded, não faturável) com
+agendamento ativo. Quem conta é `teacher_carteira` — a mesma que destrava o
+turbo. A ficha do diretor ganhou `linked_students` ao lado, para a diferença ser
+visível em vez de parecer aluno sumido.
+
+### 5. Texto do turbo: nem valor chumbado, nem regra vencida
+- A faixa de **R$ 9,50 (5º ao 9º) foi apagada com a direção em 02/08/2026**
+  (`20260802110000_remove_faixa_9_50`) e três telas continuaram prometendo-a por
+  11 dias. Agora o texto sai de `teacher_pay_projection.tiers` via
+  **`lib/payTiers.ts`** — mexer na tabela muda a tela junto.
+- O card dizia "você está há **{days_clean} dias** sem faltar": esse campo deixou
+  de existir quando a apuração virou mensal, então a tela mostrava **undefined**.
+  Pior — como `days_to_activate` também sumiu, o professor **bloqueado por falta**
+  lia "Requisitos completos". Hoje o motivo vem de `blocked_by`.
+- ⚠️ **A régua continua sendo MÊS FECHADO** (confirmado pela direção em
+  13/08/2026), não "30 dias corridos": zero falta do professor no mês e no
+  anterior, e o turbo vale para o mês inteiro ou para nenhuma aula dele. Falta do
+  ALUNO não trava; conflito de lançamento trava.
+
+---
+
 ## Rateio do pagamento — DUAS réguas, escolhidas por quem deu a aula ✅
 
 > **Leia antes de mexer em `payment_split_breakdown`, no aviso do grupo ou nos percentuais.**

@@ -20,10 +20,17 @@ interface TeacherDashboardProps {
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onNavigate }) => {
-  const [stats, setStats] = useState({
+  // monthlyEarnings é `null` quando o servidor não respondeu: a tela mostra "—"
+  // em vez de inventar um número. Valor de aula não se estima no navegador.
+  const [stats, setStats] = useState<{
+    activeStudents: number;
+    classesToday: number;
+    monthlyEarnings: number | null;
+    completionRate: number;
+  }>({
     activeStudents: 0,
     classesToday: 0,
-    monthlyEarnings: 0,
+    monthlyEarnings: null,
     completionRate: 100
   });
   const [upcomingLessons, setUpcomingLessons] = useState<any[]>([]);
@@ -195,43 +202,36 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('date', todayISO)
         .eq('tenant_id', effectiveTenantId);
 
-      // 3. Earnings (Sum from logs this month)
+      // Lançamentos do mês — usados para a AGENDA (esconder da lista "próximas
+      // aulas" o que já foi lançado) e para o gráfico da semana. Não servem mais
+      // para calcular dinheiro: ver o bloco logo abaixo.
       const { data: logs } = await supabase
         .from('class_logs')
         .select('presence, subtype, class_date, created_at, booking_id, reschedule_id, appointment_id, payment_hold')
         .eq('teacher_id', user.id)
         .gte('class_date', startOfMonth);
 
-      // Rule: Pay if (not teacher absence) AND (not repo) AND (not on hold). Trials ARE paid.
-      const paidLogs = (logs || []).filter(l =>
-        l.presence !== 'Falta do Professor' &&
-        l.presence !== 'TEACHER_ABSENCE' &&
-        l.subtype !== 'REPOSIÇÃO' &&
-        l.payment_hold !== true
-      );
+      // 3. Ganhos e carteira: UMA fonte só, a mesma do Financeiro e da folha.
+      //
+      // Este bloco calculava `aulas × hourly_rate` aqui no navegador. Isso ignora
+      // a faixa por antiguidade (do 10º aluno em diante a aula vale mais), ignora
+      // override do diretor e conta aula que não paga (perfil não faturável,
+      // experimental sem comparecimento, duplicata). Em 12/08/2026 o professor viu
+      // R$ 304,00 aqui e R$ 301,00 no Financeiro, e abriu chamado — com razão.
+      // A regra do projeto é antiga: NUNCA estimar valor de aula no cliente.
+      //
+      // `active_students` vem junto porque é a mesma carteira que destrava o turbo.
+      // Contar `bookings` distintos trazia o perfil de TREINAMENTO e mostrava 11
+      // para quem tem 10 — bem no limite da regra dos 10 alunos.
+      const { data: projection, error: projectionErr } = await supabase
+        .rpc('teacher_pay_projection', { p_teacher: user.id });
 
-      // Fetch Paid Trainings (Ao Vivo / Meet)
-      const { data: completedTrainings } = await supabase
-        .from('training_assignments')
-        .select(`
-          status,
-          completed_at,
-          module:module_id(resource_type)
-        `)
-        .eq('teacher_id', user.id)
-        .eq('status', 'COMPLETED')
-        .gte('completed_at', startOfMonth);
-
-      const paidTrainings = (completedTrainings || []).filter(t =>
-        (t.module as any)?.resource_type === 'meet'
-      );
-
-      const earnings = (paidLogs.length + paidTrainings.length) * (user.hourlyRate || 8.00);
+      if (projectionErr) throw projectionErr;
 
       setStats({
-        activeStudents: uniqueStudents.size,
+        activeStudents: Number(projection?.active_students ?? uniqueStudents.size),
         classesToday: (todayBookings.length + (todayRepos?.length || 0)),
-        monthlyEarnings: earnings,
+        monthlyEarnings: projection?.amount_logged == null ? null : Number(projection.amount_logged),
         completionRate: 100
       });
 
@@ -484,7 +484,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           { label: 'Aulas Hoje', value: stats.classesToday, icon: Clock, color: 'bg-purple-100 text-purple-600' },
           {
             label: 'Ganhos (Mês)',
-            value: `R$ ${stats.monthlyEarnings.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+            value: stats.monthlyEarnings == null
+              ? '—'
+              : `R$ ${stats.monthlyEarnings.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
             icon: TrendingUp,
             color: 'bg-emerald-100 text-emerald-600',
             isFinancial: true

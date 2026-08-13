@@ -17,7 +17,41 @@ const bookingSegunda: PendingBookingRow = {
 
 const semLogs: PendingLogRow[] = [];
 
+// Aula de 1h partida em dois slots de 30 min: dois agendamentos legítimos no
+// mesmo dia, e a folha paga os dois (Victor Hugo, 16:30 + 17:00).
+const bookingSegunda1630: PendingBookingRow = {
+    id: 'book-seg-1630', time_slot: '16:30', day_of_week: 'Segunda', start_date: null, student: aluno,
+};
+const bookingSegunda1700: PendingBookingRow = {
+    id: 'book-seg-1700', time_slot: '17:00', day_of_week: 'Segunda', start_date: null, student: aluno,
+};
+
 describe('computePendingLessons — o badge tem de bater com a tela', () => {
+    it('aula de 1h partida: metade lançada deixa a OUTRA metade pendente', () => {
+        // A rede por aluno+data usava `some()`, que não consome o lançamento: um
+        // único log escondia os dois agendamentos e o professor perdia 30 min.
+        const logs: PendingLogRow[] = [
+            { booking_id: 'book-seg-1630', reschedule_id: null, class_date: '2026-08-10', student_id: 'aluno-1' },
+            { booking_id: 'book-seg-1630', reschedule_id: null, class_date: '2026-08-03', student_id: 'aluno-1' },
+            { booking_id: 'book-seg-1700', reschedule_id: null, class_date: '2026-08-03', student_id: 'aluno-1' },
+        ];
+        const r = computePendingLessons({
+            bookings: [bookingSegunda1630, bookingSegunda1700], reschedules: [], logs, today: HOJE,
+        });
+        expect(r.map(p => `${p.rawDate} ${p.time}`)).toEqual(['2026-08-10 17:00']);
+    });
+
+    it('agendamento trocado: aula já lançada não volta a ser pendência', () => {
+        // O log aponta para o agendamento antigo (apagado quando o aluno mudou de
+        // horário). Sem a 2ª passada, a aula lançada reaparecia para lançar.
+        const logs: PendingLogRow[] = [
+            { booking_id: 'book-antigo-apagado', reschedule_id: null, class_date: '2026-08-03', student_id: 'aluno-1' },
+            { booking_id: 'book-antigo-apagado', reschedule_id: null, class_date: '2026-08-10', student_id: 'aluno-1' },
+        ];
+        const r = computePendingLessons({ bookings: [bookingSegunda], reschedules: [], logs, today: HOJE });
+        expect(r).toEqual([]);
+    });
+
     it('conta as aulas não lançadas da janela', () => {
         const r = computePendingLessons({ bookings: [bookingSegunda], reschedules: [], logs: semLogs, today: HOJE });
         expect(r.map(p => p.rawDate)).toEqual(['2026-08-03', '2026-08-10']);

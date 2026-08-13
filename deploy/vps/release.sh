@@ -487,6 +487,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260811021018_teacher_change_student_schedule.sql"
   "supabase/migrations/20260811031056_student_manual_pix_claims.sql"
   "supabase/migrations/20260811112940_student_overdue_card_charge_claims.sql"
+  "supabase/migrations/20260813120000_uma_conta_so_de_aluno_e_dinheiro_do_professor.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
