@@ -100,10 +100,15 @@ export function montarMensagem(b: Record<string, unknown>): string {
 
   // O que sobra do aluno da direção é PRÓ-LABORE dela, não caixa da escola.
   // Chamar de "fica na escola" faria ela somar errado o próprio rendimento.
+  //
+  // ⚠️ As quatro linhas (dízimo, investimento, pró-labore, escola) TÊM de somar
+  // a base. Por isso "fica na escola" aparece mesmo valendo zero: com a régua do
+  // professor contratado (10/70/20) ela dá zero por desenho, e esconder a linha
+  // faria a conta parecer não fechar para quem confere no fim do mês.
   const proLabore = Number(b.pro_labore ?? 0);
   const escola = Number(b.sobra ?? 0);
   if (proLabore > 0) partes.push(`👑 Pró-labore da direção: *${money(proLabore)}*`);
-  if (escola > 0 || proLabore === 0) partes.push(`✅ Fica na escola: *${money(escola)}*`);
+  partes.push(`✅ Fica na escola: *${money(escola)}*`);
 
   // A ressalva vai SEMPRE. O custo do professor é o do calendário do mês, e o
   // mês ainda não terminou — quem ler isto como fechamento vai pagar dízimo

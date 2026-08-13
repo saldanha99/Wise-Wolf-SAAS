@@ -1178,6 +1178,47 @@ como regressão). Registrado em `deploy/vps/release.sh` e `release-wolfie.sh`.
 
 ---
 
+## Rateio do pagamento — DUAS réguas, escolhidas por quem deu a aula ✅
+
+> **Leia antes de mexer em `payment_split_breakdown`, no aviso do grupo ou nos percentuais.**
+
+O aviso do pagamento do Felipe (R$ 271,00, 17 aulas com a direção) escancarou a régua única:
+quase tudo saía como pró-labore e **R$ 27,10 ficavam na escola**. Decisão da direção em
+13/08/2026 — a régua passa a depender de **quem dá a aula**:
+
+| Origem da aula | Dízimo | Investimento | Pró-labore | Fica na escola |
+|---|---|---|---|---|
+| **Direção** (👑 em `payment_split_owner_teachers`) | 10% | 10% | **80%** | 0% |
+| **Professor contratado** | 10% | **70%** | **20%** | 0% |
+
+- **A base é o LÍQUIDO** (pagamento − salário previsto do professor), como sempre foi. Na
+  régua do professor os percentuais incidem sobre o que sobra **depois** do salário dele.
+- **Aluno partido entre as duas** (existe: Verônica, com Debora e Mateus) tem o líquido
+  rateado **por número de aulas**, e cada parte segue a sua régua — mesmo critério do
+  balancete.
+- ⚠️ **`dizimo_pct`/`investimento_pct` no retorno são EFETIVOS**, não os configurados: num
+  pagamento partido, repetir o configurado anunciaria "Dízimo (10%)" ao lado de um valor que
+  não é 10% da base mostrada.
+- ⚠️ **"Fica na escola" aparece mesmo valendo R$ 0,00.** Com 10/70/20 ela dá zero por
+  desenho; esconder a linha faria as quatro parcelas não fecharem com a base para quem
+  confere no fim do mês.
+- ⚠️ **A sobra é RESÍDUO** (`líquido − dízimo − investimento − pró-labore`), não um percentual
+  próprio: é o que impede centavo de arredondamento de sumir ou de ser inventado.
+- **Configurável na tela** (Financeiro → Rateio): a régua do professor tem os três campos
+  próprios. `save_payment_split_settings` ganhou 3 parâmetros — a assinatura de 4 argumentos
+  foi **derrubada** de propósito, senão o PostgREST teria duas candidatas e recusaria a
+  chamada por ambiguidade.
+- ⚠️ **O ajuste de dado (`escola_pct = 0`) é ONE-SHOT**, guardado por `schema_one_shots`. A
+  migration roda a cada release: sem essa trava, todo deploy desfaria o que o diretor mudasse
+  na tela, e ninguém ligaria uma coisa à outra. **Use o mesmo padrão para qualquer UPDATE de
+  dado em migration.**
+- O relatório do mês (`payment_split_report`) **chama** `payment_split_breakdown` por
+  pagamento em vez de repetir a conta — tela e mensagem não podem divergir.
+- Testes: `payment-split-notify/message.test.ts` (6 casos, com os números reais das duas
+  réguas).
+
+---
+
 ## Balancete por Professor e gasto de anúncio ✅
 
 **Balancete** (`balancete_professores`, menu Financeiro → "Balancete por Prof"): abre o custo com professor por natureza e mostra o lucro por cabeça. O custo NÃO é recalculado — sai de `v_payable_class_logs`, a mesma fonte da folha e do DRE; o que a função faz é **decompor**.
@@ -1293,6 +1334,23 @@ alternativas reais da grade (`pickAlternatives`, o mesmo cálculo que a atendent
 - **A atendente agora DÁ PRAZO** ("te confirmo hoje mesmo; se ninguém puder, eu te aviso e
   ofereço outros horários"). A promessa só é honesta porque esta varredura existe — mudar uma
   sem a outra volta a criar lead esperando retorno que não vem.
+
+### ⚠️ Instância inexistente derruba TODO envio do tenant — em silêncio
+
+Investigando por que um follow-up falhava (13/08/2026), a causa não era o número: a Evolution
+respondia **404 `The "prof-diretornovo-7w8c" instance does not exist`**. Essa instância estava
+em **três perfis** — `master`, `royal-british` e `wise-wolf-school` —, então **todo envio
+automático desses tenants falhava desde sempre**, incluindo os 10 leads da Royal British.
+
+- Os três campos foram **limpos** (`whatsapp_instance = null`): sem instância, as automações
+  **pulam** o tenant em vez de tentar e falhar. Reversível — basta reconectar pela tela
+  "WhatsApp (Conexão)".
+- ⚠️ **Nome de instância no perfil não é validado contra a Evolution.** Antes de investigar
+  "por que a mensagem não chegou", confira:
+  `curl -s https://api.2b.app.br/instance/fetchInstances -H "apikey: $KEY"` e compare com
+  `select distinct whatsapp_instance from profiles where whatsapp_instance is not null`.
+- Foi o log do motivo da recusa (abaixo) que revelou isto em 30 segundos. Sem ele, a
+  investigação passou por duas hipóteses erradas (9º dígito e campo `lid`).
 
 ### Envio no chute falha em SILÊNCIO — resolva o JID antes ✅
 

@@ -23,6 +23,9 @@ interface Settings {
   dizimo_pct: number;
   investimento_pct: number;
   escola_pct: number;
+  prof_dizimo_pct: number;
+  prof_investimento_pct: number;
+  prof_prolabore_pct: number;
   destino: string;
   destino_configurado: boolean;
   professores?: ProfessorCfg[];
@@ -117,6 +120,9 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
       p_dizimo_pct: s.dizimo_pct,
       p_investimento_pct: s.investimento_pct,
       p_escola_pct: s.escola_pct,
+      p_prof_dizimo_pct: s.prof_dizimo_pct,
+      p_prof_investimento_pct: s.prof_investimento_pct,
+      p_prof_prolabore_pct: s.prof_prolabore_pct,
       p_is_active: s.is_active,
     });
     setSalvando(false);
@@ -358,6 +364,52 @@ const PaymentSplitSettings: React.FC<{ month?: string }> = ({ month }) => {
             Mesmo grupo do relatório automático — mude lá embaixo, não aqui.
           </span>
         </div>
+      </div>
+
+      {/* Régua do professor contratado: incide sobre o líquido DEPOIS de já
+          descontado o salário dele. As três fatias somam 100 e o que sobrar
+          fica na escola. */}
+      <div className="mt-4 pt-4 border-t border-brand-border">
+        <p className="text-[10px] font-black uppercase text-brand-muted mb-1">
+          Quando a aula é de professor contratado
+        </p>
+        <p className="text-[11px] text-brand-muted mb-2">
+          Incide sobre o que sobra <strong>depois</strong> do salário do professor. Os campos
+          acima valem para o aluno de quem está marcado com 👑.
+        </p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] font-black uppercase text-brand-muted mb-1">Dízimo (%)</label>
+            <input
+              type="number" min={0} max={100} step={0.5}
+              value={s.prof_dizimo_pct}
+              onChange={e => setS({ ...s, prof_dizimo_pct: Number(e.target.value) })}
+              className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase text-brand-muted mb-1">Investimento (%)</label>
+            <input
+              type="number" min={0} max={100} step={0.5}
+              value={s.prof_investimento_pct}
+              onChange={e => setS({ ...s, prof_investimento_pct: Number(e.target.value) })}
+              className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black uppercase text-brand-muted mb-1">Pró-labore (%)</label>
+            <input
+              type="number" min={0} max={100} step={0.5}
+              value={s.prof_prolabore_pct}
+              onChange={e => setS({ ...s, prof_prolabore_pct: Number(e.target.value) })}
+              className="w-full text-sm bg-brand-surface-2 text-brand-text rounded-xl px-3 py-2 border border-brand-border"
+            />
+          </div>
+        </div>
+        <span className="text-[10px] text-brand-muted">
+          Soma das três: {(s.prof_dizimo_pct ?? 0) + (s.prof_investimento_pct ?? 0) + (s.prof_prolabore_pct ?? 0)}% —
+          o restante fica na escola.
+        </span>
       </div>
 
       {/* Pró-labore: aula da direção não é custo, então não desconta da base. */}
