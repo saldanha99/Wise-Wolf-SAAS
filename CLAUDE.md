@@ -1416,6 +1416,42 @@ ela quer conhecer a escola em que estuda.
   os dois telefones é gente**, e enquanto não reconciliar o lead segue no CRM como pessoa
   separada.
 
+### ⚠️ Quem é "aluno" para a trava comercial (auditoria de 13/08/2026)
+
+A supressão de venda considerava aluno quem tem `contract_accepted = true` **ou** contrato
+`ACTIVE/PAUSED` em `student_contracts`. Só que **`student_contracts` está VAZIA** (0 linhas) —
+esse ramo é código morto —, e a auditoria achou **8 alunos ativos e pagantes com
+`contract_accepted = false`** (matrícula antiga, feita na mão). Para o robô, oito clientes não
+eram alunos. Nenhum estava no CRM naquele dia, então nada foi enviado: **foi sorte, não
+desenho.**
+
+- Agora vale também a ATIVIDADE: aula `SCHEDULED` na agenda ou pagamento `RECEIVED`
+  (`facts.studentsWithActivity`, motivo `aluno_em_atividade`). Papelada atrasada não devolve
+  ninguém para o funil de venda.
+- A trava de sósia passou a considerar esses alunos também.
+- ⚠️ **Não conserte isso marcando `contract_accepted = true` na mão** para os 8: a flag
+  significa "aceitou o contrato no sistema", e forçá-la inventaria um aceite que não houve —
+  o mesmo erro do 1969 abaixo, só que em documento.
+
+### ⚠️ 31/12/1969 na tela de contratos — `new Date(null)` é o epoch
+
+A coluna "Matrícula" imprimia **31/12/1969** para 13 alunos: são os migrados em fev/2026, com
+contrato marcado como aceito e **`accepted_at` nulo** (nunca assinaram digitalmente — o nulo
+ali é honesto). `new Date(null)` é o epoch, que em Brasília cai em 31/12/1969.
+
+- Use **`formatSignatureDate`** (`lib/contractDates.ts`) para EXIBIR: devolve "—" para nulo,
+  data inválida e epoch exato.
+- ⚠️ **Não use `contractReferenceDate` numa tela.** Ela cai para "hoje" de propósito, porque o
+  documento precisa de vigência válida; numa lista isso viraria "matriculado hoje" para quem
+  nunca assinou — mentira pior que o buraco.
+- O mesmo helper já tinha nascido de um caso irmão: contrato impresso com
+  "Vigência: 10/01/1970 a 10/01/1971".
+
+**Outros números da auditoria de contratos (55 alunos na tela):** 39 com contrato aceito, dos
+quais **33 sem assinatura nenhuma** registrada; 16 sem contrato aceito, **8 deles com aula ou
+pagamento**; 7 com `accepted_at` ANTERIOR ao `contract_sent_at` (ordem impossível, provável
+reenvio que recarimbou o envio); 7 aceitos sem dia de vencimento; 3 sem CPF.
+
 ### ⚠️ Aluno em rajada NÃO é aluno sem resposta
 
 Uma auditoria de 13/08/2026 apontou "34 de 47 mensagens de aluno sem resposta (72%)" e quase

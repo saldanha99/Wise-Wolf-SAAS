@@ -68,3 +68,27 @@ export function formatContractPeriod(
     endDate: end.toLocaleDateString("pt-BR"),
   };
 }
+
+/**
+ * Data de assinatura para EXIBIR em lista/ficha.
+ *
+ * ⚠️ Não use `contractReferenceDate` aqui. Aquela cai para "hoje" de propósito,
+ * porque o documento precisa de uma vigência válida; numa tela, isso viraria
+ * "matriculado hoje" para quem nunca assinou — mentira pior que o buraco.
+ *
+ * O buraco real (13/08/2026): `new Date(null)` é o epoch e, no fuso de
+ * Brasília, imprime **31/12/1969** na coluna "Matrícula". Aconteceu com 13
+ * alunos migrados em fevereiro/2026, que têm contrato marcado como aceito mas
+ * nunca assinaram digitalmente no sistema — `accepted_at` nulo ali é honesto.
+ */
+export function formatSignatureDate(
+  value: string | number | Date | null | undefined,
+  ausente = "—",
+): string {
+  if (value === null || value === undefined || value === "") return ausente;
+  const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return ausente;
+  // Epoch exato = quase sempre `new Date(null)` que escapou de algum lugar.
+  if (parsed.getTime() === 0) return ausente;
+  return parsed.toLocaleDateString("pt-BR");
+}

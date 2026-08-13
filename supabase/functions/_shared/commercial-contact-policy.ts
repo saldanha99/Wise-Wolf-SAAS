@@ -15,7 +15,8 @@ export type CommercialSuppressionReason =
   | "opportunity_converted"
   | "enrollment_in_progress"
   | "enrollment_completed"
-  | "nome_e_ddd_de_aluno";
+  | "nome_e_ddd_de_aluno"
+  | "aluno_em_atividade";
 
 export interface CommercialIdentity {
   tenantId: string;
@@ -56,6 +57,18 @@ export interface EnrollmentLinkFact {
 
 export interface CommercialContactFacts {
   students: ContractedStudentFact[];
+  /**
+   * Ids de aluno com AULA na agenda ou PAGAMENTO recebido.
+   *
+   * Auditoria de 13/08/2026: **8 alunos ativos e pagantes** estavam com
+   * `contract_accepted = false` (matrícula antiga, feita na mão). A trava
+   * comercial só olhava a flag de contrato e a tabela `student_contracts`, que
+   * está VAZIA — ou seja, para o robô eles não eram alunos. Nenhum estava no
+   * CRM na hora da auditoria, então nada foi enviado; era sorte, não desenho.
+   *
+   * Quem tem aula marcada ou pagou é aluno, com papelada em dia ou não.
+   */
+  studentsWithActivity?: string[];
   contracts: StudentContractFact[];
   opportunities: OpportunityFact[];
   enrollmentLinks: EnrollmentLinkFact[];
@@ -191,13 +204,22 @@ export function evaluateCommercialSuppression(
     };
   }
 
+  const comAtividade = new Set(facts.studentsWithActivity || []);
+  // Aluno de verdade sem a flag de contrato: aula marcada ou pagamento recebido
+  // valem como matrícula. Papelada atrasada não devolve ninguém para o funil de
+  // venda.
+  if (matchedStudent && comAtividade.has(matchedStudent.id)) {
+    return { suppressed: true, reason: "aluno_em_atividade", studentId: matchedStudent.id };
+  }
+
   // Sósia: telefone diverge, mas é a mesma pessoa. Vem DEPOIS do casamento por
   // telefone/e-mail — só entra quando o caminho confiável não achou ninguém —
   // e devolve studentId NULO de propósito: bloqueia a venda sem vincular
   // cadastro a partir de uma semelhança.
   if (!matchedStudent) {
     const sosia = facts.students.find((student) =>
-      student.contract_accepted === true && provavelSosiaDeAluno(identity, student)
+      (student.contract_accepted === true || comAtividade.has(student.id)) &&
+      provavelSosiaDeAluno(identity, student)
     );
     if (sosia) {
       return { suppressed: true, reason: "nome_e_ddd_de_aluno", studentId: null };
@@ -257,7 +279,7 @@ export async function loadCommercialContactFacts(
   sb: any,
   tenantId: string,
 ): Promise<CommercialContactFacts> {
-  const [studentsRes, contractsRes, opportunitiesRes, linksRes] = await Promise.all([
+  const [studentsRes, contractsRes, opportunitiesRes, linksRes, agendaRes, pagosRes] = await Promise.all([
     sb.from("profiles")
       // `full_name` entra para a trava de sósia (nome + DDD).
       .select("id, phone, email, full_name, contract_accepted")
@@ -275,10 +297,21 @@ export async function loadCommercialContactFacts(
       .select("id, opportunity_id, student_phone, status")
       .eq("tenant_id", tenantId)
       .in("status", ["PROCESSING", "USED"]),
+    // Sinais de que a pessoa É aluno, independentemente da papelada.
+    sb.from("bookings")
+      .select("student_id")
+      .eq("tenant_id", tenantId)
+      .not("student_id", "is", null)
+      .eq("status", "SCHEDULED"),
+    sb.from("student_payments")
+      .select("student_id")
+      .eq("tenant_id", tenantId)
+      .not("student_id", "is", null)
+      .in("status", ["RECEIVED", "RECEIVED_IN_CASH"]),
   ]);
 
   // Falhar fechado é perigoso aqui: um erro de leitura não pode liberar venda indevida.
-  const failures = [studentsRes, contractsRes, opportunitiesRes, linksRes]
+  const failures = [studentsRes, contractsRes, opportunitiesRes, linksRes, agendaRes, pagosRes]
     .map((result) => result.error)
     .filter(Boolean);
   if (failures.length) {
@@ -290,6 +323,13 @@ export async function loadCommercialContactFacts(
     contracts: contractsRes.data || [],
     opportunities: opportunitiesRes.data || [],
     enrollmentLinks: linksRes.data || [],
+    studentsWithActivity: [
+      ...new Set(
+        [...(agendaRes.data || []), ...(pagosRes.data || [])]
+          .map((row: { student_id?: string | null }) => String(row.student_id || ""))
+          .filter(Boolean),
+      ),
+    ],
   };
 }
 

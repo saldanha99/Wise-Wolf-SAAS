@@ -117,3 +117,40 @@ Deno.test("casamento por telefone continua tendo precedência e vincula o aluno"
   if (r.reason !== "contract_accepted") throw new Error("motivo errado: " + r.reason);
   if (r.studentId !== "aluna-penha") throw new Error("deveria vincular pelo telefone");
 });
+
+
+// ── ALUNO SEM A FLAG DE CONTRATO ────────────────────────────────────────────
+// Auditoria de 13/08/2026: 8 alunos ativos e pagantes com contract_accepted
+// = false, e `student_contracts` vazia. Só não receberam venda porque nenhum
+// estava no CRM naquele dia.
+Deno.test("REGRESSÃO: aluno com aula/pagamento é aluno, mesmo sem contrato marcado", () => {
+  const facts = emptyFacts();
+  facts.students.push({ id: "aluno-ativo", full_name: "Nicolas de Sousa Costa", phone: "11999998888", contract_accepted: false });
+  facts.studentsWithActivity = ["aluno-ativo"];
+  const r = evaluateCommercialSuppression(
+    { tenantId: "t1", phone: "11999998888", name: "Nicolas de Sousa Costa" },
+    facts,
+  );
+  if (!r.suppressed) throw new Error("aluno pagante não pode receber venda");
+  if (r.reason !== "aluno_em_atividade") throw new Error("motivo errado: " + r.reason);
+  if (r.studentId !== "aluno-ativo") throw new Error("deveria vincular: o casamento foi por telefone");
+});
+
+Deno.test("interessado SEM aula e SEM pagamento continua sendo lead", () => {
+  const facts = emptyFacts();
+  facts.students.push({ id: "so-cadastro", full_name: "Fulano de Tal", phone: "11999998888", contract_accepted: false });
+  facts.studentsWithActivity = [];
+  const r = evaluateCommercialSuppression({ tenantId: "t1", phone: "11999998888" }, facts);
+  if (r.suppressed) throw new Error("cadastro sem atividade não pode bloquear a prospecção");
+});
+
+Deno.test("a trava de sósia também vale para aluno em atividade sem contrato marcado", () => {
+  const facts = emptyFacts();
+  facts.students.push({ id: "aluno-ativo", full_name: "Penha Vilani", phone: "2799924792", contract_accepted: false });
+  facts.studentsWithActivity = ["aluno-ativo"];
+  const r = evaluateCommercialSuppression(
+    { tenantId: "t1", phone: "5527999247902", name: "Penha Valani" },
+    facts,
+  );
+  if (r.reason !== "nome_e_ddd_de_aluno") throw new Error("motivo errado: " + r.reason);
+});

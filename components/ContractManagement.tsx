@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { contractReferenceDate, formatContractPeriod } from '../lib/contractDates';
+import { contractReferenceDate, formatContractPeriod, formatSignatureDate } from '../lib/contractDates';
 import { CheckCircle, XCircle, FileText, Image, ExternalLink, Search, Loader2, AlertCircle, Eye, X, Download } from 'lucide-react';
 import { ContractDocument } from './ContractDocument'; // Import the document component
 
@@ -364,7 +364,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                             <dl className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Matrícula</dt>
-                                    <dd className="mt-1 text-brand-text">{new Date(student.accepted_at).toLocaleDateString('pt-BR')}</dd>
+                                    <dd className="mt-1 text-brand-text">{formatSignatureDate(student.accepted_at)}</dd>
                                 </div>
                                 <div>
                                     <dt className="font-bold uppercase tracking-wide text-brand-muted">Assinatura</dt>
@@ -419,7 +419,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                                 <p className="text-xs text-brand-muted">{student.student_email}</p>
                                             </td>
                                             <td className="px-6 py-4 text-brand-muted">
-                                                {new Date(student.accepted_at).toLocaleDateString()}
+                                                {formatSignatureDate(student.accepted_at)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {isUploadDoc ? <span className="badge-purple">Upload Completo</span> :

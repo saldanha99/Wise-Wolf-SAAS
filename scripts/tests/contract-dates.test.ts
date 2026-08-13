@@ -3,6 +3,7 @@
 import {
   contractPeriod,
   contractReferenceDate,
+  formatSignatureDate,
 } from "../../lib/contractDates.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -84,4 +85,25 @@ Deno.test("serviço avulso (0 meses) mantém início e término coerentes", () =
     start.getTime() === end.getTime(),
     "sem duração, início e término coincidem",
   );
+});
+
+
+Deno.test("REGRESSÃO: a tela nunca imprime 31/12/1969 para quem não assinou", () => {
+  // Era `new Date(student.accepted_at).toLocaleDateString()` na coluna
+  // "Matrícula": com accepted_at nulo, o epoch em Brasília vira 31/12/1969.
+  // 13 alunos migrados em fev/2026 aparecem assim.
+  assert(formatSignatureDate(null) === "—", "nulo tem de virar traço");
+  assert(formatSignatureDate(undefined) === "—", "indefinido tem de virar traço");
+  assert(formatSignatureDate("") === "—", "vazio tem de virar traço");
+  assert(formatSignatureDate("nao é data") === "—", "data inválida tem de virar traço");
+  assert(formatSignatureDate(0) === "—", "epoch exato tem de virar traço");
+});
+
+Deno.test("data de assinatura real continua sendo mostrada em pt-BR", () => {
+  const formatada = formatSignatureDate("2026-02-28T15:10:41.501664+00:00");
+  assert(/^\d{2}\/\d{2}\/2026$/.test(formatada), `esperava dd/mm/2026, veio ${formatada}`);
+});
+
+Deno.test("o texto de ausência é configurável, para caber em cada tela", () => {
+  assert(formatSignatureDate(null, "não assinado") === "não assinado", "deveria aceitar rótulo próprio");
 });
