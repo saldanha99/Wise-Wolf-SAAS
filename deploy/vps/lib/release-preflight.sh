@@ -67,3 +67,31 @@ assert_release_tree_is_publishable() {
   echo "branch:   $branch"
   echo "commit:   $head_sha — $head_subject"
 }
+
+# Uso: assert_release_tree_unchanged <diretório-do-projeto> <sha-completo-de-quando-checamos>
+#
+# A checagem acima roda UMA VEZ, no começo. Entre ela e a leitura dos arquivos
+# passam-se minutos (install, typecheck, testes, build) — e nessa janela alguém
+# pode salvar arquivo no mesmo checkout. Aconteceu em 12/08/2026: a árvore foi
+# aprovada às 23:05, um colega salvou 248 linhas de uma feature em andamento às
+# ~23:07, e o release de 23:09 EMPACOTOU esse trabalho não commitado. Ele só foi
+# commitado dez minutos depois; a publicação não sabia o que estava levando.
+#
+# Por isso a árvore é reconferida imediatamente antes de empacotar, e o HEAD tem
+# de ser o mesmo — trocar de commit no meio do release também invalida tudo que
+# já foi verificado.
+assert_release_tree_unchanged() {
+  local project_dir=$1 expected_head=$2
+  local dirty_files head_now
+
+  dirty_files="$(git -C "$project_dir" status --porcelain)"
+  if [[ -n "$dirty_files" ]]; then
+    printf '%s\n' "$dirty_files" | head -n 20 >&2
+    [[ "${DEPLOY_ALLOW_DIRTY:-0}" = "1" ]] ||
+      die "a árvore MUDOU durante o release (arquivos acima). Alguém salvou algo no checkout depois da verificação inicial: o pacote levaria trabalho não commitado. Rode de novo com a árvore parada."
+  fi
+
+  head_now="$(git -C "$project_dir" rev-parse HEAD)"
+  [[ "$head_now" = "$expected_head" ]] ||
+    die "o HEAD mudou durante o release ($expected_head → $head_now). Tudo que foi verificado até aqui vale para outro commit; rode de novo."
+}

@@ -908,6 +908,44 @@ sem validação nenhuma (`sync-payments`, `whatsapp-hr-welcome`,
 09/08/2026. Quando o type-check de uma function reclamar, **conserte a function**
 — tirá-la da lista é o que criou o buraco.
 
+### Duas travas contra publicar às cegas (12/08/2026)
+
+**1. A VPS pode estar À FRENTE do repositório.** O release copia as functions por
+cima do que está no servidor. `send-attendance-confirmations` tinha, na VPS, 38
+linhas que o repositório não tinha — a revalidação anti-fantasma do antifraude de
+presença, aplicada por `scp` e nunca commitada. Publicar sem olhar teria apagado
+a proteção em silêncio.
+
+`deploy/vps/lib/function-drift-guard.sh` não compara repositório com VPS (isso
+acusaria toda publicação legítima) — compara a **VPS com o que o último release
+publicou**, num manifesto em `/opt/wisewolf/releases/.published-functions.md5`:
+
+    VPS == manifesto  → ninguém mexeu por fora; pode sobrescrever
+    VPS != manifesto  → alguém mexeu. PARA e diz quais
+
+Hash por pasta inteira (`find | sort | md5sum`), então arquivo novo e apagado
+contam. Escape: `DEPLOY_ALLOW_FUNCTION_DRIFT=1`, depois de trazer o hotfix para o
+repositório — ou quando a intenção é mesmo descartá-lo.
+
+⚠️ **Antes de inscrever uma function antiga em `HARDENED_FUNCTIONS`, compare com
+a VPS.** Foi assim que o hotfix perdido apareceu.
+
+**2. A árvore pode mudar DURANTE o release.** `assert_release_tree_is_publishable`
+roda uma vez, no começo; o pacote é lido minutos depois (install, typecheck,
+testes, build). Nessa janela alguém pode salvar arquivo no mesmo checkout.
+
+Aconteceu: árvore aprovada às 23:05, um colega salvou 248 linhas de feature em
+andamento às ~23:07, e o release de 23:09 **empacotou trabalho não commitado** —
+commitado só dez minutos depois. A publicação não sabia o que estava levando.
+
+`assert_release_tree_unchanged` reconfere imediatamente antes de empacotar, e
+exige que o **HEAD seja o mesmo**: trocar de commit no meio invalida tudo que já
+foi verificado.
+
+⚠️ **Consequência prática:** com mais de uma pessoa (ou agente) no mesmo
+checkout, o release falha em vez de publicar um Frankenstein. Se falhar assim,
+não force — combine quem publica.
+
 ### O release abre ~90 conexões SSH — e o servidor corta na 11ª
 
 A etapa de preparação dispara um `rsync` por function, por migration e por teste.

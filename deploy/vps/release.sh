@@ -147,6 +147,8 @@ close_release_ssh() {
 # shellcheck source=lib/release-preflight.sh
 source "$SCRIPT_DIR/lib/release-preflight.sh"
 assert_release_tree_is_publishable "$PROJECT_DIR"
+# Guardado para reconferir na hora de empacotar — ver assert_release_tree_unchanged.
+RELEASE_HEAD_AT_PREFLIGHT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 
 # shellcheck source=lib/function-drift-guard.sh
 source "$SCRIPT_DIR/lib/function-drift-guard.sh"
@@ -678,6 +680,8 @@ artifact_hash="$(
 )"
 [[ "$artifact_hash" =~ ^[a-f0-9]{12}$ ]] ||
   die "não foi possível calcular a identidade da release"
+# A árvore foi aprovada lá no começo; o pacote é lido só agora. Reconfere.
+assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${artifact_hash}"
 [[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]] ||
   die "identificador de release inválido"
