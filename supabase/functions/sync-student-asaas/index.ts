@@ -209,15 +209,28 @@ serve(async (req) => {
       : text(profile.professor_id || body.professor_id);
 
     if (schedule.length > 0 && professorId) {
+      // ⚠️ ACENTO IMPORTA: "Terça" e "Sábado" eram gravados aqui SEM acento e a
+      // agenda ficava invisível para o professor. As telas de lançamento comparam
+      // `day_of_week` com o nome que o navegador gera (`Terça`), então a aula
+      // nunca aparecia para lançar — e o professor não recebia por ela. Pior:
+      // `dow_name_to_int` normaliza acento, então a projeção do mês CONTAVA a
+      // aula que a tela não deixava lançar, e o índice `uq_bookings_no_dup_active`
+      // não via as duas grafias como duplicata (Gabriel e Milena ficaram com dois
+      // agendamentos na mesma terça, achado em 13/08/2026).
       const dayMap: Record<string, string> = {
         monday: "Segunda",
-        tuesday: "Terca",
+        tuesday: "Terça",
         wednesday: "Quarta",
         thursday: "Quinta",
         friday: "Sexta",
-        saturday: "Sabado",
+        saturday: "Sábado",
         sunday: "Domingo",
       };
+      // A comparação com o que já existe ignora acento e caixa: sem isso, um
+      // agendamento legado em "Terca" não casaria com o "Terça" novo e a função
+      // criaria a duplicata que este bloco existe para evitar.
+      const dayKey = (value: string) =>
+        value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
       const { data: existingBookings, error: bookingsError } = await authorization.admin
         .from("bookings")
         .select("teacher_id, day_of_week, time_slot")
@@ -226,7 +239,7 @@ serve(async (req) => {
 
       const existing = new Set(
         (existingBookings || []).map((booking: Record<string, unknown>) =>
-          `${booking.teacher_id}|${booking.day_of_week}|${booking.time_slot}`
+          `${booking.teacher_id}|${dayKey(String(booking.day_of_week || ""))}|${booking.time_slot}`
         ),
       );
       const rows = schedule.flatMap((rawSlot) => {
@@ -234,7 +247,7 @@ serve(async (req) => {
         const rawDay = text(slot.weekday || slot.day);
         const day = dayMap[rawDay.toLowerCase()] || rawDay;
         const time = text(slot.time);
-        const key = `${professorId}|${day}|${time}`;
+        const key = `${professorId}|${dayKey(day)}|${time}`;
         if (!day || !time || existing.has(key)) return [];
         existing.add(key);
         return [{

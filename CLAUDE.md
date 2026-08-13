@@ -1240,6 +1240,31 @@ agendamento ativo. Quem conta é `teacher_carteira` — a mesma que destrava o
 turbo. A ficha do diretor ganhou `linked_students` ao lado, para a diferença ser
 visível em vez de parecer aluno sumido.
 
+### 4b. ⚠️ `bookings.day_of_week` sem acento = agenda invisível
+`sync-student-asaas` gravava `tuesday: "Terca"` e `saturday: "Sabado"` (sem
+acento) ao criar a agenda na matrícula. As telas comparam com o nome que o
+navegador gera (`Terça`), então **a aula nunca aparecia para lançar** — e o
+professor não recebia por ela. Três agravantes:
+
+- `dow_name_to_int` **normaliza acento**, então `teacher_pay_projection`
+  CONTAVA no potencial do mês uma aula que a tela não deixava lançar;
+- `uq_bookings_no_dup_active` compara texto: `'Terca' <> 'Terça'`, então o índice
+  **não via a duplicata** e o horário virava dois agendamentos ativos (Gabriel e
+  Milena, achados em 13/08/2026);
+- quem tentava consertar pela tela criava o par com cedilha e deixava o antigo
+  vivo — foi assim que os dois nasceram.
+
+Corrigido no `dayMap`, e a comparação com o que já existe passou a **ignorar
+acento e caixa** (`dayKey`) — senão o agendamento legado em "Terca" não casaria
+com o "Terça" novo e a função criaria exatamente a duplicata que ela evita.
+
+Os dois legados viraram `CANCELLED`, **não foram apagados**: um deles tinha aula
+lançada apontando para ele, e `DELETE` deixaria o `class_logs` órfão — o defeito
+do item 2, criado pelas próprias mãos.
+
+**Como auditar:** `select distinct day_of_week from bookings` — qualquer valor
+fora de `Segunda/Terça/Quarta/Quinta/Sexta/Sábado/Domingo` é agenda invisível.
+
 ### 5. Texto do turbo: nem valor chumbado, nem regra vencida
 - A faixa de **R$ 9,50 (5º ao 9º) foi apagada com a direção em 02/08/2026**
   (`20260802110000_remove_faixa_9_50`) e três telas continuaram prometendo-a por
