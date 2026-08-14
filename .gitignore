@@ -34,6 +34,13 @@ dist-ssr
 # Ferramentas de agente / cache local (não fazem parte do projeto)
 .claude/
 .agents/
+!.agents/
+.agents/*
+!.agents/mcp_config.json
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/operate-wise-wolf/
+!.agents/skills/operate-wise-wolf/**
 skills-lock.json
 supabase/.temp/
 .mcp.json

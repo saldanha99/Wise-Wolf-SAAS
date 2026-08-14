@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operate Wise Wolf"
+  short_description: "Corrigir, testar e publicar o Wise Wolf com autonomia controlada"
+  default_prompt: "Use $operate-wise-wolf para resolver esta solicitacao da Wise Wolf com classificacao de risco, testes e deploy seguro."

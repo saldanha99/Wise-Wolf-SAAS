@@ -18,3 +18,14 @@ Regras obrigatórias:
 - nunca grave senhas, tokens, chaves, cookies ou outros segredos neste arquivo, no runbook, em commits ou em logs.
 
 Essa autorização cobre somente a identidade acima e as ações reversíveis necessárias ao teste e à limpeza dos artefatos criados por ele. Ela não autoriza alterações ou exclusões em dados reais.
+
+## Operação pelos agentes do Hermes
+
+- Carregue `.agents/skills/operate-wise-wolf/SKILL.md` para qualquer solicitação da Wise Wolf.
+- O modo operacional é `auto_low_risk`: mudanças de baixo risco podem ser corrigidas, testadas e publicadas autonomamente.
+- Banco, migrations, RLS, autenticação, tenant, contratos, cobrança, Asaas, Evolution, notificações externas, segredos, exclusões e alterações em massa exigem aprovação explícita para produção.
+- Use apenas um agente com escrita por solicitação. No fluxo headless, Codex é o executor com escrita; Antigravity e Claude revisam em sequência.
+- Trabalhe em branch ou worktree isolado a partir de `origin/main`.
+- Antes de publicar, execute `npm run typecheck`, `npm test` e `npm run build`.
+- Preview pode ser publicado automaticamente. Produção exige o runbook versionado em `deploy/vps/`, preflight, backup, health check e rollback.
+- Estado operacional, conversa e autorização ficam no Hermes; não grave tickets ou mensagens em memória global.
