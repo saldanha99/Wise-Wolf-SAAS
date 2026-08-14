@@ -19,7 +19,11 @@ import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../co
 import { Teacher, Reschedule } from '../types';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
-import { buildStudentProfileUpdates } from '../lib/studentProfileUpdates';
+import {
+  buildStudentProfileUpdates,
+  mapStudentProfileToForm,
+  STUDENT_PROFILE_EDITOR_COLS,
+} from '../lib/studentProfileUpdates';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -72,7 +76,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     const [bookingsRes, availRes, trialsRes, stdsRes] = await Promise.all([
       supabase
         .from('bookings')
-        .select('id, day_of_week, time_slot, type, module, student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)')
+        .select(`id, day_of_week, time_slot, type, module, student:student_id(${STUDENT_PROFILE_EDITOR_COLS})`)
         .eq('teacher_id', selectedTeacher.id),
       supabase
         .from('teacher_availability')
@@ -857,15 +861,13 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       {editingBooking && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
-            initialData={{
-              name: editingBooking.student,
-              levelBadge: editingBooking.module,
-              ...editingBooking.fullProfile
-            }}
+            initialData={mapStudentProfileToForm(editingBooking.fullProfile)}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingBooking(null)}
             onDelete={(user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN') ? handleDeleteBooking : undefined}
             currentUserRole={user?.role}
+            teachers={teachers}
+            tenantId={currentTenantId}
             title="Gerenciar Alocação"
           />
         </div>

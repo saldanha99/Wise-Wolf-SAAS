@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStudentProfileUpdates } from './studentProfileUpdates';
+import { buildStudentProfileUpdates, mapStudentProfileToForm } from './studentProfileUpdates';
 
 describe('buildStudentProfileUpdates', () => {
   it('não envia correction_preference, coluna inexistente no schema hospedado', () => {
@@ -32,6 +32,32 @@ describe('buildStudentProfileUpdates', () => {
       due_day: 10,
       status_financial: 'ACTIVE',
       fidelity_plan: 'ANNUAL',
+    });
+  });
+
+  it('converte valores vazios de UUID e CPF em null', () => {
+    expect(buildStudentProfileUpdates({ professor_id: '', cpf: '' })).toMatchObject({
+      professor_id: null,
+      cpf: null,
+    });
+  });
+
+  it('normaliza o perfil hospedado sem apagar dados ao abrir o formulário', () => {
+    expect(mapStudentProfileToForm({
+      full_name: 'Anderson',
+      module: 'A1',
+      postal_code: '01001-000',
+      address_number: '10',
+      monthly_tuition: 490,
+      fidelity_plan: 'ANNUAL',
+    })).toMatchObject({
+      name: 'Anderson',
+      levelBadge: 'A1',
+      postalCode: '01001-000',
+      addressNumber: '10',
+      monthly_fee: 490,
+      planDuration: 'ANNUAL',
+      professor_id: null,
     });
   });
 });

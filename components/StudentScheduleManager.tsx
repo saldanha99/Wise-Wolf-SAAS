@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Calendar, Clock, User as UserIcon, Save, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, Calendar, Clock, User as UserIcon, Save, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
 
@@ -11,12 +11,14 @@ interface StudentScheduleManagerProps {
 }
 
 interface Booking {
-    id: number;
+    id: string;
     day_of_week: string;
     time_slot: string;
     teacher_id: string;
     teacher?: { full_name: string };
 }
+
+type BookingDraft = Pick<Booking, 'day_of_week' | 'time_slot' | 'teacher_id'>;
 
 const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -24,6 +26,8 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [drafts, setDrafts] = useState<Record<string, BookingDraft>>({});
+    const [bulkTime, setBulkTime] = useState('17:30');
 
     // New Slot State
     const [newSlot, setNewSlot] = useState({
@@ -32,7 +36,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
         teacherId: ''
     });
 
-    const [processingId, setProcessingId] = useState<number | null>(null);
+    const [processingId, setProcessingId] = useState<string | 'all' | null>(null);
 
     useEffect(() => {
         fetchBookings();
@@ -48,7 +52,16 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 .eq('tenant_id', tenantId);
 
             if (error) throw error;
-            setBookings(data || []);
+            const normalized = (data || []).map((booking: any) => ({
+                ...booking,
+                time_slot: String(booking.time_slot || '').slice(0, 5),
+            })) as Booking[];
+            setBookings(normalized);
+            setDrafts(Object.fromEntries(normalized.map(booking => [booking.id, {
+                day_of_week: booking.day_of_week,
+                time_slot: booking.time_slot,
+                teacher_id: booking.teacher_id,
+            }])));
         } catch (error) {
             console.error('Error fetching bookings:', error);
         } finally {
@@ -85,7 +98,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: string) => {
         if (!confirm('Tem certeza que deseja remover este horário?')) return;
         setProcessingId(id);
         try {
@@ -101,38 +114,53 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
         }
     };
 
-    const handleTransfer = async (bookingId: number, newTeacherId: string) => {
-        if (!newTeacherId) return;
+    const updateDraft = (bookingId: string, patch: Partial<BookingDraft>) => {
+        setDrafts(previous => ({
+            ...previous,
+            [bookingId]: { ...previous[bookingId], ...patch },
+        }));
+    };
+
+    const handleSaveBooking = async (bookingId: string) => {
+        const draft = drafts[bookingId];
+        if (!draft?.teacher_id || !DAYS_OF_WEEK.includes(draft.day_of_week) || !/^\d{2}:\d{2}$/.test(draft.time_slot)) {
+            alert('Preencha dia, horário e professor corretamente.');
+            return;
+        }
         setProcessingId(bookingId);
         try {
             const { error } = await supabase
                 .from('bookings')
-                .update({ teacher_id: newTeacherId })
+                .update(draft)
                 .eq('id', bookingId);
 
             if (error) throw error;
-            fetchBookings(); // Refresh to show new teacher name
+            await fetchBookings();
             if (onUpdate) onUpdate();
+            alert('Horário atualizado com sucesso!');
         } catch (error: any) {
-            alert('Erro na transferência: ' + error.message);
+            alert('Erro ao atualizar horário: ' + error.message);
         } finally {
             setProcessingId(null);
         }
     };
 
-    const handleTimeChange = async (bookingId: number, field: 'day_of_week' | 'time_slot', value: string) => {
-        setProcessingId(bookingId);
+    const handleApplyTimeToAll = async () => {
+        if (!/^\d{2}:\d{2}$/.test(bulkTime) || bookings.length === 0) return;
+        setProcessingId('all');
         try {
             const { error } = await supabase
                 .from('bookings')
-                .update({ [field]: value })
-                .eq('id', bookingId);
+                .update({ time_slot: bulkTime })
+                .eq('student_id', studentId)
+                .eq('tenant_id', tenantId);
 
             if (error) throw error;
-            fetchBookings();
+            await fetchBookings();
             if (onUpdate) onUpdate();
+            alert(`Horário ${bulkTime} aplicado a todas as aulas do aluno.`);
         } catch (error: any) {
-            alert('Erro ao atualizar horário: ' + error.message);
+            alert('Erro ao aplicar o horário: ' + error.message);
         } finally {
             setProcessingId(null);
         }
@@ -155,6 +183,29 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                     <Plus size={12} /> Adicionar Dia
                 </button>
             </div>
+
+            {bookings.length > 0 && (
+                <div className="flex flex-col gap-3 rounded-xl border border-brand-border bg-brand-surface-2 p-3 sm:flex-row sm:items-end">
+                    <label className="flex-1 text-[10px] font-bold uppercase text-brand-muted">
+                        Mesmo horário para todas as aulas
+                        <input
+                            type="time"
+                            value={bulkTime}
+                            onChange={event => setBulkTime(event.target.value)}
+                            disabled={processingId !== null}
+                            className="mt-1 w-full rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm font-black text-brand-text outline-none focus:border-brand-accent"
+                        />
+                    </label>
+                    <button
+                        type="button"
+                        onClick={handleApplyTimeToAll}
+                        disabled={processingId !== null}
+                        className="rounded-lg bg-brand-accent px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50"
+                    >
+                        {processingId === 'all' ? 'Salvando…' : 'Aplicar a todas'}
+                    </button>
+                </div>
+            )}
 
             {isAdding && (
                 <div className="p-4 bg-brand-surface-2 rounded-xl border border-dashed border-brand-accent/50 mb-4 animate-in slide-in-from-top-2">
@@ -198,15 +249,20 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             )}
 
             <div className="space-y-3">
-                {bookings.map(booking => (
+                {bookings.map(booking => {
+                    const draft = drafts[booking.id] || booking;
+                    const changed = draft.day_of_week !== booking.day_of_week
+                        || draft.time_slot !== booking.time_slot
+                        || draft.teacher_id !== booking.teacher_id;
+                    return (
                     <div key={booking.id} className="p-3 bg-brand-surface border border-brand-border rounded-xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all flex flex-col md:flex-row items-center gap-4 group">
 
                         {/* Day & Time Editor */}
                         <div className="flex gap-2 items-center flex-1">
                             <select
-                                value={booking.day_of_week}
-                                onChange={(e) => handleTimeChange(booking.id, 'day_of_week', e.target.value)}
-                                disabled={processingId === booking.id}
+                                value={draft.day_of_week}
+                                onChange={(e) => updateDraft(booking.id, { day_of_week: e.target.value })}
+                                disabled={processingId !== null}
                                 className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text uppercase w-24 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-colors"
                             >
                                 {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
@@ -214,9 +270,9 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
 
                             <input
                                 type="time"
-                                value={booking.time_slot}
-                                onChange={(e) => handleTimeChange(booking.id, 'time_slot', e.target.value)}
-                                disabled={processingId === booking.id}
+                                value={draft.time_slot}
+                                onChange={(e) => updateDraft(booking.id, { time_slot: e.target.value })}
+                                disabled={processingId !== null}
                                 className="bg-brand-surface-2 border border-transparent rounded-lg px-2 py-1 text-xs font-black text-brand-text w-20 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-colors [color-scheme:dark]"
                             />
                         </div>
@@ -225,9 +281,9 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                         <div className="flex items-center gap-2 flex-1 w-full md:w-auto">
                             <UserIcon size={12} className="text-brand-muted" />
                             <select
-                                value={booking.teacher_id}
-                                onChange={(e) => handleTransfer(booking.id, e.target.value)}
-                                disabled={processingId === booking.id}
+                                value={draft.teacher_id}
+                                onChange={(e) => updateDraft(booking.id, { teacher_id: e.target.value })}
+                                disabled={processingId !== null}
                                 className="flex-1 bg-transparent text-xs font-bold text-brand-text border-b border-dashed border-brand-border focus:border-brand-accent outline-none py-1 truncate"
                             >
                                 {teachers.map(t => (
@@ -236,17 +292,28 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             </select>
                         </div>
 
+                        <button
+                            type="button"
+                            onClick={() => handleSaveBooking(booking.id)}
+                            disabled={!changed || processingId !== null}
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-40"
+                        >
+                            {processingId === booking.id ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+                            Salvar
+                        </button>
+
                         {/* Delete */}
                         <button
                             onClick={() => handleDelete(booking.id)}
-                            disabled={processingId === booking.id}
+                            disabled={processingId !== null}
                             className="p-2 text-brand-muted hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
                             title="Remover Aula"
                         >
                             {processingId === booking.id ? <RefreshCw size={14} className="animate-spin text-brand-accent" /> : <Trash2 size={14} />}
                         </button>
                     </div>
-                ))}
+                    );
+                })}
 
                 {bookings.length === 0 && !isAdding && (
                     <div className="p-4 border border-dashed border-brand-border rounded-xl text-center">

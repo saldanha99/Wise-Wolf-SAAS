@@ -14,7 +14,11 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import StudentProfileForm from './StudentProfileForm';
-import { buildStudentProfileUpdates } from '../lib/studentProfileUpdates';
+import {
+  buildStudentProfileUpdates,
+  mapStudentProfileToForm,
+  STUDENT_PROFILE_EDITOR_COLS,
+} from '../lib/studentProfileUpdates';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -69,7 +73,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       .from('bookings')
       .select(`
           id, day_of_week, time_slot, type, module,
-          student:student_id!inner(full_name, id, tenant_id, module, occupation, phone, meeting_link)
+          student:student_id!inner(${STUDENT_PROFILE_EDITOR_COLS})
       `)
       .eq('teacher_id', teacherId)
       .eq('student.tenant_id', tenantId);
@@ -412,11 +416,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       {editingProfile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
-            initialData={{
-              name: editingProfile.student,
-              levelBadge: editingProfile.module,
-              ...editingProfile.fullProfile
-            }}
+            initialData={mapStudentProfileToForm(editingProfile.fullProfile)}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingProfile(null)}
             onDelete={handleDeleteBooking}
