@@ -36,6 +36,9 @@ export default defineConfig(({ command, mode }) => {
         if (supabaseUrl.hostname.endsWith('.supabase.co')) {
           throw new Error('Supabase hospedado não é um destino permitido');
         }
+        if (supabaseUrl.pathname !== '/' || supabaseUrl.search || supabaseUrl.hash) {
+          throw new Error('a URL deve conter somente a origem da API');
+        }
       } catch {
         throw new Error(
           '[Build bloqueado] VITE_SUPABASE_URL deve apontar para a API própria da VPS.',
