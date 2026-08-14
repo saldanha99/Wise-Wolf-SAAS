@@ -967,7 +967,10 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                         Cancelar
                     </button>
                     <button
-                        onClick={() => onSubmit(formData)}
+                        onClick={() => onSubmit({
+                            ...formData,
+                            professor_id: formData.professor_id || null,
+                        })}
                         className="px-8 py-3 bg-tenant-primary text-white rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-tenant-primary/20 flex items-center gap-2"
                     >
                         <Save size={16} /> Salvar Perfil
