@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import StudentProfileForm from './StudentProfileForm';
+import { buildStudentProfileUpdates } from '../lib/studentProfileUpdates';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -218,27 +219,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     if (!editingProfile?.studentId) return;
 
     try {
-      const updates: any = {
-        full_name: profileData.name,
-        module: profileData.levelBadge,
-        occupation: profileData.occupation,
-        phone: profileData.phone,
-        meeting_link: profileData.meeting_link,
-        cpf: profileData.cpf,
-        address: profileData.address,
-        address_number: profileData.addressNumber,
-        postal_code: profileData.postalCode,
-        interests: profileData.interests,
-        private_notes: profileData.private_notes,
-        fixed_schedule: profileData.fixed_schedule,
-        correction_preference: profileData.correctionPreference,
-        professor_id: profileData.professor_id
-      };
-
-      if (profileData.monthly_fee !== undefined) updates.monthly_tuition = profileData.monthly_fee;
-      if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
-      if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
-      if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;
+      const updates = buildStudentProfileUpdates(profileData);
 
       const { error } = await supabase
         .from('profiles')

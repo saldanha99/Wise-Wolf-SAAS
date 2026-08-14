@@ -19,6 +19,7 @@ import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../co
 import { Teacher, Reschedule } from '../types';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
+import { buildStudentProfileUpdates } from '../lib/studentProfileUpdates';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -484,31 +485,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     if (!editingBooking?.studentId) return;
 
     try {
-      const updates: any = {
-        full_name: profileData.name,
-        module: profileData.levelBadge,
-        occupation: profileData.occupation,
-        phone: profileData.phone,
-        meeting_link: profileData.meeting_link,
-        cpf: profileData.cpf,
-        address: profileData.address,
-        address_number: profileData.addressNumber,
-        postal_code: profileData.postalCode,
-        interests: profileData.interests,
-        private_notes: profileData.private_notes,
-        fixed_schedule: profileData.fixed_schedule,
-        correction_preference: profileData.correctionPreference,
-        // Professor Link
-        professor_id: profileData.professor_id
-      };
-
-      // Only update financial data if present and user has permission (implicit by checking if fields exist in data)
-      // Since StudentProfileForm only shows these fields to Directors, we can trust the data if present,
-      // but RLS will ultimately block it if unauthorized.
-      if (profileData.monthly_fee !== undefined) updates.monthly_tuition = profileData.monthly_fee;
-      if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
-      if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
-      if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;
+      const updates = buildStudentProfileUpdates(profileData);
 
       const { error } = await supabase
         .from('profiles')
