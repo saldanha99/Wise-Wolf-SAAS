@@ -4,6 +4,21 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-Sha256Hex {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+  $stream = $null
+  $sha256 = [Security.Cryptography.SHA256]::Create()
+  try {
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    return (($sha256.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join '')
+  }
+  finally {
+    if ($stream) { $stream.Dispose() }
+    $sha256.Dispose()
+  }
+}
+
 $projectDir = Split-Path -Parent $PSScriptRoot
 $stagingDir = Join-Path $projectDir 'deploy\vps\staging'
 $stage = $null
@@ -36,7 +51,7 @@ try {
   & npm run build
   if ($LASTEXITCODE -ne 0) { throw 'Build falhou.' }
 
-  $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $projectDir 'dist\index.html')).Hash.ToLower().Substring(0, 12)
+  $hash = (Get-Sha256Hex -LiteralPath (Join-Path $projectDir 'dist\index.html')).Substring(0, 12)
   $releaseId = "$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))-$hash"
   $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
   $stage = Join-Path $tempRoot "wisewolf-staging-$releaseId"
