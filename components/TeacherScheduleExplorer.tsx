@@ -19,6 +19,7 @@ import { MOCK_BOOKINGS, TEACHER_SPECIALIZATIONS, PROFILE_SAFE_COLS } from '../co
 import { Teacher, Reschedule } from '../types';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
+import { findTeacherRescheduleForSlot } from '../lib/teacherSchedule';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -542,22 +543,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   };
 
   const getRescheduleForSlot = (dayIdx: number, hour: number | string) => {
-    if (!reschedules) return null;
-    return reschedules.find(r => {
-      let dateObj: Date;
-      if (r.date.includes('/')) {
-        const parts = r.date.split('/');
-        dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-      } else {
-        dateObj = new Date(r.date);
-      }
-      const rDay = dateObj.getDay();
-      const mappedDayIdx = rDay === 0 ? -1 : rDay - 1;
-      if (mappedDayIdx !== dayIdx) return false;
-
-      const timeStr = typeof hour === 'number' ? `${hour}:00` : hour;
-      return (r as any).time ? (r as any).time.startsWith(timeStr.substring(0, 5)) : hour === 14;
-    });
+    const time = typeof hour === 'number' ? `${String(hour).padStart(2, '0')}:00` : hour;
+    return findTeacherRescheduleForSlot(reschedules, selectedTeacher?.id, dayIdx, time);
   };
 
   const filteredTeachers = (teachers || []).filter(t => {
