@@ -200,12 +200,16 @@ const verifyFile = (
       [filePath, "-mt", "-quiet", "-o", decoderOutput],
       { stdio: ["ignore", "ignore", "pipe"] },
     );
-    if (decoded.error?.code === "ENOENT") {
-      fail("decoder real ausente: instale o utilitário dwebp (libwebp)");
-    }
-    if (decoded.error || decoded.status !== 0) {
-      fail(`dwebp não conseguiu decodificar ${asset.url}`);
-    }
+      if (decoded.error?.code === "ENOENT") {
+        fail("decoder real ausente: instale o utilitário dwebp (libwebp)");
+      }
+      if (decoded.error || decoded.status !== 0) {
+        const detail = [decoded.error?.message, decoded.stderr?.toString().trim()]
+          .filter(Boolean)
+          .join(": ")
+          .slice(0, 500);
+        fail(`dwebp não conseguiu decodificar ${asset.url} (status ${decoded.status ?? "erro"}${detail ? `: ${detail}` : ""})`);
+      }
   }
   lockRows.push([asset.url, String(asset.bytes), asset.sha256]);
 };
