@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Users,
     Search,
@@ -20,10 +20,20 @@ import {
     UserX,
     UserCheck,
     AlertTriangle,
-    CalendarOff
+    CalendarOff,
+    Flame,
+    Zap
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
+import {
+    effectiveTeacherLifecycle,
+    parseTeacherOrganizationSnapshot,
+    teacherMatchesListView,
+    type TeacherLifecycle,
+    type TeacherListView,
+    type TeacherOrganizationSnapshot,
+} from '../lib/teacherOrganization';
 
 import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
@@ -45,17 +55,68 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     const [isSaving, setIsSaving] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [viewingFinancialsId, setViewingFinancialsId] = useState<string | null>(null);
+    const [listView, setListView] = useState<TeacherListView>('active');
+    const [turboById, setTurboById] = useState<Record<string, TeacherOrganizationSnapshot | null>>({});
+    const [turboLoadState, setTurboLoadState] = useState<'loading' | 'ready'>('loading');
+
+    const handleListTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+        let nextView: TeacherListView | null = null;
+        if (event.key === 'ArrowRight' || event.key === 'End') nextView = 'inactive';
+        if (event.key === 'ArrowLeft' || event.key === 'Home') nextView = 'active';
+        if (!nextView) return;
+
+        event.preventDefault();
+        setListView(nextView);
+        document.getElementById(`teacher-${nextView}-tab`)?.focus();
+    };
 
     // Ciclo de vida do professor (suspender/desligar/reativar) via school-admin.
     // suspended/offboarded tira o professor do cruzamento de agenda e do lançamento de aula.
     // Estado otimista local: o badge usa lifecycle_status canônico (não o legado teacher.status).
-    const [lifecycleById, setLifecycleById] = useState<Record<string, string>>({});
+    const [lifecycleById, setLifecycleById] = useState<Record<string, TeacherLifecycle>>({});
     const [coverageTeacher, setCoverageTeacher] = useState<{ id: string; name: string } | null>(null);
-    const effLifecycle = (t: any): string =>
-        lifecycleById[t.id] || t.lifecycle_status ||
-        (['Inativo', 'INACTIVE', 'Inactive'].includes(t.status) ? 'suspended' : 'active');
+    const effLifecycle = (teacher: Teacher): TeacherLifecycle =>
+        effectiveTeacherLifecycle(teacher, lifecycleById[teacher.id]);
 
-    const setTeacherLifecycle = async (teacher: any, status: 'active' | 'suspended' | 'offboarded') => {
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadTurboSnapshots = async () => {
+            if (!teachers.length) {
+                setTurboById({});
+                setTurboLoadState('ready');
+                return;
+            }
+
+            setTurboLoadState('loading');
+            const entries = await Promise.all(teachers.map(async teacher => {
+                try {
+                    const { data, error } = await supabase.rpc('teacher_turbo_status', {
+                        p_teacher: teacher.id,
+                    });
+                    if (error) throw error;
+
+                    const snapshot = parseTeacherOrganizationSnapshot(data);
+                    if (!snapshot) throw new Error('resposta inválida da teacher_turbo_status');
+                    return [teacher.id, snapshot] as const;
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    console.warn(`Não foi possível carregar a organização de ${teacher.id}:`, message);
+                    return [teacher.id, null] as const;
+                }
+            }));
+
+            if (!cancelled) {
+                setTurboById(Object.fromEntries(entries));
+                setTurboLoadState('ready');
+            }
+        };
+
+        void loadTurboSnapshots();
+        return () => { cancelled = true; };
+    }, [teachers]);
+
+    const setTeacherLifecycle = async (teacher: Teacher, status: TeacherLifecycle) => {
         const labels: Record<string, string> = {
             suspended: `Suspender ${teacher.name}?\n\nO professor SAI do cruzamento de agenda e para de receber agenda diária/notificações. Reversível.\n\n⚠️ Os convites de aula experimental são enviados no GRUPO de WhatsApp dos professores. Para ele parar de recebê-los, remova-o do grupo manualmente no WhatsApp.`,
             offboarded: `Desligar ${teacher.name} definitivamente?\n\nSai do cruzamento de agenda e do lançamento de aula. Lembre de transferir os alunos dele (Transferência de Professor).\n\n⚠️ Remova-o também do GRUPO de WhatsApp dos professores — os convites de experimental são disparados no grupo e o sistema não consegue barrar por lá.`,
@@ -227,6 +288,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     retention: '100%',
                     tpi: 100,
                     status: 'Ativo',
+                    lifecycle_status: 'active',
                     occupancy: 0
                 };
 
@@ -244,10 +306,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
         }
     };
 
-    const filteredTeachers = teachers.filter(t =>
-        t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const activeCount = teachers.filter(t => effLifecycle(t) === 'active').length;
+    const inactiveCount = teachers.length - activeCount;
+    const normalizedSearch = searchTerm.trim().toLocaleLowerCase('pt-BR');
+    const filteredTeachers = teachers.filter(t => {
+        const lifecycleMatches = teacherMatchesListView(t, listView, lifecycleById[t.id]);
+        const searchMatches = !normalizedSearch ||
+            t.name.toLocaleLowerCase('pt-BR').includes(normalizedSearch) ||
+            t.email.toLocaleLowerCase('pt-BR').includes(normalizedSearch);
+        return lifecycleMatches && searchMatches;
+    });
 
     return (
         <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
@@ -287,7 +355,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-xl"><CheckCircle size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Ativos</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">{teachers.filter(t => t.status === 'Ativo').length}</p>
+                        <p className="text-2xl font-black text-gray-800 dark:text-white">{activeCount}</p>
                     </div>
                 </div>
                 <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
@@ -305,23 +373,59 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
 
             {/* Main List */}
             <div className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2.5rem] shadow-sm overflow-hidden">
-                <div className="p-6 border-b dark:border-brand-border flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <h3 className="font-black text-gray-800 dark:text-slate-200 text-xs uppercase tracking-widest">Lista de Professores</h3>
-                    <div className="relative w-full sm:w-72">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nome ou email..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-sm outline-none transition-all"
-                        />
+                <div className="p-6 border-b dark:border-brand-border flex flex-col gap-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <h3 className="font-black text-gray-800 dark:text-slate-200 text-xs uppercase tracking-widest">Lista de Professores</h3>
+                        <div className="relative w-full sm:w-72">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por nome ou email..."
+                                aria-label="Buscar professores por nome ou e-mail"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary focus-visible:ring-2 focus-visible:ring-tenant-primary/30 rounded-xl text-sm outline-none transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)] gap-2 sm:flex" role="tablist" aria-label="Status dos professores">
+                        <button
+                            id="teacher-active-tab"
+                            type="button"
+                            role="tab"
+                            aria-selected={listView === 'active'}
+                            aria-controls="teacher-mobile-list teacher-desktop-list"
+                            onClick={() => setListView('active')}
+                            onKeyDown={handleListTabKeyDown}
+                            className={`px-3 sm:px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors sm:whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tenant-primary focus-visible:ring-offset-2 ${listView === 'active' ? 'bg-tenant-primary text-white shadow-sm' : 'bg-gray-50 dark:bg-brand-surface-2 text-gray-500 hover:text-tenant-primary'}`}
+                        >
+                            Ativos ({activeCount})
+                        </button>
+                        <button
+                            id="teacher-inactive-tab"
+                            type="button"
+                            role="tab"
+                            aria-selected={listView === 'inactive'}
+                            aria-controls="teacher-mobile-list teacher-desktop-list"
+                            onClick={() => setListView('inactive')}
+                            onKeyDown={handleListTabKeyDown}
+                            className={`px-3 sm:px-4 py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-wider transition-colors sm:whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 ${listView === 'inactive' ? 'bg-amber-500 text-white shadow-sm' : 'bg-gray-50 dark:bg-brand-surface-2 text-gray-500 hover:text-amber-600'}`}
+                        >
+                            Suspensos / Desligados ({inactiveCount})
+                        </button>
                     </div>
                 </div>
 
-                <div className="md:hidden divide-y divide-gray-100 dark:divide-slate-800">
+                <div
+                    id="teacher-mobile-list"
+                    role="tabpanel"
+                    aria-labelledby={listView === 'active' ? 'teacher-active-tab' : 'teacher-inactive-tab'}
+                    className="md:hidden divide-y divide-gray-100 dark:divide-slate-800"
+                >
                     {filteredTeachers.map(teacher => {
                         const lc = effLifecycle(teacher);
+                        const turbo = turboById[teacher.id];
+                        const turboIsLoading = turboLoadState === 'loading' && turbo === undefined;
                         const statusClass = lc === 'offboarded'
                             ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20 dark:border-red-900/30'
                             : lc === 'suspended'
@@ -352,6 +456,19 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                     <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Alunos</p>
                                         <p className="font-black text-gray-700 dark:text-slate-200">{teacher.studentsCount}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-orange-50 dark:bg-orange-900/15 p-3">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-orange-500 mb-1 flex items-center gap-1"><Flame size={12} /> Ofensiva</p>
+                                        <p className="font-black text-gray-700 dark:text-slate-200" aria-live="polite">
+                                            {turboIsLoading ? 'Carregando…' : turbo ? `${turbo.currentStreak} dias` : 'Indisponível'}
+                                        </p>
+                                        {turbo && <p className="text-[9px] text-gray-400">sem faltar</p>}
+                                    </div>
+                                    <div className="rounded-xl bg-violet-50 dark:bg-violet-900/15 p-3">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-500 mb-1 flex items-center gap-1"><Zap size={12} /> Modo Turbo</p>
+                                        <p className={`font-black ${turbo?.enabled ? 'text-emerald-600' : 'text-gray-500 dark:text-slate-300'}`} aria-live="polite">
+                                            {turboIsLoading ? 'Carregando…' : turbo ? (turbo.enabled ? 'Ligado' : 'Desligado') : 'Indisponível'}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -412,33 +529,55 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     {filteredTeachers.length === 0 && (
                         <div className="px-6 py-12 text-center text-gray-400 dark:text-brand-muted">
                             <Users size={40} className="mb-3 mx-auto opacity-50" />
-                            <p className="text-sm font-bold">Nenhum professor encontrado</p>
-                            <p className="text-xs">Tente buscar por outro termo ou adicione um novo.</p>
+                            <p className="text-sm font-bold">
+                                {normalizedSearch ? 'Nenhum professor encontrado' : listView === 'active' ? 'Nenhum professor ativo' : 'Nenhum professor suspenso ou desligado'}
+                            </p>
+                            <p className="text-xs">{normalizedSearch ? 'Tente buscar por outro termo.' : 'Não há professores neste status.'}</p>
                         </div>
                     )}
                 </div>
 
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left min-w-[600px]">
+                <div
+                    id="teacher-desktop-list"
+                    role="tabpanel"
+                    aria-labelledby={listView === 'active' ? 'teacher-active-tab' : 'teacher-inactive-tab'}
+                    className="hidden md:block overflow-x-auto"
+                >
+                    <table className="w-full min-w-[1180px] table-fixed text-left">
+                        <colgroup>
+                            <col className="w-[260px]" />
+                            <col className="w-[105px]" />
+                            <col className="w-[145px]" />
+                            <col className="w-[75px]" />
+                            <col className="w-[110px]" />
+                            <col className="w-[115px]" />
+                            <col className="w-[130px]" />
+                            <col className="w-[240px]" />
+                        </colgroup>
                         <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] uppercase font-black text-gray-500 dark:text-brand-muted">
                             <tr>
                                 <th className="px-6 py-4">Professor</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4">Módulo Principal</th>
                                 <th className="px-6 py-4">Alunos</th>
+                                <th className="px-6 py-4">Ofensiva</th>
+                                <th className="px-6 py-4">Modo Turbo</th>
                                 <th className="px-6 py-4">Avaliação (TPI)</th>
                                 <th className="px-6 py-4 text-right">Ações</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                            {filteredTeachers.map(teacher => (
+                            {filteredTeachers.map(teacher => {
+                                const turbo = turboById[teacher.id];
+                                const turboIsLoading = turboLoadState === 'loading' && turbo === undefined;
+                                return (
                                 <tr key={teacher.id} className="hover:bg-gray-50 dark:hover:bg-brand-surface-2/50 transition-colors group">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
                                             <img src={teacher.avatar} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm border border-gray-100 dark:border-brand-border" />
-                                            <div>
+                                            <div className="min-w-0">
                                                 <p className="font-bold text-sm text-gray-800 dark:text-slate-200">{teacher.name}</p>
-                                                <p className="text-xs text-gray-400 dark:text-brand-muted">{teacher.email}</p>
+                                                <p className="truncate text-xs text-gray-400 dark:text-brand-muted" title={teacher.email}>{teacher.email}</p>
                                             </div>
                                         </div>
                                     </td>
@@ -488,6 +627,21 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                             <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.studentsCount}</span>
                                         </div>
                                     </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center gap-2 text-orange-600">
+                                            <Flame size={16} />
+                                            <span className="text-xs font-black" aria-live="polite">
+                                                {turboIsLoading ? 'Carregando…' : turbo ? `${turbo.currentStreak} dias` : 'Indisponível'}
+                                            </span>
+                                        </div>
+                                        {turbo && <span className="text-[9px] text-gray-400">sem faltar</span>}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black uppercase ${turbo?.enabled ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30' : 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-brand-surface-2 dark:border-brand-border'}`} aria-live="polite">
+                                            <Zap size={12} />
+                                            {turboIsLoading ? 'Carregando…' : turbo ? (turbo.enabled ? 'Ligado' : 'Desligado') : 'Indisponível'}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <div className="flex-1 w-20 h-1.5 bg-gray-100 dark:bg-brand-surface-2 rounded-full overflow-hidden">
@@ -505,6 +659,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 onClick={() => onViewTeacherSchedule?.(teacher.name, 'view')}
                                                 className="p-2 text-tenant-primary hover:bg-blue-50 dark:hover:bg-brand-surface-2 rounded-lg transition-all"
                                                 title="Ver Agenda"
+                                                aria-label={`Ver agenda de ${teacher.name}`}
                                             >
                                                 <BookOpen size={18} />
                                             </button>
@@ -520,6 +675,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 onClick={() => setViewingFinancialsId(teacher.id)}
                                                 className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
                                                 title="Ver Financeiro"
+                                                aria-label={`Ver financeiro de ${teacher.name}`}
                                             >
                                                 <DollarSign size={18} />
                                             </button>
@@ -527,6 +683,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                 onClick={() => setCoverageTeacher({ id: teacher.id, name: teacher.name })}
                                                 className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
                                                 title="Registrar ausência e cobrir aulas"
+                                                aria-label={`Registrar ausência de ${teacher.name}`}
                                             >
                                                 <CalendarOff size={18} />
                                             </button>
@@ -538,6 +695,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                             onClick={() => setTeacherLifecycle(teacher, 'suspended')}
                                                             className="p-2 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
                                                             title="Suspender (sai do cruzamento de agenda)"
+                                                            aria-label={`Suspender ${teacher.name}`}
                                                         >
                                                             <UserX size={18} />
                                                         </button>
@@ -545,6 +703,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                             onClick={() => setTeacherLifecycle(teacher, 'offboarded')}
                                                             className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                                                             title="Desligar definitivamente"
+                                                            aria-label={`Desligar ${teacher.name}`}
                                                         >
                                                             <AlertTriangle size={18} />
                                                         </button>
@@ -554,6 +713,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                                         onClick={() => setTeacherLifecycle(teacher, 'active')}
                                                         className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
                                                         title="Reativar professor"
+                                                        aria-label={`Reativar ${teacher.name}`}
                                                     >
                                                         <UserCheck size={18} />
                                                     </button>
@@ -562,14 +722,17 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                             {filteredTeachers.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center">
+                                    <td colSpan={8} className="px-6 py-12 text-center">
                                         <div className="flex flex-col items-center justify-center text-gray-300 dark:text-brand-muted">
                                             <Users size={48} className="mb-4 opacity-50" />
-                                            <p className="text-sm font-bold">Nenhum professor encontrado</p>
-                                            <p className="text-xs">Tente buscar por outro termo ou adicione um novo.</p>
+                                            <p className="text-sm font-bold">
+                                                {normalizedSearch ? 'Nenhum professor encontrado' : listView === 'active' ? 'Nenhum professor ativo' : 'Nenhum professor suspenso ou desligado'}
+                                            </p>
+                                            <p className="text-xs">{normalizedSearch ? 'Tente buscar por outro termo.' : 'Não há professores neste status.'}</p>
                                         </div>
                                     </td>
                                 </tr>
