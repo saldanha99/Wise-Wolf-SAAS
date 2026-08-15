@@ -6,8 +6,10 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
+  rmSync,
   statSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute, posix, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -40,7 +42,7 @@ const manifestPath = resolve(
 );
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const wolfieRoot = resolve(assetRoot, "assets/wolfie");
-const decoderOutput = process.platform === "win32" ? "NUL" : "/dev/null";
+const decoderOutput = resolve(tmpdir(), `wisewolf-dwebp-${process.pid}.ppm`);
 
 const isInside = (base, candidate) => {
   const pathFromBase = relative(base, candidate);
@@ -195,16 +197,20 @@ const verifyFile = (
     fail(`dimensões divergentes em ${asset.url}`);
   }
   if (decode) {
-    const decoded = spawnSync(
-      "dwebp",
-      [filePath, "-mt", "-quiet", "-o", decoderOutput],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-    if (decoded.error?.code === "ENOENT") {
-      fail("decoder real ausente: instale o utilitário dwebp (libwebp)");
-    }
-    if (decoded.error || decoded.status !== 0) {
-      fail(`dwebp não conseguiu decodificar ${asset.url}`);
+    try {
+      const decoded = spawnSync(
+        "dwebp",
+        [filePath, "-mt", "-quiet", "-o", decoderOutput],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      if (decoded.error?.code === "ENOENT") {
+        fail("decoder real ausente: instale o utilitário dwebp (libwebp)");
+      }
+      if (decoded.error || decoded.status !== 0) {
+        fail(`dwebp não conseguiu decodificar ${asset.url}`);
+      }
+    } finally {
+      rmSync(decoderOutput, { force: true });
     }
   }
   lockRows.push([asset.url, String(asset.bytes), asset.sha256]);
