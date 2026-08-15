@@ -60,4 +60,17 @@ describe('buildStudentProfileUpdates', () => {
       professor_id: null,
     });
   });
+
+  it('usa o resumo do mapa quando a relação do perfil não veio carregada', () => {
+    expect(mapStudentProfileToForm(null, { name: 'Anderson', levelBadge: 'A1' })).toMatchObject({
+      name: 'Anderson',
+      levelBadge: 'A1',
+    });
+  });
+
+  it('não envia nome ou módulo vazios em uma atualização parcial', () => {
+    const updates = buildStudentProfileUpdates({ name: '   ', levelBadge: '' });
+    expect(updates).not.toHaveProperty('full_name');
+    expect(updates).not.toHaveProperty('module');
+  });
 });

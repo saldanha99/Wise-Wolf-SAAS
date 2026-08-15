@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Calendar, Clock, User as UserIcon, Save, RefreshCw } from 'lucide-react';
+import { Trash2, Plus, Calendar, User as UserIcon, Save, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { hasDuplicateStudentSchedule, studentScheduleErrorMessage } from '../lib/studentSchedule';
 import { Teacher } from '../types';
 
 interface StudentScheduleManagerProps {
@@ -28,6 +29,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
     const [isAdding, setIsAdding] = useState(false);
     const [drafts, setDrafts] = useState<Record<string, BookingDraft>>({});
     const [bulkTime, setBulkTime] = useState('17:30');
+    const [bulkTeacherId, setBulkTeacherId] = useState('');
 
     // New Slot State
     const [newSlot, setNewSlot] = useState({
@@ -40,7 +42,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
 
     useEffect(() => {
         fetchBookings();
-    }, [studentId]);
+    }, [studentId, tenantId]);
 
     const fetchBookings = async () => {
         setLoading(true);
@@ -49,7 +51,8 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 .from('bookings')
                 .select('id, day_of_week, time_slot, teacher_id, teacher:teacher_id(full_name)')
                 .eq('student_id', studentId)
-                .eq('tenant_id', tenantId);
+                .eq('tenant_id', tenantId)
+                .eq('status', 'SCHEDULED');
 
             if (error) throw error;
             const normalized = (data || []).map((booking: any) => ({
@@ -62,6 +65,8 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 time_slot: booking.time_slot,
                 teacher_id: booking.teacher_id,
             }])));
+            const teacherIds = Array.from(new Set(normalized.map(booking => booking.teacher_id)));
+            setBulkTeacherId(teacherIds.length === 1 ? teacherIds[0] : '');
         } catch (error) {
             console.error('Error fetching bookings:', error);
         } finally {
@@ -71,6 +76,16 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
 
     const handleAddSlot = async () => {
         if (!newSlot.teacherId) return alert('Selecione um professor.');
+        if (hasDuplicateStudentSchedule([
+            ...bookings.map(booking => ({
+                day_of_week: booking.day_of_week,
+                time_slot: booking.time_slot,
+                teacher_id: booking.teacher_id,
+            })),
+            { day_of_week: newSlot.day, time_slot: newSlot.time, teacher_id: newSlot.teacherId },
+        ])) {
+            return alert('Este aluno já possui uma aula com o mesmo professor, dia e horário.');
+        }
         setLoading(true);
         try {
             // Basic validation: Check if slot is taken for this teacher could be complex, 
@@ -82,6 +97,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 tenant_id: tenantId,
                 day_of_week: newSlot.day,
                 time_slot: newSlot.time,
+                status: 'SCHEDULED',
                 start_date: new Date().toISOString().split('T')[0] // Effective today
             });
 
@@ -92,7 +108,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             if (onUpdate) onUpdate();
             alert('Aula adicionada com sucesso!');
         } catch (error: any) {
-            alert('Erro ao adicionar aula: ' + error.message);
+            alert('Erro ao adicionar aula: ' + studentScheduleErrorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -102,7 +118,13 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
         if (!confirm('Tem certeza que deseja remover este horário?')) return;
         setProcessingId(id);
         try {
-            const { error } = await supabase.from('bookings').delete().eq('id', id);
+            const { error } = await supabase
+                .from('bookings')
+                .delete()
+                .eq('id', id)
+                .eq('student_id', studentId)
+                .eq('tenant_id', tenantId)
+                .eq('status', 'SCHEDULED');
             if (error) throw error;
 
             setBookings(prev => prev.filter(b => b.id !== id));
@@ -127,19 +149,29 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             alert('Preencha dia, horário e professor corretamente.');
             return;
         }
+        const proposed = bookings.map(booking => (
+            booking.id === bookingId ? draft : (drafts[booking.id] || booking)
+        ));
+        if (hasDuplicateStudentSchedule(proposed)) {
+            alert('Este aluno já possui uma aula com o mesmo professor, dia e horário.');
+            return;
+        }
         setProcessingId(bookingId);
         try {
             const { error } = await supabase
                 .from('bookings')
                 .update(draft)
-                .eq('id', bookingId);
+                .eq('id', bookingId)
+                .eq('student_id', studentId)
+                .eq('tenant_id', tenantId)
+                .eq('status', 'SCHEDULED');
 
             if (error) throw error;
             await fetchBookings();
             if (onUpdate) onUpdate();
             alert('Horário atualizado com sucesso!');
         } catch (error: any) {
-            alert('Erro ao atualizar horário: ' + error.message);
+            alert('Erro ao atualizar horário: ' + studentScheduleErrorMessage(error));
         } finally {
             setProcessingId(null);
         }
@@ -147,20 +179,35 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
 
     const handleApplyTimeToAll = async () => {
         if (!/^\d{2}:\d{2}$/.test(bulkTime) || bookings.length === 0) return;
+        const proposed = bookings.map(booking => ({
+            day_of_week: booking.day_of_week,
+            time_slot: bulkTime,
+            teacher_id: bulkTeacherId || booking.teacher_id,
+        }));
+        if (hasDuplicateStudentSchedule(proposed)) {
+            alert('Não foi possível aplicar em massa porque existem duas aulas no mesmo dia para o mesmo professor. Ajuste uma delas separadamente.');
+            return;
+        }
         setProcessingId('all');
         try {
+            const patch: Partial<BookingDraft> = { time_slot: bulkTime };
+            if (bulkTeacherId) patch.teacher_id = bulkTeacherId;
             const { error } = await supabase
                 .from('bookings')
-                .update({ time_slot: bulkTime })
+                .update(patch)
                 .eq('student_id', studentId)
-                .eq('tenant_id', tenantId);
+                .eq('tenant_id', tenantId)
+                .eq('status', 'SCHEDULED');
 
             if (error) throw error;
             await fetchBookings();
             if (onUpdate) onUpdate();
-            alert(`Horário ${bulkTime} aplicado a todas as aulas do aluno.`);
+            const teacherName = teachers.find(teacher => String(teacher.id) === String(bulkTeacherId))?.name;
+            alert(teacherName
+                ? `Professor ${teacherName} e horário ${bulkTime} aplicados a todas as aulas do aluno.`
+                : `Horário ${bulkTime} aplicado a todas as aulas do aluno.`);
         } catch (error: any) {
-            alert('Erro ao aplicar o horário: ' + error.message);
+            alert('Erro ao aplicar o horário: ' + studentScheduleErrorMessage(error));
         } finally {
             setProcessingId(null);
         }
@@ -185,7 +232,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
             </div>
 
             {bookings.length > 0 && (
-                <div className="flex flex-col gap-3 rounded-xl border border-brand-border bg-brand-surface-2 p-3 sm:flex-row sm:items-end">
+                <div className="grid gap-3 rounded-xl border border-brand-border bg-brand-surface-2 p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                     <label className="flex-1 text-[10px] font-bold uppercase text-brand-muted">
                         Mesmo horário para todas as aulas
                         <input
@@ -195,6 +242,21 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             disabled={processingId !== null}
                             className="mt-1 w-full rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm font-black text-brand-text outline-none focus:border-brand-accent"
                         />
+                    </label>
+                    <label className="flex-1 text-[10px] font-bold uppercase text-brand-muted">
+                        Professor para todas as aulas
+                        <select
+                            value={bulkTeacherId}
+                            onChange={event => setBulkTeacherId(event.target.value)}
+                            disabled={processingId !== null}
+                            className="mt-1 w-full rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-sm font-black text-brand-text outline-none focus:border-brand-accent"
+                        >
+                            <option value="">Manter cada professor</option>
+                            {bulkTeacherId && !teachers.some(teacher => String(teacher.id) === String(bulkTeacherId)) && (
+                                <option value={bulkTeacherId}>Professor atual ou inativo</option>
+                            )}
+                            {teachers.map(teacher => <option key={teacher.id} value={teacher.id}>Prof. {teacher.name}</option>)}
+                        </select>
                     </label>
                     <button
                         type="button"
@@ -254,6 +316,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                     const changed = draft.day_of_week !== booking.day_of_week
                         || draft.time_slot !== booking.time_slot
                         || draft.teacher_id !== booking.teacher_id;
+                    const teacherIsListed = teachers.some(teacher => String(teacher.id) === String(draft.teacher_id));
                     return (
                     <div key={booking.id} className="p-3 bg-brand-surface border border-brand-border rounded-xl hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all flex flex-col md:flex-row items-center gap-4 group">
 
@@ -286,6 +349,9 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                                 disabled={processingId !== null}
                                 className="flex-1 bg-transparent text-xs font-bold text-brand-text border-b border-dashed border-brand-border focus:border-brand-accent outline-none py-1 truncate"
                             >
+                                {!teacherIsListed && (
+                                    <option value={draft.teacher_id}>Prof. {booking.teacher?.full_name || 'Professor atual ou inativo'}</option>
+                                )}
                                 {teachers.map(t => (
                                     <option key={t.id} value={t.id}>Prof. {t.name}</option>
                                 ))}

@@ -1,6 +1,6 @@
 export type StudentProfileFormData = Record<string, any>;
 
-export const STUDENT_PROFILE_EDITOR_COLS = [
+export const STUDENT_DIRECTOR_PROFILE_COLS = [
   'id', 'tenant_id', 'full_name', 'email', 'module', 'occupation', 'phone',
   'meeting_link', 'cpf', 'address', 'address_number', 'postal_code', 'interests',
   'private_notes', 'fixed_schedule', 'professor_id', 'monthly_fee',
@@ -8,16 +8,25 @@ export const STUDENT_PROFILE_EDITOR_COLS = [
   'documentation_status',
 ].join(', ');
 
-export function mapStudentProfileToForm(profile: Record<string, any> = {}) {
+export const STUDENT_TEACHER_PROFILE_COLS = [
+  'id', 'tenant_id', 'full_name', 'module', 'occupation', 'phone', 'meeting_link',
+  'interests', 'fixed_schedule', 'professor_id',
+].join(', ');
+
+export function mapStudentProfileToForm(
+  profile: Record<string, any> | null | undefined,
+  fallback: { name?: string; levelBadge?: string } = {},
+) {
+  const safeProfile = profile || {};
   return {
-    ...profile,
-    name: profile.full_name || '',
-    levelBadge: profile.module || 'B1',
-    postalCode: profile.postal_code || '',
-    addressNumber: profile.address_number || '',
-    monthly_fee: profile.monthly_tuition ?? profile.monthly_fee ?? 0,
-    planDuration: profile.fidelity_plan || 'RECURRENT',
-    professor_id: profile.professor_id || null,
+    ...safeProfile,
+    name: safeProfile.full_name || fallback.name || '',
+    levelBadge: safeProfile.module || fallback.levelBadge || 'B1',
+    postalCode: safeProfile.postal_code || '',
+    addressNumber: safeProfile.address_number || '',
+    monthly_fee: safeProfile.monthly_tuition ?? safeProfile.monthly_fee ?? 0,
+    planDuration: safeProfile.fidelity_plan || 'RECURRENT',
+    professor_id: safeProfile.professor_id || null,
   };
 }
 
@@ -29,8 +38,6 @@ export function mapStudentProfileToForm(profile: Record<string, any> = {}) {
  */
 export function buildStudentProfileUpdates(profileData: StudentProfileFormData) {
   const updates: Record<string, any> = {
-    full_name: profileData.name,
-    module: profileData.levelBadge,
     occupation: profileData.occupation,
     phone: profileData.phone,
     meeting_link: profileData.meeting_link,
@@ -43,6 +50,13 @@ export function buildStudentProfileUpdates(profileData: StudentProfileFormData) 
     fixed_schedule: profileData.fixed_schedule,
     professor_id: profileData.professor_id || null,
   };
+
+  if (typeof profileData.name === 'string' && profileData.name.trim()) {
+    updates.full_name = profileData.name.trim();
+  }
+  if (typeof profileData.levelBadge === 'string' && profileData.levelBadge.trim()) {
+    updates.module = profileData.levelBadge.trim();
+  }
 
   if (profileData.monthly_fee !== undefined) updates.monthly_tuition = profileData.monthly_fee;
   if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;

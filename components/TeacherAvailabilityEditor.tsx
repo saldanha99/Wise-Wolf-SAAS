@@ -17,7 +17,7 @@ import StudentProfileForm from './StudentProfileForm';
 import {
   buildStudentProfileUpdates,
   mapStudentProfileToForm,
-  STUDENT_PROFILE_EDITOR_COLS,
+  STUDENT_TEACHER_PROFILE_COLS,
 } from '../lib/studentProfileUpdates';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -73,7 +73,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       .from('bookings')
       .select(`
           id, day_of_week, time_slot, type, module,
-          student:student_id!inner(${STUDENT_PROFILE_EDITOR_COLS})
+          student:student_id!inner(${STUDENT_TEACHER_PROFILE_COLS})
       `)
       .eq('teacher_id', teacherId)
       .eq('student.tenant_id', tenantId);
@@ -416,7 +416,10 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       {editingProfile && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
-            initialData={mapStudentProfileToForm(editingProfile.fullProfile)}
+            initialData={mapStudentProfileToForm(editingProfile.fullProfile, {
+              name: editingProfile.student,
+              levelBadge: editingProfile.module,
+            })}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingProfile(null)}
             onDelete={handleDeleteBooking}

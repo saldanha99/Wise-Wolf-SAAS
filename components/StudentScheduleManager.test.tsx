@@ -3,10 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updates: Record<string, unknown>[] = [];
+const updateFilters: Array<[string, unknown]> = [];
 
-function resolvedQuery(result: Record<string, unknown>) {
+function resolvedQuery(result: Record<string, unknown>, filters?: Array<[string, unknown]>) {
     const query: any = {
-        eq: vi.fn(() => query),
+        eq: vi.fn((column: string, value: unknown) => {
+            filters?.push([column, value]);
+            return query;
+        }),
         then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => (
             Promise.resolve(result).then(resolve, reject)
         ),
@@ -29,7 +33,7 @@ vi.mock('../lib/supabase', () => ({
             })),
             update: vi.fn((payload: Record<string, unknown>) => {
                 updates.push(payload);
-                return resolvedQuery({ data: null, error: null });
+                return resolvedQuery({ data: null, error: null }, updateFilters);
             }),
             insert: vi.fn(() => resolvedQuery({ data: null, error: null })),
             delete: vi.fn(() => resolvedQuery({ data: null, error: null })),
@@ -48,6 +52,7 @@ const props = {
 describe('StudentScheduleManager', () => {
     beforeEach(() => {
         updates.length = 0;
+        updateFilters.length = 0;
         vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     });
 
@@ -65,6 +70,12 @@ describe('StudentScheduleManager', () => {
             time_slot: '17:30',
             teacher_id: 'teacher-1',
         }));
+        expect(updateFilters).toEqual(expect.arrayContaining([
+            ['id', 'booking-1'],
+            ['student_id', 'student-1'],
+            ['tenant_id', 'school-wise-wolf'],
+            ['status', 'SCHEDULED'],
+        ]));
     });
 
     it('permite aplicar um horário a todas as aulas do aluno em uma operação', async () => {
@@ -73,8 +84,19 @@ describe('StudentScheduleManager', () => {
         await screen.findByDisplayValue('05:00');
         const bulk = screen.getByLabelText(/mesmo horário para todas as aulas/i);
         fireEvent.change(bulk, { target: { value: '17:30' } });
+        fireEvent.change(screen.getByLabelText(/professor para todas as aulas/i), {
+            target: { value: 'teacher-1' },
+        });
         fireEvent.click(screen.getByRole('button', { name: /aplicar a todas/i }));
 
-        await waitFor(() => expect(updates).toContainEqual({ time_slot: '17:30' }));
+        await waitFor(() => expect(updates).toContainEqual({
+            time_slot: '17:30',
+            teacher_id: 'teacher-1',
+        }));
+        expect(updateFilters).toEqual(expect.arrayContaining([
+            ['student_id', 'student-1'],
+            ['tenant_id', 'school-wise-wolf'],
+            ['status', 'SCHEDULED'],
+        ]));
     });
 });

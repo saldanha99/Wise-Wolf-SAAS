@@ -22,7 +22,7 @@ import { asaasService } from '../services/asaasService';
 import {
   buildStudentProfileUpdates,
   mapStudentProfileToForm,
-  STUDENT_PROFILE_EDITOR_COLS,
+  STUDENT_DIRECTOR_PROFILE_COLS,
 } from '../lib/studentProfileUpdates';
 import { findTeacherRescheduleForSlot } from '../lib/teacherSchedule';
 
@@ -77,7 +77,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     const [bookingsRes, availRes, trialsRes, stdsRes] = await Promise.all([
       supabase
         .from('bookings')
-        .select(`id, day_of_week, time_slot, type, module, student:student_id(${STUDENT_PROFILE_EDITOR_COLS})`)
+        .select(`id, day_of_week, time_slot, type, module, student:student_id(${STUDENT_DIRECTOR_PROFILE_COLS})`)
         .eq('teacher_id', selectedTeacher.id),
       supabase
         .from('teacher_availability')
@@ -848,7 +848,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
       {editingBooking && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
-            initialData={mapStudentProfileToForm(editingBooking.fullProfile)}
+            initialData={mapStudentProfileToForm(editingBooking.fullProfile, {
+              name: editingBooking.student,
+              levelBadge: editingBooking.module,
+            })}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingBooking(null)}
             onDelete={(user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN') ? handleDeleteBooking : undefined}
