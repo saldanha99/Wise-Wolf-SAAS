@@ -187,7 +187,9 @@ export interface Reschedule {
   studentName: string;
   repoId: number;
   originalLessonId: number;
-  teacherId: number;
+  teacherId: string | number;
+  studentId?: string | number;
+  time?: string;
 }
 
 export type JobStatus =
