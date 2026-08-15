@@ -83,6 +83,13 @@ done
 [[ "$(docker inspect wisewolf-staging --format '{{.State.Health.Status}}')" = healthy ]]
 curl --fail --silent --show-error --connect-timeout 5 --max-time 20 \
   https://wisewolf-staging.2timeweb.com.br/ >/dev/null
+auth_probe="$(mktemp)"
+auth_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+  --output "$auth_probe" --write-out '%{http_code}' \
+  https://api.wisewolflanguage.com.br/auth/v1/settings)"
+[[ "$auth_status" = 401 ]]
+grep -Eq '"message"[[:space:]]*:[[:space:]]*"No API key found in request"' "$auth_probe"
+rm -f -- "$auth_probe"
 printf '%s\n' "$release_id" > "$base_dir/ACTIVE_RELEASE"
 trap - ERR
 echo "Staging ativo: $release_id"

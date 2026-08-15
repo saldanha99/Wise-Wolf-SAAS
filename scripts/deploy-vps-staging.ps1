@@ -20,8 +20,9 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiUrl) -or [string]::
 $apiUri = $null
 if (-not [Uri]::TryCreate($apiUrl, [UriKind]::Absolute, [ref]$apiUri) -or
     $apiUri.Scheme -ne 'https' -or
+    $apiUri.Host -ne 'api.wisewolflanguage.com.br' -or
     $apiUri.AbsolutePath -ne '/') {
-  throw 'SUPABASE_PUBLIC_URL deve ser a origem HTTPS da API, sem /auth/v1 ou outro caminho.'
+  throw 'SUPABASE_PUBLIC_URL deve apontar para a raiz HTTPS da API pública da VPS.'
 }
 
 $env:VITE_SUPABASE_URL = $apiUri.GetLeftPart([UriPartial]::Authority)
@@ -68,6 +69,10 @@ try {
   $response = Invoke-WebRequest -UseBasicParsing -Uri 'https://wisewolf-staging.2timeweb.com.br/' -TimeoutSec 30
   if ($response.StatusCode -ne 200 -or $response.Headers['X-Robots-Tag'] -notmatch 'noindex') {
     throw 'A validação pública do staging falhou.'
+  }
+  $authResponse = Invoke-WebRequest -UseBasicParsing -Uri 'https://api.wisewolflanguage.com.br/auth/v1/settings' -Headers @{ apikey = $anonKey } -TimeoutSec 30
+  if ($authResponse.StatusCode -ne 200 -or $authResponse.Headers['Content-Type'] -notmatch 'application/json') {
+    throw 'A validação pública da rota de autenticação falhou.'
   }
   Write-Output "Staging publicado: https://wisewolf-staging.2timeweb.com.br ($releaseId)"
 }
