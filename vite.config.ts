@@ -36,6 +36,12 @@ export default defineConfig(({ command, mode }) => {
         if (supabaseUrl.hostname.endsWith('.supabase.co')) {
           throw new Error('Supabase hospedado não é um destino permitido');
         }
+        if (!isLocalHttp && (
+          supabaseUrl.hostname !== 'api.wisewolflanguage.com.br'
+          || supabaseUrl.pathname !== '/'
+        )) {
+          throw new Error('destino diferente da raiz da API pública da VPS');
+        }
       } catch {
         throw new Error(
           '[Build bloqueado] VITE_SUPABASE_URL deve apontar para a API própria da VPS.',

@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "preview:wolfie-web": "vite preview --config apps/wolfie-web/vite.config.ts",
     "deploy:vps": "bash deploy/vps/release.sh",
+    "deploy:staging:vps": "powershell -ExecutionPolicy Bypass -File scripts/deploy-vps-staging.ps1",
     "import:wise-wolf-chatgpt": "node scripts/import-wise-wolf-chatgpt.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
