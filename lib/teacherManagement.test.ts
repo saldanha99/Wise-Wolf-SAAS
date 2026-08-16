@@ -4,6 +4,7 @@ import {
   calculateTeacherStreak,
   filterTeachersByView,
   getTeacherLifecycle,
+  getTeacherTurboStatus,
 } from './teacherManagement';
 
 const teachers = [
@@ -49,5 +50,48 @@ describe('teacherManagement', () => {
     expect(teacher35Days.isEligibleForTurbo).toBe(true);
     expect(teacher35Days.daysRemainingForTurbo).toBe(0);
     expect(teacher35Days.turboProgressPct).toBe(100);
+  });
+
+  it('considera o status autoritativo do Turbo em vez de inferir aptidão pelos dias', () => {
+    const streak = calculateTeacherStreak('2026-06-10', null, new Date('2026-08-16T12:00:00.000Z'));
+    const status = getTeacherTurboStatus({
+      studentsActive: 12,
+      turboActive: false,
+      blockedBy: 'falta_mes_passado',
+      streak,
+    });
+
+    expect(streak.consecutiveDays).toBe(67);
+    expect(status.kind).toBe('blocked');
+    expect(status.label).toBe('Desligado');
+    expect(status.reason).toBe('Falta registrada no mês passado');
+  });
+
+  it('explica a carteira insuficiente e quantos alunos faltam para a aptidão', () => {
+    const status = getTeacherTurboStatus({
+      studentsActive: 7,
+      studentsRequired: 10,
+      studentsMissing: 3,
+      turboActive: false,
+      blockedBy: 'carteira',
+      streak: calculateTeacherStreak('2026-08-01', null, new Date('2026-08-16T12:00:00.000Z')),
+    });
+
+    expect(status.kind).toBe('portfolio');
+    expect(status.label).toBe('Carteira insuficiente');
+    expect(status.reason).toBe('Faltam 3 alunos para ativar');
+  });
+
+  it('mantém o Turbo ligado quando a RPC autoritativa o retorna ativo', () => {
+    const status = getTeacherTurboStatus({
+      studentsActive: 10,
+      turboActive: true,
+      blockedBy: null,
+      streak: calculateTeacherStreak('2026-08-15', null, new Date('2026-08-16T12:00:00.000Z')),
+    });
+
+    expect(status.kind).toBe('active');
+    expect(status.label).toBe('Ligado');
+    expect(status.reason).toBe('10 alunos ativos');
   });
 });

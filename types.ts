@@ -152,6 +152,9 @@ export interface Teacher {
   daysWithoutAbsence?: number | null;
   turboActive?: boolean | null;
   turboBlockedBy?: string | null;
+  turboStudentsActive?: number | null;
+  turboStudentsRequired?: number | null;
+  turboStudentsMissing?: number | null;
   occupancy: number;
 }
 

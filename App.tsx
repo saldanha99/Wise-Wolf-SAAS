@@ -581,7 +581,13 @@ const App: React.FC = () => {
       if (teachersData) {
         const teacherIds = teachersData.map((teacher: any) => teacher.id);
         const latestAbsenceByTeacher = new Map<string, string>();
-        const turboByTeacher = new Map<string, { active: boolean | null; blockedBy: string | null }>();
+        const turboByTeacher = new Map<string, {
+          active: boolean | null;
+          blockedBy: string | null;
+          studentsActive: number | null;
+          studentsRequired: number | null;
+          studentsMissing: number | null;
+        }>();
 
         if (teacherIds.length > 0) {
           const [absenceResult, turboResults] = await Promise.all([
@@ -598,12 +604,22 @@ const App: React.FC = () => {
               });
               if (turboError) {
                 console.warn(`[Teachers] Turbo indisponível para ${teacherId}:`, turboError.message);
-                return { teacherId, active: null, blockedBy: null };
+                return {
+                  teacherId,
+                  active: null,
+                  blockedBy: null,
+                  studentsActive: null,
+                  studentsRequired: null,
+                  studentsMissing: null,
+                };
               }
               return {
                 teacherId,
                 active: typeof turboData?.active === 'boolean' ? turboData.active : null,
                 blockedBy: typeof turboData?.blocked_by === 'string' ? turboData.blocked_by : null,
+                studentsActive: Number.isFinite(Number(turboData?.students_active)) ? Number(turboData.students_active) : null,
+                studentsRequired: Number.isFinite(Number(turboData?.students_required)) ? Number(turboData.students_required) : null,
+                studentsMissing: Number.isFinite(Number(turboData?.students_missing)) ? Number(turboData.students_missing) : null,
               };
             })),
           ]);
@@ -617,8 +633,8 @@ const App: React.FC = () => {
               }
             });
           }
-          turboResults.forEach(({ teacherId, active, blockedBy }) => {
-            turboByTeacher.set(teacherId, { active, blockedBy });
+          turboResults.forEach(({ teacherId, active, blockedBy, studentsActive, studentsRequired, studentsMissing }) => {
+            turboByTeacher.set(teacherId, { active, blockedBy, studentsActive, studentsRequired, studentsMissing });
           });
         }
 
@@ -652,6 +668,9 @@ const App: React.FC = () => {
             daysWithoutAbsence: calculateDaysWithoutAbsence(t.created_at, lastTeacherAbsenceAt),
             turboActive: turbo?.active ?? null,
             turboBlockedBy: turbo?.blockedBy ?? null,
+            turboStudentsActive: turbo?.studentsActive ?? null,
+            turboStudentsRequired: turbo?.studentsRequired ?? null,
+            turboStudentsMissing: turbo?.studentsMissing ?? null,
             occupancy: t.occupancy || 0
           };
         });

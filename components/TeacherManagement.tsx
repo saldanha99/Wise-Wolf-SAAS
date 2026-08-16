@@ -25,7 +25,7 @@ import {
     Zap
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
-import { calculateTeacherStreak, filterTeachersByView, getTeacherLifecycle, TeacherListView } from '../lib/teacherManagement';
+import { calculateTeacherStreak, filterTeachersByView, getTeacherLifecycle, getTeacherTurboStatus, TeacherListView } from '../lib/teacherManagement';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
 
 import { supabase } from '../lib/supabase';
@@ -367,6 +367,14 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                     : 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-900/30';
                         const statusLabel = lc === 'offboarded' ? 'Desligado' : lc === 'suspended' ? 'Suspenso' : teacher.status;
                         const streak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
+                        const turboStatus = getTeacherTurboStatus({
+                            studentsActive: teacher.turboStudentsActive ?? teacher.studentsCount,
+                            studentsRequired: teacher.turboStudentsRequired ?? 10,
+                            studentsMissing: teacher.turboStudentsMissing ?? undefined,
+                            turboActive: teacher.turboActive,
+                            blockedBy: teacher.turboBlockedBy,
+                            streak,
+                        });
 
                         return (
                             <article key={teacher.id} className="p-4 sm:p-5 space-y-4">
@@ -399,16 +407,14 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                             {streak.hasAbsenceReset ? 'Desde última falta' : 'Sem faltas do prof.'}
                                         </p>
                                     </div>
-                                    <div className={`rounded-xl p-3 ${streak.isEligibleForTurbo && teacher.turboActive === true ? 'bg-emerald-50 dark:bg-emerald-900/10' : streak.isEligibleForTurbo ? 'bg-blue-50 dark:bg-blue-900/10' : 'bg-gray-50 dark:bg-brand-surface-2'}`}>
+                                    <div className={`rounded-xl p-3 ${turboStatus.kind === 'active' ? 'bg-emerald-50 dark:bg-emerald-900/10' : turboStatus.kind === 'blocked' ? 'bg-red-50 dark:bg-red-900/10' : turboStatus.kind === 'portfolio' ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-brand-surface-2'}`}>
                                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 flex items-center gap-1"><Zap size={11} /> Modo turbo</p>
-                                        <p className={`font-black text-xs ${streak.isEligibleForTurbo && teacher.turboActive === true ? 'text-emerald-600' : streak.isEligibleForTurbo ? 'text-blue-600' : 'text-gray-700 dark:text-slate-200'}`}>
-                                            {teacher.turboActive === true && streak.isEligibleForTurbo ? 'Ligado' : streak.isEligibleForTurbo ? 'Apto' : 'Indisponível'}
+                                        <p className={`font-black text-xs ${turboStatus.kind === 'active' ? 'text-emerald-600' : turboStatus.kind === 'blocked' ? 'text-red-600' : turboStatus.kind === 'portfolio' ? 'text-amber-600' : 'text-gray-700 dark:text-slate-200'}`}>
+                                            {turboStatus.label}
                                         </p>
-                                        {!streak.isEligibleForTurbo && (
-                                            <p className="text-[8px] text-amber-600 dark:text-amber-400 mt-0.5">
-                                                Faltam {streak.daysRemainingForTurbo}d ({streak.consecutiveDays}/30)
-                                            </p>
-                                        )}
+                                        <p className="text-[8px] text-gray-500 dark:text-slate-400 mt-0.5">
+                                            {turboStatus.reason}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -566,59 +572,30 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {(() => {
                                             const streak = calculateTeacherStreak(teacher.createdAt, teacher.lastTeacherAbsenceAt);
-                                            const isTurboOn = streak.isEligibleForTurbo && teacher.turboActive === true;
-                                            const isApto = streak.isEligibleForTurbo && !isTurboOn;
-
-                                            if (isTurboOn) {
-                                                return (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 border border-emerald-100 dark:bg-emerald-900/20">
-                                                            <Zap size={12} className="text-emerald-500 fill-emerald-500" />
-                                                            Ligado (Ativo)
-                                                        </span>
-                                                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-                                                            Meta de 30d atingida
-                                                        </span>
-                                                    </div>
-                                                );
-                                            }
-
-                                            if (isApto) {
-                                                return (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-blue-50 text-blue-600 border border-blue-100 dark:bg-blue-900/20">
-                                                            <Zap size={12} />
-                                                            Apto (Desligado)
-                                                        </span>
-                                                        <span className="text-[9px] text-gray-400">
-                                                            30+ dias sem falta
-                                                        </span>
-                                                    </div>
-                                                );
-                                            }
+                                            const turboStatus = getTeacherTurboStatus({
+                                                studentsActive: teacher.turboStudentsActive ?? teacher.studentsCount,
+                                                studentsRequired: teacher.turboStudentsRequired ?? 10,
+                                                studentsMissing: teacher.turboStudentsMissing ?? undefined,
+                                                turboActive: teacher.turboActive,
+                                                blockedBy: teacher.turboBlockedBy,
+                                                streak,
+                                            });
+                                            const tone = turboStatus.kind === 'active'
+                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20'
+                                                : turboStatus.kind === 'blocked'
+                                                    ? 'bg-red-50 text-red-600 border-red-100 dark:bg-red-900/20'
+                                                    : turboStatus.kind === 'portfolio'
+                                                        ? 'bg-amber-50 text-amber-600 border-amber-100 dark:bg-amber-900/20'
+                                                        : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-brand-surface-2 dark:text-slate-400';
 
                                             return (
-                                                <div className="flex flex-col gap-1 min-w-[150px]">
-                                                    <div className="flex items-center justify-between gap-1">
-                                                        <span
-                                                            title={teacher.turboBlockedBy ? `Motivo: ${teacher.turboBlockedBy}` : undefined}
-                                                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-gray-100 text-gray-500 border border-gray-200 dark:bg-brand-surface-2 dark:text-slate-400"
-                                                        >
-                                                            <Zap size={10} className="text-gray-400" />
-                                                            Indisponível
-                                                        </span>
-                                                        <span className="text-[9px] font-black text-amber-600 dark:text-amber-400">
-                                                            Faltam {streak.daysRemainingForTurbo}d
-                                                        </span>
-                                                    </div>
-                                                    <div className="w-full bg-gray-100 dark:bg-brand-surface-2 rounded-full h-1.5 overflow-hidden">
-                                                        <div
-                                                            className="bg-amber-500 h-1.5 rounded-full transition-all"
-                                                            style={{ width: `${streak.turboProgressPct}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-[8px] text-gray-400">
-                                                        {streak.consecutiveDays}/30 dias para ativar
+                                                <div className="flex flex-col gap-1 min-w-[170px] max-w-[220px]">
+                                                    <span className={`inline-flex w-fit items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${tone}`}>
+                                                        <Zap size={12} className={turboStatus.kind === 'active' ? 'fill-emerald-500' : ''} />
+                                                        {turboStatus.label}
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-500 dark:text-slate-400 whitespace-normal">
+                                                        {turboStatus.reason}
                                                     </span>
                                                 </div>
                                             );

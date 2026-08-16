@@ -69,6 +69,69 @@ export interface TeacherStreakDetails {
   hasAbsenceReset: boolean;
 }
 
+export interface TeacherTurboStatusInput {
+  studentsActive: number;
+  studentsRequired?: number;
+  studentsMissing?: number;
+  turboActive?: boolean | null;
+  blockedBy?: string | null;
+  streak: TeacherStreakDetails;
+}
+
+export type TeacherTurboStatusKind = 'active' | 'portfolio' | 'blocked' | 'unavailable';
+
+export interface TeacherTurboStatus {
+  kind: TeacherTurboStatusKind;
+  label: string;
+  reason: string;
+}
+
+const TURBO_BLOCK_REASONS: Record<string, string> = {
+  falta_neste_mes: 'Falta registrada neste mês',
+  falta_mes_passado: 'Falta registrada no mês passado',
+  conflito: 'Há conflito de lançamento pendente',
+  sem_aula_lancada_no_mes: 'Sem aula lançada neste mês',
+};
+
+export const getTeacherTurboStatus = ({
+  studentsActive,
+  studentsRequired = 10,
+  studentsMissing,
+  turboActive,
+  blockedBy,
+}: TeacherTurboStatusInput): TeacherTurboStatus => {
+  if (turboActive === true) {
+    return {
+      kind: 'active',
+      label: 'Ligado',
+      reason: `${studentsActive} ${studentsActive === 1 ? 'aluno ativo' : 'alunos ativos'}`,
+    };
+  }
+
+  const missing = studentsMissing ?? Math.max(0, studentsRequired - studentsActive);
+  if (studentsActive < studentsRequired || blockedBy === 'carteira') {
+    return {
+      kind: 'portfolio',
+      label: 'Carteira insuficiente',
+      reason: `Faltam ${missing} ${missing === 1 ? 'aluno' : 'alunos'} para ativar`,
+    };
+  }
+
+  if (turboActive === false) {
+    return {
+      kind: 'blocked',
+      label: 'Desligado',
+      reason: blockedBy ? (TURBO_BLOCK_REASONS[blockedBy] || `Bloqueio: ${blockedBy}`) : 'Aguardando os critérios do mês',
+    };
+  }
+
+  return {
+    kind: 'unavailable',
+    label: 'Não verificado',
+    reason: 'Status autoritativo indisponível',
+  };
+};
+
 export const calculateTeacherStreak = (
   createdAt?: string | null,
   lastAbsenceAt?: string | null,
