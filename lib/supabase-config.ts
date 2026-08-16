@@ -1,3 +1,5 @@
+import { normalizePublicApiUrl } from './public-api-url';
+
 const requirePublicEnv = (
   name: "VITE_SUPABASE_URL" | "VITE_SUPABASE_ANON_KEY",
   value?: string,
@@ -12,10 +14,10 @@ const requirePublicEnv = (
 // Configuração pública sem criar um GoTrueClient. Módulos que precisam fazer
 // intake estritamente anônimo podem importar estes valores sem abrir uma segunda
 // instância de autenticação no navegador.
-const configuredApiUrl = requirePublicEnv(
+const configuredApiUrl = normalizePublicApiUrl(requirePublicEnv(
   "VITE_SUPABASE_URL",
   import.meta.env.VITE_SUPABASE_URL,
-);
+));
 const configuredApiHost = new URL(configuredApiUrl).hostname;
 if (configuredApiHost.endsWith(".supabase.co")) {
   throw new Error("[Configuração] O frontend deve usar a API própria da VPS.");

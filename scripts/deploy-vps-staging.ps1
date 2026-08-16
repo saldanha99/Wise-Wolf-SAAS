@@ -33,13 +33,18 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiUrl) -or [string]::
 }
 
 $apiUri = $null
+$allowedApiPaths = @('/', '/auth/v1', '/auth/v1/')
 if (-not [Uri]::TryCreate($apiUrl, [UriKind]::Absolute, [ref]$apiUri) -or
     $apiUri.Scheme -ne 'https' -or
     $apiUri.Host -ne 'api.wisewolflanguage.com.br' -or
-    $apiUri.AbsolutePath -ne '/') {
-  throw 'SUPABASE_PUBLIC_URL deve apontar para a raiz HTTPS da API pública da VPS.'
+    $apiUri.Query -or
+    $apiUri.Fragment -or
+    $allowedApiPaths -notcontains $apiUri.AbsolutePath) {
+  throw 'SUPABASE_PUBLIC_URL deve apontar para a origem HTTPS da API pública ou para o caminho legado /auth/v1.'
 }
 
+# supabase-js acrescenta /auth/v1, /rest/v1 e demais caminhos de serviço.
+# Sempre compile com a origem para impedir segmentos duplicados.
 $env:VITE_SUPABASE_URL = $apiUri.GetLeftPart([UriPartial]::Authority)
 $env:VITE_SUPABASE_ANON_KEY = $anonKey
 Push-Location $projectDir
