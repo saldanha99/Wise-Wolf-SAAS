@@ -60,3 +60,32 @@ export const calculateDaysWithoutAbsence = (
   );
   return Math.max(0, Math.floor((utcToday - utcBaseline) / DAY_MS));
 };
+
+export interface TeacherStreakDetails {
+  consecutiveDays: number;
+  isEligibleForTurbo: boolean;
+  daysRemainingForTurbo: number;
+  turboProgressPct: number;
+  hasAbsenceReset: boolean;
+}
+
+export const calculateTeacherStreak = (
+  createdAt?: string | null,
+  lastAbsenceAt?: string | null,
+  now: Date = new Date(),
+  targetDays = 30,
+): TeacherStreakDetails => {
+  const days = calculateDaysWithoutAbsence(createdAt, lastAbsenceAt, now) ?? 0;
+  const hasAbsenceReset = Boolean(lastAbsenceAt);
+  const isEligibleForTurbo = days >= targetDays;
+  const daysRemainingForTurbo = Math.max(0, targetDays - days);
+  const turboProgressPct = Math.min(100, Math.round((days / targetDays) * 100));
+
+  return {
+    consecutiveDays: days,
+    isEligibleForTurbo,
+    daysRemainingForTurbo,
+    turboProgressPct,
+    hasAbsenceReset,
+  };
+};

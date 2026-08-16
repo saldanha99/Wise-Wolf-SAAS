@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateDaysWithoutAbsence,
+  calculateTeacherStreak,
   filterTeachersByView,
   getTeacherLifecycle,
 } from './teacherManagement';
@@ -30,5 +31,23 @@ describe('teacherManagement', () => {
     const now = new Date('2026-08-15T18:00:00.000Z');
     expect(calculateDaysWithoutAbsence('2026-07-01', '2026-08-10', now)).toBe(5);
     expect(calculateDaysWithoutAbsence('2026-08-01', null, now)).toBe(14);
+  });
+
+  it('calcula a ofensiva consecutiva e elegibilidade do Modo Turbo (meta 30 dias)', () => {
+    const now = new Date('2026-08-16T12:00:00.000Z');
+    // Professor com 7 dias consecutivos sem falta (falta em 2026-08-09)
+    const teacher7Days = calculateTeacherStreak('2026-06-01', '2026-08-09', now);
+    expect(teacher7Days.consecutiveDays).toBe(7);
+    expect(teacher7Days.isEligibleForTurbo).toBe(false);
+    expect(teacher7Days.daysRemainingForTurbo).toBe(23);
+    expect(teacher7Days.turboProgressPct).toBe(23);
+    expect(teacher7Days.hasAbsenceReset).toBe(true);
+
+    // Professor com 35 dias consecutivos sem falta
+    const teacher35Days = calculateTeacherStreak('2026-07-12', null, now);
+    expect(teacher35Days.consecutiveDays).toBe(35);
+    expect(teacher35Days.isEligibleForTurbo).toBe(true);
+    expect(teacher35Days.daysRemainingForTurbo).toBe(0);
+    expect(teacher35Days.turboProgressPct).toBe(100);
   });
 });
