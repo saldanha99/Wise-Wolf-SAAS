@@ -20,9 +20,12 @@ import {
     UserX,
     UserCheck,
     AlertTriangle,
-    CalendarOff
+    CalendarOff,
+    Flame,
+    Zap
 } from 'lucide-react';
 import { Teacher, UserRole } from '../types';
+import { filterTeachersByView, getTeacherLifecycle, TeacherListView } from '../lib/teacherManagement';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
 
 import { supabase } from '../lib/supabase';
@@ -41,6 +44,7 @@ interface TeacherManagementProps {
 const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, currentTenantId, onAddTeacher, onEditTeacher, onViewTeacherSchedule }) => {
     // ... Existing state remains same
     const [searchTerm, setSearchTerm] = useState('');
+    const [listView, setListView] = useState<TeacherListView>('active');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -51,9 +55,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
     // Estado otimista local: o badge usa lifecycle_status canônico (não o legado teacher.status).
     const [lifecycleById, setLifecycleById] = useState<Record<string, string>>({});
     const [coverageTeacher, setCoverageTeacher] = useState<{ id: string; name: string } | null>(null);
-    const effLifecycle = (t: any): string =>
-        lifecycleById[t.id] || t.lifecycle_status ||
-        (['Inativo', 'INACTIVE', 'Inactive'].includes(t.status) ? 'suspended' : 'active');
+    const effLifecycle = (t: Teacher): string => getTeacherLifecycle(t, lifecycleById[t.id]);
 
     const setTeacherLifecycle = async (teacher: any, status: 'active' | 'suspended' | 'offboarded') => {
         const labels: Record<string, string> = {
@@ -244,10 +246,9 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
         }
     };
 
-    const filteredTeachers = teachers.filter(t =>
-        t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredTeachers = filterTeachersByView<Teacher>(teachers, listView, searchTerm, lifecycleById);
+    const activeTeachersCount = teachers.filter((teacher) => effLifecycle(teacher) === 'active').length;
+    const inactiveTeachersCount = teachers.length - activeTeachersCount;
 
     return (
         <div className="space-y-6 md:space-y-8 animate-in fade-in duration-500">
@@ -287,7 +288,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-xl"><CheckCircle size={24} /></div>
                     <div>
                         <p className="text-xs text-gray-400 uppercase font-black tracking-widest">Ativos</p>
-                        <p className="text-2xl font-black text-gray-800 dark:text-white">{teachers.filter(t => t.status === 'Ativo').length}</p>
+                        <p className="text-2xl font-black text-gray-800 dark:text-white">{activeTeachersCount}</p>
                     </div>
                 </div>
                 <div className="bg-brand-surface p-6 rounded-[2rem] border border-gray-100 dark:border-brand-border shadow-sm flex items-center gap-4">
@@ -316,6 +317,29 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                             onChange={e => setSearchTerm(e.target.value)}
                             className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-brand-surface-2 border border-transparent focus:border-tenant-primary rounded-xl text-sm outline-none transition-all"
                         />
+                    </div>
+                </div>
+
+                <div className="px-6 pt-4 border-b dark:border-brand-border">
+                    <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Filtrar professores por situação">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={listView === 'active'}
+                            onClick={() => setListView('active')}
+                            className={`px-4 py-3 rounded-t-xl text-xs font-black uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${listView === 'active' ? 'border-emerald-500 text-emerald-600 bg-emerald-50/60 dark:bg-emerald-900/10' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                        >
+                            Ativos ({activeTeachersCount})
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={listView === 'inactive'}
+                            onClick={() => setListView('inactive')}
+                            className={`px-4 py-3 rounded-t-xl text-xs font-black uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${listView === 'inactive' ? 'border-amber-500 text-amber-600 bg-amber-50/60 dark:bg-amber-900/10' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                        >
+                            Suspensos / desligados ({inactiveTeachersCount})
+                        </button>
                     </div>
                 </div>
 
@@ -352,6 +376,16 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                     <div className="rounded-xl bg-gray-50 dark:bg-brand-surface-2 p-3">
                                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Alunos</p>
                                         <p className="font-black text-gray-700 dark:text-slate-200">{teacher.studentsCount}</p>
+                                    </div>
+                                    <div className="rounded-xl bg-orange-50 dark:bg-orange-900/10 p-3">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-orange-500 mb-1 flex items-center gap-1"><Flame size={11} /> Ofensiva</p>
+                                        <p className="font-black text-gray-700 dark:text-slate-200">{teacher.daysWithoutAbsence == null ? '—' : `${teacher.daysWithoutAbsence} dias`}</p>
+                                    </div>
+                                    <div className={`rounded-xl p-3 ${teacher.turboActive === true ? 'bg-emerald-50 dark:bg-emerald-900/10' : 'bg-gray-50 dark:bg-brand-surface-2'}`}>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1 flex items-center gap-1"><Zap size={11} /> Modo turbo</p>
+                                        <p className={`font-black ${teacher.turboActive === true ? 'text-emerald-600' : 'text-gray-700 dark:text-slate-200'}`}>
+                                            {teacher.turboActive == null ? 'Indisponível' : teacher.turboActive ? 'Ligado' : 'Desligado'}
+                                        </p>
                                     </div>
                                 </div>
 
@@ -419,13 +453,15 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                 </div>
 
                 <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left min-w-[600px]">
+                    <table className="w-full text-left min-w-[980px]">
                         <thead className="bg-gray-50/50 dark:bg-brand-surface-2/50 text-[10px] uppercase font-black text-gray-500 dark:text-brand-muted">
                             <tr>
                                 <th className="px-6 py-4">Professor</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4">Módulo Principal</th>
                                 <th className="px-6 py-4">Alunos</th>
+                                <th className="px-6 py-4">Ofensiva</th>
+                                <th className="px-6 py-4">Modo turbo</th>
                                 <th className="px-6 py-4">Avaliação (TPI)</th>
                                 <th className="px-6 py-4 text-right">Ações</th>
                             </tr>
@@ -487,6 +523,22 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                                             <Users size={14} className="text-gray-400" />
                                             <span className="text-xs font-bold text-gray-600 dark:text-slate-300">{teacher.studentsCount}</span>
                                         </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center gap-2 text-orange-600">
+                                            <Flame size={15} />
+                                            <span className="text-xs font-black">{teacher.daysWithoutAbsence == null ? '—' : `${teacher.daysWithoutAbsence} dias`}</span>
+                                        </div>
+                                        <p className="mt-1 text-[9px] text-gray-400">sem falta registrada</p>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span
+                                            title={teacher.turboBlockedBy ? `Motivo: ${teacher.turboBlockedBy}` : undefined}
+                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${teacher.turboActive === true ? 'bg-emerald-50 text-emerald-600 border-emerald-100 dark:bg-emerald-900/20' : teacher.turboActive === false ? 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-brand-surface-2 dark:text-slate-300' : 'bg-gray-50 text-gray-400 border-gray-100 dark:bg-brand-surface-2'}`}
+                                        >
+                                            <Zap size={12} />
+                                            {teacher.turboActive == null ? 'Indisponível' : teacher.turboActive ? 'Ligado' : 'Desligado'}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
@@ -565,7 +617,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                             ))}
                             {filteredTeachers.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center">
+                                    <td colSpan={8} className="px-6 py-12 text-center">
                                         <div className="flex flex-col items-center justify-center text-gray-300 dark:text-brand-muted">
                                             <Users size={48} className="mb-4 opacity-50" />
                                             <p className="text-sm font-bold">Nenhum professor encontrado</p>
