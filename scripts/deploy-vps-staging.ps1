@@ -48,8 +48,14 @@ try {
   Copy-Item -LiteralPath (Join-Path $stagingDir 'docker-compose.yml') -Destination $stage
   Copy-Item -LiteralPath (Join-Path $stagingDir 'nginx.conf') -Destination $stage
   $archive = "$stage.tar.gz"
-  & tar --force-local -czf $archive -C $stage .
-  if ($LASTEXITCODE -ne 0) { throw 'Empacotamento falhou.' }
+  Push-Location $tempRoot
+  try {
+    & tar -czf (Split-Path -Leaf $archive) -C $stage .
+    if ($LASTEXITCODE -ne 0) { throw 'Empacotamento falhou.' }
+  }
+  finally {
+    Pop-Location
+  }
 
   & scp $archive "wisewolf-vps:/tmp/wisewolf-staging-$releaseId.tar.gz"
   if ($LASTEXITCODE -ne 0) { throw 'Envio da release falhou.' }
