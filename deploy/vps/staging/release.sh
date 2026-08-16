@@ -81,8 +81,16 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 [[ "$(docker inspect wisewolf-staging --format '{{.State.Health.Status}}')" = healthy ]]
-curl --fail --silent --show-error --connect-timeout 5 --max-time 20 \
-  https://wisewolf-staging.2timeweb.com.br/ >/dev/null
+public_ready=false
+for _ in $(seq 1 20); do
+  if curl --fail --silent --show-error --connect-timeout 5 --max-time 20 \
+    https://wisewolf-staging.2timeweb.com.br/ >/dev/null; then
+    public_ready=true
+    break
+  fi
+  sleep 1
+done
+[[ "$public_ready" = true ]]
 auth_probe="$(mktemp)"
 auth_status="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
   --output "$auth_probe" --write-out '%{http_code}' \
