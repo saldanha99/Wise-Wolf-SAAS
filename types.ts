@@ -147,6 +147,14 @@ export interface Teacher {
   tpi: number;
   status: "Ativo" | "Férias" | "Inativo";
   lifecycle_status?: "active" | "suspended" | "offboarded";
+  createdAt?: string;
+  lastTeacherAbsenceAt?: string | null;
+  daysWithoutAbsence?: number | null;
+  turboActive?: boolean | null;
+  turboBlockedBy?: string | null;
+  turboStudentsActive?: number | null;
+  turboStudentsRequired?: number | null;
+  turboStudentsMissing?: number | null;
   occupancy: number;
 }
 
