@@ -13,6 +13,7 @@ import {
   Plus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { nullableUuid } from '../lib/dbValues';
 import StudentProfileForm from './StudentProfileForm';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -68,9 +69,13 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
       .from('bookings')
       .select(`
           id, day_of_week, time_slot, type, module,
-          student:student_id!inner(full_name, id, tenant_id, module, occupation, phone, meeting_link)
+          student:student_id!inner(
+            full_name, id, tenant_id, module, occupation, phone, meeting_link,
+            interests, private_notes, fixed_schedule, professor_id, avatar_url
+          )
       `)
       .eq('teacher_id', teacherId)
+      .eq('status', 'SCHEDULED')
       .eq('student.tenant_id', tenantId);
 
     // 3. Load Experimental Appointments (New)
@@ -218,30 +223,38 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     if (!editingProfile?.studentId) return;
 
     try {
-      const updates: any = {
-        full_name: profileData.name,
-        module: profileData.levelBadge,
-        occupation: profileData.occupation,
-        phone: profileData.phone,
-        meeting_link: profileData.meeting_link,
-        cpf: profileData.cpf,
-        address: profileData.address,
-        address_number: profileData.addressNumber,
-        postal_code: profileData.postalCode,
-        interests: profileData.interests,
-        private_notes: profileData.private_notes,
-        fixed_schedule: profileData.fixed_schedule,
-        // ⚠️ `correction_preference` não existe em `profiles` — mandá-la
-        // derrubava o UPDATE inteiro e nada era salvo por esta tela.
-        professor_id: profileData.professor_id
+      const loadedProfile = editingProfile.fullProfile || {};
+      const updates: any = {};
+      const setIfLoaded = (column: string, value: unknown) => {
+        if (Object.prototype.hasOwnProperty.call(loadedProfile, column)) {
+          updates[column] = value;
+        }
       };
+
+      setIfLoaded('full_name', profileData.name);
+      setIfLoaded('module', profileData.currentModuleStatus || profileData.levelBadge);
+      setIfLoaded('occupation', profileData.occupation);
+      setIfLoaded('phone', profileData.phone);
+      setIfLoaded('meeting_link', profileData.meeting_link);
+      setIfLoaded('cpf', profileData.cpf);
+      setIfLoaded('address', profileData.address);
+      setIfLoaded('address_number', profileData.addressNumber);
+      setIfLoaded('postal_code', profileData.postalCode);
+      setIfLoaded('interests', profileData.interests);
+      setIfLoaded('private_notes', profileData.private_notes);
+      setIfLoaded('fixed_schedule', profileData.fixed_schedule);
+      setIfLoaded('professor_id', nullableUuid(profileData.professor_id));
 
       // A mensalidade é `monthly_fee`. `monthly_tuition` virou espelho mantido
       // pelo banco (trg_mirror_monthly_tuition) — gravar aqui recria a divergência.
-      if (profileData.monthly_fee !== undefined) updates.monthly_fee = profileData.monthly_fee;
-      if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
-      if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
-      if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;
+      setIfLoaded('monthly_fee', profileData.monthly_fee);
+      setIfLoaded('due_day', profileData.due_day);
+      setIfLoaded('status_financial', profileData.status_financial);
+      setIfLoaded('fidelity_plan', profileData.planDuration);
+
+      if (Object.keys(updates).length === 0) {
+        throw new Error('Os dados completos do aluno não foram carregados. Reabra o perfil e tente novamente.');
+      }
 
       const { error } = await supabase
         .from('profiles')
@@ -435,9 +448,15 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={{
-              name: editingProfile.student,
-              levelBadge: editingProfile.module,
-              ...editingProfile.fullProfile
+              ...editingProfile.fullProfile,
+              id: editingProfile.studentId,
+              name: editingProfile.fullProfile?.full_name || editingProfile.student,
+              levelBadge: editingProfile.fullProfile?.module?.split(' ')[0] || editingProfile.module,
+              currentModuleStatus: editingProfile.fullProfile?.module || editingProfile.module,
+              img: editingProfile.fullProfile?.avatar_url,
+              postalCode: editingProfile.fullProfile?.postal_code,
+              addressNumber: editingProfile.fullProfile?.address_number,
+              planDuration: editingProfile.fullProfile?.fidelity_plan
             }}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingProfile(null)}

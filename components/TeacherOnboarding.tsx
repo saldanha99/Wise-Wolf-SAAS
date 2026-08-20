@@ -448,7 +448,7 @@ const QUIZ: { q: string; options: string[]; correct: number; explain: string }[]
         q: '2. O que acontece quando você falta a uma aula?',
         options: [
             'Nada, é só avisar depois',
-            'Perco o turbo por 30 dias (volto ao valor base de R$ 8,00/aula), a aula precisa de reposição e o aluno pode ser transferido se virar rotina',
+            'Minha ofensiva do turbo reinicia em zero, a aula precisa de reposição e o aluno pode ser transferido se virar rotina',
             'Recebo advertência por escrito',
         ],
         correct: 1,
@@ -491,7 +491,7 @@ const MANIFESTO: { emoji: string; title: string; text: string }[] = [
     // ⚠️ Sem valor de aula escrito aqui: a tabela é `teacher_pay_tiers` e muda por
     // decisão da direção. Quando esta tela citava "R$ 9,50/10,50", prometia uma
     // faixa que não existia — o professor via na tela e não via na folha.
-    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, a partir de 10 alunos na carteira e um mês fechado sem falta sua, destrava o turbo — a aula passa a valer mais conforme a antiguidade do aluno. O card "Turbo" no seu painel mostra os valores da sua carteira. Quem falta, encolhe.' },
+    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, a partir de 10 alunos na carteira e 30 dias consecutivos sem falta, destrava o turbo — a aula passa a valer mais conforme a antiguidade do aluno. O card "Turbo" no seu painel mostra sua ofensiva e os valores da carteira. Uma falta reinicia a ofensiva em zero.' },
     { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
     { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
     { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },

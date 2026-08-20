@@ -1,18 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Flame, TrendingUp, Lock, Users, Sparkles } from 'lucide-react';
+import { Flame, TrendingUp, Lock, Users, Sparkles, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { describePayTiers, brl } from '../lib/payTiers';
 
-// Card de retenção/dopamina do professor: mostra o "turbo" (mês sem faltar destrava
-// faixas por antiguidade) + ganhos lançados vs potencial. Lê teacher_pay_projection.
-//
-// ⚠️ Duas coisas que este card já errou e não podem voltar:
-//  1. Falava "você está há {days_clean} dias sem faltar". A apuração virou MENSAL
-//     em 02/08/2026 e `teacher_turbo_status` deixou de devolver esse campo — a
-//     tela mostrava "há undefined dias". Pior: como `days_to_activate` também
-//     sumiu, o professor BLOQUEADO POR FALTA lia "Requisitos completos".
-//  2. Prometia "5º ao 9º: R$ 9,50" em texto fixo, faixa que não existe na tabela
-//     da escola. Agora o texto sai de `tiers` (o que a folha realmente paga).
+// Card do professor: a fonte autoritativa é teacher_pay_projection. A regra do
+// Turbo é uma ofensiva contínua de 30 dias e exige carteira de 10 alunos.
+// Valores/faixas continuam vindo do servidor; nada financeiro é fixado na UI.
 
 interface Props { teacherId: string; }
 
@@ -33,6 +26,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
 
   const turbo = p.turbo || {};
   const active = turbo.active === true;
+  const suspended = turbo.turbo_status === 'SUSPENDED' || turbo.status === 'SUSPENDED';
   const logged = Number(p.amount_logged || 0);
   const potential = Number(p.amount_potential_turbo || 0);
   const leftOnTable = Math.max(0, potential - logged);
@@ -40,14 +34,16 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   // Regra 04/07/2026: turbo só destrava a partir de 10 alunos ativos
   const studentsActive = Number(turbo.students_active || 0);
   const studentsMissing = Number(turbo.students_missing || 0);
+  const streakDays = Number(turbo.streak_days || turbo.days_clean || 0);
+  const daysToActivate = Number(turbo.days_to_activate ?? Math.max(0, 30 - streakDays));
+  const activeDays = Number(turbo.active_days || 0);
   // A tabela de faixas vem do servidor — nenhum valor de aula é escrito aqui.
   const faixas = describePayTiers(p.tiers);
-  // Por que o turbo está desligado, na linguagem da regra vigente (mês fechado).
+  // Por que o turbo está desligado, na linguagem da regra de ofensiva.
   const bloqueio: Record<string, string> = {
-    falta_neste_mes: 'Você tem falta lançada neste mês: o turbo só volta no mês que fechar sem nenhuma falta sua.',
-    falta_mes_passado: 'Houve falta sua no mês passado. Fechando este mês inteiro sem faltar, o turbo volta no mês seguinte.',
-    conflito: 'Há aula em análise por divergência com o aluno. Resolvido isso, o turbo destrava.',
-    sem_aula_lancada_no_mes: 'Assim que você lançar a primeira aula do mês, o turbo é reavaliado.',
+    carteira: 'O Turbo fica disponível a partir de 10 alunos ativos na carteira.',
+    ofensiva: `Faltam ${daysToActivate} dia${daysToActivate === 1 ? '' : 's'} sem falta para ativar o Turbo.`,
+    conflito: 'Há um relato de falta em análise. O Turbo fica suspenso até a diretoria decidir.',
   };
   const motivo = bloqueio[String(turbo.blocked_by || '')] || null;
 
@@ -69,6 +65,11 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
               <Flame size={22} className="text-yellow-200 animate-pulse" />
               <span className="font-black uppercase tracking-widest text-sm">Turbo Ativo</span>
               <span className="ml-auto text-[10px] font-black uppercase bg-white/20 px-3 py-1 rounded-full">🔥 não pode faltar!</span>
+            </>
+          ) : suspended ? (
+            <>
+              <ShieldAlert size={18} className="text-red-500" />
+              <span className="font-black uppercase tracking-widest text-xs text-red-600">Turbo suspenso para análise</span>
             </>
           ) : (
             <>
@@ -102,8 +103,8 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
         {/* Estado do turbo */}
         {active ? (
           <p className="text-xs font-bold text-white/90">
-            Turbo valendo <b>neste mês inteiro</b>, com <b>{studentsActive} aluno{studentsActive === 1 ? '' : 's'} na carteira</b>.
-            {faixas ? <> Na sua carteira, <b>{faixas}</b>.</> : null} Uma falta sua trava o turbo neste mês e no próximo — falta do aluno não trava.
+            Turbo ativo há <b>{activeDays} dia{activeDays === 1 ? '' : 's'}</b>, com uma ofensiva de <b>{streakDays} dias sem falta</b> e <b>{studentsActive} aluno{studentsActive === 1 ? '' : 's'} na carteira</b>.
+            {faixas ? <> Na sua carteira, <b>{faixas}</b>.</> : null} Uma falta sua reinicia a ofensiva em zero; falta do aluno não interfere.
           </p>
         ) : (
           <div className="space-y-2">
@@ -119,7 +120,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
             )}
             {studentsMissing === 0 && !motivo && (
               <p className="text-xs font-bold text-brand-muted">
-                Requisitos completos — o turbo ativa automaticamente no próximo cálculo. Continue sem faltar!
+                Você está há <b>{streakDays} dias sem falta</b>. Faltam <b>{daysToActivate} dias</b> para ativar automaticamente.
               </p>
             )}
           </div>

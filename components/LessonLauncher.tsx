@@ -114,6 +114,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .from('bookings')
         .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
         .eq('teacher_id', user.id)
+        .eq('status', 'SCHEDULED')
         .not('day_of_week', 'is', null);
 
       // COBERTURAS confirmadas da janela: aula que este professor CEDEU sai da
@@ -137,7 +138,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           const { data } = await supabase
             .from('bookings')
             .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
-            .in('id', ids);
+            .in('id', ids)
+            .eq('status', 'SCHEDULED');
           assumedBookings = (data as any[]) || [];
         }
       }

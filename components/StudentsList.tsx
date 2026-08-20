@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
+import { nullableUuid } from '../lib/dbValues';
 import { safeMeetingLink } from '../lib/meetingLink';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { asaasService } from '../services/asaasService';
@@ -57,7 +58,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           .from('bookings')
           .select('student_id')
           .eq('teacher_id', user.id)
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', tenantId)
+          .eq('status', 'SCHEDULED');
 
         const studentIds = Array.from(new Set(teacherBookings?.map(b => b.student_id) || []));
         if (studentIds.length > 0) {
@@ -77,7 +79,8 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       const { data: bookingsData } = await supabase
         .from('bookings')
         .select('student_id, teacher_id, start_date, day_of_week, time_slot, teacher:teacher_id(id, full_name)')
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .eq('status', 'SCHEDULED');
 
       if (studentsData) {
         const mappedStudents = studentsData.map(s => {
@@ -296,7 +299,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           address: formData.address,
           address_number: formData.addressNumber,
           postal_code: formData.postalCode,
-          professor_id: formData.professor_id || null,
+          professor_id: nullableUuid(formData.professor_id),
           fixed_schedule: formData.fixed_schedule,
           private_notes: formData.private_notes,
         };
@@ -398,7 +401,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         avatar_url: formData.img,
         fixed_schedule: formData.fixed_schedule,
         private_notes: formData.private_notes,
-        professor_id: formData.professor_id,
+        professor_id: nullableUuid(formData.professor_id),
         guardian_name: formData.guardian_name,
         guardian_phone: formData.guardian_phone,
         is_kids: formData.is_kids,

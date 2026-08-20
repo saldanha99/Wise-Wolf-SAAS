@@ -187,6 +187,7 @@ export const fetchPendingLessons = async (params: {
             .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, module)')
             .eq('teacher_id', params.teacherId)
             .eq('tenant_id', params.tenantId)
+            .eq('status', 'SCHEDULED')
             .not('day_of_week', 'is', null),
         supabase
             .from('reschedules')

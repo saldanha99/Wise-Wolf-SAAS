@@ -27,6 +27,7 @@ import {
   type GridTrial,
 } from '../lib/scheduleGrid';
 import { localYMD } from '../lib/dateUtils';
+import { nullableUuid } from '../lib/dbValues';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 
@@ -87,13 +88,15 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
   const fetchDetailData = async () => {
     if (!selectedTeacher) return;
+    const detailTenantId = currentTenantId || selectedTeacher.tenantId;
 
     // 1. Fetch Bookings, Availability and Trials in Parallel
     const [bookingsRes, availRes, trialsRes, stdsRes] = await Promise.all([
       supabase
         .from('bookings')
         .select('id, day_of_week, time_slot, type, module, student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)')
-        .eq('teacher_id', selectedTeacher.id),
+        .eq('teacher_id', selectedTeacher.id)
+        .eq('status', 'SCHEDULED'),
       supabase
         .from('teacher_availability')
         .select('*')
@@ -110,14 +113,21 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .from('profiles')
         .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
-        .eq('tenant_id', currentTenantId)
+        .eq('tenant_id', detailTenantId)
     ]);
 
+    // A relação embutida acima é propositalmente pequena para a grade. O modal
+    // de edição, porém, precisa do perfil completo; caso contrário os defaults
+    // vazios do formulário podem apagar dados que nunca foram carregados.
+    const profilesById = new Map(
+      ((stdsRes.data || []) as any[]).map(profile => [String(profile.id), profile])
+    );
     const newBookings: Record<string, any> = {};
     const conflictKeys = new Set<string>();
 
     if (bookingsRes.data) {
       bookingsRes.data.forEach((b: any) => {
+        const fullProfile = profilesById.get(String(b.student?.id)) || b.student;
         const dayMap: Record<string, number> = {
           'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5
         };
@@ -132,11 +142,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
              newBookings[`${dIdx}-${timeKey}`] = {
               id: b.id,
               studentId: b.student?.id,
-              student: b.student?.full_name || 'Aluno',
-              module: b.student?.module || b.module || 'Gen',
+              student: fullProfile?.full_name || 'Aluno',
+              module: fullProfile?.module || b.module || 'Gen',
               type: b.type,
-              avatar: `https://ui-avatars.com/api/?name=${b.student?.full_name}`,
-              fullProfile: b.student
+              avatar: fullProfile?.avatar_url || `https://ui-avatars.com/api/?name=${fullProfile?.full_name}`,
+              fullProfile
             };
           }
         }
@@ -494,39 +504,43 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     if (!editingBooking?.studentId) return;
 
     try {
-      const updates: any = {
-        full_name: profileData.name,
-        module: profileData.levelBadge,
-        occupation: profileData.occupation,
-        phone: profileData.phone,
-        meeting_link: profileData.meeting_link,
-        cpf: profileData.cpf,
-        address: profileData.address,
-        address_number: profileData.addressNumber,
-        postal_code: profileData.postalCode,
-        interests: profileData.interests,
-        private_notes: profileData.private_notes,
-        fixed_schedule: profileData.fixed_schedule,
-        // ⚠️ NÃO grave `correction_preference` aqui: a coluna não existe em
-        // `profiles`. O PostgREST derruba o UPDATE INTEIRO com
-        // «column "correction_preference" of relation "profiles" does not exist»,
-        // então salvar qualquer coisa por esta tela falhava — inclusive o
-        // telefone do aluno, que era o sintoma relatado. O campo continua no
-        // formulário, mas hoje não tem onde ser persistido (o StudentsList
-        // também o descarta em silêncio).
-        // Professor Link
-        professor_id: profileData.professor_id
+      const loadedProfile = editingBooking.fullProfile || {};
+      const updates: any = {};
+      const setIfLoaded = (column: string, value: unknown) => {
+        if (Object.prototype.hasOwnProperty.call(loadedProfile, column)) {
+          updates[column] = value;
+        }
       };
+
+      // Só persiste colunas presentes no snapshot carregado. Assim, uma falha
+      // parcial de leitura não transforma campos desconhecidos em string vazia.
+      setIfLoaded('full_name', profileData.name);
+      setIfLoaded('module', profileData.currentModuleStatus || profileData.levelBadge);
+      setIfLoaded('occupation', profileData.occupation);
+      setIfLoaded('phone', profileData.phone);
+      setIfLoaded('meeting_link', profileData.meeting_link);
+      setIfLoaded('cpf', profileData.cpf);
+      setIfLoaded('address', profileData.address);
+      setIfLoaded('address_number', profileData.addressNumber);
+      setIfLoaded('postal_code', profileData.postalCode);
+      setIfLoaded('interests', profileData.interests);
+      setIfLoaded('private_notes', profileData.private_notes);
+      setIfLoaded('fixed_schedule', profileData.fixed_schedule);
+      setIfLoaded('professor_id', nullableUuid(profileData.professor_id));
 
       // Only update financial data if present and user has permission (implicit by checking if fields exist in data)
       // Since StudentProfileForm only shows these fields to Directors, we can trust the data if present,
       // but RLS will ultimately block it if unauthorized.
       // A mensalidade é `monthly_fee`. `monthly_tuition` virou espelho mantido
       // pelo banco (trg_mirror_monthly_tuition) — gravar aqui recria a divergência.
-      if (profileData.monthly_fee !== undefined) updates.monthly_fee = profileData.monthly_fee;
-      if (profileData.due_day !== undefined) updates.due_day = profileData.due_day;
-      if (profileData.status_financial !== undefined) updates.status_financial = profileData.status_financial;
-      if (profileData.planDuration !== undefined) updates.fidelity_plan = profileData.planDuration;
+      setIfLoaded('monthly_fee', profileData.monthly_fee);
+      setIfLoaded('due_day', profileData.due_day);
+      setIfLoaded('status_financial', profileData.status_financial);
+      setIfLoaded('fidelity_plan', profileData.planDuration);
+
+      if (Object.keys(updates).length === 0) {
+        throw new Error('Os dados completos do aluno não foram carregados. Reabra o perfil e tente novamente.');
+      }
 
       const { error } = await supabase
         .from('profiles')
@@ -970,14 +984,22 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-surface/60 backdrop-blur-sm animate-in fade-in duration-300">
           <StudentProfileForm
             initialData={{
-              name: editingBooking.student,
-              levelBadge: editingBooking.module,
-              ...editingBooking.fullProfile
+              ...editingBooking.fullProfile,
+              id: editingBooking.studentId,
+              name: editingBooking.fullProfile?.full_name || editingBooking.student,
+              levelBadge: editingBooking.fullProfile?.module?.split(' ')[0] || editingBooking.module,
+              currentModuleStatus: editingBooking.fullProfile?.module || editingBooking.module,
+              img: editingBooking.fullProfile?.avatar_url,
+              postalCode: editingBooking.fullProfile?.postal_code,
+              addressNumber: editingBooking.fullProfile?.address_number,
+              planDuration: editingBooking.fullProfile?.fidelity_plan
             }}
             onSubmit={handleUpdateStudentProfile}
             onCancel={() => setEditingBooking(null)}
             onDelete={(user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN') ? handleDeleteBooking : undefined}
             currentUserRole={user?.role}
+            teachers={teachers}
+            tenantId={currentTenantId || editingBooking.fullProfile?.tenant_id || selectedTeacher?.tenantId}
             title="Gerenciar Alocação"
           />
         </div>

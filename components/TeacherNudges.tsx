@@ -110,36 +110,41 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
 
                 // 5. Turbo (assiduidade → remuneração progressiva)
                 //
-                // A projeção traz o status E as faixas reais da escola. Os textos
-                // daqui citavam "R$ 9,50 do 5º ao 9º" e "30 dias sem falta": a
-                // faixa de R$ 9,50 não existe na tabela, e a apuração passou a ser
-                // por MÊS FECHADO em 02/08/2026 (mês corrente + anterior sem falta).
+                // A projeção traz o status, a ofensiva e as faixas reais da escola.
+                // Valores nunca ficam fixos no navegador; os 30 dias e a carteira
+                // mínima vêm do estado autoritativo do Turbo.
                 const { data: proj } = await supabase.rpc('teacher_pay_projection', { p_teacher: userId });
                 const turbo = proj?.turbo;
                 if (turbo) {
                     const faixas = describePayTiers(proj?.tiers);
                     const comFaixas = (frase: string) => faixas ? `${frase} Na sua carteira: ${faixas}.` : frase;
                     const studentsMissing = Number(turbo.students_missing || 0);
-                    if (turbo.active) {
+                    const streakDays = Number(turbo.streak_days || turbo.days_clean || 0);
+                    const daysToActivate = Number(turbo.days_to_activate ?? Math.max(0, 30 - streakDays));
+                    const suspended = turbo.turbo_status === 'SUSPENDED' || turbo.status === 'SUSPENDED';
+                    if (suspended) {
+                        found.push({
+                            id: 'turboSuspended', tone: 'red', icon: <ShieldAlert size={18} />,
+                            title: 'Turbo suspenso enquanto a diretoria analisa um relato',
+                            text: comFaixas('Sua ofensiva fica preservada durante a análise. Se a diretoria concluir que você compareceu, o Turbo volta; se confirmar a falta, a ofensiva reinicia em zero.'),
+                        });
+                    } else if (turbo.active) {
                         found.push({
                             id: 'turboOn', tone: 'emerald', icon: <Flame size={18} />,
                             title: 'Turbo ATIVO 🔥 — não pode faltar!',
-                            text: comFaixas('O turbo vale para o mês inteiro. Uma falta sua OU um conflito de lançamento (aula que o aluno não confirmou) trava o turbo neste mês e no próximo — falta do aluno não trava.'),
+                            text: comFaixas(`Você está há ${streakDays} dias sem falta. Uma falta sua reinicia a ofensiva em zero; falta do aluno não interfere.`),
                         });
                     } else if (studentsMissing > 0) {
-                        // Regra 04/07/2026: turbo só ativa a partir de 10 alunos na carteira
                         found.push({
                             id: 'turboLockedStudents', tone: 'amber', icon: <Flame size={18} />,
                             title: `Faltam ${studentsMissing} aluno${studentsMissing === 1 ? '' : 's'} para você poder ativar o turbo`,
-                            text: comFaixas(`O turbo destrava a partir de 10 alunos na sua carteira — hoje você tem ${Number(turbo.students_active || 0)}. Também é preciso fechar o mês sem falta sua e sem conflito de lançamento.`),
+                            text: comFaixas(`O Turbo destrava a partir de 10 alunos na carteira — hoje você tem ${Number(turbo.students_active || 0)} — e 30 dias consecutivos sem falta.`),
                         });
-                    } else if (turbo.blocked_by === 'falta_neste_mes' || turbo.blocked_by === 'falta_mes_passado') {
+                    } else if (daysToActivate > 0) {
                         found.push({
                             id: 'turboOff', tone: 'amber', icon: <Flame size={18} />,
-                            title: 'Turbo travado por falta lançada',
-                            text: comFaixas(turbo.blocked_by === 'falta_neste_mes'
-                                ? 'Você tem falta lançada neste mês: o turbo só volta no mês que fechar sem nenhuma falta sua.'
-                                : 'Houve falta sua no mês passado. Fechando este mês inteiro sem faltar, o turbo volta no mês seguinte.'),
+                            title: `Faltam ${daysToActivate} dia${daysToActivate === 1 ? '' : 's'} para ativar o Turbo`,
+                            text: comFaixas(`Sua ofensiva está em ${streakDays} de 30 dias consecutivos sem falta.`),
                         });
                     }
                 }

@@ -207,7 +207,7 @@ const BalanceteProfessores: React.FC<Props> = () => {
             {t.comissao_turbo === 0 && (
               <p className="text-[11px] text-brand-muted mt-3">
                 Nenhuma comissão de turbo neste mês — a progressiva só liga com 10+ alunos na carteira,
-                sem falta do professor no mês e no anterior, e sem conflito de lançamento.
+                30 dias consecutivos sem falta do professor e nenhum relato de falta aguardando análise.
               </p>
             )}
           </div>

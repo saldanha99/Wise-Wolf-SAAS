@@ -29,6 +29,7 @@ import { supabase } from '../lib/supabase';
 import TeacherInviteGenerator from './TeacherInviteGenerator';
 import TeacherFinancials from './TeacherFinancials';
 import AbsenceCoverageManager from './AbsenceCoverageManager';
+import TeacherTurboOverview from './TeacherTurboOverview';
 
 interface TeacherManagementProps {
     teachers: Teacher[];
@@ -302,6 +303,8 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     </div>
                 </div>
             </div>
+
+            <TeacherTurboOverview tenantId={currentTenantId} />
 
             {/* Main List */}
             <div className="bg-brand-surface border border-gray-100 dark:border-brand-border rounded-[2.5rem] shadow-sm overflow-hidden">

@@ -171,7 +171,7 @@ export function TeacherContractDocument({
                             3.3 Os valores ajustados possuem natureza exclusivamente civil, referentes à prestação de serviços autônomos, não configurando salário ou qualquer verba de natureza trabalhista.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4 <strong>VALOR DA AULA E REMUNERAÇÃO PROGRESSIVA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais). O CONTRATADO faz jus à remuneração progressiva quando cumprir, cumulativamente: (i) manter carteira mínima de 10 (dez) alunos ativos; (ii) completar 1 (um) mês consecutivo sem registrar falta; e (iii) não possuir conflito de lançamento em aberto no mesmo período. Atendidos os três requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
+                            3.4 <strong>VALOR DA AULA E REMUNERAÇÃO PROGRESSIVA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais). O CONTRATADO faz jus à remuneração progressiva quando cumprir, cumulativamente: (i) manter carteira mínima de 10 (dez) alunos ativos; (ii) completar 30 (trinta) dias corridos consecutivos sem registrar falta; e (iii) não possuir relato de ausência ou conflito de lançamento em aberto. Atendidos os três requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
                         </p>
                         <div className="pl-4 space-y-1 mt-1">
                             <p>a) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>

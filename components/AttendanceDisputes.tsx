@@ -157,19 +157,43 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const resolve = async (c: Conf, pay: boolean) => {
-    const verb = pay ? 'PAGAR' : 'NÃO pagar';
-    if (!confirm(`Confirmar: ${verb} a aula de ${c.teacher_name} (aluno ${c.student_name}, ${c.class_date})?`)) return;
+  const resolve = async (c: Conf, verdict: 'TEACHER_PRESENT' | 'TEACHER_ABSENT' | 'PAY' | 'DO_NOT_PAY') => {
+    const teacherPresenceDecision = verdict === 'TEACHER_PRESENT' || verdict === 'TEACHER_ABSENT';
+    const confirmText = verdict === 'TEACHER_PRESENT'
+      ? `Confirmar que ${c.teacher_name} COMPARECEU à aula de ${fmtDate(c.class_date)}?\n\nA suspensão será retirada e a ofensiva preservada.`
+      : verdict === 'TEACHER_ABSENT'
+        ? `Confirmar que ${c.teacher_name} FALTOU à aula de ${fmtDate(c.class_date)}?\n\nO Turbo será retirado e a ofensiva reiniciará em zero.`
+        : `Confirmar: ${verdict === 'PAY' ? 'PAGAR' : 'NÃO pagar'} a aula de ${c.teacher_name} (aluno ${c.student_name}, ${c.class_date})?`;
+    if (!confirm(confirmText)) return;
     setResolving(c.id);
     try {
-      const note = pay ? 'Admin decidiu pagar após análise' : 'Admin decidiu não pagar (presença não comprovada)';
-      const { data, error } = await supabase.rpc('resolve_attendance_conflict', {
+      const note = verdict === 'TEACHER_PRESENT'
+        ? 'Diretoria confirmou que o professor compareceu; ofensiva preservada'
+        : verdict === 'TEACHER_ABSENT'
+          ? 'Diretoria confirmou falta do professor; ofensiva reiniciada'
+          : verdict === 'PAY'
+            ? 'Diretoria decidiu pagar após análise'
+            : 'Diretoria decidiu não pagar (presença não comprovada)';
+      const { data, error } = await supabase.rpc('resolve_attendance_conflict_v2', {
         p_confirmation_id: c.id,
-        p_pay: pay,
+        p_verdict: verdict,
         p_note: note,
       });
       if (error || (data && data.ok === false)) throw new Error(error?.message || data?.error || 'Falha');
       setConflicts(prev => prev.filter(x => x.id !== c.id));
+      setAlerts(prev => prev.filter(x => x.id !== c.id));
+      if (teacherPresenceDecision) {
+        const turboAction = (data as any)?.turbo_action;
+        const message = turboAction === 'SUSPENSION_REMAINS'
+          ? 'Este relato foi resolvido, mas o Turbo continua suspenso porque ainda há outro relato pendente.'
+          : turboAction === 'DISPUTE_CLEARED'
+            ? 'Professor liberado e ofensiva preservada. O Turbo continua desligado até completar os demais requisitos.'
+            : verdict === 'TEACHER_PRESENT'
+              ? 'Professor liberado. O Turbo e a ofensiva foram restaurados.'
+              : 'Falta confirmada. O Turbo foi retirado e a ofensiva reiniciada em zero.';
+        alert(message);
+      }
+      await load();
     } catch (e: any) {
       alert(`Erro ao resolver: ${e.message}`);
     } finally {
@@ -319,20 +343,20 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button
-                      onClick={() => resolve(c, true)}
+                      onClick={() => resolve(c, c.student_response === 'TEACHER_NO_SHOW' ? 'TEACHER_PRESENT' : 'PAY')}
                       disabled={resolving === c.id}
                       className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
-                      title="Liberar o pagamento desta aula ao professor"
+                      title={c.student_response === 'TEACHER_NO_SHOW' ? 'Confirmar que o professor compareceu, retirar a suspensão e preservar a ofensiva' : 'Liberar o pagamento desta aula ao professor'}
                     >
-                      <CheckCircle size={14} /> Pagar
+                      <CheckCircle size={14} /> {c.student_response === 'TEACHER_NO_SHOW' ? 'Professor compareceu' : 'Pagar'}
                     </button>
                     <button
-                      onClick={() => resolve(c, false)}
+                      onClick={() => resolve(c, c.student_response === 'TEACHER_NO_SHOW' ? 'TEACHER_ABSENT' : 'DO_NOT_PAY')}
                       disabled={resolving === c.id}
                       className="px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
-                      title="Manter retido — não pagar esta aula"
+                      title={c.student_response === 'TEACHER_NO_SHOW' ? 'Confirmar falta e reiniciar a ofensiva em zero' : 'Manter retido — não pagar esta aula'}
                     >
-                      <XCircle size={14} /> Não pagar
+                      <XCircle size={14} /> {c.student_response === 'TEACHER_NO_SHOW' ? 'Confirmar falta' : 'Não pagar'}
                     </button>
                   </div>
                 </div>
@@ -351,16 +375,35 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
           </h3>
           <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mb-4">
             O aluno disse que o professor não apareceu, mas o professor ainda <b>não lançou</b> esta aula.
-            Fique de olho: se ele lançar como "falta do aluno", a aula vira conflito automaticamente e será retida.
+            O Turbo já está suspenso preventivamente. Confirme abaixo se o professor compareceu (restaura a ofensiva)
+            ou se faltou (reinicia a ofensiva em zero).
           </p>
           <div className="space-y-2">
             {alerts.map(a => (
               <div key={a.id} className="bg-brand-surface border border-amber-200 dark:border-amber-900/30 rounded-xl p-3 flex items-center gap-3 flex-wrap">
-                <UserIcon size={14} className="text-brand-muted shrink-0" />
-                <span className="text-sm font-bold text-brand-text">{a.teacher_name || 'Professor'}</span>
-                <span className="text-xs text-brand-muted">· aluno {a.student_name || '—'}</span>
-                <span className="text-xs text-brand-muted">· {fmtDate(a.class_date)}{a.class_time ? ` às ${String(a.class_time).slice(0,5)}` : ''}</span>
-                <span className="ml-auto text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full uppercase">Aguardando lançamento</span>
+                <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+                  <UserIcon size={14} className="text-brand-muted shrink-0" />
+                  <span className="text-sm font-bold text-brand-text">{a.teacher_name || 'Professor'}</span>
+                  <span className="text-xs text-brand-muted">· aluno {a.student_name || '—'}</span>
+                  <span className="text-xs text-brand-muted">· {fmtDate(a.class_date)}{a.class_time ? ` às ${String(a.class_time).slice(0,5)}` : ''}</span>
+                  <span className="text-[10px] font-bold bg-red-500/10 text-red-600 px-2 py-1 rounded-full uppercase">Turbo suspenso</span>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => resolve(a, 'TEACHER_PRESENT')}
+                    disabled={resolving === a.id}
+                    className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <CheckCircle size={14} /> Professor compareceu
+                  </button>
+                  <button
+                    onClick={() => resolve(a, 'TEACHER_ABSENT')}
+                    disabled={resolving === a.id}
+                    className="px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <XCircle size={14} /> Confirmar falta
+                  </button>
+                </div>
               </div>
             ))}
           </div>

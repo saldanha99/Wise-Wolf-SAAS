@@ -31,6 +31,26 @@ const PAY_LABEL: Record<string, { txt: string; cls: string }> = {
 };
 const NOTE_CATS = ['GERAL', 'PROGRESSO', 'COMPORTAMENTO', 'DIFICULDADE', 'ELOGIO'];
 
+const CLASS_ORIGIN_LABEL: Record<string, string> = {
+  BOOKING: 'Agenda fixa',
+  REGULAR: 'Agenda fixa',
+  RESCHEDULE: 'Reposição',
+  REPOSICAO: 'Reposição',
+  APPOINTMENT: 'Experimental/treino',
+  EXPERIMENTAL: 'Experimental',
+  TRAINING: 'Treino',
+  MANUAL: 'Manual',
+};
+
+const fmtClassTime = (value: unknown) => {
+  if (!value) return '';
+  const raw = String(value);
+  if (/^\d{2}:\d{2}/.test(raw)) return raw.slice(0, 5);
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+};
+
 const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
@@ -300,12 +320,36 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   {(data.classes || []).length === 0 ? <Empty txt="Nenhuma aula registrada." /> :
                     (data.classes || []).map((c: any, i: number) => {
                       const pl = PRESENCE_LABEL[c.presence] || { txt: c.presence, cls: 'bg-slate-100 text-slate-500' };
+                      const classDate = c.date || c.class_date;
+                      const rawTime = c.time || c.class_time || c.time_slot || c.booking_time || c.reschedule_time || c.start_time;
+                      const classTime = fmtClassTime(rawTime);
+                      const classId = c.id || c.class_log_id || c.log_id || c.booking_id || c.reschedule_id || c.appointment_id;
+                      const rawOrigin = c.origin || c.origin_type || c.lesson_origin || c.source_type || c.source;
+                      const inferredOrigin = c.reschedule_id
+                        ? 'Reposição'
+                        : c.appointment_id
+                          ? 'Experimental/treino'
+                          : c.booking_id
+                            ? 'Agenda fixa'
+                            : '';
+                      const origin = rawOrigin
+                        ? CLASS_ORIGIN_LABEL[String(rawOrigin).toUpperCase()] || String(rawOrigin).replaceAll('_', ' ')
+                        : inferredOrigin;
                       return (
-                        <div key={i} className="border border-brand-border rounded-xl p-3 bg-brand-surface-2/40">
+                        <div key={classId || `${classDate || 'sem-data'}-${classTime || 'sem-hora'}-${i}`} className="border border-brand-border rounded-xl p-3 bg-brand-surface-2/40">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-brand-text">{fmtDate(c.date)}</span>
+                            <span className="text-sm font-bold text-brand-text">
+                              {fmtDate(classDate)}{classTime ? ` às ${classTime}` : ''}
+                            </span>
                             <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${pl.cls}`}>{pl.txt}</span>
                           </div>
+                          {(origin || classId) && (
+                            <p className="text-[10px] text-brand-muted mt-1 break-all">
+                              {origin && <span>{origin}</span>}
+                              {origin && classId && <span> · </span>}
+                              {classId && <span>ID <span className="font-mono">{classId}</span></span>}
+                            </p>
+                          )}
                           {c.content && <p className="text-xs text-brand-muted mt-1"><b>Conteúdo:</b> {c.content}</p>}
                           {c.difficulties && <p className="text-xs text-brand-muted mt-0.5"><b>Dificuldades:</b> {c.difficulties}</p>}
                           {c.homework && <p className="text-xs text-brand-muted mt-0.5"><b>Tarefa:</b> {c.homework}</p>}
