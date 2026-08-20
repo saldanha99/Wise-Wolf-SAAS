@@ -76,6 +76,14 @@ set +a
 if [[ "$caller_wolfie_scenario_ui_v2_was_set" = "true" ]]; then
   VITE_WOLFIE_SCENARIO_UI_V2="$caller_wolfie_scenario_ui_v2_value"
 fi
+DEPLOY_PRESERVE_REMOTE_FUNCTIONS="${DEPLOY_PRESERVE_REMOTE_FUNCTIONS:-0}"
+[[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "0" ||
+  "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" ]] ||
+  die "DEPLOY_PRESERVE_REMOTE_FUNCTIONS deve ser 0 ou 1"
+if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" &&
+  "${DEPLOY_ALLOW_FUNCTION_DRIFT:-0}" = "1" ]]; then
+  die "DEPLOY_PRESERVE_REMOTE_FUNCTIONS e DEPLOY_ALLOW_FUNCTION_DRIFT são incompatíveis"
+fi
 
 required_vars=(
   DEPLOY_SSH_HOST
@@ -232,6 +240,9 @@ SQL
 REMOTE
 
 assert_no_out_of_band_function_changes "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR"
+if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" ]]; then
+  echo "Modo de preservação: edge functions remotas não serão enviadas, trocadas, reiniciadas nem registradas no manifesto."
+fi
 
 read_remote_public_env() {
   local key=$1
@@ -759,6 +770,7 @@ REMOTE
 
 rsync -a --delete -- dist/ \
   "$DEPLOY_SSH_HOST:$remote_release/frontend-dist/"
+if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" != "1" ]]; then
 rsync -a --delete -- "$FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-activity/"
 rsync -a --delete -- "$CONVERSATION_FUNCTION_RELATIVE/" \
@@ -809,6 +821,7 @@ for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
 done
+fi
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   migration_file="$(basename -- "$migration_relative")"
   rsync -a -- "$migration_relative" \
@@ -833,7 +846,8 @@ ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_PUBLIC_URL" \
   "$DEPLOY_API_URL" \
   "$wolfie_asset_lock_b64" \
-  "$wolfie_asset_count" <<'REMOTE'
+  "$wolfie_asset_count" \
+  "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" <<'REMOTE'
 set -Eeuo pipefail
 umask 077
 
@@ -849,6 +863,7 @@ public_url=$9
 api_url=${10}
 wolfie_asset_lock_b64=${11}
 wolfie_asset_count=${12}
+preserve_remote_functions=${13}
 
 validate_remote_path() {
   local remote_path=$1
@@ -876,6 +891,7 @@ validate_https_url "$api_url"
 [[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
 [[ "$wolfie_asset_lock_b64" =~ ^[A-Za-z0-9+/=]+$ ]]
 [[ "$wolfie_asset_count" =~ ^[1-9][0-9]*$ ]]
+[[ "$preserve_remote_functions" = "0" || "$preserve_remote_functions" = "1" ]]
 
 exec 9>"$releases_dir/.deploy.lock"
 flock -n 9 || {
@@ -1210,10 +1226,12 @@ restore_previous_release() {
     cd "$compose_dir" &&
       docker compose up -d --force-recreate frontend
   ) >/dev/null 2>&1 || true
-  (
-    cd "$supabase_dir" &&
-      docker compose restart functions
-  ) >/dev/null 2>&1 || true
+  if [[ "$preserve_remote_functions" != "1" ]]; then
+    (
+      cd "$supabase_dir" &&
+        docker compose restart functions
+    ) >/dev/null 2>&1 || true
+  fi
   exit "$exit_code"
 }
 trap restore_previous_release ERR
@@ -1233,6 +1251,7 @@ elif [[ -e "$current_marker" ]]; then
   false
 fi
 [[ -d "$release_dir/frontend-dist" ]]
+if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
 [[ -s "$release_dir/functions/wolfie-brain/index.ts" ]]
 [[ -s "$release_dir/functions/wolfie-realtime-session/index.ts" ]]
@@ -1257,6 +1276,7 @@ fi
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
+fi
 database_tests=(
   "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
   "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
@@ -1484,6 +1504,7 @@ fi
 frontend_swapped=1
 cp -a -- "$release_dir/frontend-dist" "$app_dir/dist"
 
+if [[ "$preserve_remote_functions" != "1" ]]; then
 if [[ -d "$functions_dir/wolfie-activity" ]]; then
   mv -- "$functions_dir/wolfie-activity" "$backup_dir/wolfie-activity"
 fi
@@ -1649,12 +1670,15 @@ for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   cp -a -- "$release_dir/functions/$function_name" \
     "$functions_dir/$function_name"
 done
+fi
 
-if ! (
-  cd "$supabase_dir" &&
-  docker compose restart functions
-); then
-  false
+if [[ "$preserve_remote_functions" != "1" ]]; then
+  if ! (
+    cd "$supabase_dir" &&
+    docker compose restart functions
+  ); then
+    false
+  fi
 fi
 if ! (
   cd "$compose_dir" &&
@@ -1863,5 +1887,7 @@ echo "Deploy concluído: $release_id"
 # Linha de base para o PRÓXIMO release. Vem do que de fato ficou no servidor, não
 # do que julgamos ter enviado — é o que transforma hotfix por `scp` em erro
 # visível na próxima publicação, em vez de perda silenciosa.
-update_published_function_manifest "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR" ||
-  echo "AVISO: não consegui gravar o manifesto de functions; o próximo release avisará que não tem linha de base." >&2
+if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" != "1" ]]; then
+  update_published_function_manifest "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR" ||
+    echo "AVISO: não consegui gravar o manifesto de functions; o próximo release avisará que não tem linha de base." >&2
+fi

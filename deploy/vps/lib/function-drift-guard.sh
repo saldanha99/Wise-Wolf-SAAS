@@ -29,6 +29,10 @@
 # depois de trazer o hotfix para o repositório — ou quando a intenção é
 # justamente descartá-lo.
 #
+# Publicação sem tocar nas functions: `DEPLOY_PRESERVE_REMOTE_FUNCTIONS=1`
+# ainda inventaria e mostra a deriva, mas preserva os arquivos remotos e mantém
+# o manifesto anterior como linha de base.
+#
 # Depende de `die()` do chamador. Não lê segredo.
 
 RELEASE_FUNCTION_MANIFEST="${RELEASE_FUNCTION_MANIFEST:-/opt/wisewolf/releases/.published-functions.md5}"
@@ -89,6 +93,10 @@ assert_no_out_of_band_function_changes() {
 
   if [[ -n "$divergentes" ]]; then
     printf '%s' "$divergentes" >&2
+    if [[ "${DEPLOY_PRESERVE_REMOTE_FUNCTIONS:-0}" = "1" ]]; then
+      echo "AVISO: as versões divergentes foram inventariadas e SERÃO PRESERVADAS; este release não tocará nas edge functions nem no manifesto." >&2
+      return 0
+    fi
     if [[ "${DEPLOY_ALLOW_FUNCTION_DRIFT:-0}" = "1" ]]; then
       echo "AVISO: DEPLOY_ALLOW_FUNCTION_DRIFT=1 — as versões acima SERÃO SOBRESCRITAS." >&2
       return 0
