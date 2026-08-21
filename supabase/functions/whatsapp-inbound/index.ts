@@ -25,9 +25,12 @@ import {
   brtSlotFromIso,
   brtStartIso,
   type BusyBlock,
+  classifyTeacherRescheduleReply,
   decideTrialAction,
   isTrialAppointmentActive,
+  isTrialOutcomeOpen,
   type Slot,
+  trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
@@ -771,23 +774,39 @@ function formatSlot(slot: Slot): string {
 async function findActiveTrial(sb: any, tenantId: string, phone: string): Promise<ActiveTrial | null> {
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
   const { data: opps } = await sb.from("opportunities")
-    .select("id, student_phone, winner_teacher_id, trial_appointment_id, created_at")
+    .select("id, student_phone, winner_teacher_id, professor_id, trial_appointment_id, trial_status, created_at")
     .eq("tenant_id", tenantId).eq("kind", "TRIAL")
     .in("status", ["CLAIMED", "FILLED", "TAKEN"])
     .not("trial_appointment_id", "is", null)
     .gte("created_at", since)
     .order("created_at", { ascending: false }).limit(20);
 
-  const nowIso = new Date().toISOString();
-  for (const o of (opps || [])) {
-    if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
-    const { data: appt } = await sb.from("appointments")
+  const candidates = (opps || []).filter((opportunity: any) =>
+    phonesMatch(String(opportunity.student_phone || ""), phone) &&
+    isTrialOutcomeOpen(opportunity.trial_status)
+  );
+  const appointmentIds = [...new Set(candidates.map((opportunity: any) => opportunity.trial_appointment_id).filter(Boolean))];
+  if (appointmentIds.length === 0) return null;
+
+  const [{ data: appointments }, { data: classLogs }] = await Promise.all([
+    sb.from("appointments")
       .select("id, start_time, status, teacher_id, professor_id")
-      .eq("id", o.trial_appointment_id).maybeSingle();
+      .in("id", appointmentIds),
+    sb.from("class_logs")
+      .select("appointment_id")
+      .in("appointment_id", appointmentIds.map(String)),
+  ]);
+  const appointmentById = new Map((appointments || []).map((appointment: any) => [appointment.id, appointment]));
+  const loggedAppointments = new Set((classLogs || []).map((log: any) => String(log.appointment_id || "")));
+
+  const nowIso = new Date().toISOString();
+  for (const o of candidates) {
+    if (loggedAppointments.has(String(o.trial_appointment_id))) continue;
+    const appt: any = appointmentById.get(o.trial_appointment_id);
     if (!appt) continue;
     if (!isTrialAppointmentActive(appt.status, appt.start_time, nowIso)) continue;
 
-    const teacherId = appt.teacher_id || appt.professor_id || o.winner_teacher_id;
+    const teacherId = appt.teacher_id || appt.professor_id || o.winner_teacher_id || o.professor_id;
     if (!teacherId) continue;
     const { data: prof } = await sb.from("profiles").select("full_name, phone").eq("id", teacherId).maybeSingle();
     return {
@@ -840,36 +859,63 @@ async function teacherBusyBlocks(
   return blocks;
 }
 
+interface PendingTrialReschedule {
+  id: string;
+  opportunity_id: string;
+  appointment_id: string;
+  teacher_id: string;
+  lead_id: string | null;
+  reply_code: string;
+  from_start_time: string;
+  requested_start_time: string;
+  created_at: string;
+}
+
 /**
- * Move a experimental para o horário novo e avisa quem precisa saber.
- *
- * O `eq("status","scheduled")` é a trava: se alguém cancelou a aula entre a
- * leitura e a escrita, o update não casa e a remarcação não acontece em cima de
- * um agendamento morto.
+ * Abre o pedido, mas NÃO move o appointment. A única escrita de agenda fica na
+ * RPC que processa a resposta explícita do professor.
  */
-async function moveTrial(
-  sb: any, instance: string, trial: ActiveTrial, from: Slot, to: Slot, newStartIso: string,
-  leadName: string, ownerPhone: string | null,
-): Promise<boolean> {
-  const { data: moved, error } = await sb.from("appointments")
-    .update({ start_time: newStartIso })
-    .eq("id", trial.appointmentId).eq("status", "scheduled").select("id");
-  if (error || !moved || moved.length === 0) return false;
+async function requestTrialRescheduleConfirmation(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  trial: ActiveTrial,
+  leadId: string,
+  leadName: string,
+  from: Slot,
+  to: Slot,
+  newStartIso: string,
+  ownerPhone: string | null,
+): Promise<{ ok: boolean; created?: boolean; error?: string }> {
+  if (!trial.teacherPhone) return { ok: false, error: "teacher_without_phone" };
 
-  const dow = dowOf(to.date);
-  await sb.from("opportunities").update({
-    slots_proposed: [{ day: dow, time: to.time, date: to.date, formatted: `${to.date.split("-").reverse().join("/")} (${DAY_MAP[dow] || "Dia"})` }],
-  }).eq("id", trial.opportunityId);
+  const { data, error } = await sb.rpc("create_trial_reschedule_confirmation", {
+    p_tenant_id: tenantId,
+    p_opportunity_id: trial.opportunityId,
+    p_appointment_id: trial.appointmentId,
+    p_teacher_id: trial.teacherId,
+    p_lead_id: leadId,
+    p_requested_start_time: newStartIso,
+  });
+  if (error || !data?.ok) return { ok: false, error: error?.message || data?.error || "request_failed" };
+  if (data.same_time || data.created === false) return { ok: true, created: false };
 
-  if (trial.teacherPhone) {
-    await sendWhats(instance, trial.teacherPhone,
-      `🔄 *Experimental remarcada*\n\n📋 *Aluno:* ${leadName}\n⏰ De: ${formatSlot(from)}\n✅ Para: ${formatSlot(to)}\n\nO aluno pediu a mudança no WhatsApp da escola e sua agenda já foi atualizada — a aula continua sendo sua.\nSe esse horário não der, fale com a coordenação. 🐺`);
-  }
+  const code = String(data.reply_code || "");
+  const teacherMessage = `🔄 *Confirmação de remarcação — #${code}*\n\n📋 *Aluno:* ${leadName}\n⏰ Atual: ${formatSlot(from)}\n➡️ Pedido: ${formatSlot(to)}\n\n*A agenda ainda NÃO foi alterada.*\nResponda *SIM #${code}* se consegue atender ou *NÃO #${code}* se não consegue.`;
+  const delivered = await sendWhats(instance, trial.teacherPhone, teacherMessage);
+  await logMsg(sb, tenantId, trial.teacherPhone, "trial_reschedule", "out", teacherMessage, {
+    request_id: data.request_id,
+    opportunity_id: trial.opportunityId,
+    entregue: delivered,
+  });
+
+  if (!delivered) return { ok: false, created: true, error: "teacher_message_not_delivered" };
+
   if (ownerPhone) {
     await sendWhats(instance, ownerPhone,
-      `🔄 *Atendente IA:* experimental REMARCADA (sem novo disparo)\n\n*${leadName}* — de ${formatSlot(from)} para ${formatSlot(to)}\nProfessora: ${trial.teacherName}\n\n_A aula já tinha dono, então mudei o horário em vez de chamar a equipe de novo._`);
+      `⏳ *Atendente IA:* remarcação aguardando o professor\n\n*${leadName}* pediu ${formatSlot(to)}.\nTeacher: ${trial.teacherName}\n\n_Não alterei a agenda nem confirmei ao aluno. O horário só muda após o SIM do professor._`);
   }
-  return true;
+  return { ok: true, created: true };
 }
 
 /**
@@ -897,6 +943,170 @@ async function supersedeOpenTrials(sb: any, tenantId: string, phone: string, kee
     fechadas += (upd || []).length;
   }
   return fechadas;
+}
+
+async function handleTrialRescheduleTeacherReply(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  phone: string,
+  text: string,
+  msgId: string,
+): Promise<boolean> {
+  const intent = classifyTeacherRescheduleReply(text);
+  if (intent === "unknown") return false;
+
+  const { data: profiles } = await sb.from("profiles")
+    .select("id, full_name, phone")
+    .eq("tenant_id", tenantId).eq("role", "TEACHER")
+    .not("phone", "is", null).neq("phone", "");
+  const teacher = (profiles || []).find((profile: any) => phonesMatch(profile.phone, phone));
+  if (!teacher) return false;
+
+  const { data: pending } = await sb.from("trial_reschedule_requests")
+    .select("id, opportunity_id, appointment_id, teacher_id, lead_id, reply_code, from_start_time, requested_start_time, created_at")
+    .eq("teacher_id", teacher.id).eq("status", "PENDING")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false }).limit(10);
+  const requests = (pending || []) as PendingTrialReschedule[];
+  if (requests.length === 0) return false;
+
+  const suppliedCode = trialRescheduleReplyCode(text);
+  const request = suppliedCode
+    ? requests.find((candidate) => candidate.reply_code === suppliedCode)
+    : requests.length === 1 ? requests[0] : null;
+
+  await logMsg(sb, tenantId, phone, "trial_reschedule", "in", text, {
+    msg_id: msgId,
+    request_id: request?.id || null,
+    reply_code: suppliedCode,
+    intent,
+  });
+
+  if (!request) {
+    const clarification = suppliedCode
+      ? `Não encontrei um pedido pendente com o código #${suppliedCode}. Confira o código da mensagem de remarcação.`
+      : `Tenho mais de uma remarcação aguardando sua resposta. Responda com o código, por exemplo: *SIM #${requests[0].reply_code}* ou *NÃO #${requests[0].reply_code}*.`;
+    const delivered = await sendWhats(instance, phone, clarification);
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", clarification, { entregue: delivered });
+    return true;
+  }
+
+  const { data: result, error } = await sb.rpc("respond_trial_reschedule_confirmation", {
+    p_request_id: request.id,
+    p_teacher_id: teacher.id,
+    p_accept: intent === "accept",
+    p_response_text: text,
+  });
+
+  const { data: opportunity } = await sb.from("opportunities")
+    .select("student_name, student_phone")
+    .eq("id", request.opportunity_id).maybeSingle();
+  let lead: any = null;
+  if (request.lead_id) {
+    const leadResult = await sb.from("crm_leads")
+      .select("id, name, phone, notes").eq("id", request.lead_id).maybeSingle();
+    lead = leadResult.data;
+  }
+
+  const leadName = String(lead?.name || opportunity?.student_name || "Aluno").trim();
+  const leadPhone = normalizePhone(String(lead?.phone || opportunity?.student_phone || ""));
+  const from = brtSlotFromIso(request.from_start_time);
+  const to = brtSlotFromIso(request.requested_start_time);
+  const adm = await adminProfile(sb, tenantId);
+
+  if (!error && result?.ok && result?.accepted === true) {
+    const teacherAck = `✅ Confirmado. A experimental de *${leadName}* foi remarcada para ${formatSlot(to)} e o aluno foi avisado.`;
+    const teacherDelivered = await sendWhats(instance, phone, teacherAck);
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, { request_id: request.id, entregue: teacherDelivered });
+
+    if (leadPhone) {
+      const leadMessage = `Confirmado, ${greetName(leadName) || leadName}! A Teacher ${teacher.full_name} aceitou a mudança e sua experimental foi remarcada para ${formatSlot(to)} 😊`;
+      const leadDelivered = await sendWhats(instance, leadPhone, leadMessage);
+      await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
+        request_id: request.id,
+        kind: "trial_reschedule_confirmed",
+        entregue: leadDelivered,
+      });
+    }
+    if (lead?.id) {
+      await sb.from("crm_leads").update({
+        notes: ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] Teacher ${teacher.full_name} confirmou a remarcação de ${from.date} ${from.time} para ${to.date} ${to.time}`).slice(0, 3000),
+        last_status_change: new Date().toISOString(),
+      }).eq("id", lead.id);
+    }
+    if (adm.ownerPhone) {
+      await sendWhats(instance, adm.ownerPhone,
+        `✅ *Remarcação confirmada pelo professor*\n\n${leadName} — ${formatSlot(to)}\nTeacher: ${teacher.full_name}\n\n_A agenda só foi alterada depois desta confirmação._`);
+    }
+    return true;
+  }
+
+  if (!error && result?.ok && result?.accepted === false) {
+    const teacherAck = `Entendido. A experimental de *${leadName}* NÃO foi remarcada para ${formatSlot(to)}. A coordenação e o aluno foram avisados.`;
+    const teacherDelivered = await sendWhats(instance, phone, teacherAck);
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, { request_id: request.id, entregue: teacherDelivered });
+
+    if (leadPhone) {
+      const leadMessage = `Oi, ${greetName(leadName) || leadName}. A Teacher ${teacher.full_name} não consegue o novo horário de ${formatSlot(to)}, então a aula não foi remarcada. A coordenação vai verificar outra opção e te retorna por aqui.`;
+      const leadDelivered = await sendWhats(instance, leadPhone, leadMessage);
+      await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
+        request_id: request.id,
+        kind: "trial_reschedule_declined",
+        entregue: leadDelivered,
+      });
+    }
+    if (lead?.id) {
+      await sb.from("crm_leads").update({
+        ai_handoff: true,
+        ai_handoff_at: new Date().toISOString(),
+        notes: ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] Teacher ${teacher.full_name} recusou a remarcação para ${to.date} ${to.time}; agenda preservada e coordenação acionada`).slice(0, 3000),
+        last_status_change: new Date().toISOString(),
+      }).eq("id", lead.id);
+    }
+    if (adm.ownerPhone) {
+      await sendWhats(instance, adm.ownerPhone,
+        `⚠️ *Professor recusou a remarcação*\n\n${leadName} pediu ${formatSlot(to)}.\nTeacher ${teacher.full_name}: “${text.slice(0, 200)}”\n\n_Não alterei a agenda. O lead foi avisado e ficou em atendimento humano para a coordenação oferecer outra opção ou reatribuir._`);
+    }
+    return true;
+  }
+
+  if (result?.already_answered) {
+    const already = `Esse pedido já foi encerrado com status ${String(result.status || "anterior").toLowerCase()}. A agenda não será alterada novamente.`;
+    const delivered = await sendWhats(instance, phone, already);
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", already, { request_id: request.id, entregue: delivered });
+    return true;
+  }
+
+  const reason = error?.message || result?.error || "confirmation_failed";
+  const teacherWarning = `Não consegui aplicar sua resposta agora. A agenda NÃO foi alterada; a coordenação vai verificar manualmente.`;
+  const teacherDelivered = await sendWhats(instance, phone, teacherWarning);
+  await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherWarning, {
+    request_id: request.id,
+    error: reason,
+    entregue: teacherDelivered,
+  });
+  if (leadPhone) {
+    const leadMessage = `Ainda não consegui confirmar sua mudança para ${formatSlot(to)}. A coordenação vai verificar e te retorna por aqui; por enquanto, o horário não foi remarcado.`;
+    const delivered = await sendWhats(instance, leadPhone, leadMessage);
+    await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
+      request_id: request.id,
+      kind: "trial_reschedule_confirmation_failed",
+      entregue: delivered,
+    });
+  }
+  if (lead?.id) {
+    await sb.from("crm_leads").update({
+      ai_handoff: true,
+      ai_handoff_at: new Date().toISOString(),
+      last_status_change: new Date().toISOString(),
+    }).eq("id", lead.id);
+  }
+  if (adm.ownerPhone) {
+    await sendWhats(instance, adm.ownerPhone,
+      `⚠️ *Falha ao processar confirmação de remarcação*\n\n${leadName} — ${formatSlot(to)}\nTeacher: ${teacher.full_name}\nMotivo técnico: ${reason}\n\n_A agenda não foi alterada. Resolva manualmente._`);
+  }
+  return true;
 }
 
 async function dispatchTrial(
@@ -1022,7 +1232,7 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   const activeTrial = await findActiveTrial(sb, tenantId, phone);
   const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
   const trialContext = activeTrial && trialSlot
-    ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${formatSlot(trialSlot)}.\n- Se ele pedir OUTRO dia/horário, isso é REMARCAÇÃO da mesma aula, com a MESMA professora. Preencha schedule_trial com o horário novo e diga que vai ajustar — NUNCA fale em procurar/verificar professor, e NUNCA sugira marcar outra aula.\n- Se ele apenas confirmar o horário que já está marcado, confirme com a Teacher ${activeTrial.teacherName} e não peça nada de novo.\n- Aqui você PODE citar a professora pelo nome e PODE dizer que a aula está marcada: ela está.`
+    ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${formatSlot(trialSlot)}.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`
     : "";
 
   const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te confirmo hoje mesmo — se ninguém puder, eu te aviso e ofereço outros horários 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
@@ -1062,9 +1272,9 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   if (st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) && /^\d{2}:\d{2}$/.test(st.time)) {
     const max = new Date(nowBRT().getTime() + 21 * 86400000).toISOString().split("T")[0];
     if (st.date >= todayBRT() && st.date <= max) {
-      // ── EXPERIMENTAL COM DONO SE REMARCA, NÃO SE REDISPARA ──
+      // ── EXPERIMENTAL COM DONO EXIGE NOVO ACEITE ──
       // O leilão (dispatchTrial) só acontece quando a aula ainda não tem
-      // professor. Ver `trial-reschedule.ts` para o caso real que criou a regra.
+      // professor. Com dono, o appointment fica intacto até a resposta dele.
       const requested: Slot = { date: st.date, time: st.time };
       const busy = activeTrial
         ? await teacherBusyBlocks(sb, activeTrial.teacherId, st.date, activeTrial.appointmentId)
@@ -1076,24 +1286,44 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
         const fechadas = await supersedeOpenTrials(sb, tenantId, phone, null);
         dispatchMeta = { action: "keep", opportunity_id: decision.trial.opportunityId, superseded: fechadas };
         reply = `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${formatSlot(decision.slot)} 😊 Qualquer coisa é só me avisar por aqui!`;
-      } else if (decision.action === "reschedule") {
-        const ok = await moveTrial(
-          sb, instance, decision.trial, decision.from, decision.to, decision.newStartIso,
-          freshLead.name || phone, adm.ownerPhone,
+      } else if (decision.action === "confirm") {
+        // A aula já tem dono; qualquer leilão antigo do mesmo lead precisa
+        // morrer antes de alguém aceitar uma duplicata enquanto aguardamos.
+        const fechadas = await supersedeOpenTrials(sb, tenantId, phone, null);
+        const confirmation = await requestTrialRescheduleConfirmation(
+          sb,
+          instance,
+          tenantId,
+          decision.trial,
+          freshLead.id,
+          freshLead.name || phone,
+          decision.from,
+          decision.to,
+          decision.newStartIso,
+          adm.ownerPhone,
         );
-        const fechadas = ok ? await supersedeOpenTrials(sb, tenantId, phone, null) : 0;
-        dispatchMeta = { action: ok ? "rescheduled" : "reschedule_failed", opportunity_id: decision.trial.opportunityId, from: decision.from, to: decision.to, superseded: fechadas };
-        if (ok) {
-          reply = `Prontinho! Remarquei sua experimental com a Teacher ${decision.trial.teacherName} para ${formatSlot(decision.to)} 😊`;
+        dispatchMeta = {
+          action: confirmation.ok ? "awaiting_teacher_confirmation" : "confirmation_request_failed",
+          opportunity_id: decision.trial.opportunityId,
+          from: decision.from,
+          to: decision.to,
+          created: confirmation.created || false,
+          error: confirmation.error || null,
+          superseded: fechadas,
+        };
+        reply = `Vou confirmar com a Teacher ${decision.trial.teacherName} se ela consegue ${formatSlot(decision.to)}. O horário só muda depois do aceite dela — eu te aviso por aqui mesmo se não der, tá?`;
+        if (confirmation.ok) {
           await sb.from("crm_leads").update({
-            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] experimental remarcada de ${decision.from.date} ${decision.from.time} para ${decision.to.date} ${decision.to.time} (Teacher ${decision.trial.teacherName})`).slice(0, 3000),
+            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] remarcação solicitada de ${decision.from.date} ${decision.from.time} para ${decision.to.date} ${decision.to.time}; aguardando SIM da Teacher ${decision.trial.teacherName}`).slice(0, 3000),
             last_status_change: new Date().toISOString(),
           }).eq("id", freshLead.id);
         } else {
-          // Alguém cancelou a aula no meio do caminho. Não vira leilão automático:
-          // o aluno acha que tem aula marcada e quem sabe a história é a escola.
-          reply = `Deixa eu confirmar esse horário com a teacher e já te retorno, tá? 😊`;
-          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui remarcar a experimental de *${freshLead.name || phone}* para ${formatSlot(decision.to)} — o agendamento com ${decision.trial.teacherName} não está mais ativo. Verifique na agenda.`);
+          await sb.from("crm_leads").update({
+            ai_handoff: true,
+            ai_handoff_at: new Date().toISOString(),
+            last_status_change: new Date().toISOString(),
+          }).eq("id", freshLead.id);
+          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui abrir a confirmação da remarcação de *${freshLead.name || phone}* para ${formatSlot(decision.to)} com ${decision.trial.teacherName}. A agenda NÃO foi alterada. Motivo: ${confirmation.error || "falha desconhecida"}.`);
         }
       } else if (decision.action === "escalate") {
         // A professora dona tem compromisso em cima do horário novo. Redisparar
@@ -1325,6 +1555,13 @@ serve(async (req) => {
       const hourAgo = new Date(Date.now() - 3600000).toISOString();
       const { count: outCount } = await sb.from("ai_wa_messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("phone", phone).eq("direction", "out").gte("created_at", hourAgo);
       const rateLimited = (outCount ?? 0) >= 12;
+
+      // Confirmação de remarcação vem antes do RH. Professores antigos também
+      // permanecem em `job_applications`; sem esta prioridade, o "não consigo"
+      // do teacher vira mensagem de candidato em handoff e a agenda nunca sabe.
+      if (await handleTrialRescheduleTeacherReply(sb, instance, tenantId, phone, text, msgId)) {
+        continue;
+      }
 
       // ===== TRAVA DE ROTEAMENTO =====
       const { data: apps } = await sb.from("job_applications").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(150);

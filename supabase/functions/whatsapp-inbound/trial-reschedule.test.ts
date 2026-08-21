@@ -7,9 +7,12 @@ import {
   type ActiveTrial,
   brtSlotFromIso,
   brtStartIso,
+  classifyTeacherRescheduleReply,
   decideTrialAction,
   isTrialAppointmentActive,
+  isTrialOutcomeOpen,
   minutesApart,
+  trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 
 // Caso real que originou a regra: experimental de quinta 13/08/2026 às 12:00
@@ -34,14 +37,14 @@ Deno.test("e o caminho de volta devolve o horário que a escola enxerga", () => 
   assertEquals(brtSlotFromIso("2026-08-14T02:30:00+00:00"), { date: "2026-08-13", time: "23:30" });
 });
 
-Deno.test("REGRESSÃO: aluno remarca e a aula MUDA DE HORÁRIO, sem novo leilão", () => {
+Deno.test("REGRESSÃO: horário novo aguarda o aceite do professor antes de mudar", () => {
   const d = decideTrialAction({
     existing: AULA_DA_LAIS,
     requested: { date: "2026-08-13", time: "16:00" },
     busy: [],
   });
-  assertEquals(d.action, "reschedule");
-  if (d.action !== "reschedule") return;
+  assertEquals(d.action, "confirm");
+  if (d.action !== "confirm") return;
   assertEquals(d.from, { date: "2026-08-13", time: "12:00" });
   assertEquals(d.to, { date: "2026-08-13", time: "16:00" });
   assertEquals(d.newStartIso, "2026-08-13T19:00:00.000Z");
@@ -78,7 +81,7 @@ Deno.test("a própria aula, no horário antigo, não conta como conflito", () =>
     requested: { date: "2026-08-13", time: "12:20" },
     busy: [{ startIso: AULA_DA_LAIS.startIso, label: "a própria experimental" }],
   });
-  assertEquals(d.action, "reschedule");
+  assertEquals(d.action, "confirm");
 });
 
 Deno.test("30 min de intervalo: exatamente 30 passa, 29 barra", () => {
@@ -87,7 +90,7 @@ Deno.test("30 min de intervalo: exatamente 30 passa, 29 barra", () => {
     requested: { date: "2026-08-13", time: "16:00" },
     busy: [{ startIso: "2026-08-13T19:30:00+00:00", label: "aula das 16:30" }],
   });
-  assertEquals(trinta.action, "reschedule");
+  assertEquals(trinta.action, "confirm");
 
   const vinteNove = decideTrialAction({
     existing: AULA_DA_LAIS,
@@ -111,7 +114,32 @@ Deno.test("aula recém-passada ainda remarca; aula velha esquecida não sequestr
   assertEquals(isTrialAppointmentActive("scheduled", "2026-07-20T15:00:00Z", agora), false);
 });
 
+Deno.test("experimental com lançamento ou desfecho nunca é reaproveitada", () => {
+  assertEquals(isTrialOutcomeOpen(null), true);
+  assertEquals(isTrialOutcomeOpen("SCHEDULED"), true);
+  assertEquals(isTrialOutcomeOpen("DONE"), false);
+  assertEquals(isTrialOutcomeOpen("NO_SHOW_TEACHER"), false);
+  assertEquals(isTrialOutcomeOpen("NO_SHOW_STUDENT"), false);
+});
+
 Deno.test("minutesApart não depende da ordem", () => {
   assertEquals(minutesApart("2026-08-13T19:00:00Z", "2026-08-13T19:45:00Z"), 45);
   assertEquals(minutesApart("2026-08-13T19:45:00Z", "2026-08-13T19:00:00Z"), 45);
+});
+
+Deno.test("REGRESSÃO: 'acredito que eu não consigo' é recusa, nunca aceite", () => {
+  assertEquals(classifyTeacherRescheduleReply("Bom dia, acredito que eu não consigo"), "decline");
+  assertEquals(classifyTeacherRescheduleReply("Não tenho esse horário"), "decline");
+  assertEquals(classifyTeacherRescheduleReply("não posso atender #A1B2C3D4"), "decline");
+});
+
+Deno.test("só resposta afirmativa inequívoca aceita a remarcação", () => {
+  assertEquals(classifyTeacherRescheduleReply("Sim, consigo atender #A1B2C3D4"), "accept");
+  assertEquals(classifyTeacherRescheduleReply("Pode remarcar"), "accept");
+  assertEquals(classifyTeacherRescheduleReply("Acho que talvez eu consiga"), "unknown");
+});
+
+Deno.test("extrai o código do pedido sem confundir texto comum", () => {
+  assertEquals(trialRescheduleReplyCode("Sim, consigo #a1b2c3d4"), "A1B2C3D4");
+  assertEquals(trialRescheduleReplyCode("Não consigo esse horário"), null);
 });

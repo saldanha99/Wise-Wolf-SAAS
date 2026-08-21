@@ -14,9 +14,10 @@
  * outro horário virava disparo novo — e o `funnel-sweeper` ainda re-disparava a
  * sobra 20 min depois, para a escola inteira.
  *
- * A regra que fica: **experimental com professor já definido se REMARCA, não se
- * redisparar.** Só volta a leiloar quando não há dono, ou quando o dono tem
- * conflito real de agenda no horário novo — e aí quem decide é gente, não o robô.
+ * A regra que fica: **experimental com professor já definido pede CONFIRMAÇÃO
+ * antes de remarcar.** O horário antigo continua no banco até o professor dizer
+ * explicitamente que consegue o novo. Só volta a leiloar quando não há dono; se
+ * o dono recusar ou tiver conflito, quem decide a reatribuição é gente.
  */
 
 /** Fuso de Brasília. As edge functions rodam em UTC; a escola pensa em BRT. */
@@ -50,8 +51,8 @@ export type TrialDecision =
   | { action: "broadcast" }
   /** Já existe, no MESMO horário pedido → não faz nada (nem novo disparo). */
   | { action: "keep"; trial: ActiveTrial; slot: Slot }
-  /** Já existe em outro horário e o dono está livre → move a aula. */
-  | { action: "reschedule"; trial: ActiveTrial; from: Slot; to: Slot; newStartIso: string }
+  /** Já existe em outro horário e o dono está livre → pede aceite antes de mover. */
+  | { action: "confirm"; trial: ActiveTrial; from: Slot; to: Slot; newStartIso: string }
   /** Já existe, mas o dono tem conflito no horário novo → decide um humano. */
   | { action: "escalate"; trial: ActiveTrial; from: Slot; to: Slot; conflict: string };
 
@@ -95,6 +96,20 @@ export function isTrialAppointmentActive(
   return start >= now - staleDays * 86400000;
 }
 
+/** Desfecho da oportunidade encerra o ciclo, mesmo se o appointment ficou scheduled. */
+export function isTrialOutcomeOpen(status: string | null | undefined): boolean {
+  const normalized = String(status || "").trim().toUpperCase();
+  return ![
+    "DONE",
+    "COMPLETED",
+    "NO_SHOW",
+    "NO_SHOW_STUDENT",
+    "NO_SHOW_TEACHER",
+    "CANCELLED",
+    "CANCELED",
+  ].includes(normalized);
+}
+
 /** Minutos entre dois instantes (sempre positivo). */
 export function minutesApart(aIso: string, bIso: string): number {
   return Math.abs(new Date(aIso).getTime() - new Date(bIso).getTime()) / 60000;
@@ -107,10 +122,10 @@ export function minutesApart(aIso: string, bIso: string): number {
  * (a dela mesma, no horário antigo, já sai fora antes de chegar aqui). A regra
  * de intervalo é a mesma da tela de aceite: 30 min de início a início.
  *
- * ⚠️ Disponibilidade DECLARADA (`teacher_availability`) de propósito NÃO entra
- * aqui. A professora e o aluno combinaram o horário novo por fora; exigir que
- * ele estivesse na grade cadastrada recusaria exatamente o caso que existe para
- * ser atendido. O que barra é conflito de verdade — aula marcada em cima.
+ * ⚠️ Disponibilidade DECLARADA (`teacher_availability`) de propósito NÃO basta
+ * para confirmar. Ela serve para oferecer horários ao lead, mas a mudança só é
+ * aplicada depois da resposta explícita do professor. O conflito real de agenda
+ * barra o pedido antes mesmo de incomodá-lo.
  */
 export function decideTrialAction(opts: {
   existing: ActiveTrial | null;
@@ -139,5 +154,47 @@ export function decideTrialAction(opts: {
   if (conflito) {
     return { action: "escalate", trial: existing, from, to: requested, conflict: conflito.label };
   }
-  return { action: "reschedule", trial: existing, from, to: requested, newStartIso };
+  return { action: "confirm", trial: existing, from, to: requested, newStartIso };
+}
+
+export type TeacherRescheduleReply = "accept" | "decline" | "unknown";
+
+function normalizedReply(text: string): string {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Interpretação determinística da resposta do professor.
+ *
+ * Negativas são avaliadas primeiro para que "não consigo" nunca case com o
+ * "consigo" afirmativo. Respostas vagas continuam desconhecidas: remarcar uma
+ * aula real exige um sim inequívoco, não uma inferência do modelo.
+ */
+export function classifyTeacherRescheduleReply(text: string): TeacherRescheduleReply {
+  const reply = normalizedReply(text);
+  if (!reply) return "unknown";
+
+  if (
+    /\b(nao|n)\b/.test(reply) &&
+    /\b(consigo|posso|poderei|da|disponivel|tenho|horario|atender)\b/.test(reply)
+  ) return "decline";
+  if (/\b(sem horario|indisponivel|impossivel)\b/.test(reply)) return "decline";
+  if (/^(nao|n)[\s!.,#-]*(?:[a-f0-9]{8})?[\s!.,]*$/i.test(reply)) return "decline";
+
+  if (/\b(talvez|acho que|nao sei|vou ver|confirmo depois)\b/.test(reply)) return "unknown";
+  if (/^(sim|s|confirmo|consigo|posso)\b/.test(reply)) return "accept";
+  if (/\b(pode remarcar|pode confirmar|estarei disponivel|vou atender)\b/.test(reply)) return "accept";
+
+  return "unknown";
+}
+
+/** Código curto incluído na mensagem quando há mais de um pedido pendente. */
+export function trialRescheduleReplyCode(text: string): string | null {
+  const match = String(text || "").toUpperCase().match(/(?:#|\b)([A-F0-9]{8})\b/);
+  return match?.[1] || null;
 }

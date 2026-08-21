@@ -502,6 +502,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260817153648_gestao_contas_pagar_whatsapp.sql"
   "supabase/migrations/20260820091229_teacher_turbo_streak.sql"
   "supabase/migrations/20260820091231_lesson_occurrence_and_schedule_hardening.sql"
+  "supabase/migrations/20260821220943_trial_reschedule_requires_teacher_confirmation.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -512,6 +513,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_free_premium_tiers.sql"
   "supabase/tests/teacher_closing_write_scope.sql"
   "supabase/tests/teacher_schedule_change_scope.sql"
+  "supabase/tests/trial_reschedule_requires_teacher_confirmation.sql"
   "supabase/tests/student_manual_pix_claims.sql"
   "supabase/tests/student_overdue_card_charge_claims.sql"
   "supabase/tests/gestao_contas_pagar_whatsapp.sql"
