@@ -1622,8 +1622,7 @@ for database_test in "${database_tests[@]}"; do
         normalized ~ /^abort([[:space:]].*)?;$/ ||
         normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
         normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
-        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/
-      ) {
+        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/) {
         forbidden_count++
       }
     }
@@ -1633,8 +1632,7 @@ for database_test in "${database_tests[@]}"; do
         forbidden_count != 0 ||
         forbidden_meta_count != 0 ||
         first_sql != "begin;" ||
-        last_sql != "rollback;"
-      ) {
+        last_sql != "rollback;") {
         exit 1
       }
     }
@@ -1688,8 +1686,7 @@ for migration_path in "${migration_files[@]}"; do
         normalized ~ /^abort([[:space:]].*)?;$/ ||
         normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
         normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
-        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/
-      ) {
+        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/) {
         forbidden_count++
       }
     }
@@ -1699,8 +1696,7 @@ for migration_path in "${migration_files[@]}"; do
         first_sql == "begin;" && last_sql == "commit;"
       if (forbidden_count != 0 ||
         forbidden_meta_count != 0 ||
-        (!unwrapped && !wrapped)
-      ) {
+        (!unwrapped && !wrapped)) {
         exit 1
       }
     }
@@ -1759,8 +1755,7 @@ if ((${#unapplied_migrations[@]} > 0)); then
           gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
           if (normalized == "begin;" ||
             normalized == "commit;" ||
-            normalized == "\\set on_error_stop on"
-          ) {
+            normalized == "\\set on_error_stop on") {
             next
           }
           print
@@ -1780,8 +1775,7 @@ if ((${#unapplied_migrations[@]} > 0)); then
           gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
           if (normalized == "begin;" ||
             normalized == "rollback;" ||
-            normalized == "\\set on_error_stop on"
-          ) {
+            normalized == "\\set on_error_stop on") {
             next
           }
           print
