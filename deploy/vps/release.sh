@@ -2416,16 +2416,14 @@ wait_for_http_status 403 "token do WhatsApp inbound" \
   -X POST "$api_url/functions/v1/whatsapp-inbound" \
   -H 'Content-Type: application/json' \
   --data '{}'
-for protected_ai in whatsapp-crm-lead-notif school-ai-team school-ai-digest wolfie-eval; do
+for protected_ai in \
+  whatsapp-crm-lead-notif school-ai-team school-ai-digest wolfie-eval \
+  hr-ai-screening; do
   wait_for_http_status 401 "autenticação de $protected_ai" \
     -X POST "$api_url/functions/v1/$protected_ai" \
     -H 'Content-Type: application/json' \
     --data '{}'
 done
-wait_for_http_status 403 "autorização do RH IA" \
-  -X POST "$api_url/functions/v1/hr-ai-screening" \
-  -H 'Content-Type: application/json' \
-  --data '{}'
 wait_for_http_status 426 "upgrade WebSocket do Wolfie Live" \
   "$api_url/functions/v1/wolfie-live-proxy"
 
