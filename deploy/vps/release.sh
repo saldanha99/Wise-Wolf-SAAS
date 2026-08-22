@@ -1616,8 +1616,7 @@ for database_test in "${database_tests[@]}"; do
         begin_count++
       } else if (normalized == "rollback;") {
         rollback_count++
-      } else if (
-        normalized ~ /^begin[[:space:]].*;$/ ||
+      } else if (normalized ~ /^begin[[:space:]].*;$/ ||
         normalized ~ /^commit([[:space:]].*)?;$/ ||
         normalized ~ /^rollback[[:space:]].*;$/ ||
         normalized ~ /^abort([[:space:]].*)?;$/ ||
@@ -1629,8 +1628,7 @@ for database_test in "${database_tests[@]}"; do
       }
     }
     END {
-      if (
-        begin_count != 1 ||
+      if (begin_count != 1 ||
         rollback_count != 1 ||
         forbidden_count != 0 ||
         forbidden_meta_count != 0 ||
@@ -1684,8 +1682,7 @@ for migration_path in "${migration_files[@]}"; do
         begin_count++
       } else if (normalized == "commit;") {
         commit_count++
-      } else if (
-        normalized ~ /^begin[[:space:]].*;$/ ||
+      } else if (normalized ~ /^begin[[:space:]].*;$/ ||
         normalized ~ /^commit[[:space:]].*;$/ ||
         normalized ~ /^rollback([[:space:]].*)?;$/ ||
         normalized ~ /^abort([[:space:]].*)?;$/ ||
@@ -1700,8 +1697,7 @@ for migration_path in "${migration_files[@]}"; do
       unwrapped = begin_count == 0 && commit_count == 0
       wrapped = begin_count == 1 && commit_count == 1 &&
         first_sql == "begin;" && last_sql == "commit;"
-      if (
-        forbidden_count != 0 ||
+      if (forbidden_count != 0 ||
         forbidden_meta_count != 0 ||
         (!unwrapped && !wrapped)
       ) {
@@ -1730,6 +1726,10 @@ for migration_path in "${migration_files[@]}"; do
   fi
 done
 
+if [[ "${1:-}" = "validate-only" ]]; then
+  return 0
+fi
+
 if ((${#unapplied_migrations[@]} > 0)); then
   database_backup_tmp="$backup_dir/postgres-before-migration.dump.tmp"
   database_backup="$backup_dir/postgres-before-migration.dump"
@@ -1757,8 +1757,7 @@ if ((${#unapplied_migrations[@]} > 0)); then
           normalized = tolower($0)
           sub(/[[:space:]]*--.*$/, "", normalized)
           gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-          if (
-            normalized == "begin;" ||
+          if (normalized == "begin;" ||
             normalized == "commit;" ||
             normalized == "\\set on_error_stop on"
           ) {
@@ -1779,8 +1778,7 @@ if ((${#unapplied_migrations[@]} > 0)); then
           normalized = tolower($0)
           sub(/[[:space:]]*--.*$/, "", normalized)
           gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-          if (
-            normalized == "begin;" ||
+          if (normalized == "begin;" ||
             normalized == "rollback;" ||
             normalized == "\\set on_error_stop on"
           ) {
@@ -1962,6 +1960,9 @@ end
 $verify$;
 SQL
 }
+
+echo "== Validação transacional do pacote SQL =="
+run_database_release validate-only
 
 if [[ "$preserve_remote_functions" != "1" ]]; then
   (
@@ -2446,7 +2447,7 @@ REMOTE
 
 if [[ "$activation_status" -ne 0 ]]; then
   activation_failure_state="unknown"
-  if activation_failure_state="$(
+  read_activation_failure_state() {
     ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
       "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" "$release_id" \
       "$expected_current_release" <<'REMOTE_STATUS'
@@ -2501,7 +2502,8 @@ IFS= read -r active_release < "$current_marker"
 [[ "$active_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
 printf 'active:%s' "$active_release"
 REMOTE_STATUS
-  )"; then
+  }
+  if activation_failure_state="$(read_activation_failure_state)"; then
     :
   fi
 
