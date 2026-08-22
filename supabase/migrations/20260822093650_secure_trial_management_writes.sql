@@ -76,7 +76,9 @@ create table if not exists private.secure_trial_command_receipts (
 );
 
 revoke all on table private.secure_trial_command_receipts
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table private.secure_trial_command_receipts
+  to postgres;
 
 create table if not exists private.vendor_trial_teacher_requests (
   id uuid primary key default gen_random_uuid(),
@@ -108,7 +110,9 @@ create index if not exists vendor_trial_teacher_requests_pending_idx
   where status in ('AWAITING_STUDENT', 'AWAITING_TEACHER');
 
 revoke all on table private.vendor_trial_teacher_requests
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
+grant select, insert, update on table private.vendor_trial_teacher_requests
+  to postgres;
 
 create or replace function public.get_opportunity_teacher_dispatch_secure(
   p_tenant_id text,
@@ -184,7 +188,7 @@ create or replace function private.secure_trial_payload_fingerprint(
 returns text
 language sql
 immutable
-security definer
+security invoker
 set search_path = ''
 as $function$
   select pg_catalog.encode(
@@ -196,44 +200,12 @@ as $function$
   );
 $function$;
 
+alter function private.secure_trial_payload_fingerprint(jsonb)
+  owner to postgres;
 revoke all on function private.secure_trial_payload_fingerprint(jsonb)
-  from public, anon, authenticated;
-
-create or replace function private.secure_trial_has_active_membership(
-  p_tenant_id text,
-  p_roles text[] default null
-)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $function$
-  select p_tenant_id = private.active_tenant_id((select auth.uid()))
-  and exists (
-    select 1
-      from public.tenant_memberships as membership
-      join public.profiles as profile
-        on profile.id = membership.user_id
-     where membership.user_id = (select auth.uid())
-       and membership.tenant_id = p_tenant_id
-       and membership.status = 'ACTIVE'
-       and lower(trim(coalesce(profile.lifecycle_status, 'active'))) = 'active'
-       and (
-         p_roles is null
-         or membership.role = any (p_roles)
-         or (
-           profile.role = 'SUPER_ADMIN'
-           and 'SUPER_ADMIN' = any (p_roles)
-         )
-       )
-  );
-$function$;
-
-revoke all on function private.secure_trial_has_active_membership(text, text[])
-  from public, anon, authenticated;
-grant execute on function private.secure_trial_has_active_membership(text, text[])
-  to authenticated, service_role;
+  from public, anon, authenticated, service_role;
+grant execute on function private.secure_trial_payload_fingerprint(jsonb)
+  to postgres;
 
 create or replace function private.secure_trial_actor_context()
 returns table (
@@ -243,7 +215,7 @@ returns table (
 )
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $function$
   select
@@ -263,8 +235,12 @@ as $function$
   limit 1;
 $function$;
 
+alter function private.secure_trial_actor_context()
+  owner to postgres;
 revoke all on function private.secure_trial_actor_context()
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
+grant execute on function private.secure_trial_actor_context()
+  to postgres;
 
 create or replace function private.secure_trial_portal_origin(
   p_tenant_id text
@@ -272,7 +248,7 @@ create or replace function private.secure_trial_portal_origin(
 returns text
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $function$
   select coalesce(
@@ -299,8 +275,12 @@ as $function$
   where tenant.id = p_tenant_id;
 $function$;
 
+alter function private.secure_trial_portal_origin(text)
+  owner to postgres;
 revoke all on function private.secure_trial_portal_origin(text)
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
+grant execute on function private.secure_trial_portal_origin(text)
+  to postgres;
 
 create or replace function private.secure_trial_schedule_conflict(
   p_tenant_id text,
@@ -312,7 +292,7 @@ create or replace function private.secure_trial_schedule_conflict(
 returns boolean
 language sql
 stable
-security definer
+security invoker
 set search_path = ''
 as $function$
   select
@@ -376,9 +356,15 @@ as $function$
     );
 $function$;
 
+alter function private.secure_trial_schedule_conflict(
+  text, uuid, timestamptz, uuid, uuid
+) owner to postgres;
 revoke all on function private.secure_trial_schedule_conflict(
   text, uuid, timestamptz, uuid, uuid
-) from public, anon, authenticated;
+) from public, anon, authenticated, service_role;
+grant execute on function private.secure_trial_schedule_conflict(
+  text, uuid, timestamptz, uuid, uuid
+) to postgres;
 
 -- Replace every accumulated permissive policy, including the historical
 -- public enrollment-link lookup.
@@ -407,6 +393,8 @@ begin
 end
 $policies$;
 
+drop function if exists private.secure_trial_has_active_membership(text, text[]);
+
 revoke all on table public.opportunities
   from public, anon, authenticated;
 revoke all on table public.appointments
@@ -428,13 +416,6 @@ using (
     'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
     'SALESPERSON', 'SUPER_ADMIN'
   )
-  and private.secure_trial_has_active_membership(
-    opportunities.tenant_id,
-    array[
-      'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
-      'SALESPERSON', 'SUPER_ADMIN'
-    ]::text[]
-  )
 );
 
 create policy secure_trial_appointments_select
@@ -444,24 +425,12 @@ to authenticated
 using (
   appointments.tenant_id = (select public._my_tenant_id())
   and (
-    private.secure_trial_has_active_membership(
-      appointments.tenant_id,
-      array[
-        'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
-        'SALESPERSON', 'SUPER_ADMIN'
-      ]::text[]
-    )
-    and (select public._my_role()) in (
+    (select public._my_role()) in (
       'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
       'SALESPERSON', 'SUPER_ADMIN'
     )
     or (
       (select public._my_role()) = 'TEACHER'
-      and
-      private.secure_trial_has_active_membership(
-        appointments.tenant_id,
-        array['TEACHER']::text[]
-      )
       and (
         appointments.teacher_id = (select auth.uid())
         or appointments.professor_id = (select auth.uid())
@@ -479,13 +448,6 @@ using (
   and (select public._my_role()) in (
     'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
     'SALESPERSON', 'SUPER_ADMIN'
-  )
-  and private.secure_trial_has_active_membership(
-    enrollment_links.tenant_id,
-    array[
-      'SCHOOL_ADMIN', 'COORDINATOR', 'COMMERCIAL',
-      'SALESPERSON', 'SUPER_ADMIN'
-    ]::text[]
   )
 );
 
@@ -629,9 +591,6 @@ begin
 end;
 $function$;
 
-revoke all on function private.enforce_vendor_trial_teacher_acceptance()
-  from public, anon, authenticated;
-
 drop trigger if exists enforce_vendor_trial_teacher_acceptance
   on public.opportunities;
 create trigger enforce_vendor_trial_teacher_acceptance
@@ -639,6 +598,11 @@ before update of status, winner_teacher_id, professor_id, trial_appointment_id
 on public.opportunities
 for each row
 execute function private.enforce_vendor_trial_teacher_acceptance();
+
+alter function private.enforce_vendor_trial_teacher_acceptance()
+  owner to postgres;
+revoke all on function private.enforce_vendor_trial_teacher_acceptance()
+  from public, anon, authenticated, service_role;
 
 create or replace function public.schedule_manual_trial_secure(
   p_payload jsonb
@@ -1726,7 +1690,10 @@ begin
     return jsonb_build_object('ok', false, 'error', 'invalid_lookup');
   end if;
   if p_link_token is not null
-     and trim(p_link_token) !~ '^[A-Za-z0-9._~-]{20,512}$' then
+     and (
+       length(trim(p_link_token)) not between 20 and 512
+       or trim(p_link_token) !~ '^[A-Za-z0-9._~-]+$'
+     ) then
     return jsonb_build_object('ok', false, 'error', 'invalid_lookup');
   end if;
 

@@ -20,6 +20,17 @@ END
 $guard$;
 
 ALTER TABLE public.offers
+  DROP CONSTRAINT IF EXISTS offers_kind_check;
+ALTER TABLE public.offers
+  ADD CONSTRAINT offers_kind_check
+  CHECK (kind IN (
+    'ENROLLMENT',
+    'TEACHER_INVITE',
+    'VENDOR_INVITE',
+    'COMMERCIAL_INVITE'
+  ));
+
+ALTER TABLE public.offers
   ADD COLUMN IF NOT EXISTS invite_claim_token uuid,
   ADD COLUMN IF NOT EXISTS invite_claimed_at timestamptz,
   ADD COLUMN IF NOT EXISTS invite_security_version smallint NOT NULL DEFAULT 0;

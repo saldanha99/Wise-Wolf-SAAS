@@ -615,6 +615,14 @@ DECLARE
   normalized_school_info jsonb;
   actor_role text;
 BEGIN
+  actor_role := private.active_tenant_role(p_actor_id);
+  IF p_actor_id IS NULL
+    OR actor_role NOT IN ('SCHOOL_ADMIN', 'SUPER_ADMIN')
+    OR private.active_tenant_id(p_actor_id) IS DISTINCT FROM p_tenant_id
+  THEN
+    RAISE EXCEPTION 'cross_tenant_access_denied' USING ERRCODE = '42501';
+  END IF;
+
   IF NOT private.tenant_is_operational(p_tenant_id) THEN
     RAISE EXCEPTION 'tenant_not_operational' USING ERRCODE = '55000';
   END IF;
@@ -656,14 +664,6 @@ BEGIN
     )
   THEN
     RAISE EXCEPTION 'invalid_settings_payload' USING ERRCODE = '22023';
-  END IF;
-
-  actor_role := private.active_tenant_role(p_actor_id);
-  IF p_actor_id IS NULL
-    OR actor_role NOT IN ('SCHOOL_ADMIN', 'SUPER_ADMIN')
-    OR private.active_tenant_id(p_actor_id) IS DISTINCT FROM p_tenant_id
-  THEN
-    RAISE EXCEPTION 'cross_tenant_access_denied' USING ERRCODE = '42501';
   END IF;
 
   INSERT INTO public.tenant_admin_settings (tenant_id)

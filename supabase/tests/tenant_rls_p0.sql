@@ -309,7 +309,7 @@ select pg_temp.assert_true(
   (
     select qual ilike '%_my_tenant_id%'
       and qual ilike '%_my_role%'
-      and qual ilike '%secure_trial_has_active_membership%'
+      and qual not ilike '%secure_trial_has_active_membership%'
       and qual not ilike '%TEACHER%'
       and qual not ilike '%STUDENT%'
     from pg_catalog.pg_policies
@@ -317,7 +317,7 @@ select pg_temp.assert_true(
       and tablename = 'opportunities'
       and policyname = 'secure_trial_opportunities_staff_select'
   ),
-  'opportunities policy lost tenant, membership or staff-only guards'
+  'opportunities policy lost tenant, role or staff-only guards'
 );
 
 select pg_temp.assert_true(

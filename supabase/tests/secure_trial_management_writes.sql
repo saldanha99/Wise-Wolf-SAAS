@@ -58,7 +58,7 @@ select pg_temp.assert_true(
   (
     select qual ilike '%_my_tenant_id%'
       and qual ilike '%_my_role%'
-      and qual ilike '%secure_trial_has_active_membership%'
+      and qual not ilike '%secure_trial_has_active_membership%'
       and qual not ilike '%TEACHER%'
       and qual not ilike '%STUDENT%'
       from pg_catalog.pg_policies
@@ -180,6 +180,147 @@ begin
       'EXECUTE'
     ),
     'public confirmation RPC is not service-only'
+  );
+
+  foreach signature in array array[
+    'private.secure_trial_payload_fingerprint(jsonb)',
+    'private.secure_trial_actor_context()',
+    'private.secure_trial_portal_origin(text)',
+    'private.secure_trial_schedule_conflict(text,uuid,timestamp with time zone,uuid,uuid)'
+  ] loop
+    function_oid := to_regprocedure(signature);
+    perform pg_temp.assert_true(
+      function_oid is not null
+      and (
+        select not procedure.prosecdef
+          and pg_catalog.pg_get_userbyid(procedure.proowner) = 'postgres'
+          and exists (
+            select 1
+              from unnest(coalesce(procedure.proconfig, array[]::text[])) setting
+             where setting like 'search_path=%'
+          )
+          from pg_catalog.pg_proc procedure
+         where procedure.oid = function_oid
+      )
+      and not pg_catalog.has_function_privilege('anon', signature, 'EXECUTE')
+      and not pg_catalog.has_function_privilege(
+        'authenticated', signature, 'EXECUTE'
+      )
+      and not pg_catalog.has_function_privilege(
+        'service_role', signature, 'EXECUTE'
+      )
+      and pg_catalog.has_function_privilege('postgres', signature, 'EXECUTE'),
+      format('%s has unsafe or incomplete internal privileges', signature)
+    );
+  end loop;
+
+  signature := 'private.enforce_vendor_trial_teacher_acceptance()';
+  function_oid := to_regprocedure(signature);
+  perform pg_temp.assert_true(
+    function_oid is not null
+    and (
+      select procedure.prosecdef
+        and pg_catalog.pg_get_userbyid(procedure.proowner) = 'postgres'
+        and exists (
+          select 1
+            from unnest(coalesce(procedure.proconfig, array[]::text[])) setting
+           where setting like 'search_path=%'
+        )
+        from pg_catalog.pg_proc procedure
+       where procedure.oid = function_oid
+    )
+    and not pg_catalog.has_function_privilege('anon', signature, 'EXECUTE')
+    and not pg_catalog.has_function_privilege(
+      'authenticated', signature, 'EXECUTE'
+    )
+    and not pg_catalog.has_function_privilege(
+      'service_role', signature, 'EXECUTE'
+    ),
+    'vendor trial acceptance trigger helper has unsafe privileges'
+  );
+
+  perform pg_temp.assert_true(
+    pg_catalog.has_table_privilege(
+      'postgres',
+      'private.secure_trial_command_receipts',
+      'SELECT'
+    )
+    and pg_catalog.has_table_privilege(
+      'postgres',
+      'private.secure_trial_command_receipts',
+      'INSERT'
+    )
+    and pg_catalog.has_table_privilege(
+      'postgres',
+      'private.secure_trial_command_receipts',
+      'UPDATE'
+    )
+    and pg_catalog.has_table_privilege(
+      'postgres',
+      'private.vendor_trial_teacher_requests',
+      'SELECT'
+    )
+    and pg_catalog.has_table_privilege(
+      'postgres',
+      'private.vendor_trial_teacher_requests',
+      'INSERT'
+    )
+    and pg_catalog.has_table_privilege(
+      'postgres',
+      'private.vendor_trial_teacher_requests',
+      'UPDATE'
+    )
+    and not pg_catalog.has_table_privilege(
+      'authenticated',
+      'private.secure_trial_command_receipts',
+      'SELECT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'authenticated',
+      'private.vendor_trial_teacher_requests',
+      'SELECT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.secure_trial_command_receipts',
+      'SELECT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.secure_trial_command_receipts',
+      'INSERT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.secure_trial_command_receipts',
+      'UPDATE'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.secure_trial_command_receipts',
+      'DELETE'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.vendor_trial_teacher_requests',
+      'SELECT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.vendor_trial_teacher_requests',
+      'INSERT'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.vendor_trial_teacher_requests',
+      'UPDATE'
+    )
+    and not pg_catalog.has_table_privilege(
+      'service_role',
+      'private.vendor_trial_teacher_requests',
+      'DELETE'
+    ),
+    'private trial tables have unsafe or incomplete internal privileges'
   );
 end;
 $function_acl$;
@@ -329,16 +470,6 @@ select pg_temp.assert_true(
   and (select count(*) from public.enrollment_links where tenant_id = 'secure-trial-a') = 1
   and (select count(*) from public.enrollment_links where tenant_id = 'secure-trial-b') = 0,
   'tenant A staff read tenant B trial data'
-);
-
-select pg_temp.assert_true(
-  private.secure_trial_has_active_membership(
-    'secure-trial-a', array['SCHOOL_ADMIN']::text[]
-  )
-  and not private.secure_trial_has_active_membership(
-    'secure-trial-b', array['SCHOOL_ADMIN']::text[]
-  ),
-  'secure trial membership helper escaped the selected tenant context'
 );
 
 select pg_temp.assert_direct_write_denied(
@@ -579,18 +710,8 @@ select pg_temp.assert_true(
   not exists (
     select 1 from public.appointments
      where student_name = 'Secure Manual Trial'
-  )
-  and exists (
-    select 1
-      from private.vendor_trial_teacher_requests request
-     where request.opportunity_id =
-           current_setting('app.secure_manual_opportunity_id')::uuid
-       and request.enrollment_link_id is null
-       and request.target_teacher_id =
-           '00000000-0000-4000-8000-00000000e002'
-       and request.status = 'AWAITING_TEACHER'
   ),
-  'manual request created an appointment or lost its target teacher'
+  'manual request created an appointment before teacher acceptance'
 );
 
 select pg_temp.assert_true(
@@ -685,14 +806,6 @@ begin
     and not coalesce((result ->> 'confirmed')::boolean, true)
     and coalesce((retry_result ->> 'idempotent')::boolean, false)
     and (select count(*) from public.appointments) = appointments_before
-    and exists (
-      select 1
-        from private.vendor_trial_teacher_requests request
-       where request.opportunity_id =
-             current_setting('app.secure_vendor_opportunity_id')::uuid
-         and request.status = 'AWAITING_TEACHER'
-         and request.student_confirmed_at is not null
-    )
     and public.get_opportunity_teacher_dispatch_secure(
       'secure-trial-a',
       current_setting('app.secure_vendor_opportunity_id')::uuid
@@ -789,14 +902,6 @@ begin
          and appointment.tenant_id = 'secure-trial-a'
          and appointment.teacher_id = '00000000-0000-4000-8000-00000000e002'
          and appointment.professor_id = '00000000-0000-4000-8000-00000000e002'
-    )
-    and exists (
-      select 1
-        from private.vendor_trial_teacher_requests request
-       where request.opportunity_id =
-             current_setting('app.secure_vendor_opportunity_id')::uuid
-         and request.status = 'ACCEPTED'
-         and request.accepted_appointment_id = (result ->> 'appointmentId')::uuid
     ),
     format(
       'authenticated teacher acceptance was not atomic: %s / %s / %s',

@@ -196,6 +196,7 @@ begin
        and opportunity.status = 'CLAIMED'
        and opportunity.winner_teacher_id = teacher_a
        and opportunity.professor_id = teacher_a
+       and opportunity.accepted_slot = opportunity.slots_proposed -> 0
        and opportunity.trial_appointment_id = appointment_id
   ) then
     raise exception 'assertion failed: opportunity nao foi vinculada atomicamente';

@@ -3,8 +3,40 @@
 -- depois de a oportunidade voltar para o grupo.
 
 alter table public.opportunities
+  add column if not exists accepted_slot jsonb,
   add column if not exists opened_at timestamptz,
   add column if not exists claim_generation integer;
+
+update public.opportunities
+   set accepted_slot = slots_proposed -> 0
+ where accepted_slot is null
+   and (
+     winner_teacher_id is not null
+     or professor_id is not null
+     or trial_appointment_id is not null
+   )
+   and jsonb_typeof(slots_proposed) = 'array'
+   and jsonb_array_length(slots_proposed) = 1
+   and jsonb_typeof(slots_proposed -> 0) = 'object';
+
+do $accepted_slot_guard$
+begin
+  if exists (
+    select 1
+    from public.opportunities
+    where accepted_slot is not null
+      and jsonb_typeof(accepted_slot) <> 'object'
+  ) then
+    raise exception 'invalid_legacy_opportunity_accepted_slot';
+  end if;
+end
+$accepted_slot_guard$;
+
+alter table public.opportunities
+  drop constraint if exists opportunities_accepted_slot_object;
+alter table public.opportunities
+  add constraint opportunities_accepted_slot_object
+  check (accepted_slot is null or jsonb_typeof(accepted_slot) = 'object');
 
 update public.opportunities
    set opened_at = coalesce(opened_at, created_at, now()),

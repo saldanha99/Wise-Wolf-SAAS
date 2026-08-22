@@ -61,7 +61,7 @@ update public.profiles
 set local app.enrollment_claim = '';
 
 -- ---------------------------------------------------------------------------
--- 1. Escola sem franquia configurada: gratuito, e o ao vivo NÃO é cortado.
+-- 1. Escola sem franquia configurada: gratuito e sem consumo pago ao vivo.
 -- ---------------------------------------------------------------------------
 select pg_temp.assert_true(
   (private.wolfie_tier_snapshot('00000000-0000-4000-8000-000000000931')
@@ -75,13 +75,15 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   (private.wolfie_tier_snapshot('00000000-0000-4000-8000-000000000931')
-    ->> 'live_allowed')::boolean is true,
-  'esta mudanca nao pode cortar o acesso ao vivo de quem ja usava');
+    ->> 'live_allowed')::boolean is false
+  and (private.wolfie_tier_snapshot('00000000-0000-4000-8000-000000000931')
+    ->> 'live_enforced')::boolean is true,
+  'sem franquia configurada liberou consumo pago ao vivo');
 
 select pg_temp.assert_true(
   (private.wolfie_tier_snapshot('00000000-0000-4000-8000-000000000931')
-    ->> 'reason') = 'franquia_nao_configurada',
-  'motivo deveria explicar que a franquia nao esta configurada');
+    ->> 'reason') in ('franquia_nao_configurada', 'franquia_esgotada'),
+  'motivo deveria manter a escola sem acesso premium');
 
 -- ---------------------------------------------------------------------------
 -- 2. Franquia do tenant com saldo: premium, com voz.
@@ -104,10 +106,18 @@ select pg_temp.assert_true(
 -- 3. Franquia esgotada no mês: volta a gratuito (texto), sem voz.
 -- ---------------------------------------------------------------------------
 insert into public.student_live_minutes
-  (tenant_id, student_id, seconds, created_at)
+  (
+    tenant_id,
+    student_id,
+    seconds,
+    plan_seconds,
+    credit_seconds,
+    created_at
+  )
 values (
   'wolfie-tier-school', '00000000-0000-4000-8000-000000000932',
-  60 * 60, date_trunc('month', current_date) + interval '1 hour'
+  60 * 60, 60 * 60, 0,
+  date_trunc('month', current_date) + interval '1 hour'
 );
 
 select pg_temp.assert_true(

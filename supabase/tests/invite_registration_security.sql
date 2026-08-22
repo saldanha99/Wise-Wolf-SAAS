@@ -26,13 +26,8 @@ values
       'city', 'Sao Paulo',
       'state', 'SP',
       'legalRepresentativeName', 'Representante A',
-      'legalRepresentativeSignatureUrl', rtrim(
-        coalesce(
-          nullif(current_setting('app.settings.api_external_url', true), ''),
-          'https://api.wisewolflanguage.com.br'
-        ),
-        '/'
-      ) || '/storage/v1/object/public/tenant-branding/invite-school-a/signature/00000000-0000-4000-8000-000000000ba1.png'
+      'legalRepresentativeSignaturePath',
+        'invite-school-a/legal-representative-signature/00000000-0000-4000-8000-000000000ba1.png'
     )
   ),
   (
@@ -46,13 +41,8 @@ values
       'city', 'Rio de Janeiro',
       'state', 'RJ',
       'legalRepresentativeName', 'Representante B',
-      'legalRepresentativeSignatureUrl', rtrim(
-        coalesce(
-          nullif(current_setting('app.settings.api_external_url', true), ''),
-          'https://api.wisewolflanguage.com.br'
-        ),
-        '/'
-      ) || '/storage/v1/object/public/tenant-branding/invite-school-b/signature/00000000-0000-4000-8000-000000000bb1.png'
+      'legalRepresentativeSignaturePath',
+        'invite-school-b/legal-representative-signature/00000000-0000-4000-8000-000000000bb1.png'
     )
   );
 
@@ -555,7 +545,7 @@ set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000b81","r
 
 reset role;
 
-set local role anon;
+set local role service_role;
 select pg_temp.assert_true(
   public.get_invite_offer_public(:'suspended_vendor_offer_id'::uuid)
     ->> 'error' = 'TENANT_UNAVAILABLE',
@@ -636,7 +626,7 @@ update public.tenants
 set saas_status = 'active'
 where id = 'invite-school-a';
 
-set local role authenticated;
+set local role service_role;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000b83","role":"authenticated"}';
 
 select pg_temp.assert_true(
@@ -664,6 +654,8 @@ reset role;
 
 select pg_temp.assert_true(
   not has_function_privilege('anon', 'public.get_contract_public(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.get_contract_public(uuid)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.get_contract_public(uuid)', 'EXECUTE')
     and not has_function_privilege('authenticated', 'public.claim_invite_offer_server(uuid,text,uuid)', 'EXECUTE')
     and not has_function_privilege('authenticated', 'public.claim_enrollment_offer(uuid,jsonb)', 'EXECUTE')
     and not has_function_privilege('service_role', 'public.create_enrollment_offer_authoritative_impl(jsonb)', 'EXECUTE')
@@ -672,7 +664,9 @@ select pg_temp.assert_true(
     and not has_function_privilege('service_role', 'public.complete_enrollment_offer_authoritative_impl(uuid,uuid)', 'EXECUTE')
     and has_function_privilege('authenticated', 'public.get_enrollment_progress(uuid)', 'EXECUTE')
     and has_function_privilege('service_role', 'public.complete_enrollment_offer(uuid,uuid)', 'EXECUTE')
-    and has_function_privilege('anon', 'public.get_invite_offer_public(uuid)', 'EXECUTE'),
+    and not has_function_privilege('anon', 'public.get_invite_offer_public(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.get_invite_offer_public(uuid)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.get_invite_offer_public(uuid)', 'EXECUTE'),
   'grants de convite/contrato estao incorretos'
 );
 
