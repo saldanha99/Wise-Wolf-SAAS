@@ -92,6 +92,46 @@ select pg_temp.assert_true(
   'validacao de digitos do CNPJ esta incorreta'
 );
 
+select pg_temp.assert_true(
+  pg_catalog.has_schema_privilege('postgres', 'private', 'USAGE')
+  and pg_catalog.has_function_privilege(
+    'postgres', 'private.contract_school_info(text)', 'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'anon', 'private.contract_school_info(text)', 'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'authenticated', 'private.contract_school_info(text)', 'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'service_role', 'private.contract_school_info(text)', 'EXECUTE'
+  ),
+  'snapshot juridico interno tem ACL insegura ou incompleta'
+);
+
+select pg_temp.assert_true(
+  pg_catalog.has_table_privilege(
+    'postgres', 'public.tenant_contract_records', 'SELECT'
+  ),
+  'wrapper interno nao consegue consultar contratos'
+);
+
+select pg_temp.assert_true(
+  pg_catalog.has_function_privilege(
+    'postgres', 'private.legal_snapshot_is_private(jsonb,text)', 'EXECUTE'
+  )
+  and pg_catalog.has_function_privilege(
+    'service_role', 'private.legal_snapshot_is_private(jsonb,text)', 'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'anon', 'private.legal_snapshot_is_private(jsonb,text)', 'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'authenticated', 'private.legal_snapshot_is_private(jsonb,text)', 'EXECUTE'
+  ),
+  'validador juridico interno tem ACL insegura ou incompleta'
+);
+
 do $$
 declare
   original_school_info jsonb;

@@ -202,7 +202,9 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION private.contract_school_info(text)
-  FROM PUBLIC, anon, authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.contract_school_info(text)
+  TO postgres;
 
 CREATE TABLE IF NOT EXISTS public.tenant_contract_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -232,6 +234,8 @@ REVOKE ALL ON TABLE public.tenant_contract_records
   FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tenant_contract_records
   TO service_role;
+GRANT SELECT ON TABLE public.tenant_contract_records
+  TO postgres;
 CREATE INDEX IF NOT EXISTS tenant_contract_records_user_tenant_idx
   ON public.tenant_contract_records (user_id, tenant_id);
 

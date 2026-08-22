@@ -201,9 +201,9 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION private.legal_snapshot_is_private(jsonb,text)
-  FROM PUBLIC, anon, authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION private.legal_snapshot_is_private(jsonb,text)
-  TO service_role;
+  TO service_role, postgres;
 
 CREATE OR REPLACE FUNCTION private.normalize_private_legal_snapshot(
   p_snapshot jsonb,
@@ -534,7 +534,9 @@ BEGIN
 END;
 $function$;
 REVOKE ALL ON FUNCTION private.contract_school_info(text)
-  FROM PUBLIC, anon, authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION private.contract_school_info(text)
+  TO postgres;
 
 -- Os resolvers SQL agora sao APIs internas. Somente a Edge Function valida o
 -- bearer offer/usuario e materializa uma URL assinada de 15 minutos.
