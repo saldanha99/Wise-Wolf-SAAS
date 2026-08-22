@@ -135,6 +135,21 @@ exception when invalid_parameter_value then null;
 end;
 $$;
 
+do $$
+begin
+  perform public.upsert_tenant_integration_secret(
+    'settings-school-a',
+    'evolution',
+    '        ',
+    'platform',
+    '00000000-0000-4000-8000-000000000a81',
+    'Blank credential'
+  );
+  raise exception 'assertion failed: credencial em branco foi aceita';
+exception when invalid_parameter_value then null;
+end;
+$$;
+
 select public.apply_tenant_admin_settings(
   'settings-school-a',
   '00000000-0000-4000-8000-000000000a81',

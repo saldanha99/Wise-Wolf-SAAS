@@ -399,6 +399,7 @@ BEGIN
     OR (p_provider = 'evolution' AND p_environment <> 'platform')
     OR (p_provider IN ('openai', 'openrouter') AND p_environment <> 'production')
     OR p_secret IS NULL
+    OR nullif(btrim(p_secret), '') IS NULL
     OR length(p_secret) NOT BETWEEN 8 AND 4096
     OR NOT EXISTS (SELECT 1 FROM public.tenants WHERE id = p_tenant_id)
   THEN
@@ -936,6 +937,8 @@ DECLARE
   legacy_secret record;
   has_whatsapp_secret boolean;
   has_asaas_secret boolean;
+  invalid_secret_count integer;
+  orphan_secret_count integer;
 BEGIN
   IF to_regclass('private.tenant_integration_secrets') IS NULL THEN
     RETURN;
@@ -961,13 +964,82 @@ BEGIN
   END IF;
 
   IF has_whatsapp_secret THEN
-    FOR legacy_secret IN EXECUTE
-      'SELECT tenant_id, whatsapp_api_key AS secret '
-      'FROM private.tenant_integration_secrets'
+    EXECUTE $query$
+      SELECT count(*)::integer
+      FROM private.tenant_integration_secrets AS legacy
+      WHERE nullif(legacy.whatsapp_api_key, '') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.tenants AS tenant
+          WHERE tenant.id = legacy.tenant_id
+        )
+    $query$ INTO orphan_secret_count;
+
+    IF orphan_secret_count > 0 THEN
+      RAISE EXCEPTION 'orphaned_legacy_tenant_secret'
+        USING ERRCODE = '23503';
+    END IF;
+
+    EXECUTE $query$
+      SELECT count(*)::integer
+      FROM private.tenant_integration_secrets AS legacy
+      JOIN public.tenants AS tenant ON tenant.id = legacy.tenant_id
+      WHERE nullif(legacy.whatsapp_api_key, '') IS NOT NULL
+        AND (
+          nullif(btrim(legacy.whatsapp_api_key), '') IS NULL
+          OR length(legacy.whatsapp_api_key) NOT BETWEEN 8 AND 4096
+        )
+    $query$ INTO invalid_secret_count;
+
+    IF invalid_secret_count > 0 THEN
+      RAISE NOTICE
+        'Discarding % invalid evolution legacy credential(s)',
+        invalid_secret_count;
+    END IF;
+
+    EXECUTE $query$
+      INSERT INTO public.tenant_configuration_audit (
+        tenant_id,
+        actor_id,
+        actor_role,
+        action,
+        section,
+        changes
+      )
+      SELECT
+        legacy.tenant_id,
+        NULL,
+        'SYSTEM',
+        'legacy_credential_discarded',
+        'integrations',
+        jsonb_build_object(
+          'provider', 'evolution',
+          'environment', 'platform',
+          'configured', false,
+          'reason', 'invalid_secret_format',
+          'source', 'legacy_plaintext_migration'
+        )
+      FROM private.tenant_integration_secrets AS legacy
+      JOIN public.tenants AS tenant ON tenant.id = legacy.tenant_id
+      WHERE nullif(legacy.whatsapp_api_key, '') IS NOT NULL
+        AND (
+          nullif(btrim(legacy.whatsapp_api_key), '') IS NULL
+          OR length(legacy.whatsapp_api_key) NOT BETWEEN 8 AND 4096
+        )
+    $query$;
+
+    FOR legacy_secret IN EXECUTE $query$
+      SELECT legacy.tenant_id, legacy.whatsapp_api_key AS secret
+      FROM private.tenant_integration_secrets AS legacy
+      WHERE nullif(btrim(legacy.whatsapp_api_key), '') IS NOT NULL
+        AND length(legacy.whatsapp_api_key) BETWEEN 8 AND 4096
+        AND EXISTS (
+          SELECT 1
+          FROM public.tenants AS tenant
+          WHERE tenant.id = legacy.tenant_id
+        )
+    $query$
     LOOP
-      IF nullif(legacy_secret.secret, '') IS NULL THEN
-        CONTINUE;
-      END IF;
       PERFORM public.upsert_tenant_integration_secret(
         legacy_secret.tenant_id,
         'evolution',
@@ -982,13 +1054,82 @@ BEGIN
   END IF;
 
   IF has_asaas_secret THEN
-    FOR legacy_secret IN EXECUTE
-      'SELECT tenant_id, asaas_api_key AS secret '
-      'FROM private.tenant_integration_secrets'
+    EXECUTE $query$
+      SELECT count(*)::integer
+      FROM private.tenant_integration_secrets AS legacy
+      WHERE nullif(legacy.asaas_api_key, '') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.tenants AS tenant
+          WHERE tenant.id = legacy.tenant_id
+        )
+    $query$ INTO orphan_secret_count;
+
+    IF orphan_secret_count > 0 THEN
+      RAISE EXCEPTION 'orphaned_legacy_tenant_secret'
+        USING ERRCODE = '23503';
+    END IF;
+
+    EXECUTE $query$
+      SELECT count(*)::integer
+      FROM private.tenant_integration_secrets AS legacy
+      JOIN public.tenants AS tenant ON tenant.id = legacy.tenant_id
+      WHERE nullif(legacy.asaas_api_key, '') IS NOT NULL
+        AND (
+          nullif(btrim(legacy.asaas_api_key), '') IS NULL
+          OR length(legacy.asaas_api_key) NOT BETWEEN 8 AND 4096
+        )
+    $query$ INTO invalid_secret_count;
+
+    IF invalid_secret_count > 0 THEN
+      RAISE NOTICE
+        'Discarding % invalid Asaas legacy credential(s)',
+        invalid_secret_count;
+    END IF;
+
+    EXECUTE $query$
+      INSERT INTO public.tenant_configuration_audit (
+        tenant_id,
+        actor_id,
+        actor_role,
+        action,
+        section,
+        changes
+      )
+      SELECT
+        legacy.tenant_id,
+        NULL,
+        'SYSTEM',
+        'legacy_credential_discarded',
+        'integrations',
+        jsonb_build_object(
+          'provider', 'asaas',
+          'environment', 'production',
+          'configured', false,
+          'reason', 'invalid_secret_format',
+          'source', 'legacy_plaintext_migration'
+        )
+      FROM private.tenant_integration_secrets AS legacy
+      JOIN public.tenants AS tenant ON tenant.id = legacy.tenant_id
+      WHERE nullif(legacy.asaas_api_key, '') IS NOT NULL
+        AND (
+          nullif(btrim(legacy.asaas_api_key), '') IS NULL
+          OR length(legacy.asaas_api_key) NOT BETWEEN 8 AND 4096
+        )
+    $query$;
+
+    FOR legacy_secret IN EXECUTE $query$
+      SELECT legacy.tenant_id, legacy.asaas_api_key AS secret
+      FROM private.tenant_integration_secrets AS legacy
+      WHERE nullif(btrim(legacy.asaas_api_key), '') IS NOT NULL
+        AND length(legacy.asaas_api_key) BETWEEN 8 AND 4096
+        AND EXISTS (
+          SELECT 1
+          FROM public.tenants AS tenant
+          WHERE tenant.id = legacy.tenant_id
+        )
+    $query$
     LOOP
-      IF nullif(legacy_secret.secret, '') IS NULL THEN
-        CONTINUE;
-      END IF;
       PERFORM public.upsert_tenant_integration_secret(
         legacy_secret.tenant_id,
         'asaas',
