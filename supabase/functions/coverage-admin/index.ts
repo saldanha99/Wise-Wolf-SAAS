@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadTenantCentralWhatsAppInstance } from "../_shared/tenant-communication.ts";
 
 // ============================================================================
 // coverage-admin — Substituição temporária de aula (Fase 2).
@@ -91,10 +92,7 @@ serve(async (req) => {
       // instância central p/ WhatsApp
       let instance: string | null = null;
       if (mode !== 'force') {
-        const { data: adm } = await S.from('profiles').select('whatsapp_instance')
-          .eq('tenant_id', caller.tenant_id).in('role', ['SCHOOL_ADMIN', 'SUPER_ADMIN'])
-          .not('whatsapp_instance', 'is', null).neq('whatsapp_instance', '').limit(1).maybeSingle();
-        instance = adm?.whatsapp_instance || null;
+        instance = await loadTenantCentralWhatsAppInstance(S, absence.tenant_id);
       }
 
       const out: any[] = [];

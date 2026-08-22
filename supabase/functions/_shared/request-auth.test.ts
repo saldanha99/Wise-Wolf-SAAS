@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import {
+  isActiveLifecycleProfile,
   isAuthorizedTenantlessProfile,
   isAuthorizedTenantMembership,
 } from "./request-auth.ts";
@@ -60,15 +61,31 @@ Deno.test("only the intentional tenantless Hub learner bypasses membership looku
       id: "hub-user",
       role: "NON_STUDENT",
       tenant_id: null,
+      lifecycle_status: "active",
     }),
     true,
     "tenantless Hub learners must keep access to Hub functions",
   );
   for (
     const profile of [
-      { id: "student", role: "STUDENT", tenant_id: null },
-      { id: "revoked", role: "NON_STUDENT", tenant_id: "school-a" },
-      { id: "admin", role: "SCHOOL_ADMIN", tenant_id: null },
+      {
+        id: "student",
+        role: "STUDENT",
+        tenant_id: null,
+        lifecycle_status: "active",
+      },
+      {
+        id: "revoked",
+        role: "NON_STUDENT",
+        tenant_id: "school-a",
+        lifecycle_status: "active",
+      },
+      {
+        id: "admin",
+        role: "SCHOOL_ADMIN",
+        tenant_id: null,
+        lifecycle_status: "active",
+      },
     ]
   ) {
     assertEquals(
@@ -77,4 +94,29 @@ Deno.test("only the intentional tenantless Hub learner bypasses membership looku
       `${profile.id} must require an ACTIVE membership`,
     );
   }
+});
+
+Deno.test("suspended and offboarded profiles fail closed", () => {
+  for (const lifecycle_status of [null, "", "suspended", "offboarded"]) {
+    assertEquals(
+      isActiveLifecycleProfile({
+        id: "user-a",
+        role: "TEACHER",
+        tenant_id: "school-a",
+        lifecycle_status,
+      }),
+      false,
+      `${lifecycle_status || "missing lifecycle"} must be rejected`,
+    );
+  }
+  assertEquals(
+    isActiveLifecycleProfile({
+      id: "user-a",
+      role: "TEACHER",
+      tenant_id: "school-a",
+      lifecycle_status: " ACTIVE ",
+    }),
+    true,
+    "active lifecycle should be accepted case-insensitively",
+  );
 });

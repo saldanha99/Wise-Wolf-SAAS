@@ -78,6 +78,7 @@ export function formatManualPixMessage(input: {
   value: number;
   dueDate: string;
   pixPayload: string;
+  brandName: string;
 }): string {
   const firstName = text(input.studentName).split(/\s+/)[0] || "aluno";
   const [year, month, day] = input.dueDate.split("-");
@@ -90,9 +91,9 @@ export function formatManualPixMessage(input: {
   }).format(input.value);
 
   return [
-    `Olá, ${firstName}! 🐺`,
+    `Olá, ${firstName}!`,
     "",
-    `Segue o Pix copia e cola da sua mensalidade Wise Wolf no valor de *${formattedValue}*, com vencimento em *${formattedDueDate}*:`,
+    `Segue o Pix copia e cola da sua mensalidade ${text(input.brandName) || "da escola"} no valor de *${formattedValue}*, com vencimento em *${formattedDueDate}*:`,
     "",
     input.pixPayload,
     "",

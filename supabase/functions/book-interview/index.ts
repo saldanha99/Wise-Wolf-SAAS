@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  loadTenantCommunicationIdentity,
+  loadTenantWhatsAppRoute,
+} from "../_shared/tenant-communication.ts";
 
 // BOOK-INTERVIEW — API de agendamento de entrevista do candidato a professor.
 //
@@ -121,6 +125,11 @@ serve(async (req) => {
       .select("id, tenant_id, name, whatsapp, interview_slot, ai_score, status")
       .eq("booking_token", token).maybeSingle();
     if (!app) return json({ ok: false, reason: "not_found" }, 404);
+    const identity = await loadTenantCommunicationIdentity(
+      sb,
+      app.tenant_id,
+    );
+    if (!identity) return json({ ok: false, reason: "not_found" }, 404);
 
     const first = (app.name || "").trim().split(/\s+/)[0] || "candidato(a)";
 
@@ -161,22 +170,18 @@ serve(async (req) => {
 
       const f = fmtBRT(chosenIso);
       // Confirmações WhatsApp (falha de envio não desfaz a reserva)
-      const { data: admins } = await sb.from("profiles")
-        .select("tenant_id, phone, whatsapp_instance")
-        .eq("tenant_id", app.tenant_id).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-        .not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
-      const admin = (admins || [])[0];
-      if (admin) {
+      const route = await loadTenantWhatsAppRoute(sb, app.tenant_id, "teacher");
+      if (route) {
         const candPhone = cleanPhone(app.whatsapp || "");
         if (candPhone.length >= 12) {
-          const msg = `✅ Entrevista confirmada, ${first}! ${f.date} (${f.dow}) às ${f.time}, horário de Brasília. O diretor da Wise Wolf vai te chamar aqui no WhatsApp no horário combinado. A Michelle te lembra no dia 😉 Boa sorte! 🐺`;
-          if (await sendWhats(admin.whatsapp_instance, candPhone, msg)) {
+          const msg = `✅ Entrevista confirmada, ${first}! ${f.date} (${f.dow}) às ${f.time}, horário de Brasília. A direção da ${identity.brandName} vai te chamar aqui no WhatsApp no horário combinado. A Michelle te lembra no dia 😉 Boa sorte!`;
+          if (await sendWhats(route.instanceName, candPhone, msg)) {
             await sb.from("ai_wa_messages").insert({ tenant_id: app.tenant_id, phone: candPhone, agent: "rita", direction: "out", content: msg, meta: { application_id: app.id, kind: "interview_booked" } });
           }
         }
-        const ownerPhone = cleanPhone(admin.phone || "");
+        const ownerPhone = cleanPhone(route.ownerPhone || "");
         if (ownerPhone.length >= 12) {
-          await sendWhats(admin.whatsapp_instance, ownerPhone,
+          await sendWhats(route.instanceName, ownerPhone,
             `📅 *RH (IA):* entrevista AGENDADA — *${app.name}* (${cleanPhone(app.whatsapp || "") || "sem tel"}), ${f.date} às ${f.time}.${app.ai_score != null ? ` Score da triagem: ${app.ai_score}.` : ""} Detalhes no painel RH.`);
         }
       }

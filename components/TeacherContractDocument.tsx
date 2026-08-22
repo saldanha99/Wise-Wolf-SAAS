@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
-import { ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 
 interface TeacherContractProps {
     teacherName: string;
@@ -8,8 +9,8 @@ interface TeacherContractProps {
     teacherCPF: string;
     teacherAddress: string;
     teacherBirthDate: string;
+    school?: SchoolInfo | null;
     hourlyRate?: number; // Valor dinâmico vindo do gerador
-    contractCity?: string; // Ex: Santa Isabel/SP
     contractDate?: string; // Ex: 19 de agosto de 2025
     acceptedAt?: string;
     userIp?: string;
@@ -19,14 +20,28 @@ interface TeacherContractProps {
     innerRef?: React.RefObject<HTMLDivElement>;
 }
 
+export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRate?: number | null) {
+    const schoolIdentity = getSchoolContractIdentity(school);
+    const normalizedHourlyRate = Number(hourlyRate);
+    const hasValidHourlyRate = Number.isFinite(normalizedHourlyRate) && normalizedHourlyRate > 0;
+    return {
+        ...schoolIdentity,
+        hourlyRate: hasValidHourlyRate ? normalizedHourlyRate : null,
+        isReady: schoolIdentity.isReady && hasValidHourlyRate,
+        missingFields: hasValidHourlyRate
+            ? schoolIdentity.missingFields
+            : [...schoolIdentity.missingFields, 'valor da hora/aula'],
+    };
+}
+
 export function TeacherContractDocument({
     teacherName,
     teacherRG,
     teacherCPF,
     teacherAddress,
     teacherBirthDate,
-    hourlyRate = 16, // Default se não fornecido
-    contractCity = "Santa Isabel/SP",
+    school,
+    hourlyRate,
     contractDate,
     acceptedAt,
     userIp,
@@ -38,14 +53,20 @@ export function TeacherContractDocument({
     const componentRef = useRef<HTMLDivElement>(null);
     const documentRef = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
     const isResponsive = displayMode === 'responsive';
+    const schoolIdentity = getTeacherContractReadiness(school, hourlyRate);
 
     const handlePrint = useReactToPrint({
         contentRef: documentRef,
-        documentTitle: `Contrato_Professor_WiseWolf_${teacherName}`,
+        documentTitle: `Contrato_Professor_${schoolIdentity.isReady ? schoolIdentity.name : 'Escola_nao_configurada'}_${teacherName}`,
     });
 
+    const handleSafePrint = () => {
+        if (!schoolIdentity.isReady) return;
+        handlePrint();
+    };
+
     // Cálculos dinâmicos
-    const finalHourlyRate = hourlyRate || 16;
+    const finalHourlyRate = schoolIdentity.hourlyRate || 0;
     const halfHourlyRate = finalHourlyRate / 2;
 
     // Data do contrato: quando já assinado, CONGELA na data da assinatura (acceptedAt) —
@@ -64,8 +85,10 @@ export function TeacherContractDocument({
                 <div className="w-full max-w-[210mm] flex justify-end print:hidden">
                     <button
                         type="button"
-                        onClick={handlePrint}
-                        className="bg-[#002366] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#001a4d] transition-all flex items-center gap-2"
+                        onClick={handleSafePrint}
+                        disabled={!schoolIdentity.isReady}
+                        title={!schoolIdentity.isReady ? 'Complete a identidade jurídica e a assinatura da escola antes de imprimir.' : undefined}
+                        className="bg-[#002366] text-white px-6 py-2 rounded-lg font-bold hover:bg-[#001a4d] transition-all flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         🖨️ Imprimir / Salvar PDF
                     </button>
@@ -113,10 +136,16 @@ export function TeacherContractDocument({
                         }
                     }
                 `}</style>
+                {!schoolIdentity.isReady && (
+                    <div className="mb-5 flex items-start gap-2 border-2 border-amber-400 bg-amber-50 p-3 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                        <AlertTriangle size={15} className="shrink-0" />
+                        <span>Rascunho bloqueado — configure {schoolIdentity.missingFields.join(', ')} antes de assinar ou gerar o documento.</span>
+                    </div>
+                )}
                 {/* Cabeçalho */}
                 <div className="teacher-contract-header flex justify-between items-center mb-6 border-b-2 border-[#002366] pb-2">
                     <div className="text-xl font-black text-[#002366] tracking-tighter">
-                        WISE WOLF <span className="text-red-600">LANGUAGE</span>
+                        {schoolIdentity.name}
                     </div>
                     <div className="text-right text-[10px] text-gray-500 uppercase font-bold">
                         Professor Autônomo
@@ -128,7 +157,7 @@ export function TeacherContractDocument({
                 {/* Identificação das Partes */}
                 <div className="mb-4 space-y-2 text-justify">
                     <p>
-                        <strong>CONTRATANTE:</strong> Débora Alves Fernandes, brasileira, solteira, nascida em 23/03/1999, portadora do CPF nº 506.398.248-46, domiciliada na Rua Um, nº 256, Santa Isabel – SP, CEP 07500-000, doravante denominada <strong>“WISE WOLF”</strong>.
+                        <strong>CONTRATANTE:</strong> {schoolIdentity.name}, inscrita no CNPJ sob nº {schoolIdentity.cnpj}, com sede em {schoolIdentity.address}, neste ato representada por {schoolIdentity.directorName}, doravante denominada <strong>“CONTRATANTE”</strong>.
                     </p>
                     <p>
                         <strong>CONTRATADO:</strong> {teacherName || '---'}, brasileiro(a), nascido(a) em {teacherBirthDate || '---'}, portador(a) do RG nº {teacherRG || '---'}, CPF nº {teacherCPF || '---'}, domiciliado(a) em {teacherAddress || '---'}, doravante denominado <strong>“PROFESSOR”</strong>.
@@ -171,19 +200,16 @@ export function TeacherContractDocument({
                             3.3 Os valores ajustados possuem natureza exclusivamente civil, referentes à prestação de serviços autônomos, não configurando salário ou qualquer verba de natureza trabalhista.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4 <strong>VALOR DA AULA E REMUNERAÇÃO PROGRESSIVA.</strong> Cada aula ministrada é remunerada em R$ 8,00 (oito reais). O CONTRATADO faz jus à remuneração progressiva quando cumprir, cumulativamente: (i) manter carteira mínima de 10 (dez) alunos ativos; (ii) completar 30 (trinta) dias corridos consecutivos sem registrar falta; e (iii) não possuir relato de ausência ou conflito de lançamento em aberto. Atendidos os três requisitos, a remuneração é apurada por aluno ativo, observada a ordem de antiguidade de matrícula:
-                        </p>
-                        <div className="pl-4 space-y-1 mt-1">
-                            <p>a) do 10º aluno ativo em diante: R$ 10,50 (dez reais e cinquenta centavos) por aula.</p>
-                        </div>
-                        <p className="text-justify mt-2">
-                            3.4.1 Considera-se <strong>aluno ativo</strong> aquele com matrícula ativa e agendamento vigente na agenda do CONTRATADO. Considera-se <strong>conflito de lançamento</strong> a divergência entre a aula registrada pelo CONTRATADO e a confirmação de presença do aluno. Enquanto qualquer dos três requisitos não for atendido, todas as aulas são remuneradas por R$ 8,00.
+                            3.4 <strong>VALOR DA AULA.</strong> Cada aula de 30 (trinta) minutos ministrada é remunerada em R$ {halfHourlyRate.toFixed(2).replace('.', ',')}, conforme a hora/aula expressamente definida neste instrumento. Bonificações ou faixas progressivas somente produzirão efeito quando formalizadas pela CONTRATANTE em política ou aditivo aplicável ao CONTRATADO.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4.2 São remuneradas por R$ 8,00 a aula em que o ALUNO falta, desde que o CONTRATADO tenha comparecido. A aula em que o CONTRATADO falta não é remunerada, passando a sê-lo apenas por meio da respectiva reposição. A reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.
+                            3.4.1 Considera-se <strong>conflito de lançamento</strong> a divergência entre a aula registrada pelo CONTRATADO e a confirmação de presença do aluno. Valores adicionais eventualmente previstos ficam suspensos enquanto houver conflito em aberto, sem alteração do valor-base expresso neste contrato.
                         </p>
                         <p className="text-justify mt-2">
-                            3.5 <strong>TREINAMENTO DE PROFESSORES.</strong> O CONTRATADO formalmente habilitado pela CONTRATANTE a ministrar treinamentos a outros professores recebe R$ 16,00 (dezesseis reais) por treinamento ministrado. O professor que recebe o treinamento é remunerado pelo valor de aula de R$ 8,00.
+                            3.4.2 A aula em que o ALUNO falta é remunerada pelo valor-base de R$ {halfHourlyRate.toFixed(2).replace('.', ',')}, desde que o CONTRATADO tenha comparecido. A aula em que o CONTRATADO falta não é remunerada, passando a sê-lo apenas por meio da respectiva reposição. A reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.
+                        </p>
+                        <p className="text-justify mt-2">
+                            3.5 <strong>TREINAMENTO DE PROFESSORES.</strong> Quando formalmente solicitado pela CONTRATANTE, o treinamento é remunerado segundo o valor e a duração previamente registrados para a atividade, vedada a aplicação automática de valores pertencentes a outra escola ou contratação.
                         </p>
                         <p className="text-justify">
                             3.6 Para fins de apuração da remuneração, somente serão contabilizadas as aulas com presença confirmada pelo aluno no link de confirmação enviado ou, na ausência de confirmação do aluno, mediante registro de presença realizado pelo próprio CONTRATADO (veredito do professor).
@@ -252,7 +278,7 @@ export function TeacherContractDocument({
                             9.1 O presente instrumento não gera exclusividade, podendo o CONTRATADO prestar serviços a terceiros. 
                         </p>
                         <p className="text-justify">
-                            9.2 O foro eleito para dirimir eventuais controvérsias é o da Comarca de Santa Isabel/SP, com renúncia a qualquer outro.
+                            9.2 O foro eleito para dirimir eventuais controvérsias é o da Comarca de {schoolIdentity.city}/{schoolIdentity.state}, com renúncia a qualquer outro.
                         </p>
                         <p className="text-justify">
                             9.3: O CONTRATADO compromete-se a não contatar, captar ou prestar serviços educacionais diretamente a alunos ativos da CONTRATANTE durante a vigência deste contrato e pelo prazo de 6 (seis) meses após seu encerramento.
@@ -262,7 +288,7 @@ export function TeacherContractDocument({
                     <div>
                         <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 10ª – PROPRIEDADE INTELECTUAL E USO DE MATERIAL</h3>
                         <p className="text-justify">
-                            10.1 Todo o material didático, metodológico, estratégico e visual disponibilizado pela CONTRATANTE, incluindo apostilas, slides, apresentações, roteiros de aula, gravações, identidade visual, logotipo, nome empresarial, marca “Wise Wolf”, bem como qualquer conteúdo desenvolvido no âmbito da escola, constitui propriedade intelectual exclusiva da CONTRATANTE.
+                            10.1 Todo o material didático, metodológico, estratégico e visual disponibilizado pela CONTRATANTE, incluindo apostilas, slides, apresentações, roteiros de aula, gravações, identidade visual, logotipo, nome empresarial e marcas identificadas pela CONTRATANTE, bem como qualquer conteúdo desenvolvido no âmbito da escola, constitui propriedade intelectual exclusiva da CONTRATANTE.
                         </p>
                         <p className="text-justify">
                             10.2 O CONTRATADO compromete-se a utilizar referido material exclusivamente para a execução das aulas vinculadas à CONTRATANTE, sendo vedada sua reprodução, distribuição, compartilhamento, adaptação, comercialização ou utilização para fins próprios ou de terceiros.
@@ -276,24 +302,33 @@ export function TeacherContractDocument({
 
                 {/* Assinaturas */}
                 <div className="mt-8 pt-4 border-t border-gray-100">
-                    <p className="text-center mb-6">{contractCity}, {displayDate}.</p>
+                    <p className="text-center mb-6">{schoolIdentity.city}/{schoolIdentity.state}, {displayDate}.</p>
 
                     <div className="teacher-contract-signatures flex justify-between gap-8 mt-10 min-h-[100px]">
-                        {/* Assinatura Wise Wolf */}
+                        {/* Assinatura da escola — sempre específica do tenant */}
                         <div className="flex-1 flex flex-col items-center justify-end relative">
                             <div className="mb-2 flex flex-col items-center gap-1">
-                                <img
-                                    src="/director-signature.png"
-                                    alt="Assinatura Diretor"
-                                    className="h-12 object-contain"
-                                />
+                                {schoolIdentity.signatureUrl ? (
+                                    <img
+                                        src={schoolIdentity.signatureUrl}
+                                        alt={`Assinatura de ${schoolIdentity.directorName}`}
+                                        className="h-12 object-contain"
+                                        crossOrigin="anonymous"
+                                    />
+                                ) : (
+                                    <span className="text-center text-[9px] font-bold text-amber-700">
+                                        Assinatura da contratante não configurada
+                                    </span>
+                                )}
                             </div>
                             <div className="border-t border-black pt-1 w-full text-center relative z-10">
-                                <p className="font-bold text-[#002366] text-[10px]">DEBORA ALVES FERNANDES</p>
-                                <p className="text-[8px] text-gray-500 uppercase tracking-wide">Contratante (Wise Wolf)</p>
-                                <div className="flex items-center justify-center gap-1 text-[8px] text-emerald-600 font-bold mt-0.5 bg-emerald-50 py-0.5 rounded-full w-fit mx-auto px-2">
-                                    <ShieldCheck size={8} /> Assinado Digitalmente
-                                </div>
+                                <p className="font-bold text-[#002366] text-[10px]">{schoolIdentity.directorName}</p>
+                                <p className="text-[8px] text-gray-500 uppercase tracking-wide">Contratante ({schoolIdentity.name})</p>
+                                {schoolIdentity.signatureUrl && (
+                                    <div className="flex items-center justify-center gap-1 text-[8px] text-emerald-600 font-bold mt-0.5 bg-emerald-50 py-0.5 rounded-full w-fit mx-auto px-2">
+                                        <ShieldCheck size={8} /> Assinatura cadastrada pelo tenant
+                                    </div>
+                                )}
                             </div>
                         </div>
 

@@ -1,37 +1,100 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0";
+import { authorizeRequest } from "../_shared/request-auth.ts";
+import {
+  loadTenantWhatsAppRoute,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
+import {
+  loadOpportunityDispatchGuard,
+} from "../_shared/opportunity-dispatch.ts";
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-token',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 // CONFIGURATION
 const API_URL = Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
-const API_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
-const BASE_URL = "https://system.wisewolflanguage.com.br/claim-opportunity";
-// Só usado no modo 'group' quando o diretor não configurou um grupo próprio (legado).
-const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
+const API_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(
+  Boolean,
+);
 
 const DAY_MAP: { [key: number]: string } = {
-    1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado', 0: 'Domingo'
+  1: "Segunda",
+  2: "Terça",
+  3: "Quarta",
+  4: "Quinta",
+  5: "Sexta",
+  6: "Sábado",
+  0: "Domingo",
 };
 
 // Map weekday name to short label for display
 const WEEKDAY_LABELS: { [key: string]: string } = {
-    'monday': 'Segunda', 'tuesday': 'Terça', 'wednesday': 'Quarta',
-    'thursday': 'Quinta', 'friday': 'Sexta', 'saturday': 'Sábado', 'sunday': 'Domingo'
+  "monday": "Segunda",
+  "tuesday": "Terça",
+  "wednesday": "Quarta",
+  "thursday": "Quinta",
+  "friday": "Sexta",
+  "saturday": "Sábado",
+  "sunday": "Domingo",
 };
 
 // Professor inativo (suspenso/desligado) NUNCA recebe convite — mesma regra do
 // helper is_teacher_notifiable. lifecycle_status é a fonte de verdade; status
 // (decorativo) também barra valores explicitamente inativos por segurança.
-const INACTIVE_STATUS = ['Inativo', 'INACTIVE', 'Inactive', 'Arquivado', 'Cancelado', 'Trancado'];
+const INACTIVE_STATUS = [
+  "Inativo",
+  "INACTIVE",
+  "Inactive",
+  "Arquivado",
+  "Cancelado",
+  "Trancado",
+];
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_BODY_BYTES = 32_768;
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function saoPauloDateTimeParts(value: Date): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value || "";
+  return {
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    time: `${part("hour")}:${part("minute")}`,
+  };
+}
+
+function calendarDayOfWeek(date: string): number {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
 function cleanTeacherPhone(raw: string): string | null {
-    let p = (raw || '').replace(/\D/g, '');
-    if (p.length === 10 || p.length === 11) p = '55' + p;
-    return p.length >= 12 ? p : null;
+  let p = (raw || "").replace(/\D/g, "");
+  if (p.length === 10 || p.length === 11) p = "55" + p;
+  return p.length >= 12 ? p : null;
 }
 
 // Resolve o JID real cadastrado no WhatsApp antes de enviar. Necessário porque
@@ -39,319 +102,543 @@ function cleanTeacherPhone(raw: string): string | null {
 // 9º dígito extra do celular — mandar pro número "no chute" (com o 9, como
 // fica salvo no cadastro) não bate com o JID real e a mensagem nunca chega,
 // mesmo a Evolution respondendo 200/PENDING. Resolve e usa o JID canônico.
-async function resolveJid(instance: string, phone: string): Promise<string | null> {
-    for (const key of API_KEYS) {
-        try {
-            const resp = await fetch(`${API_URL}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", apikey: key },
-                body: JSON.stringify({ numbers: [phone] }),
-                signal: AbortSignal.timeout(10000),
-            });
-            if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
-            if (!resp.ok) return null;
-            const data = await resp.json();
-            const entry = Array.isArray(data) ? data[0] : null;
-            if (entry?.exists && entry.jid) return String(entry.jid).split('@')[0];
-            return null;
-        } catch {
-            return null;
-        }
+async function resolveJid(
+  instance: string,
+  phone: string,
+): Promise<string | null> {
+  for (const key of API_KEYS) {
+    try {
+      const resp = await fetch(
+        `${API_URL}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key },
+          body: JSON.stringify({ numbers: [phone] }),
+          signal: AbortSignal.timeout(10000),
+        },
+      );
+      if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const entry = Array.isArray(data) ? data[0] : null;
+      if (entry?.exists && entry.jid) return String(entry.jid).split("@")[0];
+      return null;
+    } catch {
+      return null;
     }
-    return null;
+  }
+  return null;
 }
 
 serve(async (req) => {
-    // Check CORS
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  try {
+    console.log("Broadcast Function Hit");
+    const contentLength = Number(req.headers.get("content-length") || "0");
+    if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+      return json({ error: "Payload too large" }, 413);
+    }
+    const authorization = await authorizeRequest(req, {
+      corsHeaders,
+      allowedRoles: [
+        "SCHOOL_ADMIN",
+        "SUPER_ADMIN",
+        "COORDINATOR",
+        "COMMERCIAL",
+        "SALESPERSON",
+      ],
+    });
+    if (authorization.ok === false) return authorization.response;
+
+    const supabaseAdmin = authorization.context.admin;
+    const userId = authorization.context.userId;
+    const tenantId = authorization.context.profile?.tenant_id;
+    const callerRole = authorization.context.profile?.role;
+    if (!userId || !tenantId) {
+      return json({ error: "Tenant access is required" }, 403);
     }
 
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > MAX_BODY_BYTES) {
+      return json({ error: "Payload too large" }, 413);
+    }
+    let body: Record<string, unknown>;
     try {
-        console.log("Broadcast Function Hit");
-        // opportunity_id (opcional): quando presente, REAPROVEITA a oportunidade existente
-        // (reagendamento de experimental com falta) em vez de criar uma nova.
-        // dispatch_mode: 'individual' (default, DM só a professores ativos) | 'group' (posta
-        // no grupo de professores configurado — inclui quem estiver no grupo, sem filtro de
-        // status ativo/inativo).
-        const { student_name, student_phone, date, time, interests, preferred_slots, opportunity_id, kind, dispatch_mode } = await req.json();
-        const oppKind = kind === 'TRAINING' ? 'TRAINING' : 'TRIAL';
-        const mode = dispatch_mode === 'group' ? 'group' : 'individual';
-
-        // VALIDATION: Date is now required (YYYY-MM-DD)
-        if (!student_name || !date || !time) {
-            throw new Error("Missing required fields (student_name, date, time).");
-        }
-
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-
-        // Admin Client (Used for both AUTH VERIFICATION and DB ACCESS)
-        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-
-        // 1. AUTH CHECK (Robust Mode)
-        const xUserToken = req.headers.get('x-user-token');
-        const authHeader = req.headers.get('Authorization');
-
-        let token = '';
-
-        if (xUserToken) {
-            token = xUserToken;
-            console.log("Using X-User-Token for auth");
-        } else if (authHeader) {
-            token = authHeader.replace('Bearer ', '');
-        } else {
-            console.error("Missing Authorization Header");
-            return new Response(JSON.stringify({ error: "Missing Authorization Header" }), { status: 200, headers: corsHeaders });
-        }
-
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-
-        if (authError || !user) {
-            console.error("Auth verification failed:", authError);
-            return new Response(JSON.stringify({ error: "Unauthorized: Invalid Session (Admin Check Failed)." }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        console.log(`[Broadcast] User Authenticated: ${user.email} (${user.id})`);
-
-        // 2. INSTÂNCIA DE ENVIO (Profile Priority)
-        let activeInstanceName = null;
-
-        const { data: profile } = await supabaseAdmin
-            .from('profiles')
-            .select('whatsapp_instance, teachers_group_id, tenant_id')
-            .eq('id', user.id)
-            .single();
-
-        if (profile?.whatsapp_instance) {
-            console.log(`[Broadcast] ✅ Using Profile-Linked Instance: ${profile.whatsapp_instance}`);
-            activeInstanceName = profile.whatsapp_instance;
-        }
-
-        if (!activeInstanceName) {
-            console.log("[Broadcast] ⚠️ Profile instance empty. Scanning connected instances...");
-            const { data: wInstance, error: dbError } = await supabaseAdmin
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('user_id', user.id)
-                .in('status', ['connected', 'open'])
-                .order('updated_at', { ascending: false, nullsFirst: false })
-                .limit(1)
-                .single();
-
-            if (wInstance) {
-                console.log(`[Broadcast] Fallback to latest active instance: ${wInstance.instance_name}`);
-                activeInstanceName = wInstance.instance_name;
-            } else if (dbError) {
-                console.warn("DB Error querying whatsapp_instances:", dbError.message);
-            }
-        }
-
-        const INSTANCE = activeInstanceName;
-
-        if (!INSTANCE) {
-            console.error(`[Broadcast] User ${user.email} has no active instance.`);
-            return new Response(JSON.stringify({
-                error: "⚠️ Nenhuma conexão ativa encontrada para seu usuário. Vá em Automação e conecte seu WhatsApp."
-            }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-        }
-
-        console.log(`[Broadcast] 🚀 Disparando (${mode}) pela instância de ${user.email}: ${INSTANCE}`);
-
-        // Date Logic
-        const dateObj = new Date(date + 'T' + time + ':00');
-        const dayOfWeek = dateObj.getDay();
-        const dayString = DAY_MAP[dayOfWeek] || "Dia";
-        const formattedDate = date.split('-').reverse().join('/');
-
-        // 3. Create/Reuse Opportunity
-        const createdSlot = {
-            day: dayOfWeek,
-            time: time,
-            date: date,
-            formatted: `${formattedDate} (${dayString})`
-        };
-
-        let oppData: { id: string };
-
-        if (opportunity_id) {
-            const { data: updated, error: updErr } = await supabaseAdmin
-                .from('opportunities')
-                .update({
-                    slots_proposed: [createdSlot],
-                    status: 'OPEN',
-                    winner_teacher_id: null,
-                    trial_appointment_id: null,
-                    trial_status: null,
-                    conversion_status: 'OPEN',
-                    interests: interests || null,
-                    preferred_slots: preferred_slots || null,
-                })
-                .eq('id', opportunity_id)
-                .select('id')
-                .single();
-            if (updErr || !updated) throw new Error("DB Error (reagendamento): " + (updErr?.message || 'oportunidade não encontrada'));
-            oppData = updated;
-            console.log(`[Broadcast] ♻️ Oportunidade ${opportunity_id} reaberta para reagendamento`);
-        } else {
-            const { data: inserted, error: oppError } = await supabaseAdmin
-                .from('opportunities')
-                .insert({
-                    student_name: student_name,
-                    student_phone: student_phone || '',
-                    slots_proposed: [createdSlot],
-                    status: 'OPEN',
-                    tenant_id: profile?.tenant_id || null,
-                    interests: interests || null,
-                    user_id: user.id,
-                    preferred_slots: preferred_slots || null,
-                    kind: oppKind,
-                })
-                .select('id')
-                .single();
-            if (oppError) throw new Error("DB Error: " + oppError.message);
-            oppData = inserted;
-        }
-
-        // 4. Construct URL with Params
-        const params = new URLSearchParams({
-            id: oppData.id,
-            date: date,
-            time: time,
-            studentName: student_name,
-            studentPhone: student_phone || '',
-            kind: oppKind
-        });
-        const claimLink = `${BASE_URL}?${params.toString()}`;
-
-        // Build preferred slots text
-        let preferredSlotsText = '';
-        if (preferred_slots && Array.isArray(preferred_slots) && preferred_slots.length > 0) {
-            const slotLines = preferred_slots.map((s: { weekday: string; time: string }) => {
-                const dayLabel = WEEKDAY_LABELS[s.weekday] || s.weekday;
-                const timeShort = s.time.replace(':00', 'h').replace(':', 'h');
-                return `  ${dayLabel} ${timeShort}`;
-            }).join('\n');
-            preferredSlotsText = `\n\n📅 *Preferências do aluno:*\n${slotLines}`;
-        }
-
-        const textMessage = oppKind === 'TRAINING'
-            ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*\n\n📚 *Tema:* ${student_name}\n🎯 *Foco:* ${interests || 'Capacitação da equipe'}${preferredSlotsText}\n\n🏆 *Professor(a), quer participar deste treinamento?*\nO primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!\n\n👇 *Aceitar agora:*\n${claimLink}`
-            : `🐺⚡ *EXPERIMENTAL — ${formattedDate} (${dayString}) às ${time}*\n\n📋 *Aluno:* ${student_name}\n🎯 *Objetivo:* ${interests || 'Não informado'}${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
-
-        const endpoint = `${API_URL}/message/sendText/${encodeURIComponent(INSTANCE)}`;
-
-        // ============ MODO GRUPO: posta no grupo de professores configurado ============
-        if (mode === 'group') {
-            const destinationGroup = profile?.teachers_group_id || DEFAULT_TEACHERS_GROUP;
-            let ok = false;
-            let errDetail: string | undefined;
-
-            try {
-                for (const key of API_KEYS) {
-                    const resp = await fetch(endpoint, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", apikey: key },
-                        body: JSON.stringify({ number: destinationGroup, text: textMessage, delay: 1200, linkPreview: false }),
-                        signal: AbortSignal.timeout(15000),
-                    });
-                    if (resp.status === 401) continue;
-                    ok = resp.ok;
-                    if (!ok) {
-                        try { errDetail = JSON.stringify(await resp.json()); } catch { errDetail = `HTTP ${resp.status}`; }
-                    }
-                    break;
-                }
-            } catch (err: any) {
-                errDetail = err?.message;
-            }
-
-            const warning = ok ? undefined : `Falha ao enviar pro grupo${errDetail ? `: ${errDetail}` : ''}.`;
-
-            return new Response(JSON.stringify({
-                success: true,
-                id: oppData.id,
-                instance_used: INSTANCE,
-                mode: 'group',
-                destination_group: destinationGroup,
-                ...(warning ? { warning } : {}),
-            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        }
-
-        // ============ MODO INDIVIDUAL (default): DM só para professores ATIVOS ============
-        //    Antes ia num broadcast de GRUPO: qualquer um no grupo (inclusive ex-professor
-        //    desligado) recebia o convite. Agora o sistema escolhe a lista — desligado/
-        //    suspenso NUNCA entra (mesma regra do is_teacher_notifiable). "O primeiro a
-        //    clicar garante" continua valendo: o accept-opportunity tem trava atômica.
-        const { data: teachers, error: teachersErr } = await supabaseAdmin
-            .from('profiles')
-            .select('id, full_name, phone, status')
-            .eq('tenant_id', profile?.tenant_id)
-            .eq('role', 'TEACHER')
-            .eq('lifecycle_status', 'active');
-
-        if (teachersErr) throw new Error("DB Error (teachers): " + teachersErr.message);
-
-        const recipients = (teachers || [])
-            .filter((t: any) => !INACTIVE_STATUS.includes(t.status || ''))
-            .map((t: any) => ({ id: t.id, name: t.full_name, phone: cleanTeacherPhone(t.phone || '') }))
-            .filter((t: any) => !!t.phone);
-
-        let sent = 0;
-        const failed: string[] = [];
-
-        for (const r of recipients) {
-            let ok = false;
-            // Resolve o JID real (corrige o caso do 9º dígito) antes de enviar; se a
-            // resolução falhar, cai pro número "no chute" como antes (não bloqueia envio).
-            const targetNumber = (await resolveJid(INSTANCE, r.phone!)) || r.phone!;
-            try {
-                for (const key of API_KEYS) {
-                    const resp = await fetch(endpoint, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "apikey": key },
-                        body: JSON.stringify({ number: targetNumber, text: textMessage, delay: 1200, linkPreview: false }),
-                        signal: AbortSignal.timeout(15000),
-                    });
-                    if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
-                    ok = resp.ok;
-                    break;
-                }
-            } catch (err: any) {
-                console.error(`[Broadcast] Falha ao enviar p/ ${r.name}:`, err?.message);
-                ok = false;
-            }
-            if (ok) sent++; else failed.push(r.name || r.id);
-        }
-
-        const warning = sent === 0
-            ? (recipients.length === 0
-                ? "Nenhum professor ativo com WhatsApp para receber o convite."
-                : "Oportunidade criada, mas nenhuma mensagem foi entregue (verifique a conexão do WhatsApp).")
-            : undefined;
-
-        return new Response(JSON.stringify({
-            success: true,
-            id: oppData.id,
-            instance_used: INSTANCE,
-            mode: 'individual',
-            recipients: sent,
-            total_active_teachers: recipients.length,
-            failed: failed.length,
-            ...(warning ? { warning } : {}),
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    } catch (error: any) {
-        console.error("Critical Error", error);
-        return new Response(JSON.stringify({ error: error.message }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const parsed = JSON.parse(rawBody || "{}");
+      if (!isRecord(parsed)) throw new Error("invalid_body");
+      body = parsed;
+    } catch {
+      return json({ error: "Invalid JSON body" }, 400);
     }
+    const allowedFields = new Set([
+      "student_name",
+      "student_phone",
+      "date",
+      "time",
+      "interests",
+      "preferred_slots",
+      "opportunity_id",
+      "kind",
+      "dispatch_mode",
+    ]);
+    if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+      return json({ error: "Unexpected opportunity field" }, 400);
+    }
+
+    let student_name = safeCommunicationText(body.student_name, 120);
+    let student_phone = typeof body.student_phone === "string"
+      ? body.student_phone.replace(/\D/g, "").slice(0, 15)
+      : "";
+    const date = typeof body.date === "string" ? body.date.trim() : "";
+    const time = typeof body.time === "string" ? body.time.trim() : "";
+    const interests = safeCommunicationText(body.interests, 2000);
+    const rawPreferredSlots = body.preferred_slots ?? null;
+    const preferred_slots: Array<{ weekday: string; time: string }> | null =
+      Array.isArray(rawPreferredSlots)
+        ? rawPreferredSlots.flatMap((slot) => {
+          if (!isRecord(slot)) return [];
+          const weekday = typeof slot.weekday === "string"
+            ? slot.weekday.trim().toLowerCase()
+            : "";
+          const preferredTime = typeof slot.time === "string"
+            ? slot.time.trim()
+            : "";
+          return WEEKDAY_LABELS[weekday] &&
+              /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)
+            ? [{ weekday, time: preferredTime }]
+            : [];
+        })
+        : null;
+    const opportunity_id = typeof body.opportunity_id === "string"
+      ? body.opportunity_id.trim()
+      : "";
+    let oppKind = body.kind === "TRAINING" ? "TRAINING" : "TRIAL";
+    const mode = body.dispatch_mode === "group" ? "group" : "individual";
+    if (
+      !student_name || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ||
+      (student_phone && student_phone.length < 10) ||
+      (!opportunity_id && oppKind === "TRIAL" && student_phone.length < 10) ||
+      (opportunity_id && !UUID_PATTERN.test(opportunity_id)) ||
+      (body.kind !== undefined && body.kind !== "TRIAL" &&
+        body.kind !== "TRAINING") ||
+      (body.dispatch_mode !== undefined && body.dispatch_mode !== "group" &&
+        body.dispatch_mode !== "individual") ||
+      (opportunity_id && body.kind === "TRAINING") ||
+      (rawPreferredSlots !== null && !Array.isArray(rawPreferredSlots)) ||
+      (Array.isArray(rawPreferredSlots) && rawPreferredSlots.length > 12) ||
+      (Array.isArray(rawPreferredSlots) &&
+        preferred_slots?.length !== rawPreferredSlots.length)
+    ) {
+      return json({ error: "Invalid opportunity payload" }, 400);
+    }
+    if (
+      opportunity_id &&
+      !["SCHOOL_ADMIN", "SUPER_ADMIN", "COORDINATOR"].includes(callerRole || "")
+    ) {
+      return json({ error: "Only school managers can reopen a trial" }, 403);
+    }
+    if (oppKind === "TRIAL" && mode === "group") {
+      return json(
+        { error: "Trial opportunities must use active teacher recipients" },
+        400,
+      );
+    }
+    const requestedStart = new Date(`${date}T${time}:00-03:00`);
+    if (!Number.isFinite(requestedStart.getTime())) {
+      return json({ error: "Opportunity time must be valid" }, 400);
+    }
+    const normalizedStart = saoPauloDateTimeParts(requestedStart);
+    if (
+      normalizedStart.date !== date || normalizedStart.time !== time ||
+      requestedStart.getTime() <= Date.now() + 5 * 60_000 ||
+      requestedStart.getTime() > Date.now() + 366 * 24 * 60 * 60_000
+    ) {
+      return json(
+        { error: "Opportunity time must be a valid future slot" },
+        400,
+      );
+    }
+    if (!API_KEYS.length) {
+      return json({ error: "WhatsApp provider is unavailable" }, 503);
+    }
+
+    const route = await loadTenantWhatsAppRoute(
+      supabaseAdmin,
+      tenantId,
+      "teacher",
+    );
+    const INSTANCE = route?.instanceName || null;
+
+    if (!INSTANCE) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "⚠️ Nenhuma conexão institucional ativa encontrada para esta escola.",
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (!route?.identity.portalUrl) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "⚠️ Configure o domínio institucional antes de divulgar oportunidades.",
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (mode === "group" && !route?.teachersGroupId) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "⚠️ Configure o grupo de professores antes de divulgar em grupo.",
+        }),
+        {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    console.log(`[Broadcast] 🚀 Disparando oportunidade no modo ${mode}`);
+
+    // Date Logic
+    const dayOfWeek = calendarDayOfWeek(date);
+    const dayString = DAY_MAP[dayOfWeek] || "Dia";
+    const formattedDate = date.split("-").reverse().join("/");
+
+    // 3. Create/Reuse Opportunity
+    const createdSlot = {
+      day: dayOfWeek,
+      time: time,
+      date: date,
+      formatted: `${formattedDate} (${dayString})`,
+    };
+
+    let oppData: { id: string; claimGeneration: number };
+
+    if (opportunity_id) {
+      const dispatchGuard = await loadOpportunityDispatchGuard(
+        supabaseAdmin,
+        tenantId,
+        opportunity_id,
+      );
+      if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
+        return json({
+          error: "Esta solicitação é direcionada e não pode ser redistribuída.",
+        }, 409);
+      }
+      const { data: reopened, error: reopenError } = await supabaseAdmin.rpc(
+        "reopen_trial_opportunity_for_broadcast",
+        {
+          p_tenant_id: tenantId,
+          p_opportunity_id: opportunity_id,
+          p_slots_proposed: [createdSlot],
+          p_interests: interests || null,
+          p_preferred_slots: preferred_slots || null,
+        },
+      );
+      if (reopenError || !reopened?.ok) {
+        console.error(
+          "[Broadcast] Reabertura recusada:",
+          reopenError || reopened?.error,
+        );
+        return new Response(
+          JSON.stringify({
+            error: "Não foi possível reabrir esta experimental com segurança.",
+          }),
+          {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+      oppData = {
+        id: opportunity_id,
+        claimGeneration: Number(reopened.claim_generation),
+      };
+      student_name = safeCommunicationText(reopened.student_name, 120) ||
+        "Aluno(a)";
+      student_phone = typeof reopened.student_phone === "string"
+        ? reopened.student_phone.replace(/\D/g, "").slice(0, 15)
+        : "";
+      oppKind = "TRIAL";
+      console.log(
+        `[Broadcast] ♻️ Oportunidade ${opportunity_id} reaberta para reagendamento`,
+      );
+    } else {
+      const recentCutoff = new Date(Date.now() - 2 * 86400000).toISOString();
+      const { data: recentOpen, error: recentError } = await supabaseAdmin
+        .from("opportunities")
+        .select("id,student_name,slots_proposed,claim_generation")
+        .eq("tenant_id", tenantId)
+        .eq("status", "OPEN")
+        .eq("kind", oppKind)
+        .eq("student_phone", student_phone || "")
+        .gte("opened_at", recentCutoff)
+        .order("opened_at", { ascending: false })
+        .limit(10);
+      if (recentError) throw new Error("DB Error: " + recentError.message);
+      let reusable: any = null;
+      for (const candidate of (recentOpen || [])) {
+        const dispatchGuard = await loadOpportunityDispatchGuard(
+          supabaseAdmin,
+          tenantId,
+          candidate.id,
+        );
+        if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
+          return json({
+            error:
+              "Já existe uma solicitação direcionada para este aluno; ela não pode ser divulgada.",
+          }, 409);
+        }
+        const candidateSlot = Array.isArray(candidate.slots_proposed)
+          ? candidate.slots_proposed[0]
+          : null;
+        if (
+          candidate.student_name !== student_name ||
+          candidateSlot?.date !== date || candidateSlot?.time !== time
+        ) {
+          continue;
+        }
+        reusable = candidate;
+        break;
+      }
+
+      if (reusable) {
+        oppData = {
+          id: reusable.id,
+          claimGeneration: Number(reusable.claim_generation),
+        };
+      } else {
+        const { data: inserted, error: oppError } = await supabaseAdmin
+          .from("opportunities")
+          .insert({
+            student_name: student_name,
+            student_phone: student_phone || "",
+            slots_proposed: [createdSlot],
+            status: "OPEN",
+            tenant_id: tenantId,
+            interests: interests || null,
+            user_id: userId,
+            preferred_slots: preferred_slots || null,
+            kind: oppKind,
+          })
+          .select("id,claim_generation")
+          .single();
+        if (oppError) throw new Error("DB Error: " + oppError.message);
+        oppData = {
+          id: inserted.id,
+          claimGeneration: Number(inserted.claim_generation),
+        };
+      }
+    }
+
+    if (
+      !Number.isInteger(oppData.claimGeneration) ||
+      oppData.claimGeneration < 1
+    ) {
+      throw new Error("DB Error: invalid claim generation");
+    }
+    const dispatchGuard = await loadOpportunityDispatchGuard(
+      supabaseAdmin,
+      tenantId,
+      oppData.id,
+    );
+    if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
+      return json({
+        error: "Esta solicitação é direcionada e não pode ser divulgada.",
+      }, 409);
+    }
+
+    // 4. Construct URL with Params
+    const claimLink = `${route.identity.portalUrl}/claim-opportunity?id=${
+      encodeURIComponent(oppData.id)
+    }&g=${oppData.claimGeneration}`;
+
+    // Build preferred slots text
+    let preferredSlotsText = "";
+    if (
+      preferred_slots && Array.isArray(preferred_slots) &&
+      preferred_slots.length > 0
+    ) {
+      const slotLines = preferred_slots.map(
+        (s: { weekday: string; time: string }) => {
+          const dayLabel = WEEKDAY_LABELS[s.weekday] || s.weekday;
+          const timeShort = s.time.replace(":00", "h").replace(":", "h");
+          return `  ${dayLabel} ${timeShort}`;
+        },
+      ).join("\n");
+      preferredSlotsText = `\n\n📅 *Preferências do aluno:*\n${slotLines}`;
+    }
+
+    const textMessage = oppKind === "TRAINING"
+      ? `🎓⚡ *TREINAMENTO AO VIVO — ${formattedDate} (${dayString}) às ${time}*\n\n📚 *Tema:* ${student_name}\n🎯 *Foco:* ${
+        interests || "Capacitação da equipe"
+      }${preferredSlotsText}\n\n🏆 *Professor(a), quer participar deste treinamento?*\nO primeiro a clicar no link abaixo garante a vaga (remunerado como aula)!\n\n👇 *Aceitar agora:*\n${claimLink}`
+      : `⚡ *EXPERIMENTAL — ${route.identity.brandName} — ${formattedDate} (${dayString}) às ${time}*\n\n📋 *Aluno:* ${student_name}\n🎯 *Objetivo:* ${
+        interests || "Não informado"
+      }${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
+
+    const endpoint = `${API_URL}/message/sendText/${
+      encodeURIComponent(INSTANCE)
+    }`;
+
+    // ============ MODO GRUPO: posta no grupo de professores configurado ============
+    if (mode === "group") {
+      const destinationGroup = route!.teachersGroupId!;
+      let ok = false;
+
+      try {
+        for (const key of API_KEYS) {
+          const resp = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: key },
+            body: JSON.stringify({
+              number: destinationGroup,
+              text: textMessage,
+              delay: 1200,
+              linkPreview: false,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          if (resp.status === 401) continue;
+          ok = resp.ok;
+          break;
+        }
+      } catch {
+        ok = false;
+      }
+
+      if (!ok) {
+        return json({
+          success: false,
+          error: "WhatsApp delivery failed",
+          id: oppData.id,
+          retryable: true,
+        }, 502);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          id: oppData.id,
+          mode: "group",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ============ MODO INDIVIDUAL (default): DM só para professores ATIVOS ============
+    //    Antes ia num broadcast de GRUPO: qualquer um no grupo (inclusive ex-professor
+    //    desligado) recebia o convite. Agora o sistema escolhe a lista — desligado/
+    //    suspenso NUNCA entra (mesma regra do is_teacher_notifiable). "O primeiro a
+    //    clicar garante" continua valendo: o accept-opportunity tem trava atômica.
+    const { data: memberships, error: membershipsError } = await supabaseAdmin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("role", "TEACHER")
+      .eq("status", "ACTIVE");
+
+    if (membershipsError) {
+      throw new Error("DB Error (memberships): " + membershipsError.message);
+    }
+    const activeTeacherIds = (memberships || []).map((
+      membership: { user_id: string },
+    ) => membership.user_id);
+    const { data: teachers, error: teachersErr } = activeTeacherIds.length
+      ? await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, phone, status")
+        .in("id", activeTeacherIds)
+        .eq("lifecycle_status", "active")
+      : { data: [], error: null };
+
+    if (teachersErr) {
+      throw new Error("DB Error (teachers): " + teachersErr.message);
+    }
+
+    const recipients = (teachers || [])
+      .filter((t: any) => !INACTIVE_STATUS.includes(t.status || ""))
+      .map((t: any) => ({
+        id: t.id,
+        name: t.full_name,
+        phone: cleanTeacherPhone(t.phone || ""),
+      }))
+      .filter((t: any) => !!t.phone);
+
+    let sent = 0;
+    const failed: string[] = [];
+
+    for (const r of recipients) {
+      let ok = false;
+      // Resolve o JID real (corrige o caso do 9º dígito) antes de enviar; se a
+      // resolução falhar, cai pro número "no chute" como antes (não bloqueia envio).
+      const targetNumber = (await resolveJid(INSTANCE, r.phone!)) || r.phone!;
+      try {
+        for (const key of API_KEYS) {
+          const resp = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": key },
+            body: JSON.stringify({
+              number: targetNumber,
+              text: textMessage,
+              delay: 1200,
+              linkPreview: false,
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
+          ok = resp.ok;
+          break;
+        }
+      } catch (err: any) {
+        console.error(
+          `[Broadcast] Falha ao enviar p/ ${r.name}:`,
+          err?.message,
+        );
+        ok = false;
+      }
+      if (ok) sent++;
+      else failed.push(r.name || r.id);
+    }
+
+    if (sent === 0) {
+      return json({
+        success: false,
+        error: recipients.length === 0
+          ? "No active teacher recipient"
+          : "WhatsApp delivery failed",
+        id: oppData.id,
+        retryable: true,
+      }, 502);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        id: oppData.id,
+        mode: "individual",
+        recipients: sent,
+        total_active_teachers: recipients.length,
+        failed: failed.length,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (error: any) {
+    console.error("Critical Error", error);
+    return json({ error: "Broadcast failed" }, 500);
+  }
 });

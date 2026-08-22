@@ -62,7 +62,7 @@ validate_https_url() {
   [[ "$https_url_tail" != *".."* && "$https_url_tail" != *"//"* ]]
 }
 
-for command_name in git npm npx node ssh rsync curl shasum base64 mktemp find; do
+for command_name in awk base64 curl find git head mktemp node npm npx rsync shasum sort ssh uniq; do
   require_command "$command_name"
 done
 
@@ -80,9 +80,8 @@ DEPLOY_PRESERVE_REMOTE_FUNCTIONS="${DEPLOY_PRESERVE_REMOTE_FUNCTIONS:-0}"
 [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "0" ||
   "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" ]] ||
   die "DEPLOY_PRESERVE_REMOTE_FUNCTIONS deve ser 0 ou 1"
-if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" &&
-  "${DEPLOY_ALLOW_FUNCTION_DRIFT:-0}" = "1" ]]; then
-  die "DEPLOY_PRESERVE_REMOTE_FUNCTIONS e DEPLOY_ALLOW_FUNCTION_DRIFT são incompatíveis"
+if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" ]]; then
+  die "esta release acopla migrations e Edge Functions de segurança; DEPLOY_PRESERVE_REMOTE_FUNCTIONS deve ser 0"
 fi
 
 required_vars=(
@@ -163,10 +162,33 @@ source "$SCRIPT_DIR/lib/function-drift-guard.sh"
 
 cd "$PROJECT_DIR"
 
+expected_current_release="$(
+  ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
+    "$DEPLOY_RELEASES_DIR" <<'REMOTE_BASE_RELEASE'
+set -Eeuo pipefail
+releases_dir=$1
+[[ "$releases_dir" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ ]]
+[[ "$releases_dir" != *".."* && "$releases_dir" != *"//"* ]]
+current_marker="$releases_dir/current"
+if [[ ! -e "$current_marker" && ! -L "$current_marker" ]]; then
+  printf 'none'
+  exit 0
+fi
+[[ -f "$current_marker" && ! -L "$current_marker" ]]
+IFS= read -r active_release < "$current_marker"
+[[ "$active_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+printf '%s' "$active_release"
+REMOTE_BASE_RELEASE
+)"
+[[ "$expected_current_release" = "none" ||
+  "$expected_current_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]] ||
+  die "não foi possível identificar a release-base da VPS"
+
 echo "== Preflight da VPS =="
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_HOST" "$DEPLOY_USER" "$DEPLOY_APP_DIR" \
-  "$DEPLOY_COMPOSE_DIR" "$DEPLOY_FUNCTIONS_DIR" "$DEPLOY_SUPABASE_DIR" <<'REMOTE'
+  "$DEPLOY_COMPOSE_DIR" "$DEPLOY_FUNCTIONS_DIR" "$DEPLOY_SUPABASE_DIR" \
+  "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" <<'REMOTE'
 set -Eeuo pipefail
 expected_host=$1
 expected_user=$2
@@ -174,6 +196,10 @@ app_dir=$3
 compose_dir=$4
 functions_dir=$5
 supabase_dir=$6
+releases_dir=$7
+backups_dir=$8
+
+((BASH_VERSINFO[0] >= 4))
 
 [[ "$(id -un)" = "$expected_user" ]]
 current_ip="$(hostname -I | awk '{print $1}')"
@@ -181,7 +207,51 @@ current_ip="$(hostname -I | awk '{print $1}')"
 for required_dir in "$app_dir" "$compose_dir" "$functions_dir" "$supabase_dir"; do
   [[ -d "$required_dir" ]]
 done
-for required_command in base64 sha256sum stat; do
+for control_dir in "$releases_dir" "$backups_dir"; do
+  if [[ -e "$control_dir" || -L "$control_dir" ]]; then
+    [[ -d "$control_dir" && ! -L "$control_dir" ]]
+  fi
+done
+current_marker="$releases_dir/current"
+if [[ -e "$current_marker" || -L "$current_marker" ]]; then
+  [[ -f "$current_marker" && ! -L "$current_marker" ]]
+fi
+if [[ -f "$current_marker" ]]; then
+  IFS= read -r active_release < "$current_marker"
+  [[ "$active_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+fi
+if [[ -d "$backups_dir" ]]; then
+  shopt -s nullglob
+  activation_state_files=("$backups_dir"/release-*/ACTIVATION_STATE)
+  post_commit_failure_files=("$backups_dir"/release-*/POST_COMMIT_FAILURE)
+  shopt -u nullglob
+  for activation_state_file in "${activation_state_files[@]}"; do
+    [[ -f "$activation_state_file" && ! -L "$activation_state_file" ]]
+    activation_release_dir="$(basename -- "$(dirname -- "$activation_state_file")")"
+    activation_release_id="${activation_release_dir#release-}"
+    [[ "$activation_release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+    IFS= read -r activation_state < "$activation_state_file"
+    activation_phase="${activation_state%%:*}"
+    activation_state_release_id="${activation_state#*:}"
+    [[ "$activation_state_release_id" = "$activation_release_id" ]]
+    case "$activation_phase" in
+      active | rolled_back) ;;
+      prepared | code_staged | database_transaction_started | database_committed | post_commit_failed | rollback_failed)
+        echo "ERRO: release $activation_release_id possui estado não reconciliado '$activation_phase'; valide banco, frontend, functions e markers antes de outro deploy." >&2
+        exit 1
+        ;;
+      *)
+        echo "ERRO: estado de ativação inválido em $activation_state_file." >&2
+        exit 1
+        ;;
+    esac
+  done
+  if ((${#post_commit_failure_files[@]} > 0)); then
+    echo "ERRO: existe falha pós-commit não reconciliada em ${post_commit_failure_files[0]}; valide banco, frontend, functions e markers antes de outro deploy." >&2
+    exit 1
+  fi
+fi
+for required_command in awk base64 curl docker find flock grep sha256sum stat; do
   command -v "$required_command" >/dev/null
 done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
@@ -294,13 +364,55 @@ validate_https_url "$VITE_SUPABASE_URL" ||
   die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
 
 echo "== Validação local =="
+npm audit --audit-level=moderate
 npm run typecheck
 npm test
 npm run wolfie:assets:verify
+npx --yes deno fmt --check \
+  supabase/functions/_shared/automation-auth.ts \
+  supabase/functions/_shared/automation-auth.test.ts \
+  supabase/functions/_shared/invite-registration.ts \
+  supabase/functions/_shared/invite-registration.test.ts \
+  supabase/functions/_shared/opportunity-dispatch.ts \
+  supabase/functions/_shared/opportunity-dispatch.test.ts \
+  supabase/functions/_shared/payment-auth.ts \
+  supabase/functions/_shared/payment-auth.test.ts \
+  supabase/functions/_shared/tenant-communication.ts \
+  supabase/functions/_shared/tenant-communication.test.ts \
+  supabase/functions/_shared/tenant-legal-assets.ts \
+  supabase/functions/_shared/tenant-legal-assets.test.ts \
+  supabase/functions/accept-opportunity/core.ts \
+  supabase/functions/accept-opportunity/core.test.ts \
+  supabase/functions/accept-opportunity/index.ts \
+  supabase/functions/broadcast-opportunity/index.ts \
+  supabase/functions/confirm-vendor-trial/core.ts \
+  supabase/functions/confirm-vendor-trial/core.test.ts \
+  supabase/functions/confirm-vendor-trial/index.ts \
+  supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/kiwify-webhook/index.ts \
+  supabase/functions/notify-claim/index.ts \
+  supabase/functions/public-tenant-branding/index.ts \
+  supabase/functions/public-tenant-branding/index.test.ts \
+  supabase/functions/school-admin/core.ts \
+  supabase/functions/school-admin/core.test.ts \
+  supabase/functions/tenant-settings-admin/index.ts \
+  supabase/functions/tenant-settings-admin/index.test.ts \
+  supabase/functions/tenant-legal-assets/index.ts \
+  supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/whatsapp-inbound/index.ts \
+  supabase/functions/whatsapp-inbound/trial-reschedule.ts \
+  supabase/functions/whatsapp-inbound/trial-reschedule.test.ts
 npx --yes deno test --no-lock \
+  supabase/functions/_shared/automation-auth.test.ts \
+  supabase/functions/_shared/invite-registration.test.ts \
+  supabase/functions/_shared/opportunity-dispatch.test.ts \
+  supabase/functions/_shared/payment-auth.test.ts \
+  supabase/functions/_shared/tenant-communication.test.ts \
+  supabase/functions/_shared/tenant-legal-assets.test.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/update-student-billing-method/core.test.ts \
   supabase/functions/generate-student-manual-pix/core.test.ts \
+  supabase/functions/generate-student-insights/tenant-scope.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
@@ -308,6 +420,14 @@ npx --yes deno test --no-lock \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
+  supabase/functions/monthly-teacher-closing/tenant-closing.test.ts \
+  supabase/functions/school-admin/core.test.ts \
+  supabase/functions/tenant-settings-admin/index.test.ts \
+  supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/whatsapp-evolution-proxy/index.test.ts \
+  supabase/functions/accept-opportunity/core.test.ts \
+  supabase/functions/confirm-vendor-trial/core.test.ts \
+  supabase/functions/public-tenant-branding/index.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
@@ -327,6 +447,8 @@ npx --yes deno test --no-lock \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno check --no-lock \
+  supabase/functions/_shared/opportunity-dispatch.ts \
+  supabase/functions/_shared/tenant-legal-assets.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -373,16 +495,40 @@ npx --yes deno check --no-lock \
   supabase/functions/dre-categorize/index.ts \
   supabase/functions/dre-report/index.ts \
   supabase/functions/payment-split-notify/index.ts \
+  supabase/functions/public-tenant-branding/index.ts \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/search-slots/index.ts \
   supabase/functions/sync-payments/index.ts \
   supabase/functions/whatsapp-hr-welcome/index.ts \
   supabase/functions/generate-student-insights/index.ts \
   supabase/functions/send-rejection-email/index.ts \
+  supabase/functions/send-welcome-contract/index.ts \
   supabase/functions/register-user/index.ts \
   supabase/functions/reconcile-ledger/index.ts \
   supabase/functions/whatsapp-notificacao-wise/index.ts \
-  supabase/functions/process-notification-queue/index.ts
+  supabase/functions/process-notification-queue/index.ts \
+  supabase/functions/daily-automations/index.ts \
+  supabase/functions/monthly-teacher-closing/index.ts \
+  supabase/functions/register-teacher/index.ts \
+  supabase/functions/register-vendor/index.ts \
+  supabase/functions/school-admin/index.ts \
+  supabase/functions/tenant-settings-admin/index.ts \
+  supabase/functions/tenant-legal-assets/index.ts \
+  supabase/functions/weekly-director-digest/index.ts \
+  supabase/functions/whatsapp-evolution-proxy/index.ts \
+  supabase/functions/book-interview/index.ts \
+  supabase/functions/accept-coverage/index.ts \
+  supabase/functions/accept-opportunity/index.ts \
+  supabase/functions/broadcast-opportunity/index.ts \
+  supabase/functions/confirm-vendor-trial/index.ts \
+  supabase/functions/coverage-admin/index.ts \
+  supabase/functions/oral-test-scan/index.ts \
+  supabase/functions/prepare-daily-reminders/index.ts \
+  supabase/functions/send-attendance-confirmations/index.ts \
+  supabase/functions/send-class-notification/index.ts \
+  supabase/functions/teacher-daily-agenda/index.ts \
+  supabase/functions/kiwify-webhook/index.ts \
+  supabase/functions/whatsapp-notificacao-matricula/index.ts
 npm run build
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
@@ -503,6 +649,14 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260820091229_teacher_turbo_streak.sql"
   "supabase/migrations/20260820091231_lesson_occurrence_and_schedule_hardening.sql"
   "supabase/migrations/20260821220943_trial_reschedule_requires_teacher_confirmation.sql"
+  "supabase/migrations/20260821225112_tenant_admin_security_center.sql"
+  "supabase/migrations/20260821225307_tenant_rls_p0.sql"
+  "supabase/migrations/20260821225420_invite_registration_security.sql"
+  "supabase/migrations/20260822090110_atomic_trial_broadcast_reopen.sql"
+  "supabase/migrations/20260822091116_atomic_opportunity_claim.sql"
+  "supabase/migrations/20260822093650_secure_trial_management_writes.sql"
+  "supabase/migrations/20260822095301_private_tenant_legal_assets.sql"
+  "supabase/migrations/20260822121843_harden_trial_reschedule_lifecycle.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -519,6 +673,13 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/gestao_contas_pagar_whatsapp.sql"
   "supabase/tests/teacher_turbo_streak.sql"
   "supabase/tests/lesson_occurrence_and_schedule_hardening.sql"
+  "supabase/tests/tenant_admin_security_center.sql"
+  "supabase/tests/tenant_rls_p0.sql"
+  "supabase/tests/invite_registration_security.sql"
+  "supabase/tests/trial_broadcast_reopen_security.sql"
+  "supabase/tests/atomic_opportunity_claim.sql"
+  "supabase/tests/secure_trial_management_writes.sql"
+  "supabase/tests/private_tenant_legal_assets.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -532,11 +693,16 @@ HUB_CHECKOUT_FUNCTION_RELATIVE="supabase/functions/create-hub-checkout"
 HUB_AI_FUNCTION_RELATIVE="supabase/functions/pedagogical-content"
 HUB_TUTOR_FUNCTION_RELATIVE="supabase/functions/wolf-tutor-api"
 ASAAS_WEBHOOK_FUNCTION_RELATIVE="supabase/functions/asaas-webhook"
-# Cobertura de professor: o aceite move o pagamento (apply_coverage_acceptance).
-# Ficava de fora da lista, então a correção não subia pelo deploy.
-COVERAGE_ACCEPT_FUNCTION_RELATIVE="supabase/functions/accept-coverage"
-COVERAGE_ADMIN_FUNCTION_RELATIVE="supabase/functions/coverage-admin"
+# O config.toml atende ao Supabase CLI local. Na VPS, o Edge Runtime monta os
+# fontes diretamente e usa VERIFY_JWT=false; funções protegidas autenticam no handler.
+# Por isso ele não integra o artefato, e os smokes 401 abaixo validam essa barreira.
 SHARED_AUTH_RELATIVE="supabase/functions/_shared/request-auth.ts"
+SHARED_AUTOMATION_AUTH_RELATIVE="supabase/functions/_shared/automation-auth.ts"
+SHARED_INVITE_REGISTRATION_RELATIVE="supabase/functions/_shared/invite-registration.ts"
+SHARED_OPPORTUNITY_DISPATCH_RELATIVE="supabase/functions/_shared/opportunity-dispatch.ts"
+SHARED_PAYMENT_AUTH_RELATIVE="supabase/functions/_shared/payment-auth.ts"
+SHARED_TENANT_COMMUNICATION_RELATIVE="supabase/functions/_shared/tenant-communication.ts"
+SHARED_TENANT_LEGAL_ASSETS_RELATIVE="supabase/functions/_shared/tenant-legal-assets.ts"
 SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
 SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact-policy.ts"
 SHARED_AI_USAGE_RELATIVE="supabase/functions/_shared/ai-usage.ts"
@@ -584,11 +750,13 @@ HARDENED_FUNCTIONS=(
   sync-plan-change-billing
   search-slots
   sync-payments
+  accept-coverage
   accept-opportunity
   book-interview
   broadcast-opportunity
   confirm-attendance
   confirm-vendor-trial
+  coverage-admin
   create-public-resume-upload
   daily-automations
   delete-student-account
@@ -598,6 +766,7 @@ HARDENED_FUNCTIONS=(
   monthly-teacher-closing
   oral-test-scan
   prepare-daily-reminders
+  public-tenant-branding
   reconcile-ledger
   register-teacher
   register-user
@@ -610,6 +779,8 @@ HARDENED_FUNCTIONS=(
   send-welcome-contract
   sign-offer
   teacher-daily-agenda
+  tenant-settings-admin
+  tenant-legal-assets
   transfer-teacher-pay
   weekly-director-digest
   whatsapp-evolution-proxy
@@ -647,13 +818,15 @@ done
   die "função de IA do Hub ausente"
 [[ -s "$HUB_TUTOR_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função Wolfie do Hub ausente"
-[[ -s "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/index.ts" ]] ||
-  die "accept-coverage/index.ts ausente"
-[[ -s "$COVERAGE_ADMIN_FUNCTION_RELATIVE/index.ts" ]] ||
-  die "coverage-admin/index.ts ausente"
 [[ -s "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/index.ts" ]] ||
   die "webhook Asaas ausente"
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
+[[ -s "$SHARED_AUTOMATION_AUTH_RELATIVE" ]] || die "guard de automações ausente"
+[[ -s "$SHARED_INVITE_REGISTRATION_RELATIVE" ]] || die "guard de convites ausente"
+[[ -s "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" ]] || die "guard de disparo de oportunidades ausente"
+[[ -s "$SHARED_PAYMENT_AUTH_RELATIVE" ]] || die "guard de pagamentos ausente"
+[[ -s "$SHARED_TENANT_COMMUNICATION_RELATIVE" ]] || die "identidade de comunicação tenant-safe ausente"
+[[ -s "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" ]] || die "resolver privado de documentos legais ausente"
 [[ -s "$SHARED_ACCOUNT_INVITE_RELATIVE" ]] || die "helper de convite seguro ausente"
 [[ -s "$SHARED_COMMERCIAL_POLICY_RELATIVE" ]] || die "política de contato comercial ausente"
 [[ -s "$SHARED_AI_USAGE_RELATIVE" ]] || die "telemetria compartilhada de IA ausente"
@@ -667,58 +840,6 @@ for function_name in "${HARDENED_FUNCTIONS[@]}"; do
 done
 
 source_git_sha="$(git rev-parse --short=12 HEAD)"
-artifact_hash="$(
-  {
-    find dist -type f -print
-    for release_input_dir in \
-      "$FUNCTION_RELATIVE" \
-      "$CONVERSATION_FUNCTION_RELATIVE" \
-      "$REALTIME_FUNCTION_RELATIVE" \
-      "$TTS_FUNCTION_RELATIVE" \
-      "$PEDAGOGICAL_FUNCTION_RELATIVE" \
-      "$CONTEXT_FUNCTION_RELATIVE" \
-      "$HUB_LIBRARY_FUNCTION_RELATIVE" \
-      "$HUB_MATERIAL_SYNC_FUNCTION_RELATIVE" \
-      "$HUB_CHECKOUT_FUNCTION_RELATIVE" \
-      "$HUB_AI_FUNCTION_RELATIVE" \
-      "$HUB_TUTOR_FUNCTION_RELATIVE" \
-      "$COVERAGE_ACCEPT_FUNCTION_RELATIVE" \
-      "$COVERAGE_ADMIN_FUNCTION_RELATIVE" \
-      "$ASAAS_WEBHOOK_FUNCTION_RELATIVE"; do
-      find "$release_input_dir" -type f -print
-    done
-    for function_name in "${HARDENED_FUNCTIONS[@]}"; do
-      find "supabase/functions/$function_name" -type f -print
-    done
-    printf '%s\n' \
-      "$SHARED_AUTH_RELATIVE" \
-      "$SHARED_ACCOUNT_INVITE_RELATIVE" \
-      "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
-      "$SHARED_AI_USAGE_RELATIVE" \
-      "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
-      "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
-      "$SHARED_LEAD_CONTACT_RELATIVE" \
-      "$SHARED_EVOLUTION_SEND_RELATIVE"
-    printf '%s\n' "${MIGRATION_RELATIVES[@]}"
-    printf '%s\n' "${DATABASE_TEST_RELATIVES[@]}"
-  } |
-    LC_ALL=C sort |
-    while IFS= read -r release_input; do
-      printf '%s  %s\n' \
-        "$(shasum -a 256 "$release_input" | awk '{print $1}')" \
-        "$release_input"
-    done |
-    shasum -a 256 |
-    awk '{print substr($1, 1, 12)}'
-)"
-[[ "$artifact_hash" =~ ^[a-f0-9]{12}$ ]] ||
-  die "não foi possível calcular a identidade da release"
-# A árvore foi aprovada lá no começo; o pacote é lido só agora. Reconfere.
-assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
-release_id="$(date -u +%Y%m%dT%H%M%SZ)-${artifact_hash}"
-[[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]] ||
-  die "identificador de release inválido"
-echo "Commit de origem: $source_git_sha"
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   migration_file="$(basename -- "$migration_relative")"
   migration_version="${migration_file%%_*}"
@@ -730,6 +851,108 @@ for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
 done
 
 LOCAL_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/wisewolf-release.XXXXXX")"
+hardened_functions_manifest="$LOCAL_STAGE/hardened-functions.txt"
+printf '%s\n' "${HARDENED_FUNCTIONS[@]}" > "$hardened_functions_manifest"
+[[ -s "$hardened_functions_manifest" ]]
+release_inputs_manifest="$LOCAL_STAGE/release-inputs.sha256"
+
+append_release_input_checksum() {
+  local source_path=$1 remote_relative=$2
+  [[ -f "$source_path" && ! -L "$source_path" ]]
+  [[ "$remote_relative" =~ ^[A-Za-z0-9._/-]+$ &&
+    "$remote_relative" != *".."* &&
+    "$remote_relative" != *"//"* ]]
+  printf '%s  %s\n' \
+    "$(shasum -a 256 "$source_path" | awk '{print $1}')" \
+    "$remote_relative"
+}
+
+{
+  append_release_input_checksum \
+    "$hardened_functions_manifest" \
+    "hardened-functions.txt"
+  while IFS= read -r release_input; do
+    append_release_input_checksum \
+      "$release_input" \
+      "frontend-dist/${release_input#dist/}"
+  done < <(find dist -type f -print | LC_ALL=C sort)
+  for release_input_dir in \
+    "$FUNCTION_RELATIVE" \
+    "$CONVERSATION_FUNCTION_RELATIVE" \
+    "$REALTIME_FUNCTION_RELATIVE" \
+    "$TTS_FUNCTION_RELATIVE" \
+    "$PEDAGOGICAL_FUNCTION_RELATIVE" \
+    "$CONTEXT_FUNCTION_RELATIVE" \
+    "$HUB_LIBRARY_FUNCTION_RELATIVE" \
+    "$HUB_MATERIAL_SYNC_FUNCTION_RELATIVE" \
+    "$HUB_CHECKOUT_FUNCTION_RELATIVE" \
+    "$HUB_AI_FUNCTION_RELATIVE" \
+    "$HUB_TUTOR_FUNCTION_RELATIVE" \
+    "$ASAAS_WEBHOOK_FUNCTION_RELATIVE"; do
+    while IFS= read -r release_input; do
+      append_release_input_checksum \
+        "$release_input" \
+        "functions/${release_input#supabase/functions/}"
+    done < <(find "$release_input_dir" -type f -print | LC_ALL=C sort)
+  done
+  for function_name in "${HARDENED_FUNCTIONS[@]}"; do
+    while IFS= read -r release_input; do
+      append_release_input_checksum \
+        "$release_input" \
+        "functions/${release_input#supabase/functions/}"
+    done < <(find "supabase/functions/$function_name" -type f -print | LC_ALL=C sort)
+  done
+  for shared_relative in \
+    "$SHARED_AUTH_RELATIVE" \
+    "$SHARED_AUTOMATION_AUTH_RELATIVE" \
+    "$SHARED_INVITE_REGISTRATION_RELATIVE" \
+    "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
+    "$SHARED_PAYMENT_AUTH_RELATIVE" \
+    "$SHARED_TENANT_COMMUNICATION_RELATIVE" \
+    "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" \
+    "$SHARED_ACCOUNT_INVITE_RELATIVE" \
+    "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
+    "$SHARED_AI_USAGE_RELATIVE" \
+    "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
+    "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
+    "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
+    "$SHARED_LEAD_CONTACT_RELATIVE" \
+    "$SHARED_EVOLUTION_SEND_RELATIVE"; do
+    append_release_input_checksum \
+      "$shared_relative" \
+      "functions/${shared_relative#supabase/functions/}"
+  done
+  for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
+    append_release_input_checksum \
+      "$migration_relative" \
+      "migrations/$(basename -- "$migration_relative")"
+  done
+  for database_test_relative in "${DATABASE_TEST_RELATIVES[@]}"; do
+    append_release_input_checksum \
+      "$database_test_relative" \
+      "tests/$(basename -- "$database_test_relative")"
+  done
+} > "$release_inputs_manifest"
+[[ -s "$release_inputs_manifest" ]]
+duplicate_release_input="$(
+  awk '{print $2}' "$release_inputs_manifest" |
+    LC_ALL=C sort |
+    uniq -d |
+    head -n 1
+)"
+[[ -z "$duplicate_release_input" ]] ||
+  die "entrada duplicada no manifesto da release: $duplicate_release_input"
+assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
+artifact_hash="$(
+  shasum -a 256 "$release_inputs_manifest" |
+    awk '{print substr($1, 1, 12)}'
+)"
+[[ "$artifact_hash" =~ ^[a-f0-9]{12}$ ]] ||
+  die "não foi possível calcular a identidade da release"
+release_id="$(date -u +%Y%m%dT%H%M%SZ)-${artifact_hash}"
+[[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$ ]] ||
+  die "identificador de release inválido"
+echo "Commit de origem: $source_git_sha"
 remote_release="$DEPLOY_RELEASES_DIR/$release_id"
 validate_remote_path "$remote_release" ||
   die "caminho da release remota inválido"
@@ -739,6 +962,7 @@ ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- "$remote_release" <<'REMOTE'
 set -Eeuo pipefail
 release_dir=$1
 [[ "$release_dir" == /opt/wisewolf/releases/* ]]
+[[ ! -e "$release_dir" && ! -L "$release_dir" ]]
 mkdir -p -- \
   "$release_dir/frontend-dist" \
   "$release_dir/functions/wolfie-activity" \
@@ -772,6 +996,10 @@ REMOTE
 
 rsync -a --delete -- dist/ \
   "$DEPLOY_SSH_HOST:$remote_release/frontend-dist/"
+rsync -a -- "$hardened_functions_manifest" \
+  "$DEPLOY_SSH_HOST:$remote_release/hardened-functions.txt"
+rsync -a -- "$release_inputs_manifest" \
+  "$DEPLOY_SSH_HOST:$remote_release/release-inputs.sha256"
 if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" != "1" ]]; then
 rsync -a --delete -- "$FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolfie-activity/"
@@ -797,12 +1025,20 @@ rsync -a --delete -- "$HUB_TUTOR_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/wolf-tutor-api/"
 rsync -a --delete -- "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/asaas-webhook/"
-rsync -a --delete -- "$COVERAGE_ACCEPT_FUNCTION_RELATIVE/" \
-  "$DEPLOY_SSH_HOST:$remote_release/functions/accept-coverage/"
-rsync -a --delete -- "$COVERAGE_ADMIN_FUNCTION_RELATIVE/" \
-  "$DEPLOY_SSH_HOST:$remote_release/functions/coverage-admin/"
 rsync -a -- "$SHARED_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/request-auth.ts"
+rsync -a -- "$SHARED_AUTOMATION_AUTH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/automation-auth.ts"
+rsync -a -- "$SHARED_INVITE_REGISTRATION_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/invite-registration.ts"
+rsync -a -- "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/opportunity-dispatch.ts"
+rsync -a -- "$SHARED_PAYMENT_AUTH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-auth.ts"
+rsync -a -- "$SHARED_TENANT_COMMUNICATION_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tenant-communication.ts"
+rsync -a -- "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tenant-legal-assets.ts"
 rsync -a -- "$SHARED_ACCOUNT_INVITE_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/account-invite.ts"
 rsync -a -- "$SHARED_COMMERCIAL_POLICY_RELATIVE" \
@@ -834,8 +1070,10 @@ for database_test_relative in "${DATABASE_TEST_RELATIVES[@]}"; do
   rsync -a -- "$database_test_relative" \
     "$DEPLOY_SSH_HOST:$remote_release/tests/$database_test_file"
 done
+assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
 
 echo "== Ativação transacional e smoke tests =="
+activation_status=0
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$release_id" \
   "$remote_release" \
@@ -849,9 +1087,12 @@ ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_API_URL" \
   "$wolfie_asset_lock_b64" \
   "$wolfie_asset_count" \
-  "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" <<'REMOTE'
+  "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" \
+  "$expected_current_release" <<'REMOTE' || activation_status=$?
 set -Eeuo pipefail
 umask 077
+
+((BASH_VERSINFO[0] >= 4))
 
 release_id=$1
 release_dir=$2
@@ -866,6 +1107,7 @@ api_url=${10}
 wolfie_asset_lock_b64=${11}
 wolfie_asset_count=${12}
 preserve_remote_functions=${13}
+expected_current_release=${14}
 
 validate_remote_path() {
   local remote_path=$1
@@ -894,6 +1136,8 @@ validate_https_url "$api_url"
 [[ "$wolfie_asset_lock_b64" =~ ^[A-Za-z0-9+/=]+$ ]]
 [[ "$wolfie_asset_count" =~ ^[1-9][0-9]*$ ]]
 [[ "$preserve_remote_functions" = "0" || "$preserve_remote_functions" = "1" ]]
+[[ "$expected_current_release" = "none" ||
+  "$expected_current_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
 
 exec 9>"$releases_dir/.deploy.lock"
 flock -n 9 || {
@@ -901,12 +1145,57 @@ flock -n 9 || {
   exit 1
 }
 
+current_marker="$releases_dir/current"
+if [[ "$expected_current_release" = "none" ]]; then
+  if [[ -e "$current_marker" || -L "$current_marker" ]]; then
+    echo "ERRO: a release-base mudou durante a preparação; rode o deploy novamente sobre o estado atual." >&2
+    exit 1
+  fi
+else
+  [[ -f "$current_marker" && ! -L "$current_marker" ]]
+  IFS= read -r current_release_under_lock < "$current_marker"
+  if [[ "$current_release_under_lock" != "$expected_current_release" ]]; then
+    echo "ERRO: a release-base mudou durante a preparação ($expected_current_release -> $current_release_under_lock); rode o deploy novamente." >&2
+    exit 1
+  fi
+fi
+
+if [[ -d "$backups_dir" ]]; then
+  shopt -s nullglob
+  unresolved_activation_states=("$backups_dir"/release-*/ACTIVATION_STATE)
+  unresolved_post_commit_failures=("$backups_dir"/release-*/POST_COMMIT_FAILURE)
+  shopt -u nullglob
+  for unresolved_activation_state in "${unresolved_activation_states[@]}"; do
+    [[ -f "$unresolved_activation_state" && ! -L "$unresolved_activation_state" ]]
+    unresolved_release_dir="$(basename -- "$(dirname -- "$unresolved_activation_state")")"
+    unresolved_release_id="${unresolved_release_dir#release-}"
+    [[ "$unresolved_release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+    IFS= read -r activation_state < "$unresolved_activation_state"
+    activation_phase="${activation_state%%:*}"
+    activation_state_release_id="${activation_state#*:}"
+    [[ "$activation_state_release_id" = "$unresolved_release_id" ]]
+    case "$activation_phase" in
+      active | rolled_back) ;;
+      *)
+        echo "ERRO: existe ativação anterior não reconciliada em $unresolved_activation_state." >&2
+        exit 1
+        ;;
+    esac
+  done
+  if ((${#unresolved_post_commit_failures[@]} > 0)); then
+    echo "ERRO: existe falha pós-commit anterior não reconciliada em ${unresolved_post_commit_failures[0]}." >&2
+    exit 1
+  fi
+fi
+
 backup_dir="$backups_dir/release-$release_id"
 marker_dir="$releases_dir/.migration-checksums"
 current_marker="$releases_dir/current"
 current_marker_backup="$backup_dir/current.previous"
 current_marker_tmp="$releases_dir/.current-$release_id.tmp"
 current_marker_rollback_tmp="$releases_dir/.current-$release_id.rollback.tmp"
+activation_state_file="$backup_dir/ACTIVATION_STATE"
+activation_state_tmp="$backup_dir/.ACTIVATION_STATE.tmp"
 current_marker_existed=0
 current_marker_swapped=0
 frontend_swapped=0
@@ -923,6 +1212,7 @@ hub_ai_function_swapped=0
 hub_tutor_function_swapped=0
 asaas_webhook_function_swapped=0
 shared_swapped=0
+security_shared_swapped=()
 account_invite_shared_swapped=0
 commercial_policy_shared_swapped=0
 ai_usage_shared_swapped=0
@@ -934,79 +1224,73 @@ evolution_send_shared_swapped=0
 hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
-HARDENED_FUNCTIONS=(
-  sync-subscription-status
-  notify-payment-due
-  create-wolfie-topup
-  lesson-planner
-  sync-student-asaas
-  create-asaas-subscription
-  update-student-billing-method
-  generate-student-manual-pix
-  create-enrollment-pix
-  create-saas-checkout
-  create-student-account
-  create-teacher-account
-  admin-update-subscription
-  create-asaas-subaccount
-  send-whatsapp
-  whatsapp-wise-wolf
-  send-contract-confirmation
-  process-notification-queue
-  process-outbox
-  notify-claim
-  whatsapp-lead-notification
-  referral-welcome
-  sdr-followups
-  funnel-sweeper
-  post-trial-pipeline
-  whatsapp-inbound
-  whatsapp-crm-lead-notif
-  school-ai-team
-  school-ai-digest
-  hr-ai-screening
-  wolfie-eval
-  wolfie-live-proxy
-  dre-categorize
-  dre-report
-  payment-split-notify
-  sync-plan-change-billing
-  search-slots
-  sync-payments
-  accept-opportunity
-  book-interview
-  broadcast-opportunity
-  confirm-attendance
-  confirm-vendor-trial
-  create-public-resume-upload
-  daily-automations
-  delete-student-account
-  generate-student-insights
-  kiwify-webhook
-  model-probe
-  monthly-teacher-closing
-  oral-test-scan
-  prepare-daily-reminders
-  reconcile-ledger
-  register-teacher
-  register-user
-  register-vendor
-  resolve-offer
-  school-admin
-  send-attendance-confirmations
-  send-class-notification
-  send-rejection-email
-  send-welcome-contract
-  sign-offer
-  teacher-daily-agenda
-  transfer-teacher-pay
-  weekly-director-digest
-  whatsapp-evolution-proxy
-  whatsapp-hr-welcome
-  whatsapp-notificacao-matricula
-  whatsapp-notificacao-wise
-  wolfie-healthcheck
+database_committed=0
+HARDENED_FUNCTIONS=()
+declare -A hardened_function_names=()
+[[ -f "$release_dir/hardened-functions.txt" &&
+  ! -L "$release_dir/hardened-functions.txt" ]]
+while IFS= read -r function_name; do
+  [[ "$function_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
+  [[ -z "${hardened_function_names[$function_name]+x}" ]]
+  hardened_function_names[$function_name]=1
+  HARDENED_FUNCTIONS+=("$function_name")
+done < "$release_dir/hardened-functions.txt"
+[[ ${#HARDENED_FUNCTIONS[@]} -ge 1 ]]
+
+[[ -d "$release_dir" && ! -L "$release_dir" ]]
+release_symlink="$(find "$release_dir" -type l -print -quit)"
+[[ -z "$release_symlink" ]]
+[[ -d "$release_dir/frontend-dist" && ! -L "$release_dir/frontend-dist" ]]
+[[ -f "$release_dir/release-inputs.sha256" &&
+  ! -L "$release_dir/release-inputs.sha256" ]]
+(
+  cd "$release_dir" &&
+    sha256sum --check --strict --quiet release-inputs.sha256
 )
+if [[ "$preserve_remote_functions" != "1" ]]; then
+[[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
+[[ -s "$release_dir/functions/wolfie-brain/index.ts" ]]
+[[ -s "$release_dir/functions/wolfie-realtime-session/index.ts" ]]
+[[ -s "$release_dir/functions/wolfie-tts/index.ts" ]]
+[[ -s "$release_dir/functions/submit-quiz/index.ts" ]]
+[[ -s "$release_dir/functions/student-context/index.ts" ]]
+[[ -s "$release_dir/functions/hub-library-access/index.ts" ]]
+[[ -s "$release_dir/functions/sync-hub-material/index.ts" ]]
+[[ -s "$release_dir/functions/create-hub-checkout/index.ts" ]]
+[[ -s "$release_dir/functions/pedagogical-content/index.ts" ]]
+[[ -s "$release_dir/functions/wolf-tutor-api/index.ts" ]]
+[[ -s "$release_dir/functions/asaas-webhook/index.ts" ]]
+[[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
+[[ -s "$release_dir/functions/_shared/automation-auth.ts" ]]
+[[ -s "$release_dir/functions/_shared/invite-registration.ts" ]]
+[[ -s "$release_dir/functions/_shared/opportunity-dispatch.ts" ]]
+[[ -s "$release_dir/functions/_shared/payment-auth.ts" ]]
+[[ -s "$release_dir/functions/_shared/tenant-communication.ts" ]]
+[[ -s "$release_dir/functions/_shared/tenant-legal-assets.ts" ]]
+[[ -s "$release_dir/functions/_shared/account-invite.ts" ]]
+[[ -s "$release_dir/functions/_shared/commercial-contact-policy.ts" ]]
+[[ -s "$release_dir/functions/_shared/ai-usage.ts" ]]
+[[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
+[[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
+[[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
+[[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
+for function_name in "${HARDENED_FUNCTIONS[@]}"; do
+  [[ -s "$release_dir/functions/$function_name/index.ts" ]]
+done
+fi
+
+write_activation_state() {
+  local activation_phase=$1
+  case "$activation_phase" in
+    prepared | code_staged | database_transaction_started | database_committed | post_commit_failed | rollback_failed | active | rolled_back) ;;
+    *) return 1 ;;
+  esac
+  [[ -d "$backup_dir" && ! -L "$backup_dir" ]]
+  rm -f -- "$activation_state_tmp"
+  printf '%s:%s\n' "$activation_phase" "$release_id" > "$activation_state_tmp"
+  mv -f -- "$activation_state_tmp" "$activation_state_file"
+}
 
 restore_previous_release() {
   local exit_code=$?
@@ -1021,7 +1305,30 @@ restore_previous_release() {
   rollback_started=1
   trap - ERR
   set +Ee
-  echo "ERRO: release falhou; restaurando frontend e função anteriores." >&2
+  if [[ "$database_committed" = "1" ]]; then
+    echo "ERRO: validação pós-commit falhou; mantendo banco, frontend e funções da mesma release." >&2
+    write_activation_state post_commit_failed || true
+    rm -f -- "$current_marker_tmp" "$current_marker_rollback_tmp"
+    printf '%s\n' "$release_id" > "$current_marker_tmp" &&
+      mv -f -- "$current_marker_tmp" "$current_marker"
+    printf '%s\n' "post_commit_validation_failed:$release_id" \
+      > "$backup_dir/POST_COMMIT_FAILURE"
+    if [[ "$preserve_remote_functions" != "1" ]]; then
+      (
+        cd "$supabase_dir" &&
+          docker compose restart functions
+      ) >/dev/null 2>&1 || true
+    fi
+    (
+      cd "$compose_dir" &&
+        docker compose up -d --force-recreate frontend
+    ) >/dev/null 2>&1 || true
+    exit "$exit_code"
+  fi
+
+  echo "ERRO: release falhou antes do commit; restaurando frontend e funções anteriores." >&2
+  rollback_operation_failed=0
+  trap 'rollback_operation_failed=1' ERR
 
   if [[ "$current_marker_swapped" = "1" ]]; then
     if [[ "$current_marker_existed" = "1" && -f "$current_marker_backup" ]]; then
@@ -1144,9 +1451,23 @@ restore_previous_release() {
       mv -- "$backup_dir/asaas-webhook" "$functions_dir/asaas-webhook"
     fi
   fi
-  if [[ "$shared_swapped" = "1" && -f "$backup_dir/request-auth.ts" ]]; then
-    cp -a -- "$backup_dir/request-auth.ts" \
-      "$functions_dir/_shared/request-auth.ts"
+  if [[ "$shared_swapped" = "1" ]]; then
+    if [[ -f "$backup_dir/request-auth.ts" ]]; then
+      cp -a -- "$backup_dir/request-auth.ts" \
+        "$functions_dir/_shared/request-auth.ts"
+    else
+      rm -f -- "$functions_dir/_shared/request-auth.ts"
+    fi
+  fi
+  if ((${#security_shared_swapped[@]} > 0)); then
+    for shared_name in "${security_shared_swapped[@]}"; do
+      if [[ -f "$backup_dir/$shared_name" ]]; then
+        cp -a -- "$backup_dir/$shared_name" \
+          "$functions_dir/_shared/$shared_name"
+      else
+        rm -f -- "$functions_dir/_shared/$shared_name"
+      fi
+    done
   fi
   if [[ "$account_invite_shared_swapped" = "1" ]]; then
     if [[ -f "$backup_dir/account-invite.ts" ]]; then
@@ -1227,20 +1548,28 @@ restore_previous_release() {
   (
     cd "$compose_dir" &&
       docker compose up -d --force-recreate frontend
-  ) >/dev/null 2>&1 || true
+  ) >/dev/null 2>&1 || rollback_operation_failed=1
   if [[ "$preserve_remote_functions" != "1" ]]; then
     (
       cd "$supabase_dir" &&
         docker compose restart functions
-    ) >/dev/null 2>&1 || true
+    ) >/dev/null 2>&1 || rollback_operation_failed=1
+  fi
+  trap - ERR
+  if [[ "$rollback_operation_failed" = "0" ]]; then
+    write_activation_state rolled_back || true
+  else
+    write_activation_state rollback_failed || true
   fi
   exit "$exit_code"
 }
-trap restore_previous_release ERR
-
-mkdir -p -- "$backup_dir" "$marker_dir"
+[[ ! -e "$backup_dir" && ! -L "$backup_dir" ]]
+mkdir -- "$backup_dir"
+mkdir -p -- "$marker_dir"
 [[ -d "$backup_dir" && ! -L "$backup_dir" ]]
 [[ -d "$marker_dir" && ! -L "$marker_dir" ]]
+write_activation_state prepared
+trap restore_previous_release ERR
 [[ ! -e "$current_marker_backup" && ! -L "$current_marker_backup" ]]
 [[ ! -e "$current_marker_tmp" && ! -L "$current_marker_tmp" ]]
 [[ ! -e "$current_marker_rollback_tmp" && ! -L "$current_marker_rollback_tmp" ]]
@@ -1252,53 +1581,80 @@ elif [[ -e "$current_marker" ]]; then
   echo "ERRO: marcador de release atual não é um arquivo regular." >&2
   false
 fi
-[[ -d "$release_dir/frontend-dist" ]]
-if [[ "$preserve_remote_functions" != "1" ]]; then
-[[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
-[[ -s "$release_dir/functions/wolfie-brain/index.ts" ]]
-[[ -s "$release_dir/functions/wolfie-realtime-session/index.ts" ]]
-[[ -s "$release_dir/functions/wolfie-tts/index.ts" ]]
-[[ -s "$release_dir/functions/submit-quiz/index.ts" ]]
-[[ -s "$release_dir/functions/student-context/index.ts" ]]
-[[ -s "$release_dir/functions/hub-library-access/index.ts" ]]
-[[ -s "$release_dir/functions/sync-hub-material/index.ts" ]]
-[[ -s "$release_dir/functions/create-hub-checkout/index.ts" ]]
-[[ -s "$release_dir/functions/pedagogical-content/index.ts" ]]
-[[ -s "$release_dir/functions/wolf-tutor-api/index.ts" ]]
-[[ -s "$release_dir/functions/asaas-webhook/index.ts" ]]
-[[ -s "$release_dir/functions/_shared/request-auth.ts" ]]
-[[ -s "$release_dir/functions/_shared/account-invite.ts" ]]
-[[ -s "$release_dir/functions/_shared/commercial-contact-policy.ts" ]]
-[[ -s "$release_dir/functions/_shared/ai-usage.ts" ]]
-[[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
-[[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
-[[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
-[[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
-[[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
-for function_name in "${HARDENED_FUNCTIONS[@]}"; do
-  [[ -s "$release_dir/functions/$function_name/index.ts" ]]
-done
-fi
-database_tests=(
-  "$release_dir/tests/wolfie_tenant_quota_usage_hardening.sql"
-  "$release_dir/tests/wolfie_classic_exchange_atomicity.sql"
-  "$release_dir/tests/wolfie_meeting_memory_lifecycle.sql"
-  "$release_dir/tests/wolfie_sql_special_forms_repair.sql"
-  "$release_dir/tests/teacher_schedule_change_scope.sql"
-  "$release_dir/tests/student_manual_pix_claims.sql"
-  "$release_dir/tests/student_overdue_card_charge_claims.sql"
-  "$release_dir/tests/gestao_contas_pagar_whatsapp.sql"
-  "$release_dir/tests/teacher_turbo_streak.sql"
-  "$release_dir/tests/lesson_occurrence_and_schedule_hardening.sql"
-)
+
+run_database_release() {
+shopt -s nullglob
+database_tests=("$release_dir"/tests/*.sql)
+shopt -u nullglob
+expected_database_test_count="$(
+  awk '$2 ~ /^tests\/[A-Za-z0-9_]+\.sql$/ {count++} END {print count + 0}' \
+    "$release_dir/release-inputs.sha256"
+)"
+[[ "$expected_database_test_count" =~ ^[1-9][0-9]*$ ]]
+[[ ${#database_tests[@]} -eq "$expected_database_test_count" ]]
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]
+  if ! awk '
+    {
+      normalized = tolower($0)
+      sub(/[[:space:]]*--.*$/, "", normalized)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+      if (normalized == "") {
+        next
+      }
+      if (substr(normalized, 1, 1) == "\\") {
+        if (normalized != "\\set on_error_stop on") {
+          forbidden_meta_count++
+        }
+        next
+      }
+      if (first_sql == "") {
+        first_sql = normalized
+      }
+      last_sql = normalized
+      if (normalized == "begin;") {
+        begin_count++
+      } else if (normalized == "rollback;") {
+        rollback_count++
+      } else if (
+        normalized ~ /^begin[[:space:]].*;$/ ||
+        normalized ~ /^commit([[:space:]].*)?;$/ ||
+        normalized ~ /^rollback[[:space:]].*;$/ ||
+        normalized ~ /^abort([[:space:]].*)?;$/ ||
+        normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
+        normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
+        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/
+      ) {
+        forbidden_count++
+      }
+    }
+    END {
+      if (
+        begin_count != 1 ||
+        rollback_count != 1 ||
+        forbidden_count != 0 ||
+        forbidden_meta_count != 0 ||
+        first_sql != "begin;" ||
+        last_sql != "rollback;"
+      ) {
+        exit 1
+      }
+    }
+  ' "$database_test"; then
+    echo "ERRO: teste SQL deve ter exatamente um BEGIN inicial, um ROLLBACK final e nenhum COMMIT: $database_test" >&2
+    return 1
+  fi
 done
 
 shopt -s nullglob
 migration_files=("$release_dir"/migrations/*.sql)
 shopt -u nullglob
-[[ ${#migration_files[@]} -ge 1 ]]
+expected_migration_count="$(
+  awk '$2 ~ /^migrations\/[0-9]+_[A-Za-z0-9_]+\.sql$/ {count++} END {print count + 0}' \
+    "$release_dir/release-inputs.sha256"
+)"
+[[ "$expected_migration_count" =~ ^[1-9][0-9]*$ ]]
+[[ ${#migration_files[@]} -eq "$expected_migration_count" ]]
 unapplied_migrations=()
 unapplied_markers=()
 unapplied_checksums=()
@@ -1306,6 +1662,56 @@ for migration_path in "${migration_files[@]}"; do
   migration_file="$(basename -- "$migration_path")"
   [[ "$migration_file" =~ ^([0-9]{14})_[A-Za-z0-9_]+\.sql$ ]]
   migration_version="${BASH_REMATCH[1]}"
+  if ! awk '
+    {
+      normalized = tolower($0)
+      sub(/[[:space:]]*--.*$/, "", normalized)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+      if (normalized == "") {
+        next
+      }
+      if (substr(normalized, 1, 1) == "\\") {
+        if (normalized != "\\set on_error_stop on") {
+          forbidden_meta_count++
+        }
+        next
+      }
+      if (first_sql == "") {
+        first_sql = normalized
+      }
+      last_sql = normalized
+      if (normalized == "begin;") {
+        begin_count++
+      } else if (normalized == "commit;") {
+        commit_count++
+      } else if (
+        normalized ~ /^begin[[:space:]].*;$/ ||
+        normalized ~ /^commit[[:space:]].*;$/ ||
+        normalized ~ /^rollback([[:space:]].*)?;$/ ||
+        normalized ~ /^abort([[:space:]].*)?;$/ ||
+        normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
+        normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
+        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/
+      ) {
+        forbidden_count++
+      }
+    }
+    END {
+      unwrapped = begin_count == 0 && commit_count == 0
+      wrapped = begin_count == 1 && commit_count == 1 &&
+        first_sql == "begin;" && last_sql == "commit;"
+      if (
+        forbidden_count != 0 ||
+        forbidden_meta_count != 0 ||
+        (!unwrapped && !wrapped)
+      ) {
+        exit 1
+      }
+    }
+  ' "$migration_path"; then
+    echo "ERRO: migration possui controle transacional incompatível com a transação atômica da release: $migration_file" >&2
+    return 1
+  fi
   migration_checksum="$(sha256sum "$migration_path" | awk '{print $1}')"
   [[ "$migration_checksum" =~ ^[a-f0-9]{64}$ ]]
   existing_marker="$(
@@ -1315,7 +1721,7 @@ for migration_path in "${migration_files[@]}"; do
   expected_marker="$marker_dir/${migration_version}-${migration_checksum}.sha256"
   if [[ -n "$existing_marker" && "$existing_marker" != "$expected_marker" ]]; then
     echo "ERRO: a migration $migration_version já foi aplicada com outro checksum; crie uma nova migration." >&2
-    exit 1
+    return 1
   fi
   if [[ ! -f "$expected_marker" ]]; then
     unapplied_migrations+=("$migration_path")
@@ -1340,23 +1746,79 @@ if ((${#unapplied_migrations[@]} > 0)); then
     < "$database_backup_tmp" >/dev/null
   mv -- "$database_backup_tmp" "$database_backup"
 
-  for migration_path in "${unapplied_migrations[@]}"; do
-    sed -n '1,$p' "$migration_path"
-    printf '\n'
-  done | docker exec -i supabase-db \
-    psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -1
-  for marker_index in "${!unapplied_markers[@]}"; do
-    printf '%s\n' "${unapplied_checksums[$marker_index]}" \
-      > "${unapplied_markers[$marker_index]}"
-  done
-fi
+  echo "== Migrations e testes SQL na mesma transação =="
+  database_release_sql="$backup_dir/database-release.sql.tmp"
+  rm -f -- "$database_release_sql"
+  {
+    printf 'begin;\n\n'
+    for migration_path in "${unapplied_migrations[@]}"; do
+      awk '
+        {
+          normalized = tolower($0)
+          sub(/[[:space:]]*--.*$/, "", normalized)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+          if (
+            normalized == "begin;" ||
+            normalized == "commit;" ||
+            normalized == "\\set on_error_stop on"
+          ) {
+            next
+          }
+          print
+        }
+      ' "$migration_path"
+      printf '\n'
+    done
 
-echo "== Testes SQL transacionais do Wolfie =="
-for database_test in "${database_tests[@]}"; do
+    database_test_index=0
+    for database_test in "${database_tests[@]}"; do
+      database_test_savepoint="release_database_test_$database_test_index"
+      printf 'savepoint %s;\n' "$database_test_savepoint"
+      awk '
+        {
+          normalized = tolower($0)
+          sub(/[[:space:]]*--.*$/, "", normalized)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+          if (
+            normalized == "begin;" ||
+            normalized == "rollback;" ||
+            normalized == "\\set on_error_stop on"
+          ) {
+            next
+          }
+          print
+        }
+      ' "$database_test"
+      printf '\nrollback to savepoint %s;\n' "$database_test_savepoint"
+      printf 'release savepoint %s;\n\n' "$database_test_savepoint"
+      database_test_index=$((database_test_index + 1))
+    done
+    printf 'commit;\n'
+  } > "$database_release_sql"
+  [[ -s "$database_release_sql" ]]
+  write_activation_state database_transaction_started
   docker exec -i supabase-db \
     psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
-    < "$database_test"
-done
+    < "$database_release_sql"
+  database_committed=1
+  write_activation_state database_committed
+
+  for marker_index in "${!unapplied_markers[@]}"; do
+    marker_tmp="${unapplied_markers[$marker_index]}.tmp"
+    rm -f -- "$marker_tmp"
+    printf '%s\n' "${unapplied_checksums[$marker_index]}" \
+      > "$marker_tmp"
+    mv -- "$marker_tmp" "${unapplied_markers[$marker_index]}"
+  done
+  rm -f -- "$database_release_sql" || true
+else
+  echo "== Testes SQL transacionais do Wolfie =="
+  for database_test in "${database_tests[@]}"; do
+    docker exec -i supabase-db \
+      psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+      < "$database_test"
+  done
+fi
 
 docker exec -i supabase-db \
   psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
@@ -1499,6 +1961,18 @@ begin
 end
 $verify$;
 SQL
+}
+
+if [[ "$preserve_remote_functions" != "1" ]]; then
+  (
+    cd "$supabase_dir" &&
+      docker compose stop functions
+  )
+fi
+(
+  cd "$compose_dir" &&
+    docker compose stop frontend
+)
 
 if [[ -d "$app_dir/dist" ]]; then
   mv -- "$app_dir/dist" "$backup_dir/frontend-dist"
@@ -1595,10 +2069,20 @@ cp -a -- "$release_dir/functions/asaas-webhook" \
 if [[ -f "$functions_dir/_shared/request-auth.ts" ]]; then
   cp -a -- "$functions_dir/_shared/request-auth.ts" \
     "$backup_dir/request-auth.ts"
-  shared_swapped=1
 fi
+shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
+
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts tenant-communication.ts tenant-legal-assets.ts; do
+  if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
+    cp -a -- "$functions_dir/_shared/$shared_name" \
+      "$backup_dir/$shared_name"
+  fi
+  security_shared_swapped+=("$shared_name")
+  cp -a -- "$release_dir/functions/_shared/$shared_name" \
+    "$functions_dir/_shared/$shared_name"
+done
 
 if [[ -f "$functions_dir/_shared/account-invite.ts" ]]; then
   cp -a -- "$functions_dir/_shared/account-invite.ts" \
@@ -1674,6 +2158,9 @@ for function_name in "${HARDENED_FUNCTIONS[@]}"; do
 done
 fi
 
+write_activation_state code_staged
+run_database_release
+
 if [[ "$preserve_remote_functions" != "1" ]]; then
   if ! (
     cd "$supabase_dir" &&
@@ -1700,6 +2187,34 @@ wait_for_http_status() {
     actual_status="$(
       curl -s -o /dev/null -w '%{http_code}' \
         --connect-timeout 5 --max-time 15 "$@" || true
+    )"
+    if [[ "$actual_status" = "$expected_status" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "ERRO: $check_name retornou ${actual_status:-sem resposta}; esperado $expected_status." >&2
+  return 1
+}
+
+wait_for_service_http_status() {
+  local expected_status=$1
+  local check_name=$2
+  local actual_status=
+  local attempt
+  shift 2
+
+  [[ "$service_role_key" =~ ^[A-Za-z0-9._-]{20,}$ ]]
+  for attempt in {1..20}; do
+    actual_status="$(
+      curl -s -o /dev/null -w '%{http_code}' \
+        --connect-timeout 5 --max-time 15 \
+        --config <(
+          printf 'header = "Authorization: Bearer %s"\nheader = "apikey: %s"\n' \
+            "$service_role_key" "$service_role_key"
+        ) \
+        "$@" || true
     )"
     if [[ "$actual_status" = "$expected_status" ]]; then
       return 0
@@ -1831,7 +2346,14 @@ wait_for_http_status 401 "token do webhook Asaas" \
   -X POST "$api_url/functions/v1/asaas-webhook" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_http_status 410 "desativação do webhook legado Kiwify" \
+  -X POST "$api_url/functions/v1/kiwify-webhook" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
 for protected_function in \
+  accept-opportunity \
+  broadcast-opportunity \
+  coverage-admin \
   create-wolfie-topup \
   create-student-account \
   create-teacher-account \
@@ -1840,14 +2362,45 @@ for protected_function in \
   send-whatsapp \
   whatsapp-wise-wolf \
   send-contract-confirmation \
+  send-welcome-contract \
   process-outbox \
   notify-claim \
-  whatsapp-lead-notification; do
+  school-admin \
+  tenant-settings-admin \
+  whatsapp-evolution-proxy \
+  whatsapp-lead-notification \
+  whatsapp-hr-welcome; do
   wait_for_http_status 401 "autenticação de $protected_function" \
     -X POST "$api_url/functions/v1/$protected_function" \
     -H 'Content-Type: application/json' \
     --data '{}'
 done
+wait_for_http_status 401 "autenticação de documentos legais privados" \
+  -X POST "$api_url/functions/v1/tenant-legal-assets" \
+  -H 'Content-Type: application/json' \
+  --data '{"action":"current"}'
+wait_for_http_status 404 "consulta pública de branding sem tenant" \
+  "$api_url/functions/v1/public-tenant-branding"
+service_role_key="$(
+  docker exec supabase-edge-functions sh -lc \
+    'printf "%s" "${SUPABASE_SERVICE_ROLE_KEY:-}"'
+)"
+[[ "$service_role_key" =~ ^[A-Za-z0-9._-]{20,}$ ]]
+for retired_service_function in \
+  send-whatsapp \
+  whatsapp-wise-wolf \
+  send-contract-confirmation \
+  process-outbox; do
+  wait_for_service_http_status 410 "desativação de $retired_service_function" \
+    -X POST "$api_url/functions/v1/$retired_service_function" \
+    -H 'Content-Type: application/json' \
+    --data '{}'
+done
+wait_for_service_http_status 403 "bloqueio de service role em notify-claim" \
+  -X POST "$api_url/functions/v1/notify-claim" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+unset service_role_key
 wait_for_http_status 400 "validação pública de indicação" \
   -X POST "$api_url/functions/v1/referral-welcome" \
   -H 'Content-Type: application/json' \
@@ -1855,6 +2408,12 @@ wait_for_http_status 400 "validação pública de indicação" \
 for service_cron in sdr-followups funnel-sweeper post-trial-pipeline; do
   wait_for_http_status 403 "service role de $service_cron" \
     -X POST "$api_url/functions/v1/$service_cron" \
+    -H 'Content-Type: application/json' \
+    --data '{}'
+done
+for protected_emitter in dre-report payment-split-notify weekly-director-digest; do
+  wait_for_http_status 401 "autenticação de $protected_emitter" \
+    -X POST "$api_url/functions/v1/$protected_emitter" \
     -H 'Content-Type: application/json' \
     --data '{}'
 done
@@ -1879,10 +2438,91 @@ wait_for_http_status 426 "upgrade WebSocket do Wolfie Live" \
 printf '%s\n' "$release_id" > "$current_marker_tmp"
 mv -f -- "$current_marker_tmp" "$current_marker"
 current_marker_swapped=1
+write_activation_state active
 trap - ERR
 echo "Release ativa: $release_id"
 echo "Backup reversível: $backup_dir"
 REMOTE
+
+if [[ "$activation_status" -ne 0 ]]; then
+  activation_failure_state="unknown"
+  if activation_failure_state="$(
+    ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
+      "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" "$release_id" \
+      "$expected_current_release" <<'REMOTE_STATUS'
+set -Eeuo pipefail
+releases_dir=$1
+backups_dir=$2
+release_id=$3
+expected_current_release=$4
+for remote_path in "$releases_dir" "$backups_dir"; do
+  [[ "$remote_path" =~ ^/opt/wisewolf/[A-Za-z0-9._/-]+$ ]]
+  [[ "$remote_path" != *".."* && "$remote_path" != *"//"* ]]
+done
+[[ "$release_id" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+[[ "$expected_current_release" = "none" ||
+  "$expected_current_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+failure_marker="$backups_dir/release-$release_id/POST_COMMIT_FAILURE"
+if [[ -f "$failure_marker" && ! -L "$failure_marker" ]] &&
+  grep -Fxq -- "post_commit_validation_failed:$release_id" "$failure_marker"; then
+  printf 'postcommit'
+  exit 0
+fi
+activation_state_file="$backups_dir/release-$release_id/ACTIVATION_STATE"
+if [[ -f "$activation_state_file" && ! -L "$activation_state_file" ]]; then
+  IFS= read -r activation_state < "$activation_state_file"
+  activation_phase="${activation_state%%:*}"
+  activation_state_release_id="${activation_state#*:}"
+  [[ "$activation_state_release_id" = "$release_id" ]]
+  case "$activation_phase" in
+    active | database_committed | post_commit_failed)
+      printf 'postcommit'
+      exit 0
+      ;;
+    rolled_back)
+      printf 'rolledback'
+      exit 0
+      ;;
+    prepared | code_staged | database_transaction_started | rollback_failed)
+      printf 'unresolved:%s' "$activation_phase"
+      exit 0
+      ;;
+    *) exit 1 ;;
+  esac
+fi
+current_marker="$releases_dir/current"
+if [[ ! -e "$current_marker" && ! -L "$current_marker" &&
+  "$expected_current_release" = "none" ]]; then
+  printf 'unchanged'
+  exit 0
+fi
+[[ -f "$current_marker" && ! -L "$current_marker" ]]
+IFS= read -r active_release < "$current_marker"
+[[ "$active_release" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$ ]]
+printf 'active:%s' "$active_release"
+REMOTE_STATUS
+  )"; then
+    :
+  fi
+
+  if [[ "$activation_failure_state" = "postcommit" ||
+    "$activation_failure_state" = "active:$release_id" ]]; then
+    echo "ERRO: falha após o commit; a nova release permaneceu ativa para manter compatibilidade com o banco." >&2
+    if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" != "1" ]]; then
+      update_published_function_manifest "$DEPLOY_SSH_HOST" "$DEPLOY_FUNCTIONS_DIR" ||
+        echo "AVISO: não consegui atualizar o manifesto das functions mantidas ativas." >&2
+    fi
+  elif [[ "$activation_failure_state" = "rolledback" ||
+    "$activation_failure_state" = "unchanged" ||
+    "$activation_failure_state" = active:* ]]; then
+    echo "ERRO: ativação falhou antes do commit; o estado anterior permaneceu ativo ou foi restaurado." >&2
+  elif [[ "$activation_failure_state" = unresolved:* ]]; then
+    echo "ERRO CRÍTICO: a ativação terminou no estado '${activation_failure_state#unresolved:}'; os serviços e o banco precisam de reconciliação manual antes de outro release." >&2
+  else
+    echo "ERRO CRÍTICO: não foi possível confirmar o estado remoto; não inicie outro release antes da verificação manual." >&2
+  fi
+  exit "$activation_status"
+fi
 
 echo "Deploy concluído: $release_id"
 

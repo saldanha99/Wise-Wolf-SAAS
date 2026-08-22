@@ -24,3 +24,18 @@ entrypoint = "./functions/kiwify-webhook/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/generate-student-manual-pix/index.ts"
+
+[functions.tenant-settings-admin]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/tenant-settings-admin/index.ts"
+
+[functions.tenant-legal-assets]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/tenant-legal-assets/index.ts"
+
+[functions.public-tenant-branding]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/public-tenant-branding/index.ts"

@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
-import { TeacherContractDocument } from './TeacherContractDocument';
+import { getSchoolInfo } from '../lib/schoolInfo';
+import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
+import type { SchoolInfo } from './ContractDocument';
 import { Loader2, ShieldCheck, X, AlertTriangle } from 'lucide-react';
 
 // Aceite de contrato PJ para professor JÁ logado que nunca aceitou (contract_accepted=false).
@@ -19,6 +21,7 @@ interface TeacherContractAcceptProps {
 
 const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, onAccepted, onClose, mandatory }) => {
     const [profile, setProfile] = useState<any>(null);
+    const [school, setSchool] = useState<SchoolInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [checked, setChecked] = useState(false);
     const [signature, setSignature] = useState('');
@@ -37,12 +40,13 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
             try {
                 const { data, error } = await supabase
                     .from('profiles')
-                    .select('full_name, rg, cpf, address, address_number, postal_code, birth_date, hourly_rate, subscription_id')
+                    .select('full_name, rg, cpf, address, address_number, postal_code, birth_date, hourly_rate, subscription_id, tenant_id')
                     .eq('id', userId)
                     .single();
                 if (error) throw error;
                 setProfile(data);
                 setSignature(data?.full_name || '');
+                setSchool(await getSchoolInfo(data?.tenant_id));
             } catch (e) {
                 console.error('Erro ao carregar contrato do professor:', e);
                 setError('Não foi possível carregar seu contrato. Tente novamente.');
@@ -51,6 +55,8 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
             }
         })();
     }, [userId]);
+
+    const contractReadiness = getTeacherContractReadiness(school, profile?.hourly_rate);
 
     useEffect(() => {
         const previousOverflow = document.body.style.overflow;
@@ -109,6 +115,10 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
 
     const handleAccept = async () => {
         setError('');
+        if (!contractReadiness.isReady) {
+            setError(`Assinatura bloqueada: a escola precisa configurar ${contractReadiness.missingFields.join(', ')}.`);
+            return;
+        }
         if (!checked) { setError('Marque a caixa confirmando que leu e aceita os termos.'); return; }
         if (signature.trim().length < 3) { setError('Digite seu nome completo como assinatura.'); return; }
         setSubmitting(true);
@@ -183,6 +193,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                             teacherCPF={profile?.cpf || '---'}
                                             teacherAddress={addressFull || '---'}
                                             teacherBirthDate={birth || '---'}
+                                            school={school}
                                             hourlyRate={Number(profile?.hourly_rate) || undefined}
                                             subscriptionId={profile?.subscription_id || undefined}
                                             displayMode="responsive"
@@ -190,6 +201,13 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                         />
                                 </div>
                             </div>
+
+                            {!contractReadiness.isReady && (
+                                <div role="alert" className="flex items-start gap-2 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3">
+                                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                                    <span>Aceite bloqueado até a escola configurar {contractReadiness.missingFields.join(', ')}. Nenhuma identidade de outro tenant será usada.</span>
+                                </div>
+                            )}
 
                             {/* Assinatura digitada */}
                             <div className="space-y-2">
@@ -199,6 +217,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                 <input
                                     type="text"
                                     value={signature}
+                                    disabled={!contractReadiness.isReady}
                                     onChange={(e) => setSignature(e.target.value)}
                                     placeholder="Seu nome completo"
                                     autoComplete="name"
@@ -210,6 +229,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                                 <input
                                     type="checkbox"
                                     checked={checked}
+                                    disabled={!contractReadiness.isReady}
                                     onChange={(e) => setChecked(e.target.checked)}
                                     className="mt-1 w-5 h-5 accent-emerald-600 shrink-0"
                                 />
@@ -234,7 +254,7 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
                     <button
                         type="button"
                         onClick={handleAccept}
-                        disabled={submitting || loading || !checked}
+                        disabled={submitting || loading || !contractReadiness.isReady || !checked}
                         className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-3.5 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-emerald-700 active:scale-[0.99] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {submitting ? <><Loader2 size={16} className="animate-spin" /> Registrando…</> : <><ShieldCheck size={16} /> Aceitar e assinar contrato</>}

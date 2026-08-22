@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Zap, User, Phone, Search, Copy, Check, ChevronDown, Calendar, Clock, Link as LinkIcon, Sparkles, Filter } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { APP_BASE_URL } from '../constants';
 import { TEACHER_SPECIALIZATIONS } from '../constants';
 
 interface VendorTrialLinkGeneratorProps {
@@ -19,7 +18,7 @@ const WEEKDAY_OPTIONS = [
     { value: 'Sábado', label: 'Sábado' },
 ];
 
-const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ user, tenantId, teachers = [] }) => {
+const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ tenantId, teachers = [] }) => {
     const [prospectName, setProspectName] = useState('');
     const [prospectPhone, setProspectPhone] = useState('');
     const [specFilter, setSpecFilter] = useState('');
@@ -32,6 +31,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
     const [copied, setCopied] = useState(false);
     const [saving, setSaving] = useState(false);
     const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
+    const [requestId, setRequestId] = useState(() => crypto.randomUUID());
 
     useEffect(() => {
         if (teachers.length > 0) {
@@ -66,63 +66,33 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
             const dayIndex: Record<string, number> = {
                 Domingo: 0, Segunda: 1, Terça: 2, Quarta: 3, Quinta: 4, Sexta: 5, Sábado: 6,
             };
-            const brtNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
-            let delta = (dayIndex[selectedDay] - brtNow.getUTCDay() + 7) % 7;
-            let selectedDate = new Date(Date.UTC(brtNow.getUTCFullYear(), brtNow.getUTCMonth(), brtNow.getUTCDate() + delta));
-            let ymd = selectedDate.toISOString().split('T')[0];
-            let startAt = new Date(`${ymd}T${selectedTime}:00-03:00`);
-            if (startAt.getTime() < Date.now() + 60 * 60 * 1000) {
-                delta += 7;
-                selectedDate = new Date(Date.UTC(brtNow.getUTCFullYear(), brtNow.getUTCMonth(), brtNow.getUTCDate() + delta));
-                ymd = selectedDate.toISOString().split('T')[0];
-                startAt = new Date(`${ymd}T${selectedTime}:00-03:00`);
-            }
-
-            const { data: opp, error: oppErr } = await supabase
-                .from('opportunities')
-                .insert({
-                    tenant_id: tenantId,
-                    student_name: prospectName.trim(),
-                    student_phone: prospectPhone.replace(/\D/g, '') || null,
-                    status: 'CLAIMED',
-                    trial_status: 'SCHEDULED',
-                    conversion_status: 'OPEN',
-                    winner_teacher_id: selectedTeacher || null,
-                    slots_proposed: [{
-                        day: selectedDay,
+            const { data, error } = await supabase.rpc(
+                'create_vendor_trial_link_secure',
+                {
+                    p_payload: {
+                        requestId,
+                        teacherId: selectedTeacher,
+                        studentName: prospectName.trim(),
+                        studentPhone: prospectPhone.replace(/\D/g, ''),
+                        weekday: dayIndex[selectedDay],
                         time: selectedTime,
-                        formatted: selectedDay,
-                        start_time: startAt.toISOString(),
-                    }],
-                    created_by_vendor_id: user.id,
-                })
-                .select()
-                .single();
-
-            if (oppErr) throw oppErr;
-
-            const linkToken = crypto.randomUUID();
-            const trialUrl = `${APP_BASE_URL}/experimental?token=${linkToken}`;
-
-            // Save enrollment link record
-            const { error: linkError } = await supabase.from('enrollment_links').insert({
-                tenant_id: tenantId,
-                opportunity_id: opp.id,
-                link_token: linkToken,
-                link_url: trialUrl,
-                student_name: prospectName.trim(),
-                student_phone: prospectPhone.replace(/\D/g, '') || null,
-                professor_id: selectedTeacher || null,
-                status: 'PENDING',
-                created_by_vendor_id: user.id,
-            });
-            if (linkError) {
-                await supabase.from('opportunities').delete().eq('id', opp.id);
-                throw linkError;
+                    },
+                }
+            );
+            if (error || data?.ok !== true || !data?.confirmationUrl) {
+                const code = data?.error;
+                const message = code === 'teacher_schedule_conflict'
+                    ? 'Esse professor já tem um compromisso nesse horário.'
+                    : code === 'teacher_not_active_for_tenant'
+                        ? 'O professor não está ativo nesta escola.'
+                        : code === 'tenant_not_operational'
+                            ? 'A escola não está disponível para novas experimentais.'
+                            : error?.message || 'Não foi possível gerar o link seguro.';
+                throw new Error(message);
             }
 
-            setGeneratedLink(trialUrl);
-            await navigator.clipboard.writeText(trialUrl).catch(() => {});
+            setGeneratedLink(data.confirmationUrl);
+            await navigator.clipboard.writeText(data.confirmationUrl).catch(() => {});
             setCopied(true);
             setTimeout(() => setCopied(false), 3000);
         } catch (err: any) {
@@ -142,6 +112,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
         setGeneratedLink('');
         setCopied(false);
         setTeacherSearch('');
+        setRequestId(crypto.randomUUID());
     };
 
     return (
@@ -195,7 +166,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
                 {/* Teacher Selection */}
                 <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                        <Filter size={14} /> Professor (Opcional)
+                        <Filter size={14} /> Professor responsável
                     </h3>
 
                     {/* Spec Filter */}
@@ -266,7 +237,7 @@ const VendorTrialLinkGenerator: React.FC<VendorTrialLinkGeneratorProps> = ({ use
                 {/* Suggested Date/Time */}
                 <div>
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                        <Calendar size={14} /> Data e Horário Sugerido (Opcional)
+                        <Calendar size={14} /> Data e horário solicitados
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>

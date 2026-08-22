@@ -25,6 +25,8 @@ export interface BrandingSettings {
   secondaryColor: string;
   logoUrl: string;
   faviconUrl: string;
+  logoPath?: string;
+  faviconPath?: string;
 }
 
 export interface Tenant {
@@ -35,9 +37,14 @@ export interface Tenant {
   studentLimit: number;
   teacherLimit: number;
   whatsapp_enabled?: boolean;
-  /** Dados da escola para contratos. Quando null, usa defaults da Wise Wolf. */
+  financial_cutoff_day?: number;
+  slug?: string | null;
+  custom_domain?: string | null;
+  custom_domain_verified?: boolean;
+  /** Identidade jurídica do próprio tenant; nunca herda PII da plataforma. */
   school_info?: {
     name?: string;
+    legalName?: string;
     cnpj?: string;
     address?: string;
     email?: string;
@@ -45,6 +52,10 @@ export interface Tenant {
     city?: string;
     state?: string;
     directorName?: string;
+    legalRepresentativeName?: string;
+    legalRepresentativeSignaturePath?: string;
+    legalRepresentativeSignatureUrl?: string;
+    privacyContactEmail?: string;
   } | null;
 }
 

@@ -3,6 +3,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizePaymentTarget } from "../_shared/payment-auth.ts";
 import {
+  loadTenantCentralWhatsAppInstance,
+  loadTenantWhatsAppInstance,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
+import {
   digits,
   formatManualPixMessage,
   hasOpenNonPixPayment,
@@ -139,7 +144,7 @@ serve(async (req) => {
       return json({ success: false, error: "O cadastro selecionado não é de aluno." }, 409);
     }
 
-    const tenantId = text(profile.tenant_id);
+    const tenantId = authorization.tenantId;
     const studentName = text(profile.full_name);
     const isDependent = Boolean(profile.guardian_id || profile.guardian_cpf);
     const billingName = isDependent ? text(profile.guardian_name) : studentName;
@@ -166,6 +171,13 @@ serve(async (req) => {
     if (!Number.isFinite(value) || value <= 0) {
       return json({ success: false, error: "A mensalidade do aluno não está configurada." }, 409);
     }
+    const { data: tenant } = await authorization.admin
+      .from("tenants")
+      .select("name,asaas_wallet_id,asaas_split_percentage")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const schoolName = safeCommunicationText(tenant?.name, 120) ||
+      "Escola de idiomas";
 
     let asaasCustomerId = text(profile.asaas_customer_id);
     if (!asaasCustomerId) {
@@ -302,11 +314,6 @@ serve(async (req) => {
         throw new Error(`pix_claim_failed:${claimInsertError?.code || "unknown"}`);
       }
 
-      const { data: tenant } = await authorization.admin
-        .from("tenants")
-        .select("asaas_wallet_id, asaas_split_percentage")
-        .eq("id", tenantId)
-        .maybeSingle();
       const split = tenant?.asaas_wallet_id
         ? [{
           walletId: tenant.asaas_wallet_id,
@@ -318,7 +325,7 @@ serve(async (req) => {
         billingType: "PIX",
         value,
         dueDate,
-        description: `Mensalidade Wise Wolf - ${studentName}`.slice(0, 500),
+        description: `Mensalidade ${schoolName} - ${studentName}`.slice(0, 500),
         externalReference: studentId,
         ...(split ? { split } : {}),
       });
@@ -356,7 +363,8 @@ serve(async (req) => {
     const paymentValue = Number(payment.value) || value;
     const paymentStatus = text(payment.status) || "PENDING";
     const dueDate = text(payment.dueDate) || nextUpcomingDueDate(new Date(), dueDay);
-    const description = text(payment.description) || `Mensalidade Wise Wolf - ${studentName}`;
+    const description = text(payment.description) ||
+      `Mensalidade ${schoolName} - ${studentName}`;
     const invoiceUrl = text(payment.bankSlipUrl || payment.invoiceUrl) || null;
 
     // O vínculo nasce antes do recebimento. O webhook fará upsert pelo mesmo ID
@@ -390,23 +398,19 @@ serve(async (req) => {
 
     let directorInstance = "";
     if (!authorization.isService && authorization.callerId) {
-      const { data: caller } = await authorization.admin.from("profiles")
-        .select("whatsapp_instance")
-        .eq("id", authorization.callerId)
-        .maybeSingle();
-      directorInstance = text(caller?.whatsapp_instance);
+      directorInstance = await loadTenantWhatsAppInstance(
+        authorization.admin,
+        tenantId,
+        authorization.callerId,
+        "student",
+      ) || "";
     }
     if (!directorInstance) {
-      const { data: director } = await authorization.admin.from("profiles")
-        .select("whatsapp_instance")
-        .eq("tenant_id", tenantId)
-        .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-        .not("whatsapp_instance", "is", null)
-        .neq("whatsapp_instance", "")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      directorInstance = text(director?.whatsapp_instance);
+      directorInstance = await loadTenantCentralWhatsAppInstance(
+        authorization.admin,
+        tenantId,
+        "student",
+      ) || "";
     }
 
     const message = formatManualPixMessage({
@@ -414,6 +418,7 @@ serve(async (req) => {
       value: paymentValue,
       dueDate,
       pixPayload,
+      brandName: schoolName,
     });
     const isTest = profile.is_test_account === true;
     const whatsapp = isTest

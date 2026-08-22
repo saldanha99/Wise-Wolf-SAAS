@@ -10,6 +10,7 @@ export interface AuthProfile {
   id: string;
   role: string;
   tenant_id: string | null;
+  lifecycle_status: string | null;
 }
 
 export interface RequestAuthContext {
@@ -61,6 +62,11 @@ export function isAuthorizedTenantlessProfile(
   profile: AuthProfile,
 ): boolean {
   return profile.role === "NON_STUDENT" && profile.tenant_id === null;
+}
+
+export function isActiveLifecycleProfile(profile: AuthProfile): boolean {
+  return String(profile.lifecycle_status || "").trim().toLowerCase() ===
+    "active";
 }
 
 /**
@@ -170,7 +176,7 @@ export async function authorizeRequest(
 
   const { data: profile, error: profileError } = await admin
     .from("profiles")
-    .select("id, role, tenant_id")
+    .select("id, role, tenant_id, lifecycle_status")
     .eq("id", userData.user.id)
     .maybeSingle();
 
@@ -200,6 +206,16 @@ export async function authorizeRequest(
   }
 
   let activeProfile = profile as AuthProfile;
+  if (!isActiveLifecycleProfile(activeProfile)) {
+    return {
+      ok: false,
+      response: jsonError(
+        options.corsHeaders,
+        403,
+        "User lifecycle is not active",
+      ),
+    };
+  }
   if (activeProfile.role !== "SUPER_ADMIN") {
     const { data: selectedContext, error: contextError } = await admin
       .from("tenant_user_contexts")
@@ -296,6 +312,7 @@ export async function authorizeRequest(
         id: activeProfile.id,
         role: "NON_STUDENT",
         tenant_id: null,
+        lifecycle_status: activeProfile.lifecycle_status,
       };
     } else {
       // SUPER_ADMIN is global authority and may only come from the canonical
@@ -316,6 +333,7 @@ export async function authorizeRequest(
         id: activeProfile.id,
         role: membership.role,
         tenant_id: membership.tenant_id,
+        lifecycle_status: activeProfile.lifecycle_status,
       };
     }
   }

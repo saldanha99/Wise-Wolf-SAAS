@@ -89,7 +89,6 @@ const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
 const VendorOnboarding = lazy(() => import('./components/VendorOnboarding'));
 const SchoolSignupPage = lazy(() => import('./components/SchoolSignupPage'));
 const TeacherEntrepreneurSignup = lazy(() => import('./components/TeacherEntrepreneurSignup'));
-const TenantAdvancedSettings = lazy(() => import('./components/TenantAdvancedSettings'));
 const TeacherWorkflows = lazy(() => import('./components/TeacherWorkflows'));
 const AdminWorkflowsPanel = lazy(() => import('./components/AdminWorkflowsPanel'));
 const SuspensionPage = lazy(() => import('./components/SuspensionPage'));
@@ -172,10 +171,9 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'referral-admin', label: 'Indicações', group: 'Crescimento' },
     { tab: 'vendors-mgmt', label: 'Vendedores', group: 'Crescimento' },
     { tab: 'contracts', label: 'Contratos', group: 'Configurações' },
-    { tab: 'settings_school', label: 'Branding', group: 'Configurações' },
+    { tab: 'settings_school', label: 'Central da Escola', group: 'Configurações' },
     { tab: 'automation', label: 'WhatsApp (Conexão)', group: 'Configurações' },
     { tab: 'automations', label: 'Disparos WhatsApp', group: 'Configurações' },
-    { tab: 'tenant_advanced', label: 'Configuração Avançada', group: 'Configurações' },
     { tab: 'admin_workflows', label: 'Workflows', group: 'Configurações' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
@@ -781,7 +779,8 @@ const App: React.FC = () => {
   if (path === '/claim-opportunity') {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
-    return <ClaimOpportunity opportunityId={id} />;
+    const generation = params.get('g');
+    return <ClaimOpportunity opportunityId={id} generation={generation} />;
   }
 
   // Candidato a professor agenda a entrevista com o diretor (link enviado pela Michelle/RH)
@@ -1061,7 +1060,6 @@ const App: React.FC = () => {
       'learning_paths_builder': <LearningPathsBuilder user={user} tenantId={currentTenant?.id} />,
       'class_skills': <ClassSkillsDashboard user={user} tenantId={currentTenant?.id} />,
       'msg_settings': <TeacherMessageSettings user={user} />,
-      'tenant_advanced': <TenantAdvancedSettings user={user} tenantId={currentTenant?.id} />,
       'contracts': <ContractManagement tenantId={currentTenant?.id} />,
       'student-payments': <AdminPaymentsList tenantId={currentTenant?.id} />,
       'teacher_workflows': <TeacherWorkflows user={user} />,

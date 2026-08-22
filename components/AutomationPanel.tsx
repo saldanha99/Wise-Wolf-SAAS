@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Zap, MessageSquareMore, CalendarDays, Gift, BarChart2, Receipt, CheckCircle2, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import { Zap, MessageSquareMore, CalendarDays, BarChart2, Receipt, CheckCircle2, XCircle, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 
 interface Props { user: any; tenantId?: string; }
 
@@ -38,7 +38,7 @@ const AUTOMATIONS: AutomationDef[] = [
     id: 'monthly',
     icon: <Receipt size={20} />,
     title: 'Fechamento Mensal do Professor',
-    desc: 'Gera os fechamentos do mês anterior para todos os professores e avisa cada um pelo WhatsApp com o total + link para o PDF.',
+    desc: 'Gera os fechamentos do mês anterior apenas para os professores da escola ativa e avisa cada um pelo WhatsApp com o total + link para o PDF.',
     edgeFn: 'monthly-teacher-closing',
     color: 'text-emerald-400',
     schedule: 'Cron: dia 1 de cada mês, 03:30',
@@ -47,12 +47,16 @@ const AUTOMATIONS: AutomationDef[] = [
 
 type RunState = { status: 'idle' } | { status: 'running' } | { status: 'ok'; data: Record<string, unknown> } | { status: 'err'; msg: string };
 
-const AutomationPanel: React.FC<Props> = ({ user }) => {
+const AutomationPanel: React.FC<Props> = ({ tenantId }) => {
   const [states, setStates] = useState<Record<string, RunState>>(
     Object.fromEntries(AUTOMATIONS.map(a => [a.id, { status: 'idle' }]))
   );
 
   const run = async (a: AutomationDef) => {
+    if (!tenantId) {
+      setStates(s => ({ ...s, [a.id]: { status: 'err', msg: 'Selecione uma escola ativa antes de disparar.' } }));
+      return;
+    }
     setStates(s => ({ ...s, [a.id]: { status: 'running' } }));
     try {
       const { data, error } = await supabase.functions.invoke(a.edgeFn, { body: a.body ?? {} });
@@ -86,6 +90,15 @@ const AutomationPanel: React.FC<Props> = ({ user }) => {
         </p>
       </div>
 
+      <div className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 ${tenantId ? 'bg-emerald-500/10 border-emerald-400/30' : 'bg-red-500/10 border-red-400/30'}`}>
+        <ShieldCheck size={16} className={`${tenantId ? 'text-emerald-400' : 'text-red-400'} shrink-0 mt-0.5`} />
+        <p className={`text-xs leading-relaxed ${tenantId ? 'text-emerald-200' : 'text-red-200'}`}>
+          {tenantId
+            ? 'Escopo protegido: o disparo manual será limitado à escola ativa. A escola é confirmada novamente pelo servidor antes de qualquer envio.'
+            : 'Nenhuma escola está ativa. Selecione uma escola para liberar os disparos manuais.'}
+        </p>
+      </div>
+
       {/* Cards */}
       <div className="space-y-3">
         {AUTOMATIONS.map(a => {
@@ -106,8 +119,8 @@ const AutomationPanel: React.FC<Props> = ({ user }) => {
                 </div>
                 <div className="shrink-0">
                   {st.status === 'idle' && (
-                    <button onClick={() => run(a)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-accent/10 text-brand-accent text-xs font-black hover:bg-brand-accent/20 transition-colors">
+                    <button onClick={() => run(a)} disabled={!tenantId}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-accent/10 text-brand-accent text-xs font-black hover:bg-brand-accent/20 transition-colors disabled:cursor-not-allowed disabled:opacity-40">
                       <Zap size={13} /> Disparar
                     </button>
                   )}

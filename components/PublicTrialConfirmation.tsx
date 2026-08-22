@@ -4,7 +4,9 @@ import { FUNCTIONS_URL } from '../lib/supabase';
 
 type TrialDetails = {
     confirmed: boolean;
+    requested?: boolean;
     conflict?: boolean;
+    state?: string;
     firstName: string;
     teacherName: string;
     schoolName: string;
@@ -55,10 +57,15 @@ const PublicTrialConfirmation: React.FC<PublicTrialConfirmationProps> = ({ token
                 body: '{}',
             });
             const body = await response.json();
-            if (!response.ok || !body.ok) throw new Error(body.message || 'Não foi possível confirmar o horário.');
+            if (!response.ok || !body.ok) {
+                if (body.conflict) {
+                    setDetails((current) => current ? { ...current, requested: false, conflict: true } : current);
+                }
+                throw new Error(body.message || 'Não foi possível solicitar o horário.');
+            }
             setDetails(body);
         } catch (requestError) {
-            setError(requestError instanceof Error ? requestError.message : 'Não foi possível confirmar o horário.');
+            setError(requestError instanceof Error ? requestError.message : 'Não foi possível solicitar o horário.');
         } finally {
             setConfirming(false);
         }
@@ -67,8 +74,8 @@ const PublicTrialConfirmation: React.FC<PublicTrialConfirmationProps> = ({ token
     return (
         <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-5 py-10">
             <section className="w-full max-w-md border border-slate-700 bg-slate-900 p-6 sm:p-8 shadow-2xl rounded-lg">
-                <p className="text-xs font-bold uppercase text-emerald-400 mb-2">Wise Wolf Language School</p>
-                <h1 className="text-2xl font-bold mb-6">Confirmação da aula experimental</h1>
+                <p className="text-xs font-bold uppercase text-emerald-400 mb-2">{details?.schoolName || 'Escola'}</p>
+                <h1 className="text-2xl font-bold mb-6">Solicitação de aula experimental</h1>
 
                 {loading && (
                     <div className="flex items-center gap-3 text-slate-300 py-8">
@@ -85,7 +92,7 @@ const PublicTrialConfirmation: React.FC<PublicTrialConfirmationProps> = ({ token
 
                 {!loading && details && (
                     <div className="space-y-5">
-                        <p className="text-slate-300">Olá, <strong className="text-white">{details.firstName}</strong>. Confira o horário reservado para você:</p>
+                        <p className="text-slate-300">Olá, <strong className="text-white">{details.firstName}</strong>. Confira o horário que deseja solicitar:</p>
                         <div className="border-y border-slate-700 divide-y divide-slate-700">
                             <div className="flex items-center gap-3 py-3"><CalendarDays size={18} className="text-emerald-400" /><span>{details.dateLabel}</span></div>
                             <div className="flex items-center gap-3 py-3"><Clock size={18} className="text-emerald-400" /><span>{details.timeLabel}</span></div>
@@ -95,7 +102,12 @@ const PublicTrialConfirmation: React.FC<PublicTrialConfirmationProps> = ({ token
                         {details.confirmed ? (
                             <div className="flex gap-3 border border-emerald-700 bg-emerald-950/40 p-4 rounded-md text-emerald-200">
                                 <CheckCircle2 className="shrink-0" size={21} />
-                                <p className="text-sm font-semibold">Horário confirmado. A escola enviará os detalhes pelo WhatsApp.</p>
+                                <p className="text-sm font-semibold">O professor aceitou e o horário está confirmado. A escola enviará os detalhes pelo WhatsApp.</p>
+                            </div>
+                        ) : details.requested ? (
+                            <div className="flex gap-3 border border-sky-700 bg-sky-950/40 p-4 rounded-md text-sky-100">
+                                <Clock className="shrink-0" size={20} />
+                                <p className="text-sm font-semibold">Solicitação registrada. Aguardando a confirmação do professor; nenhuma aula foi agendada ainda.</p>
                             </div>
                         ) : details.conflict ? (
                             <div className="flex gap-3 border border-amber-700 bg-amber-950/40 p-4 rounded-md text-amber-100">
@@ -110,7 +122,7 @@ const PublicTrialConfirmation: React.FC<PublicTrialConfirmationProps> = ({ token
                                 className="w-full h-12 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 font-bold rounded-md flex items-center justify-center gap-2 transition-colors"
                             >
                                 {confirming ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
-                                Confirmar horário
+                                Solicitar confirmação
                             </button>
                         )}
                     </div>

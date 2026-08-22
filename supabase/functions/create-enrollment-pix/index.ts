@@ -78,7 +78,7 @@ serve(async (req) => {
       authorization.callerId === targetUserId &&
       authorization.callerProfile?.role === "STUDENT";
     const offer = isSelfStudent
-      ? await loadClaimedEnrollmentOffer(authorization.admin, targetUserId)
+      ? await loadClaimedEnrollmentOffer(authorization.admin, targetUserId, authorization.tenantId)
       : null;
     progressOfferId = offer?.id || "";
 
@@ -212,7 +212,7 @@ serve(async (req) => {
       const { data: tenant } = await authorization.admin
         .from("tenants")
         .select("asaas_wallet_id, asaas_split_percentage")
-        .eq("id", text(profile.tenant_id))
+        .eq("id", authorization.tenantId)
         .maybeSingle();
       if (tenant?.asaas_wallet_id) {
         split = [{

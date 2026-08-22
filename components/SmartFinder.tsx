@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
-import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 // =====================================================
 // WEEKDAY CONFIG
@@ -21,7 +21,7 @@ interface PreferredSlot {
     time: string;
 }
 
-const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
+const SmartFinder: React.FC<{ user?: any }> = () => {
     const [isOpen, setIsOpen] = useState(false);
 
     // Form State
@@ -38,13 +38,13 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
 
     // Modo de disparo: 'group' posta no grupo de professores configurado em
     // WhatsApp (Conexão); 'individual' manda DM só pros professores ativos.
-    // Padrão = grupo (preferência do diretor).
-    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('group');
+    const [dispatchMode, setDispatchMode] = useState<'individual' | 'group'>('individual');
     // TRIAL = aula experimental de aluno · TRAINING = treinamento de professor.
     // Sem este campo o broadcast caía sempre em TRIAL, e o treinamento entrava na
     // folha como AULA EXPERIMENTAL a R$ 8,00 em vez de R$ 16,00 de treinador —
     // foi o que aconteceu com o treinamento da Teacher Lais em julho/2026.
     const [kind, setKind] = useState<'TRIAL' | 'TRAINING'>('TRIAL');
+    const effectiveDispatchMode = kind === 'TRIAL' ? 'individual' : dispatchMode;
 
     const [loading, setLoading] = useState(false);
 
@@ -82,62 +82,33 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                 return;
             }
 
-            const localInstance = localStorage.getItem('whatsapp_instance');
-            const userInstance = user?.tenant?.whatsapp_instance;
-            const instanceName = localInstance || userInstance || "wise wolf";
-
-            const FUNCTION_URL = `${FUNCTIONS_URL}/broadcast-opportunity`;
-
-            const response = await fetch(FUNCTION_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`, // Pass Gateway as Anon
-                    'x-user-token': session.access_token,  // Pass User for Logic
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
+            const { data, error } = await supabase.functions.invoke('broadcast-opportunity', {
+                body: {
                     student_name: studentName,
                     student_phone: studentPhone,
                     date: targetDate,
                     time: targetTime,
                     interests: studentInterests,
                     preferred_slots: preferredSlots.length > 0 ? preferredSlots : undefined,
-                    dispatch_mode: dispatchMode,
+                    dispatch_mode: effectiveDispatchMode,
                     kind,
-                })
+                },
             });
 
-            if (!response.ok) {
-                await response.text();
-                console.error("Broadcast request failed:", response.status);
-                if (response.status === 401) {
-                    alert("Sua sessão expirou ou não possui acesso. Entre novamente e tente outra vez.");
-                } else {
-                    alert("Não foi possível divulgar a oportunidade agora. Tente novamente em instantes.");
-                }
-                setLoading(false);
-                return;
-            }
-
-            const data = await response.json();
-
-            if (data && data.error) throw new Error(data.error);
-
-            // Use the ACTUAL instance reported by the backend
-            const realInstance = data.instance_used || "Instância Desconhecida";
+            if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao divulgar oportunidade.');
 
             const isGroupMode = data.mode === 'group';
 
             if (data.warning) {
                 const detail = isGroupMode
-                    ? `Grupo: '${data.destination_group}'`
+                    ? 'Grupo institucional configurado'
                     : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
-                alert(`⚠️ Vaga criada, mas FALHA no WhatsApp!\nInstância: '${realInstance}'\n${detail}\nErro: ${data.warning}`);
+                alert(`⚠️ Vaga criada, mas houve falha no WhatsApp.\n${detail}\n${data.warning}`);
             } else {
                 const detail = isGroupMode
-                    ? `Grupo: '${data.destination_group}'`
+                    ? 'Grupo institucional configurado'
                     : `Professores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}`;
-                alert(`🚀 Oportunidade enviada via '${realInstance}'!\n${detail}.\nID: ${data.id}`);
+                alert(`🚀 Oportunidade enviada!\n${detail}.\nID: ${data.id}`);
             }
 
             // Clear fields (preserve date/time for convenience?)
@@ -333,7 +304,7 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={() => setDispatchMode('individual')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${dispatchMode === 'individual'
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'individual'
                                             ? 'bg-orange-500 text-white shadow'
                                             : 'text-brand-muted hover:bg-brand-surface'
                                             }`}
@@ -343,18 +314,21 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                     <button
                                         type="button"
                                         onClick={() => setDispatchMode('group')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${dispatchMode === 'group'
+                                        disabled={kind === 'TRIAL'}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${effectiveDispatchMode === 'group'
                                             ? 'bg-orange-500 text-white shadow'
-                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            : 'text-brand-muted hover:bg-brand-surface disabled:cursor-not-allowed disabled:opacity-40'
                                             }`}
                                     >
                                         <MessageCircle size={14} /> Só no Grupo
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-brand-muted font-medium px-1">
-                                    {dispatchMode === 'individual'
+                                    {effectiveDispatchMode === 'individual'
                                         ? 'Manda DM individual só pros professores ativos (desligados/suspensos não recebem).'
-                                        : "Posta no grupo de professores configurado em WhatsApp (Conexão) — todo mundo no grupo vê, incluindo quem não estiver mais ativo."}
+                                        : kind === 'TRIAL'
+                                        ? 'Experimentais com dados de aluno são sempre enviadas individualmente aos professores ativos.'
+                                        : 'Treinamentos podem ser publicados no grupo institucional configurado.'}
                                 </p>
                             </div>
 
@@ -377,9 +351,9 @@ const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
                                 )}
                             </button>
                             <p className="text-center text-[10px] text-brand-muted mt-3 font-medium">
-                                {dispatchMode === 'individual'
-                                    ? `Envia individualmente a cada professor ativo de '${localStorage.getItem('whatsapp_instance') || "wise wolf"}'.`
-                                    : `Envia pro grupo de professores de '${localStorage.getItem('whatsapp_instance') || "wise wolf"}'.`}
+                                {effectiveDispatchMode === 'individual'
+                                    ? 'Envia individualmente a cada professor ativo da escola.'
+                                    : 'Envia ao grupo institucional de professores da escola.'}
                             </p>
                         </div>
 

@@ -3,9 +3,14 @@ import {
   authorizeRequest,
   methodNotAllowed,
 } from "../_shared/request-auth.ts";
+import {
+  loadTenantCommunicationIdentity,
+  loadTenantWhatsAppRoute,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://wisewolflanguage.com.br",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -73,11 +78,24 @@ serve(async (req) => {
       return json({ success: true, already_processed: true });
     }
 
+    const identity = await loadTenantCommunicationIdentity(
+      auth.context.admin,
+      application.tenant_id,
+    );
+    if (!identity) return json({ error: "Active tenant linkage is required" }, 409);
+    const whatsappRoute = await loadTenantWhatsAppRoute(
+      auth.context.admin,
+      identity.tenantId,
+      "teacher",
+    );
+    if (!whatsappRoute) return json({ error: "WhatsApp route is unavailable" }, 409);
+
     const claimedAt = new Date().toISOString();
     const { data: claimed, error: claimError } = await auth.context.admin
       .from("job_applications")
       .update({ welcome_notification_sent_at: claimedAt })
       .eq("id", application.id)
+      .eq("tenant_id", application.tenant_id)
       .is("welcome_notification_sent_at", null)
       .select(selectColumns)
       .maybeSingle();
@@ -94,54 +112,24 @@ serve(async (req) => {
     const evolutionKey = Deno.env.get("EVOLUTION_API_KEY")?.trim() ?? "";
     if (!evolutionKey) throw new Error("Evolution integration is unavailable");
 
-    const { data: director, error: directorError } = await auth.context.admin
-      .from("profiles")
-      .select("whatsapp_instance")
-      .eq("tenant_id", claimedApplication.tenant_id)
-      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-      .not("whatsapp_instance", "is", null)
-      .neq("whatsapp_instance", "")
-      .limit(1)
-      .maybeSingle();
-    if (directorError) throw new Error("Director lookup failed");
-
-    let instanceName = director?.whatsapp_instance?.trim() ?? "";
-    if (!instanceName) {
-      const { data: instance, error: instanceError } = await auth.context.admin
-        .from("whatsapp_instances")
-        .select("instance_name")
-        .eq("tenant_id", claimedApplication.tenant_id)
-        .eq("status", "open")
-        .limit(1)
-        .maybeSingle();
-      if (instanceError) throw new Error("WhatsApp instance lookup failed");
-      instanceName = instance?.instance_name?.trim() ?? "";
-    }
-    if (!instanceName) throw new Error("WhatsApp instance is unavailable");
-
     const phone = normalizeBrazilPhone(claimedApplication.whatsapp);
     if (phone.length < 12) throw new Error("Application phone is invalid");
 
-    const firstName = claimedApplication.name.trim().split(/\s+/)[0] || "Candidato";
+    const firstName = (safeCommunicationText(claimedApplication.name, 120) ||
+      "Candidato").split(/\s+/)[0];
     const isTeacher = !claimedApplication.role ||
       claimedApplication.role.toLowerCase() === "professor";
 
-    let groupBlock = "";
-    const { data: tenant } = await auth.context.admin
-      .from("tenants")
-      .select("talent_group_link")
-      .eq("id", claimedApplication.tenant_id)
-      .maybeSingle();
-    if (tenant?.talent_group_link) {
-      groupBlock = `\n\n🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*\n${tenant.talent_group_link}\n\nÉ por lá que as vagas abrem primeiro.`;
-    }
+    const groupBlock = identity.talentGroupUrl
+      ? `\n\n🎓 *Enquanto isso, entre no nosso Grupo de Talentos:*\n${identity.talentGroupUrl}\n\nÉ por lá que as vagas abrem primeiro.`
+      : "";
 
     const message = isTeacher
-      ? `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura para a vaga de *Professor(a) de Inglês* com sucesso. ✅\n\nPara iniciar sua triagem, responda esta mensagem com um *"Oi"*.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`
-      : `🐺 *Wise Wolf Language — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura com sucesso. Nossa equipe analisará seu perfil e entrará em contato com os próximos passos.${groupBlock}\n\n_Equipe Wise Wolf_ 🐾`;
+      ? `🏫 *${identity.brandName} — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura para a vaga de *Professor(a) de Inglês* com sucesso. ✅\n\nPara iniciar sua triagem, responda esta mensagem com um *"Oi"*.${groupBlock}\n\n_Equipe ${identity.brandName}_`
+      : `🏫 *${identity.brandName} — Processo Seletivo*\n\nOlá, *${firstName}*! 👋\n\nRecebemos sua candidatura com sucesso. Nossa equipe analisará seu perfil e entrará em contato com os próximos passos.${groupBlock}\n\n_Equipe ${identity.brandName}_`;
 
     const response = await fetch(
-      `${evolutionBase}/message/sendText/${encodeURIComponent(instanceName)}`,
+      `${evolutionBase}/message/sendText/${encodeURIComponent(whatsappRoute.instanceName)}`,
       {
         method: "POST",
         headers: {

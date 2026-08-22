@@ -18,8 +18,11 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
+import {
+  loadTenantWhatsAppRoute,
+  resolveOwnedTenantWhatsAppDestination,
+} from "../_shared/tenant-communication.ts";
 import { montarMensagem } from "./message.ts";
 
 const corsHeaders = {
@@ -28,35 +31,28 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_BASE = `${
+  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
+    .replace(/\/+$/, "")
+}/message/sendText`;
 const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
-function normPhone(raw: string): string {
-  let p = (raw || "").replace(/\D/g, "");
-  if (p.length === 10 || p.length === 11) p = "55" + p;
-  return p;
-}
-
-/** Grupo vai com o JID inteiro; telefone é normalizado. */
-function resolverDestino(destino: string): string | null {
-  const d = (destino || "").trim();
-  if (d.endsWith("@g.us")) return d;
-  const phone = normPhone(d);
-  return phone.length >= 12 ? phone : null;
-}
-
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   // Só o cron/trigger dispara. O painel usa a RPC de prévia, que não envia nada —
   // assim nenhum caminho de UI consegue inundar o grupo por acidente.
-  const authError = await authorizeAutomation(req, corsHeaders);
-  if (authError) return authError;
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-  );
+  const auth = await authorizeScopedAutomation(req, corsHeaders);
+  if (auth.ok === false) return auth.response;
+  if (!API_TOKEN) {
+    return new Response(JSON.stringify({ error: "provider_unavailable" }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const supabase = auth.context.admin;
 
   const resultado = { sent: 0, skipped: 0, failures: [] as string[] };
 
@@ -95,26 +91,36 @@ serve(async (req) => {
       }
       const dados = b as Record<string, unknown>;
 
-      if (!dados.is_active) { resultado.skipped++; continue; }
-
-      const tenantId = String(dados.tenant_id ?? "");
-      if (!tenantId) { resultado.skipped++; continue; }
-
-      const { data: cfg } = await supabase.from("dre_report_settings")
-        .select("destino").eq("tenant_id", tenantId).maybeSingle();
-      const destino = resolverDestino(String(cfg?.destino ?? ""));
-      if (!destino) {
-        resultado.failures.push(`${paymentId}: sem grupo configurado`);
+      if (!dados.is_active) {
+        resultado.skipped++;
         continue;
       }
 
-      const { data: admin } = await supabase.from("profiles")
-        .select("whatsapp_instance").eq("tenant_id", tenantId)
-        .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-        .not("whatsapp_instance", "is", null).limit(1).maybeSingle();
-      const instancia = String(admin?.whatsapp_instance ?? "");
-      if (!instancia) {
-        resultado.failures.push(`${paymentId}: sem WhatsApp central`);
+      const tenantId = String(dados.tenant_id ?? "");
+      if (!tenantId) {
+        resultado.skipped++;
+        continue;
+      }
+
+      const { data: cfg } = await supabase.from("dre_report_settings")
+        .select("destino").eq("tenant_id", tenantId).maybeSingle();
+      const route = await loadTenantWhatsAppRoute(
+        supabase,
+        tenantId,
+        "general",
+      );
+      if (!route) {
+        resultado.failures.push(
+          `${paymentId}: canal institucional indisponível`,
+        );
+        continue;
+      }
+      const destino = resolveOwnedTenantWhatsAppDestination(
+        route,
+        cfg?.destino,
+      );
+      if (!destino) {
+        resultado.failures.push(`${paymentId}: destino não pertence à escola`);
         continue;
       }
 
@@ -128,26 +134,40 @@ serve(async (req) => {
       const refDate = String(dados.ref_date ?? "").slice(0, 10) ||
         new Date().toISOString().slice(0, 10);
       const { error: claimError } = await supabase.from("automation_sent")
-        .insert({ kind: "PAYMENT_SPLIT", subject_id: paymentId, ref_date: refDate });
-      if (claimError) { resultado.skipped++; continue; }
+        .insert({
+          kind: "PAYMENT_SPLIT",
+          subject_id: paymentId,
+          ref_date: refDate,
+        });
+      if (claimError) {
+        resultado.skipped++;
+        continue;
+      }
 
       let enviou = false;
       try {
-        const resp = await fetch(`${EVOLUTION_API_BASE}/${instancia}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: API_TOKEN },
-          body: JSON.stringify({
-            number: destino,
-            text: montarMensagem(dados),
-            delay: 800,
-            linkPreview: false,
-          }),
-        });
+        const resp = await fetch(
+          `${EVOLUTION_API_BASE}/${encodeURIComponent(route.instanceName)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: API_TOKEN },
+            body: JSON.stringify({
+              number: destino,
+              text: montarMensagem(dados),
+              delay: 800,
+              linkPreview: false,
+            }),
+          },
+        );
         enviou = resp.ok;
-        if (!resp.ok) resultado.failures.push(`${paymentId}: evolution ${resp.status}`);
+        if (!resp.ok) {
+          resultado.failures.push(`${paymentId}: evolution ${resp.status}`);
+        }
       } catch (sendError) {
         resultado.failures.push(
-          `${paymentId}: envio falhou (${sendError instanceof Error ? sendError.name : "erro"})`,
+          `${paymentId}: envio falhou (${
+            sendError instanceof Error ? sendError.name : "erro"
+          })`,
         );
       }
 

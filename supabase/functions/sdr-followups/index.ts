@@ -10,6 +10,7 @@ import {
   loadCommercialContactFacts,
   reconcileSuppressedLead,
 } from "../_shared/commercial-contact-policy.ts";
+import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
 
 // SDR-FOLLOWUPS — cron horário (09h-19h BRT). Sem IA: templates determinísticos.
 // 1) Follow-up de lead que não respondeu à atendente (máx 2 toques, ~20h de espaço)
@@ -74,20 +75,38 @@ serve(async (req) => {
     if (hourBRT < 9 || hourBRT >= 20) return new Response(JSON.stringify({ ok: true, skipped: "fora do horário" }), { status: 200 });
 
     const result = { followups: 0, preinterview_reminders: 0, interview_reminders: 0, skipped_candidates: 0, skipped_contracted: 0, skipped_handoff: 0, failures: [] as string[] };
-
-    const { data: admins } = await sb.from("profiles").select("tenant_id, phone, whatsapp_instance").in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
-    const byTenant: Record<string, { instance: string; ownerPhone: string }> = {};
-    for (const a of (admins || [])) {
-      if (!byTenant[a.tenant_id]) byTenant[a.tenant_id] = { instance: a.whatsapp_instance, ownerPhone: cleanPhone(a.phone || "") };
-    }
+    const routeCache = new Map<string, ReturnType<typeof loadTenantWhatsAppRoute>>();
+    const routeFor = (tenantId: string, audience: "student" | "teacher") => {
+      const normalizedTenantId = String(tenantId || "").trim();
+      const key = `${normalizedTenantId}:${audience}`;
+      if (!normalizedTenantId) return Promise.resolve(null);
+      let pending = routeCache.get(key);
+      if (!pending) {
+        pending = loadTenantWhatsAppRoute(sb, normalizedTenantId, audience).catch((error) => {
+          result.failures.push(`whatsapp_route ${normalizedTenantId}: ${(error as Error).message}`);
+          return null;
+        });
+        routeCache.set(key, pending);
+      }
+      return pending;
+    };
 
     const { data: tenants } = await sb.from("tenants").select("id, ai_team_config");
     const cfgOf = (t: string) => (tenants || []).find((x: any) => x.id === t)?.ai_team_config || {};
-    const commercialFacts = new Map<string, any>();
-    for (const tenantId of Object.keys(byTenant)) {
-      try { commercialFacts.set(tenantId, await loadCommercialContactFacts(sb, tenantId)); }
-      catch (e) { result.failures.push(`commercial_state ${tenantId}: ${(e as Error).message}`); }
-    }
+    const commercialFacts = new Map<string, Promise<any | null>>();
+    const factsFor = (tenantId: string) => {
+      const key = String(tenantId || "").trim();
+      if (!key) return Promise.resolve(null);
+      let pending = commercialFacts.get(key);
+      if (!pending) {
+        pending = loadCommercialContactFacts(sb, key).catch((error) => {
+          result.failures.push(`commercial_state ${key}: ${(error as Error).message}`);
+          return null;
+        });
+        commercialFacts.set(key, pending);
+      }
+      return pending;
+    };
 
     // TRAVA: telefones que pertencem a CANDIDATOS (qualquer vaga) — nunca recebem SDR.
     const { data: allApps } = await sb.from("job_applications").select("tenant_id, whatsapp");
@@ -114,9 +133,9 @@ serve(async (req) => {
       if (handoffAtivo(lead)) { result.skipped_handoff++; continue; }
       if ((lead.followup_count ?? 0) >= 2) continue;
       if (lead.last_inbound_at && lead.last_inbound_at > lead.last_outbound_at) continue;
-      const t = byTenant[lead.tenant_id];
+      const t = await routeFor(lead.tenant_id, "student");
       if (!t || cfgOf(lead.tenant_id)?.sdr?.enabled === false) continue;
-      const facts = commercialFacts.get(lead.tenant_id);
+      const facts = await factsFor(lead.tenant_id);
       if (!facts) continue; // fail closed: sem fonte de verdade, não envia venda
       const suppression = evaluateCommercialSuppression({
         tenantId: lead.tenant_id, phone: lead.phone, name: lead.name, leadStatus: lead.status,
@@ -133,12 +152,12 @@ serve(async (req) => {
       if (phone.length < 12) continue;
       const first = (lead.name || "").trim().split(" ")[0];
       const msg = (lead.followup_count ?? 0) === 0
-        ? `Oi${first ? ", " + first : ""}! 😊 Passando pra saber se ainda tem interesse na aula experimental de inglês da Wise Wolf. Posso te ajudar a escolher um dia e horário?`
-        : `Oi${first ? ", " + first : ""}! Vou deixar seu atendimento por aqui pra não incomodar 🙏 Quando quiser retomar, é só mandar um \"oi\" que a gente agenda sua aula experimental! 🐺`;
+        ? `Oi${first ? ", " + first : ""}! 😊 Passando pra saber se ainda tem interesse na aula experimental de inglês da ${t.identity.brandName}. Posso te ajudar a escolher um dia e horário?`
+        : `Oi${first ? ", " + first : ""}! Vou deixar seu atendimento por aqui pra não incomodar 🙏 Quando quiser retomar, é só mandar um \"oi\" que a gente agenda sua aula experimental!`;
       // Log sempre, entrega como campo (mesma convenção do `whatsapp-inbound`):
       // sem isso, o follow-up que a Evolution recusa não deixa rastro nenhum e
       // parece que o lead nunca foi procurado.
-      const entregue = await sendWhats(t.instance, phone, msg);
+      const entregue = await sendWhats(t.instanceName, phone, msg);
       await sb.from("ai_wa_messages").insert({ tenant_id: lead.tenant_id, phone, agent: "sdr", direction: "out", content: msg, meta: { lead_id: lead.id, kind: "followup", entregue } });
       if (entregue) {
         await sb.from("crm_leads").update({ followup_count: (lead.followup_count ?? 0) + 1, last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
@@ -153,7 +172,7 @@ serve(async (req) => {
     const { data: apps } = await sb.from("job_applications").select("id, tenant_id, name, whatsapp, preinterview_status, preinterview_sent_at")
       .eq("preinterview_status", "SENT").lt("preinterview_sent_at", dayAgo).gt("preinterview_sent_at", weekAgo);
     for (const app of (apps || [])) {
-      const t = byTenant[app.tenant_id];
+      const t = await routeFor(app.tenant_id, "teacher");
       if (!t || cfgOf(app.tenant_id)?.rh?.enabled === false) continue;
       if (await alreadySent(sb, "RITA_PREINT_REMIND", String(app.id))) continue;
       const { data: ever } = await sb.from("automation_sent").select("id").eq("kind", "RITA_PREINT_REMIND").eq("subject_id", String(app.id)).limit(1);
@@ -161,8 +180,8 @@ serve(async (req) => {
       const phone = cleanPhone(app.whatsapp || "");
       if (phone.length < 12) continue;
       const first = (app.name || "").trim().split(" ")[0];
-      const msg = `Oi, ${first}! Michelle da Wise Wolf por aqui 👋 Só lembrando da nossa conversa da triagem — quando puder responder, seu processo anda mais rápido! 😊`;
-      if (await sendWhats(t.instance, phone, msg)) {
+      const msg = `Oi, ${first}! Michelle da ${t.identity.brandName} por aqui 👋 Só lembrando da nossa conversa da triagem — quando puder responder, seu processo anda mais rápido! 😊`;
+      if (await sendWhats(t.instanceName, phone, msg)) {
         await sb.from("ai_wa_messages").insert({ tenant_id: app.tenant_id, phone, agent: "rita", direction: "out", content: msg, meta: { application_id: app.id, kind: "preinterview_reminder" } });
         await markSent(sb, "RITA_PREINT_REMIND", String(app.id));
         result.preinterview_reminders++;
@@ -174,13 +193,13 @@ serve(async (req) => {
     for (const app of (interviews || [])) {
       const slotBRT = new Date(new Date(app.interview_slot).getTime() - 3 * 3600 * 1000).toISOString();
       if (slotBRT.split("T")[0] !== todayBRT()) continue;
-      const t = byTenant[app.tenant_id];
+      const t = await routeFor(app.tenant_id, "teacher");
       if (!t) continue;
       if (await alreadySent(sb, "RITA_INTERVIEW_REMIND", String(app.id))) continue;
       const hhmm = slotBRT.split("T")[1].slice(0, 5);
       const phone = cleanPhone(app.whatsapp || "");
-      if (phone.length >= 12) await sendWhats(t.instance, phone, `Oi, ${(app.name || "").split(" ")[0]}! Michelle da Wise Wolf 🐺 Lembrete: sua entrevista com o diretor é HOJE às ${hhmm}. Até já! 😊`);
-      if (t.ownerPhone.length >= 12) await sendWhats(t.instance, t.ownerPhone, `📅 *RH (IA):* lembrete — entrevista HOJE às ${hhmm} com *${app.name}* (${cleanPhone(app.whatsapp || "")}).`);
+      if (phone.length >= 12) await sendWhats(t.instanceName, phone, `Oi, ${(app.name || "").split(" ")[0]}! Michelle da ${t.identity.brandName}. Lembrete: sua entrevista com a direção é HOJE às ${hhmm}. Até já! 😊`);
+      if (t.ownerPhone && t.ownerPhone.length >= 12) await sendWhats(t.instanceName, t.ownerPhone, `📅 *RH (IA):* lembrete — entrevista HOJE às ${hhmm} com *${app.name}* (${cleanPhone(app.whatsapp || "")}).`);
       await markSent(sb, "RITA_INTERVIEW_REMIND", String(app.id));
       result.interview_reminders++;
     }

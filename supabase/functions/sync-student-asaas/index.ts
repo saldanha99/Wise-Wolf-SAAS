@@ -66,7 +66,7 @@ serve(async (req) => {
       authorization.callerId === userId &&
       authorization.callerProfile?.role === "STUDENT";
     const offer = isSelfStudent
-      ? await loadClaimedEnrollmentOffer(authorization.admin, userId)
+      ? await loadClaimedEnrollmentOffer(authorization.admin, userId, authorization.tenantId)
       : null;
     progressOfferId = offer?.id || "";
 
@@ -91,7 +91,7 @@ serve(async (req) => {
       ? Boolean(offerPayload.isDependent)
       : Boolean(body.is_dependent || profile.guardian_id || profile.guardian_cpf);
 
-    const tenantId = offer?.tenant_id || text(profile.tenant_id) || text(body.tenant_id);
+    const tenantId = authorization.tenantId;
     const studentName = text(profile.full_name) || text(body.name);
     const studentEmail = text(profile.email) || text(body.email);
     const studentPhone = digits(profile.phone || body.phone || body.mobilePhone);

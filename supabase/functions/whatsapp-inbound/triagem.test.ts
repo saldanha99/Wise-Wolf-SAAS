@@ -81,6 +81,12 @@ Deno.test("o prompt carrega UMA pergunta, não as dez", () => {
   assertEquals(p.includes("Qual a sua idade?"), false);
 });
 
+Deno.test("a triagem usa a identidade do tenant, nunca a marca da plataforma", () => {
+  const p = promptTriagem({ ...base, schoolName: "Escola Tenant A", answers: {} });
+  assertStringIncludes(p, "da Escola Tenant A");
+  assertEquals(p.includes("WISE WOLF LANGUAGE"), false);
+});
+
 Deno.test("o bloco comercial acompanha a etapa que depende dele", () => {
   const answers = { nacionalidade: "sim", idade: "30" };
   const p = promptTriagem({ ...base, answers });

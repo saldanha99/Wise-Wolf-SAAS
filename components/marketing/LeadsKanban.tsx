@@ -191,27 +191,33 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
         }
         setIsConverting(true);
         try {
-            const response = await fetch('/api/enroll-student', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
+            const { data, error } = await supabase.functions.invoke('school-admin', {
+                body: {
+                    action: 'createEnrollmentOffer',
                     leadId: convertingLead.id,
-                    planId: conversionData.planId,
-                    tenantId
-                })
+                    planId: conversionData.planId
+                }
             });
+            if (error || !data?.ok || typeof data.enrollmentUrl !== 'string') {
+                throw new Error(data?.error || error?.message || 'Falha ao gerar a oferta segura');
+            }
 
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Falha na conversão');
-
-            console.log("Conversion Success:", result);
+            let copied = false;
+            try {
+                await navigator.clipboard.writeText(data.enrollmentUrl);
+                copied = true;
+            } catch {
+                copied = false;
+            }
             setConvertingLead(null);
-            fetchLeads();
-            alert("Matrícula efetivada com sucesso! Cliente e Assinatura criados.");
+            setConversionData({ planId: '', paymentMethod: 'credit_card' });
+            alert(copied
+                ? 'Link seguro de matrícula criado e copiado. A matrícula será efetivada somente após o aluno concluir o fluxo.'
+                : `Link seguro de matrícula criado:\n\n${data.enrollmentUrl}`);
 
         } catch (error: any) {
             console.error('Conversion error:', error);
-            alert('Erro ao converter: ' + error.message);
+            alert('Erro ao gerar matrícula: ' + error.message);
         } finally {
             setIsConverting(false);
         }
@@ -492,8 +498,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                         </button>
 
                         <div className="mb-6">
-                            <h3 className="text-2xl font-black text-brand-text">Efetivar Matrícula</h3>
-                            <p className="text-brand-muted mt-1">Transforme {convertingLead.name} em aluno.</p>
+                            <h3 className="text-2xl font-black text-brand-text">Gerar Matrícula Segura</h3>
+                            <p className="text-brand-muted mt-1">Crie uma oferta protegida para {convertingLead.name} concluir.</p>
                         </div>
 
                         <form onSubmit={handleConfirmConversion} className="space-y-4">
@@ -525,11 +531,11 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                             </div>
 
                             <div className="bg-brand-surface-2 p-4 rounded-xl border border-brand-border text-xs text-brand-muted">
-                                <p className="font-bold mb-1">Ações Automáticas:</p>
+                                <p className="font-bold mb-1">Fluxo protegido:</p>
                                 <ul className="list-disc pl-4 space-y-1">
-                                    <li>Cobrança Asaas gerada</li>
-                                    <li>Acesso à plataforma liberado</li>
-                                    <li>Role atualizada para STUDENT</li>
+                                    <li>Preço e plano validados no servidor</li>
+                                    <li>Link vinculado ao tenant ativo</li>
+                                    <li>Acesso liberado somente após a conclusão</li>
                                 </ul>
                             </div>
 
@@ -539,7 +545,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                 className="w-full py-4 bg-green-500 hover:bg-green-600 text-white font-black rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2 mt-4"
                             >
                                 {isConverting ? <RefreshCw className="animate-spin" /> : <CheckCircle />}
-                                CONFIRMAR MATRÍCULA
+                                GERAR LINK DE MATRÍCULA
                             </button>
                         </form>
                     </div>

@@ -63,7 +63,7 @@ values (
   'Lead Confirmação',
   '5511999999973',
   date_trunc('day', now()) + interval '10 days 15 hours',
-  'scheduled',
+  'confirmed',
   'experimental'
 );
 
@@ -117,6 +117,7 @@ declare
   v_requested timestamptz := date_trunc('day', now()) + interval '11 days 18 hours';
   v_accepted timestamptz := date_trunc('day', now()) + interval '12 days 18 hours';
   v_conflict timestamptz := date_trunc('day', now()) + interval '13 days 18 hours';
+  v_no_show_reschedule timestamptz := date_trunc('day', now()) + interval '14 days 18 hours';
   v_request uuid;
   v_result jsonb;
 begin
@@ -173,7 +174,7 @@ begin
   ) values (
     '00000000-0000-4000-8000-000000000976',
     'trial-reschedule-test', v_teacher, v_teacher,
-    'Outro compromisso', '5511999999974', v_conflict, 'scheduled', 'experimental'
+    'Outro compromisso confirmado', '5511999999974', v_conflict, 'confirmed', 'experimental'
   );
 
   perform public.create_trial_reschedule_confirmation(
@@ -192,6 +193,34 @@ begin
   if (select start_time from public.appointments where id = v_appointment)
      is distinct from v_accepted then
     raise exception 'assertion failed: conflito alterou a agenda';
+  end if;
+
+  update public.appointments
+     set status = 'no_show'
+   where id = v_appointment;
+  update public.opportunities
+     set trial_status = 'NO_SHOW_STUDENT'
+   where id = v_opportunity;
+
+  v_result := public.create_trial_reschedule_confirmation(
+    'trial-reschedule-test', v_opportunity, v_appointment,
+    v_teacher, v_lead, v_no_show_reschedule
+  );
+  if not coalesce((v_result ->> 'ok')::boolean, false) then
+    raise exception 'assertion failed: falta nao permitiu solicitar remarcacao: %', v_result;
+  end if;
+  select id into v_request
+    from public.trial_reschedule_requests
+   where appointment_id = v_appointment and status = 'PENDING';
+  v_result := public.respond_trial_reschedule_confirmation(
+    v_request, v_teacher, true, 'Sim, consigo atender a reposicao'
+  );
+  if v_result ->> 'status' <> 'ACCEPTED'
+     or (select status from public.appointments where id = v_appointment) <> 'scheduled'
+     or (select trial_status from public.opportunities where id = v_opportunity) <> 'SCHEDULED'
+     or (select start_time from public.appointments where id = v_appointment)
+        is distinct from v_no_show_reschedule then
+    raise exception 'assertion failed: remarcacao apos falta nao restaurou agenda: %', v_result;
   end if;
 end;
 $test$;

@@ -111,7 +111,6 @@ serve(async (req) => {
       hourly_rate: hourlyRate,
       pix_key: teacherDetails.pix_key,
       meeting_link: teacherDetails.meeting_link,
-      whatsapp_instance: teacherDetails.whatsapp_id,
       contract_url: typeof body.contractUrl === "string" && body.contractUrl.trim()
         ? body.contractUrl.trim()
         : null,

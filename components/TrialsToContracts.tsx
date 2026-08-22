@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Zap, Users, ArrowRight, Check, X, Star, BookOpen, DollarSign,
     UserPlus, Award, TrendingUp, AlertCircle, Loader2, Phone,
@@ -116,6 +116,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [enrollmentLinks, setEnrollmentLinks] = useState<Record<string, EnrollmentLink>>({});
     const [appointments, setAppointments] = useState<Record<string, { start_time: string }>>({});
+    const outcomeRequestIds = useRef<Record<string, string>>({});
 
     // Wizard State (Enrollment Link Modal)
     const [wizardOpp, setWizardOpp] = useState<Opportunity | null>(null);
@@ -294,40 +295,43 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     useEffect(() => { fetchData(); }, [tenantId]);
 
-    // Marca experimental como realizada E lança a aula na folha do professor.
-    // Regra: só contabiliza quando a aula foi realizada (presence COMPLETED).
-    // Se aluno OU professor faltar, NÃO lança class_log (não contabiliza).
-    const markTrialRealized = async (opp: Opportunity) => {
-        // 1. Atualiza status da oportunidade
-        await supabase.from('opportunities').update({ trial_status: 'DONE' }).eq('id', opp.id);
+    const runTrialOutcome = async (
+        opportunityId: string,
+        action: 'SET_TRIAL_STATUS' | 'MARK_LOST',
+        fields: { trialStatus?: 'DONE' | 'NO_SHOW_STUDENT' | 'NO_SHOW_TEACHER'; lostReason?: string }
+    ) => {
+        const operationKey = `${opportunityId}:${action}:${fields.trialStatus || fields.lostReason || ''}`;
+        const requestId = outcomeRequestIds.current[operationKey] || crypto.randomUUID();
+        outcomeRequestIds.current[operationKey] = requestId;
 
-        // 2. Lança a aula experimental na folha do professor vencedor (se houver)
-        if (opp.winner_teacher_id) {
-            // Dedupe: evita lançar duas vezes a mesma experimental
-            const apptId = opp.trial_appointment_id || `trial_${opp.id}`;
-            const { data: jaExiste } = await supabase
-                .from('class_logs')
-                .select('id')
-                .eq('appointment_id', apptId)
-                .maybeSingle();
-
-            if (!jaExiste) {
-                const startAt = opp.trial_appointment_id ? appointments[opp.trial_appointment_id]?.start_time : null;
-                const classDate = (startAt ? new Date(startAt) : new Date()).toISOString().split('T')[0];
-                await supabase.from('class_logs').insert({
-                    tenant_id: tenantId,
-                    teacher_id: opp.winner_teacher_id,
-                    student_id: null, // lead de experimental ainda não é aluno
-                    date: classDate,
-                    class_date: classDate,
-                    presence: 'COMPLETED',
-                    subtype: 'AULA EXPERIMENTAL',
-                    appointment_id: apptId,
-                    content: `Aula experimental — ${opp.student_name || 'Lead'}`,
-                });
-            }
+        const p_payload = action === 'SET_TRIAL_STATUS'
+            ? { requestId, opportunityId, action, trialStatus: fields.trialStatus }
+            : { requestId, opportunityId, action, lostReason: fields.lostReason || null };
+        const { data, error } = await supabase.rpc('update_trial_outcome_secure', { p_payload });
+        if (error || data?.ok !== true) {
+            const code = data?.error;
+            const message = code === 'appointment_required'
+                ? 'Esta experimental não possui um agendamento válido.'
+                : code === 'appointment_tenant_mismatch'
+                    ? 'O agendamento não pertence a esta escola ou professor.'
+                    : code === 'trial_already_settled'
+                        ? 'Esta experimental já foi liquidada como realizada.'
+                        : code === 'tenant_not_operational'
+                            ? 'A escola não está disponível para esta alteração.'
+                            : error?.message || 'Não foi possível atualizar a experimental.';
+            throw new Error(message);
         }
-        fetchData();
+        delete outcomeRequestIds.current[operationKey];
+        return data;
+    };
+
+    const markTrialRealized = async (opp: Opportunity) => {
+        try {
+            await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus: 'DONE' });
+            fetchData();
+        } catch (err: any) {
+            alert(err.message || 'Erro ao marcar a aula como realizada.');
+        }
     };
 
     const openReschedule = (opp: Opportunity) => {
@@ -366,31 +370,26 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         }
     };
 
-    // Reagendar MANTENDO o mesmo professor (sem passar pelo grupo)
+    // Solicitar a remarcação ao mesmo professor sem alterar a agenda antes do aceite.
     const reschedSameTeacher = async () => {
         if (!reschedOpp || !reschedDate || !reschedTime) { alert('Escolha data e horário.'); return; }
         if (!reschedOpp.winner_teacher_id) { alert('Esta experimental não tem professor definido. Use "Reenviar ao grupo".'); return; }
         setReschedSaving(true);
         try {
-            const isoDate = new Date(`${reschedDate}T${reschedTime}:00`).toISOString();
-            const formatted = `${reschedDate.split('-').reverse().join('/')} às ${reschedTime}`;
-
-            // Reabre a experimental como agendada, mantendo o professor
-            const { error: oppErr } = await supabase.from('opportunities').update({
-                trial_status: 'SCHEDULED',
-                conversion_status: 'OPEN',
-                slots_proposed: [{ time: reschedTime, date: reschedDate, formatted }],
-            }).eq('id', reschedOpp.id);
-            if (oppErr) throw oppErr;
-
-            // Remarca o agendamento do trial (appointments) se existir
-            if (reschedOpp.trial_appointment_id) {
-                await supabase.from('appointments')
-                    .update({ start_time: isoDate, status: 'scheduled' })
-                    .eq('id', reschedOpp.trial_appointment_id);
+            const requestedStartTime = `${reschedDate}T${reschedTime}:00-03:00`;
+            const { data, error } = await supabase.functions.invoke('school-admin', {
+                body: {
+                    action: 'requestTrialReschedule',
+                    opportunityId: reschedOpp.id,
+                    requestedStartTime,
+                },
+            });
+            if (error || data?.error) {
+                throw new Error(data?.error || error?.message || 'Falha ao solicitar a confirmação.');
             }
-
-            alert('Experimental remarcada com o mesmo professor.');
+            alert(data?.sameTime
+                ? 'Esse já é o horário atual da experimental.'
+                : 'Pedido enviado ao professor. A agenda só mudará depois que ele responder SIM.');
             setReschedOpp(null);
             fetchData();
         } catch (err: any) {
@@ -610,13 +609,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         if (!lostOpp) return;
         setSavingLost(true);
         try {
-            await supabase
-                .from('opportunities')
-                .update({
-                    conversion_status: 'LOST',
-                    lost_reason: lostReason || 'Não especificado',
-                })
-                .eq('id', lostOpp.id);
+            await runTrialOutcome(lostOpp.id, 'MARK_LOST', {
+                lostReason: lostReason || 'Não especificado',
+            });
 
             setLostOpp(null);
             setLostReason('');
@@ -859,8 +854,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                     <div className="flex gap-1.5">
                                                         <button
                                                             onClick={async () => {
-                                                                await supabase.from('opportunities').update({ trial_status: 'NO_SHOW_STUDENT' }).eq('id', opp.id);
-                                                                fetchData();
+                                                                try {
+                                                                    await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus: 'NO_SHOW_STUDENT' });
+                                                                    fetchData();
+                                                                } catch (err: any) {
+                                                                    alert(err.message || 'Erro ao registrar a falta do aluno.');
+                                                                }
                                                             }}
                                                             className="flex-1 px-2 py-2 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-bold hover:bg-orange-100 transition-all border border-orange-100"
                                                         >
@@ -868,8 +867,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                                         </button>
                                                         <button
                                                             onClick={async () => {
-                                                                await supabase.from('opportunities').update({ trial_status: 'NO_SHOW_TEACHER' }).eq('id', opp.id);
-                                                                fetchData();
+                                                                try {
+                                                                    await runTrialOutcome(opp.id, 'SET_TRIAL_STATUS', { trialStatus: 'NO_SHOW_TEACHER' });
+                                                                    fetchData();
+                                                                } catch (err: any) {
+                                                                    alert(err.message || 'Erro ao registrar a falta do professor.');
+                                                                }
                                                             }}
                                                             className="flex-1 px-2 py-2 bg-orange-50 text-orange-600 rounded-lg text-[10px] font-bold hover:bg-orange-100 transition-all border border-orange-100"
                                                         >
@@ -1342,14 +1345,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                 className="w-full py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-100 disabled:opacity-50"
                             >
                                 <Check size={16} />
-                                Manter o mesmo professor
+                                Pedir confirmação ao professor atual
                             </button>
                             <button onClick={() => setReschedOpp(null)} className="w-full py-2 text-brand-muted font-bold text-xs uppercase tracking-widest">
                                 Cancelar
                             </button>
                         </div>
                         <p className="text-[10px] text-brand-muted text-center mt-3">
-                            "Reenviar ao grupo" reabre a vaga para qualquer professor reaceitar. "Manter o mesmo professor" só remarca a data/hora.
+                            "Reenviar ao grupo" reabre a vaga para outro aceite. Para manter o professor atual, a agenda só muda após a confirmação dele.
                         </p>
                     </div>
                 </div>

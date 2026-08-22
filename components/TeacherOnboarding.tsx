@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { User, Mail, Lock, Phone, Award, CheckCircle, AlertCircle, ArrowRight, Loader2, DollarSign, Camera, Link as LinkIcon, Briefcase, FileText } from 'lucide-react';
-import { TeacherContractDocument } from './TeacherContractDocument';
+import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
+import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 
 const TeacherOnboarding: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [step, setStep] = useState<'OFFER' | 'FORM' | 'MINDSET' | 'CONTRACT' | 'SUCCESS'>('OFFER');
     const [error, setError] = useState<string | null>(null);
+    const [contractError, setContractError] = useState<string | null>(null);
     const [offerData, setOfferData] = useState<any>(null);
 
     // Form Fields
@@ -35,24 +38,16 @@ const TeacherOnboarding: React.FC = () => {
         if (encodedOffer && UUID_RE.test(encodedOffer.trim())) {
             // Caminho seguro: offer_id (UUID) → hora-aula AUTORITATIVA do servidor.
             (async () => {
-                const { data: payload, error: offerErr } = await supabase.rpc('get_invite_offer_public', { p_offer_id: encodedOffer.trim() });
-                if (offerErr || !payload || (payload as any).error) {
+                try {
+                    const payload = await tenantLegalAssetsService.teacherOffer(encodedOffer.trim());
+                    if (!payload || payload.error) throw new Error('offer_unavailable');
+                    setOfferData(payload);
+                } catch {
                     setError("Link de convite inválido, expirado ou já utilizado. Solicite um novo.");
-                    return;
                 }
-                setOfferData(payload);
             })();
         } else if (encodedOffer) {
-            // Caminho legado: base64 no URL.
-            try {
-                const jsonStr = decodeURIComponent(atob(encodedOffer).split('').map(function (c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                }).join(''));
-                const data = JSON.parse(jsonStr);
-                setOfferData(data);
-            } catch (e) {
-                setError("Link de convite inválido ou expirado.");
-            }
+            setError("Este convite antigo não possui validação server-side. Solicite um novo link seguro à escola.");
         } else {
             setError("Link de convite inválido.");
         }
@@ -71,8 +66,34 @@ const TeacherOnboarding: React.FC = () => {
         fetchIp();
     }, []);
 
+    const schoolInfo = offerData?.schoolInfo && typeof offerData.schoolInfo === 'object'
+        ? offerData.schoolInfo as SchoolInfo
+        : null;
+    const schoolIdentity = getSchoolContractIdentity(schoolInfo);
+    const teacherContractReadiness = getTeacherContractReadiness(schoolInfo, offerData?.hourlyRate);
+
+    const openContract = async () => {
+        const offerId = new URLSearchParams(window.location.search).get('offer');
+        if (!offerId) {
+            setError('Link de convite inválido.');
+            return;
+        }
+        try {
+            const refreshedOffer = await tenantLegalAssetsService.teacherOffer(offerId);
+            setOfferData(refreshedOffer);
+            setStep('CONTRACT');
+        } catch {
+            setError('Não foi possível liberar a assinatura privada. Solicite um novo convite.');
+        }
+    };
+
     const goToContract = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!teacherContractReadiness.isReady) {
+            setContractError(`A escola precisa configurar ${teacherContractReadiness.missingFields.join(', ')} antes de emitir este contrato.`);
+            return;
+        }
+        setContractError(null);
         // Funil de contratação: antes do contrato, o candidato passa pelo funil de
         // mentalidade PJ (manifesto + quiz de compreensão obrigatório).
         setStep('MINDSET');
@@ -80,36 +101,42 @@ const TeacherOnboarding: React.FC = () => {
 
     const handleRegister = async () => {
         if (!offerData || !contractAccepted) return;
+        if (!teacherContractReadiness.isReady) {
+            setContractError(`A assinatura foi bloqueada porque faltam: ${teacherContractReadiness.missingFields.join(', ')}.`);
+            setContractAccepted(false);
+            return;
+        }
         setLoading(true);
         setError(null);
 
         try {
             console.log("🚀 Enviando registro para Edge Function...");
 
-            // Snapshot jurídico: gera o PDF do contrato exatamente como exibido/aceito.
-            // Falha na geração NÃO trava o cadastro (o aceite digital continua registrado).
+            // Snapshot jurídico: gera o PDF exatamente como exibido. Sem a versão
+            // imutável, o cadastro não prossegue e nunca aceita um contrato mutável.
             let contractPdfBase64: string | null = null;
             try {
                 const el = document.getElementById('teacher-contract-print');
-                if (el) {
-                    const html2pdf = (await import('html2pdf.js')).default;
-                    // O plugin aceita `pagebreak` em runtime, mas a declaração de tipos
-                    // publicada pelo pacote ainda não expõe essa opção.
-                    const pdfOptions = {
-                            margin: 8,
-                            image: { type: 'jpeg', quality: 0.85 },
-                            html2canvas: { scale: 1.5, useCORS: true },
-                            jsPDF: { unit: 'mm', format: 'a4' },
-                            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-                        };
-                    const dataUri: string = await html2pdf()
-                        .set(pdfOptions as any)
-                        .from(el)
-                        .outputPdf('datauristring');
-                    contractPdfBase64 = String(dataUri).split(',')[1] || null;
-                }
+                if (!el) throw new Error('Documento do contrato indisponível para captura.');
+                const html2pdf = (await import('html2pdf.js')).default;
+                // O plugin aceita `pagebreak` em runtime, mas a declaração de tipos
+                // publicada pelo pacote ainda não expõe essa opção.
+                const pdfOptions = {
+                        margin: 8,
+                        image: { type: 'jpeg', quality: 0.85 },
+                        html2canvas: { scale: 1.5, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4' },
+                        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+                    };
+                const dataUri: string = await html2pdf()
+                    .set(pdfOptions as any)
+                    .from(el)
+                    .outputPdf('datauristring');
+                contractPdfBase64 = String(dataUri).split(',')[1] || null;
+                if (!contractPdfBase64) throw new Error('PDF jurídico vazio.');
             } catch (pdfErr) {
-                console.warn('⚠️ PDF do contrato não gerado (cadastro segue):', pdfErr);
+                console.error('PDF jurídico do contrato não foi gerado:', pdfErr);
+                throw new Error('Não foi possível congelar a versão jurídica do contrato. Verifique a assinatura da escola e tente novamente.');
             }
 
             const { data, error: fnError } = await supabase.functions.invoke('register-teacher', {
@@ -173,8 +200,9 @@ const TeacherOnboarding: React.FC = () => {
         return (
             <MindsetFunnel
                 name={name}
+                schoolName={schoolIdentity.name}
                 onBack={() => setStep('FORM')}
-                onDone={() => setStep('CONTRACT')}
+                onDone={() => void openContract()}
             />
         );
     }
@@ -185,11 +213,17 @@ const TeacherOnboarding: React.FC = () => {
                 <div className="fixed bottom-0 left-0 z-50 max-h-[48dvh] w-full overflow-y-auto border-t border-gray-200 bg-brand-surface p-3 shadow-2xl sm:p-6">
                     <div className="max-w-4xl mx-auto flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 md:gap-6">
                         <div className="flex-1 space-y-2">
+                            {!teacherContractReadiness.isReady && (
+                                <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-bold leading-relaxed text-amber-900">
+                                    Assinatura bloqueada: a escola precisa configurar {teacherContractReadiness.missingFields.join(', ')}.
+                                </div>
+                            )}
                             <div className="flex items-center gap-3">
                                 <input 
                                     type="checkbox" 
                                     id="accept-contract"
                                     checked={contractAccepted}
+                                    disabled={!teacherContractReadiness.isReady}
                                     onChange={e => setContractAccepted(e.target.checked)}
                                     className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer"
                                 />
@@ -210,7 +244,7 @@ const TeacherOnboarding: React.FC = () => {
                             </button>
                             <button
                                 onClick={handleRegister}
-                                disabled={loading || !contractAccepted}
+                                disabled={loading || !teacherContractReadiness.isReady || !contractAccepted}
                                 className="flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-500/20 transition-all hover:bg-emerald-700 disabled:scale-95 disabled:grayscale disabled:opacity-30 sm:w-auto sm:px-10"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <><CheckCircle size={20} /> Assinar e Concluir</>}
@@ -226,10 +260,10 @@ const TeacherOnboarding: React.FC = () => {
                         teacherCPF={cpf}
                         teacherAddress={address}
                         teacherBirthDate={birthDate}
+                        school={schoolInfo}
                         hourlyRate={offerData?.hourlyRate}
-                        contractCity="Santa Isabel/SP"
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        acceptedAt={contractAccepted ? new Date().toISOString() : undefined}
+                        acceptedAt={teacherContractReadiness.isReady && contractAccepted ? new Date().toISOString() : undefined}
                         userIp={userIp}
                         displayMode="responsive"
                         showPrintButton={false}
@@ -278,7 +312,7 @@ const TeacherOnboarding: React.FC = () => {
                             <div className="bg-brand-surface/10 backdrop-blur-md p-6 rounded-2xl border border-white/10">
                                 <h3 className="text-xs font-black uppercase tracking-widest text-emerald-200 mb-1">Valor Hora/Aula</h3>
                                 <p className="text-4xl font-black text-emerald-400 flex items-center gap-2">
-                                    <span className="text-2xl text-emerald-300/80">R$</span> {offerData.hourlyRate.toFixed(2)}
+                                    <span className="text-2xl text-emerald-300/80">R$</span> {Number(offerData.hourlyRate || 0).toFixed(2)}
                                 </p>
                             </div>
                         </div>
@@ -300,6 +334,17 @@ const TeacherOnboarding: React.FC = () => {
                     </h2>
 
                     <form onSubmit={goToContract} className="space-y-6">
+                        {!teacherContractReadiness.isReady && (
+                            <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs leading-relaxed text-amber-900">
+                                <p className="font-black uppercase tracking-wide">Contrato ainda não disponível</p>
+                                <p className="mt-1">A escola deve configurar {teacherContractReadiness.missingFields.join(', ')} e gerar um novo convite seguro.</p>
+                            </div>
+                        )}
+                        {contractError && (
+                            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-800">
+                                {contractError}
+                            </div>
+                        )}
                         {/* Avatar Input (Simulated) */}
                         <div className="flex items-center gap-4 mb-6">
                             <div className="w-16 h-16 rounded-full bg-brand-surface-2 border-2 border-dashed border-brand-border flex items-center justify-center text-brand-muted overflow-hidden relative group cursor-pointer hover:border-tenant-primary hover:text-tenant-primary transition-colors">
@@ -392,7 +437,7 @@ const TeacherOnboarding: React.FC = () => {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || !teacherContractReadiness.isReady}
                             className="w-full py-5 bg-tenant-primary hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2 mt-8 disabled:opacity-70 disabled:filter disabled:grayscale"
                         >
                             <>Revisar Contrato <ArrowRight size={18} /></>
@@ -435,7 +480,7 @@ const Input = ({ label, value, onChange, icon, type = "text", required = false }
 // ─────────────────────────────────────────────────────────────────────────────
 const QUIZ: { q: string; options: string[]; correct: number; explain: string }[] = [
     {
-        q: '1. Qual é a natureza da sua relação com a Wise Wolf?',
+        q: '1. Qual é a natureza da sua relação com a escola contratante?',
         options: [
             'Serei funcionário CLT da escola',
             'Sou uma EMPRESA (meu CNPJ) prestando serviço para outra empresa — sem vínculo empregatício',
@@ -465,7 +510,7 @@ const QUIZ: { q: string; options: string[]; correct: number; explain: string }[]
         explain: 'Correto: temos verificação antifraude com o aluno. Lançamento honesto + aula dada = pagamento garantido, sem stress.',
     },
     {
-        q: '4. Como funciona uma saída correta da Wise Wolf?',
+        q: '4. Como funciona uma saída correta da escola contratante?',
         options: [
             'Posso simplesmente parar de dar aula quando quiser',
             'Aviso com 30 dias, ajudo na transição dos alunos e recebo o último fechamento com bônus de 10%; sumir sem aviso gera multa contratual',
@@ -487,7 +532,7 @@ const QUIZ: { q: string; options: string[]; correct: number; explain: string }[]
 ];
 
 const MANIFESTO: { emoji: string; title: string; text: string }[] = [
-    { emoji: '🏢', title: 'Você é uma empresa', text: 'A Wise Wolf não contrata funcionários — fecha parceria com EMPRESAS. É o seu CNPJ que assina, fatura e constrói reputação aqui. Aja como dono, porque você é.' },
+    { emoji: '🏢', title: 'Você é uma empresa', text: 'A escola contratante não admite você como funcionário neste fluxo — celebra uma parceria entre EMPRESAS. É o seu CNPJ que assina, fatura e constrói reputação aqui. Aja como dono, porque você é.' },
     // ⚠️ Sem valor de aula escrito aqui: a tabela é `teacher_pay_tiers` e muda por
     // decisão da direção. Quando esta tela citava "R$ 9,50/10,50", prometia uma
     // faixa que não existia — o professor via na tela e não via na folha.
@@ -498,7 +543,7 @@ const MANIFESTO: { emoji: string; title: string; text: string }[] = [
     { emoji: '🤝', title: 'Saída com elegância', text: 'Um dia você pode querer seguir outro caminho — sem problema. Avise com 30 dias, ajude na transição dos alunos e receba seu último fechamento com bônus de 10%. Sumir sem aviso gera multa contratual e queima sua reputação.' },
 ];
 
-const MindsetFunnel: React.FC<{ name: string; onBack: () => void; onDone: () => void }> = ({ name, onBack, onDone }) => {
+const MindsetFunnel: React.FC<{ name: string; schoolName: string; onBack: () => void; onDone: () => void }> = ({ name, schoolName, onBack, onDone }) => {
     const [answers, setAnswers] = useState<(number | null)[]>(QUIZ.map(() => null));
     const [checked, setChecked] = useState(false);
     const allAnswered = answers.every(a => a !== null);
@@ -514,7 +559,7 @@ const MindsetFunnel: React.FC<{ name: string; onBack: () => void; onDone: () => 
     return (
         <div className="min-h-screen bg-brand-surface-2 font-sans">
             <div className="max-w-3xl mx-auto px-4 py-8 sm:py-12 pb-32">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mb-2">Etapa 2 de 3 · Mentalidade Wise Wolf</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-accent mb-2">Etapa 2 de 3 · Mentalidade profissional · {schoolName}</p>
                 <h1 className="text-2xl sm:text-3xl font-black text-brand-text leading-tight">
                     {name ? `${name.split(' ')[0]}, antes` : 'Antes'} de assinar: aqui você não é funcionário. <span className="text-brand-accent">Você é uma empresa.</span>
                 </h1>

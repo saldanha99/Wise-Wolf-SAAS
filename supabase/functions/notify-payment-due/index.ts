@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import {
+  loadTenantCentralWhatsAppContext,
+  type TenantCentralWhatsAppContext,
+} from "../_shared/tenant-communication.ts";
 
 // Cron diário: avisa o aluno X dias antes do vencimento da mensalidade (WhatsApp).
 // Envia pela instância central da escola (admin do tenant). Idempotente via due_reminder_sent_at.
@@ -25,14 +29,6 @@ const DAYS_AHEAD = 3; // avisa 3 dias antes
 // Três toques bastam. Mais que isso vira perseguição e o aluno bloqueia o
 // número da escola — aí a escola perde o canal, não só a fatura.
 const OVERDUE_MILESTONES = [3, 10, 20];
-
-async function centralInstance(supabase: any, tenantId: string | null): Promise<string | null> {
-  if (!tenantId) return null;
-  const { data } = await supabase.from("profiles").select("whatsapp_instance")
-    .eq("tenant_id", tenantId).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-    .not("whatsapp_instance", "is", null).neq("whatsapp_instance", "").limit(1).maybeSingle();
-  return data?.whatsapp_instance || null;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -63,7 +59,7 @@ serve(async (req) => {
     // independentes: "vai vencer" e "já venceu".
     let sent = 0;
     const failures: string[] = [];
-    const instCache: Record<string, string | null> = {};
+    const instCache: Record<string, TenantCentralWhatsAppContext | null> = {};
 
     // `|| []` é obrigatório: sem o return antecipado, `charges` nulo (nenhuma
     // cobrança a vencer) faria o for-of lançar e a régua de vencidas nunca
@@ -77,7 +73,7 @@ serve(async (req) => {
           continue;
         }
 
-        let text = `Oi ${dest.nome}! 🐺 Aqui é a Wise Wolf.\n\n`
+        let text = `Oi ${dest.nome}! Aqui é a ${dest.brandName}.\n\n`
           + `Sua mensalidade de *${brl(c.value)}* vence em *${dataBR(c.due_date)}*.`;
         if (c.invoice_url) text += `\n\nPague pelo link: ${c.invoice_url}`;
         text += `\n\nQualquer dúvida, é só chamar. Bons estudos! 💜`;
@@ -124,6 +120,7 @@ interface Recipient {
   phone: string;
   instance: string;
   nome: string;
+  brandName: string;
   /** Preenchido quando ok=false. */
   motivo: string;
   /** Só quando ok=false: marcar a cobrança como avisada mesmo sem enviar. */
@@ -133,7 +130,7 @@ interface Recipient {
 async function resolveRecipient(
   supabase: any,
   charge: { id: string; student_id: string; tenant_id: string | null },
-  instCache: Record<string, string | null>,
+  instCache: Record<string, TenantCentralWhatsAppContext | null>,
 ): Promise<Recipient> {
   const { data: student } = await supabase.from("profiles")
     .select("full_name, phone, status, status_financial, lifecycle_status")
@@ -145,18 +142,34 @@ async function resolveRecipient(
   const inativo = ["Inativo", "INACTIVE", "Inactive", "Arquivado", "Cancelado", "Trancado"].includes(st)
     || student?.status_financial === "ARCHIVED"
     || ["suspended", "offboarded"].includes(student?.lifecycle_status || "");
-  if (inativo) return { ok: false, phone: "", instance: "", nome: "", motivo: "aluno inativo (sem notificar)", marcar: false };
+  if (inativo) return { ok: false, phone: "", instance: "", nome: "", brandName: "", motivo: "aluno inativo (sem notificar)", marcar: false };
 
   let phone = (student?.phone || "").replace(/\D/g, "");
   if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
-  if (phone.length < 12) return { ok: false, phone: "", instance: "", nome: "", motivo: "sem telefone", marcar: true };
+  if (phone.length < 12) return { ok: false, phone: "", instance: "", nome: "", brandName: "", motivo: "sem telefone", marcar: true };
 
   const tk = charge.tenant_id || "_";
-  if (!(tk in instCache)) instCache[tk] = await centralInstance(supabase, charge.tenant_id);
-  const instance = instCache[tk];
-  if (!instance) return { ok: false, phone: "", instance: "", nome: "", motivo: "escola sem WhatsApp central", marcar: false };
+  if (!(tk in instCache)) {
+    instCache[tk] = charge.tenant_id
+      ? await loadTenantCentralWhatsAppContext(
+        supabase,
+        charge.tenant_id,
+        "student",
+      )
+      : null;
+  }
+  const context = instCache[tk];
+  if (!context) return { ok: false, phone: "", instance: "", nome: "", brandName: "", motivo: "escola sem WhatsApp central", marcar: false };
 
-  return { ok: true, phone, instance, nome: (student?.full_name || "").split(" ")[0] || "", motivo: "", marcar: false };
+  return {
+    ok: true,
+    phone,
+    instance: context.instanceName,
+    nome: (student?.full_name || "").split(" ")[0] || "",
+    brandName: context.identity.brandName,
+    motivo: "",
+    marcar: false,
+  };
 }
 
 /**
@@ -206,7 +219,10 @@ const dataBR = (iso: string) => new Date(iso + "T00:00:00").toLocaleDateString("
  * tabela das outras automações. `ref_date` é o VENCIMENTO da fatura, não a data
  * de hoje: assim cada marco é enviado uma vez por fatura, e não uma vez por dia.
  */
-async function reguaVencidas(supabase: any, instCache: Record<string, string | null>) {
+async function reguaVencidas(
+  supabase: any,
+  instCache: Record<string, TenantCentralWhatsAppContext | null>,
+) {
   const hoje = new Date();
   const maisAntigo = new Date(hoje.getTime() - (Math.max(...OVERDUE_MILESTONES) + 15) * 86400_000);
 
@@ -246,7 +262,7 @@ async function reguaVencidas(supabase: any, instCache: Record<string, string | n
       const dest = await resolveRecipient(supabase, c, instCache);
       if (!dest.ok) { motivos.push(`${c.id}: ${dest.motivo}`); continue; }
 
-      let text = `Oi ${dest.nome}! 🐺 Aqui é a Wise Wolf.\n\n`
+      let text = `Oi ${dest.nome}! Aqui é a ${dest.brandName}.\n\n`
         + `Sua mensalidade de *${brl(c.value)}*, com vencimento em *${dataBR(c.due_date)}*, `
         + `consta como *em aberto* por aqui.`;
       if (c.invoice_url) text += `\n\nSe já pagou, pode ignorar. Se ainda não, o link está aqui: ${c.invoice_url}`;

@@ -4,6 +4,7 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
 
 // ORAL-TEST-SCAN — detects students due for the periodic oral checkpoint and
 // notifies the tenant director. Database claims prevent concurrent cron runs
@@ -23,15 +24,6 @@ const EVOLUTION_KEYS = Array.from(
   ),
 );
 const CLAIM_LEASE_MS = 10 * 60 * 1000;
-
-type AdminRow = {
-  id: string;
-  tenant_id: string | null;
-  phone: string | null;
-  whatsapp_instance: string | null;
-  teachers_group_id: string | null;
-  role: string;
-};
 
 type DueRow = {
   id: string;
@@ -77,18 +69,6 @@ async function sendWhats(
     }
   }
   return false;
-}
-
-function pickOwner(rows: AdminRow[]): AdminRow | null {
-  if (rows.length === 0) return null;
-  return [...rows].sort((a, b) => {
-    const groupA = a.teachers_group_id ? 0 : 1;
-    const groupB = b.teachers_group_id ? 0 : 1;
-    if (groupA !== groupB) return groupA - groupB;
-    const roleA = a.role === "SCHOOL_ADMIN" ? 0 : 1;
-    const roleB = b.role === "SCHOOL_ADMIN" ? 0 : 1;
-    return roleA - roleB;
-  })[0];
 }
 
 async function releaseClaims(
@@ -138,30 +118,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const { data: admins, error: adminsError } = await supabase
-      .from("profiles")
-      .select(
-        "id, tenant_id, phone, whatsapp_instance, teachers_group_id, role",
-      )
-      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-      .not("whatsapp_instance", "is", null)
-      .neq("whatsapp_instance", "");
-    if (adminsError) throw adminsError;
-
-    const byTenant = new Map<string, AdminRow[]>();
-    for (const admin of (admins ?? []) as AdminRow[]) {
-      if (!admin.tenant_id) continue;
-      const rows = byTenant.get(admin.tenant_id) ?? [];
-      rows.push(admin);
-      byTenant.set(admin.tenant_id, rows);
-    }
+    const { data: tenants, error: tenantsError } = await supabase
+      .from("tenants")
+      .select("id");
+    if (tenantsError) throw tenantsError;
 
     const summary: Array<Record<string, unknown>> = [];
     let persistenceFailed = false;
 
-    for (const [tenantId, rows] of byTenant) {
-      const owner = pickOwner(rows);
-      if (!owner?.teachers_group_id) continue;
+    for (const tenant of tenants ?? []) {
+      const tenantId = String(tenant.id || "");
+      if (!tenantId) continue;
+      const route = await loadTenantWhatsAppRoute(supabase, tenantId, "teacher");
+      if (!route?.teachersGroupId || !route.ownerPhone) continue;
 
       let detected = 0;
       if (!dryrun) {
@@ -287,15 +256,11 @@ serve(async (req) => {
       let sent = false;
       let markerSaved = true;
       if (!dryrun) {
-        let phone = (owner.phone || "").replace(/\D/g, "");
-        if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
-        if (phone.length >= 12 && phone.length <= 13) {
-          sent = await sendWhats(
-            owner.whatsapp_instance!,
-            phone,
-            message,
-          );
-        }
+        sent = await sendWhats(
+          route.instanceName,
+          route.ownerPhone,
+          message,
+        );
 
         const claimedIds = claimed.map((row) => row.id);
         if (sent) {

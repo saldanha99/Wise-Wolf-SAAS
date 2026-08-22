@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  authorizeRequest,
+  type RequestAuthResult,
+} from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,18 +21,27 @@ const allowedActions = new Set([
   "group/fetchAllGroups",
 ]);
 
-const allowedRoles = new Set(["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER"]);
+const allowedRoles = ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER"] as const;
+const instanceManagementActions = new Set([
+  "instance/create",
+  "instance/connect",
+  "instance/logout",
+  "instance/delete",
+]);
+const operationalTenantStatuses = new Set(["active", "trial", "trialing"]);
 const instanceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,79}$/;
 
 type JsonObject = Record<string, unknown>;
 
 type ProxyDependencies = {
   getEnv?: (name: string) => string | undefined;
-  createSupabaseClient?: (
-    url: string,
-    anonKey: string,
-    options: unknown,
-  ) => any;
+  authorize?: (
+    req: Request,
+    options: {
+      allowedRoles: readonly string[];
+      corsHeaders: Record<string, string>;
+    },
+  ) => Promise<RequestAuthResult>;
   fetchUpstream?: typeof fetch;
 };
 
@@ -95,13 +107,7 @@ export async function handleRequest(
   dependencies: ProxyDependencies = {},
 ): Promise<Response> {
   const getEnv = dependencies.getEnv || ((name: string) => Deno.env.get(name));
-  const createSupabaseClient = dependencies.createSupabaseClient ||
-    ((url, anonKey, options) =>
-      createClient(
-        url,
-        anonKey,
-        options as Parameters<typeof createClient>[2],
-      ));
+  const authorize = dependencies.authorize || authorizeRequest;
   const fetchUpstream = dependencies.fetchUpstream || fetch;
 
   if (req.method === "OPTIONS") {
@@ -122,74 +128,17 @@ export async function handleRequest(
     );
   }
 
-  const authHeader = req.headers.get("Authorization") || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7).trim()
-    : "";
+  const authorization = req.headers.get("authorization")?.trim() || "";
+  const token = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
   if (!token) {
     return json({ error: "Não autenticado", code: "UNAUTHENTICATED" }, 401);
   }
 
-  const supabaseUrl = getEnv("SUPABASE_URL") || "";
-  const supabaseAnonKey = getEnv("SUPABASE_ANON_KEY") || "";
-  const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const evolutionApiUrl = (getEnv("EVOLUTION_API_URL") || "").replace(
-    /\/+$/,
-    "",
-  );
-  const evolutionApiKey = getEnv("EVOLUTION_API_KEY") || "";
-
-  if (
-    !supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey ||
-    !evolutionApiUrl || !evolutionApiKey
-  ) {
-    console.error("[WA Proxy] Configuração server-side incompleta");
-    return json({
-      error: "Integração indisponível",
-      code: "INTEGRATION_UNAVAILABLE",
-    }, 503);
-  }
-
-  const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const supabaseAdmin = createSupabaseClient(
-    supabaseUrl,
-    supabaseServiceRoleKey,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-
-  const { data: authData, error: authError } = await supabase.auth.getUser(
-    token,
-  );
-  const user = authData.user;
-  if (authError || !user) {
+  const auth = await authorize(req, { corsHeaders, allowedRoles });
+  if (auth.ok === false) return auth.response;
+  const { admin: supabaseAdmin, profile, userId } = auth.context;
+  if (!profile || !userId) {
     return json({ error: "Sessão inválida", code: "UNAUTHENTICATED" }, 401);
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, role, tenant_id, whatsapp_instance")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile) {
-    console.error(
-      "[WA Proxy] Perfil do chamador indisponível",
-      profileError?.code || "not_found",
-    );
-    return json({
-      error: "Perfil não autorizado",
-      code: "PROFILE_NOT_AUTHORIZED",
-    }, 403);
-  }
-
-  if (!allowedRoles.has(String(profile.role || ""))) {
-    return json({
-      error: "Papel sem permissão para WhatsApp",
-      code: "ROLE_FORBIDDEN",
-    }, 403);
   }
 
   let requestBody: JsonObject;
@@ -212,10 +161,66 @@ export async function handleRequest(
     );
   }
 
+  const callerRole = profile.role;
   const callerTenantId = asString(profile.tenant_id).trim();
+  let effectiveTenantId = callerTenantId;
+
+  if (callerRole === "SUPER_ADMIN") {
+    const { data: selectedContext, error: contextError } = await supabaseAdmin
+      .from("tenant_user_contexts")
+      .select("tenant_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (contextError) {
+      console.error("[WA Proxy] Falha ao validar contexto do superadmin", {
+        code: contextError.code || "query_error",
+      });
+      return json({
+        error: "Não foi possível validar o contexto da escola",
+        code: "TENANT_CONTEXT_VALIDATION_FAILED",
+      }, 503);
+    }
+
+    effectiveTenantId = asString(selectedContext?.tenant_id).trim();
+    if (!effectiveTenantId) {
+      return json({
+        error: "Selecione uma escola antes de continuar",
+        code: "TENANT_CONTEXT_REQUIRED",
+      }, 403);
+    }
+
+    const { data: activeMembership, error: membershipError } =
+      await supabaseAdmin
+        .from("tenant_memberships")
+        .select("tenant_id")
+        .eq("user_id", userId)
+        .eq("tenant_id", effectiveTenantId)
+        .eq("status", "ACTIVE")
+        .maybeSingle();
+    if (membershipError) {
+      console.error("[WA Proxy] Falha ao validar associação do superadmin", {
+        code: membershipError.code || "query_error",
+      });
+      return json({
+        error: "Não foi possível validar o acesso à escola",
+        code: "TENANT_MEMBERSHIP_VALIDATION_FAILED",
+      }, 503);
+    }
+    if (!activeMembership) {
+      return json({
+        error: "Associação ativa com a escola é obrigatória",
+        code: "TENANT_MEMBERSHIP_INACTIVE",
+      }, 403);
+    }
+  } else if (!effectiveTenantId) {
+    return json(
+      { error: "Tenant não autorizado", code: "TENANT_FORBIDDEN" },
+      403,
+    );
+  }
+
   if (
-    !callerTenantId || !requestedTenantId ||
-    requestedTenantId !== callerTenantId
+    requestedTenantId && requestedTenantId !== effectiveTenantId
   ) {
     return json(
       { error: "Tenant não autorizado", code: "TENANT_FORBIDDEN" },
@@ -223,24 +228,90 @@ export async function handleRequest(
     );
   }
 
+  if (
+    callerRole === "TEACHER" && instanceManagementActions.has(action)
+  ) {
+    return json({
+      error: "Professor não pode gerenciar instâncias",
+      code: "INSTANCE_MANAGEMENT_FORBIDDEN",
+    }, 403);
+  }
+
+  const { data: tenant, error: tenantError } = await supabaseAdmin
+    .from("tenants")
+    .select("id, saas_status")
+    .eq("id", effectiveTenantId)
+    .maybeSingle();
+  if (tenantError) {
+    console.error("[WA Proxy] Falha ao validar tenant", {
+      code: tenantError.code || "query_error",
+    });
+    return json({
+      error: "Não foi possível validar a escola",
+      code: "TENANT_VALIDATION_FAILED",
+    }, 503);
+  }
+  const tenantStatus = asString(tenant?.saas_status).trim().toLowerCase();
+  if (!tenant || !operationalTenantStatuses.has(tenantStatus)) {
+    return json({
+      error: "Escola sem assinatura ativa",
+      code: "TENANT_INACTIVE",
+    }, 403);
+  }
+
+  const evolutionApiUrl = (getEnv("EVOLUTION_API_URL") || "").replace(
+    /\/+$/,
+    "",
+  );
+  const evolutionApiKey = getEnv("EVOLUTION_API_KEY") || "";
+  if (!evolutionApiUrl || !evolutionApiKey) {
+    console.error("[WA Proxy] Configuração server-side incompleta");
+    return json({
+      error: "Integração indisponível",
+      code: "INTEGRATION_UNAVAILABLE",
+    }, 503);
+  }
+
   let instanceName = asString(requestBody.instanceName).trim();
   if (instanceName === "default") {
-    instanceName = asString(profile.whatsapp_instance).trim();
+    const { data: defaultInstance, error: defaultError } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("instance_name")
+      .eq("tenant_id", effectiveTenantId)
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (defaultError) {
+      console.error("[WA Proxy] Falha ao resolver instância padrão", {
+        code: defaultError.code || "query_error",
+      });
+      return json({
+        error: "Não foi possível validar a instância",
+        code: "INSTANCE_VALIDATION_FAILED",
+      }, 503);
+    }
+    instanceName = asString(defaultInstance?.instance_name).trim();
   }
   if (!instanceNamePattern.test(instanceName)) {
     return json({ error: "Instância inválida", code: "INVALID_INSTANCE" }, 400);
   }
 
-  const findInstanceOwner = async (): Promise<{ id: string } | null> => {
+  const findInstanceOwner = async (): Promise<
+    {
+      id: string;
+      user_id: string;
+    } | null
+  > => {
     let query = supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("tenant_id", callerTenantId)
-      .eq("whatsapp_instance", instanceName)
+      .from("whatsapp_instances")
+      .select("id, user_id")
+      .eq("tenant_id", effectiveTenantId)
+      .eq("instance_name", instanceName)
       .limit(1);
 
-    if (String(profile.role) === "TEACHER") {
-      query = query.eq("id", user.id);
+    if (callerRole === "TEACHER") {
+      query = query.eq("user_id", userId);
     }
 
     const { data, error } = await query.maybeSingle();
@@ -251,52 +322,65 @@ export async function handleRequest(
       );
       return null;
     }
-    return data?.id ? { id: String(data.id) } : null;
+    return data?.id && data?.user_id
+      ? { id: String(data.id), user_id: String(data.user_id) }
+      : null;
   };
 
-  let ownerUserId = user.id;
+  let ownerUserId = userId;
+  let instanceRowId = "";
   if (action === "instance/create") {
     const recreate = payload.recreate === true;
-    const requestedOwnerId = asString(payload.ownerUserId).trim() || user.id;
-    const mayManageTenant = ["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(
-      String(profile.role),
-    );
-
-    if (requestedOwnerId !== user.id && !mayManageTenant) {
-      return json({
-        error: "Responsável fora do seu escopo",
-        code: "OWNER_FORBIDDEN",
-      }, 403);
-    }
-
-    const { data: ownerProfile, error: ownerError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, whatsapp_instance")
-      .eq("id", requestedOwnerId)
-      .eq("tenant_id", callerTenantId)
+    const requestedOwnerId = asString(payload.ownerUserId).trim() || userId;
+    const { data: ownerMembership, error: ownerError } = await supabaseAdmin
+      .from("tenant_memberships")
+      .select("user_id, role")
+      .eq("user_id", requestedOwnerId)
+      .eq("tenant_id", effectiveTenantId)
+      .eq("status", "ACTIVE")
       .maybeSingle();
 
-    if (ownerError || !ownerProfile) {
+    if (
+      ownerError || !ownerMembership ||
+      !["SCHOOL_ADMIN", "TEACHER"].includes(
+        asString(ownerMembership.role),
+      )
+    ) {
       return json({
         error: "Responsável fora do seu tenant",
         code: "OWNER_FORBIDDEN",
       }, 403);
     }
-    ownerUserId = String(ownerProfile.id);
+    ownerUserId = String(ownerMembership.user_id);
 
-    const owned =
-      asString(ownerProfile.whatsapp_instance).trim() === instanceName;
+    const { data: ownedInstance, error: ownedError } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("id, instance_name")
+      .eq("tenant_id", effectiveTenantId)
+      .eq("user_id", ownerUserId)
+      .limit(1)
+      .maybeSingle();
+    if (ownedError) {
+      console.error("[WA Proxy] Falha ao validar vínculo existente", {
+        code: ownedError.code || "query_error",
+      });
+      return json({
+        error: "Não foi possível validar a instância",
+        code: "INSTANCE_VALIDATION_FAILED",
+      }, 503);
+    }
 
+    const existingName = asString(ownedInstance?.instance_name).trim();
+    const owned = existingName === instanceName;
     if (recreate && !owned) {
       return json({
         error: "Instância fora do seu escopo",
         code: "INSTANCE_FORBIDDEN",
       }, 403);
     }
+    instanceRowId = owned ? asString(ownedInstance?.id) : "";
 
     if (!recreate) {
-      const existingName = asString(ownerProfile.whatsapp_instance).trim();
-
       if (existingName && existingName !== instanceName) {
         return json({
           error: "Já existe uma instância vinculada a este usuário",
@@ -309,6 +393,29 @@ export async function handleRequest(
           code: "INSTANCE_ALREADY_LINKED",
         }, 409);
       }
+
+      const { data: unavailableInstance, error: availabilityError } =
+        await supabaseAdmin
+          .from("whatsapp_instances")
+          .select("id")
+          .ilike("instance_name", instanceName)
+          .limit(1)
+          .maybeSingle();
+      if (availabilityError) {
+        console.error("[WA Proxy] Falha ao validar disponibilidade", {
+          code: availabilityError.code || "query_error",
+        });
+        return json({
+          error: "Não foi possível validar a instância",
+          code: "INSTANCE_VALIDATION_FAILED",
+        }, 503);
+      }
+      if (unavailableInstance) {
+        return json({
+          error: "Nome de instância indisponível",
+          code: "INSTANCE_NAME_UNAVAILABLE",
+        }, 409);
+      }
     }
   } else {
     const owner = await findInstanceOwner();
@@ -318,7 +425,8 @@ export async function handleRequest(
         code: "INSTANCE_FORBIDDEN",
       }, 403);
     }
-    ownerUserId = owner.id;
+    instanceRowId = owner.id;
+    ownerUserId = owner.user_id;
   }
 
   let endpoint = "";
@@ -438,8 +546,8 @@ export async function handleRequest(
   console.log(
     "[WA Proxy] Operação autorizada",
     action,
-    callerTenantId,
-    user.id,
+    effectiveTenantId,
+    userId,
   );
 
   switch (action) {
@@ -449,40 +557,8 @@ export async function handleRequest(
       const state = asString(instance.status) || asString(instance.state) ||
         "created";
 
-      const { error: profileUpdateError } = await supabaseAdmin
-        .from("profiles")
-        .update({ whatsapp_instance: instanceName })
-        .eq("id", ownerUserId)
-        .eq("tenant_id", callerTenantId);
-      if (profileUpdateError) {
-        console.error(
-          "[WA Proxy] Instância criada, mas vínculo falhou",
-          profileUpdateError.code || "update_error",
-        );
-        return json({
-          error: "Falha ao vincular a instância",
-          code: "OWNERSHIP_PERSIST_FAILED",
-        }, 500);
-      }
-
-      const { data: existingRow, error: lookupError } = await supabaseAdmin
-        .from("whatsapp_instances")
-        .select("id")
-        .eq("user_id", ownerUserId)
-        .limit(1)
-        .maybeSingle();
-      if (lookupError) {
-        console.error(
-          "[WA Proxy] Falha ao localizar vínculo",
-          lookupError.code || "lookup_error",
-        );
-        return json({
-          error: "Falha ao registrar a instância",
-          code: "OWNERSHIP_PERSIST_FAILED",
-        }, 500);
-      }
-
       const instanceRecord = {
+        tenant_id: effectiveTenantId,
         user_id: ownerUserId,
         instance_name: instanceName,
         instance_id: instanceId,
@@ -490,9 +566,10 @@ export async function handleRequest(
         api_key: null,
         updated_at: new Date().toISOString(),
       };
-      const persistence = existingRow?.id
+      const persistence = instanceRowId
         ? await supabaseAdmin.from("whatsapp_instances").update(instanceRecord)
-          .eq("id", existingRow.id)
+          .eq("id", instanceRowId)
+          .eq("tenant_id", effectiveTenantId)
         : await supabaseAdmin.from("whatsapp_instances").insert(instanceRecord);
       if (persistence.error) {
         console.error(
@@ -515,27 +592,11 @@ export async function handleRequest(
     }
     case "instance/connectionState": {
       const state = upstreamState(data);
-      const { data: stateRow } = await supabaseAdmin
+      const statePersistence = await supabaseAdmin
         .from("whatsapp_instances")
-        .select("id")
-        .eq("user_id", ownerUserId)
-        .eq("instance_name", instanceName)
-        .limit(1)
-        .maybeSingle();
-      const stateRecord = {
-        user_id: ownerUserId,
-        instance_name: instanceName,
-        instance_id: instanceName,
-        status: state,
-        api_key: null,
-        updated_at: new Date().toISOString(),
-      };
-      const statePersistence = stateRow?.id
-        ? await supabaseAdmin
-          .from("whatsapp_instances")
-          .update(stateRecord)
-          .eq("id", stateRow.id)
-        : await supabaseAdmin.from("whatsapp_instances").insert(stateRecord);
+        .update({ status: state, updated_at: new Date().toISOString() })
+        .eq("id", instanceRowId)
+        .eq("tenant_id", effectiveTenantId);
       if (statePersistence.error) {
         console.error(
           "[WA Proxy] Falha ao atualizar status local",
@@ -551,6 +612,7 @@ export async function handleRequest(
           status: "disconnected",
           updated_at: new Date().toISOString(),
         })
+        .eq("tenant_id", effectiveTenantId)
         .eq("user_id", ownerUserId)
         .eq("instance_name", instanceName);
       return json({ ok: true });
@@ -558,17 +620,13 @@ export async function handleRequest(
       const { error: rowsError } = await supabaseAdmin
         .from("whatsapp_instances")
         .delete()
+        .eq("tenant_id", effectiveTenantId)
         .eq("user_id", ownerUserId)
         .eq("instance_name", instanceName);
-      const { error: profileUpdateError } = await supabaseAdmin
-        .from("profiles")
-        .update({ whatsapp_instance: null, whatsapp_token: null })
-        .eq("id", ownerUserId)
-        .eq("whatsapp_instance", instanceName);
-      if (rowsError || profileUpdateError) {
+      if (rowsError) {
         console.error(
           "[WA Proxy] Instância removida, mas limpeza local falhou",
-          rowsError?.code || profileUpdateError?.code || "cleanup_error",
+          rowsError.code || "cleanup_error",
         );
       }
       return json({ ok: true });

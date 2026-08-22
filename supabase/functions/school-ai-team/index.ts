@@ -4,6 +4,10 @@ import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
 } from "../_shared/commercial-contact-policy.ts";
+import {
+  loadTenantCentralWhatsAppInstance,
+  loadTenantWhatsAppRoute,
+} from "../_shared/tenant-communication.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EQUIPE DE IA DA ESCOLA — 4 "funcionários" virtuais (migrado do padrão MotoFix).
@@ -225,8 +229,8 @@ async function buildAtendente(sb: any, tenantId: string): Promise<{ md: string; 
     if (bdays.length) lines.push(`- 🎂 **${bdays.length} aniversariante(s) hoje**: ${bdays.map((s: any) => (s.full_name || "").split(" ")[0]).join(", ")} — mandar parabéns.`);
 
     // WhatsApp central conectado?
-    const { data: admin } = await sb.from("profiles").select("whatsapp_instance").eq("tenant_id", tenantId).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "").limit(1).maybeSingle();
-    if (!admin?.whatsapp_instance) lines.push("- ⚠️ WhatsApp central não conectado: os avisos automáticos estão desligados.");
+    const instance = await loadTenantCentralWhatsAppInstance(sb, tenantId);
+    if (!instance) lines.push("- ⚠️ WhatsApp central não conectado: os avisos automáticos estão desligados.");
   } catch (e) { lines.push(`- (parcial: ${(e as Error).message})`); }
   if (lines.length === 2) lines.push("- ✅ Nada pendente com alunos/leads no momento.");
   return { md: lines.join("\n"), hl };
@@ -343,10 +347,10 @@ serve(async (req) => {
         if (duplicate) { result.skipped++; continue; }
         // telefone do diretor: ownerWhatsapp configurado, senão o phone do admin do tenant
         let phone = (cfg.ownerWhatsapp || "").replace(/\D/g, "");
-        const { data: adm } = await admin.from("profiles").select("phone, whatsapp_instance").eq("tenant_id", t.id).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "").limit(1).maybeSingle();
-        if (!phone) phone = (adm?.phone || "").replace(/\D/g, "");
+        const route = await loadTenantWhatsAppRoute(admin, t.id);
+        if (!phone) phone = route?.ownerPhone || "";
         if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
-        const instance = adm?.whatsapp_instance;
+        const instance = route?.instanceName;
         if (!instance || phone.length < 12) { result.failures.push(`${t.id}: sem instância central ou telefone`); continue; }
         try {
           const { secretary } = await runForTenant(admin, t.id, cfg, useAi);

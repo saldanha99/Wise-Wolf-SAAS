@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import {
+  loadTenantCentralWhatsAppContext,
+  type TenantCentralWhatsAppContext,
+} from "../_shared/tenant-communication.ts";
 
 // Cron: envia o link de confirmação de presença ao ALUNO após a aula.
 // IMPORTANTE: envia pela INSTÂNCIA CENTRAL da escola (não a do professor),
@@ -14,23 +18,14 @@ const corsHeaders = {
 const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
 // Chave global do servidor Evolution (funciona para qualquer instância)
 const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
-// Página de confirmação servida pelo SPA (edge functions do Supabase não renderizam HTML — CSP sandbox)
-const APP_URL = Deno.env.get("APP_PUBLIC_URL") || "https://system.wisewolflanguage.com.br";
-
 // Resolve a instância CENTRAL da escola (WhatsApp do admin do tenant).
 // Importante para integridade: a verificação NÃO sai pela instância do professor checado.
-async function resolveCentralInstance(supabase: any, tenantId: string | null): Promise<string | null> {
+async function resolveCentralContext(
+  supabase: any,
+  tenantId: string | null,
+): Promise<TenantCentralWhatsAppContext | null> {
   if (!tenantId) return null;
-  const { data } = await supabase
-    .from("profiles")
-    .select("whatsapp_instance")
-    .eq("tenant_id", tenantId)
-    .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-    .not("whatsapp_instance", "is", null)
-    .neq("whatsapp_instance", "")
-    .limit(1)
-    .maybeSingle();
-  return data?.whatsapp_instance || null;
+  return await loadTenantCentralWhatsAppContext(supabase, tenantId, "student");
 }
 
 serve(async (req) => {
@@ -97,7 +92,7 @@ serve(async (req) => {
     let sent = 0;
     let canceladas = 0;
     const failures: string[] = [];
-    const instanceCache: Record<string, string | null> = {};
+    const contextCache: Record<string, TenantCentralWhatsAppContext | null> = {};
 
     for (const c of pending) {
       try {
@@ -123,26 +118,31 @@ serve(async (req) => {
 
         // Instância central da escola (cache por tenant)
         const tk = c.tenant_id || "_";
-        if (!(tk in instanceCache)) {
-          instanceCache[tk] = await resolveCentralInstance(supabase, c.tenant_id);
+        if (!(tk in contextCache)) {
+          contextCache[tk] = await resolveCentralContext(supabase, c.tenant_id);
         }
-        const instance = instanceCache[tk];
-        if (!instance) {
+        const context = contextCache[tk];
+        if (!context) {
           failures.push(`${c.id}: escola sem WhatsApp central conectado`);
+          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
+          continue;
+        }
+        if (!context.identity.portalUrl) {
+          failures.push(`${c.id}: escola sem domínio institucional configurado`);
           await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
           continue;
         }
 
         const aluno = (c.student_name || "").split(" ")[0] || "";
         const prof = c.teacher_name || "seu professor";
-        const link = `${APP_URL}/confirmar-presenca?token=${c.token}`;
+        const link = `${context.identity.portalUrl}/confirmar-presenca?token=${c.token}`;
         // "hoje" só se a aula for de hoje; senão referencia a data real (DD/MM)
         const quando = c.class_date === todayISO
           ? "hoje"
           : `no dia ${new Date(c.class_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
-        const text = `Oi ${aluno}! 🐺 Aqui é a Wise Wolf.\n\nVimos que você teve aula com *${prof}* ${quando}. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado! 💜`;
+        const text = `Oi ${aluno}! Aqui é a ${context.identity.brandName}.\n\nVimos que você teve aula com *${prof}* ${quando}. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado!`;
 
-        const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
+        const resp = await fetch(`${EVOLUTION_API_BASE}/${context.instanceName}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: API_TOKEN },
           body: JSON.stringify({

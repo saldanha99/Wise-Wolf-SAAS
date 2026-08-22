@@ -79,7 +79,7 @@ serve(async (req) => {
     supabase
       .from("profiles")
       .select(
-        "full_name, goal, english_for, short_term_goal, preferred_topics, avoided_topics, tenant_id, role, is_test_account",
+        "full_name, goal, english_for, short_term_goal, preferred_topics, avoided_topics, tenant_id, role, lifecycle_status, is_test_account",
       )
       .eq("id", user.id)
       .single(),
@@ -98,7 +98,8 @@ serve(async (req) => {
     profileRes.error ||
     !profile ||
     profile.role !== "STUDENT" ||
-    !profile.tenant_id
+    !profile.tenant_id ||
+    String(profile.lifecycle_status || "").trim().toLowerCase() !== "active"
   ) {
     return new Response("Student profile required", { status: 403 });
   }
@@ -129,6 +130,7 @@ serve(async (req) => {
         id: user.id,
         role: profile.role,
         tenant_id: profile.tenant_id,
+        lifecycle_status: profile.lifecycle_status,
       },
       user,
       userId: user.id,

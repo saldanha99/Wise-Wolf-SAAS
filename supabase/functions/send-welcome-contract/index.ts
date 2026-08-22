@@ -1,176 +1,264 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { Resend } from "npm:resend@2.0.0"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0"
+/// <reference lib="deno.ns" />
 
-const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim()
-const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL")?.trim()
-    || "Wise Wolf <nao-responda@wisewolflanguage.com.br>"
-const resendReplyTo = Deno.env.get("RESEND_REPLY_TO")?.trim()
-const systemUrl = (Deno.env.get("SYSTEM_URL")?.trim()
-    || "https://system.wisewolflanguage.com.br").replace(/\/+$/, "")
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  authorizeRequest,
+  methodNotAllowed,
+  type RequestAuthContext,
+} from "../_shared/request-auth.ts";
+import {
+  loadTenantCommunicationIdentity,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 interface WelcomeEmailRequest {
-    email: string
-    name: string
-    contractUrl?: string // URL to fetch PDF from (if available)
-    contractBase64?: string // OR Base64 content of the PDF
+  recipientUserId?: string;
+  contractUrl?: string;
+  contractBase64?: string;
 }
 
-interface EmailCaller {
-    email: string | null
-    isAdmin: boolean
-    isService: boolean
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-async function getEmailCaller(req: Request): Promise<EmailCaller | null> {
-    const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim()
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-
-    if (!token || !supabaseUrl || !serviceRoleKey) return null
-    if (token === serviceRoleKey) return { email: null, isAdmin: true, isService: true }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false },
-    })
-    const { data: { user } } = await supabase.auth.getUser(token)
-    if (!user) return null
-
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle()
-
-    return {
-        email: user.email || null,
-        isAdmin: ["SCHOOL_ADMIN", "SUPER_ADMIN"].includes(profile?.role || ""),
-        isService: false,
-    }
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
 }
 
-const logoUrl = Deno.env.get("EMAIL_LOGO_URL")?.trim()
-    || "https://wisewolflanguage.com.br/logo.png"
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] || character);
+}
+
+function httpsUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function senderAddress(value: string): string | null {
+  const bracketed = value.match(/<([^<>]+)>/)?.[1]?.trim();
+  const address = (bracketed || value).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) ? address : null;
+}
+
+function formatCnpj(value: string): string {
+  return value.replace(
+    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+    "$1.$2.$3/$4-$5",
+  );
+}
+
+async function selectedSuperAdminTenant(
+  context: RequestAuthContext,
+): Promise<string | null> {
+  if (!context.userId) return null;
+  const { data: selected, error: selectedError } = await context.admin
+    .from("tenant_user_contexts")
+    .select("tenant_id")
+    .eq("user_id", context.userId)
+    .maybeSingle();
+  if (selectedError || !selected?.tenant_id) return null;
+  const { data: membership, error: membershipError } = await context.admin
+    .from("tenant_memberships")
+    .select("tenant_id")
+    .eq("user_id", context.userId)
+    .eq("tenant_id", selected.tenant_id)
+    .eq("status", "ACTIVE")
+    .maybeSingle();
+  return membershipError || !membership ? null : membership.tenant_id;
+}
+
+async function authorizedRecipientTenant(
+  context: RequestAuthContext,
+  recipientUserId: string,
+): Promise<string | null> {
+  const { data: memberships, error } = await context.admin
+    .from("tenant_memberships")
+    .select("tenant_id,is_primary")
+    .eq("user_id", recipientUserId)
+    .eq("status", "ACTIVE")
+    .order("is_primary", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (error || !memberships?.length) return null;
+
+  if (context.isService) {
+    const primary = memberships.find((membership) => membership.is_primary === true);
+    if (primary) return primary.tenant_id;
+    return memberships.length === 1 ? memberships[0].tenant_id : null;
+  }
+
+  const role = context.profile?.role || "";
+  const callerTenantId = role === "SUPER_ADMIN"
+    ? await selectedSuperAdminTenant(context)
+    : context.profile?.tenant_id || null;
+  if (!callerTenantId) return null;
+  const targetMembership = memberships.find((membership) =>
+    membership.tenant_id === callerTenantId
+  );
+  if (!targetMembership) return null;
+  if (context.userId === recipientUserId) return callerTenantId;
+  return role === "SCHOOL_ADMIN" || role === "SUPER_ADMIN"
+    ? callerTenantId
+    : null;
+}
 
 const handler = async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS") {
-        return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" } })
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return methodNotAllowed(corsHeaders);
+
+  const auth = await authorizeRequest(req, { allowService: true, corsHeaders });
+  if (auth.ok === false) return auth.response;
+
+  try {
+    const contentLength = Number(req.headers.get("content-length") || "0");
+    if (Number.isFinite(contentLength) && contentLength > 14_000_000) {
+      return json({ error: "Payload muito grande" }, 413);
+    }
+    const body = await req.json() as WelcomeEmailRequest;
+    const recipientUserId = body.recipientUserId ||
+      (!auth.context.isService ? auth.context.userId : null);
+    if (!isUuid(recipientUserId)) {
+      return json({ error: "Destinatário canônico obrigatório" }, 400);
     }
 
-    try {
-        const caller = await getEmailCaller(req)
-        if (!caller) {
-            return new Response(JSON.stringify({ error: "Não autorizado" }), {
-                status: 401,
-                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-            })
-        }
+    const tenantId = await authorizedRecipientTenant(auth.context, recipientUserId);
+    if (!tenantId) return json({ error: "Vínculo ativo com a escola é obrigatório" }, 403);
+    const identity = await loadTenantCommunicationIdentity(auth.context.admin, tenantId);
+    if (!identity) return json({ error: "Escola ativa não encontrada" }, 403);
 
-        const { email, name, contractUrl, contractBase64 }: WelcomeEmailRequest = await req.json()
-        const isOwnEmail = caller.email?.toLowerCase() === email?.trim().toLowerCase()
-        if (!caller.isAdmin && !caller.isService && !isOwnEmail) {
-            return new Response(JSON.stringify({ error: "Não autorizado" }), {
-                status: 403,
-                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-            })
-        }
-
-        if (!resendApiKey) {
-            throw new Error("RESEND_API_KEY não configurada")
-        }
-
-        const resend = new Resend(resendApiKey)
-
-        // Attachments logic
-        const attachments = []
-
-        if (contractUrl) {
-            attachments.push({
-                filename: 'Contrato_WiseWolf.pdf',
-                path: contractUrl,
-            })
-        } else if (contractBase64) {
-            attachments.push({
-                filename: 'Contrato_WiseWolf.pdf',
-                content: contractBase64, // Needs to be buffer or appropriate format for Resend, usually Resend handles base64 content in specific way or Buffer
-            })
-            // Note: Resend Deno SDK might expect Buffer or specific content. 
-            // For simplicity using 'path' with URL is safest if Resend fetches it, 
-            // otherwise 'content' as Buffer. 
-            // Since we are in Deno, 'content' should be a Buffer.
-            // For this code, we'll try to rely on 'path' mainly or leave it as TODO if base64 needed.
-        }
-
-        const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: 'Arial', sans-serif; background-color: #f4f4f9; color: #333; margin: 0; padding: 0; }
-          .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-          .header { background-color: #002366; padding: 30px; text-align: center; }
-          .header img { max-width: 150px; }
-          .content { padding: 40px 30px; text-align: center; }
-          .h1 { color: #002366; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-          .text { font-size: 16px; line-height: 1.6; color: #555; margin-bottom: 30px; }
-          .btn-group { display: flex; flex-direction: column; gap: 15px; align-items: center; margin-top: 30px; }
-          .btn { display: inline-block; width: 80%; padding: 15px; border-radius: 50px; text-decoration: none; font-weight: bold; text-align: center; font-size: 16px; transition: all 0.3s ease; }
-          .btn-primary { background-color: #002366; color: #ffffff; border: 2px solid #002366; }
-          .btn-secondary { background-color: #ffffff; color: #002366; border: 2px solid #002366; }
-          .btn-accent { background-color: #FF0000; color: #ffffff; border: 2px solid #FF0000; }
-          .footer { background-color: #f4f4f9; padding: 20px; text-align: center; font-size: 12px; color: #999; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <!-- Replace with actual public URL of your logo -->
-            <img src="${logoUrl}" alt="Wise Wolf Language" />
-          </div>
-          <div class="content">
-            <h1 class="h1">Bem-vindo ao Império! 🐺</h1>
-            <p class="text">
-              Olá, <strong>${name}</strong>!<br><br>
-              Seja muito bem-vindo à <strong>Wise Wolf Language</strong>. É uma honra ter você em nossa alcateia.
-              <br><br>
-              Seu <strong>contrato de prestação de serviços</strong> já foi processado e segue <strong>em anexo</strong> a este e-mail para sua conferência. Você também pode baixá-lo a qualquer momento em seu portal.
-            </p>
-
-            <div class="btn-group">
-              <a href="${systemUrl}" class="btn btn-primary">🚀 Acessar Minhas Aulas</a>
-              <a href="https://chat.whatsapp.com/SEU_GRUPO_LINK" class="btn btn-secondary">👥 Entrar no Grupo de Alunos</a>
-              <a href="https://wa.me/5511971681451" class="btn btn-accent">💬 Falar com Suporte</a>
-            </div>
-          </div>
-          <div class="footer">
-            <p>© ${new Date().getFullYear()} Wise Wolf Language. Todos os direitos reservados.</p>
-            <p>CNPJ: 55.806.029/0001-57</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `
-
-        const data = await resend.emails.send({
-            from: resendFromEmail,
-            to: [email],
-            subject: '📄 Seu Contrato - Wise Wolf Language',
-            html: htmlContent,
-            attachments: attachments.length > 0 ? attachments : undefined,
-            ...(resendReplyTo ? { reply_to: resendReplyTo } : {})
-        })
-
-        return new Response(JSON.stringify(data), {
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        })
-
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        })
+    const { data: recipient, error: recipientError } = await auth.context.admin
+      .from("profiles")
+      .select("id,email,full_name")
+      .eq("id", recipientUserId)
+      .maybeSingle();
+    if (recipientError) return json({ error: "Não foi possível carregar o destinatário" }, 503);
+    const recipientEmail = typeof recipient?.email === "string"
+      ? recipient.email.trim().toLowerCase()
+      : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      return json({ error: "Destinatário sem e-mail válido" }, 422);
     }
-}
+    const recipientName = safeCommunicationText(recipient?.full_name, 120) ||
+      "Aluno(a)";
 
-serve(handler)
+    const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim() || "";
+    const fromAddress = senderAddress(
+      Deno.env.get("RESEND_FROM_EMAIL")?.trim() ||
+        "nao-responda@wisewolflanguage.com.br",
+    );
+    if (!resendApiKey || !fromAddress) {
+      return json({ error: "Serviço de e-mail indisponível" }, 503);
+    }
+
+    const contractUrl = httpsUrl(body.contractUrl);
+    if (body.contractUrl && !contractUrl) {
+      return json({ error: "URL de contrato inválida" }, 400);
+    }
+    if (
+      body.contractBase64 &&
+      (typeof body.contractBase64 !== "string" || body.contractBase64.length > 13_500_000)
+    ) return json({ error: "Contrato inválido" }, 400);
+
+    const attachments: Array<Record<string, string>> = [];
+    if (contractUrl) attachments.push({ filename: "Contrato.pdf", path: contractUrl });
+    else if (body.contractBase64) {
+      attachments.push({ filename: "Contrato.pdf", content: body.contractBase64 });
+    }
+
+    const brandName = escapeHtml(identity.brandName);
+    const name = escapeHtml(recipientName);
+    const portalUrl = identity.portalUrl ? escapeHtml(identity.portalUrl) : null;
+    const logoUrl = identity.logoUrl ? escapeHtml(identity.logoUrl) : null;
+    const supportPhone = identity.supportPhone;
+    const supportUrl = supportPhone ? `https://wa.me/${supportPhone}` : null;
+    const legalIdentity = [
+      identity.legalName !== identity.brandName
+        ? `<p>${escapeHtml(identity.legalName)}</p>`
+        : "",
+      identity.taxId ? `<p>CNPJ: ${formatCnpj(identity.taxId)}</p>` : "",
+    ].filter(Boolean).join("");
+    const actions = [
+      portalUrl
+        ? `<a href="${portalUrl}" class="btn primary">Acessar portal</a>`
+        : "",
+      supportUrl
+        ? `<a href="${supportUrl}" class="btn secondary">Falar com a escola</a>`
+        : "",
+    ].filter(Boolean).join("");
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+body{font-family:Arial,sans-serif;background:#f4f4f5;color:#27272a;margin:0;padding:24px}
+.container{max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden}
+.header{background:${identity.primaryColor};padding:28px;text-align:center;color:#fff}.header img{max-width:160px;max-height:80px}
+.content{padding:36px 30px;text-align:center}.content h1{color:${identity.primaryColor};font-size:24px}.content p{font-size:16px;line-height:1.6;color:#52525b}
+.actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}.btn{padding:13px 22px;border-radius:999px;text-decoration:none;font-weight:700}.primary{background:${identity.primaryColor};color:#fff}.secondary{border:2px solid ${identity.secondaryColor};color:${identity.secondaryColor}}
+.footer{background:#f4f4f5;padding:18px;text-align:center;font-size:12px;color:#71717a}
+</style></head><body><div class="container"><div class="header">
+${logoUrl ? `<img src="${logoUrl}" alt="${brandName}">` : `<strong>${brandName}</strong>`}
+</div><div class="content"><h1>Bem-vindo(a) à ${brandName}</h1>
+<p>Olá, <strong>${name}</strong>.<br><br>Seu contrato de prestação de serviços foi processado${attachments.length ? " e segue em anexo para sua conferência" : ""}.</p>
+${actions ? `<div class="actions">${actions}</div>` : ""}</div>
+<div class="footer"><p>© ${new Date().getFullYear()} ${brandName}</p>${legalIdentity}</div></div></body></html>`;
+
+    const fallbackReplyTo = Deno.env.get("RESEND_REPLY_TO")?.trim() || "";
+    const replyTo = identity.supportEmail ||
+      (fallbackReplyTo ? senderAddress(fallbackReplyTo) : null);
+    const resendResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${identity.brandName} <${fromAddress}>`,
+        to: [recipientEmail],
+        subject: `Seu contrato - ${identity.brandName}`,
+        html,
+        attachments: attachments.length ? attachments : undefined,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const resendResult = await resendResponse.json().catch(() => ({}));
+    if (!resendResponse.ok) {
+      console.error("Resend rejected welcome contract email", {
+        status: resendResponse.status,
+      });
+      return json({ error: "Falha ao enviar contrato" }, 502);
+    }
+    return json(resendResult);
+  } catch (error) {
+    console.error("Welcome contract email failed", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+    return json({ error: "Falha ao enviar contrato" }, 500);
+  }
+};
+
+serve(handler);

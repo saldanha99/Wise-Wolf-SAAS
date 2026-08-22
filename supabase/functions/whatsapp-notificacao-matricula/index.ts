@@ -1,10 +1,12 @@
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { authorizeRequest } from "../_shared/request-auth.ts";
 import {
-  createClient,
-  type SupabaseClient,
-} from "https://esm.sh/@supabase/supabase-js@2.93.3";
+  loadTenantCentralWhatsAppContext,
+  type TenantCentralWhatsAppContext,
+} from "../_shared/tenant-communication.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,13 +175,6 @@ function safeMessageField(value: unknown, fallback: string): string {
   return cleaned || fallback;
 }
 
-function hasControlCharacters(value: string): boolean {
-  return Array.from(value).some((character) => {
-    const code = character.charCodeAt(0);
-    return code < 32 || code === 127;
-  });
-}
-
 function getEvolutionConfig(): {
   baseUrl: string;
   apiKey: string;
@@ -200,20 +195,6 @@ function getEvolutionConfig(): {
     throw new HttpError(503, "NOTIFICATION_PROVIDER_UNAVAILABLE");
   }
   return { baseUrl: rawUrl, apiKey };
-}
-
-function getPortalUrl(): string {
-  const rawUrl = (Deno.env.get("SYSTEM_URL") ??
-    "https://system.wisewolflanguage.com.br")
-    .trim()
-    .replace(/\/+$/, "");
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== "https:") throw new Error("invalid protocol");
-    return parsed.toString().replace(/\/+$/, "");
-  } catch {
-    throw new HttpError(503, "SYSTEM_URL_UNAVAILABLE");
-  }
 }
 
 async function compensateWelcomeMarker(
@@ -258,6 +239,13 @@ serve(async (req) => {
   }
 
   try {
+    const authorization = await authorizeRequest(req, {
+      corsHeaders,
+      allowService: true,
+      allowedRoles: ["STUDENT"],
+    });
+    if (authorization.ok === false) return authorization.response;
+
     const body = await readJsonObject(req, MAX_REQUEST_BYTES);
     const studentId = typeof body.student_id === "string"
       ? body.student_id.trim()
@@ -266,43 +254,14 @@ serve(async (req) => {
       throw new HttpError(400, "INVALID_STUDENT_ID");
     }
 
-    const supabaseUrl = (Deno.env.get("SUPABASE_URL") ?? "").trim();
-    const serviceRoleKey =
-      (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "").trim();
-    if (!supabaseUrl || !serviceRoleKey) {
-      throw new HttpError(503, "SERVICE_UNAVAILABLE");
-    }
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const authorization = req.headers.get("authorization")?.trim() ?? "";
-    const bearerMatch = authorization.match(/^Bearer\s+(.+)$/i);
-    const bearer = bearerMatch?.[1]?.trim() ?? "";
-    const apiKey = req.headers.get("apikey")?.trim() ?? "";
-    const isService = bearer === serviceRoleKey || apiKey === serviceRoleKey;
+    const supabase = authorization.context.admin;
+    const isService = authorization.context.isService;
 
     let caller:
       | { id: string; role: string; tenant_id: string | null }
       | null = null;
     if (!isService) {
-      if (!bearer) throw new HttpError(401, "AUTHENTICATION_REQUIRED");
-      const { data: authData, error: authError } =
-        await supabase.auth.getUser(bearer);
-      if (authError || !authData.user) {
-        throw new HttpError(401, "INVALID_SESSION");
-      }
-      const { data: callerProfile, error: callerError } = await supabase
-        .from("profiles")
-        .select("id, role, tenant_id")
-        .eq("id", authData.user.id)
-        .maybeSingle();
-      if (callerError) {
-        console.error("[welcome-whatsapp] caller lookup failed", {
-          code: callerError.code,
-        });
-        throw new HttpError(503, "SERVICE_UNAVAILABLE");
-      }
+      const callerProfile = authorization.context.profile;
       if (
         !callerProfile ||
         callerProfile.role !== "STUDENT" ||
@@ -362,54 +321,28 @@ serve(async (req) => {
     const recipient = normalizeBrazilianPhone(student.phone);
     if (!recipient) throw new HttpError(422, "INVALID_STUDENT_PHONE");
 
-    let instanceName = "";
-    const { data: director, error: directorError } = await supabase
-      .from("profiles")
-      .select("whatsapp_instance")
-      .eq("tenant_id", student.tenant_id)
-      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-      .not("whatsapp_instance", "is", null)
-      .neq("whatsapp_instance", "")
-      .limit(1)
-      .maybeSingle();
-    if (directorError) {
+    let communicationContext: TenantCentralWhatsAppContext | null = null;
+    try {
+      communicationContext = await loadTenantCentralWhatsAppContext(
+        supabase,
+        student.tenant_id,
+        "student",
+      );
+    } catch {
       console.error("[welcome-whatsapp] tenant instance lookup failed", {
-        code: directorError.code,
+        reason: "lookup",
       });
       throw new HttpError(503, "SERVICE_UNAVAILABLE");
     }
-    if (typeof director?.whatsapp_instance === "string") {
-      instanceName = director.whatsapp_instance.trim();
-    }
-
-    if (!instanceName) {
-      const { data: instanceRow, error: instanceError } = await supabase
-        .from("whatsapp_instances")
-        .select("instance_name")
-        .eq("tenant_id", student.tenant_id)
-        .eq("status", "open")
-        .limit(1)
-        .maybeSingle();
-      if (instanceError) {
-        console.error("[welcome-whatsapp] fallback instance lookup failed", {
-          code: instanceError.code,
-        });
-        throw new HttpError(503, "SERVICE_UNAVAILABLE");
-      }
-      if (typeof instanceRow?.instance_name === "string") {
-        instanceName = instanceRow.instance_name.trim();
-      }
-    }
-    if (
-      !instanceName ||
-      instanceName.length > 160 ||
-      hasControlCharacters(instanceName)
-    ) {
+    if (!communicationContext) {
       throw new HttpError(503, "WHATSAPP_INSTANCE_UNAVAILABLE");
+    }
+    if (!communicationContext.identity.portalUrl) {
+      throw new HttpError(503, "TENANT_PORTAL_UNAVAILABLE");
     }
 
     const evolution = getEvolutionConfig();
-    const portalUrl = getPortalUrl();
+    const portalUrl = communicationContext.identity.portalUrl;
     const claimTimestamp = new Date().toISOString();
     const { data: claimed, error: claimError } = await supabase
       .from("profiles")
@@ -438,7 +371,7 @@ serve(async (req) => {
 
     const fullName = safeMessageField(student.full_name, "Aluno(a)");
     const email = safeMessageField(student.email, "seu e-mail cadastrado");
-    const message = `🐺 *Bem-vindo(a) à Wise Wolf!*
+    const message = `*Bem-vindo(a) à ${communicationContext.identity.brandName}!*
 
 Olá *${fullName}*, sua matrícula foi realizada com sucesso! 🚀
 
@@ -455,7 +388,7 @@ _Guarde essas informações com segurança!_`;
     try {
       providerResponse = await fetch(
         `${evolution.baseUrl}/message/sendText/${
-          encodeURIComponent(instanceName)
+          encodeURIComponent(communicationContext.instanceName)
         }`,
         {
           method: "POST",

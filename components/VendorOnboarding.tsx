@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Briefcase, User, Mail, Lock, Phone, AlertCircle, CheckCircle, Loader2, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 
 const VendorOnboarding: React.FC = () => {
     const [step, setStep] = useState<'OFFER' | 'FORM' | 'SUCCESS'>('OFFER');
@@ -32,30 +33,18 @@ const VendorOnboarding: React.FC = () => {
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (UUID_RE.test(encodedOffer.trim())) {
             (async () => {
-                const { data: payload, error: offerErr } = await supabase.rpc('get_invite_offer_public', { p_offer_id: encodedOffer.trim() });
-                if (offerErr || !payload || (payload as any).error) {
+                try {
+                    const payload = await tenantLegalAssetsService.vendorOffer(encodedOffer.trim());
+                    if (!payload || payload.error) throw new Error('offer_unavailable');
+                    apply(payload);
+                } catch {
                     setError('Link de convite inválido, expirado ou já utilizado. Solicite um novo.');
-                    return;
                 }
-                apply(payload);
             })();
             return;
         }
 
-        // Caminho legado: base64 no URL.
-        try {
-            const jsonStr = decodeURIComponent(atob(encodedOffer).split('').map(c =>
-                '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-            ).join(''));
-            const data = JSON.parse(jsonStr);
-            if (data.exp && Date.now() > data.exp) {
-                setError('Este link de convite expirou. Solicite um novo.');
-                return;
-            }
-            apply(data);
-        } catch (e) {
-            setError('Link de convite corrompido.');
-        }
+        setError('Este convite antigo não possui validação server-side. Solicite um novo link seguro.');
     }, []);
 
     const handleRegister = async () => {

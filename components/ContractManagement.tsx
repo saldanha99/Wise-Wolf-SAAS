@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { contractReferenceDate, formatContractPeriod, formatSignatureDate } from '../lib/contractDates';
 import { CheckCircle, XCircle, FileText, Image, ExternalLink, Search, Loader2, AlertCircle, Eye, X, Download } from 'lucide-react';
-import { ContractDocument } from './ContractDocument'; // Import the document component
+import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { getSchoolInfo } from '../lib/schoolInfo';
 
 interface StudentContract {
     user_id: string;
@@ -36,7 +37,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [schoolInfo, setSchoolInfo] = useState<Record<string, string> | null>(null);
+    const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [downloading, setDownloading] = useState(false);
     const [actionNotice, setActionNotice] = useState<{
@@ -51,6 +52,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
     const directorContractRef = useRef<HTMLDivElement>(null);
     const auditDialogRef = useRef<HTMLDivElement>(null);
     const processingRef = useRef<string | null>(null);
+    const schoolIdentity = getSchoolContractIdentity(schoolInfo);
 
     useEffect(() => {
         processingRef.current = processing;
@@ -58,6 +60,10 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
 
     const handleDownloadContract = async () => {
         if (!directorContractRef.current || !selectedStudent) return;
+        if (!schoolIdentity.isReady) {
+            alert(`Download bloqueado: configure ${schoolIdentity.missingFields.join(', ')} para esta escola.`);
+            return;
+        }
         setDownloading(true);
         try {
             const html2pdf = (await import('html2pdf.js')).default;
@@ -127,14 +133,9 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
 
     const fetchSchoolInfo = async (tid: string) => {
         try {
-            const { data } = await supabase
-                .from('tenants')
-                .select('school_info')
-                .eq('id', tid)
-                .maybeSingle();
-            if (data?.school_info) setSchoolInfo(data.school_info);
+            setSchoolInfo(await getSchoolInfo(tid));
         } catch (_) {
-            // usa padrão Wise Wolf
+            setSchoolInfo(null);
         }
     };
 
@@ -157,7 +158,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
             // Enrich with data directly from view
             const enriched = data?.map(s => ({
                 ...s,
-                plan_name: 'Plano Wise Wolf',
+                plan_name: 'Plano contratado',
                 // Ensure number formatting
                 plan_value: s.plan_value ? Number(s.plan_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00',
                 student_address: s.student_address ? `${s.student_address}, ${s.student_address_number || ''} - ${s.student_postal_code || ''}` : 'Endereço não informado'
@@ -275,7 +276,7 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
         const monthlyFee = Number(String(selectedStudent.plan_value || '0').replace(/\./g, '').replace(',', '.'));
         return {
             studentName: selectedStudent.student_name,
-            studentCPF: selectedStudent.student_cpf || '000.000.000-00',
+            studentCPF: selectedStudent.student_cpf || '',
             studentAddress: selectedStudent.student_address || '',
             studentEmail: selectedStudent.student_email,
             studentPhone: selectedStudent.student_phone || '',
@@ -468,7 +469,8 @@ const ContractManagement: React.FC<ContractManagementProps> = ({ tenantId }) => 
                                 <button
                                     type="button"
                                     onClick={handleDownloadContract}
-                                    disabled={downloading}
+                                    disabled={downloading || !schoolIdentity.isReady}
+                                    title={!schoolIdentity.isReady ? 'Complete a identidade jurídica e a assinatura desta escola.' : undefined}
                                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#002366] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-blue-900 disabled:opacity-50 sm:flex-none"
                                 >
                                     {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} {downloading ? 'Gerando' : 'Baixar PDF'}

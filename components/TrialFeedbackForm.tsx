@@ -22,9 +22,6 @@ const PLANS = [
 
 const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     opportunityId,
-    bookingId,
-    teacherId,
-    tenantId,
     studentName,
     onClose,
     onSaved
@@ -33,6 +30,7 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     const [saving, setSaving] = useState(false);
     const [existingId, setExistingId] = useState<string | null>(null);
     const [saved, setSaved] = useState(false);
+    const [requestId] = useState(() => crypto.randomUUID());
 
     // Form fields
     const [level, setLevel] = useState('A1');
@@ -64,37 +62,31 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
     const handleSave = async () => {
         setSaving(true);
         try {
-            const payload = {
-                tenant_id: tenantId,
-                opportunity_id: opportunityId,
-                booking_id: bookingId || null,
-                teacher_id: teacherId,
-                recommended_level: level,
-                recommended_plan: plan,
-                interest_score: interest,
-                notes: notes.trim() || null,
-            };
-
-            if (existingId) {
-                // Update
-                const { error } = await supabase
-                    .from('trial_feedback')
-                    .update(payload)
-                    .eq('id', existingId);
-                if (error) throw error;
-            } else {
-                // Insert
-                const { error } = await supabase
-                    .from('trial_feedback')
-                    .insert(payload);
-                if (error) throw error;
+            const { data, error } = await supabase.rpc(
+                'update_trial_outcome_secure',
+                {
+                    p_payload: {
+                        requestId,
+                        opportunityId,
+                        action: 'SAVE_FEEDBACK',
+                        recommendedLevel: level,
+                        recommendedPlan: plan,
+                        interestScore: interest,
+                        notes: notes.trim() || null,
+                    },
+                }
+            );
+            if (error || data?.ok !== true) {
+                const code = data?.error;
+                const message = code === 'appointment_required'
+                    ? 'Esta experimental não possui um agendamento válido.'
+                    : code === 'appointment_tenant_mismatch'
+                        ? 'O agendamento não pertence a esta escola ou professor.'
+                        : code === 'teacher_not_active_for_tenant'
+                            ? 'Seu vínculo como professor não está ativo.'
+                            : error?.message || 'Não foi possível salvar o feedback.';
+                throw new Error(message);
             }
-
-            // Update opportunity trial_status to DONE (teacher is giving feedback, class happened)
-            await supabase
-                .from('opportunities')
-                .update({ trial_status: 'DONE' })
-                .eq('id', opportunityId);
 
             setSaved(true);
             setTimeout(() => {

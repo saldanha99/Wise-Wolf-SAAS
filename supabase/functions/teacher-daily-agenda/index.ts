@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import {
+  loadTenantCentralWhatsAppContext,
+  type TenantCentralWhatsAppContext,
+} from "../_shared/tenant-communication.ts";
 
 // Cron diário (06:00 BRT): a INSTÂNCIA CENTRAL da escola envia, no privado de cada
 // professor, a agenda de aulas do dia — um lembrete matinal.
@@ -21,20 +25,15 @@ function normalizePhone(raw: string): string | null {
   return phone;
 }
 
-async function resolveCentralInstance(supabase: any, tenantId: string | null, cache: Record<string, string | null>): Promise<string | null> {
+async function resolveCentralContext(
+  supabase: any,
+  tenantId: string | null,
+  cache: Record<string, TenantCentralWhatsAppContext | null>,
+): Promise<TenantCentralWhatsAppContext | null> {
   const key = tenantId || "_";
   if (key in cache) return cache[key];
   if (!tenantId) { cache[key] = null; return null; }
-  const { data } = await supabase
-    .from("profiles")
-    .select("whatsapp_instance")
-    .eq("tenant_id", tenantId)
-    .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-    .not("whatsapp_instance", "is", null)
-    .neq("whatsapp_instance", "")
-    .limit(1)
-    .maybeSingle();
-  cache[key] = data?.whatsapp_instance || null;
+  cache[key] = await loadTenantCentralWhatsAppContext(supabase, tenantId, "teacher");
   return cache[key];
 }
 
@@ -92,7 +91,7 @@ serve(async (req) => {
     let sent = 0;
     let skipped = 0;
     const failures: string[] = [];
-    const instanceCache: Record<string, string | null> = {};
+    const contextCache: Record<string, TenantCentralWhatsAppContext | null> = {};
 
     for (const tid of teacherIds) {
       const t = teacherById[tid];
@@ -111,8 +110,8 @@ serve(async (req) => {
       const phone = normalizePhone(t.phone || "");
       if (!phone) { failures.push(`${tid}: telefone inválido`); continue; }
 
-      const instance = await resolveCentralInstance(supabase, t.tenant_id, instanceCache);
-      if (!instance) { failures.push(`${tid}: escola sem WhatsApp central`); continue; }
+      const context = await resolveCentralContext(supabase, t.tenant_id, contextCache);
+      if (!context) { failures.push(`${tid}: escola sem WhatsApp central`); continue; }
 
       // Monta a agenda ordenada por horário
       const aulas = byTeacher[tid]
@@ -125,10 +124,10 @@ serve(async (req) => {
       }).join("\n");
 
       const primeiro = (t.full_name || "").split(" ")[0] || "";
-      const text = `Bom dia${primeiro ? `, ${primeiro}` : ""}! 🐺☀️\n\nSua agenda de hoje na Wise Wolf (${aulas.length} ${aulas.length === 1 ? "aula" : "aulas"}):\n\n${linhas}\n\nBom trabalho! 💜`;
+      const text = `Bom dia${primeiro ? `, ${primeiro}` : ""}! ☀️\n\nSua agenda de hoje na ${context.identity.brandName} (${aulas.length} ${aulas.length === 1 ? "aula" : "aulas"}):\n\n${linhas}\n\nBom trabalho!`;
 
       try {
-        const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
+        const resp = await fetch(`${EVOLUTION_API_BASE}/${context.instanceName}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: API_TOKEN },
           body: JSON.stringify({ number: phone, text, delay: 1000 }),

@@ -8,9 +8,10 @@ import {
   loadCommercialContactFacts,
   reconcileSuppressedLead,
 } from "../_shared/commercial-contact-policy.ts";
+import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://wisewolflanguage.com.br",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -108,42 +109,23 @@ serve(async (req) => {
     const evolutionKey = Deno.env.get("EVOLUTION_API_KEY")?.trim() ?? "";
     if (!evolutionKey) throw new Error("Evolution integration is unavailable");
 
-    const { data: director, error: directorError } = await auth.context.admin
-      .from("profiles")
-      .select("whatsapp_instance, phone")
-      .eq("tenant_id", claimedLead.tenant_id)
-      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-      .not("whatsapp_instance", "is", null)
-      .neq("whatsapp_instance", "")
-      .limit(1)
-      .maybeSingle();
-
-    if (directorError) throw new Error("Director lookup failed");
-
-    let instanceName = director?.whatsapp_instance?.trim() ?? "";
-    if (!instanceName) {
-      const { data: instance, error: instanceError } = await auth.context.admin
-        .from("whatsapp_instances")
-        .select("instance_name")
-        .eq("tenant_id", claimedLead.tenant_id)
-        .eq("status", "open")
-        .limit(1)
-        .maybeSingle();
-      if (instanceError) throw new Error("WhatsApp instance lookup failed");
-      instanceName = instance?.instance_name?.trim() ?? "";
-    }
-    if (!instanceName) throw new Error("WhatsApp instance is unavailable");
+    const route = await loadTenantWhatsAppRoute(
+      auth.context.admin,
+      claimedLead.tenant_id,
+      "student",
+    );
+    if (!route) throw new Error("WhatsApp instance is unavailable");
 
     const name = claimedLead.name?.trim() || "Contato";
     const leadPhone = normalizeBrazilPhone(claimedLead.phone);
-    const directorPhone = normalizeBrazilPhone(director?.phone ?? null);
-    const endpoint = `${evolutionBase}/message/sendText/${encodeURIComponent(instanceName)}`;
+    const directorPhone = normalizeBrazilPhone(route.ownerPhone);
+    const endpoint = `${evolutionBase}/message/sendText/${encodeURIComponent(route.instanceName)}`;
     const messages: Array<{ number: string; text: string }> = [];
 
     if (directorPhone.length >= 12) {
       messages.push({
         number: directorPhone,
-        text: `🐺 *Wise Wolf - Novo Lead!*\n\n📌 *Nome:* ${name}\n📞 *WhatsApp:* ${claimedLead.phone || "Não informado"}\n📧 *E-mail:* ${claimedLead.email || "Não informado"}\n🌍 *Origem:* ${claimedLead.source || "Direto / Desconhecida"}\n\nAcesse seu CRM para gerenciar este contato.`,
+        text: `*${route.identity.brandName} - Novo Lead!*\n\n📌 *Nome:* ${name}\n📞 *WhatsApp:* ${claimedLead.phone || "Não informado"}\n📧 *E-mail:* ${claimedLead.email || "Não informado"}\n🌍 *Origem:* ${claimedLead.source || "Direto / Desconhecida"}\n\nAcesse seu CRM para gerenciar este contato.`,
       });
     }
 
@@ -151,7 +133,7 @@ serve(async (req) => {
       const firstName = name.split(/\s+/)[0];
       messages.push({
         number: leadPhone,
-        text: `🐺 *Olá ${firstName}, bem-vindo(a) à Wise Wolf!*\n\nRecebemos seu interesse e nossa equipe entrará em contato em breve para agendar sua aula experimental gratuita. 🚀`,
+        text: `*Olá ${firstName}, bem-vindo(a) à ${route.identity.brandName}!*\n\nRecebemos seu interesse e nossa equipe entrará em contato em breve para agendar sua aula experimental gratuita. 🚀`,
       });
     }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ContractDocument, type SchoolInfo } from './ContractDocument';
-import { ShieldCheck, ArrowRight, Lock, Loader2, PenTool } from 'lucide-react';
+import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
+import { AlertTriangle, ShieldCheck, ArrowRight, Lock, Loader2, PenTool } from 'lucide-react';
 
 interface ContractModalProps {
     isOpen: boolean;
@@ -47,6 +47,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
     const [accepted, setAccepted] = useState(false);
     const [typedName, setTypedName] = useState('');
     const [isValidSignature, setIsValidSignature] = useState(false);
+    const schoolIdentity = getSchoolContractIdentity(contractProps.school);
 
     // Floating Button State & Observer
     const signatureRef = useRef<HTMLDivElement>(null);
@@ -141,7 +142,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
     if (!isOpen) return null;
 
     const handleConfirm = () => {
-        if (accepted && isValidSignature) {
+        if (schoolIdentity.isReady && accepted && isValidSignature) {
             onConfirm({ type: 'DIGITAL', typedName: typedName.trim() });
         }
     };
@@ -218,6 +219,18 @@ const ContractModal: React.FC<ContractModalProps> = ({
                     {/* Right: Signature Actions */}
                     <div ref={signatureRef} className="relative z-10 flex w-full shrink-0 flex-col gap-6 overflow-visible border-t border-brand-border bg-brand-surface p-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] sm:p-6">
 
+                        {!schoolIdentity.isReady && (
+                            <div role="alert" className="flex max-w-3xl items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 mx-auto w-full">
+                                <AlertTriangle size={18} className="shrink-0" />
+                                <div>
+                                    <p className="font-black uppercase tracking-wide">Assinatura temporariamente bloqueada</p>
+                                    <p className="mt-1 leading-relaxed">
+                                        A escola ainda precisa configurar {schoolIdentity.missingFields.join(', ')}. Nenhum dado ou assinatura de outra escola será usado como substituto.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900 max-w-3xl mx-auto w-full">
                             <div>
                                 <p className="text-[9px] uppercase font-bold text-blue-600">Mensalidade</p>
@@ -244,7 +257,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
                         <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-blue-800 text-xs leading-relaxed max-w-3xl mx-auto w-full">
                             <p className="font-bold flex items-center gap-1 mb-1"><Lock size={12} /> Validade Jurídica</p>
-                            Esta assinatura eletrônica possui plena validade jurídica conforme MP 2.200-2/2001. Seus dados de conexão (IP) e carimbo de tempo serão registrados para auditoria.
+                            O aceite registra nome, dados de conexão e carimbo de tempo para auditoria. A conclusão só é liberada com a identidade jurídica e a assinatura da escola configuradas para este tenant.
                         </div>
 
                         <div className="space-y-4 max-w-3xl mx-auto w-full">
@@ -255,14 +268,14 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => setTypedName(contractProps.studentName)}
-                                    disabled={loading}
+                                    disabled={loading || !schoolIdentity.isReady}
                                     className="mb-2 text-[10px] font-bold text-blue-700 hover:underline disabled:opacity-50"
                                 >
                                     Usar o nome do cadastro
                                 </button>
                                 <input
                                     type="text"
-                                    disabled={loading}
+                                    disabled={loading || !schoolIdentity.isReady}
                                     value={typedName}
                                     onChange={(e) => setTypedName(e.target.value)}
                                     placeholder={contractProps.studentName}
@@ -342,7 +355,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     type="checkbox"
                                     className="mt-1 w-5 h-5 accent-emerald-600 rounded-lg cursor-pointer shrink-0"
                                     checked={accepted}
-                                    disabled={loading}
+                                    disabled={loading || !schoolIdentity.isReady}
                                     onChange={(e) => setAccepted(e.target.checked)}
                                 />
                                 <span className="text-xs text-brand-muted font-medium leading-relaxed">
@@ -352,7 +365,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
 
                             <button
                                 onClick={handleConfirm}
-                                disabled={loading || !accepted || !isValidSignature}
+                                disabled={loading || !schoolIdentity.isReady || !accepted || !isValidSignature}
                                 className="w-full py-4 bg-[#002366] disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-900 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-3"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <>
@@ -370,7 +383,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                 <div className="lg:hidden fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-[260] animate-in fade-in zoom-in slide-in-from-bottom-5 duration-300 pointer-events-none">
                     <button
                         onClick={scrollToSignature}
-                        disabled={loading}
+                                disabled={loading || !schoolIdentity.isReady}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl shadow-emerald-600/30 px-6 py-4 rounded-full font-bold flex items-center gap-2 pointer-events-auto"
                     >
                         <PenTool size={20} /> Assinar Digitalmente

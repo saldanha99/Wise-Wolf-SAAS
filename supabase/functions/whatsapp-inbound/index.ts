@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  escapePostgresLikePattern,
+  resolveTenantCommunicationIdentity,
+} from "../_shared/tenant-communication.ts";
+import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
   reconcileSuppressedLead,
@@ -19,6 +23,10 @@ import {
 } from "./commercial-response-policy.ts";
 import { sendWhatsText } from "../_shared/evolution-send.ts";
 import { handoffAtivo, pickAlternatives } from "../_shared/lead-contact.ts";
+import {
+  evaluateOpportunityReuseCandidate,
+  loadOpportunityDispatchGuard,
+} from "../_shared/opportunity-dispatch.ts";
 import { historicoParaModelo } from "./conversation-log.ts";
 import {
   type ActiveTrial,
@@ -29,38 +37,58 @@ import {
   decideTrialAction,
   isTrialAppointmentActive,
   isTrialOutcomeOpen,
+  selectTeacherRescheduleRequest,
   type Slot,
   trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 
-// WHATSAPP-INBOUND — recepção de mensagens da instância CENTRAL (webhook Evolution).
+// WHATSAPP-INBOUND — recepção de mensagens de instâncias vinculadas a tenants.
 // v13 — HANDOFF HUMANO: quando o humano responde manualmente para um lead OU candidato,
 // a IA (Bia/SDR e Michelle/RH) se cala naquele contato. Diferencia o eco da própria IA.
 // v14 — modelos PAGOS baratos na cadeia OpenRouter (antes só :free com 429 agressivo)
 // e selftest=or para testar a chave OpenRouter isolada.
-// v15 — cidade REVERTIDA para Santa Isabel/SP (fonte: tenants.school_info; a v14 tinha
-// trocado para Jacareí com base em premissa errada da auditoria).
+// O tenant vem exclusivamente de whatsapp_instances.tenant_id. Marca, cidade e
+// equipe nunca usam identidade fixa da plataforma.
 
 const INBOUND_TOKEN = Deno.env.get("WHATSAPP_INBOUND_TOKEN") || "";
-const EVOLUTION_BASE = Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
-const EVOLUTION_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(Boolean);
-const DEFAULT_TEACHERS_GROUP = "120363403699904869@g.us";
+const EVOLUTION_BASE = Deno.env.get("EVOLUTION_API_URL") ||
+  "https://api.2b.app.br";
+const EVOLUTION_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()]
+  .filter(Boolean);
 
 // META CAPI — mede Lead/Schedule/Purchase server-side (fora do alcance de ad-blocker/cookie).
 // FB_CAPI_TOKEN ainda não configurado → no-op silencioso até o secret existir.
 const FB_PIXEL_ID = "1475651934149356";
 const FB_CAPI_TOKEN = (Deno.env.get("FB_CAPI_TOKEN") || "").trim();
+const FB_CAPI_TENANT_ID = (Deno.env.get("FB_CAPI_TENANT_ID") || "").trim();
 async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.trim().toLowerCase()));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input.trim().toLowerCase()),
+  );
+  return Array.from(new Uint8Array(buf)).map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
 }
-async function sendMetaCapiEvent(opts: { eventName: string; phone?: string | null; value?: number; currency?: string }): Promise<void> {
-  if (!FB_CAPI_TOKEN) return;
+async function sendMetaCapiEvent(
+  opts: {
+    tenantId: string;
+    eventName: string;
+    phone?: string | null;
+    value?: number;
+    currency?: string;
+  },
+): Promise<void> {
+  if (
+    !FB_CAPI_TOKEN || !FB_CAPI_TENANT_ID || opts.tenantId !== FB_CAPI_TENANT_ID
+  ) return;
   try {
     const userData: Record<string, unknown> = {};
     if (opts.phone) {
       const digits = opts.phone.replace(/\D/g, "");
-      userData.ph = [await sha256Hex(digits.startsWith("55") ? digits : `55${digits}`)];
+      userData.ph = [
+        await sha256Hex(digits.startsWith("55") ? digits : `55${digits}`),
+      ];
     }
     const body = {
       data: [{
@@ -69,22 +97,181 @@ async function sendMetaCapiEvent(opts: { eventName: string; phone?: string | nul
         action_source: "system_generated",
         event_source_url: "https://system.wisewolflanguage.com.br",
         user_data: userData,
-        ...(opts.value ? { custom_data: { value: opts.value, currency: opts.currency || "BRL" } } : {}),
+        ...(opts.value
+          ? {
+            custom_data: {
+              value: opts.value,
+              currency: opts.currency || "BRL",
+            },
+          }
+          : {}),
       }],
     };
-    await fetch(`https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(8000),
-    }).catch(() => {});
+    await fetch(
+      `https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(8000),
+      },
+    ).catch(() => {});
   } catch { /* CAPI nunca pode quebrar o fluxo principal */ }
 }
-const CLAIM_BASE = "https://system.wisewolflanguage.com.br/claim-opportunity";
-const DAY_MAP: Record<number, string> = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 0: "Domingo" };
+const DAY_MAP: Record<number, string> = {
+  1: "Segunda",
+  2: "Terça",
+  3: "Quarta",
+  4: "Quinta",
+  5: "Sexta",
+  6: "Sábado",
+  0: "Domingo",
+};
 
-async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
+interface TenantIdentity {
+  name: string;
+  location: string | null;
+  portalUrl: string | null;
+}
+
+interface InboundTenantContext {
+  tenantId: string;
+  instanceName: string;
+  aiTeamConfig: Record<string, unknown>;
+  identity: TenantIdentity;
+}
+
+function safeIdentityPart(value: unknown, fallback = ""): string {
+  const normalized = String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+  return normalized || fallback;
+}
+
+function resolveTenantIdentity(
+  tenant: Record<string, unknown>,
+  name: string,
+  portalUrl: string | null,
+): TenantIdentity {
+  const schoolInfo =
+    tenant.school_info && typeof tenant.school_info === "object"
+      ? tenant.school_info as Record<string, unknown>
+      : {};
+  const city = safeIdentityPart(schoolInfo.city);
+  const state = safeIdentityPart(schoolInfo.state).toUpperCase().slice(0, 2);
+  return {
+    name,
+    location: city ? `${city}${state ? `/${state}` : ""}` : null,
+    portalUrl,
+  };
+}
+
+async function resolveInboundTenant(
+  sb: any,
+  rawInstance: string,
+): Promise<InboundTenantContext | null> {
+  const requestedInstance = rawInstance.trim();
+  if (!/^[A-Za-z0-9._-]{1,120}$/.test(requestedInstance)) return null;
+
+  const { data: instances, error: instanceError } = await sb
+    .from("whatsapp_instances")
+    .select("tenant_id, instance_name, user_id")
+    .ilike("instance_name", escapePostgresLikePattern(requestedInstance))
+    .in("status", ["connected", "open"])
+    .limit(2);
+  if (instanceError || !instances || instances.length !== 1) return null;
+
+  const tenantId = String(instances[0].tenant_id || "").trim();
+  const ownerUserId = String(instances[0].user_id || "").trim();
+  if (!tenantId || !ownerUserId) return null;
+  const { data: ownerMembership, error: ownerMembershipError } = await sb
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", ownerUserId)
+    .eq("role", "SCHOOL_ADMIN")
+    .eq("status", "ACTIVE")
+    .maybeSingle();
+  if (ownerMembershipError || !ownerMembership) return null;
+  const { data: tenant, error: tenantError } = await sb
+    .from("tenants")
+    .select(
+      "id,name,domain,slug,custom_domain,custom_domain_verified,branding,school_info,saas_status,talent_group_link,whatsapp_enabled,ai_team_config",
+    )
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (tenantError || !tenant) return null;
+  const communicationIdentity = resolveTenantCommunicationIdentity(
+    tenant as Record<string, unknown>,
+    tenantId,
+  );
+  if (!communicationIdentity?.whatsappEnabled) return null;
+
+  return {
+    tenantId,
+    instanceName: String(instances[0].instance_name),
+    aiTeamConfig:
+      tenant.ai_team_config && typeof tenant.ai_team_config === "object"
+        ? tenant.ai_team_config as Record<string, unknown>
+        : {},
+    identity: resolveTenantIdentity(
+      tenant as Record<string, unknown>,
+      communicationIdentity.brandName,
+      communicationIdentity.portalUrl,
+    ),
+  };
+}
+
+async function activeMemberProfiles(
+  sb: any,
+  tenantId: string,
+  roles: string[],
+): Promise<any[]> {
+  const { data: memberships, error: membershipError } = await sb
+    .from("tenant_memberships")
+    .select("user_id, role, is_primary, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("status", "ACTIVE")
+    .in("role", roles)
+    .order("is_primary", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (membershipError || !memberships?.length) return [];
+
+  const roleByUser = new Map(
+    memberships.map((
+      membership: any,
+    ) => [String(membership.user_id), String(membership.role)]),
+  );
+  const { data: profiles, error: profileError } = await sb
+    .from("profiles")
+    .select("id, full_name, phone, teachers_group_id, contract_accepted")
+    .in("id", [...roleByUser.keys()])
+    .eq("lifecycle_status", "active");
+  if (profileError) return [];
+  return (profiles || []).map((profile: any) => ({
+    ...profile,
+    role: roleByUser.get(String(profile.id)),
+  }));
+}
+
+async function sendWhats(
+  instance: string,
+  number: string,
+  text: string,
+): Promise<boolean> {
   // Resolve o JID antes de enviar (DDD antigo sem o 9º dígito) — a Evolution
   // responde 200/PENDING para número que não bate, então o envio "no chute"
   // falha em silêncio. Grupo e JID pronto pulam a consulta.
-  return await sendWhatsText({ base: EVOLUTION_BASE, keys: EVOLUTION_KEYS, instance, to: number, text });
+  return await sendWhatsText({
+    base: EVOLUTION_BASE,
+    keys: EVOLUTION_KEYS,
+    instance,
+    to: number,
+    text,
+  });
 }
 
 function normalizePhone(raw: string): string | null {
@@ -102,7 +289,11 @@ function greetName(raw: string | null): string {
 }
 
 const GEMINI_KEY = (Deno.env.get("GEMINI_API_KEY") ?? "").trim();
-const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-latest",
+];
 const OR_MODELS = [
   "google/gemini-2.5-flash-lite",
   "openai/gpt-4o-mini",
@@ -113,55 +304,114 @@ const OR_MODELS = [
 ];
 
 function parseJson(raw: string): any | null {
-  const cleaned = String(raw).replace(/<think>[\s\S]*?<\/think>/g, "").replace(/```json/gi, "").replace(/```/g, "").trim();
-  const s = cleaned.indexOf("{"); const e = cleaned.lastIndexOf("}");
+  const cleaned = String(raw).replace(/<think>[\s\S]*?<\/think>/g, "").replace(
+    /```json/gi,
+    "",
+  ).replace(/```/g, "").trim();
+  const s = cleaned.indexOf("{");
+  const e = cleaned.lastIndexOf("}");
   if (s === -1 || e <= s) return null;
-  try { return JSON.parse(cleaned.slice(s, e + 1)); } catch { return null; }
+  try {
+    return JSON.parse(cleaned.slice(s, e + 1));
+  } catch {
+    return null;
+  }
 }
 
-async function callAI(system: string, messages: { role: string; content: string }[], diag?: string[], opts?: { skipGemini?: boolean }): Promise<any | null> {
+async function callAI(
+  system: string,
+  messages: { role: string; content: string }[],
+  diag?: string[],
+  opts?: { skipGemini?: boolean },
+): Promise<any | null> {
   if (GEMINI_KEY && !opts?.skipGemini) {
-    const contents = messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+    const contents = messages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
     for (const model of GEMINI_MODELS) {
       try {
-        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: system }] },
-            contents,
-            generationConfig: { temperature: 0.6, maxOutputTokens: 1200, responseMimeType: "application/json" },
-          }),
-          signal: AbortSignal.timeout(25000),
-        });
-        if (!resp.ok) { const t = await resp.text().catch(() => ""); diag?.push(`gemini/${model}: HTTP ${resp.status} ${t.replace(/\s+/g, " ").slice(0, 120)}`); continue; }
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: system }] },
+              contents,
+              generationConfig: {
+                temperature: 0.6,
+                maxOutputTokens: 1200,
+                responseMimeType: "application/json",
+              },
+            }),
+            signal: AbortSignal.timeout(25000),
+          },
+        );
+        if (!resp.ok) {
+          const t = await resp.text().catch(() => "");
+          diag?.push(
+            `gemini/${model}: HTTP ${resp.status} ${
+              t.replace(/\s+/g, " ").slice(0, 120)
+            }`,
+          );
+          continue;
+        }
         const d = await resp.json();
         const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
         const parsed = parseJson(raw);
         if (parsed) return parsed;
         diag?.push(`gemini/${model}: sem JSON ${String(raw).slice(0, 80)}`);
-      } catch (e) { diag?.push(`gemini/${model}: ${(e as Error).message.slice(0, 90)}`); }
+      } catch (e) {
+        diag?.push(`gemini/${model}: ${(e as Error).message.slice(0, 90)}`);
+      }
     }
-  } else if (!opts?.skipGemini) { diag?.push("GEMINI_API_KEY ausente"); }
+  } else if (!opts?.skipGemini) diag?.push("GEMINI_API_KEY ausente");
 
   const apiKey = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
-  if (!apiKey) { diag?.push("OPENROUTER_API_KEY ausente"); return null; }
+  if (!apiKey) {
+    diag?.push("OPENROUTER_API_KEY ausente");
+    return null;
+  }
   for (const model of OR_MODELS) {
     try {
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "HTTP-Referer": "https://system.wisewolflanguage.com.br", "X-Title": "WiseCore Inbound AI" },
-        body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...messages], max_tokens: 700, temperature: 0.6 }),
-        signal: AbortSignal.timeout(25000),
-      });
-      if (!resp.ok) { const errTxt = await resp.text().catch(() => ""); diag?.push(`${model}: HTTP ${resp.status} ${errTxt.slice(0, 120)}`); if (resp.status === 401) break; continue; }
+      const resp = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://system.wisewolflanguage.com.br",
+            "X-Title": "WiseCore Inbound AI",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: system }, ...messages],
+            max_tokens: 700,
+            temperature: 0.6,
+          }),
+          signal: AbortSignal.timeout(25000),
+        },
+      );
+      if (!resp.ok) {
+        const errTxt = await resp.text().catch(() => "");
+        diag?.push(`${model}: HTTP ${resp.status} ${errTxt.slice(0, 120)}`);
+        if (resp.status === 401) break;
+        continue;
+      }
       const d = await resp.json();
       const raw = d.choices?.[0]?.message?.content;
-      if (!raw) { diag?.push(`${model}: vazio`); continue; }
+      if (!raw) {
+        diag?.push(`${model}: vazio`);
+        continue;
+      }
       const parsed = parseJson(raw);
       if (parsed) return parsed;
       diag?.push(`${model}: sem JSON`);
-    } catch (e) { diag?.push(`${model}: ${(e as Error).message.slice(0, 90)}`); }
+    } catch (e) {
+      diag?.push(`${model}: ${(e as Error).message.slice(0, 90)}`);
+    }
   }
   return null;
 }
@@ -200,7 +450,10 @@ async function callAI(system: string, messages: { role: string; content: string 
  * Áudio que não transcreve NÃO pode virar silêncio: no grupo, silêncio parece
  * bug, e a pessoa repete a mensagem sem saber que o problema foi o áudio.
  */
-async function transcreverAudioGemini(base64: string, mimetype: string): Promise<string | null> {
+async function transcreverAudioGemini(
+  base64: string,
+  mimetype: string,
+): Promise<string | null> {
   if (!GEMINI_KEY || !base64) return null;
 
   for (const model of GEMINI_MODELS) {
@@ -227,11 +480,16 @@ async function transcreverAudioGemini(base64: string, mimetype: string): Promise
         },
       );
       if (!resp.ok) {
-        console.warn("gestao: gemini transcrição recusou", { model, status: resp.status });
+        console.warn("gestao: gemini transcrição recusou", {
+          model,
+          status: resp.status,
+        });
         continue;
       }
       const data = await resp.json().catch(() => null);
-      const texto = String(data?.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+      const texto = String(
+        data?.candidates?.[0]?.content?.parts?.[0]?.text || "",
+      ).trim();
       if (texto) return texto.replace(/^['\"]|['\"]$/g, "").trim() || null;
     } catch (e) {
       console.warn("gestao: gemini transcrição falhou", {
@@ -243,7 +501,10 @@ async function transcreverAudioGemini(base64: string, mimetype: string): Promise
   return null;
 }
 
-async function transcreverAudio(instance: string, msgId: string): Promise<string | null> {
+async function transcreverAudio(
+  instance: string,
+  msgId: string,
+): Promise<string | null> {
   const apiKey = (Deno.env.get("OPENAI_API_KEY") ?? "").trim();
   if (!msgId) return null;
 
@@ -252,11 +513,16 @@ async function transcreverAudio(instance: string, msgId: string): Promise<string
   for (const key of EVOLUTION_KEYS) {
     try {
       const r = await fetch(
-        `${EVOLUTION_BASE}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`,
+        `${EVOLUTION_BASE}/chat/getBase64FromMediaMessage/${
+          encodeURIComponent(instance)
+        }`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: key },
-          body: JSON.stringify({ message: { key: { id: msgId } }, convertToMp4: false }),
+          body: JSON.stringify({
+            message: { key: { id: msgId } },
+            convertToMp4: false,
+          }),
           signal: AbortSignal.timeout(20000),
         },
       );
@@ -266,39 +532,48 @@ async function transcreverAudio(instance: string, msgId: string): Promise<string
       base64 = String(d?.base64 || "");
       mimetype = String(d?.mimetype || "audio/ogg").split(";")[0];
       break;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
   if (!base64) return null;
 
-  if (apiKey) try {
-    const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-    // Whisper decide o decoder pela EXTENSÃO do arquivo, não pelo mimetype do
-    // form — nota de voz do WhatsApp é ogg/opus e sem o nome certo ele recusa.
-    const ext = mimetype.includes("mp4") || mimetype.includes("m4a")
-      ? "m4a"
-      : mimetype.includes("mpeg") || mimetype.includes("mp3")
-      ? "mp3"
-      : "ogg";
-    const form = new FormData();
-    form.append("file", new Blob([bin], { type: mimetype }), `audio.${ext}`);
-    form.append("model", "whisper-1");
-    form.append("language", "pt");
+  if (apiKey) {
+    try {
+      const bin = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      // Whisper decide o decoder pela EXTENSÃO do arquivo, não pelo mimetype do
+      // form — nota de voz do WhatsApp é ogg/opus e sem o nome certo ele recusa.
+      const ext = mimetype.includes("mp4") || mimetype.includes("m4a")
+        ? "m4a"
+        : mimetype.includes("mpeg") || mimetype.includes("mp3")
+        ? "mp3"
+        : "ogg";
+      const form = new FormData();
+      form.append("file", new Blob([bin], { type: mimetype }), `audio.${ext}`);
+      form.append("model", "whisper-1");
+      form.append("language", "pt");
 
-    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: AbortSignal.timeout(45000),
-    });
-    if (!resp.ok) {
-      console.warn("gestao: whisper recusou", { status: resp.status });
-    } else {
-      const d = await resp.json().catch(() => null);
-      const texto = String(d?.text || "").trim();
-      if (texto) return texto;
+      const resp = await fetch(
+        "https://api.openai.com/v1/audio/transcriptions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: form,
+          signal: AbortSignal.timeout(45000),
+        },
+      );
+      if (!resp.ok) {
+        console.warn("gestao: whisper recusou", { status: resp.status });
+      } else {
+        const d = await resp.json().catch(() => null);
+        const texto = String(d?.text || "").trim();
+        if (texto) return texto;
+      }
+    } catch (e) {
+      console.warn("gestao: transcrição falhou", {
+        erro: (e as Error).message.slice(0, 90),
+      });
     }
-  } catch (e) {
-    console.warn("gestao: transcrição falhou", { erro: (e as Error).message.slice(0, 90) });
   }
 
   // A OpenAI pode recusar por cota (429). O Gemini já está configurado para a
@@ -307,10 +582,17 @@ async function transcreverAudio(instance: string, msgId: string): Promise<string
   return await transcreverAudioGemini(base64, mimetype);
 }
 
-async function handleGestao(sb: any, instance: string, groupJid: string, item: any): Promise<void> {
+async function handleGestao(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  groupJid: string,
+  item: any,
+): Promise<void> {
   const msg = item?.message || {};
   const msgId = String(item?.key?.id || "");
-  let raw = String(msg.conversation || msg.extendedTextMessage?.text || "").trim();
+  let raw = String(msg.conversation || msg.extendedTextMessage?.text || "")
+    .trim();
 
   // Áudio: o diretor prefere falar a digitar, e no celular isso é a diferença
   // entre usar e não usar. A transcrição vira a pergunta e segue o fluxo normal.
@@ -320,15 +602,14 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
     if (!transcrito) {
       // Só avisa se o grupo for o autorizado — senão vira resposta em grupo
       // qualquer, que é justamente o que o silêncio protege.
-      const { data: ownersA } = await sb.from("profiles").select("tenant_id, role")
-        .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
-      const oA = pickOwner(ownersA || []);
-      if (oA?.tenant_id) {
-        const { data: cA } = await sb.from("dre_report_settings")
-          .select("destino, is_active").eq("tenant_id", oA.tenant_id).maybeSingle();
-        if (cA?.is_active && String(cA.destino || "") === groupJid) {
-          await sendWhats(instance, groupJid, "Não consegui entender o áudio. Pode repetir ou mandar por escrito?");
-        }
+      const { data: cA } = await sb.from("dre_report_settings")
+        .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
+      if (cA?.is_active && String(cA.destino || "") === groupJid) {
+        await sendWhats(
+          instance,
+          groupJid,
+          "Não consegui entender o áudio. Pode repetir ou mandar por escrito?",
+        );
       }
       return;
     }
@@ -339,50 +620,58 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
 
   // O gatilho continua valendo (quem gosta de usar, usa), mas não é exigido.
   const gatilho = /^\s*(wolfie|gerente)\b[\s,:]*/i;
-  const pergunta = (raw.startsWith("/") ? raw.slice(1) : raw.replace(gatilho, "")).trim();
+  const pergunta =
+    (raw.startsWith("/") ? raw.slice(1) : raw.replace(gatilho, "")).trim();
 
   // Ruído de grupo: descartado ANTES da IA, porque é o caso mais frequente e o
   // mais barato de reconhecer.
-  const RUIDO = /^(ok(ay)?|blz|beleza|certo|show|top|kk+|k?haha+|rs+|vlw|valeu|obrigad[oa]|de nada|bom dia|boa tarde|boa noite|👍|👏|✅|❤️|🙏|😂|🐺)[\s!.,]*$/i;
+  const RUIDO =
+    /^(ok(ay)?|blz|beleza|certo|show|top|kk+|k?haha+|rs+|vlw|valeu|obrigad[oa]|de nada|bom dia|boa tarde|boa noite|👍|👏|✅|❤️|🙏|😂|🐺)[\s!.,]*$/i;
   // "sim" tem 3 letras e cairia no filtro de curto — mas confirmação É curta por
   // natureza. Ela passa aqui e é resolvida logo abaixo, contra a ação pendente;
   // se não houver ação pendente, aí sim vira ruído e para.
-  const CONFIRMACAO = /^\s*(sim|s|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato|n[ãa]o|nao|cancela|deixa|esquece|errado)\b[\s!.,]*$/i;
+  const CONFIRMACAO =
+    /^\s*(sim|s|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato|n[ãa]o|nao|cancela|deixa|esquece|errado)\b[\s!.,]*$/i;
   const ehConfirmacao = CONFIRMACAO.test(pergunta);
   if (!ehConfirmacao && (pergunta.length < 6 || RUIDO.test(pergunta))) return;
-
-  const { data: owners } = await sb.from("profiles").select("tenant_id, role")
-    .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
-  const owner = pickOwner(owners || []);
-  if (!owner?.tenant_id) return;
-  const tenantId = owner.tenant_id;
 
   const { data: conf } = await sb.from("dre_report_settings")
     .select("destino, is_active").eq("tenant_id", tenantId).maybeSingle();
   if (!conf?.is_active || String(conf.destino || "") !== groupJid) return;
 
   if (msgId) {
-    const { error: seenErr } = await sb.from("wa_inbound_seen").insert({ msg_id: msgId, phone: groupJid });
+    const { error: seenErr } = await sb.from("wa_inbound_seen").insert({
+      msg_id: msgId,
+      phone: groupJid,
+    });
     if (seenErr) return;
   }
 
   // Teto de respostas por hora: erro de configuração ou brincadeira no grupo não
   // pode virar conta de IA.
   const hourAgo = new Date(Date.now() - 3600000).toISOString();
-  const { count } = await sb.from("ai_wa_messages").select("id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId).eq("phone", groupJid).eq("direction", "out").gte("created_at", hourAgo);
+  const { count } = await sb.from("ai_wa_messages").select("id", {
+    count: "exact",
+    head: true,
+  })
+    .eq("tenant_id", tenantId).eq("phone", groupJid).eq("direction", "out").gte(
+      "created_at",
+      hourAgo,
+    );
   if ((count ?? 0) >= 20) return;
 
   // ── Confirmação de ação pendente ──
   // Vem ANTES da IA de propósito: "confirma" é barato de reconhecer e não deve
   // custar uma chamada de modelo, nem correr o risco de o modelo reinterpretar
   // a intenção que já foi lida em voz alta e aprovada.
-  const SIM = /^\s*(sim|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato)\b/i;
+  const SIM =
+    /^\s*(sim|confirma(do|r)?|isso|pode|pode ser|ok|manda|fecha|correto|exato)\b/i;
   const NAO = /^\s*(n[ãa]o|cancela|deixa|esquece|errado)\b/i;
   const { data: pend } = await sb.from("gestao_acao_pendente")
     .select("acao, resumo, expires_at").eq("group_jid", groupJid).maybeSingle();
 
-  const temPendente = !!pend && new Date(pend.expires_at).getTime() > Date.now();
+  const temPendente = !!pend &&
+    new Date(pend.expires_at).getTime() > Date.now();
   // Confirmação sem nada a confirmar é conversa entre pessoas ("ok", "pode").
   // Não vale uma chamada de modelo.
   if (ehConfirmacao && !temPendente) return;
@@ -405,8 +694,12 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
           p_valor: Number(a.valor || 0),
           p_account_code: String(a.account_code || ""),
           p_due_date: String(a.due_date || ""),
-          p_start_month: a.recorrente === true ? String(a.start_month || "") : null,
-          p_pedido_por: item?.pushName ? String(item.pushName).slice(0, 40) : null,
+          p_start_month: a.recorrente === true
+            ? String(a.start_month || "")
+            : null,
+          p_pedido_por: item?.pushName
+            ? String(item.pushName).slice(0, 40)
+            : null,
         })
         : await sb.rpc("gestao_lanca_ajuste", {
           p_tenant: tenantId,
@@ -414,7 +707,9 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
           p_month: String(a.mes || ""),
           p_descricao: String(a.motivo || ""),
           p_valor: Number(a.valor || 0),
-          p_pedido_por: item?.pushName ? String(item.pushName).slice(0, 40) : null,
+          p_pedido_por: item?.pushName
+            ? String(item.pushName).slice(0, 40)
+            : null,
         });
       await sb.from("gestao_acao_pendente").delete().eq("group_jid", groupJid);
 
@@ -425,22 +720,32 @@ async function handleGestao(sb: any, instance: string, groupJid: string, item: a
             (a.recorrente === true
               ? " A recorrência ficou ativa e o mês vigente já foi registrado."
               : " A conta já entrou no caixa na data de vencimento.")
-          : `Não consegui lançar a conta (${String(r?.error || "erro")}). Faça pela tela Financeiro.`)
+          : `Não consegui lançar a conta (${
+            String(r?.error || "erro")
+          }). Faça pela tela Financeiro.`)
         : (r?.ok
           ? `✅ Lançado: ${pend.resumo}.` +
             (r.repasse_atualizado
               ? " O valor já entrou no repasse do mês."
               : " ⚠️ O fechamento deste mês não está PENDENTE, então o valor NÃO entrou no repasse — ajuste na tela.")
-          : `Não consegui lançar (${String(r?.error || "erro")}). Faça pela tela Repasse a Profs.`);
+          : `Não consegui lançar (${
+            String(r?.error || "erro")
+          }). Faça pela tela Repasse a Profs.`);
       await sendWhats(instance, groupJid, txt);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", txt);
       return;
     }
   }
 
-  const { data: snap } = await sb.rpc("gestao_snapshot", { p_tenant: tenantId });
+  const { data: snap } = await sb.rpc("gestao_snapshot", {
+    p_tenant: tenantId,
+  });
   if (!snap || snap.error) {
-    await sendWhats(instance, groupJid, "Não consegui ler os números da escola agora. Tente de novo em alguns minutos.");
+    await sendWhats(
+      instance,
+      groupJid,
+      "Não consegui ler os números da escola agora. Tente de novo em alguns minutos.",
+    );
     return;
   }
 
@@ -497,14 +802,20 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
   const diag: string[] = [];
   const out = await callAI(system, [{
     role: "user",
-    content: `<dados_da_escola>\n${JSON.stringify(dadosGestao)}\n</dados_da_escola>\n\n<pergunta>\n${pergunta.slice(0, 600)}\n</pergunta>`,
+    content: `<dados_da_escola>\n${
+      JSON.stringify(dadosGestao)
+    }\n</dados_da_escola>\n\n<pergunta>\n${
+      pergunta.slice(0, 600)
+    }\n</pergunta>`,
   }], diag);
 
   // `responder: false` = a IA entendeu que é papo entre pessoas. Registra a
   // pergunta mesmo assim: sem isso não dá para saber depois se o assistente
   // ficou calado por decisão ou por falha.
   if (out && out.responder === false) {
-    await logMsg(sb, tenantId, groupJid, "gestao", "in", pergunta, { ignorado: true });
+    await logMsg(sb, tenantId, groupJid, "gestao", "in", pergunta, {
+      ignorado: true,
+    });
     return;
   }
 
@@ -528,15 +839,21 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const accountCode = String(acao.account_code || "");
     const dueDate = String(acao.due_date || "");
     const startMonth = recorrente ? String(acao.start_month || "") : "";
-    const conta = (contasLancaveis || []).find((c: any) => c.code === accountCode);
+    const conta = (contasLancaveis || []).find((c: any) =>
+      c.code === accountCode
+    );
     const dataObj = new Date(`${dueDate}T12:00:00Z`);
     const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) &&
-      !Number.isNaN(dataObj.getTime()) && dataObj.toISOString().slice(0, 10) === dueDate;
+      !Number.isNaN(dataObj.getTime()) &&
+      dataObj.toISOString().slice(0, 10) === dueDate;
     const dia = dataValida ? Number(dueDate.slice(8, 10)) : 0;
 
-    if (!msgId || !descricao || !(valor > 0) || !conta || !dataValida ||
-      (recorrente && (!/^\d{4}-\d{2}$/.test(startMonth) || dia < 1 || dia > 28))) {
-      const msg = "Para lançar, preciso da descrição, valor, vencimento (dia 1 a 28 se for recorrente) e tipo da conta. Pode completar?";
+    if (
+      !msgId || !descricao || !(valor > 0) || !conta || !dataValida ||
+      (recorrente && (!/^\d{4}-\d{2}$/.test(startMonth) || dia < 1 || dia > 28))
+    ) {
+      const msg =
+        "Para lançar, preciso da descrição, valor, vencimento (dia 1 a 28 se for recorrente) e tipo da conta. Pode completar?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
       return;
@@ -545,8 +862,12 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
     const [ano, mes, diaTexto] = dueDate.split("-");
     const resumo = recorrente
-      ? `conta recorrente de ${money(valor)} todo dia ${dia}, a partir de ${startMonth} — ${descricao} (${conta.label})`
-      : `conta de ${money(valor)}, vencimento ${diaTexto}/${mes}/${ano} — ${descricao} (${conta.label})`;
+      ? `conta recorrente de ${
+        money(valor)
+      } todo dia ${dia}, a partir de ${startMonth} — ${descricao} (${conta.label})`
+      : `conta de ${
+        money(valor)
+      }, vencimento ${diaTexto}/${mes}/${ano} — ${descricao} (${conta.label})`;
 
     await sb.from("gestao_acao_pendente").upsert({
       group_jid: groupJid,
@@ -576,12 +897,15 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
 
   if (acao && acao.tipo === "ajuste_repasse") {
     const { data: prof } = await sb.rpc("gestao_resolve_professor", {
-      p_tenant: tenantId, p_nome: String(acao.professor || ""),
+      p_tenant: tenantId,
+      p_nome: String(acao.professor || ""),
     });
     const p = prof as Record<string, unknown> | null;
     if (!p?.ok) {
       const msg = p?.error === "nome_ambiguo"
-        ? `Tem mais de um professor com esse nome: ${(p.candidatos as string[] ?? []).join(", ")}. Qual deles?`
+        ? `Tem mais de um professor com esse nome: ${
+          (p.candidatos as string[] ?? []).join(", ")
+        }. Qual deles?`
         : "Não encontrei esse professor. Pode repetir o nome completo?";
       await sendWhats(instance, groupJid, msg);
       await logMsg(sb, tenantId, groupJid, "gestao", "out", msg);
@@ -593,10 +917,13 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const motivo = String(acao.motivo || "");
     const money = (v: number) =>
       `R$ ${Math.abs(v).toFixed(2).replace(".", ",")}`;
-    const resumo = `${valor < 0 ? "desconto de " : ""}${money(valor)} para ${p.nome} em ${mes} — ${motivo}`;
+    const resumo = `${valor < 0 ? "desconto de " : ""}${
+      money(valor)
+    } para ${p.nome} em ${mes} — ${motivo}`;
 
     await sb.from("gestao_acao_pendente").upsert({
-      group_jid: groupJid, tenant_id: tenantId,
+      group_jid: groupJid,
+      tenant_id: tenantId,
       acao: { ...acao, teacher_id: p.id, mes, valor, motivo },
       resumo,
       pedido_por: item?.pushName ? String(item.pushName).slice(0, 40) : null,
@@ -613,7 +940,9 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
 
   // Log sempre, entrega como campo — mesma regra do caminho da atendente.
   const ok = await sendWhats(instance, groupJid, resposta.slice(0, 3500));
-  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, { entregue: ok });
+  await logMsg(sb, tenantId, groupJid, "gestao", "out", resposta, {
+    entregue: ok,
+  });
 }
 
 function phonesMatch(a: string, b: string): boolean {
@@ -643,19 +972,42 @@ function next7DaysMap(): string {
   return lines.join("; ");
 }
 
-async function history(sb: any, tenantId: string, phone: string, agent: string, limit = 22) {
+async function history(
+  sb: any,
+  tenantId: string,
+  phone: string,
+  agent: string,
+  limit = 22,
+) {
   // `meta` entra no select porque o histórico só pode conter o que a pessoa
   // REALMENTE recebeu — ver `conversation-log.ts`. A filtragem é feita aqui, em
   // memória, e não no PostgREST: `meta->>entregue neq false` descartaria toda
   // linha antiga (sem o campo), porque comparação com NULL não é verdadeira.
-  const { data } = await sb.from("ai_wa_messages").select("direction, content, meta, created_at")
+  const { data } = await sb.from("ai_wa_messages").select(
+    "direction, content, meta, created_at",
+  )
     .eq("tenant_id", tenantId).eq("agent", agent).eq("phone", phone)
     .order("created_at", { ascending: false }).limit(limit);
   return historicoParaModelo(data || []);
 }
 
-async function logMsg(sb: any, tenantId: string, phone: string, agent: string, direction: string, content: string, meta: any = {}) {
-  await sb.from("ai_wa_messages").insert({ tenant_id: tenantId, phone, agent, direction, content: String(content || "").slice(0, 4000), meta });
+async function logMsg(
+  sb: any,
+  tenantId: string,
+  phone: string,
+  agent: string,
+  direction: string,
+  content: string,
+  meta: any = {},
+) {
+  await sb.from("ai_wa_messages").insert({
+    tenant_id: tenantId,
+    phone,
+    agent,
+    direction,
+    content: String(content || "").slice(0, 4000),
+    meta,
+  });
 }
 
 // O handoff humano DURA 72 HORAS, não para sempre.
@@ -677,7 +1029,13 @@ async function logMsg(sb: any, tenantId: string, phone: string, agent: string, d
 // HANDOFF HUMANO: quando o humano responde manualmente pela instância (fromMe) para um
 // lead OU candidato, a IA correspondente (SDR/RH) se cala nesse contato (ai_handoff=true).
 // Diferencia o ECO da própria IA (mesmo texto enviado nos últimos ~20min) de um humano.
-async function maybeHumanTakeover(sb: any, tenantId: string, phone: string, text: string, hasMedia: boolean) {
+async function maybeHumanTakeover(
+  sb: any,
+  tenantId: string,
+  phone: string,
+  text: string,
+  hasMedia: boolean,
+) {
   // 1) É só o ECO da própria IA (mesmo texto enviado nos últimos ~20min)? Ignora.
   if (text) {
     const since = new Date(Date.now() - 20 * 60 * 1000).toISOString();
@@ -695,16 +1053,43 @@ async function maybeHumanTakeover(sb: any, tenantId: string, phone: string, text
     .select("id, phone").eq("tenant_id", tenantId).not("phone", "is", null);
   const lead = (leads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (lead) {
-    await sb.from("crm_leads").update({ ai_handoff: true, ai_handoff_at: agora, last_status_change: agora }).eq("id", lead.id);
-    await logMsg(sb, tenantId, phone, "sdr", "out", hasMedia ? "[humano assumiu o contato — mídia]" : text, { lead_id: lead.id, kind: "human_takeover" });
+    await sb.from("crm_leads").update({
+      ai_handoff: true,
+      ai_handoff_at: agora,
+      last_status_change: agora,
+    }).eq("id", lead.id);
+    await logMsg(
+      sb,
+      tenantId,
+      phone,
+      "sdr",
+      "out",
+      hasMedia ? "[humano assumiu o contato — mídia]" : text,
+      { lead_id: lead.id, kind: "human_takeover" },
+    );
   }
   // 3) CANDIDATO (RH/Michelle) → cala a triagem nesse contato.
   const { data: apps } = await sb.from("job_applications")
-    .select("id, whatsapp").eq("tenant_id", tenantId).not("whatsapp", "is", null);
+    .select("id, whatsapp").eq("tenant_id", tenantId).not(
+      "whatsapp",
+      "is",
+      null,
+    );
   const cand = (apps || []).find((a: any) => phonesMatch(a.whatsapp, phone));
   if (cand) {
-    await sb.from("job_applications").update({ ai_handoff: true, ai_handoff_at: agora }).eq("id", cand.id);
-    await logMsg(sb, tenantId, phone, "rita", "out", hasMedia ? "[humano assumiu o contato — mídia]" : text, { application_id: cand.id, kind: "human_takeover" });
+    await sb.from("job_applications").update({
+      ai_handoff: true,
+      ai_handoff_at: agora,
+    }).eq("id", cand.id);
+    await logMsg(
+      sb,
+      tenantId,
+      phone,
+      "rita",
+      "out",
+      hasMedia ? "[humano assumiu o contato — mídia]" : text,
+      { application_id: cand.id, kind: "human_takeover" },
+    );
   }
 }
 
@@ -713,23 +1098,28 @@ function pickOwner(rows: any[]): any | null {
   return [...rows].sort((a, b) => {
     const ga = a.teachers_group_id ? 0 : 1, gb = b.teachers_group_id ? 0 : 1;
     if (ga !== gb) return ga - gb;
-    const ra = a.role === "SCHOOL_ADMIN" ? 0 : 1, rb = b.role === "SCHOOL_ADMIN" ? 0 : 1;
+    const ra = a.role === "SCHOOL_ADMIN" ? 0 : 1,
+      rb = b.role === "SCHOOL_ADMIN" ? 0 : 1;
     if (ra !== rb) return ra - rb;
     return 0;
   })[0];
 }
 
 async function adminProfile(sb: any, tenantId: string) {
-  const { data } = await sb.from("profiles").select("id, phone, whatsapp_instance, teachers_group_id").eq("tenant_id", tenantId)
-    .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
-  const best = pickOwner(data || []);
+  const profiles = await activeMemberProfiles(sb, tenantId, ["SCHOOL_ADMIN"]);
+  const best = pickOwner(profiles);
   let phone = (best?.phone || "").replace(/\D/g, "");
   if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
-  return { id: best?.id || null, ownerPhone: phone.length >= 12 ? phone : null, groupJid: best?.teachers_group_id || DEFAULT_TEACHERS_GROUP };
+  return {
+    id: best?.id || null,
+    ownerPhone: phone.length >= 12 ? phone : null,
+  };
 }
 
 async function availabilityMenu(sb: any, tenantId: string): Promise<string> {
-  const { data } = await sb.from("teacher_availability").select("day_of_week, start_time").eq("tenant_id", tenantId);
+  const { data } = await sb.from("teacher_availability").select(
+    "day_of_week, start_time",
+  ).eq("tenant_id", tenantId);
   if (!data || data.length === 0) return "(sem horários cadastrados)";
   const byDay = new Map<number, Set<string>>();
   for (const r of data) {
@@ -750,19 +1140,29 @@ async function availabilityMenu(sb: any, tenantId: string): Promise<string> {
 // A escolha das alternativas vive em `_shared/lead-contact.ts`: o
 // `funnel-sweeper` oferece exatamente as mesmas ao lead que ficou sem professor,
 // e duas cópias divergiriam na primeira vez que alguém mexesse em uma delas.
-async function suggestAlternatives(sb: any, tenantId: string, date: string, time: string): Promise<{ days: string[]; times: string[] }> {
-  const { data } = await sb.from("teacher_availability").select("day_of_week, start_time").eq("tenant_id", tenantId);
+async function suggestAlternatives(
+  sb: any,
+  tenantId: string,
+  date: string,
+  time: string,
+): Promise<{ days: string[]; times: string[] }> {
+  const { data } = await sb.from("teacher_availability").select(
+    "day_of_week, start_time",
+  ).eq("tenant_id", tenantId);
   const alt = pickAlternatives(data || [], dowOf(date), time);
   return { days: alt.days.map((d) => DAY_MAP[d]), times: alt.times };
 }
 
 /** Dia da semana sem acento, porque `bookings.day_of_week` tem "Terça" e "Terca". */
 function normalizeDayName(raw: string): string {
-  return String(raw || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return String(raw || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .trim().toLowerCase();
 }
 
 function formatSlot(slot: Slot): string {
-  return `${slot.date.split("-").reverse().join("/")} (${DAY_MAP[dowOf(slot.date)] || "Dia"}) às ${slot.time}`;
+  return `${slot.date.split("-").reverse().join("/")} (${
+    DAY_MAP[dowOf(slot.date)] || "Dia"
+  }) às ${slot.time}`;
 }
 
 /**
@@ -771,10 +1171,16 @@ function formatSlot(slot: Slot): string {
  * É o que separa "leiloar a aula" de "remarcar a aula". Enquanto essa linha
  * existir e o appointment estiver de pé, ninguém mais precisa ser chamado.
  */
-async function findActiveTrial(sb: any, tenantId: string, phone: string): Promise<ActiveTrial | null> {
+async function findActiveTrial(
+  sb: any,
+  tenantId: string,
+  phone: string,
+): Promise<ActiveTrial | null> {
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
   const { data: opps } = await sb.from("opportunities")
-    .select("id, student_phone, winner_teacher_id, professor_id, trial_appointment_id, trial_status, created_at")
+    .select(
+      "id, student_phone, winner_teacher_id, professor_id, trial_appointment_id, trial_status, created_at",
+    )
     .eq("tenant_id", tenantId).eq("kind", "TRIAL")
     .in("status", ["CLAIMED", "FILLED", "TAKEN"])
     .not("trial_appointment_id", "is", null)
@@ -785,7 +1191,12 @@ async function findActiveTrial(sb: any, tenantId: string, phone: string): Promis
     phonesMatch(String(opportunity.student_phone || ""), phone) &&
     isTrialOutcomeOpen(opportunity.trial_status)
   );
-  const appointmentIds = [...new Set(candidates.map((opportunity: any) => opportunity.trial_appointment_id).filter(Boolean))];
+  const appointmentIds = [
+    ...new Set(
+      candidates.map((opportunity: any) => opportunity.trial_appointment_id)
+        .filter(Boolean),
+    ),
+  ];
   if (appointmentIds.length === 0) return null;
 
   const [{ data: appointments }, { data: classLogs }] = await Promise.all([
@@ -796,19 +1207,29 @@ async function findActiveTrial(sb: any, tenantId: string, phone: string): Promis
       .select("appointment_id")
       .in("appointment_id", appointmentIds.map(String)),
   ]);
-  const appointmentById = new Map((appointments || []).map((appointment: any) => [appointment.id, appointment]));
-  const loggedAppointments = new Set((classLogs || []).map((log: any) => String(log.appointment_id || "")));
+  const appointmentById = new Map(
+    (appointments || []).map((
+      appointment: any,
+    ) => [appointment.id, appointment]),
+  );
+  const loggedAppointments = new Set(
+    (classLogs || []).map((log: any) => String(log.appointment_id || "")),
+  );
 
   const nowIso = new Date().toISOString();
   for (const o of candidates) {
     if (loggedAppointments.has(String(o.trial_appointment_id))) continue;
     const appt: any = appointmentById.get(o.trial_appointment_id);
     if (!appt) continue;
-    if (!isTrialAppointmentActive(appt.status, appt.start_time, nowIso)) continue;
+    if (!isTrialAppointmentActive(appt.status, appt.start_time, nowIso)) {
+      continue;
+    }
 
-    const teacherId = appt.teacher_id || appt.professor_id || o.winner_teacher_id || o.professor_id;
+    const teacherId = appt.teacher_id || appt.professor_id ||
+      o.winner_teacher_id || o.professor_id;
     if (!teacherId) continue;
-    const { data: prof } = await sb.from("profiles").select("full_name, phone").eq("id", teacherId).maybeSingle();
+    const { data: prof } = await sb.from("profiles").select("full_name, phone")
+      .eq("id", teacherId).maybeSingle();
     return {
       opportunityId: o.id,
       appointmentId: appt.id,
@@ -830,7 +1251,10 @@ async function findActiveTrial(sb: any, tenantId: string, phone: string): Promis
  * consigo mesma.
  */
 async function teacherBusyBlocks(
-  sb: any, teacherId: string, date: string, skipAppointmentId: string,
+  sb: any,
+  teacherId: string,
+  date: string,
+  skipAppointmentId: string,
 ): Promise<BusyBlock[]> {
   const blocks: BusyBlock[] = [];
 
@@ -843,18 +1267,26 @@ async function teacherBusyBlocks(
   for (const a of (appts || [])) {
     if (a.id === skipAppointmentId) continue;
     const s = brtSlotFromIso(a.start_time);
-    blocks.push({ startIso: new Date(a.start_time).toISOString(), label: `${a.student_name || a.type || "compromisso"} às ${s.time}` });
+    blocks.push({
+      startIso: new Date(a.start_time).toISOString(),
+      label: `${a.student_name || a.type || "compromisso"} às ${s.time}`,
+    });
   }
 
   const alvo = normalizeDayName(DAY_MAP[dowOf(date)] || "");
   const { data: bks } = await sb.from("bookings")
-    .select("time_slot, day_of_week, date, status").eq("teacher_id", teacherId).neq("status", "CANCELLED");
+    .select("time_slot, day_of_week, date, status").eq("teacher_id", teacherId)
+    .neq("status", "CANCELLED");
   for (const b of (bks || [])) {
-    const mesmoDia = String(b.date || "") === date || normalizeDayName(String(b.day_of_week || "")) === alvo;
+    const mesmoDia = String(b.date || "") === date ||
+      normalizeDayName(String(b.day_of_week || "")) === alvo;
     if (!mesmoDia) continue;
     const t = String(b.time_slot || "").slice(0, 5);
     if (!/^\d{2}:\d{2}$/.test(t)) continue;
-    blocks.push({ startIso: brtStartIso(date, t), label: `aula fixa das ${t}` });
+    blocks.push({
+      startIso: brtStartIso(date, t),
+      label: `aula fixa das ${t}`,
+    });
   }
   return blocks;
 }
@@ -897,23 +1329,59 @@ async function requestTrialRescheduleConfirmation(
     p_lead_id: leadId,
     p_requested_start_time: newStartIso,
   });
-  if (error || !data?.ok) return { ok: false, error: error?.message || data?.error || "request_failed" };
-  if (data.same_time || data.created === false) return { ok: true, created: false };
+  if (error || !data?.ok) {
+    return {
+      ok: false,
+      error: error?.message || data?.error || "request_failed",
+    };
+  }
+  if (data.same_time || data.created === false) {
+    return { ok: true, created: false };
+  }
 
   const code = String(data.reply_code || "");
-  const teacherMessage = `🔄 *Confirmação de remarcação — #${code}*\n\n📋 *Aluno:* ${leadName}\n⏰ Atual: ${formatSlot(from)}\n➡️ Pedido: ${formatSlot(to)}\n\n*A agenda ainda NÃO foi alterada.*\nResponda *SIM #${code}* se consegue atender ou *NÃO #${code}* se não consegue.`;
-  const delivered = await sendWhats(instance, trial.teacherPhone, teacherMessage);
-  await logMsg(sb, tenantId, trial.teacherPhone, "trial_reschedule", "out", teacherMessage, {
-    request_id: data.request_id,
-    opportunity_id: trial.opportunityId,
-    entregue: delivered,
-  });
+  const teacherMessage =
+    `🔄 *Confirmação de remarcação — #${code}*\n\n📋 *Aluno:* ${leadName}\n⏰ Atual: ${
+      formatSlot(from)
+    }\n➡️ Pedido: ${
+      formatSlot(to)
+    }\n\n*A agenda ainda NÃO foi alterada.*\nResponda *SIM #${code}* se consegue atender ou *NÃO #${code}* se não consegue.`;
+  const delivered = await sendWhats(
+    instance,
+    trial.teacherPhone,
+    teacherMessage,
+  );
+  await logMsg(
+    sb,
+    tenantId,
+    trial.teacherPhone,
+    "trial_reschedule",
+    "out",
+    teacherMessage,
+    {
+      request_id: data.request_id,
+      opportunity_id: trial.opportunityId,
+      entregue: delivered,
+    },
+  );
 
-  if (!delivered) return { ok: false, created: true, error: "teacher_message_not_delivered" };
+  if (!delivered) {
+    await sb.from("trial_reschedule_requests").update({
+      status: "SUPERSEDED",
+      response_text: "teacher_message_not_delivered",
+      responded_at: new Date().toISOString(),
+    }).eq("id", data.request_id).eq("status", "PENDING");
+    return { ok: false, created: true, error: "teacher_message_not_delivered" };
+  }
 
   if (ownerPhone) {
-    await sendWhats(instance, ownerPhone,
-      `⏳ *Atendente IA:* remarcação aguardando o professor\n\n*${leadName}* pediu ${formatSlot(to)}.\nTeacher: ${trial.teacherName}\n\n_Não alterei a agenda nem confirmei ao aluno. O horário só muda após o SIM do professor._`);
+    await sendWhats(
+      instance,
+      ownerPhone,
+      `⏳ *Atendente IA:* remarcação aguardando o professor\n\n*${leadName}* pediu ${
+        formatSlot(to)
+      }.\nTeacher: ${trial.teacherName}\n\n_Não alterei a agenda nem confirmei ao aluno. O horário só muda após o SIM do professor._`,
+    );
   }
   return { ok: true, created: true };
 }
@@ -928,7 +1396,12 @@ async function requestTrialRescheduleConfirmation(
  * ⚠️ NÃO mexe em `conversion_status`: "LOST" ali é lead perdido no funil, e o
  * aluno que só remarcou não perdeu nada.
  */
-async function supersedeOpenTrials(sb: any, tenantId: string, phone: string, keepId: string | null): Promise<number> {
+async function supersedeOpenTrials(
+  sb: any,
+  tenantId: string,
+  phone: string,
+  keepId: string | null,
+): Promise<number> {
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
   const { data: abertas } = await sb.from("opportunities")
     .select("id, student_phone").eq("tenant_id", tenantId).eq("kind", "TRIAL")
@@ -936,9 +1409,20 @@ async function supersedeOpenTrials(sb: any, tenantId: string, phone: string, kee
   let fechadas = 0;
   for (const o of (abertas || [])) {
     if (o.id === keepId) continue;
+    const dispatchGuard = await loadOpportunityDispatchGuard(
+      sb,
+      tenantId,
+      o.id,
+    );
+    if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
+      continue;
+    }
     if (!phonesMatch(String(o.student_phone || ""), phone)) continue;
     const { data: upd } = await sb.from("opportunities")
-      .update({ status: "EXPIRED", lost_reason: "substituída — o aluno pediu outro horário" })
+      .update({
+        status: "EXPIRED",
+        lost_reason: "substituída — o aluno pediu outro horário",
+      })
       .eq("id", o.id).eq("status", "OPEN").select("id");
     fechadas += (upd || []).length;
   }
@@ -956,25 +1440,31 @@ async function handleTrialRescheduleTeacherReply(
   const intent = classifyTeacherRescheduleReply(text);
   if (intent === "unknown") return false;
 
-  const { data: profiles } = await sb.from("profiles")
-    .select("id, full_name, phone")
-    .eq("tenant_id", tenantId).eq("role", "TEACHER")
-    .not("phone", "is", null).neq("phone", "");
-  const teacher = (profiles || []).find((profile: any) => phonesMatch(profile.phone, phone));
+  const profiles = await activeMemberProfiles(sb, tenantId, ["TEACHER"]);
+  const teacher = (profiles || []).find((profile: any) =>
+    phonesMatch(profile.phone, phone)
+  );
   if (!teacher) return false;
 
   const { data: pending } = await sb.from("trial_reschedule_requests")
-    .select("id, opportunity_id, appointment_id, teacher_id, lead_id, reply_code, from_start_time, requested_start_time, created_at")
-    .eq("teacher_id", teacher.id).eq("status", "PENDING")
+    .select(
+      "id, opportunity_id, appointment_id, teacher_id, lead_id, reply_code, from_start_time, requested_start_time, created_at",
+    )
+    .eq("tenant_id", tenantId).eq("teacher_id", teacher.id).eq(
+      "status",
+      "PENDING",
+    )
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false }).limit(10);
   const requests = (pending || []) as PendingTrialReschedule[];
   if (requests.length === 0) return false;
 
   const suppliedCode = trialRescheduleReplyCode(text);
-  const request = suppliedCode
-    ? requests.find((candidate) => candidate.reply_code === suppliedCode)
-    : requests.length === 1 ? requests[0] : null;
+  const request = selectTeacherRescheduleRequest(
+    requests,
+    suppliedCode,
+    intent,
+  );
 
   await logMsg(sb, tenantId, phone, "trial_reschedule", "in", text, {
     msg_id: msgId,
@@ -986,18 +1476,31 @@ async function handleTrialRescheduleTeacherReply(
   if (!request) {
     const clarification = suppliedCode
       ? `Não encontrei um pedido pendente com o código #${suppliedCode}. Confira o código da mensagem de remarcação.`
-      : `Tenho mais de uma remarcação aguardando sua resposta. Responda com o código, por exemplo: *SIM #${requests[0].reply_code}* ou *NÃO #${requests[0].reply_code}*.`;
+      : `Para proteger sua agenda, responda com o código do pedido, por exemplo: *SIM #${
+        requests[0].reply_code
+      }* ou *NÃO #${requests[0].reply_code}*.`;
     const delivered = await sendWhats(instance, phone, clarification);
-    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", clarification, { entregue: delivered });
+    await logMsg(
+      sb,
+      tenantId,
+      phone,
+      "trial_reschedule",
+      "out",
+      clarification,
+      { entregue: delivered },
+    );
     return true;
   }
 
-  const { data: result, error } = await sb.rpc("respond_trial_reschedule_confirmation", {
-    p_request_id: request.id,
-    p_teacher_id: teacher.id,
-    p_accept: intent === "accept",
-    p_response_text: text,
-  });
+  const { data: result, error } = await sb.rpc(
+    "respond_trial_reschedule_confirmation",
+    {
+      p_request_id: request.id,
+      p_teacher_id: teacher.id,
+      p_accept: intent === "accept",
+      p_response_text: text,
+    },
+  );
 
   const { data: opportunity } = await sb.from("opportunities")
     .select("student_name, student_phone")
@@ -1009,19 +1512,32 @@ async function handleTrialRescheduleTeacherReply(
     lead = leadResult.data;
   }
 
-  const leadName = String(lead?.name || opportunity?.student_name || "Aluno").trim();
-  const leadPhone = normalizePhone(String(lead?.phone || opportunity?.student_phone || ""));
+  const leadName = String(lead?.name || opportunity?.student_name || "Aluno")
+    .trim();
+  const leadPhone = normalizePhone(
+    String(lead?.phone || opportunity?.student_phone || ""),
+  );
   const from = brtSlotFromIso(request.from_start_time);
   const to = brtSlotFromIso(request.requested_start_time);
   const adm = await adminProfile(sb, tenantId);
 
   if (!error && result?.ok && result?.accepted === true) {
-    const teacherAck = `✅ Confirmado. A experimental de *${leadName}* foi remarcada para ${formatSlot(to)} e o aluno foi avisado.`;
+    const teacherAck =
+      `✅ Confirmado. A experimental de *${leadName}* foi remarcada para ${
+        formatSlot(to)
+      } e o aluno foi avisado.`;
     const teacherDelivered = await sendWhats(instance, phone, teacherAck);
-    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, { request_id: request.id, entregue: teacherDelivered });
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, {
+      request_id: request.id,
+      entregue: teacherDelivered,
+    });
 
     if (leadPhone) {
-      const leadMessage = `Confirmado, ${greetName(leadName) || leadName}! A Teacher ${teacher.full_name} aceitou a mudança e sua experimental foi remarcada para ${formatSlot(to)} 😊`;
+      const leadMessage = `Confirmado, ${
+        greetName(leadName) || leadName
+      }! A Teacher ${teacher.full_name} aceitou a mudança e sua experimental foi remarcada para ${
+        formatSlot(to)
+      } 😊`;
       const leadDelivered = await sendWhats(instance, leadPhone, leadMessage);
       await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
         request_id: request.id,
@@ -1031,24 +1547,41 @@ async function handleTrialRescheduleTeacherReply(
     }
     if (lead?.id) {
       await sb.from("crm_leads").update({
-        notes: ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] Teacher ${teacher.full_name} confirmou a remarcação de ${from.date} ${from.time} para ${to.date} ${to.time}`).slice(0, 3000),
+        notes: ((lead.notes ? lead.notes + "\n" : "") +
+          `[IA ${todayBRT()}] Teacher ${teacher.full_name} confirmou a remarcação de ${from.date} ${from.time} para ${to.date} ${to.time}`)
+          .slice(0, 3000),
         last_status_change: new Date().toISOString(),
       }).eq("id", lead.id);
     }
     if (adm.ownerPhone) {
-      await sendWhats(instance, adm.ownerPhone,
-        `✅ *Remarcação confirmada pelo professor*\n\n${leadName} — ${formatSlot(to)}\nTeacher: ${teacher.full_name}\n\n_A agenda só foi alterada depois desta confirmação._`);
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `✅ *Remarcação confirmada pelo professor*\n\n${leadName} — ${
+          formatSlot(to)
+        }\nTeacher: ${teacher.full_name}\n\n_A agenda só foi alterada depois desta confirmação._`,
+      );
     }
     return true;
   }
 
   if (!error && result?.ok && result?.accepted === false) {
-    const teacherAck = `Entendido. A experimental de *${leadName}* NÃO foi remarcada para ${formatSlot(to)}. A coordenação e o aluno foram avisados.`;
+    const teacherAck =
+      `Entendido. A experimental de *${leadName}* NÃO foi remarcada para ${
+        formatSlot(to)
+      }. A coordenação e o aluno foram avisados.`;
     const teacherDelivered = await sendWhats(instance, phone, teacherAck);
-    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, { request_id: request.id, entregue: teacherDelivered });
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherAck, {
+      request_id: request.id,
+      entregue: teacherDelivered,
+    });
 
     if (leadPhone) {
-      const leadMessage = `Oi, ${greetName(leadName) || leadName}. A Teacher ${teacher.full_name} não consegue o novo horário de ${formatSlot(to)}, então a aula não foi remarcada. A coordenação vai verificar outra opção e te retorna por aqui.`;
+      const leadMessage = `Oi, ${
+        greetName(leadName) || leadName
+      }. A Teacher ${teacher.full_name} não consegue o novo horário de ${
+        formatSlot(to)
+      }, então a aula não foi remarcada. A coordenação vai verificar outra opção e te retorna por aqui.`;
       const leadDelivered = await sendWhats(instance, leadPhone, leadMessage);
       await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
         request_id: request.id,
@@ -1060,26 +1593,41 @@ async function handleTrialRescheduleTeacherReply(
       await sb.from("crm_leads").update({
         ai_handoff: true,
         ai_handoff_at: new Date().toISOString(),
-        notes: ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] Teacher ${teacher.full_name} recusou a remarcação para ${to.date} ${to.time}; agenda preservada e coordenação acionada`).slice(0, 3000),
+        notes: ((lead.notes ? lead.notes + "\n" : "") +
+          `[IA ${todayBRT()}] Teacher ${teacher.full_name} recusou a remarcação para ${to.date} ${to.time}; agenda preservada e coordenação acionada`)
+          .slice(0, 3000),
         last_status_change: new Date().toISOString(),
       }).eq("id", lead.id);
     }
     if (adm.ownerPhone) {
-      await sendWhats(instance, adm.ownerPhone,
-        `⚠️ *Professor recusou a remarcação*\n\n${leadName} pediu ${formatSlot(to)}.\nTeacher ${teacher.full_name}: “${text.slice(0, 200)}”\n\n_Não alterei a agenda. O lead foi avisado e ficou em atendimento humano para a coordenação oferecer outra opção ou reatribuir._`);
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `⚠️ *Professor recusou a remarcação*\n\n${leadName} pediu ${
+          formatSlot(to)
+        }.\nTeacher ${teacher.full_name}: “${
+          text.slice(0, 200)
+        }”\n\n_Não alterei a agenda. O lead foi avisado e ficou em atendimento humano para a coordenação oferecer outra opção ou reatribuir._`,
+      );
     }
     return true;
   }
 
   if (result?.already_answered) {
-    const already = `Esse pedido já foi encerrado com status ${String(result.status || "anterior").toLowerCase()}. A agenda não será alterada novamente.`;
+    const already = `Esse pedido já foi encerrado com status ${
+      String(result.status || "anterior").toLowerCase()
+    }. A agenda não será alterada novamente.`;
     const delivered = await sendWhats(instance, phone, already);
-    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", already, { request_id: request.id, entregue: delivered });
+    await logMsg(sb, tenantId, phone, "trial_reschedule", "out", already, {
+      request_id: request.id,
+      entregue: delivered,
+    });
     return true;
   }
 
   const reason = error?.message || result?.error || "confirmation_failed";
-  const teacherWarning = `Não consegui aplicar sua resposta agora. A agenda NÃO foi alterada; a coordenação vai verificar manualmente.`;
+  const teacherWarning =
+    `Não consegui aplicar sua resposta agora. A agenda NÃO foi alterada; a coordenação vai verificar manualmente.`;
   const teacherDelivered = await sendWhats(instance, phone, teacherWarning);
   await logMsg(sb, tenantId, phone, "trial_reschedule", "out", teacherWarning, {
     request_id: request.id,
@@ -1087,7 +1635,9 @@ async function handleTrialRescheduleTeacherReply(
     entregue: teacherDelivered,
   });
   if (leadPhone) {
-    const leadMessage = `Ainda não consegui confirmar sua mudança para ${formatSlot(to)}. A coordenação vai verificar e te retorna por aqui; por enquanto, o horário não foi remarcado.`;
+    const leadMessage = `Ainda não consegui confirmar sua mudança para ${
+      formatSlot(to)
+    }. A coordenação vai verificar e te retorna por aqui; por enquanto, o horário não foi remarcado.`;
     const delivered = await sendWhats(instance, leadPhone, leadMessage);
     await logMsg(sb, tenantId, leadPhone, "sdr", "out", leadMessage, {
       request_id: request.id,
@@ -1103,47 +1653,110 @@ async function handleTrialRescheduleTeacherReply(
     }).eq("id", lead.id);
   }
   if (adm.ownerPhone) {
-    await sendWhats(instance, adm.ownerPhone,
-      `⚠️ *Falha ao processar confirmação de remarcação*\n\n${leadName} — ${formatSlot(to)}\nTeacher: ${teacher.full_name}\nMotivo técnico: ${reason}\n\n_A agenda não foi alterada. Resolva manualmente._`);
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `⚠️ *Falha ao processar confirmação de remarcação*\n\n${leadName} — ${
+        formatSlot(to)
+      }\nTeacher: ${teacher.full_name}\nMotivo técnico: ${reason}\n\n_A agenda não foi alterada. Resolva manualmente._`,
+    );
   }
   return true;
 }
 
 async function dispatchTrial(
-  sb: any, instance: string, tenantId: string, lead: any, date: string, time: string, goal: string | null,
-): Promise<{ dispatched: number; teachers: string[]; noTeacher?: boolean; superseded?: number }> {
+  sb: any,
+  instance: string,
+  tenantId: string,
+  portalUrl: string | null,
+  lead: any,
+  date: string,
+  time: string,
+  goal: string | null,
+): Promise<{
+  dispatched: number;
+  teachers: string[];
+  noTeacher?: boolean;
+  routingUnavailable?: boolean;
+  directed?: boolean;
+  superseded?: number;
+}> {
+  if (!portalUrl) {
+    return { dispatched: 0, teachers: [], routingUnavailable: true };
+  }
   const dow = dowOf(date);
   const timeFull = `${time}:00`;
 
   const { data: avail } = await sb.from("teacher_availability")
-    .select("teacher_id").eq("tenant_id", tenantId).eq("day_of_week", dow).eq("start_time", timeFull);
+    .select("teacher_id").eq("tenant_id", tenantId).eq("day_of_week", dow).eq(
+      "start_time",
+      timeFull,
+    );
   const teacherIds = [...new Set((avail || []).map((a: any) => a.teacher_id))];
-  if (teacherIds.length === 0) return { dispatched: 0, teachers: [], noTeacher: true };
+  if (teacherIds.length === 0) {
+    return { dispatched: 0, teachers: [], noTeacher: true };
+  }
 
-  const { data: profs } = await sb.from("profiles").select("id, full_name, phone")
-    .in("id", teacherIds).not("phone", "is", null).neq("phone", "");
+  const profs = (await activeMemberProfiles(sb, tenantId, ["TEACHER"]))
+    .filter((profile: any) => teacherIds.includes(profile.id));
 
   const { data: booked } = await sb.from("bookings").select("teacher_id")
-    .eq("date", date).in("time_slot", [time, timeFull]).neq("status", "CANCELLED");
+    .eq("tenant_id", tenantId).eq("date", date).in("time_slot", [
+      time,
+      timeFull,
+    ]).neq("status", "CANCELLED");
   const bookedSet = new Set((booked || []).map((b: any) => b.teacher_id));
 
-  const eligible = (profs || [])
+  const eligible = profs
     .filter((p: any) => !bookedSet.has(p.id) && normalizePhone(p.phone))
-    .map((p: any) => ({ id: p.id, name: (p.full_name || "Professor").trim(), phone: normalizePhone(p.phone)! }));
+    .map((p: any) => ({
+      id: p.id,
+      name: (p.full_name || "Professor").trim(),
+      phone: normalizePhone(p.phone)!,
+    }));
 
-  if (eligible.length === 0) return { dispatched: 0, teachers: [], noTeacher: true };
+  if (eligible.length === 0) {
+    return { dispatched: 0, teachers: [], noTeacher: true };
+  }
 
   const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
   const { data: existing } = await sb.from("opportunities")
-    .select("id, slots_proposed").eq("tenant_id", tenantId).eq("status", "OPEN").eq("kind", "TRIAL")
-    .eq("student_phone", lead.phone || "").gte("created_at", twoDaysAgo).limit(5);
-  const dup = (existing || []).find((o: any) => {
-    const s = Array.isArray(o.slots_proposed) ? o.slots_proposed[0] : null;
-    return s && s.date === date && s.time === time;
-  });
+    .select("id, slots_proposed, claim_generation").eq("tenant_id", tenantId)
+    .eq("status", "OPEN")
+    .eq("kind", "TRIAL")
+    .eq("student_phone", lead.phone || "").gte("opened_at", twoDaysAgo).limit(
+      5,
+    );
+  let dup: any = null;
+  for (const opportunity of (existing || [])) {
+    const o = opportunity as any;
+    const dispatchGuard = await loadOpportunityDispatchGuard(
+      sb,
+      tenantId,
+      o.id,
+    );
+    const reuseDecision = evaluateOpportunityReuseCandidate(
+      o.slots_proposed,
+      dispatchGuard,
+      date,
+      time,
+    );
+    if (reuseDecision === "UNAVAILABLE") {
+      return { dispatched: 0, teachers: [], routingUnavailable: true };
+    }
+    if (reuseDecision === "BLOCK_DIRECTED") {
+      return { dispatched: 0, teachers: [], directed: true };
+    }
+    if (reuseDecision !== "REUSE_GENERIC") continue;
+    dup = o;
+    break;
+  }
 
   let oppId: string | null = dup?.id || null;
-  const formatted = `${date.split("-").reverse().join("/")} (${DAY_MAP[dow] || "Dia"})`;
+  let claimGeneration = Number(dup?.claim_generation || 0);
+  const formatted = `${date.split("-").reverse().join("/")} (${
+    DAY_MAP[dow] || "Dia"
+  })`;
 
   if (!oppId) {
     const adm = await adminProfile(sb, tenantId);
@@ -1151,35 +1764,88 @@ async function dispatchTrial(
       student_name: lead.name || "Lead WhatsApp",
       student_phone: lead.phone || "",
       slots_proposed: [{ day: dow, time, date, formatted }],
-      status: "OPEN", tenant_id: tenantId, interests: goal || lead.goal || null, user_id: adm.id, kind: "TRIAL",
-    }).select("id").single();
+      status: "OPEN",
+      tenant_id: tenantId,
+      interests: goal || lead.goal || null,
+      user_id: adm.id,
+      kind: "TRIAL",
+    }).select("id,claim_generation").single();
     if (!opp) return { dispatched: 0, teachers: [], noTeacher: true };
     oppId = opp.id;
+    claimGeneration = Number(opp.claim_generation);
+  }
+
+  const dispatchGuard = await loadOpportunityDispatchGuard(
+    sb,
+    tenantId,
+    oppId!,
+  );
+  if (!dispatchGuard.ok) {
+    return { dispatched: 0, teachers: [], routingUnavailable: true };
+  }
+  if (dispatchGuard.dispatchMode !== "GENERIC") {
+    return { dispatched: 0, teachers: [], directed: true };
   }
 
   // Leilão antigo do mesmo lead morre AQUI, antes de o novo sair. Dois leilões
   // vivos para a mesma pessoa terminam com dois professores aceitando horários
   // diferentes — e o `funnel-sweeper` ainda re-dispara os dois.
-  const superseded = await supersedeOpenTrials(sb, tenantId, lead.phone || "", oppId);
+  const superseded = await supersedeOpenTrials(
+    sb,
+    tenantId,
+    lead.phone || "",
+    oppId,
+  );
 
-  const params = new URLSearchParams({ id: oppId!, date, time, studentName: lead.name || "Lead WhatsApp", studentPhone: lead.phone || "", kind: "TRIAL" });
-  const claimLink = `${CLAIM_BASE}?${params.toString()}`;
+  const claimLink = `${portalUrl}/claim-opportunity?id=${
+    encodeURIComponent(oppId!)
+  }&g=${claimGeneration}`;
   let dispatched = 0;
   const names: string[] = [];
   for (const t of eligible) {
-    const msg = `🐺⚡ *Experimental disponível — ${formatted} às ${time}*\n\nOlá, Teacher ${t.name.split(" ")[0]}! Vi que você tem esse horário livre.\n\n📋 *Aluno:* ${lead.name || "Lead WhatsApp"}\n🎯 *Objetivo:* ${goal || lead.goal || "Não informado"}\n\n🏆 *Quer pegar essa aula?* O primeiro a clicar garante:\n👇 ${claimLink}`;
-    if (await sendWhats(instance, t.phone, msg)) { dispatched++; names.push(t.name); }
+    const msg =
+      `⚡ *Experimental disponível — ${formatted} às ${time}*\n\nOlá, Teacher ${
+        t.name.split(" ")[0]
+      }! Vi que você tem esse horário livre.\n\n📋 *Aluno:* ${
+        lead.name || "Lead WhatsApp"
+      }\n🎯 *Objetivo:* ${
+        goal || lead.goal || "Não informado"
+      }\n\n🏆 *Quer pegar essa aula?* O primeiro a clicar garante:\n👇 ${claimLink}`;
+    if (await sendWhats(instance, t.phone, msg)) {
+      dispatched++;
+      names.push(t.name);
+    }
   }
   return { dispatched, teachers: names, superseded };
 }
 
-async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, phone: string, pushName: string, text: string, isMedia: boolean, msgId: string) {
-  const { data: allLeads } = await sb.from("crm_leads").select("id, name, phone, status, goal, level, notes, ai_handoff, ai_handoff_at, followup_count").eq("tenant_id", tenantId).not("phone", "is", null);
+async function handleSDR(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  cfg: any,
+  phone: string,
+  pushName: string,
+  text: string,
+  isMedia: boolean,
+  msgId: string,
+) {
+  const { data: allLeads } = await sb.from("crm_leads").select(
+    "id, name, phone, status, goal, level, notes, ai_handoff, ai_handoff_at, followup_count",
+  ).eq("tenant_id", tenantId).not("phone", "is", null);
   let lead = (allLeads || []).find((l: any) => phonesMatch(l.phone, phone));
   if (!lead) {
-    const { data: created } = await sb.from("crm_leads").insert({ tenant_id: tenantId, name: pushName || null, phone, status: "NEW", source: "WhatsApp (IA)", ai_handled: true }).select("id, name, phone, status, goal, level, notes, ai_handoff").single();
+    const { data: created } = await sb.from("crm_leads").insert({
+      tenant_id: tenantId,
+      name: pushName || null,
+      phone,
+      status: "NEW",
+      source: "WhatsApp (IA)",
+      ai_handled: true,
+    }).select("id, name, phone, status, goal, level, notes, ai_handoff")
+      .single();
     lead = created;
-    if (lead) sendMetaCapiEvent({ eventName: "Lead", phone });
+    if (lead) sendMetaCapiEvent({ tenantId, eventName: "Lead", phone });
   }
   if (!lead) return;
 
@@ -1187,38 +1853,88 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   // pode recolocar aluno contratado no fluxo de venda.
   const commercialFacts = await loadCommercialContactFacts(sb, tenantId);
   const suppression = evaluateCommercialSuppression({
-    tenantId, phone, name: lead.name, leadStatus: lead.status,
+    tenantId,
+    phone,
+    name: lead.name,
+    leadStatus: lead.status,
   }, commercialFacts);
   if (suppression.suppressed) {
     await reconcileSuppressedLead(sb, lead.id, suppression);
-    await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia/áudio]" : text, {
-      lead_id: lead.id, msg_id: msgId, skipped: suppression.reason,
-    });
+    await logMsg(
+      sb,
+      tenantId,
+      phone,
+      "sdr",
+      "in",
+      isMedia ? "[mídia/áudio]" : text,
+      {
+        lead_id: lead.id,
+        msg_id: msgId,
+        skipped: suppression.reason,
+      },
+    );
     return;
   }
 
   const hist = await history(sb, tenantId, phone, "sdr");
-  await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia/áudio]" : text, { lead_id: lead.id, msg_id: msgId });
-  await sb.from("crm_leads").update({ last_inbound_at: new Date().toISOString(), ai_handled: true }).eq("id", lead.id);
+  await logMsg(
+    sb,
+    tenantId,
+    phone,
+    "sdr",
+    "in",
+    isMedia ? "[mídia/áudio]" : text,
+    { lead_id: lead.id, msg_id: msgId },
+  );
+  await sb.from("crm_leads").update({
+    last_inbound_at: new Date().toISOString(),
+    ai_handled: true,
+  }).eq("id", lead.id);
   if (handoffAtivo(lead)) return;
   // Handoff vencido: a IA reassume e o registro fica limpo, senão a linha
   // continuaria marcada como "humano atendendo" e confundiria a leitura no CRM.
   if (lead.ai_handoff === true) {
-    await sb.from("crm_leads").update({ ai_handoff: false, ai_handoff_at: null }).eq("id", lead.id);
-    await logMsg(sb, tenantId, phone, "sdr", "in", "[handoff humano venceu — IA reassumiu]", { lead_id: lead.id, kind: "handoff_expirado" });
+    await sb.from("crm_leads").update({
+      ai_handoff: false,
+      ai_handoff_at: null,
+    }).eq("id", lead.id);
+    await logMsg(
+      sb,
+      tenantId,
+      phone,
+      "sdr",
+      "in",
+      "[handoff humano venceu — IA reassumiu]",
+      { lead_id: lead.id, kind: "handoff_expirado" },
+    );
   }
 
   const adm = await adminProfile(sb, tenantId);
   if (isMedia) {
     // Áudio já é transcrito antes de chegar aqui; isto cobre imagem, vídeo,
     // documento, figurinha — e o áudio que o Whisper não conseguiu entender.
-    const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me mandar por escrito ou num áudio curtinho?";
+    const reply =
+      "Recebi! 😊 Não consegui abrir esse arquivo — pode me mandar por escrito ou num áudio curtinho?";
     const entregueMidia = await sendWhats(instance, phone, reply);
-    await logMsg(sb, tenantId, phone, "sdr", "out", reply, { lead_id: lead.id, kind: "ask_text", entregue: entregueMidia });
+    await logMsg(sb, tenantId, phone, "sdr", "out", reply, {
+      lead_id: lead.id,
+      kind: "ask_text",
+      entregue: entregueMidia,
+    });
     return;
   }
 
   const sdrName = cfg?.agents?.atendente?.name || "Bia";
+  const tenantIdentity = cfg?.tenantIdentity as TenantIdentity | undefined;
+  const schoolName = safeIdentityPart(
+    tenantIdentity?.name,
+    "Escola de idiomas",
+  );
+  const schoolDescription = tenantIdentity?.location
+    ? `${schoolName}, escola de inglês em ${
+      safeIdentityPart(tenantIdentity.location)
+    }`
+    : `${schoolName}, escola de inglês`;
   const training = resolveAtendenteTraining(cfg);
   const commercialConfig = resolveCommercialPolicy(cfg);
   const commercialRules = commercialConfig
@@ -1232,18 +1948,48 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   const activeTrial = await findActiveTrial(sb, tenantId, phone);
   const trialSlot = activeTrial ? brtSlotFromIso(activeTrial.startIso) : null;
   const trialContext = activeTrial && trialSlot
-    ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${formatSlot(trialSlot)}.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`
+    ? `\nEXPERIMENTAL JÁ ACEITA: este lead JÁ TEM aula experimental confirmada com a Teacher ${activeTrial.teacherName} em ${
+      formatSlot(trialSlot)
+    }.\n- Se ele pedir OUTRO dia/horário, isso é um PEDIDO DE REMARCAÇÃO da mesma aula. Preencha schedule_trial com o horário novo e diga que vai pedir a confirmação da Teacher ${activeTrial.teacherName}.\n- O horário novo NÃO está remarcado, ajustado nem confirmado até a professora responder SIM. NUNCA use essas palavras antes da resposta dela.\n- Se ela recusar, a agenda permanece intacta e a coordenação assume para oferecer outra opção ou reatribuir.\n- Se o lead apenas confirmar o horário que já está marcado, confirme o horário atual e não peça nada de novo.`
     : "";
 
-  const system = `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da WISE WOLF LANGUAGE, escola de inglês de Santa Isabel/SP (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te confirmo hoje mesmo — se ninguém puder, eu te aviso e ofereço outros horários 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${training ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}` : ""}${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${lead.goal || "?"}, nível=${lead.level || "?"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+  const system =
+    `Você é ${sdrName}, atendente comercial (simpática e natural; você é uma IA e admite se perguntarem) da ${schoolDescription} (aulas particulares e em grupo, online e presenciais, adultos e crianças).\nSEU OBJETIVO: acolher o interessado, qualificar e AGENDAR UMA AULA EXPERIMENTAL.\nColete com naturalidade (1 pergunta por vez): nome, objetivo com o inglês (viagem/carreira/kids...), nível atual aproximado, e o melhor dia/horário para a experimental.\nHORÁRIOS DISPONÍVEIS DOS PROFESSORES (ofereça SOMENTE horários desta lista; se o lead pedir um horário fora dela, conduza gentilmente para o mais próximo que EXISTE aqui):\n${menu}\nSe o dia/horário que o lead quer não aparecer na lista, ofereça o MESMO horário em OUTROS DIAS da semana e também outros horários no MESMO dia — sempre com base na lista acima.\nQuando o lead escolher um dia/horário QUE ESTÁ NA LISTA, preencha schedule_trial.\nREGRAS DURAS E INVIOLÁVEIS (prevalecem sobre qualquer treinamento abaixo):\n${commercialRules}\n- NUNCA diga que a aula está \"agendada\", \"confirmada\" ou \"marcada\". Diga que vai VERIFICAR qual professor tem aquele horário e DÊ PRAZO, prometendo aviso mesmo se der errado (ex.: \"Vou verificar o professor desse horário e te confirmo hoje mesmo — se ninguém puder, eu te aviso e ofereço outros horários 😊\"). Nunca deixe o lead sem saber quando terá resposta.\n- NUNCA ofereça um horário que não esteja na lista de HORÁRIOS DISPONÍVEIS.\n- Não prometa professor específico: a experimental é confirmada em seguida quando um professor aceita.\n- Se pedir humano/diretor, estiver bravo, ou o assunto não for matrícula/aulas, marque handoff=true e avise que vai chamar o responsável.\n- HOJE é ${todayBRT()} (Brasília). Próximos dias: ${next7DaysMap()}.\n- Responda curto (2-4 frases), pt-BR, tom WhatsApp, no máx 1 emoji.\n${
+      training
+        ? `\\nTREINAMENTO DO DIRETOR (aplique somente quando for compatível com as REGRAS DURAS): ${training}`
+        : ""
+    }${trialContext}\nDADOS DO LEAD: nome=${lead.name || "?"}, objetivo=${
+      lead.goal || "?"
+    }, nível=${
+      lead.level || "?"
+    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
-  const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
+  const ai = await callAI(
+    system,
+    [...hist, { role: "user", content: text }],
+    diag,
+  );
   if (!ai || !ai.reply) {
     console.error("SDR AI falhou:", JSON.stringify(diag));
-    const hold = "Oi! Recebi sua mensagem 😊 Já já alguém da equipe te responde por aqui, tá?";
-    if (await sendWhats(instance, phone, hold)) await logMsg(sb, tenantId, phone, "sdr", "out", hold, { lead_id: lead.id, kind: "ai_down", diag });
-    if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui responder o lead ${lead.name || phone} (IA indisponível). Mensagem: "${text.slice(0, 200)}"`);
+    const hold =
+      "Oi! Recebi sua mensagem 😊 Já já alguém da equipe te responde por aqui, tá?";
+    if (await sendWhats(instance, phone, hold)) {
+      await logMsg(sb, tenantId, phone, "sdr", "out", hold, {
+        lead_id: lead.id,
+        kind: "ai_down",
+        diag,
+      });
+    }
+    if (adm.ownerPhone) {
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `⚠️ *Atendente IA:* não consegui responder o lead ${
+          lead.name || phone
+        } (IA indisponível). Mensagem: "${text.slice(0, 200)}"`,
+      );
+    }
     return;
   }
 
@@ -1252,9 +1998,17 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   if (u.name && !lead.name) up.name = String(u.name).slice(0, 120);
   if (u.goal) up.goal = String(u.goal).slice(0, 300);
   if (u.level) up.level = String(u.level).slice(0, 60);
-  if (u.notes) up.notes = ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] ` + String(u.notes)).slice(0, 3000);
-  if (lead.status === "NEW") { up.status = "CONTACTED"; up.last_status_change = new Date().toISOString(); }
-  if (Object.keys(up).length) await sb.from("crm_leads").update(up).eq("id", lead.id);
+  if (u.notes) {
+    up.notes = ((lead.notes ? lead.notes + "\n" : "") + `[IA ${todayBRT()}] ` +
+      String(u.notes)).slice(0, 3000);
+  }
+  if (lead.status === "NEW") {
+    up.status = "CONTACTED";
+    up.last_status_change = new Date().toISOString();
+  }
+  if (Object.keys(up).length) {
+    await sb.from("crm_leads").update(up).eq("id", lead.id);
+  }
   const freshLead = { ...lead, ...up };
 
   let reply = String(ai.reply).slice(0, 1500);
@@ -1269,23 +2023,43 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
     commercialPolicy: commercialConfig,
   });
   reply = commercialReply.reply;
-  if (st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) && /^\d{2}:\d{2}$/.test(st.time)) {
-    const max = new Date(nowBRT().getTime() + 21 * 86400000).toISOString().split("T")[0];
+  if (
+    st?.date && st?.time && /^\d{4}-\d{2}-\d{2}$/.test(st.date) &&
+    /^\d{2}:\d{2}$/.test(st.time)
+  ) {
+    const max =
+      new Date(nowBRT().getTime() + 21 * 86400000).toISOString().split("T")[0];
     if (st.date >= todayBRT() && st.date <= max) {
       // ── EXPERIMENTAL COM DONO EXIGE NOVO ACEITE ──
       // O leilão (dispatchTrial) só acontece quando a aula ainda não tem
       // professor. Com dono, o appointment fica intacto até a resposta dele.
       const requested: Slot = { date: st.date, time: st.time };
       const busy = activeTrial
-        ? await teacherBusyBlocks(sb, activeTrial.teacherId, st.date, activeTrial.appointmentId)
+        ? await teacherBusyBlocks(
+          sb,
+          activeTrial.teacherId,
+          st.date,
+          activeTrial.appointmentId,
+        )
         : [];
-      const decision = decideTrialAction({ existing: activeTrial, requested, busy });
+      const decision = decideTrialAction({
+        existing: activeTrial,
+        requested,
+        busy,
+      });
 
       if (decision.action === "keep") {
         // Aula com dono torna obsoleto qualquer leilão ainda aberto deste lead.
         const fechadas = await supersedeOpenTrials(sb, tenantId, phone, null);
-        dispatchMeta = { action: "keep", opportunity_id: decision.trial.opportunityId, superseded: fechadas };
-        reply = `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${formatSlot(decision.slot)} 😊 Qualquer coisa é só me avisar por aqui!`;
+        dispatchMeta = {
+          action: "keep",
+          opportunity_id: decision.trial.opportunityId,
+          superseded: fechadas,
+        };
+        reply =
+          `Sua aula experimental já está marcada com a Teacher ${decision.trial.teacherName} em ${
+            formatSlot(decision.slot)
+          } 😊 Qualquer coisa é só me avisar por aqui!`;
       } else if (decision.action === "confirm") {
         // A aula já tem dono; qualquer leilão antigo do mesmo lead precisa
         // morrer antes de alguém aceitar uma duplicata enquanto aguardamos.
@@ -1303,7 +2077,9 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
           adm.ownerPhone,
         );
         dispatchMeta = {
-          action: confirmation.ok ? "awaiting_teacher_confirmation" : "confirmation_request_failed",
+          action: confirmation.ok
+            ? "awaiting_teacher_confirmation"
+            : "confirmation_request_failed",
           opportunity_id: decision.trial.opportunityId,
           from: decision.from,
           to: decision.to,
@@ -1311,10 +2087,15 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
           error: confirmation.error || null,
           superseded: fechadas,
         };
-        reply = `Vou confirmar com a Teacher ${decision.trial.teacherName} se ela consegue ${formatSlot(decision.to)}. O horário só muda depois do aceite dela — eu te aviso por aqui mesmo se não der, tá?`;
+        reply =
+          `Vou confirmar com a Teacher ${decision.trial.teacherName} se ela consegue ${
+            formatSlot(decision.to)
+          }. O horário só muda depois do aceite dela — eu te aviso por aqui mesmo se não der, tá?`;
         if (confirmation.ok) {
           await sb.from("crm_leads").update({
-            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] remarcação solicitada de ${decision.from.date} ${decision.from.time} para ${decision.to.date} ${decision.to.time}; aguardando SIM da Teacher ${decision.trial.teacherName}`).slice(0, 3000),
+            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") +
+              `[IA ${todayBRT()}] remarcação solicitada de ${decision.from.date} ${decision.from.time} para ${decision.to.date} ${decision.to.time}; aguardando SIM da Teacher ${decision.trial.teacherName}`)
+              .slice(0, 3000),
             last_status_change: new Date().toISOString(),
           }).eq("id", freshLead.id);
         } else {
@@ -1323,37 +2104,143 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
             ai_handoff_at: new Date().toISOString(),
             last_status_change: new Date().toISOString(),
           }).eq("id", freshLead.id);
-          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui abrir a confirmação da remarcação de *${freshLead.name || phone}* para ${formatSlot(decision.to)} com ${decision.trial.teacherName}. A agenda NÃO foi alterada. Motivo: ${confirmation.error || "falha desconhecida"}.`);
+          if (adm.ownerPhone) {
+            await sendWhats(
+              instance,
+              adm.ownerPhone,
+              `⚠️ *Atendente IA:* não consegui abrir a confirmação da remarcação de *${
+                freshLead.name || phone
+              }* para ${
+                formatSlot(decision.to)
+              } com ${decision.trial.teacherName}. A agenda NÃO foi alterada. Motivo: ${
+                confirmation.error || "falha desconhecida"
+              }.`,
+            );
+          }
         }
       } else if (decision.action === "escalate") {
         // A professora dona tem compromisso em cima do horário novo. Redisparar
         // aqui daria a mesma aula a dois professores; quem desempata é gente.
-        dispatchMeta = { action: "escalate", opportunity_id: decision.trial.opportunityId, conflict: decision.conflict };
-        reply = `Vou confirmar esse horário com a teacher e já te retorno, tá? 😊`;
-        const aviso = `⚠️ *Experimental precisa de decisão*\n\n*${freshLead.name || phone}* pediu para mudar de ${formatSlot(decision.from)} para ${formatSlot(decision.to)}.\nProfessora: ${decision.trial.teacherName} — mas ela tem *${decision.conflict}* no horário novo.\n\nNão remarquei nem chamei outro professor. Combine com ela ou reatribua a aula.`;
+        dispatchMeta = {
+          action: "escalate",
+          opportunity_id: decision.trial.opportunityId,
+          conflict: decision.conflict,
+        };
+        reply =
+          `Vou confirmar esse horário com a teacher e já te retorno, tá? 😊`;
+        const aviso = `⚠️ *Experimental precisa de decisão*\n\n*${
+          freshLead.name || phone
+        }* pediu para mudar de ${formatSlot(decision.from)} para ${
+          formatSlot(decision.to)
+        }.\nProfessora: ${decision.trial.teacherName} — mas ela tem *${decision.conflict}* no horário novo.\n\nNão remarquei nem chamei outro professor. Combine com ela ou reatribua a aula.`;
         if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, aviso);
-        if (decision.trial.teacherPhone) await sendWhats(instance, decision.trial.teacherPhone, `🔄 *Aluno pediu para remarcar*\n\n📋 ${freshLead.name || phone}\n⏰ De: ${formatSlot(decision.from)}\n➡️ Quer: ${formatSlot(decision.to)}\n\nSua agenda tem *${decision.conflict}* nesse horário, então NÃO mudei nada. Fale com a coordenação. 🐺`);
+        if (decision.trial.teacherPhone) {
+          await sendWhats(
+            instance,
+            decision.trial.teacherPhone,
+            `🔄 *Aluno pediu para remarcar*\n\n📋 ${
+              freshLead.name || phone
+            }\n⏰ De: ${formatSlot(decision.from)}\n➡️ Quer: ${
+              formatSlot(decision.to)
+            }\n\nSua agenda tem *${decision.conflict}* nesse horário, então NÃO mudei nada. Fale com a coordenação.`,
+          );
+        }
       } else {
-        const res = await dispatchTrial(sb, instance, tenantId, freshLead, st.date, st.time, u.goal || null);
+        const res = await dispatchTrial(
+          sb,
+          instance,
+          tenantId,
+          tenantIdentity?.portalUrl || null,
+          freshLead,
+          st.date,
+          st.time,
+          u.goal || null,
+        );
         dispatchMeta = res;
-        if (res.noTeacher) {
+        if (res.routingUnavailable) {
+          reply =
+            "Não consegui concluir o agendamento por aqui agora. A coordenação vai verificar o horário e te retorna neste WhatsApp.";
+          await sb.from("crm_leads").update({
+            ai_handoff: true,
+            ai_handoff_at: new Date().toISOString(),
+            last_status_change: new Date().toISOString(),
+          }).eq("id", freshLead.id);
+          if (adm.ownerPhone) {
+            await sendWhats(
+              instance,
+              adm.ownerPhone,
+              `⚠️ *Agendamento sem portal do tenant*\n\n${
+                freshLead.name || phone
+              } pediu ${
+                formatSlot(st)
+              }. Nenhuma oportunidade foi aberta nem enviada aos professores. Configure o domínio/slug da escola e trate o lead manualmente.`,
+            );
+          }
+        } else if (res.directed) {
+          reply =
+            "Já existe uma solicitação anterior aguardando confirmação. Este novo horário não foi registrado e nenhuma aula foi agendada; a coordenação vai falar com você para ajustar com segurança.";
+          await sb.from("crm_leads").update({
+            ai_handoff: true,
+            ai_handoff_at: new Date().toISOString(),
+            last_status_change: new Date().toISOString(),
+          }).eq("id", freshLead.id);
+        } else if (res.noTeacher) {
           const dow = dowOf(st.date);
           const alt = await suggestAlternatives(sb, tenantId, st.date, st.time);
           const parts: string[] = [];
-          if (alt.days.length) parts.push(`o horário das ${st.time} eu tenho livre na ${alt.days.join(", ")}`);
-          if (alt.times.length) parts.push(`na ${DAY_MAP[dow]} consigo nesses horários: ${alt.times.slice(0, 8).join(", ")}`);
+          if (alt.days.length) {
+            parts.push(
+              `o horário das ${st.time} eu tenho livre na ${
+                alt.days.join(", ")
+              }`,
+            );
+          }
+          if (alt.times.length) {
+            parts.push(
+              `na ${DAY_MAP[dow]} consigo nesses horários: ${
+                alt.times.slice(0, 8).join(", ")
+              }`,
+            );
+          }
           reply = parts.length
-            ? `Nesse dia e horário eu não tenho professor livre 😕 Mas ${parts.join("; e ")}. Qual fica melhor pra você?`
+            ? `Nesse dia e horário eu não tenho professor livre 😕 Mas ${
+              parts.join("; e ")
+            }. Qual fica melhor pra você?`
             : `Nesse horário eu não tenho professor livre 😕 Me diz outro dia/horário que eu verifico a disponibilidade pra você!`;
         } else if (res.dispatched > 0) {
           await sb.from("crm_leads").update({
-            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") + `[IA ${todayBRT()}] aguardando aceite de professor p/ experimental ${st.date} ${st.time}`).slice(0, 3000),
+            notes: ((freshLead.notes ? freshLead.notes + "\n" : "") +
+              `[IA ${todayBRT()}] aguardando aceite de professor p/ experimental ${st.date} ${st.time}`)
+              .slice(0, 3000),
             last_status_change: new Date().toISOString(),
           }).eq("id", freshLead.id);
-          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `🎯 *Atendente IA:* experimental EM VALIDAÇÃO\n\n*${freshLead.name || phone}* — ${st.date.split("-").reverse().join("/")} às ${st.time}\nObjetivo: ${freshLead.goal || "-"} | Nível: ${freshLead.level || "-"}\n\nDisparei o link individual para ${res.dispatched} professor(es) com o horário livre: ${res.teachers.join(", ")}.\n_O aluno só será avisado quando um professor aceitar._ 🐺`);
+          if (adm.ownerPhone) {
+            await sendWhats(
+              instance,
+              adm.ownerPhone,
+              `🎯 *Atendente IA:* experimental EM VALIDAÇÃO\n\n*${
+                freshLead.name || phone
+              }* — ${
+                st.date.split("-").reverse().join("/")
+              } às ${st.time}\nObjetivo: ${freshLead.goal || "-"} | Nível: ${
+                freshLead.level || "-"
+              }\n\nDisparei o link individual para ${res.dispatched} professor(es) com o horário livre: ${
+                res.teachers.join(", ")
+              }.\n_O aluno só será avisado quando um professor aceitar._`,
+            );
+          }
         } else {
-          reply = `Deixa eu confirmar a disponibilidade certinho e já te retorno, tá? 😊`;
-          if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *Atendente IA:* não consegui disparar a experimental de *${freshLead.name || phone}* (${st.date} ${st.time}) para os professores. Verifique a conexão do WhatsApp.`);
+          reply =
+            `Deixa eu confirmar a disponibilidade certinho e já te retorno, tá? 😊`;
+          if (adm.ownerPhone) {
+            await sendWhats(
+              instance,
+              adm.ownerPhone,
+              `⚠️ *Atendente IA:* não consegui disparar a experimental de *${
+                freshLead.name || phone
+              }* (${st.date} ${st.time}) para os professores. Verifique a conexão do WhatsApp.`,
+            );
+          }
         }
       }
     }
@@ -1362,8 +2249,17 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   if (ai.handoff === true) {
     await sb.from("crm_leads").update({ ai_handoff: true }).eq("id", lead.id);
     if (adm.ownerPhone) {
-      const lastMsgs = [...hist.slice(-5), { role: "user", content: text }].map((m: any) => `${m.role === "user" ? "Lead" : "IA"}: ${m.content.slice(0, 120)}`).join("\n");
-      await sendWhats(instance, adm.ownerPhone, `👋 *Atendente IA:* o lead *${freshLead.name || phone}* precisa de VOCÊ (pediu humano ou assunto fora do meu escopo).\n\nÚltimas mensagens:\n${lastMsgs}\n\nWhatsApp: ${phone}\n_(A IA parou de responder este contato.)_`);
+      const lastMsgs = [...hist.slice(-5), { role: "user", content: text }].map(
+        (m: any) =>
+          `${m.role === "user" ? "Lead" : "IA"}: ${m.content.slice(0, 120)}`,
+      ).join("\n");
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `👋 *Atendente IA:* o lead *${
+          freshLead.name || phone
+        }* precisa de VOCÊ (pediu humano ou assunto fora do meu escopo).\n\nÚltimas mensagens:\n${lastMsgs}\n\nWhatsApp: ${phone}\n_(A IA parou de responder este contato.)_`,
+      );
     }
   }
 
@@ -1387,19 +2283,43 @@ async function handleSDR(sb: any, instance: string, tenantId: string, cfg: any, 
   // `last_outbound_at` alimenta a prospecção ativa (`sdr-followups`) e significa
   // "a última vez que falamos com o lead". Mensagem não entregue não é conversa.
   if (entregue) {
-    await sb.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+    await sb.from("crm_leads").update({
+      last_outbound_at: new Date().toISOString(),
+    }).eq("id", lead.id);
   }
 }
 
 // ---------------- MICHELLE (triagem conversacional de professores) ----------------
-async function handleRita(sb: any, instance: string, tenantId: string, cfg: any, app: any, phone: string, text: string, isMedia: boolean, msgId: string) {
+async function handleRita(
+  sb: any,
+  instance: string,
+  tenantId: string,
+  cfg: any,
+  app: any,
+  phone: string,
+  text: string,
+  isMedia: boolean,
+  msgId: string,
+) {
   const hist = await history(sb, tenantId, phone, "rita");
-  await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia/áudio]" : text, { application_id: app.id, msg_id: msgId });
+  await logMsg(
+    sb,
+    tenantId,
+    phone,
+    "rita",
+    "in",
+    isMedia ? "[mídia/áudio]" : text,
+    { application_id: app.id, msg_id: msgId },
+  );
   const adm = await adminProfile(sb, tenantId);
   if (isMedia) {
-    const reply = "Recebi! 😊 Não consegui abrir esse arquivo — pode me responder por escrito ou num áudio curtinho?";
+    const reply =
+      "Recebi! 😊 Não consegui abrir esse arquivo — pode me responder por escrito ou num áudio curtinho?";
     const entregueMidiaRh = await sendWhats(instance, phone, reply);
-    await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id, entregue: entregueMidiaRh });
+    await logMsg(sb, tenantId, phone, "rita", "out", reply, {
+      application_id: app.id,
+      entregue: entregueMidiaRh,
+    });
     return;
   }
 
@@ -1412,6 +2332,10 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
   // estava — 67 candidaturas renderam 3 triagens completas.
   const system = promptTriagem({
     nomeCandidato: app.name,
+    schoolName: safeIdentityPart(
+      cfg?.tenantIdentity?.name,
+      "Escola de idiomas",
+    ),
     answers,
     primeiraInteracao,
     coletando: collecting,
@@ -1419,10 +2343,22 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
   });
 
   const diag: string[] = [];
-  const ai = await callAI(system, [...hist, { role: "user", content: text }], diag);
+  const ai = await callAI(
+    system,
+    [...hist, { role: "user", content: text }],
+    diag,
+  );
   if (!ai || !ai.reply) {
     console.error("Michelle AI falhou:", JSON.stringify(diag));
-    if (adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `⚠️ *RH (IA):* não consegui responder o candidato ${app.name} (IA indisponível). Mensagem: "${text.slice(0, 200)}"`);
+    if (adm.ownerPhone) {
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `⚠️ *RH (IA):* não consegui responder o candidato ${app.name} (IA indisponível). Mensagem: "${
+          text.slice(0, 200)
+        }"`,
+      );
+    }
     return;
   }
 
@@ -1430,7 +2366,9 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
   // que a pessoa já respondeu.
   const merged = mergeRespostas(answers, ai.answers);
   const upd: Record<string, unknown> = { preinterview_answers: merged };
-  if (app.preinterview_status === "SENT") upd.preinterview_status = "IN_PROGRESS";
+  if (app.preinterview_status === "SENT") {
+    upd.preinterview_status = "IN_PROGRESS";
+  }
 
   // O FIM é contagem de campos, não opinião do modelo. Antes vinha de
   // `ai.done`, e o modelo tanto encerrava cedo quanto nunca encerrava.
@@ -1440,21 +2378,39 @@ async function handleRita(sb: any, instance: string, tenantId: string, cfg: any,
     if (adm.ownerPhone) {
       const rotulo = new Map(ETAPAS.map((e) => [e.key, e.rotulo]));
       const digest = Object.entries(merged)
-        .map(([k, v]) => `• ${rotulo.get(k) || k}: ${String(v).slice(0, 160)}`).join("\n");
-      await sendWhats(instance, adm.ownerPhone, `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`);
+        .map(([k, v]) => `• ${rotulo.get(k) || k}: ${String(v).slice(0, 160)}`)
+        .join("\n");
+      await sendWhats(
+        instance,
+        adm.ownerPhone,
+        `🧑‍💼 *RH (IA):* triagem concluída!\n\n*${app.name}*\n${digest}\n\nWhatsApp: ${phone}\nAvalie no painel de RH.`,
+      );
     }
   } else if (collecting) {
     // Progresso visível no log: sem isto não dá para saber em que etapa as
     // triagens morrem, e era exatamente esse o ponto cego.
-    console.log(`[rita] ${app.id}: ${etapasRespondidas(merged)}/${ETAPAS.length} etapas`);
+    console.log(
+      `[rita] ${app.id}: ${etapasRespondidas(merged)}/${ETAPAS.length} etapas`,
+    );
   }
 
-  if (ai.notify_director && adm.ownerPhone) await sendWhats(instance, adm.ownerPhone, `🧑‍💼 *RH (IA):* recado do candidato *${app.name}*: ${String(ai.notify_director).slice(0, 300)}\nWhatsApp: ${phone}`);
+  if (ai.notify_director && adm.ownerPhone) {
+    await sendWhats(
+      instance,
+      adm.ownerPhone,
+      `🧑‍💼 *RH (IA):* recado do candidato *${app.name}*: ${
+        String(ai.notify_director).slice(0, 300)
+      }\nWhatsApp: ${phone}`,
+    );
+  }
 
   await sb.from("job_applications").update(upd).eq("id", app.id);
   const reply = String(ai.reply).slice(0, 1500);
   const entregueRh = await sendWhats(instance, phone, reply);
-  await logMsg(sb, tenantId, phone, "rita", "out", reply, { application_id: app.id, entregue: entregueRh });
+  await logMsg(sb, tenantId, phone, "rita", "out", reply, {
+    application_id: app.id,
+    entregue: entregueRh,
+  });
 }
 
 // ---------------- HTTP ----------------
@@ -1462,24 +2418,58 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { status: 200 });
   try {
     const reqUrl = new URL(req.url);
-    if (reqUrl.searchParams.get("token") !== INBOUND_TOKEN) return new Response("forbidden", { status: 403 });
+    if (reqUrl.searchParams.get("token") !== INBOUND_TOKEN) {
+      return new Response("forbidden", { status: 403 });
+    }
 
     const selftest = reqUrl.searchParams.get("selftest");
     if (selftest === "ai" || selftest === "or") {
       const diag: string[] = [];
-      const out = await callAI('Responda SOMENTE com JSON válido: {"ok": true, "msg": "cadeia funcionando"}', [{ role: "user", content: "teste" }], diag, { skipGemini: selftest === "or" });
-      return new Response(JSON.stringify({ result: out, diag }), { status: 200, headers: { "Content-Type": "application/json" } });
+      const out = await callAI(
+        'Responda SOMENTE com JSON válido: {"ok": true, "msg": "cadeia funcionando"}',
+        [{ role: "user", content: "teste" }],
+        diag,
+        { skipGemini: selftest === "or" },
+      );
+      return new Response(JSON.stringify({ result: out, diag }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const body = await req.json().catch(() => ({}));
     const event = String(body?.event || "").toLowerCase().replace(/_/g, ".");
-    if (event && event !== "messages.upsert") return new Response(JSON.stringify({ ok: true, skipped: "event" }), { status: 200 });
+    if (event && event !== "messages.upsert") {
+      return new Response(JSON.stringify({ ok: true, skipped: "event" }), {
+        status: 200,
+      });
+    }
 
     const url = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const sb = createClient(url, serviceKey);
-    const instance = String(body?.instance || "");
-    const items = Array.isArray(body?.data) ? body.data : [body?.data].filter(Boolean);
+    const inboundTenant = await resolveInboundTenant(
+      sb,
+      String(body?.instance || ""),
+    );
+    if (!inboundTenant) {
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "unknown_instance" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    const instance = inboundTenant.instanceName;
+    const tenantId = inboundTenant.tenantId;
+    const cfg: any = {
+      ...inboundTenant.aiTeamConfig,
+      tenantIdentity: inboundTenant.identity,
+    };
+    const items = Array.isArray(body?.data)
+      ? body.data
+      : [body?.data].filter(Boolean);
 
     for (const item of items) {
       const key = item?.key || {};
@@ -1492,21 +2482,28 @@ serve(async (req) => {
         const fmPhone = remoteJid.split("@")[0].replace(/\D/g, "");
         if (fmPhone.length < 10) continue;
         const fm = item?.message || {};
-        const fmText = String(fm.conversation || fm.extendedTextMessage?.text || fm.imageMessage?.caption || fm.videoMessage?.caption || "").trim();
-        const fmMedia = !fmText && !!(fm.audioMessage || fm.imageMessage || fm.videoMessage || fm.documentMessage || fm.stickerMessage);
+        const fmText = String(
+          fm.conversation || fm.extendedTextMessage?.text ||
+            fm.imageMessage?.caption || fm.videoMessage?.caption || "",
+        ).trim();
+        const fmMedia = !fmText &&
+          !!(fm.audioMessage || fm.imageMessage || fm.videoMessage ||
+            fm.documentMessage || fm.stickerMessage);
         if (!fmText && !fmMedia) continue;
-        const { data: fowners } = await sb.from("profiles").select("tenant_id, teachers_group_id, role")
-          .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
-        const fo = pickOwner(fowners || []);
-        if (fo?.tenant_id) await maybeHumanTakeover(sb, fo.tenant_id, fmPhone, fmText, fmMedia);
+        await maybeHumanTakeover(sb, tenantId, fmPhone, fmText, fmMedia);
         continue;
       }
       // Grupo: até aqui era sempre descartado. Agora, e SÓ se for o grupo de
       // gestão configurado, vira pergunta para o assistente. Qualquer outro
       // grupo continua sendo ignorado, como sempre foi.
       if (remoteJid.endsWith("@g.us")) {
-        try { await handleGestao(sb, instance, remoteJid, item); }
-        catch (e) { console.error("gestao falhou", { erro: (e as Error).message.slice(0, 120) }); }
+        try {
+          await handleGestao(sb, instance, tenantId, remoteJid, item);
+        } catch (e) {
+          console.error("gestao falhou", {
+            erro: (e as Error).message.slice(0, 120),
+          });
+        }
         continue;
       }
       if (!remoteJid.endsWith("@s.whatsapp.net")) continue;
@@ -1517,13 +2514,21 @@ serve(async (req) => {
       // execução concorrente já pegou esta mensagem → pula (mata duplicação).
       const msgId = String(key.id || "");
       if (msgId) {
-        const { error: seenErr } = await sb.from("wa_inbound_seen").insert({ msg_id: msgId, phone });
+        const { error: seenErr } = await sb.from("wa_inbound_seen").insert({
+          msg_id: msgId,
+          phone,
+        });
         if (seenErr) continue;
       }
 
       const msg = item?.message || {};
-      let text = String(msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || msg.videoMessage?.caption || "").trim();
-      let isMedia = !text && !!(msg.audioMessage || msg.imageMessage || msg.videoMessage || msg.documentMessage || msg.stickerMessage);
+      let text = String(
+        msg.conversation || msg.extendedTextMessage?.text ||
+          msg.imageMessage?.caption || msg.videoMessage?.caption || "",
+      ).trim();
+      let isMedia = !text &&
+        !!(msg.audioMessage || msg.imageMessage || msg.videoMessage ||
+          msg.documentMessage || msg.stickerMessage);
 
       // ÁUDIO VIRA TEXTO para lead e candidato também.
       //
@@ -1538,70 +2543,159 @@ serve(async (req) => {
       const ehAudio = !text && !!(msg.audioMessage || msg.pttMessage);
       if (ehAudio) {
         const transcrito = await transcreverAudio(instance, msgId);
-        if (transcrito) { text = transcrito; isMedia = false; }
+        if (transcrito) {
+          text = transcrito;
+          isMedia = false;
+        }
       }
       if (!text && !isMedia) continue;
 
-      // TENANT DETERMINÍSTICO: a mesma instância pode ter vários admins/tenants.
-      const { data: owners } = await sb.from("profiles").select("tenant_id, teachers_group_id, role")
-        .eq("whatsapp_instance", instance).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]);
-      const owner = pickOwner(owners || []);
-      if (!owner?.tenant_id) continue;
-      const tenantId = owner.tenant_id;
-
-      const { data: tenant } = await sb.from("tenants").select("ai_team_config").eq("id", tenantId).maybeSingle();
-      const cfg = tenant?.ai_team_config || {};
-
       const hourAgo = new Date(Date.now() - 3600000).toISOString();
-      const { count: outCount } = await sb.from("ai_wa_messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("phone", phone).eq("direction", "out").gte("created_at", hourAgo);
+      const { count: outCount } = await sb.from("ai_wa_messages").select("id", {
+        count: "exact",
+        head: true,
+      }).eq("tenant_id", tenantId).eq("phone", phone).eq("direction", "out")
+        .gte("created_at", hourAgo);
       const rateLimited = (outCount ?? 0) >= 12;
 
       // Confirmação de remarcação vem antes do RH. Professores antigos também
       // permanecem em `job_applications`; sem esta prioridade, o "não consigo"
       // do teacher vira mensagem de candidato em handoff e a agenda nunca sabe.
-      if (await handleTrialRescheduleTeacherReply(sb, instance, tenantId, phone, text, msgId)) {
+      if (
+        await handleTrialRescheduleTeacherReply(
+          sb,
+          instance,
+          tenantId,
+          phone,
+          text,
+          msgId,
+        )
+      ) {
         continue;
       }
 
       // ===== TRAVA DE ROTEAMENTO =====
-      const { data: apps } = await sb.from("job_applications").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(150);
-      const candidate = (apps || []).find((a: any) => phonesMatch(a.whatsapp, phone));
+      const { data: apps } = await sb.from("job_applications").select("*").eq(
+        "tenant_id",
+        tenantId,
+      ).order("created_at", { ascending: false }).limit(150);
+      const candidate = (apps || []).find((a: any) =>
+        phonesMatch(a.whatsapp, phone)
+      );
       if (candidate) {
         // Humano assumiu a triagem deste candidato → Michelle se cala, mas só
         // enquanto o atendimento humano está vivo (72h).
         if (handoffAtivo(candidate)) {
-          await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia]" : text, { application_id: candidate.id, skipped: "human_handoff", msg_id: msgId });
+          await logMsg(
+            sb,
+            tenantId,
+            phone,
+            "rita",
+            "in",
+            isMedia ? "[mídia]" : text,
+            {
+              application_id: candidate.id,
+              skipped: "human_handoff",
+              msg_id: msgId,
+            },
+          );
           continue;
         }
         if (candidate.ai_handoff === true) {
-          await sb.from("job_applications").update({ ai_handoff: false, ai_handoff_at: null }).eq("id", candidate.id);
-          await logMsg(sb, tenantId, phone, "rita", "in", "[handoff humano venceu — IA reassumiu]", { application_id: candidate.id, kind: "handoff_expirado" });
+          await sb.from("job_applications").update({
+            ai_handoff: false,
+            ai_handoff_at: null,
+          }).eq("id", candidate.id);
+          await logMsg(
+            sb,
+            tenantId,
+            phone,
+            "rita",
+            "in",
+            "[handoff humano venceu — IA reassumiu]",
+            { application_id: candidate.id, kind: "handoff_expirado" },
+          );
         }
         const candRole = String(candidate.role || "professor").toLowerCase();
         if (candRole !== "professor") {
-          await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia]" : text, { application_id: candidate.id, skipped: "nao_professor_humano", msg_id: msgId });
+          await logMsg(
+            sb,
+            tenantId,
+            phone,
+            "rita",
+            "in",
+            isMedia ? "[mídia]" : text,
+            {
+              application_id: candidate.id,
+              skipped: "nao_professor_humano",
+              msg_id: msgId,
+            },
+          );
           continue;
         }
         if (candidate.preinterview_status == null) {
-          await sb.from("job_applications").update({ preinterview_status: "SENT" }).eq("id", candidate.id);
+          await sb.from("job_applications").update({
+            preinterview_status: "SENT",
+          }).eq("id", candidate.id);
           candidate.preinterview_status = "SENT";
         }
-        if (cfg?.rh?.enabled !== false && !rateLimited) await handleRita(sb, instance, tenantId, cfg, candidate, phone, text, isMedia, msgId);
-        else await logMsg(sb, tenantId, phone, "rita", "in", isMedia ? "[mídia]" : text, { application_id: candidate.id, skipped: rateLimited ? "rate_limit" : "disabled", msg_id: msgId });
+        if (cfg?.rh?.enabled !== false && !rateLimited) {
+          await handleRita(
+            sb,
+            instance,
+            tenantId,
+            cfg,
+            candidate,
+            phone,
+            text,
+            isMedia,
+            msgId,
+          );
+        } else {await logMsg(
+            sb,
+            tenantId,
+            phone,
+            "rita",
+            "in",
+            isMedia ? "[mídia]" : text,
+            {
+              application_id: candidate.id,
+              skipped: rateLimited ? "rate_limit" : "disabled",
+              msg_id: msgId,
+            },
+          );}
         continue;
       }
 
-      const { data: knownProfiles } = await sb.from("profiles")
-        .select("id, phone, role, full_name, contract_accepted")
-        .eq("tenant_id", tenantId).not("phone", "is", null).neq("phone", "");
-      const knownProfile = (knownProfiles || []).find((profile: any) => phonesMatch(profile.phone, phone));
+      const knownProfiles = await activeMemberProfiles(sb, tenantId, [
+        "STUDENT",
+        "TEACHER",
+        "SCHOOL_ADMIN",
+        "COORDINATOR",
+        "COMMERCIAL",
+        "SALESPERSON",
+      ]);
+      const knownProfile = (knownProfiles || []).find((profile: any) =>
+        phonesMatch(profile.phone, phone)
+      );
       if (knownProfile) {
-        const isContractedStudent = String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
+        const isContractedStudent =
+          String(knownProfile.role || "").toUpperCase() === "STUDENT" &&
           knownProfile.contract_accepted === true;
         if (isContractedStudent) {
-          await logMsg(sb, tenantId, phone, "support", "in", isMedia ? "[mídia]" : text, {
-            student_id: knownProfile.id, msg_id: msgId, routed: "existing_student",
-          });
+          await logMsg(
+            sb,
+            tenantId,
+            phone,
+            "support",
+            "in",
+            isMedia ? "[mídia]" : text,
+            {
+              student_id: knownProfile.id,
+              msg_id: msgId,
+              routed: "existing_student",
+            },
+          );
           const since = new Date(Date.now() - 4 * 3600000).toISOString();
           const { count: recentSupport } = await sb.from("ai_wa_messages")
             .select("id", { count: "exact", head: true })
@@ -1623,10 +2717,14 @@ serve(async (req) => {
           // pagamento, contrato ou cobrança aqui é regressão.
           if (!rateLimited && (recentSupport ?? 0) === 0) {
             const first = greetName(knownProfile.full_name);
-            const reply = `Oi${first ? ", " + first : ""}! Recebi sua mensagem 😊 Já encaminhei para a equipe da Wise Wolf e em breve alguém te responde por aqui.`;
+            const reply = `Oi${
+              first ? ", " + first : ""
+            }! Recebi sua mensagem 😊 Já encaminhei para a equipe da ${inboundTenant.identity.name} e em breve alguém te responde por aqui.`;
             const entregueAluno = await sendWhats(instance, phone, reply);
             await logMsg(sb, tenantId, phone, "support", "out", reply, {
-              student_id: knownProfile.id, kind: "existing_student_handoff", entregue: entregueAluno,
+              student_id: knownProfile.id,
+              kind: "existing_student_handoff",
+              entregue: entregueAluno,
             });
           }
 
@@ -1639,11 +2737,19 @@ serve(async (req) => {
           if (adm.ownerPhone) {
             const corpo = (isMedia ? "[mídia]" : text).slice(0, 300);
             // Assunto de dinheiro entra marcado: é o que não pode esperar.
-            const financeiro = /\bpix\b|pagamen|boleto|fatura|cobran|mensalidade|cart[ãa]o|assinatur|estorn|d[ée]bito|vencimen|valor/i.test(text);
+            const financeiro =
+              /\bpix\b|pagamen|boleto|fatura|cobran|mensalidade|cart[ãa]o|assinatur|estorn|d[ée]bito|vencimen|valor/i
+                .test(text);
             await sendWhats(
               instance,
               adm.ownerPhone,
-              `🎓 *Atendimento de aluno:* ${knownProfile.full_name || phone} enviou uma mensagem no WhatsApp central.${financeiro ? "\n\n💰 *Assunto financeiro — responder com prioridade.*" : ""}\n\n“${corpo}”\n\nA IA comercial foi bloqueada e o contato foi encaminhado para atendimento humano.`,
+              `🎓 *Atendimento de aluno:* ${
+                knownProfile.full_name || phone
+              } enviou uma mensagem no WhatsApp central.${
+                financeiro
+                  ? "\n\n💰 *Assunto financeiro — responder com prioridade.*"
+                  : ""
+              }\n\n“${corpo}”\n\nA IA comercial foi bloqueada e o contato foi encaminhado para atendimento humano.`,
             );
           }
         }
@@ -1651,15 +2757,39 @@ serve(async (req) => {
       }
 
       if (cfg?.sdr?.enabled === false || rateLimited) {
-        await logMsg(sb, tenantId, phone, "sdr", "in", isMedia ? "[mídia]" : text, { skipped: rateLimited ? "rate_limit" : "disabled", msg_id: msgId });
+        await logMsg(
+          sb,
+          tenantId,
+          phone,
+          "sdr",
+          "in",
+          isMedia ? "[mídia]" : text,
+          { skipped: rateLimited ? "rate_limit" : "disabled", msg_id: msgId },
+        );
         continue;
       }
-      await handleSDR(sb, instance, tenantId, cfg, phone, String(item?.pushName || ""), text, isMedia, msgId);
+      await handleSDR(
+        sb,
+        instance,
+        tenantId,
+        cfg,
+        phone,
+        String(item?.pushName || ""),
+        text,
+        isMedia,
+        msgId,
+      );
     }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (e: any) {
     console.error("inbound error", e?.message);
-    return new Response(JSON.stringify({ ok: false, error: e?.message }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ ok: false, error: e?.message }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 });

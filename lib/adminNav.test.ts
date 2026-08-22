@@ -11,7 +11,7 @@ import { ADMIN_NAV, ALL_ADMIN_TAB_IDS, groupForTab } from './adminNav';
  * uma tela no fim da lista — daí o teste.
  */
 
-/** Todas as telas que o diretor tinha antes da reorganização. Nenhuma pode sumir. */
+/** Telas anteriores, exceto a duplicata avançada consolidada na central. */
 const TELAS_ANTERIORES = [
   'dashboard', 'wolfie-lab', 'students', 'student-insights', 'teachers', 'teacher-insights',
   'approvals', 'recruiting', 'hr', 'schedule_explorer', 'attendance-disputes', 'trials',
@@ -19,7 +19,7 @@ const TELAS_ANTERIORES = [
   'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'dre',
   'balancete', 'margin', 'ai-costs', 'verify-rooms', 'financial', 'crm', 'marketing',
   'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school', 'automation', 'automations',
-  'tenant_advanced', 'admin_workflows',
+  'admin_workflows',
 ];
 
 describe('navegação do diretor', () => {

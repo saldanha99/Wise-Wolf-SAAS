@@ -4,6 +4,7 @@ import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
 } from "../_shared/commercial-contact-policy.ts";
+import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
 
 // POST-TRIAL-PIPELINE — cron a cada 30 min. Ataca o vazamento entre "aula experimental dada"
 // e "matrícula": achado da auditoria — 9 trials realizados ficavam parados sem proposta
@@ -29,7 +30,6 @@ const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
 const EVOLUTION_KEYS = Array.from(new Set([
   (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
 ].filter(Boolean)));
-const APP_BASE_URL = "https://system.wisewolflanguage.com.br";
 
 async function sendWhats(instance: string, number: string, text: string): Promise<boolean> {
   for (const key of EVOLUTION_KEYS) {
@@ -86,19 +86,35 @@ serve(async (req) => {
     const sb = createClient(url, serviceKey);
 
     const result = { nudges: 0, director_alerts: 0, escalations: 0, link_reminders: 0, suppressed_contracted: 0, failures: [] as string[] };
-
-    const { data: admins } = await sb.from("profiles")
-      .select("tenant_id, phone, whatsapp_instance")
-      .in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"]).not("whatsapp_instance", "is", null).neq("whatsapp_instance", "");
-    const byTenant: Record<string, { instance: string; ownerPhone: string }> = {};
-    for (const a of (admins || [])) {
-      if (!byTenant[a.tenant_id]) byTenant[a.tenant_id] = { instance: a.whatsapp_instance, ownerPhone: cleanPhone(a.phone || "") };
-    }
-    const commercialFacts = new Map<string, any>();
-    for (const tenantId of Object.keys(byTenant)) {
-      try { commercialFacts.set(tenantId, await loadCommercialContactFacts(sb, tenantId)); }
-      catch (e) { result.failures.push(`commercial_state ${tenantId}: ${(e as Error).message}`); }
-    }
+    const routeCache = new Map<string, ReturnType<typeof loadTenantWhatsAppRoute>>();
+    const routeFor = (tenantId: string, audience: "general" | "student") => {
+      const normalizedTenantId = String(tenantId || "").trim();
+      const key = `${normalizedTenantId}:${audience}`;
+      if (!normalizedTenantId) return Promise.resolve(null);
+      let pending = routeCache.get(key);
+      if (!pending) {
+        pending = loadTenantWhatsAppRoute(sb, normalizedTenantId, audience).catch((error) => {
+          result.failures.push(`whatsapp_route ${normalizedTenantId}: ${(error as Error).message}`);
+          return null;
+        });
+        routeCache.set(key, pending);
+      }
+      return pending;
+    };
+    const commercialFacts = new Map<string, Promise<any | null>>();
+    const factsFor = (tenantId: string) => {
+      const key = String(tenantId || "").trim();
+      if (!key) return Promise.resolve(null);
+      let pending = commercialFacts.get(key);
+      if (!pending) {
+        pending = loadCommercialContactFacts(sb, key).catch((error) => {
+          result.failures.push(`commercial_state ${key}: ${(error as Error).message}`);
+          return null;
+        });
+        commercialFacts.set(key, pending);
+      }
+      return pending;
+    };
 
     // ===================== A) EXPERIMENTAL SEM PROPOSTA =====================
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -115,9 +131,12 @@ serve(async (req) => {
 
     for (const opp of (doneTrials || [])) {
       if (looksFake(opp.student_phone || "", opp.student_name || "")) continue;
-      const t = byTenant[opp.tenant_id];
-      if (!t) continue;
-      const facts = commercialFacts.get(opp.tenant_id);
+      const [studentRoute, internalRoute] = await Promise.all([
+        routeFor(opp.tenant_id, "student"),
+        routeFor(opp.tenant_id, "general"),
+      ]);
+      if (!studentRoute && !internalRoute) continue;
+      const facts = await factsFor(opp.tenant_id);
       if (!facts) continue;
       const suppression = evaluateCommercialSuppression({
         tenantId: opp.tenant_id, phone: opp.student_phone, opportunityId: opp.id,
@@ -156,21 +175,21 @@ serve(async (req) => {
 
       if (!(await sentEver(sb, nudgeKind, opp.id))) {
         // Toque 1: aluno (calor) + alerta ao diretor (ação)
-        if (phone.length >= 12 && (await claim(sb, nudgeKind, opp.id))) {
-          const msg = `Oi${first ? ", " + first : ""}! 🐺 Como foi a aula experimental? Espero que tenha curtido! Já vou te passar os próximos passos para continuar estudando com a gente — só um instante 😊`;
-          if (await sendWhats(t.instance, phone, msg)) result.nudges++;
+        if (studentRoute && phone.length >= 12 && (await claim(sb, nudgeKind, opp.id))) {
+          const msg = `Oi${first ? ", " + first : ""}! Como foi a aula experimental? Espero que tenha curtido! Já vou te passar os próximos passos para continuar estudando com a gente — só um instante 😊`;
+          if (await sendWhats(studentRoute.instanceName, phone, msg)) result.nudges++;
           else result.failures.push(`nudge ${opp.id}`);
         }
-        if (t.ownerPhone.length >= 12 && (await claim(sb, alertKind, opp.id))) {
+        if (internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12 && (await claim(sb, alertKind, opp.id))) {
           const msg = `🎓 *Experimental dada, falta a proposta!*\n\n*${opp.student_name || "-"}* fez a aula experimental e ainda não tem link de matrícula gerado.\n\nGere a proposta em Experimental → Gerar Contrato enquanto o interesse está quente. 🔥`;
-          if (await sendWhats(t.instance, t.ownerPhone, msg)) result.director_alerts++;
+          if (await sendWhats(internalRoute.instanceName, internalRoute.ownerPhone, msg)) result.director_alerts++;
           else result.failures.push(`alert ${opp.id}`);
         }
       } else if (log.created_at < dayAgo && !(await sentEver(sb, escalateKind, opp.id))) {
         // >=24h ainda sem proposta: só escalona ao diretor (não insiste de novo com o aluno)
-        if (t.ownerPhone.length >= 12 && (await claim(sb, escalateKind, opp.id))) {
+        if (internalRoute?.ownerPhone && internalRoute.ownerPhone.length >= 12 && (await claim(sb, escalateKind, opp.id))) {
           const msg = `⚠️ *Proposta ainda não gerada há +24h*\n\n*${opp.student_name || "-"}* fez a experimental ontem e continua sem link de matrícula. O interesse esfria rápido — vale gerar a proposta ou ligar pro aluno.`;
-          if (await sendWhats(t.instance, t.ownerPhone, msg)) result.escalations++;
+          if (await sendWhats(internalRoute.instanceName, internalRoute.ownerPhone, msg)) result.escalations++;
           else result.failures.push(`escalate ${opp.id}`);
         }
       }
@@ -186,9 +205,9 @@ serve(async (req) => {
 
     for (const link of (pendingLinks || [])) {
       if (looksFake(link.student_phone || "", link.student_name || "")) continue;
-      const t = byTenant[link.tenant_id];
+      const t = await routeFor(link.tenant_id, "student");
       if (!t) continue;
-      const facts = commercialFacts.get(link.tenant_id);
+      const facts = await factsFor(link.tenant_id);
       if (!facts) continue;
       const suppression = evaluateCommercialSuppression({
         tenantId: link.tenant_id, phone: link.student_phone,
@@ -211,11 +230,11 @@ serve(async (req) => {
       if (!(await claim(sb, kind, link.id))) continue;
 
       const msgByStep: Record<string, string> = {
-        D1: `Oi${first ? ", " + first : ""}! 🐺 Vi que você ainda não finalizou sua matrícula. Qualquer dúvida sobre o plano é só me chamar — o link continua valendo aqui:\n${link.link_url}`,
-        D3: `Oi${first ? ", " + first : ""}! Passando só pra lembrar da sua matrícula na Wise Wolf 😊 Não deixa sua vaga esfriar — finaliza quando puder:\n${link.link_url}`,
-        D7: `Oi${first ? ", " + first : ""}! Última lembrança por aqui: sua proposta de matrícula ainda está aberta. Se ainda fizer sentido pra você, é só finalizar:\n${link.link_url}\n\nSe não for mais o momento, sem problema — é só me avisar! 🐺`,
+        D1: `Oi${first ? ", " + first : ""}! Vi que você ainda não finalizou sua matrícula. Qualquer dúvida sobre o plano é só me chamar — o link continua valendo aqui:\n${link.link_url}`,
+        D3: `Oi${first ? ", " + first : ""}! Passando só pra lembrar da sua matrícula na ${t.identity.brandName} 😊 Não deixa sua vaga esfriar — finaliza quando puder:\n${link.link_url}`,
+        D7: `Oi${first ? ", " + first : ""}! Última lembrança por aqui: sua proposta de matrícula ainda está aberta. Se ainda fizer sentido pra você, é só finalizar:\n${link.link_url}\n\nSe não for mais o momento, sem problema — é só me avisar!`,
       };
-      if (await sendWhats(t.instance, phone, msgByStep[step])) result.link_reminders++;
+      if (await sendWhats(t.instanceName, phone, msgByStep[step])) result.link_reminders++;
       else result.failures.push(`link_remind ${link.id}`);
     }
 

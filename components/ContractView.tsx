@@ -3,7 +3,7 @@ import { contractReferenceDate, formatContractPeriod } from '../lib/contractDate
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { AlertCircle, Download, FileText, Loader2, RefreshCw } from 'lucide-react';
-import { ContractDocument, type SchoolInfo } from './ContractDocument';
+import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
 
 // O bucket 'contracts' é PRIVADO (dados pessoais/LGPD). Registros antigos guardam a URL
@@ -47,6 +47,7 @@ const ContractView: React.FC<ContractViewProps> = ({
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const schoolIdentity = getSchoolContractIdentity(school);
 
     // Ref aponta direto para a folha A4 branca (sem zoom wrapper)
     const pdfRef = useRef<HTMLDivElement>(null);
@@ -79,6 +80,10 @@ const ContractView: React.FC<ContractViewProps> = ({
     // Download real (sem dialog de impressão)
     const handleDownloadPdf = async () => {
         if (!pdfRef.current) return;
+        if (!schoolIdentity.isReady) {
+            alert(`Download bloqueado: configure ${schoolIdentity.missingFields.join(', ')} para esta escola.`);
+            return;
+        }
         setDownloading(true);
         try {
             // Import dinâmico para não bloquear o bundle
@@ -199,8 +204,8 @@ const ContractView: React.FC<ContractViewProps> = ({
     // Dependente: CONTRATANTE é o responsável financeiro (guardian); o aluno aparece como dependente.
     const isDependent = !!(profile.guardian_id || profile.guardian_cpf);
     const contractProps = {
-        studentName: (isDependent ? profile.guardian_name : profile.full_name) || 'Aluno Wise Wolf',
-        studentCPF: (isDependent ? profile.guardian_cpf : profile.cpf) || '000.000.000-00',
+        studentName: (isDependent ? profile.guardian_name : profile.full_name) || 'Aluno não informado',
+        studentCPF: (isDependent ? profile.guardian_cpf : profile.cpf) || '',
         dependentName: isDependent ? (profile.full_name || undefined) : undefined,
         studentAddress: `${profile.address || ''}, ${profile.address_number || ''} - ${profile.postal_code || ''}`,
         studentEmail: (isDependent ? profile.guardian_email : profile.email) || profile.email,
@@ -232,7 +237,8 @@ const ContractView: React.FC<ContractViewProps> = ({
                 <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    disabled={downloading}
+                    disabled={downloading || !schoolIdentity.isReady}
+                    title={!schoolIdentity.isReady ? 'Complete a identidade jurídica e a assinatura desta escola.' : undefined}
                         className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#002366] px-4 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-blue-900 disabled:opacity-50 sm:w-auto"
                 >
                     {downloading

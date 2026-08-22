@@ -438,7 +438,7 @@ serve(async (req) => {
     }
 
     const actorId = authorization.callerId;
-    const tenantId = text(profile.tenant_id);
+    const tenantId = authorization.tenantId;
     const audit = async (newValues: Record<string, unknown>) => {
       const { error: auditError } = await authorization.admin.from("audit_logs")
         .insert({

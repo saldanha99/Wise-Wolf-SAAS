@@ -36,19 +36,16 @@ const VendorInviteGenerator: React.FC<Props> = ({ tenantId }) => {
             tenantId,
         };
 
-        // Link assinado: grava a comissão AUTORITATIVA num offer server-side e leva só
-        // o offer_id no URL — o vendedor não consegue editar a própria comissão.
-        // Fallback base64 legado se a RPC falhar, p/ não travar o gerador.
+        // A comissão autoritativa fica na oferta server-side. Nunca criamos um
+        // fallback editável no navegador quando essa gravação falha.
         try {
             const { data: offerId, error } = await supabase.rpc('create_invite_offer', { p_kind: 'VENDOR_INVITE', p_payload: payload });
             if (error || !offerId) throw error || new Error('offer vazio');
             setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${offerId}`);
         } catch (e) {
-            console.error('create_invite_offer falhou — usando link legado base64:', e);
-            const json = JSON.stringify({ ...payload, exp: Date.now() + 7 * 24 * 60 * 60 * 1000, iat: Date.now() });
-            const base64Payload = btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
-                (_match, p1) => String.fromCharCode(parseInt(p1, 16))));
-            setGeneratedLink(`${APP_BASE_URL}/vendor-onboarding?offer=${base64Payload}`);
+            console.error('Não foi possível criar o convite seguro:', e);
+            setGeneratedLink('');
+            alert('Não foi possível gerar um convite seguro. Tente novamente.');
         }
         setCopied(false);
     };

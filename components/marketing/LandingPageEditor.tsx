@@ -171,11 +171,14 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                 show_faq: config.show_faq
             };
 
-            const { error } = await supabase
-                .from('landing_page_configs')
-                .upsert(config.id ? { id: config.id, ...payload } : payload)
-                .select()
-                .single();
+            const { error } = config.id
+                ? await supabase
+                    .from('landing_page_configs')
+                    .update(payload)
+                    .eq('id', config.id)
+                : await supabase
+                    .from('landing_page_configs')
+                    .insert(payload);
 
             if (error) throw error;
             if (!silent) {

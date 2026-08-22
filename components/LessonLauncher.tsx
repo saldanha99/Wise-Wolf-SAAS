@@ -86,27 +86,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .from('profiles').select('meeting_link').eq('id', user.id).maybeSingle();
       const teacherMeetLink: string | null = tProf?.meeting_link || null;
 
-      // FIX: appointments.teacher_id é null — o vínculo com o professor está em
-      // opportunities.winner_teacher_id. Buscar os IDs de appointments via opportunities.
-      // Também corrigi: appointments usa start_time (timestamp), não date/time.
-      const { data: teacherOpps } = await supabase
-        .from('opportunities')
-        .select('trial_appointment_id')
-        .eq('winner_teacher_id', user.id)
+      const { data: trialAppts } = await supabase
+        .from('appointments')
+        .select('id, start_time, student_name, student_phone, type, status')
         .eq('tenant_id', effectiveTenantId)
-        .not('trial_appointment_id', 'is', null);
-
-      const trialApptIds = teacherOpps?.map((o: any) => o.trial_appointment_id).filter(Boolean) || [];
-
-      let allTrialAppointments: any[] = [];
-      if (trialApptIds.length > 0) {
-        const { data: trialAppts } = await supabase
-          .from('appointments')
-          .select('id, start_time, student_name, student_phone, type, status')
-          .in('id', trialApptIds)
-          .in('type', ['experimental', 'training']);
-        allTrialAppointments = trialAppts || [];
-      }
+        .or(`teacher_id.eq.${user.id},professor_id.eq.${user.id}`)
+        .in('type', ['experimental', 'training']);
+      const allTrialAppointments = trialAppts || [];
 
       // BUSCAS EM LOTE (1x cada) — antes eram N consultas por dia; com 45 dias isso
       // ficaria lento. Buscamos tudo da janela e filtramos em memória por dia.

@@ -27,7 +27,7 @@ const SaasTenantManager: React.FC = () => {
             // Fetch tenants
             const { data, error } = await supabase
                 .from('tenants')
-                .select('*')
+                .select('id,name,slug,plan_id,saas_status,created_at,owner_email')
                 .order('created_at', { ascending: false });
 
             if (error) throw error;

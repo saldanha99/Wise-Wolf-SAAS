@@ -1,131 +1,154 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/// <reference lib="deno.ns" />
+
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import {
+  type ClaimedInvite,
+  claimInvite,
+  finalizeInvite,
+  InviteRegistrationError,
+  releaseInviteClaim,
+} from "../_shared/invite-registration.ts";
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const JSON_HEADERS = { ...corsHeaders, "Content-Type": "application/json" };
+
+class InputError extends Error {}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-/**
- * Register Vendor (SALESPERSON role)
- * - Decodifica payload assinado/base64 do link de convite
- * - Valida tenantId, commissionRate, exp
- * - Cria auth user + profile com role=SALESPERSON
- * - Captura IP server-side para auditoria
- */
-serve(async (req) => {
-    if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+function requiredString(
+  value: unknown,
+  field: string,
+  minLength: number,
+  maxLength: number,
+): string {
+  if (typeof value !== "string") throw new InputError(field);
+  const normalized = value.trim();
+  if (normalized.length < minLength || normalized.length > maxLength) {
+    throw new InputError(field);
+  }
+  return normalized;
+}
 
-    try {
-        const supabaseAdmin = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
+function normalizedEmail(value: unknown): string {
+  const email = requiredString(value, "email", 5, 254).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError("email");
+  return email;
+}
 
-        const { email, password, name, phone, offerPayload } = await req.json();
+async function handleRequest(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return json({ error: "Metodo nao permitido." }, 405);
+  }
 
-        if (!email || !password || !name || !offerPayload) {
-            return new Response(JSON.stringify({ error: 'Dados incompletos.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ||
+    "";
+  if (!supabaseUrl || !serviceRoleKey) {
+    return json({ error: "Cadastro temporariamente indisponivel." }, 503);
+  }
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  let invite: ClaimedInvite | null = null;
+  let userId: string | null = null;
+  let finalized = false;
 
-        // Decode + validate offer.
-        // Caminho seguro: offerPayload é um UUID (offer_id) → commissionRate AUTORITATIVO
-        // vem do banco (offers), não do cliente. Caminho legado: base64 (links antigos).
-        let offerData: any = null;
-        let offerRowId: string | null = null;
-        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (typeof offerPayload === 'string' && UUID_RE.test(offerPayload.trim())) {
-            const { data: offerRow } = await supabaseAdmin
-                .from('offers')
-                .select('id, payload, kind, consumed_at, revoked_at, expires_at')
-                .eq('id', offerPayload.trim())
-                .maybeSingle();
-            if (!offerRow || offerRow.kind !== 'VENDOR_INVITE') {
-                return new Response(JSON.stringify({ error: 'Convite inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-            }
-            if (offerRow.consumed_at || offerRow.revoked_at || (offerRow.expires_at && new Date(offerRow.expires_at) < new Date())) {
-                return new Response(JSON.stringify({ error: 'Convite expirado ou já utilizado.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-            }
-            offerData = offerRow.payload;
-            offerRowId = offerRow.id;
-        } else {
-            try {
-                const jsonStr = decodeURIComponent(escape(atob(offerPayload)));
-                offerData = JSON.parse(jsonStr);
-            } catch (e) {
-                return new Response(JSON.stringify({ error: 'Convite inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-            }
-            if (offerData.exp && Date.now() > offerData.exp) {
-                return new Response(JSON.stringify({ error: 'Link de convite expirou.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-            }
-        }
-
-        if (!offerData || !offerData.tenantId || !offerData.commissionRate) {
-            return new Response(JSON.stringify({ error: 'Payload inválido.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        // IP server-side
-        const trustedIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-            || req.headers.get('cf-connecting-ip')
-            || 'unknown';
-        const trustedAcceptedAt = new Date().toISOString();
-
-        // Create auth user
-        const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    full_name: name,
-                    role: 'SALESPERSON',
-                    tenant_id: offerData.tenantId,
-                }
-            }
-        });
-
-        if (authError) {
-            return new Response(JSON.stringify({ error: authError.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-        if (!authData.user) {
-            return new Response(JSON.stringify({ error: 'Falha ao criar usuário.' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        const userId = authData.user.id;
-
-        // Create profile
-        const { error: profileError } = await supabaseAdmin
-            .from('profiles')
-            .upsert({
-                id: userId,
-                email,
-                full_name: name,
-                role: 'SALESPERSON',
-                tenant_id: offerData.tenantId,
-                phone: phone || null,
-                commission_rate: offerData.commissionRate, // em centavos
-                status: 'Ativo',
-                avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                user_ip: trustedIp,
-                accepted_at: trustedAcceptedAt,
-                contract_accepted: true,
-            });
-
-        if (profileError) {
-            return new Response(JSON.stringify({ error: profileError.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-        }
-
-        // Convite de uso único: marca o offer como consumido após sucesso.
-        if (offerRowId) {
-            await supabaseAdmin.from('offers').update({ consumed_at: new Date().toISOString() }).eq('id', offerRowId);
-        }
-
-        return new Response(JSON.stringify({
-            success: true,
-            userId,
-            role: 'SALESPERSON',
-        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    } catch (error: any) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  try {
+    const declaredLength = Number(req.headers.get("content-length") || "0");
+    if (Number.isFinite(declaredLength) && declaredLength > 32_768) {
+      throw new InputError("payload");
     }
-});
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > 32_768) {
+      throw new InputError("payload");
+    }
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(raw || "{}") as Record<string, unknown>;
+    } catch {
+      throw new InputError("payload");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new InputError("payload");
+    }
+
+    const email = normalizedEmail(body.email);
+    const password = requiredString(body.password, "password", 8, 128);
+    const name = requiredString(body.name, "name", 2, 120);
+    const rawPhone =
+      body.phone === undefined || body.phone === null || body.phone === ""
+        ? ""
+        : requiredString(body.phone, "phone", 8, 24).replace(/\D/g, "");
+    if (rawPhone && (rawPhone.length < 10 || rawPhone.length > 15)) {
+      throw new InputError("phone");
+    }
+
+    invite = await claimInvite(admin, body.offerPayload, "VENDOR_INVITE");
+    const commissionRate = Number(invite.data.commissionRate);
+    const { data: authData, error: authError } = await admin.auth.admin
+      .createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: name },
+      });
+    if (authError || !authData.user) {
+      throw new Error("auth_user_creation_failed");
+    }
+    userId = authData.user.id;
+
+    const trustedIp = req.headers.get("cf-connecting-ip")?.trim() ||
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: userId,
+      email,
+      full_name: name,
+      role: "SALESPERSON",
+      tenant_id: invite.tenantId,
+      phone: rawPhone || null,
+      commission_rate: commissionRate,
+      status: "Ativo",
+      avatar_url: null,
+      user_ip: trustedIp,
+      accepted_at: new Date().toISOString(),
+      contract_accepted: true,
+    });
+    if (profileError) throw new Error("profile_creation_failed");
+
+    await finalizeInvite(admin, invite, userId);
+    finalized = true;
+    return json({ success: true, userId, role: "SALESPERSON" });
+  } catch (error) {
+    if (!finalized) {
+      if (userId) await admin.auth.admin.deleteUser(userId);
+      await releaseInviteClaim(admin, invite);
+    }
+    if (error instanceof InputError) {
+      return json({ error: "Revise os dados obrigatorios do cadastro." }, 400);
+    }
+    if (error instanceof InviteRegistrationError) {
+      return json(
+        { error: "Convite invalido, expirado ou em processamento." },
+        400,
+      );
+    }
+    console.error("Vendor registration failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return json({ error: "Nao foi possivel concluir o cadastro." }, 500);
+  }
+}
+
+if (import.meta.main) serve(handleRequest);

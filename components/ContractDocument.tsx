@@ -1,21 +1,42 @@
 import React, { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { ShieldCheck, Building2, Printer } from 'lucide-react';
+import { SUPABASE_URL } from '../lib/supabase-config';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Informações da escola (contratada). Todos os campos têm padrão Wise Wolf. */
+/** Informações jurídicas da escola contratada, sempre fornecidas pelo tenant. */
 export interface SchoolInfo {
-    name?: string;          // Ex: "WISE WOLF LANGUAGE"
-    cnpj?: string;          // Ex: "55.806.029/0001-57"
-    address?: string;       // Ex: "Rua Um, 256 - Recanto do Céu - Santa Isabel/SP"
+    name?: string;
+    legalName?: string;
+    cnpj?: string;
+    address?: string;
     email?: string;
     phone?: string;
-    city?: string;          // Para rodapé do contrato ("Santa Isabel")
-    state?: string;         // "SP"
-    directorName?: string;  // Opcional para identificação
+    city?: string;
+    state?: string;
+    directorName?: string;
+    legalRepresentativeName?: string;
+    legalRepresentativeSignaturePath?: string;
+    directorSignatureUrl?: string;
+    legalRepresentativeSignatureUrl?: string;
+    signatureUrl?: string;
+}
+
+export interface SchoolContractIdentity {
+    name: string;
+    cnpj: string;
+    address: string;
+    email: string;
+    phone: string;
+    city: string;
+    state: string;
+    directorName: string;
+    signatureUrl: string | null;
+    isReady: boolean;
+    missingFields: string[];
 }
 
 /** Informações do plano/serviço contratado. */
@@ -82,18 +103,108 @@ interface ContractDocumentProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DEFAULTS — placeholders neutros (cada tenant preenche os seus dados)
+// PLACEHOLDERS — nunca herdam identidade, PII ou assinatura da plataforma
 // ─────────────────────────────────────────────────────────────────────────────
-const WISE_WOLF_DEFAULTS: Required<SchoolInfo> = {
-    name:         'WISE WOLF LANGUAGE',
-    cnpj:         '[ Configure o CNPJ em Configurações → Dados da Escola ]',
-    address:      '[ Configure o endereço em Configurações → Dados da Escola ]',
-    email:        '[ Configure o e-mail em Configurações → Dados da Escola ]',
-    phone:        '[ Configure o telefone em Configurações → Dados da Escola ]',
-    city:         '[ Cidade ]',
-    state:        'UF',
-    directorName: '[ Configure o responsável em Configurações → Dados da Escola ]',
+const SCHOOL_PLACEHOLDERS = {
+    name: '[ NOME JURÍDICO DA ESCOLA NÃO CONFIGURADO ]',
+    cnpj: '[ CNPJ NÃO CONFIGURADO ]',
+    address: '[ ENDEREÇO JURÍDICO NÃO CONFIGURADO ]',
+    email: '[ E-MAIL INSTITUCIONAL NÃO CONFIGURADO ]',
+    phone: '[ TELEFONE INSTITUCIONAL NÃO CONFIGURADO ]',
+    city: '[ CIDADE NÃO CONFIGURADA ]',
+    state: '[ UF ]',
+    directorName: '[ RESPONSÁVEL LEGAL NÃO CONFIGURADO ]',
 };
+
+const readSchoolValue = (school: SchoolInfo | null | undefined, keys: (keyof SchoolInfo)[]) => {
+    for (const key of keys) {
+        const value = school?.[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return '';
+};
+
+const normalizeTenantSignatureUrl = (value: string) => {
+    if (!value) return null;
+    try {
+        const parsed = new URL(value);
+        const isLocalDevelopment = parsed.protocol === 'http:'
+            && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+        const trustedStorageOrigin = new URL(SUPABASE_URL).origin;
+        const isSignedPrivateAsset = parsed.origin === trustedStorageOrigin
+            && parsed.pathname.includes('/storage/v1/object/sign/tenant-legal-assets/')
+            && /\/legal-representative-signature\/[0-9a-f-]{36}\.(?:png|jpe?g|webp)$/i.test(parsed.pathname)
+            && Boolean(parsed.searchParams.get('token'));
+        return (parsed.protocol === 'https:' || isLocalDevelopment)
+            && !parsed.username
+            && !parsed.password
+            && !parsed.hash
+            && isSignedPrivateAsset
+            ? parsed.toString()
+            : null;
+    } catch {
+        return null;
+    }
+};
+
+const isValidCnpj = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+
+    const calculateDigit = (base: string, weights: number[]) => {
+        const sum = base.split('').reduce((total, digit, index) => total + Number(digit) * weights[index], 0);
+        const remainder = sum % 11;
+        return remainder < 2 ? 0 : 11 - remainder;
+    };
+
+    const firstDigit = calculateDigit(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const secondDigit = calculateDigit(`${digits.slice(0, 12)}${firstDigit}`, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return digits.endsWith(`${firstDigit}${secondDigit}`);
+};
+
+export function getSchoolContractIdentity(school?: SchoolInfo | null): SchoolContractIdentity {
+    const configured = {
+        name: readSchoolValue(school, ['legalName', 'name']),
+        cnpj: readSchoolValue(school, ['cnpj']),
+        address: readSchoolValue(school, ['address']),
+        email: readSchoolValue(school, ['email']),
+        phone: readSchoolValue(school, ['phone']),
+        city: readSchoolValue(school, ['city']),
+        state: readSchoolValue(school, ['state']).toUpperCase(),
+        directorName: readSchoolValue(school, ['legalRepresentativeName', 'directorName']),
+    };
+    const rawSignatureUrl = readSchoolValue(school, [
+        'legalRepresentativeSignatureUrl',
+        'directorSignatureUrl',
+        'signatureUrl',
+    ]);
+    const signatureUrl = normalizeTenantSignatureUrl(rawSignatureUrl);
+    const missingFields = [
+        !configured.name && 'nome/razão social',
+        !isValidCnpj(configured.cnpj) && 'CNPJ válido',
+        !configured.address && 'endereço jurídico',
+        !configured.email && 'e-mail institucional',
+        !configured.phone && 'telefone institucional',
+        !configured.city && 'cidade',
+        !/^[A-Z]{2}$/.test(configured.state) && 'UF',
+        !configured.directorName && 'responsável legal',
+        !signatureUrl && 'assinatura privada válida do responsável legal',
+    ].filter((field): field is string => Boolean(field));
+
+    return {
+        name: configured.name || SCHOOL_PLACEHOLDERS.name,
+        cnpj: configured.cnpj || SCHOOL_PLACEHOLDERS.cnpj,
+        address: configured.address || SCHOOL_PLACEHOLDERS.address,
+        email: configured.email || SCHOOL_PLACEHOLDERS.email,
+        phone: configured.phone || SCHOOL_PLACEHOLDERS.phone,
+        city: configured.city || SCHOOL_PLACEHOLDERS.city,
+        state: configured.state.length === 2 ? configured.state : SCHOOL_PLACEHOLDERS.state,
+        directorName: configured.directorName || SCHOOL_PLACEHOLDERS.directorName,
+        signatureUrl,
+        isReady: missingFields.length === 0,
+        missingFields,
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -130,13 +241,7 @@ export function ContractDocument({
     // Usa innerRef externo se fornecido, senão usa o interno
     const a4Ref = (innerRef || componentRef) as React.RefObject<HTMLDivElement>;
 
-    // Mescla dados da escola com os defaults da Wise Wolf
-    const s: Required<SchoolInfo> = {
-        ...WISE_WOLF_DEFAULTS,
-        ...Object.fromEntries(
-            Object.entries(school || {}).filter(([, v]) => v !== undefined && v !== '')
-        ),
-    };
+    const s = getSchoolContractIdentity(school);
     const isOneTime = planDuration === 0;
 
     const handlePrint = useReactToPrint({
@@ -150,8 +255,11 @@ export function ContractDocument({
         day: 'numeric', month: 'long', year: 'numeric'
     });
 
-    const isUsingDefaultTemplate = !school || Object.keys(school).length === 0;
     const isResponsive = displayMode === 'responsive';
+    const handleSafePrint = () => {
+        if (!s.isReady) return;
+        handlePrint();
+    };
 
     return (
         <div className={`contract-doc-outer flex w-full flex-col items-center gap-4 ${isResponsive ? 'bg-transparent p-0' : 'bg-gray-100 p-4'}`}>
@@ -159,15 +267,18 @@ export function ContractDocument({
             {/* Barra de ações — oculta na impressão */}
             {showPrintButton && (
                 <div className="w-full max-w-[210mm] flex items-center justify-between gap-3 flex-wrap contract-no-print">
-                    {isUsingDefaultTemplate && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex-1 min-w-0">
+                    {!s.isReady && (
+                        <div role="alert" className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex-1 min-w-0">
                             <Building2 size={12} className="shrink-0" />
-                            <span className="truncate">Template padrão Wise Wolf Language — personalize em <strong>Configurações → Contrato</strong></span>
+                            <span>Rascunho sem validade para assinatura: configure {s.missingFields.join(', ')} nas configurações da escola.</span>
                         </div>
                     )}
                     <button
-                        onClick={handlePrint}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition-colors shrink-0"
+                        type="button"
+                        onClick={handleSafePrint}
+                        disabled={!s.isReady}
+                        title={!s.isReady ? 'Complete a identidade jurídica e a assinatura da escola antes de imprimir.' : undefined}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <Printer size={14} /> Imprimir
                     </button>
@@ -227,6 +338,12 @@ export function ContractDocument({
                         }
                     }
                 `}</style>
+
+                {!s.isReady && (
+                    <div className="mb-5 border-2 border-amber-400 bg-amber-50 p-3 text-center text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                        Rascunho bloqueado — identidade jurídica ou assinatura da escola incompleta
+                    </div>
+                )}
 
                 {/* ── CABEÇALHO ── */}
                 <div className="contract-document-header flex justify-between items-start mb-6 pb-4 border-b-2 border-[#002366]">
@@ -447,24 +564,31 @@ export function ContractDocument({
 
                     <div className="contract-signatures flex justify-between gap-12 mt-8 min-h-[110px]">
 
-                        {/* Assinatura da escola */}
+                        {/* Assinatura da escola — sempre específica do tenant */}
                         <div className="flex-1 flex flex-col items-center justify-end">
                             <div className="mb-2 h-16 flex items-end justify-center w-full">
-                                <img
-                                    src="/director-signature.png"
-                                    alt="Assinatura"
-                                    className="h-14 object-contain opacity-90"
-                                    onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
-                                />
+                                {s.signatureUrl ? (
+                                    <img
+                                        src={s.signatureUrl}
+                                        alt={`Assinatura de ${s.directorName}`}
+                                        className="h-14 object-contain opacity-90"
+                                        crossOrigin="anonymous"
+                                    />
+                                ) : (
+                                    <span className="text-center text-[9px] font-bold text-amber-700">
+                                        Assinatura da contratada não configurada
+                                    </span>
+                                )}
                             </div>
                             <div className="border-t border-gray-800 pt-2 w-full text-center">
-                                <p className="font-bold text-[#002366] text-[10px] uppercase">{s.name}</p>
+                                <p className="font-bold text-[#002366] text-[10px] uppercase">{s.directorName}</p>
+                                <p className="text-[9px] text-gray-600">Representante legal de {s.name}</p>
                                 <p className="text-[9px] text-gray-500">CNPJ: {s.cnpj}</p>
-                                <div className="flex items-center justify-center gap-1 text-[8px] text-emerald-700 font-bold mt-1 bg-emerald-50 py-0.5 rounded-full w-fit mx-auto px-2 border border-emerald-200">
-                                    <ShieldCheck size={8} /> Assinado Digitalmente
-                                </div>
+                                {s.signatureUrl && (
+                                    <div className="flex items-center justify-center gap-1 text-[8px] text-emerald-700 font-bold mt-1 bg-emerald-50 py-0.5 rounded-full w-fit mx-auto px-2 border border-emerald-200">
+                                        <ShieldCheck size={8} /> Assinatura cadastrada pelo tenant
+                                    </div>
+                                )}
                             </div>
                         </div>
 

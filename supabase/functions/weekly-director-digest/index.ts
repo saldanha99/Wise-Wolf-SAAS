@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import {
+  authorizeScopedAutomation,
+  scopeAutomationRows,
+} from "../_shared/automation-auth.ts";
+import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
 
 // Cron semanal (segunda de manhã): resumo de métricas da semana para o diretor de cada escola.
 // Enviado pela instância central da escola para o telefone do SCHOOL_ADMIN.
@@ -8,64 +11,114 @@ import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
-const EVOLUTION_API_BASE = "https://api.2b.app.br/message/sendText";
+const EVOLUTION_API_BASE = `${
+  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
+    .replace(/\/+$/, "")
+}/message/sendText`;
 const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
-function normPhone(raw: string): string {
-  let p = (raw || "").replace(/\D/g, "");
-  if (p.length === 10 || p.length === 11) p = "55" + p;
-  return p;
+interface WeeklyDigestRow {
+  tenant_id: string;
+  active_students?: number;
+  classes_week?: number;
+  received_week?: number;
+  overdue_count?: number;
+  overdue_amount?: number;
 }
+
 const money = (v: any) => `R$ ${Number(v || 0).toFixed(2).replace(".", ",")}`;
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  const authError = await authorizeAutomation(req, corsHeaders, { allowAdmin: true });
-  if (authError) return authError;
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  const auth = await authorizeScopedAutomation(req, corsHeaders, {
+    allowAdmin: true,
+  });
+  if (auth.ok === false) return auth.response;
   try {
-    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    if (!API_TOKEN) {
+      return new Response(JSON.stringify({ error: "provider_unavailable" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const supabase = auth.context.admin;
+    const tenantId = auth.context.tenantId;
     const today = new Date().toISOString().split("T")[0];
 
-    const { data: rows } = await supabase.rpc("weekly_digest_rows");
+    const { data: rows, error: rowsError } = await supabase.rpc(
+      "weekly_digest_rows",
+    );
+    if (rowsError) throw rowsError;
     const result = { sent: 0, skipped: 0, failures: [] as string[] };
 
-    for (const r of (rows || [])) {
-      const phone = normPhone(r.director_phone || "");
-      if (phone.length < 12) { result.skipped++; continue; }
-
+    for (const r of scopeAutomationRows<WeeklyDigestRow>(rows, tenantId)) {
       // dedupe
       const { data: dup } = await supabase.from("automation_sent").select("id")
-        .eq("kind", "WEEKLY_DIGEST").eq("subject_id", r.tenant_id).eq("ref_date", today).maybeSingle();
-      if (dup) { result.skipped++; continue; }
+        .eq("kind", "WEEKLY_DIGEST").eq("subject_id", r.tenant_id).eq(
+          "ref_date",
+          today,
+        ).maybeSingle();
+      if (dup) {
+        result.skipped++;
+        continue;
+      }
 
-      // instância central da escola
-      const { data: adm } = await supabase.from("profiles").select("whatsapp_instance")
-        .eq("tenant_id", r.tenant_id).in("role", ["SCHOOL_ADMIN", "SUPER_ADMIN"])
-        .not("whatsapp_instance", "is", null).neq("whatsapp_instance", "").limit(1).maybeSingle();
-      const instance = adm?.whatsapp_instance;
-      if (!instance) { result.failures.push(`${r.tenant_id}: sem WhatsApp central`); continue; }
+      const route = await loadTenantWhatsAppRoute(
+        supabase,
+        r.tenant_id,
+        "general",
+      );
+      if (!route?.ownerPhone) {
+        result.failures.push(`${r.tenant_id}: canal da direção indisponível`);
+        continue;
+      }
 
-      const text = `📊 *Resumo da semana — ${r.school}*\n\n` +
+      const text = `📊 *Resumo da semana — ${route.identity.brandName}*\n\n` +
         `👥 Alunos ativos: *${r.active_students}*\n` +
         `📚 Aulas (últimos 7 dias): *${r.classes_week}*\n` +
         `💰 Recebido na semana: *${money(r.received_week)}*\n` +
-        `⚠️ Inadimplência: *${r.overdue_count}* ${r.overdue_count === 1 ? "cobrança" : "cobranças"} (${money(r.overdue_amount)})\n\n` +
-        `Tenha uma ótima semana! 🐺💜`;
+        `⚠️ Inadimplência: *${r.overdue_count}* ${
+          r.overdue_count === 1 ? "cobrança" : "cobranças"
+        } (${money(r.overdue_amount)})\n\n` +
+        `Tenha uma ótima semana!`;
 
-      const resp = await fetch(`${EVOLUTION_API_BASE}/${instance}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: API_TOKEN },
-        body: JSON.stringify({ number: phone, text, delay: 800, linkPreview: false }),
+      const resp = await fetch(
+        `${EVOLUTION_API_BASE}/${encodeURIComponent(route.instanceName)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: API_TOKEN },
+          body: JSON.stringify({
+            number: route.ownerPhone,
+            text,
+            delay: 800,
+            linkPreview: false,
+          }),
+        },
+      );
+      if (!resp.ok) {
+        result.failures.push(`${r.tenant_id}: evolution ${resp.status}`);
+        continue;
+      }
+      await supabase.from("automation_sent").insert({
+        kind: "WEEKLY_DIGEST",
+        subject_id: r.tenant_id,
+        ref_date: today,
       });
-      if (!resp.ok) { result.failures.push(`${r.tenant_id}: evolution ${resp.status}`); continue; }
-      await supabase.from("automation_sent").insert({ kind: "WEEKLY_DIGEST", subject_id: r.tenant_id, ref_date: today });
       result.sent++;
     }
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

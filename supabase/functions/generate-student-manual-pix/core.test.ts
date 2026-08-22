@@ -71,10 +71,12 @@ Deno.test("mensagem contém valor, vencimento e código sem link genérico", () 
     value: 169,
     dueDate: "2026-09-10",
     pixPayload: "000201PIX-COPIA-E-COLA",
+    brandName: "Escola Aurora",
   });
   assertMatch(message, /Olá, Ednalva!/);
   assertMatch(message, /R\$\s*169,00/);
   assertMatch(message, /10\/09\/2026/);
   assertMatch(message, /000201PIX-COPIA-E-COLA/);
+  assertMatch(message, /mensalidade Escola Aurora/);
   assertMatch(message, /vinculada ao seu cadastro/);
 });

@@ -14,7 +14,8 @@ import {
  * `ai-costs` não tinha seção nenhuma. Não era só sensação de bagunça — era isso.
  *
  * Aqui cada entrada do menu é um GRUPO com abas. Duas garantias:
- *   1. Nenhuma tela foi apagada — as 39 continuam acessíveis, agora como aba.
+ *   1. As telas operacionais continuam acessíveis; a configuração avançada
+ *      duplicada foi incorporada à Central da Escola.
  *   2. Nenhum link direto quebra. `DirectorPendingCenter`, os "Ver todos" e a
  *      allowlist de abas navegam por id; o id continua valendo e agora abre a
  *      tela já com o grupo certo em volta.
@@ -146,12 +147,11 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     id: 'settings_school', label: 'Configurações', icon: Settings, section: 'Configurações',
     tabs: [
-      { id: 'settings_school', label: 'Branding' },
+      { id: 'settings_school', label: 'Central da escola' },
       { id: 'contracts', label: 'Contratos' },
       { id: 'automation', label: 'WhatsApp (conexão)' },
       { id: 'automations', label: 'Disparos' },
       { id: 'admin_workflows', label: 'Workflows' },
-      { id: 'tenant_advanced', label: 'Avançada' },
     ],
   },
 ];

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, Clock, User, Phone, Search, X, Check, Beaker } from 'lucide-react';
+import { X, Check, Beaker, Copy, ExternalLink } from 'lucide-react';
 
 interface ManualTrialSchedulerProps {
     tenantId: string;
@@ -9,7 +9,7 @@ interface ManualTrialSchedulerProps {
     onSuccess?: () => void;
 }
 
-const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, teachers, onClose, onSuccess }) => {
+const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ teachers, onClose, onSuccess }) => {
     const [leadName, setLeadName] = useState('');
     const [leadPhone, setLeadPhone] = useState('');
     const [selectedTeacher, setSelectedTeacher] = useState('');
@@ -17,6 +17,9 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
     const [time, setTime] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [confirmationUrl, setConfirmationUrl] = useState('');
+    const [copied, setCopied] = useState(false);
+    const [requestId] = useState(() => crypto.randomUUID());
 
     const timeSlots = [
         '07:00', '07:30', '08:00', '08:30', '09:00', '09:30',
@@ -36,47 +39,54 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
         setError('');
 
         try {
-            // 1. Create an opportunity entry for tracking
-            const { data: opportunity, error: oppError } = await supabase
-                .from('opportunities')
-                .insert({
-                    tenant_id: tenantId,
-                    student_name: leadName,
-                    student_phone: leadPhone,
-                    winner_teacher_id: selectedTeacher,
-                    status: 'CLAIMED',
-                    slots_proposed: [],
-                })
-                .select()
-                .single();
+            const startsAt = new Date(`${date}T${time}:00-03:00`);
+            if (Number.isNaN(startsAt.getTime())) {
+                throw new Error('Data ou horário inválido.');
+            }
+            const { data, error: scheduleError } = await supabase.rpc(
+                'schedule_manual_trial_secure',
+                {
+                    p_payload: {
+                        requestId,
+                        teacherId: selectedTeacher,
+                        studentName: leadName.trim(),
+                        studentPhone: leadPhone.replace(/\D/g, '') || null,
+                        startsAt: startsAt.toISOString(),
+                    },
+                }
+            );
 
-            if (oppError) throw oppError;
+            if (scheduleError || data?.ok !== true) {
+                const code = data?.error;
+                const message = code === 'teacher_schedule_conflict'
+                    ? 'O professor já tem outro compromisso nesse horário.'
+                    : code === 'teacher_not_active_for_tenant'
+                        ? 'O professor não está ativo nesta escola.'
+                        : code === 'tenant_not_operational'
+                            ? 'A escola não está disponível para novas solicitações.'
+                            : scheduleError?.message || 'Erro ao solicitar aula experimental';
+                throw new Error(message);
+            }
+            if (typeof data.teacherConfirmationUrl !== 'string' || !data.teacherConfirmationUrl) {
+                throw new Error('A solicitação foi criada, mas o link seguro do professor não foi retornado.');
+            }
 
-            // 2. Create appointment entry (so it appears in teacher's schedule)
-            const { error: apptError } = await supabase
-                .from('appointments')
-                .insert({
-                    tenant_id: tenantId,
-                    teacher_id: selectedTeacher,
-                    opportunity_id: opportunity.id,
-                    date,
-                    time,
-                    type: 'experimental',
-                    student_name: leadName,
-                    student_phone: leadPhone,
-                    status: 'SCHEDULED'
-                });
-
-            if (apptError) throw apptError;
-
-            alert('✅ Aula experimental agendada com sucesso!');
+            setConfirmationUrl(data.teacherConfirmationUrl);
             onSuccess?.();
-            onClose();
         } catch (err: any) {
             console.error('Error scheduling trial:', err);
-            setError(err.message || 'Erro ao agendar aula experimental');
+            setError(err.message || 'Erro ao solicitar aula experimental');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const copyConfirmationUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(confirmationUrl);
+            setCopied(true);
+        } catch {
+            setError('Não foi possível copiar automaticamente. Selecione o link abaixo.');
         }
     };
 
@@ -95,8 +105,8 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                         <Beaker size={20} className="text-purple-600" />
                     </div>
                     <div>
-                        <h3 className="text-xl font-black text-brand-text">Agendar Experimental</h3>
-                        <p className="text-xs text-brand-muted">Agendar aula experimental manual para qualquer professor</p>
+                        <h3 className="text-xl font-black text-brand-text">Solicitar Experimental</h3>
+                        <p className="text-xs text-brand-muted">A aula só será agendada após o aceite do professor</p>
                     </div>
                 </div>
 
@@ -106,6 +116,45 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                     </div>
                 )}
 
+                {confirmationUrl ? (
+                    <div className="space-y-4">
+                        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+                            <p className="font-black">Solicitação criada — nenhuma aula foi agendada ainda.</p>
+                            <p className="mt-1">Envie este link somente ao professor selecionado. O horário será confirmado quando ele aceitar.</p>
+                        </div>
+                        <input
+                            readOnly
+                            value={confirmationUrl}
+                            onFocus={(event) => event.currentTarget.select()}
+                            className="w-full px-4 py-3 bg-brand-surface-2 rounded-xl text-xs text-brand-text outline-none"
+                            aria-label="Link seguro para aceite do professor"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={copyConfirmationUrl}
+                                className="py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 flex items-center justify-center gap-2"
+                            >
+                                <Copy size={16} /> {copied ? 'Link copiado' : 'Copiar link'}
+                            </button>
+                            <a
+                                href={confirmationUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="py-3 bg-brand-surface-2 text-brand-text font-bold rounded-xl flex items-center justify-center gap-2"
+                            >
+                                <ExternalLink size={16} /> Abrir link
+                            </a>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="w-full py-3 text-brand-muted font-bold"
+                        >
+                            Fechar
+                        </button>
+                    </div>
+                ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {/* Lead Name */}
                     <div>
@@ -192,12 +241,13 @@ const ManualTrialScheduler: React.FC<ManualTrialSchedulerProps> = ({ tenantId, t
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    <Check size={16} /> Agendar
+                                    <Check size={16} /> Enviar solicitação
                                 </>
                             )}
                         </button>
                     </div>
                 </form>
+                )}
             </div>
         </div>
     );

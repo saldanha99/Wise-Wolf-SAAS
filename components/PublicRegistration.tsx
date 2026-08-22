@@ -3,6 +3,7 @@ import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 import { ContractDocument, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
+import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
 import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, Loader2, QrCode, Barcode, CreditCard, ShieldCheck, Download, FileText, ArrowLeft, Eye, EyeOff } from 'lucide-react';
@@ -162,8 +163,10 @@ const PublicRegistration: React.FC = () => {
         // Caminho seguro (novo): o preço/cobrança vem do SERVIDOR (offer), não do URL.
         if (offerId) {
             (async () => {
-                const { data: payload, error: offerErr } = await supabase.rpc('get_offer_public', { p_offer_id: offerId });
-                if (offerErr || !payload || (payload as any).error) {
+                let payload: Record<string, unknown>;
+                try {
+                    payload = await tenantLegalAssetsService.enrollmentOffer(offerId);
+                } catch {
                     setError("Link de matrícula inválido, já utilizado ou expirado. Solicite um novo à escola.");
                     return;
                 }
@@ -721,6 +724,26 @@ const PublicRegistration: React.FC = () => {
         }
     };
 
+    const openContract = async () => {
+        const offerId = contractData?._offerId;
+        if (typeof offerId === 'string') {
+            try {
+                const payload = await tenantLegalAssetsService.enrollmentOffer(offerId);
+                setContractData((current: any) => ({
+                    ...current,
+                    ...payload,
+                    classSchedule: (payload as any).classSchedule || (payload as any).schedule || current?.classSchedule || [],
+                    requiresEnrollment: (payload as any).requiresEnrollment !== false,
+                }));
+                if ((payload as any)._schoolInfo) setSchool((payload as any)._schoolInfo as SchoolInfo);
+            } catch {
+                setError('Não foi possível liberar a assinatura privada do contrato. Solicite um novo link.');
+                return;
+            }
+        }
+        setStep('CONTRACT');
+    };
+
     const handleFormSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!validateForm()) return;
@@ -729,13 +752,13 @@ const PublicRegistration: React.FC = () => {
         if (contractData?.requiresEnrollment) {
             setStep('ENROLLMENT');
         } else {
-            setStep('CONTRACT');
+            void openContract();
         }
     };
 
     const handleEnrollmentSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        setStep('CONTRACT');
+        void openContract();
     };
 
     const handleCheckEnrollmentPayment = async () => {

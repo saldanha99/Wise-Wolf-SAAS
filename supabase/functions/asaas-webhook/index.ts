@@ -18,6 +18,10 @@ import {
   isHubRecoveryEvent,
   providerCancellationIsFinal,
 } from "../_shared/hub-billing-safety.ts";
+import {
+  loadTenantCentralWhatsAppContext,
+  safeCommunicationText,
+} from "../_shared/tenant-communication.ts";
 
 // EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
 declare const EdgeRuntime:
@@ -93,6 +97,43 @@ const EVOLUTION_API_KEYS = Array.from(
     (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
   ].filter(Boolean)),
 );
+const EVOLUTION_API_BASE = `${
+  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
+    .replace(/\/+$/, "")
+}/message/sendText`;
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+
+function normalizeBrazilianPhone(value: unknown): string | null {
+  let phone = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
+  return phone.startsWith("55") && (phone.length === 12 || phone.length === 13)
+    ? phone
+    : null;
+}
+
+async function readWebhookBody(req: Request): Promise<string> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_WEBHOOK_BYTES) {
+      await reader.cancel();
+      throw new Error("PAYLOAD_TOO_LARGE");
+    }
+    chunks.push(value);
+  }
+  const combined = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(combined);
+}
 
 // META CAPI — mede o evento "Purchase" (matrícula paga) server-side. FB_CAPI_TOKEN ainda não
 // configurado → no-op silencioso até o secret existir.
@@ -868,13 +909,10 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
       return;
     }
 
-    console.log(
-      `🔔 WEBHOOK EVENT: ${event} | Payment ID: ${payment.id} | Status: ${payment.status} | Value: ${payment.value}`,
-    );
-    console.log(
-      "Checking Tokens... Asaas Token Configured:",
-      !!ASAAS_ACCESS_TOKEN,
-    );
+    console.log("[Webhook] Payment event received", {
+      event,
+      status: payment.status,
+    });
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
@@ -987,11 +1025,12 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         .from("profiles")
         .select("id")
         .eq("asaas_customer_id", payment.customer)
+        .eq("role", "STUDENT")
         .single();
 
       if (profile) {
         studentId = profile.id;
-        console.log(`✅ Student Identified via Customer ID: ${studentId}`);
+        console.log("[Webhook] Aluno identificado pelo customer canônico.");
       } else {
         console.warn(
           "⚠️ Perfil não encontrado pelo customer; tentando fallback legado.",
@@ -1011,8 +1050,16 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
               const asaasCustomer = await asaasRes.json();
               if (asaasCustomer.email) {
                 // IMPORTANT: 'profiles' must have 'email' column (added via migration)
-                const { data: profileByEmail } = await supabase.from("profiles")
-                  .select("id").eq("email", asaasCustomer.email).single();
+                const { data: profilesByEmail } = await supabase.from(
+                  "profiles",
+                )
+                  .select("id")
+                  .eq("email", String(asaasCustomer.email).trim().toLowerCase())
+                  .eq("role", "STUDENT")
+                  .limit(2);
+                const profileByEmail = profilesByEmail?.length === 1
+                  ? profilesByEmail[0]
+                  : null;
 
                 if (profileByEmail) {
                   studentId = profileByEmail.id;
@@ -1034,7 +1081,11 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
               });
             }
           } catch (errFallback) {
-            console.error("❌ Error in Email Fallback:", errFallback);
+            console.error("[Webhook] Email fallback failed", {
+              type: errFallback instanceof Error
+                ? errFallback.name
+                : "UnknownError",
+            });
           }
         } else {
           console.warn(
@@ -1047,7 +1098,28 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         }
       }
     } else {
-      console.log(`✅ Student Identified via External Ref: ${studentId}`);
+      console.log("[Webhook] Aluno identificado pela referência canônica.");
+    }
+
+    let studentTenantId: string | null = null;
+    if (studentId) {
+      const { data: studentScope, error: studentScopeError } = await supabase
+        .from("profiles")
+        .select("tenant_id,role")
+        .eq("id", studentId)
+        .maybeSingle();
+      if (
+        studentScopeError || studentScope?.role !== "STUDENT" ||
+        typeof studentScope?.tenant_id !== "string" ||
+        !studentScope.tenant_id
+      ) {
+        console.warn(
+          "[Webhook] Referência ignorada: perfil não é aluno de tenant.",
+        );
+        studentId = null;
+      } else {
+        studentTenantId = studentScope.tenant_id;
+      }
     }
 
     // 2. Process Events
@@ -1090,42 +1162,30 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         payment_date: payment.paymentDate || new Date().toISOString(), // Critical for Revenue Calc
         billing_type: payment.billingType,
         invoice_url: payment.bankSlipUrl || payment.invoiceUrl,
-        description: payment.description || "Mensalidade Wise Wolf",
+        description: payment.description || "Mensalidade",
         payment_type: paymentType,
         updated_at: new Date().toISOString(),
       };
 
       // CRITICAL FIX: Only set student_id if it is defined.
       // DO NOT OVERWRITE EXISTING STUDENT_ID WITH NULL.
-      if (studentId) {
+      if (studentId && studentTenantId) {
         paymentData.student_id = studentId;
-
-        // FIX: Fetch tenant_id from profile to link payment to school
-        const { data: profileT } = await supabase
-          .from("profiles")
-          .select("tenant_id")
-          .eq("id", studentId)
-          .single();
-
-        if (profileT && profileT.tenant_id) {
-          paymentData.tenant_id = profileT.tenant_id;
-        } else {
-          // Fallback default
-          paymentData.tenant_id = "school-wise-wolf";
-        }
+        paymentData.tenant_id = studentTenantId;
       }
 
-      const { data: payData, error: payError } = await supabase
+      const { error: payError } = await supabase
         .from("student_payments")
-        .upsert(paymentData, { onConflict: "asaas_payment_id" })
-        .select();
+        .upsert(paymentData, { onConflict: "asaas_payment_id" });
 
       if (payError) {
-        console.error("❌ Error updating student_payments:", payError);
+        console.error("[Webhook] student_payments update failed", {
+          code: payError.code,
+        });
         // Roda em background: apenas registra, não relança (o ASAAS já recebeu 200).
         return;
       } else {
-        console.log("✅ Payment Record Updated:", payData?.[0]?.id);
+        console.log("[Webhook] Payment record updated.");
       }
 
       // B. Update Subscription / Profile Status & Check for Welcome Message
@@ -1134,13 +1194,17 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         const { data: profileData, error: profileFetchErr } = await supabase
           .from("profiles")
           .select(
-            "tenant_id, contract_accepted, welcome_sent_at, phone, full_name, signed_document_url, class_frequency, enrollment_payment_id, is_test_account",
+            "role, tenant_id, contract_accepted, welcome_sent_at, phone, full_name, signed_document_url, class_frequency, enrollment_payment_id, is_test_account",
           )
           .eq("id", studentId)
+          .eq("tenant_id", studentTenantId)
+          .eq("role", "STUDENT")
           .single();
 
         if (profileFetchErr) {
-          console.error("❌ Error fetching Profile data:", profileFetchErr);
+          console.error("[Webhook] Student profile lookup failed", {
+            code: profileFetchErr.code,
+          });
         }
 
         // Update Status to ACTIVE
@@ -1150,7 +1214,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
           .eq("id", studentId);
 
         if (profileError) {
-          console.error("❌ Error updating Profile status:", profileError);
+          console.error("[Webhook] Student financial status update failed", {
+            code: profileError.code,
+          });
         } else console.log("✅ Profile Financial Status set to ACTIVE");
 
         // Uma matrícula em processamento só fecha quando o pagamento
@@ -1203,9 +1269,7 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
                   processingOffer.id,
                   studentId,
                 );
-                console.log(
-                  `✅ Enrollment completed by paid webhook: ${processingOffer.id}`,
-                );
+                console.log("[Webhook] Enrollment completed by paid event.");
               }
             }
           } catch (completionError) {
@@ -1228,7 +1292,7 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         ) {
           if (isAlreadyPaid) {
             console.log(
-              `ℹ️ [Webhook] Payment confirmation WhatsApp skipped (already paid): ${payment.id}`,
+              "[Webhook] Payment confirmation WhatsApp skipped: already paid.",
             );
           } else {
             // Primeira confirmação real deste pagamento — dispara o evento de conversão.
@@ -1238,59 +1302,61 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
               value: Number(payment.value) || undefined,
             });
             try {
-              const studentName = profileData.full_name?.split(" ")[0] ||
-                "Aluno";
-              const studentPhone = profileData.phone;
-              let cleanPhone = studentPhone.replace(/\D/g, "");
-              if (cleanPhone.length === 10 || cleanPhone.length === 11) {
-                cleanPhone = "55" + cleanPhone;
-              }
-
-              const valorFormatado = payment.value
-                ? `R$ ${Number(payment.value).toFixed(2).replace(".", ",")}`
-                : "";
-              const confirmationMessage = `✅ *Pagamento confirmado${
-                valorFormatado ? `, ${valorFormatado}` : ""
-              }!*\nObrigado, ${studentName}. Seu acesso segue ativo. 🐺`;
-
-              console.log(
-                "Enviando confirmação de pagamento pelo canal central...",
-              );
-
-              const { data: centralInst } = await supabase.rpc(
-                "central_instance_for_tenant",
-                { p_tenant: profileData.tenant_id },
-              );
-              const sendInstance = centralInst || "wise-wolf";
-              let evoRes: Response | null = null;
-              for (const key of EVOLUTION_API_KEYS) {
-                evoRes = await fetchComTimeout(
-                  `https://api.2b.app.br/message/sendText/${
-                    encodeURIComponent(sendInstance)
-                  }`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "apikey": key,
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      number: cleanPhone,
-                      text: confirmationMessage,
-                      delay: 1200,
-                      linkPreview: false,
-                    }),
-                  },
+              const communication = profileData.tenant_id
+                ? await loadTenantCentralWhatsAppContext(
+                  supabase,
+                  profileData.tenant_id,
+                  "student",
+                )
+                : null;
+              const cleanPhone = normalizeBrazilianPhone(profileData.phone);
+              if (!communication || !cleanPhone || !EVOLUTION_API_KEYS.length) {
+                console.warn(
+                  "[Webhook] Payment confirmation WhatsApp skipped: tenant channel unavailable.",
                 );
-                if (evoRes.status !== 401) break; // 401 = chave rotacionada → tenta a próxima
-              }
-
-              if (evoRes?.ok) {
-                console.log("✅ Payment Confirmation WhatsApp Sent!");
               } else {
-                console.error("❌ Falha ao enviar confirmação de pagamento:", {
-                  status: evoRes?.status,
-                });
+                const studentName = safeCommunicationText(
+                  profileData.full_name?.split(" ")[0],
+                  80,
+                ) || "Aluno";
+                const valorFormatado = payment.value
+                  ? `R$ ${Number(payment.value).toFixed(2).replace(".", ",")}`
+                  : "";
+                const confirmationMessage = `✅ *Pagamento confirmado${
+                  valorFormatado ? `, ${valorFormatado}` : ""
+                }!*\nObrigado, ${studentName}. Seu acesso na ${communication.identity.brandName} segue ativo.`;
+
+                let evoRes: Response | null = null;
+                for (const key of EVOLUTION_API_KEYS) {
+                  evoRes = await fetchComTimeout(
+                    `${EVOLUTION_API_BASE}/${
+                      encodeURIComponent(communication.instanceName)
+                    }`,
+                    {
+                      method: "POST",
+                      headers: {
+                        "apikey": key,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        number: cleanPhone,
+                        text: confirmationMessage,
+                        delay: 1200,
+                        linkPreview: false,
+                      }),
+                    },
+                  );
+                  if (evoRes.status !== 401) break;
+                }
+
+                if (evoRes?.ok) {
+                  console.log("✅ Payment Confirmation WhatsApp Sent!");
+                } else {
+                  console.error(
+                    "❌ Falha ao enviar confirmação de pagamento:",
+                    { status: evoRes?.status },
+                  );
+                }
               }
             } catch (whatsappErr) {
               console.error(
@@ -1326,7 +1392,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         .eq("asaas_payment_id", payment.id);
 
       if (payError) {
-        console.error("❌ Error updating payment to OVERDUE:", payError);
+        console.error("[Webhook] Overdue payment update failed", {
+          code: payError.code,
+        });
       }
 
       if (studentId) {
@@ -1356,22 +1424,20 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
       };
 
       // CRITICAL FIX: Only set student_id if it is defined.
-      if (studentId) {
+      if (studentId && studentTenantId) {
         paymentData.student_id = studentId;
-
-        // Fetch tenant_id
-        const { data: profileT } = await supabase.from("profiles").select(
-          "tenant_id",
-        ).eq("id", studentId).single();
-        if (profileT?.tenant_id) paymentData.tenant_id = profileT.tenant_id;
-        else paymentData.tenant_id = "school-wise-wolf";
+        paymentData.tenant_id = studentTenantId;
       }
 
       const { error: upsertError } = await supabase
         .from("student_payments")
         .upsert(paymentData, { onConflict: "asaas_payment_id" });
 
-      if (upsertError) console.error("❌ Error generic upsert:", upsertError);
+      if (upsertError) {
+        console.error("[Webhook] Generic payment upsert failed", {
+          code: upsertError.code,
+        });
+      }
     }
   } catch (err: unknown) {
     console.error("❌ CRITICAL WEBHOOK ERROR (background):", {
@@ -1385,27 +1451,15 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-
-  // 1. Validação rápida (corpo + token) — tudo que precisa retornar erro HTTP
-  //    pro ASAAS acontece AQUI, antes do ACK.
-  let body: AsaasWebhookBody;
-  try {
-    const reqText = await req.text();
-    if (!reqText) {
-      return new Response(JSON.stringify({ error: "Empty body" }), {
-        headers: corsHeaders,
-        status: 400,
-      });
-    }
-    body = JSON.parse(reqText) as AsaasWebhookBody;
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
-      headers: corsHeaders,
-      status: 400,
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Allow": "POST" },
     });
   }
 
-  // Validate webhook token (uses dedicated ASAAS_WEBHOOK_TOKEN secret)
+  // 1. Validação rápida (corpo + token) — tudo que precisa retornar erro HTTP
+  //    pro ASAAS acontece AQUI, antes do ACK.
   const requestToken = req.headers.get("asaas-access-token");
   if (!ASAAS_WEBHOOK_TOKEN || requestToken !== ASAAS_WEBHOOK_TOKEN) {
     console.warn("[Webhook] Token ausente ou inválido.");
@@ -1413,6 +1467,30 @@ serve(async (req) => {
       status: 401,
       headers: corsHeaders,
     });
+  }
+
+  let body: AsaasWebhookBody;
+  try {
+    const reqText = await readWebhookBody(req);
+    if (!reqText) {
+      return new Response(JSON.stringify({ error: "Empty body" }), {
+        headers: corsHeaders,
+        status: 400,
+      });
+    }
+    body = JSON.parse(reqText) as AsaasWebhookBody;
+  } catch (error) {
+    const tooLarge = error instanceof Error &&
+      error.message === "PAYLOAD_TOO_LARGE";
+    return new Response(
+      JSON.stringify({
+        error: tooLarge ? "Payload too large" : "Invalid JSON",
+      }),
+      {
+        headers: corsHeaders,
+        status: tooLarge ? 413 : 400,
+      },
+    );
   }
 
   // Top-ups are money-like durable credits. Process them synchronously and
@@ -1482,7 +1560,9 @@ serve(async (req) => {
   } else {
     // Fallback: process in background (non-blocking) to prevent timeouts
     processarPagamento(body).catch((err) =>
-      console.error("❌ Background processing error:", err)
+      console.error("[Webhook] Background processing failed", {
+        type: err instanceof Error ? err.name : "UnknownError",
+      })
     );
   }
 

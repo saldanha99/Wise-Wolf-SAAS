@@ -2,11 +2,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.93.3'
 import { authorizeAutomation } from '../_shared/automation-auth.ts'
+import {
+    loadTenantCentralWhatsAppInstance,
+    loadTenantWhatsAppInstance,
+} from '../_shared/tenant-communication.ts'
 
 // Processa a fila de notificações (lembretes de aula, avisos) e envia via WhatsApp.
 //
 // Resolução de instância (em ordem):
-//   1. Instância do professor (teacher.whatsapp_instance), se preenchida E conectada;
+//   1. Instância canônica conectada do professor com membership ACTIVE no tenant;
 //   2. Fallback: instância CENTRAL da escola (WhatsApp do admin do tenant).
 // A maioria dos professores não tem instância própria conectada — por isso o fallback
 // central é essencial para os lembretes realmente saírem.
@@ -29,7 +33,7 @@ const PROCESSING_LEASE_MS = 5 * 60 * 1000;
 type QueueRelation<T> = T | T[] | null;
 
 type TeacherRelation = {
-    whatsapp_instance: string | null;
+    id: string;
     tenant_id: string | null;
 };
 
@@ -68,21 +72,29 @@ function normalizeDestination(raw: string): string | null {
 }
 
 // Resolve a instância central da escola (admin do tenant com WhatsApp conectado).
-async function resolveCentralInstance(supabase: SupabaseClient, tenantId: string | null, cache: Record<string, string | null>): Promise<string | null> {
-    const key = tenantId || '_';
+async function resolveCentralInstance(
+    supabase: SupabaseClient,
+    tenantId: string | null,
+    audience: 'student' | 'teacher',
+    cache: Record<string, string | null>,
+): Promise<string | null> {
+    const key = `${tenantId || '_'}:${audience}`;
     if (key in cache) return cache[key];
     if (!tenantId) { cache[key] = null; return null; }
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('whatsapp_instance')
-        .eq('tenant_id', tenantId)
-        .in('role', ['SCHOOL_ADMIN', 'SUPER_ADMIN'])
-        .not('whatsapp_instance', 'is', null)
-        .neq('whatsapp_instance', '')
-        .limit(1)
-        .maybeSingle();
-    if (error) throw error;
-    cache[key] = data?.whatsapp_instance || null;
+    cache[key] = await loadTenantCentralWhatsAppInstance(supabase, tenantId, audience);
+    return cache[key];
+}
+
+async function resolvePersonalInstance(
+    supabase: SupabaseClient,
+    tenantId: string,
+    userId: string,
+    audience: 'student' | 'teacher',
+    cache: Record<string, string | null>,
+): Promise<string | null> {
+    const key = `${tenantId}:${userId}:${audience}`;
+    if (key in cache) return cache[key];
+    cache[key] = await loadTenantWhatsAppInstance(supabase, tenantId, userId, audience);
     return cache[key];
 }
 
@@ -161,7 +173,7 @@ serve(async (req) => {
                 attempts,
                 notification_kind,
                 source_id,
-                teacher:teacher_id ( whatsapp_instance, tenant_id ),
+                teacher:teacher_id ( id, tenant_id ),
                 student:student_id ( is_test_account, tenant_id )
             `)
             .eq('status', 'pending')
@@ -176,6 +188,7 @@ serve(async (req) => {
         const queueItems = pending as unknown as QueueItem[];
         const results: Array<Record<string, unknown>> = [];
         const centralCache: Record<string, string | null> = {};
+        const personalCache: Record<string, string | null> = {};
         let persistenceFailed = false;
 
         // 2. Processa o lote
@@ -234,11 +247,23 @@ serve(async (req) => {
             // configurada no grupo da escola. Mensagem individual mantém o fluxo
             // professor → fallback central.
             const isGroupNotification = item.notification_kind === 'SCHEDULE_CHANGE_GROUP';
-            let instanceId: string | null = !isGroupNotification && teacher?.tenant_id === tenant_id
-                ? teacher?.whatsapp_instance || null
+            const audience = isGroupNotification ? 'teacher' : 'student';
+            let instanceId: string | null = !isGroupNotification && tenant_id && teacher?.id && teacher.tenant_id === tenant_id
+                ? await resolvePersonalInstance(
+                    supabaseClient,
+                    tenant_id,
+                    teacher.id,
+                    audience,
+                    personalCache,
+                )
                 : null;
             if (!instanceId) {
-                instanceId = await resolveCentralInstance(supabaseClient, tenant_id, centralCache);
+                instanceId = await resolveCentralInstance(
+                    supabaseClient,
+                    tenant_id,
+                    audience,
+                    centralCache,
+                );
             }
 
             if (!instanceId) {

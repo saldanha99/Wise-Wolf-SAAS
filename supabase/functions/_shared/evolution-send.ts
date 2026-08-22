@@ -11,10 +11,8 @@
  *
  * ⚠️ **Medido em 13/08/2026, e o resultado contraria a suspeita inicial:** os 9
  * leads com telefone de 12 dígitos resolvem para o MESMO número (existem assim
- * mesmo no WhatsApp). Ou seja, isto NÃO explica a falha do follow-up da lead
- * Cléria (`553399975104`), que segue sem causa conhecida. O valor aqui é
- * unificar o envio e cobrir o caso quando ele aparecer — não é uma correção
- * medida. Antes de atribuir uma falha de entrega ao 9º dígito, consulte
+ * mesmo no WhatsApp). O valor aqui é unificar o envio e cobrir o caso quando
+ * ele aparecer. Antes de atribuir uma falha de entrega ao 9º dígito, consulte
  * `chat/whatsappNumbers` e confirme.
  *
  * ⚠️ Falha ao resolver NÃO cancela o envio: cai no número original. A resolução
@@ -76,6 +74,7 @@ export async function resolveJid(
 /** Envia o texto e diz se a Evolution aceitou. Nunca lança. */
 export async function sendWhatsText(opts: EnvioEvolution): Promise<boolean> {
   const alvo = (await resolveJid(opts.base, opts.keys, opts.instance, opts.to)) || opts.to;
+  const destinationLastFour = String(alvo).replace(/\D/g, "").slice(-4) || "group";
   for (const key of opts.keys) {
     try {
       const resp = await fetch(`${opts.base}/message/sendText/${encodeURIComponent(opts.instance)}`, {
@@ -92,17 +91,11 @@ export async function sendWhatsText(opts: EnvioEvolution): Promise<boolean> {
       // 401 é chave errada: tenta a próxima em vez de desistir do envio.
       if (resp.status === 401) continue;
       if (!resp.ok) {
-        // O MOTIVO da recusa precisa aparecer em algum lugar. Sem isto, um
-        // envio recusado vira só um `false` — foi o que aconteceu com o
-        // follow-up da lead Cléria em 13/08/2026, cujo número existe no
-        // WhatsApp e mesmo assim falhou: sem o corpo da resposta não há como
-        // saber se foi limite, sessão caída ou payload.
-        const corpo = await resp.text().catch(() => "");
         console.warn("[evolution] envio recusado", {
           status: resp.status,
           instance: opts.instance,
-          destino: alvo,
-          corpo: corpo.replace(/\s+/g, " ").slice(0, 200),
+          destinationLastFour,
+          providerRequestId: resp.headers.get("x-request-id") || undefined,
         });
         return false;
       }
@@ -110,8 +103,8 @@ export async function sendWhatsText(opts: EnvioEvolution): Promise<boolean> {
     } catch (e) {
       console.warn("[evolution] envio falhou", {
         instance: opts.instance,
-        destino: alvo,
-        erro: (e as Error).message.slice(0, 120),
+        destinationLastFour,
+        errorType: e instanceof Error ? e.name : "UnknownError",
       });
       return false;
     }

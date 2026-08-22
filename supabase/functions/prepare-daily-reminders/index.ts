@@ -70,7 +70,7 @@ serve(async (req) => {
                 // Professor
                 const { data: teacher } = await supabaseClient
                     .from('profiles')
-                    .select('id, full_name, lesson_reminder_template, meeting_link, whatsapp_instance, date_automation_enabled')
+                    .select('id, full_name, lesson_reminder_template, meeting_link, date_automation_enabled')
                     .eq('id', cls.teacher_id)
                     .single();
 

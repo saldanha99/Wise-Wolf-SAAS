@@ -119,7 +119,7 @@ const ActivateModal: React.FC<ActivateModalProps> = ({ lead, plans, onClose, onS
                     tenant_type: 'teacher',
                     parent_tenant_id: lead.parent_tenant_id || null,
                 })
-                .select()
+                .select('id,slug,trial_ends_at')
                 .single();
 
             if (tenantErr) throw tenantErr;

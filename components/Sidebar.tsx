@@ -29,7 +29,6 @@ import {
   Wallet,
   LucideIcon,
   CheckCircle,
-  Palette,
   Sun,
   Moon
 } from 'lucide-react';
@@ -101,7 +100,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'financial', label: 'Financeiro Unidade', icon: Wallet },
     { id: 'pedagogical', label: 'Config. Pedagógica', icon: Book },
     { id: 'automation', label: 'Automação Smart', icon: Zap },
-    { id: 'settings_school', label: 'Custom Branding', icon: Palette },
+    { id: 'settings_school', label: 'Central da Escola', icon: Settings },
     { id: 'crm', label: 'CRM & Vendas', icon: Users },
     { id: 'marketing', label: 'Páginas & Marketing', icon: Globe },
   ];

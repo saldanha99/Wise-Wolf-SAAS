@@ -41,7 +41,7 @@ const ProvisionTenantModal: React.FC<ProvisionTenantModalProps> = ({ isOpen, onC
                     owner_email: formData.adminEmail,
                     saas_status: 'active'
                 })
-                .select()
+                .select('id,slug')
                 .single();
 
             if (tenantError) throw tenantError;

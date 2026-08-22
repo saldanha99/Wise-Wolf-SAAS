@@ -52,9 +52,21 @@ export type TrialDecision =
   /** Já existe, no MESMO horário pedido → não faz nada (nem novo disparo). */
   | { action: "keep"; trial: ActiveTrial; slot: Slot }
   /** Já existe em outro horário e o dono está livre → pede aceite antes de mover. */
-  | { action: "confirm"; trial: ActiveTrial; from: Slot; to: Slot; newStartIso: string }
+  | {
+    action: "confirm";
+    trial: ActiveTrial;
+    from: Slot;
+    to: Slot;
+    newStartIso: string;
+  }
   /** Já existe, mas o dono tem conflito no horário novo → decide um humano. */
-  | { action: "escalate"; trial: ActiveTrial; from: Slot; to: Slot; conflict: string };
+  | {
+    action: "escalate";
+    trial: ActiveTrial;
+    from: Slot;
+    to: Slot;
+    conflict: string;
+  };
 
 /** Converte data+hora de Brasília no instante UTC que o banco guarda. */
 export function brtStartIso(date: string, time: string): string {
@@ -75,9 +87,9 @@ export function brtSlotFromIso(iso: string): Slot {
 /**
  * A experimental ainda está de pé?
  *
- * Só `scheduled` conta: cancelada, dada (`completed`) ou furada (`no_show`) já
- * encerraram o ciclo, e aí um pedido novo do aluno é uma experimental nova de
- * verdade — tem de ir a leilão.
+ * `scheduled` e `confirmed` contam: cancelada, dada (`completed`) ou furada
+ * (`no_show`) já encerraram o ciclo, e aí um pedido novo do aluno é uma
+ * experimental nova de verdade — tem de ir a leilão.
  *
  * A janela para trás existe porque appointment antigo esquecido em `scheduled`
  * é comum (a liquidação é manual, pelo painel do diretor). Sem ela, uma aula de
@@ -89,7 +101,11 @@ export function isTrialAppointmentActive(
   nowIso: string,
   staleDays = 7,
 ): boolean {
-  if (String(status || "").toLowerCase() !== "scheduled") return false;
+  if (
+    !["scheduled", "confirmed"].includes(String(status || "").toLowerCase())
+  ) {
+    return false;
+  }
   const start = new Date(startIso).getTime();
   const now = new Date(nowIso).getTime();
   if (Number.isNaN(start) || Number.isNaN(now)) return false;
@@ -152,9 +168,21 @@ export function decideTrialAction(opts: {
     .find((b) => minutesApart(b.startIso, newStartIso) < buffer);
 
   if (conflito) {
-    return { action: "escalate", trial: existing, from, to: requested, conflict: conflito.label };
+    return {
+      action: "escalate",
+      trial: existing,
+      from,
+      to: requested,
+      conflict: conflito.label,
+    };
   }
-  return { action: "confirm", trial: existing, from, to: requested, newStartIso };
+  return {
+    action: "confirm",
+    trial: existing,
+    from,
+    to: requested,
+    newStartIso,
+  };
 }
 
 export type TeacherRescheduleReply = "accept" | "decline" | "unknown";
@@ -175,26 +203,48 @@ function normalizedReply(text: string): string {
  * "consigo" afirmativo. Respostas vagas continuam desconhecidas: remarcar uma
  * aula real exige um sim inequívoco, não uma inferência do modelo.
  */
-export function classifyTeacherRescheduleReply(text: string): TeacherRescheduleReply {
+export function classifyTeacherRescheduleReply(
+  text: string,
+): TeacherRescheduleReply {
   const reply = normalizedReply(text);
   if (!reply) return "unknown";
 
-  if (
-    /\b(nao|n)\b/.test(reply) &&
-    /\b(consigo|posso|poderei|da|disponivel|tenho|horario|atender)\b/.test(reply)
-  ) return "decline";
+  if (/\b(nao|n)\b/.test(reply)) return "decline";
   if (/\b(sem horario|indisponivel|impossivel)\b/.test(reply)) return "decline";
-  if (/^(nao|n)[\s!.,#-]*(?:[a-f0-9]{8})?[\s!.,]*$/i.test(reply)) return "decline";
 
-  if (/\b(talvez|acho que|nao sei|vou ver|confirmo depois)\b/.test(reply)) return "unknown";
+  if (/\b(talvez|acho que|nao sei|vou ver|confirmo depois)\b/.test(reply)) {
+    return "unknown";
+  }
   if (/^(sim|s|confirmo|consigo|posso)\b/.test(reply)) return "accept";
-  if (/\b(pode remarcar|pode confirmar|estarei disponivel|vou atender)\b/.test(reply)) return "accept";
+  if (
+    /\b(pode remarcar|pode confirmar|estarei disponivel|vou atender)\b/.test(
+      reply,
+    )
+  ) return "accept";
 
   return "unknown";
 }
 
 /** Código curto incluído na mensagem quando há mais de um pedido pendente. */
 export function trialRescheduleReplyCode(text: string): string | null {
-  const match = String(text || "").toUpperCase().match(/(?:#|\b)([A-F0-9]{8})\b/);
+  const match = String(text || "").toUpperCase().match(
+    /(?:#|\b)([A-F0-9]{8})\b/,
+  );
   return match?.[1] || null;
+}
+
+export function selectTeacherRescheduleRequest<
+  T extends { reply_code: string },
+>(
+  requests: T[],
+  suppliedCode: string | null,
+  intent: TeacherRescheduleReply,
+): T | null {
+  if (suppliedCode) {
+    return requests.find((candidate) =>
+      String(candidate.reply_code).toUpperCase() === suppliedCode
+    ) || null;
+  }
+
+  return intent === "decline" && requests.length === 1 ? requests[0] : null;
 }

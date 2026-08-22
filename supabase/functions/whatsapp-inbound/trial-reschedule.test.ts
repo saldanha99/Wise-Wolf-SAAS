@@ -12,6 +12,7 @@ import {
   isTrialAppointmentActive,
   isTrialOutcomeOpen,
   minutesApart,
+  selectTeacherRescheduleRequest,
   trialRescheduleReplyCode,
 } from "./trial-reschedule.ts";
 
@@ -32,9 +33,15 @@ Deno.test("BRT vira o instante UTC que o banco guarda", () => {
 });
 
 Deno.test("e o caminho de volta devolve o horário que a escola enxerga", () => {
-  assertEquals(brtSlotFromIso("2026-08-13T15:00:00+00:00"), { date: "2026-08-13", time: "12:00" });
+  assertEquals(brtSlotFromIso("2026-08-13T15:00:00+00:00"), {
+    date: "2026-08-13",
+    time: "12:00",
+  });
   // Meia-noite BRT cai no dia seguinte em UTC — o dia tem de voltar certo.
-  assertEquals(brtSlotFromIso("2026-08-14T02:30:00+00:00"), { date: "2026-08-13", time: "23:30" });
+  assertEquals(brtSlotFromIso("2026-08-14T02:30:00+00:00"), {
+    date: "2026-08-13",
+    time: "23:30",
+  });
 });
 
 Deno.test("REGRESSÃO: horário novo aguarda o aceite do professor antes de mudar", () => {
@@ -52,7 +59,10 @@ Deno.test("REGRESSÃO: horário novo aguarda o aceite do professor antes de muda
 });
 
 Deno.test("sem experimental com dono, o leilão continua igual", () => {
-  const d = decideTrialAction({ existing: null, requested: { date: "2026-08-14", time: "10:00" } });
+  const d = decideTrialAction({
+    existing: null,
+    requested: { date: "2026-08-14", time: "10:00" },
+  });
   assertEquals(d.action, "broadcast");
 });
 
@@ -79,7 +89,10 @@ Deno.test("a própria aula, no horário antigo, não conta como conflito", () =>
   const d = decideTrialAction({
     existing: AULA_DA_LAIS,
     requested: { date: "2026-08-13", time: "12:20" },
-    busy: [{ startIso: AULA_DA_LAIS.startIso, label: "a própria experimental" }],
+    busy: [{
+      startIso: AULA_DA_LAIS.startIso,
+      label: "a própria experimental",
+    }],
   });
   assertEquals(d.action, "confirm");
 });
@@ -100,18 +113,40 @@ Deno.test("30 min de intervalo: exatamente 30 passa, 29 barra", () => {
   assertEquals(vinteNove.action, "escalate");
 });
 
-Deno.test("só appointment 'scheduled' segura o agendamento do aluno", () => {
+Deno.test("appointments scheduled e confirmed seguram o agendamento do aluno", () => {
   const agora = "2026-08-12T13:00:00Z";
-  assertEquals(isTrialAppointmentActive("scheduled", "2026-08-13T15:00:00Z", agora), true);
-  assertEquals(isTrialAppointmentActive("cancelled", "2026-08-13T15:00:00Z", agora), false);
-  assertEquals(isTrialAppointmentActive("completed", "2026-08-13T15:00:00Z", agora), false);
-  assertEquals(isTrialAppointmentActive("no_show", "2026-08-13T15:00:00Z", agora), false);
+  assertEquals(
+    isTrialAppointmentActive("scheduled", "2026-08-13T15:00:00Z", agora),
+    true,
+  );
+  assertEquals(
+    isTrialAppointmentActive("confirmed", "2026-08-13T15:00:00Z", agora),
+    true,
+  );
+  assertEquals(
+    isTrialAppointmentActive("cancelled", "2026-08-13T15:00:00Z", agora),
+    false,
+  );
+  assertEquals(
+    isTrialAppointmentActive("completed", "2026-08-13T15:00:00Z", agora),
+    false,
+  );
+  assertEquals(
+    isTrialAppointmentActive("no_show", "2026-08-13T15:00:00Z", agora),
+    false,
+  );
 });
 
 Deno.test("aula recém-passada ainda remarca; aula velha esquecida não sequestra a nova", () => {
   const agora = "2026-08-12T13:00:00Z";
-  assertEquals(isTrialAppointmentActive("scheduled", "2026-08-10T15:00:00Z", agora), true);
-  assertEquals(isTrialAppointmentActive("scheduled", "2026-07-20T15:00:00Z", agora), false);
+  assertEquals(
+    isTrialAppointmentActive("scheduled", "2026-08-10T15:00:00Z", agora),
+    true,
+  );
+  assertEquals(
+    isTrialAppointmentActive("scheduled", "2026-07-20T15:00:00Z", agora),
+    false,
+  );
 });
 
 Deno.test("experimental com lançamento ou desfecho nunca é reaproveitada", () => {
@@ -123,23 +158,76 @@ Deno.test("experimental com lançamento ou desfecho nunca é reaproveitada", () 
 });
 
 Deno.test("minutesApart não depende da ordem", () => {
-  assertEquals(minutesApart("2026-08-13T19:00:00Z", "2026-08-13T19:45:00Z"), 45);
-  assertEquals(minutesApart("2026-08-13T19:45:00Z", "2026-08-13T19:00:00Z"), 45);
+  assertEquals(
+    minutesApart("2026-08-13T19:00:00Z", "2026-08-13T19:45:00Z"),
+    45,
+  );
+  assertEquals(
+    minutesApart("2026-08-13T19:45:00Z", "2026-08-13T19:00:00Z"),
+    45,
+  );
 });
 
 Deno.test("REGRESSÃO: 'acredito que eu não consigo' é recusa, nunca aceite", () => {
-  assertEquals(classifyTeacherRescheduleReply("Bom dia, acredito que eu não consigo"), "decline");
-  assertEquals(classifyTeacherRescheduleReply("Não tenho esse horário"), "decline");
-  assertEquals(classifyTeacherRescheduleReply("não posso atender #A1B2C3D4"), "decline");
+  assertEquals(
+    classifyTeacherRescheduleReply("Bom dia, acredito que eu não consigo"),
+    "decline",
+  );
+  assertEquals(
+    classifyTeacherRescheduleReply("Não tenho esse horário"),
+    "decline",
+  );
+  assertEquals(
+    classifyTeacherRescheduleReply("não posso atender #A1B2C3D4"),
+    "decline",
+  );
+  assertEquals(
+    classifyTeacherRescheduleReply("Sim, mas não #A1B2C3D4"),
+    "decline",
+  );
 });
 
 Deno.test("só resposta afirmativa inequívoca aceita a remarcação", () => {
-  assertEquals(classifyTeacherRescheduleReply("Sim, consigo atender #A1B2C3D4"), "accept");
+  assertEquals(
+    classifyTeacherRescheduleReply("Sim, consigo atender #A1B2C3D4"),
+    "accept",
+  );
   assertEquals(classifyTeacherRescheduleReply("Pode remarcar"), "accept");
-  assertEquals(classifyTeacherRescheduleReply("Acho que talvez eu consiga"), "unknown");
+  assertEquals(
+    classifyTeacherRescheduleReply("Acho que talvez eu consiga"),
+    "unknown",
+  );
 });
 
 Deno.test("extrai o código do pedido sem confundir texto comum", () => {
   assertEquals(trialRescheduleReplyCode("Sim, consigo #a1b2c3d4"), "A1B2C3D4");
   assertEquals(trialRescheduleReplyCode("Não consigo esse horário"), null);
+});
+
+Deno.test("REGRESSÃO: sim sem código nunca altera a agenda", () => {
+  const requests = [{ reply_code: "A1B2C3D4", id: "request-1" }];
+  assertEquals(
+    selectTeacherRescheduleRequest(requests, null, "accept"),
+    null,
+  );
+  assertEquals(
+    selectTeacherRescheduleRequest(requests, "A1B2C3D4", "accept"),
+    requests[0],
+  );
+});
+
+Deno.test("recusa sem código preserva a agenda e pode fechar pedido único", () => {
+  const requests = [{ reply_code: "A1B2C3D4", id: "request-1" }];
+  assertEquals(
+    selectTeacherRescheduleRequest(requests, null, "decline"),
+    requests[0],
+  );
+  assertEquals(
+    selectTeacherRescheduleRequest(
+      [...requests, { reply_code: "B1C2D3E4", id: "request-2" }],
+      null,
+      "decline",
+    ),
+    null,
+  );
 });

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { TeacherContractDocument } from './TeacherContractDocument';
+import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
+import type { SchoolInfo } from './ContractDocument';
 import { Loader2, AlertCircle, FileText, Download } from 'lucide-react';
+import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 
 interface PublicContractViewProps {
     id?: string;
@@ -14,16 +16,26 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
     const [resolvedId, setResolvedId] = useState<string | null>(propId || null);
     const [downloading, setDownloading] = useState(false);
     const contractPdfRef = useRef<HTMLDivElement>(null);
+    const schoolInfo = profile?.schoolInfo && typeof profile.schoolInfo === 'object'
+        ? profile.schoolInfo as SchoolInfo
+        : profile?.school_info && typeof profile.school_info === 'object'
+            ? profile.school_info as SchoolInfo
+            : null;
+    const contractReadiness = getTeacherContractReadiness(schoolInfo, profile?.hourly_rate);
 
     const handleDownloadPdf = async () => {
         const el = contractPdfRef.current;
         if (!el) return;
+        if (!contractReadiness.isReady) {
+            alert(`Download bloqueado: a escola precisa configurar ${contractReadiness.missingFields.join(', ')}.`);
+            return;
+        }
         setDownloading(true);
         try {
             const html2pdf = (await import('html2pdf.js')).default;
             await html2pdf().set({
                 margin: 0,
-                filename: `Contrato_Professor_${(profile?.full_name || 'WiseWolf').replace(/\s+/g, '_')}.pdf`,
+                filename: `Contrato_Professor_${(profile?.full_name || 'Professor').replace(/\s+/g, '_')}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -49,12 +61,13 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
 
         const fetchProfile = async () => {
             try {
-                // Rota pública (deslogado): lê os campos do contrato via RPC SECURITY DEFINER
-                // (anon não tem SELECT direto em profiles após o fix de RLS cross-tenant).
-                const { data, error: fetchError } = await supabase
-                    .rpc('get_contract_public', { p_id: id });
-
-                if (fetchError) throw fetchError;
+                const { data: authData } = await supabase.auth.getUser();
+                if (!authData.user) {
+                    throw new Error('Entre no portal para acessar este contrato. Links públicos antigos foram desativados por segurança.');
+                }
+                // A função valida usuário + tenant e materializa somente uma URL
+                // curta da assinatura privada registrada no snapshot imutável.
+                const data = await tenantLegalAssetsService.teacherContract(id);
                 if (!data || !data.full_name) throw new Error("Contrato não encontrado.");
 
                 setProfile(data);
@@ -103,13 +116,23 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                 {/* Botão de download PDF — funciona em mobile e desktop */}
                 <button
                     onClick={handleDownloadPdf}
-                    disabled={downloading}
+                    disabled={downloading || !contractReadiness.isReady}
+                    title={!contractReadiness.isReady ? 'Dados jurídicos ou financeiros indisponíveis neste documento.' : undefined}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-[#002366] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-900 transition-colors shadow-md disabled:opacity-50"
                 >
                     {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                     {downloading ? 'Gerando...' : 'Baixar PDF'}
                 </button>
             </div>
+
+            {!contractReadiness.isReady && (
+                <div role="alert" className="mx-auto mb-4 max-w-[210mm] px-4">
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                        <p className="font-black uppercase tracking-wide">Documento sem snapshot jurídico do tenant</p>
+                        <p className="mt-1">A impressão foi bloqueada. Solicite à escola uma nova via com identidade e assinatura próprias configuradas.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Leitura fluida na tela; o clone A4 abaixo é exclusivo do PDF. */}
             <div className="mx-auto w-full max-w-[210mm] px-3 sm:px-4">
@@ -119,6 +142,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     teacherCPF={profile.cpf}
                     teacherAddress={profile.address}
                     teacherBirthDate={profile.birth_date}
+                    school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
@@ -137,6 +161,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     teacherCPF={profile.cpf}
                     teacherAddress={profile.address}
                     teacherBirthDate={profile.birth_date}
+                    school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}

@@ -162,7 +162,7 @@ serve(async (req) => {
       authorization.callerId === userId &&
       authorization.callerProfile?.role === "STUDENT";
     const offer = isSelfStudent
-      ? await loadClaimedEnrollmentOffer(authorization.admin, userId)
+      ? await loadClaimedEnrollmentOffer(authorization.admin, userId, authorization.tenantId)
       : null;
     progressOfferId = offer?.id || "";
     if (isSelfStudent && !offer) {
@@ -501,13 +501,14 @@ serve(async (req) => {
       };
     }
 
-    const tenantId = text(profile.tenant_id);
+    const tenantId = authorization.tenantId;
     let split: Array<Record<string, unknown>> | undefined;
     const { data: tenant } = await authorization.admin
       .from("tenants")
-      .select("asaas_wallet_id, asaas_split_percentage")
+      .select("name,asaas_wallet_id,asaas_split_percentage")
       .eq("id", tenantId)
       .maybeSingle();
+    const schoolName = text(tenant?.name).slice(0, 120) || "Escola de idiomas";
     if (tenant?.asaas_wallet_id) {
       split = [{
         walletId: tenant.asaas_wallet_id,
@@ -518,7 +519,7 @@ serve(async (req) => {
     if (planDuration === "ONE_TIME") {
       Object.assign(paymentPayload, {
         dueDate: new Date().toISOString().slice(0, 10),
-        description: "Aula avulsa - Wise Wolf School",
+        description: `Aula avulsa - ${schoolName}`,
         ...(split ? { split } : {}),
       });
       const paymentRes = await fetch(`${ASAAS_URL}${pathPrefix}/payments`, {
@@ -576,7 +577,7 @@ serve(async (req) => {
       nextDueDate: nextDueDate(dueDay, startMonth),
       cycle: "MONTHLY",
       maxPayments,
-      description: `Mensalidade Wise Wolf School - Plano ${planLabel}`,
+      description: `Mensalidade ${schoolName} - Plano ${planLabel}`,
       remoteIp: (req.headers.get("x-forwarded-for") || "127.0.0.1").split(",")[0].trim(),
       ...(split ? { split } : {}),
     });
@@ -618,7 +619,7 @@ serve(async (req) => {
           billingType: billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
           value: proRataValue,
           dueDate: new Date().toISOString().slice(0, 10),
-          description: "Pro-rata - Wise Wolf School",
+          description: `Pro-rata - ${schoolName}`,
           externalReference: proRataReference,
           ...(split ? { split } : {}),
         };
