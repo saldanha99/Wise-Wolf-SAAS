@@ -239,6 +239,7 @@ npx vitest run \
 npx --yes deno test --no-lock \
   supabase/functions/_shared/request-auth.test.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/create-hub-checkout/legal.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
   supabase/functions/wolfie-activity/meeting-assessment.test.ts \
   supabase/functions/wolfie-activity/personalization.test.ts \
@@ -252,7 +253,13 @@ npx --yes deno test --no-lock \
   supabase/functions/wolfie-realtime-session/memory-selection.test.ts \
   supabase/functions/wolfie-realtime-session/session-context.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts \
-  scripts/tests/wolfie-voice-safety.test.ts
+  scripts/tests/wolfie-voice-safety.test.ts \
+  scripts/tests/wolfie-audio.test.ts
+npx --yes deno test --allow-read --no-lock \
+  scripts/tests/wolfie-voice-profile.test.ts \
+  supabase/functions/create-hub-checkout/account-scope.test.ts \
+  supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
+  supabase/functions/create-hub-checkout/legal-acceptance.test.ts
 npx --yes deno check --no-lock \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
@@ -304,6 +311,8 @@ MIGRATIONS=(
   "supabase/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
   "supabase/migrations/20260803235500_wolfie_free_premium_tiers.sql"
   "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
+  "supabase/migrations/20260824205624_guard_empty_hub_catalog.sql"
+  "supabase/migrations/20260824210239_hub_core_legal_acceptances.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
@@ -314,6 +323,8 @@ DATABASE_TESTS=(
   "supabase/tests/wolfie_sql_special_forms_repair.sql"
   "supabase/tests/wolfie_standalone_subscriptions.sql"
   "supabase/tests/wolfie_free_premium_tiers.sql"
+  "supabase/tests/hub_catalog_readiness.sql"
+  "supabase/tests/hub_core_legal_acceptances.sql"
 )
 FUNCTIONS=(
   wolfie-activity

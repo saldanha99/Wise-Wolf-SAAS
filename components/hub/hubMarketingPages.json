@@ -1,0 +1,65 @@
+{
+  "overview": {
+    "segment": "",
+    "title": "Wise Wolf Hub | Para Professores e Escolas de Inglês",
+    "description": "Infraestrutura para ensinar, engajar alunos e organizar o crescimento de professores e escolas de inglês.",
+    "imagePath": "/assets/hub/marketing/hub-overview-og.webp",
+    "imageAlt": "Ecossistema educacional Wise Wolf Hub"
+  },
+  "teachers": {
+    "segment": "professores",
+    "title": "Plataforma para Professores de Inglês | Wise Wolf",
+    "description": "Prepare aulas, explore prática contextual e profissionalize sua operação com materiais, inteligência pedagógica, Wolfie e uma jornada clara de crescimento.",
+    "imagePath": "/assets/hub/marketing/hub-overview-og.webp",
+    "imageAlt": "Plataforma Wise Wolf para professores de inglês"
+  },
+  "schools": {
+    "segment": "escolas",
+    "title": "Plataforma para Escolas de Inglês | Wise Wolf School OS",
+    "description": "Conecte ensino, experiência do aluno, matrículas, automações, equipe e gestão em um ambiente próprio para sua escola.",
+    "imagePath": "/assets/hub/marketing/school-os-og.webp",
+    "imageAlt": "Plataforma Wise Wolf para escolas de inglês"
+  },
+  "library": {
+    "segment": "biblioteca",
+    "title": "Biblioteca para Professores de Inglês | Wise Wolf Hub",
+    "description": "Materiais com curadoria, organizados por nível e contexto para preparar aulas com mais intenção.",
+    "imagePath": "/assets/hub/marketing/library-og.webp",
+    "imageAlt": "Biblioteca de materiais pedagógicos Wise Wolf"
+  },
+  "educator-ai": {
+    "segment": "educador-ia",
+    "title": "Educador IA para Planejamento de Aulas | Wise Wolf Hub",
+    "description": "Transforme objetivo, nível e contexto do aluno em um plano de aula estruturado e aplicável.",
+    "imagePath": "/assets/hub/marketing/educator-ai-og.webp",
+    "imageAlt": "Planejamento de aula com o Educador IA"
+  },
+  "wolfie": {
+    "segment": "wolfie",
+    "title": "Wolfie AI Tutor | Prática de Inglês para a Vida Real",
+    "description": "Pratique conversação em inglês em situações ligadas ao seu nível, objetivo e realidade.",
+    "imagePath": "/assets/hub/marketing/wolfie-og.webp",
+    "imageAlt": "Prática de conversação com o Wolfie AI Tutor"
+  },
+  "school-os": {
+    "segment": "saas-escolar",
+    "title": "Sistema de Gestão para Escolas de Idiomas | Wise Wolf",
+    "description": "Conecte agenda, matrícula, contratos, equipe e gestão financeira em uma operação escolar segura.",
+    "imagePath": "/assets/hub/marketing/school-os-og.webp",
+    "imageAlt": "Sistema de gestão escolar Wise Wolf"
+  },
+  "terms": {
+    "segment": "termos",
+    "title": "Termos de Uso | Wise Wolf Hub",
+    "description": "Termos que regem o acesso, a assinatura e o uso das soluções do Wise Wolf Hub.",
+    "imagePath": "/assets/hub/marketing/hub-overview-og.webp",
+    "imageAlt": "Termos de Uso do Wise Wolf Hub"
+  },
+  "privacy": {
+    "segment": "privacidade",
+    "title": "Política de Privacidade | Wise Wolf Hub",
+    "description": "Como o Wise Wolf Hub trata dados pessoais, protege ambientes e atende aos direitos previstos na LGPD.",
+    "imagePath": "/assets/hub/marketing/hub-overview-og.webp",
+    "imageAlt": "Política de Privacidade do Wise Wolf Hub"
+  }
+}

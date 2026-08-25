@@ -1039,6 +1039,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             <TeacherPayoutDetails
                 teacherId={user.id}
                 teacherName={(user as any).full_name || user.name}
+                tenantId={tenantId}
                 month={selectedMonth}
                 canEdit={!viewOnly && !directorMode}
                 onChanged={fetchFinancials}

@@ -13,6 +13,63 @@ begin
 end;
 $function$;
 
+update public.hub_settings
+set metadata = coalesce(metadata, '{}'::jsonb)
+      || '{"hubEnabled":true,"catalogReady":true}'::jsonb
+where settings_key = 'default';
+
+insert into public.hub_content_items (
+  id, slug, title, content_type, preview_enabled, license_summary,
+  rights_verified_at, rights_basis, catalog_scope, published_at,
+  is_active, metadata
+)
+values (
+  '7a500000-0000-4000-8000-000000000001',
+  'wolfie-standalone-hub-catalog-fixture',
+  'Wolfie standalone Hub catalog fixture',
+  'PDF',
+  true,
+  'Owned rollback-only test fixture',
+  pg_catalog.now(),
+  'OWNED',
+  'COMMERCIAL_GLOBAL',
+  pg_catalog.now(),
+  true,
+  '{"test_fixture":true}'::jsonb
+);
+
+insert into storage.objects (bucket_id, name, metadata)
+values
+  (
+    'hub-library',
+    'test-fixtures/wolfie-standalone-hub/full.pdf',
+    '{"mimetype":"application/pdf","test_fixture":true}'::jsonb
+  ),
+  (
+    'hub-library',
+    'test-fixtures/wolfie-standalone-hub/preview.pdf',
+    '{"mimetype":"application/pdf","test_fixture":true}'::jsonb
+  );
+
+insert into public.hub_content_assets (
+  content_id, asset_kind, bucket_id, object_path, mime_type
+)
+values
+  (
+    '7a500000-0000-4000-8000-000000000001',
+    'FULL',
+    'hub-library',
+    'test-fixtures/wolfie-standalone-hub/full.pdf',
+    'application/pdf'
+  ),
+  (
+    '7a500000-0000-4000-8000-000000000001',
+    'PREVIEW',
+    'hub-library',
+    'test-fixtures/wolfie-standalone-hub/preview.pdf',
+    'application/pdf'
+  );
+
 select pg_temp.assert_true(
   (
     select count(*) = 3
@@ -646,7 +703,7 @@ begin
     raise exception 'wolfie_direct_hub_trial_was_accepted';
   exception
     when sqlstate 'P0001' then
-      if sqlerrm <> 'wolfie_direct_hub_restricted' then
+      if sqlerrm <> 'learner_product_routing_required' then
         raise;
       end if;
   end;

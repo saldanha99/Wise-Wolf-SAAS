@@ -155,11 +155,20 @@ $$;
 
 select public.teacher_submit_closing('2026-07', 'CONTESTADO', 'Faltam as aulas do dia 12');
 
+reset role;
+update public.teacher_closings
+   set status = 'PAID_WAITING_NF', paid_at = now()
+ where id = '00000000-0000-4000-8000-00000000094a';
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000941","role":"authenticated"}';
+
 -- Fechamento alheio continua fora de alcance, mesmo pela RPC.
 do $$
 begin
   perform public.teacher_attach_invoice(
-    '00000000-0000-4000-8000-00000000094b', 'https://storage.invalid/nf.pdf');
+    '00000000-0000-4000-8000-00000000094b',
+    'closings/00000000-0000-4000-8000-00000000094b/00000000-0000-4000-8000-000000000951.pdf');
   raise exception 'assertion failed: professor anexou NF em fechamento alheio';
 exception
   when insufficient_privilege then null;
@@ -177,14 +186,23 @@ exception
 end;
 $$;
 
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values (
+  'invoices',
+  'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000952.pdf',
+  '00000000-0000-4000-8000-000000000941',
+  '{"mimetype":"application/pdf"}'
+);
+
 select public.teacher_attach_invoice(
-  '00000000-0000-4000-8000-00000000094a', 'https://storage.invalid/nf-julho.pdf');
+  '00000000-0000-4000-8000-00000000094a',
+  'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000952.pdf');
 
 reset role;
 select pg_temp.assert_true(
   (select teacher_confirmation_status = 'CONTESTADO'
           and teacher_notes = 'Faltam as aulas do dia 12'
-          and nf_link = 'https://storage.invalid/nf-julho.pdf'
+          and nf_link = 'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000952.pdf'
           and total_amount = 800.00
      from public.teacher_closings
     where id = '00000000-0000-4000-8000-00000000094a'),
@@ -217,13 +235,21 @@ select pg_temp.assert_true(
 -- Professor reenvia a nota corrigida: volta para analise e o motivo antigo sai.
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000941","role":"authenticated"}';
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values (
+  'invoices',
+  'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000953.pdf',
+  '00000000-0000-4000-8000-000000000941',
+  '{"mimetype":"application/pdf"}'
+);
 select public.teacher_attach_invoice(
-  '00000000-0000-4000-8000-00000000094a', 'https://storage.invalid/nf-julho-v2.pdf');
+  '00000000-0000-4000-8000-00000000094a',
+  'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000953.pdf');
 reset role;
 
 select pg_temp.assert_true(
   (select status = 'UNDER_REVIEW' and rejection_reason is null
-          and nf_link = 'https://storage.invalid/nf-julho-v2.pdf'
+          and nf_link = 'closings/00000000-0000-4000-8000-00000000094a/00000000-0000-4000-8000-000000000953.pdf'
      from public.teacher_closings
     where id = '00000000-0000-4000-8000-00000000094a'),
   'reenvio nao limpou o motivo da rejeicao anterior'

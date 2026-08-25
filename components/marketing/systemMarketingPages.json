@@ -1,0 +1,16 @@
+{
+  "teacher-business": {
+    "path": "/seja-professor",
+    "title": "Professor Negócio | Gestão para Professores de Inglês",
+    "description": "Organize agenda, CRM, contratos, pagamentos e visão financeira com implantação assistida para sua operação como professor de inglês.",
+    "imagePath": "/assets/hub/marketing/hub-overview-og.webp",
+    "imageAlt": "Gestão Wise Wolf para professores de inglês"
+  },
+  "school-diagnosis": {
+    "path": "/new-saas",
+    "title": "Diagnóstico para Escolas de Inglês | Wise Wolf School OS",
+    "description": "Solicite um diagnóstico da operação da sua escola de inglês e conheça uma implantação orientada para ensino, matrículas e gestão.",
+    "imagePath": "/assets/hub/marketing/school-os-og.webp",
+    "imageAlt": "Diagnóstico Wise Wolf para escolas de inglês"
+  }
+}

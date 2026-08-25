@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "slug": "library",
+  "generatedAt": "2026-08-24T21:06:16.407Z",
+  "language": "pt-BR",
+  "compositionId": "HubLibraryPtBr",
+  "commercialUseAllowed": true,
+  "renderFingerprintSha256": "e3d78ccf170792f585e4a0b89b123160799cfcb85ef13c19001822f47cccf40c",
+  "artifacts": {
+    "videoSha256": "404da54ae47bf91b0d5455618819f5746b3232058922ebc0bdde9f563a7c3240",
+    "posterSha256": "90b94bd1b3821ed2cff82e6dd8e249ad160f8452df61b2315ad68f6b0ee35fa0",
+    "captionsSha256": "4a1ef22026a1797db6513964412661a1005496b994f49fe0b56d6db56184bc2a"
+  },
+  "receiptFingerprintSha256": "c80b0def77268794f6f34ff47f03f5038236380331fa576ec6b3e9b65da01b98"
+}

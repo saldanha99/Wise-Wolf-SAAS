@@ -1,0 +1,13 @@
+{
+  "id": "hub-overview-1-problem",
+  "file": "hub-overview-1-problem.mp3",
+  "requestId": "gen-1787593270-K73w1fJYPz3aeWaJY0Hc",
+  "sha256": "b086e182688372565832cbbbd7b3e22ad643866e7b9879854b8c6235cbb320a8",
+  "bytes": 225115,
+  "transcriptSha256": "46805ca912ca29ff9f54ac9f69ce02a3dd02abf5597c823fba2ba1592eec838d",
+  "sceneHash": "819a755cb419f1a032091a97e5561c4bb8ff016c26acb10cbf5f7230828845e3",
+  "durationSeconds": 9.301,
+  "generatedAt": "2026-08-24T17:41:22Z",
+  "sourcePcmWavSha256": "9cf7c8443cb4bc0fd5cde48535e4c25aa74f042ba7ce4e39fdcab10caa4f5b71",
+  "sourcePcmWavBytes": 446444
+}

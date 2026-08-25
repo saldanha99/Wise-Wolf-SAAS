@@ -112,12 +112,14 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         .order('due_date', { ascending: true });
 
       // 4. Forecast (Active Students)
-      const { count: activeStudentCount, data: studentsFee } = await supabase
-        .from('profiles')
-        .select('monthly_fee', { count: 'exact' })
-        .eq('tenant_id', tenantId)
-        .eq('role', 'STUDENT')
-        .eq('status_financial', 'ACTIVE');
+      const { data: studentBilling } = await supabase.rpc(
+        'get_authorized_student_billing_summary',
+        { p_tenant_id: tenantId },
+      );
+      const studentsFee = (studentBilling || []).filter(
+        (student: any) => student.status_financial === 'ACTIVE',
+      );
+      const activeStudentCount = studentsFee.length;
 
       const forecast = (studentsFee || []).reduce((acc, s) => acc + (Number(s.monthly_fee) || 0), 0);
 

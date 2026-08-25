@@ -24,6 +24,21 @@ export interface WolfieSpeechSentence {
   language: WolfieSpeechLanguage;
 }
 
+export interface WolfieBrowserVoice {
+  name: string;
+  lang: string;
+}
+
+export const WOLFIE_OPENAI_VOICE = "cedar";
+
+const WOLFIE_BROWSER_VOICE_NAMES: Record<
+  WolfieSpeechLanguage,
+  readonly string[]
+> = {
+  pt: ["Felipe", "Antonio", "Antônio", "Thiago", "Rafael", "Ricardo", "Paulo"],
+  en: ["Guy", "Daniel", "Alex", "Aaron", "Arthur", "Fred", "Tom", "Rishi"],
+};
+
 /**
  * iOS bloqueia play() fora de um handler de toque síncrono, então o caminho de
  * playback é totalmente diferente. Inclui iPad moderno, que se apresenta como
@@ -58,11 +73,30 @@ export function getTTSSpeed(level: string): number {
   }
 }
 
-/** Voz do wolfie-tts para cada idioma. */
-export function resolveTtsVoice(language: WolfieTtsLanguage): string {
-  if (language === "pt") return "pt-BR-ThalitaNeural";
-  if (language === "mixed") return "auto-Bilingual";
-  return "en-US-JennyNeural";
+/** Identidade vocal enviada ao wolfie-tts em qualquer idioma. */
+export function resolveTtsVoice(_language: WolfieTtsLanguage): string {
+  return WOLFIE_OPENAI_VOICE;
+}
+
+export function selectWolfieBrowserVoice<T extends WolfieBrowserVoice>(
+  voices: T[],
+  language: WolfieSpeechLanguage,
+): T | null {
+  const languagePrefix = language === "pt" ? "pt" : "en";
+  const candidates = voices.filter((voice) =>
+    voice.lang.toLocaleLowerCase().startsWith(languagePrefix)
+  );
+  const preferredNames = WOLFIE_BROWSER_VOICE_NAMES[language];
+
+  for (const preferredName of preferredNames) {
+    const normalizedPreference = preferredName.toLocaleLowerCase();
+    const match = candidates.find((voice) =>
+      voice.name.toLocaleLowerCase().includes(normalizedPreference)
+    );
+    if (match) return match;
+  }
+
+  return null;
 }
 
 /**

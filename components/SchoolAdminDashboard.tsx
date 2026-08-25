@@ -59,11 +59,10 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       const endOfMonthStr = endOfMonth.toISOString().split('T')[0];
 
       // 1. Fetch Students (MRR Forecast & Active Count)
-      const { data: students } = await supabase
-        .from('profiles')
-        .select('id, monthly_fee, status_financial')
-        .eq('tenant_id', tenantId)
-        .eq('role', 'STUDENT');
+      const { data: students } = await supabase.rpc(
+        'get_authorized_student_billing_summary',
+        { p_tenant_id: tenantId },
+      );
 
       const studentList = students || [];
       const activeStudents = studentList.length;

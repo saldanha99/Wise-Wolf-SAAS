@@ -1,0 +1,13 @@
+{
+  "id": "library-0-hook",
+  "file": "library-0-hook.mp3",
+  "requestId": "gen-1787593291-LIJRpsE4LDkCxWXYbCBN",
+  "sha256": "ca40cf2b539fe86c60ee91ef371d99deb7da690ac9e734f6991b908729e78ffe",
+  "bytes": 99727,
+  "transcriptSha256": "993d2dee45096be7657d519f66b9a4bcd01769d489d5546533f0da4e43f234a2",
+  "sceneHash": "6fa91a049df49f090b02267c297112214363d1ed0d358c52a5982f9426395185",
+  "durationSeconds": 4.1,
+  "generatedAt": "2026-08-24T17:41:43Z",
+  "sourcePcmWavSha256": "96b01309e653292ba1f67433e00b9b46d2317ee24498e13dc977ce358d8bf0dd",
+  "sourcePcmWavBytes": 196844
+}

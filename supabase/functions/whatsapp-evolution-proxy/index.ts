@@ -3,6 +3,12 @@ import {
   authorizeRequest,
   type RequestAuthResult,
 } from "../_shared/request-auth.ts";
+import {
+  type EvolutionIntegrationPurpose,
+  type ResolvedEvolutionIntegration,
+  resolveEvolutionIntegration,
+  type TenantIntegrationRpcClient,
+} from "../_shared/tenant-integration-broker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +36,15 @@ const instanceManagementActions = new Set([
 ]);
 const operationalTenantStatuses = new Set(["active", "trial", "trialing"]);
 const instanceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,79}$/;
+const purposeByAction: Record<string, EvolutionIntegrationPurpose> = {
+  "instance/create": "instance.create",
+  "instance/connect": "instance.connect",
+  "instance/connectionState": "instance.connection_state",
+  "instance/logout": "instance.logout",
+  "instance/delete": "instance.delete",
+  "message/sendText": "message.send_text",
+  "group/fetchAllGroups": "group.list",
+};
 
 type JsonObject = Record<string, unknown>;
 
@@ -43,6 +58,12 @@ type ProxyDependencies = {
     },
   ) => Promise<RequestAuthResult>;
   fetchUpstream?: typeof fetch;
+  resolveIntegration?: (
+    admin: TenantIntegrationRpcClient,
+    tenantId: string,
+    purpose: EvolutionIntegrationPurpose,
+    dependencies: { getEnv: (name: string) => string | undefined },
+  ) => Promise<ResolvedEvolutionIntegration>;
 };
 
 function json(body: JsonObject, status = 200): Response {
@@ -109,6 +130,8 @@ export async function handleRequest(
   const getEnv = dependencies.getEnv || ((name: string) => Deno.env.get(name));
   const authorize = dependencies.authorize || authorizeRequest;
   const fetchUpstream = dependencies.fetchUpstream || fetch;
+  const resolveIntegration = dependencies.resolveIntegration ||
+    resolveEvolutionIntegration;
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -257,19 +280,6 @@ export async function handleRequest(
       error: "Escola sem assinatura ativa",
       code: "TENANT_INACTIVE",
     }, 403);
-  }
-
-  const evolutionApiUrl = (getEnv("EVOLUTION_API_URL") || "").replace(
-    /\/+$/,
-    "",
-  );
-  const evolutionApiKey = getEnv("EVOLUTION_API_KEY") || "";
-  if (!evolutionApiUrl || !evolutionApiKey) {
-    console.error("[WA Proxy] Configuração server-side incompleta");
-    return json({
-      error: "Integração indisponível",
-      code: "INTEGRATION_UNAVAILABLE",
-    }, 503);
   }
 
   let instanceName = asString(requestBody.instanceName).trim();
@@ -429,13 +439,13 @@ export async function handleRequest(
     ownerUserId = owner.user_id;
   }
 
-  let endpoint = "";
+  let relativeEndpoint = "";
   let method = "GET";
   let upstreamBody: string | undefined;
 
   switch (action) {
     case "instance/create":
-      endpoint = `${evolutionApiUrl}/instance/create`;
+      relativeEndpoint = "/instance/create";
       method = "POST";
       upstreamBody = JSON.stringify({
         instanceName,
@@ -444,25 +454,21 @@ export async function handleRequest(
       });
       break;
     case "instance/connect":
-      endpoint = `${evolutionApiUrl}/instance/connect/${
+      relativeEndpoint = `/instance/connect/${
         encodeURIComponent(instanceName)
       }`;
       break;
     case "instance/connectionState":
-      endpoint = `${evolutionApiUrl}/instance/connectionState/${
+      relativeEndpoint = `/instance/connectionState/${
         encodeURIComponent(instanceName)
       }`;
       break;
     case "instance/logout":
-      endpoint = `${evolutionApiUrl}/instance/logout/${
-        encodeURIComponent(instanceName)
-      }`;
+      relativeEndpoint = `/instance/logout/${encodeURIComponent(instanceName)}`;
       method = "DELETE";
       break;
     case "instance/delete":
-      endpoint = `${evolutionApiUrl}/instance/delete/${
-        encodeURIComponent(instanceName)
-      }`;
+      relativeEndpoint = `/instance/delete/${encodeURIComponent(instanceName)}`;
       method = "DELETE";
       break;
     case "message/sendText": {
@@ -474,7 +480,7 @@ export async function handleRequest(
           code: "INVALID_MESSAGE",
         }, 400);
       }
-      endpoint = `${evolutionApiUrl}/message/sendText/${
+      relativeEndpoint = `/message/sendText/${
         encodeURIComponent(instanceName)
       }`;
       method = "POST";
@@ -487,11 +493,28 @@ export async function handleRequest(
       break;
     }
     case "group/fetchAllGroups":
-      endpoint = `${evolutionApiUrl}/group/fetchAllGroups/${
+      relativeEndpoint = `/group/fetchAllGroups/${
         encodeURIComponent(instanceName)
       }?getParticipants=false`;
       break;
   }
+
+  let integration: ResolvedEvolutionIntegration;
+  try {
+    integration = await resolveIntegration(
+      supabaseAdmin as unknown as TenantIntegrationRpcClient,
+      effectiveTenantId,
+      purposeByAction[action],
+      { getEnv },
+    );
+  } catch {
+    console.error("[WA Proxy] Broker recusou a integração", { action });
+    return json({
+      error: "Integração indisponível",
+      code: "INTEGRATION_UNAVAILABLE",
+    }, 503);
+  }
+  const endpoint = `${integration.baseUrl}${relativeEndpoint}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
@@ -501,9 +524,10 @@ export async function handleRequest(
       method,
       headers: {
         "Content-Type": "application/json",
-        apikey: evolutionApiKey,
+        apikey: integration.apiKey,
       },
       body: upstreamBody,
+      redirect: "error",
       signal: controller.signal,
     });
   } catch (error) {
@@ -548,6 +572,9 @@ export async function handleRequest(
     action,
     effectiveTenantId,
     userId,
+    integration.integrationId,
+    integration.version,
+    integration.mode,
   );
 
   switch (action) {

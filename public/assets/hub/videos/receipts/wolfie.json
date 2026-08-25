@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "slug": "wolfie",
+  "generatedAt": "2026-08-24T21:06:28.461Z",
+  "language": "pt-BR",
+  "compositionId": "HubWolfiePtBr",
+  "commercialUseAllowed": true,
+  "renderFingerprintSha256": "fb5f300fd0fb06fdee0ab5f9fa6160899c92ee3f647d5ed61a12f0a864ed0d41",
+  "artifacts": {
+    "videoSha256": "f9569ec15dbbed621871d5ef055186362ec581dd446e2af8f8cba38b68902dff",
+    "posterSha256": "dd474a0035c1bbc6eaccd721c50dfe08f5c056db20046137b7ed2f6a4df51037",
+    "captionsSha256": "c43a6a509ad5b9b00b6bd59fe50028ab8daed33ded2c80e7a5297ca5106f2248"
+  },
+  "receiptFingerprintSha256": "eb331f993ecd405e728e1e2499d94d9ea371388b40f1f9458391a501dd010f48"
+}

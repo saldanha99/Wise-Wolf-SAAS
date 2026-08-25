@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "soundVersion": 2,
+  "title": "Wise Wolf Hub · Solution Scores",
+  "origin": "Procedurally synthesized for Wise Wolf from deterministic source code in this repository.",
+  "license": "Original Wise Wolf production audio. No third-party samples, melodies, recordings or remote assets.",
+  "assets": [
+    {
+      "file": "hub-overview-bed-v2.wav",
+      "role": "music-hub-overview",
+      "durationSeconds": 48,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "08c8094f019f2b3c32f4b8303b6a32887e2c8aee4fde3eccb5849a7d3758904d"
+    },
+    {
+      "file": "library-bed-v2.wav",
+      "role": "music-library",
+      "durationSeconds": 48,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "659f865fb08db6dfe5e0131451db0ff1823fe3176b3ddcdc99c677c40f80b622"
+    },
+    {
+      "file": "educator-ai-bed-v2.wav",
+      "role": "music-educator-ai",
+      "durationSeconds": 48,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "831468bcb2442646672dabd9a9da40bf1a972a09c45674ea81318f7c7e417404"
+    },
+    {
+      "file": "wolfie-bed-v2.wav",
+      "role": "music-wolfie",
+      "durationSeconds": 48,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "892460d10985ebfdc687dbb1b1491dc36b133961ceee6885cad0aa6e4bde22ee"
+    },
+    {
+      "file": "school-os-bed-v2.wav",
+      "role": "music-school-os",
+      "durationSeconds": 48,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "69be83dd4cc769435172897ff6f596e415fca37c94086ffc2800efaff0f439cc"
+    },
+    {
+      "file": "hub-scene-whoosh-v1.wav",
+      "role": "transition",
+      "durationSeconds": 0.92,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "a537bcdc36b2746b4b06d969163792e3a78779a2dbd97acfc371c97f1dc6a07e"
+    },
+    {
+      "file": "hub-logo-impact-v1.wav",
+      "role": "logo",
+      "durationSeconds": 1.55,
+      "sampleRate": 48000,
+      "channels": 2,
+      "sha256": "abcf9e67f9274cd5f1b7780d67ba41daa72d31342886a7a215e3b684c41e40e5"
+    }
+  ]
+}

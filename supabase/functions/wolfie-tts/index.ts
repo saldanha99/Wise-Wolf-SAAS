@@ -83,7 +83,7 @@ const resolveVoice = (language: TtsLanguage): string => {
       : Deno.env.get("WOLFIE_TTS_VOICE_EN")
   )?.trim().toLocaleLowerCase();
 
-  return configured && ALLOWED_VOICES.has(configured) ? configured : "marin";
+  return configured && ALLOWED_VOICES.has(configured) ? configured : "cedar";
 };
 
 /**
@@ -121,10 +121,10 @@ const voiceDeniedResponse = (
 
 const speakingInstructions = (language: TtsLanguage): string =>
   language === "mixed"
-    ? "Speak each labeled segment in its labeled language. Use natural Brazilian Portuguese for Português segments and natural American English for English segments, switching smoothly without translating, adding, correcting, or omitting content. Preserve names, cities, states, and numbers exactly."
+    ? "Use the same warm adult male voice with a medium-low register throughout. Speak Português segments in neutral Brazilian Portuguese, never European Portuguese, and English segments in natural American English. Switch smoothly without translating, adding, correcting, or omitting content. Preserve names, cities, states, and numbers exactly."
     : language === "pt"
-    ? "Fale em português brasileiro natural, acolhedor e claro. Preserve exatamente nomes próprios, cidades, estados e números. Não acrescente nem corrija conteúdo."
-    : "Speak in natural, warm, clear English for a language learner. Preserve proper names, Brazilian place names, and numbers exactly. Do not add or correct content.";
+    ? "Fale com voz adulta masculina, acolhedora, natural e segura, em registro médio-grave. Use português brasileiro neutro; nunca use pronúncia, ritmo ou vocabulário de português europeu. Preserve exatamente nomes próprios, cidades, estados e números. Não acrescente nem corrija conteúdo."
+    : "Speak with the same warm adult male identity in a natural medium-low register and clear American English for a language learner. Preserve proper names, Brazilian place names, and numbers exactly. Do not add or correct content.";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

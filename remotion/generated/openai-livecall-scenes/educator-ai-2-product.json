@@ -1,0 +1,13 @@
+{
+  "id": "educator-ai-2-product",
+  "file": "educator-ai-2-product.mp3",
+  "requestId": "gen-1787593316-wG1qBgdBscRuPsbd8uCU",
+  "sha256": "b561c25b031aa117fb1ed77fae14edb905ed6f9d0cb2c085e35427181b40b6e1",
+  "bytes": 280912,
+  "transcriptSha256": "8eeef64e047ea7ffaf27b10ca008199d04a8700ef3578e44276acfe867a865ea",
+  "sceneHash": "c3d1413be12ac58d6657ed9a5b67c4f04bdb287d2f36b0f1a89bcf814fbaac08",
+  "durationSeconds": 11.65,
+  "generatedAt": "2026-08-24T17:42:03Z",
+  "sourcePcmWavSha256": "780fa995a26366d5a1a88fec7c00be88d059b3a84ffd54ce3eb13690436af1a6",
+  "sourcePcmWavBytes": 559244
+}

@@ -4,6 +4,7 @@ import { User, Mail, Phone, Lock, Save, Camera, CreditCard, Bell, Shield, CheckC
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
 import TeacherPixSettings from './TeacherPixSettings';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 
 const TeacherProfile: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -48,15 +49,19 @@ const TeacherProfile: React.FC = () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select(PROFILE_SAFE_COLS)
-                .eq('id', user.id)
-                .single();
-
-            // pix_key não vem mais em profiles (revogado) — o próprio usuário lê via RPC.
-            const { data: myPay } = await supabase.rpc('get_my_pay');
-            if (profile) (profile as any).pix_key = (myPay as any)?.pix_key ?? '';
+            const [profileResult, privateProfile, payResult] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select(PROFILE_SAFE_COLS)
+                    .eq('id', user.id)
+                    .single(),
+                loadAuthorizedProfilePrivate(user.id),
+                supabase.rpc('get_my_pay'),
+            ]);
+            if (profileResult.error) throw profileResult.error;
+            const profile: any = profileResult.data
+                ? { ...profileResult.data, ...privateProfile, pix_key: (payResult.data as any)?.pix_key ?? '' }
+                : null;
 
             if (profile) {
                 const profileData = profile as typeof profile & {

@@ -29,6 +29,12 @@ export interface EnvioEvolution {
   delayMs?: number;
 }
 
+export type EvolutionSendResult = {
+  outcome: "accepted" | "rejected" | "ambiguous";
+  messageId: string | null;
+  httpStatus: number | null;
+};
+
 /**
  * Vale a pena perguntar o JID deste destino?
  *
@@ -52,12 +58,15 @@ export async function resolveJid(
   if (!precisaResolverJid(phone)) return null;
   for (const key of keys) {
     try {
-      const resp = await fetch(`${base}/chat/whatsappNumbers/${encodeURIComponent(instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({ numbers: [phone] }),
-        signal: AbortSignal.timeout(10000),
-      });
+      const resp = await fetch(
+        `${base}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: key },
+          body: JSON.stringify({ numbers: [phone] }),
+          signal: AbortSignal.timeout(10000),
+        },
+      );
       if (resp.status === 401) continue;
       if (!resp.ok) return null;
       const data = await resp.json();
@@ -71,43 +80,85 @@ export async function resolveJid(
   return null;
 }
 
-/** Envia o texto e diz se a Evolution aceitou. Nunca lança. */
-export async function sendWhatsText(opts: EnvioEvolution): Promise<boolean> {
-  const alvo = (await resolveJid(opts.base, opts.keys, opts.instance, opts.to)) || opts.to;
-  const destinationLastFour = String(alvo).replace(/\D/g, "").slice(-4) || "group";
+function evolutionMessageId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const root = payload as Record<string, unknown>;
+  const key = root.key && typeof root.key === "object" &&
+      !Array.isArray(root.key)
+    ? root.key as Record<string, unknown>
+    : null;
+  const value = key?.id || root.id;
+  return typeof value === "string" && value.trim()
+    ? value.trim().slice(0, 320)
+    : null;
+}
+
+export async function sendWhatsTextDetailed(
+  opts: EnvioEvolution,
+): Promise<EvolutionSendResult> {
+  const alvo =
+    (await resolveJid(opts.base, opts.keys, opts.instance, opts.to)) || opts.to;
+  const destinationLastFour = String(alvo).replace(/\D/g, "").slice(-4) ||
+    "group";
   for (const key of opts.keys) {
     try {
-      const resp = await fetch(`${opts.base}/message/sendText/${encodeURIComponent(opts.instance)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify({
-          number: alvo,
-          text: opts.text,
-          delay: opts.delayMs ?? 1200,
-          linkPreview: false,
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
+      const resp = await fetch(
+        `${opts.base}/message/sendText/${encodeURIComponent(opts.instance)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: key,
+          },
+          body: JSON.stringify({
+            number: alvo,
+            text: opts.text,
+            delay: opts.delayMs ?? 1200,
+            linkPreview: false,
+          }),
+          signal: AbortSignal.timeout(15000),
+        },
+      );
       // 401 é chave errada: tenta a próxima em vez de desistir do envio.
       if (resp.status === 401) continue;
       if (!resp.ok) {
+        const ambiguous = resp.status === 408 || resp.status === 425 ||
+          resp.status === 429 || resp.status >= 500;
         console.warn("[evolution] envio recusado", {
           status: resp.status,
           instance: opts.instance,
           destinationLastFour,
           providerRequestId: resp.headers.get("x-request-id") || undefined,
+          ambiguous,
         });
-        return false;
+        return {
+          outcome: ambiguous ? "ambiguous" : "rejected",
+          messageId: null,
+          httpStatus: resp.status,
+        };
       }
-      return true;
+      const payload = await resp.json().catch(() => null);
+      return {
+        outcome: "accepted",
+        messageId: evolutionMessageId(payload),
+        httpStatus: resp.status,
+      };
     } catch (e) {
       console.warn("[evolution] envio falhou", {
         instance: opts.instance,
         destinationLastFour,
         errorType: e instanceof Error ? e.name : "UnknownError",
       });
-      return false;
+      return { outcome: "ambiguous", messageId: null, httpStatus: null };
     }
   }
-  return false;
+  return { outcome: "rejected", messageId: null, httpStatus: 401 };
+}
+
+/** Envia o texto e diz se a Evolution aceitou. Nunca lança. */
+export async function sendWhatsText(opts: EnvioEvolution): Promise<boolean> {
+  const result = await sendWhatsTextDetailed(opts);
+  return result.outcome === "accepted";
 }

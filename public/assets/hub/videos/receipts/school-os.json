@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "slug": "school-os",
+  "generatedAt": "2026-08-24T21:06:34.463Z",
+  "language": "pt-BR",
+  "compositionId": "HubSchoolOsPtBr",
+  "commercialUseAllowed": true,
+  "renderFingerprintSha256": "15b1c771696ff32883e02810b153d6627bc1d1095a663b64cb03da8041f53660",
+  "artifacts": {
+    "videoSha256": "572c2d9666ba2635e5c69b1424a18eda37d28005f8ed47268706350e04bb2233",
+    "posterSha256": "b98524a5fe4df79c4e4a3ff8ca9c49606b72b47e4a7289c3c4a3524d1b7dcc56",
+    "captionsSha256": "ba6a200542bd5aeb6b1a1e24c986019566b08c3da5881e34777b7482be10d2a7"
+  },
+  "receiptFingerprintSha256": "778ef8959ee4fec5c7b34f544bf35a341345b4fd989751f32770855417abf4b8"
+}

@@ -17,7 +17,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
-const DEFAULT_VOICE = "marin";
+const DEFAULT_VOICE = "cedar";
 const CONTEXT_RETENTION_RATIO = 0.6;
 
 const corsHeaders = {

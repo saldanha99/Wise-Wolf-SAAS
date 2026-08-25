@@ -1,0 +1,13 @@
+{
+  "id": "educator-ai-3-proof",
+  "file": "educator-ai-3-proof.mp3",
+  "requestId": "gen-1787593319-NzYlKnZACB31OdzNqalU",
+  "sha256": "2d7bc10561eca271cb00fa2809f670f6ecd188d83ac86d1eb0330ca7c9ae4b25",
+  "bytes": 187498,
+  "transcriptSha256": "a8eefa3d354fa7fbf12d82cfa9dfcd73c1869136573aa95d712dfe669654da24",
+  "sceneHash": "4a12bd7d1219cf6d8a86e10bd837303657783141960be8b640367228604cb9a7",
+  "durationSeconds": 7.75,
+  "generatedAt": "2026-08-24T17:42:03Z",
+  "sourcePcmWavSha256": "751185912eb06cd9b55aeecb98c4e4087fecf0bf740ca9f4e54a2fbb21f6f450",
+  "sourcePcmWavBytes": 372044
+}

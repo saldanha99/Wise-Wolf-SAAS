@@ -130,13 +130,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     useEffect(() => {
         if (!isDependent || !tenantId || guardianCandidates.length > 0) return;
         (async () => {
-            const { data } = await supabase
-                .from('profiles')
-                .select('id, full_name, cpf, email, phone, postal_code, address, address_number')
-                .eq('tenant_id', tenantId)
-                .not('cpf', 'is', null)
-                .neq('cpf', '')
-                .order('full_name', { ascending: true });
+            const { data, error } = await supabase.rpc(
+                'get_authorized_guardian_directory',
+                { p_tenant_id: tenantId },
+            );
+            if (error) {
+                console.error('Não foi possível carregar responsáveis autorizados:', error);
+                return;
+            }
             if (data) setGuardianCandidates(data);
         })();
     }, [isDependent, tenantId]);

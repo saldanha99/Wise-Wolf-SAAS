@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { localMonth } from '../lib/dateUtils';
 import { FileText, Download, Search, CheckCircle, XCircle, Clock, Calendar, Users, Filter, ChevronRight, DollarSign, Settings } from 'lucide-react';
 import NfSettingsAdmin from './NfSettingsAdmin';
+import InvoiceDocumentLink from './InvoiceDocumentLink';
 
 interface InvoiceManagerProps {
     tenantId?: string;
@@ -265,14 +266,12 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                             </td>
                                             <td className="px-8 py-6 text-center">
                                                 {inv.nf_link ? (
-                                                    <a
-                                                        href={inv.nf_link}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
+                                                    <InvoiceDocumentLink
+                                                        reference={inv.nf_link}
                                                         className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors"
                                                     >
                                                         <FileText size={14} /> PDF
-                                                    </a>
+                                                    </InvoiceDocumentLink>
                                                 ) : (
                                                     <span className="text-[10px] font-bold text-slate-300 dark:text-brand-muted uppercase">Pendente</span>
                                                 )}

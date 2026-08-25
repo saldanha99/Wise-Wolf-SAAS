@@ -13,6 +13,7 @@ export interface WolfieCaptionBarProps {
   actions?: React.ReactNode;
   actionsLabel?: string;
   captionLabel?: string;
+  variant?: "default" | "ugc";
   className?: string;
 }
 
@@ -47,6 +48,7 @@ export function WolfieCaptionBar({
   actions,
   actionsLabel = "Ações da legenda",
   captionLabel = "Legenda da conversa",
+  variant = "default",
   className = "",
 }: WolfieCaptionBarProps) {
   const normalizedText = text.trim();
@@ -54,15 +56,23 @@ export function WolfieCaptionBar({
   const shouldAnnounce = Boolean(
     announceFinal && isFinal && normalizedText,
   );
+  const isUgcVariant = variant === "ugc";
 
   return (
     <section
       aria-label={captionLabel}
-      className={`w-full px-3 sm:px-5 lg:px-7 ${className}`}
+      className={`w-full ${
+        isUgcVariant ? "px-2 sm:px-4" : "px-3 sm:px-5 lg:px-7"
+      } ${className}`}
       data-caption-final={isFinal ? "true" : "false"}
       data-caption-state={state}
+      data-caption-variant={variant}
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 rounded-2xl border border-white/12 bg-slate-950/78 px-4 py-3 shadow-2xl backdrop-blur-2xl sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+      <div className={`mx-auto flex w-full flex-col gap-2 border border-white/12 bg-slate-950/78 shadow-2xl backdrop-blur-2xl sm:flex-row sm:items-center ${
+        isUgcVariant
+          ? "max-w-3xl rounded-[1.35rem] px-4 py-2.5 sm:gap-3 sm:px-5 sm:py-3"
+          : "max-w-5xl rounded-2xl px-4 py-3 sm:gap-4 sm:px-5"
+      }`}>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-200">
             <StateIcon state={state} />
@@ -76,7 +86,11 @@ export function WolfieCaptionBar({
               : null}
           </div>
           <p
-            className={`mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap text-sm leading-6 sm:text-base sm:leading-7 ${
+            className={`mt-1 overflow-y-auto whitespace-pre-wrap ${
+              isUgcVariant
+                ? "max-h-20 text-[15px] font-semibold leading-6 drop-shadow-lg sm:text-lg sm:leading-7"
+                : "max-h-28 text-sm leading-6 sm:text-base sm:leading-7"
+            } ${
               normalizedText ? "text-white" : "text-slate-400"
             }`}
             lang={normalizedText ? language : "pt-BR"}

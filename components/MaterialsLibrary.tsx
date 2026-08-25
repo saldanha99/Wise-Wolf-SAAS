@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, Trash2, FileText, Video, Link as LinkIcon, Music, Layers, Globe, Pencil, FolderTree, Book, Folder } from 'lucide-react';
+import { openMaterialAccess } from '../services/materialAccessService';
 
 // =============================================================
 // Componente reutilizável de biblioteca de materiais pedagógicos.
@@ -43,6 +44,10 @@ interface Props {
     onEditCollection?: (c: CollectionItem) => void;   // editar livro (admin)
     onDeleteCollection?: (id: string) => void;        // excluir livro (admin)
     emptyText?: string;
+    // Injeta outra forma de abrir o material. O sistema usa o acesso por storage
+    // (padrão); o Hub passa a sua, que assina a URL após checar assinatura e
+    // franquia. Sem isto, reaproveitar o módulo furaria o controle de acesso.
+    onOpenMaterial?: (m: MaterialItem) => Promise<void> | void;
 }
 
 const LEVEL_ORDER = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -71,12 +76,28 @@ const typeVisual = (type?: string) => {
 const MaterialsLibrary: React.FC<Props> = ({
     materials, collections, nicheLabels, onDelete, onEdit, onEditCollection, onDeleteCollection,
     emptyText = 'Nenhum material disponível.',
+    onOpenMaterial,
 }) => {
     const hasFolders = Array.isArray(collections);
     const [search, setSearch] = useState('');
     const [groupBy, setGroupBy] = useState<'folder' | 'level' | 'niche'>(hasFolders ? 'folder' : 'level');
     const [typeFilter, setTypeFilter] = useState<string>('ALL');
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const [openingMaterialId, setOpeningMaterialId] = useState<string | null>(null);
+
+    const openMaterial = async (material: MaterialItem) => {
+        if (!onOpenMaterial && !material.file_url) return;
+        const materialId = material.id || material.assignment_id || material.file_url;
+        setOpeningMaterialId(materialId);
+        try {
+            if (onOpenMaterial) await onOpenMaterial(material);
+            else await openMaterialAccess(material.file_url as string);
+        } catch {
+            alert('Não foi possível abrir este material. Confirme seu acesso e tente novamente.');
+        } finally {
+            setOpeningMaterialId(null);
+        }
+    };
 
     // Resolve o rótulo de um nicho: catálogo dinâmico > fallback base > a própria key.
     const nicheLabel = (key?: string) => {
@@ -115,7 +136,12 @@ const MaterialsLibrary: React.FC<Props> = ({
         const isNew = m.assigned_at && (Date.now() - new Date(m.assigned_at).getTime()) < 7 * 24 * 60 * 60 * 1000;
         return (
             <div key={m.id || m.assignment_id} className="p-3 rounded-xl border border-brand-border flex items-center justify-between hover:bg-brand-surface-2 dark:hover:bg-brand-surface-2/50 transition-all group">
-                <a href={m.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-3 min-w-0 flex-1">
+                <button
+                    type="button"
+                    onClick={() => void openMaterial(m)}
+                    disabled={(!onOpenMaterial && !m.file_url) || openingMaterialId === (m.id || m.assignment_id || m.file_url)}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left disabled:opacity-60"
+                >
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm shrink-0 ${color}`}>
                         <Icon size={16} />
                     </div>
@@ -139,7 +165,7 @@ const MaterialsLibrary: React.FC<Props> = ({
                             )}
                         </div>
                     </div>
-                </a>
+                </button>
                 {onEdit && m.id && (
                     <button onClick={(e) => { e.stopPropagation(); onEdit(m); }} className="p-2 text-brand-muted hover:text-tenant-primary transition-colors opacity-0 group-hover:opacity-100 shrink-0" title="Editar material">
                         <Pencil size={15} />

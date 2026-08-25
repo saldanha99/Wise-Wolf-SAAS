@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, XCircle, FileText, AlertTriangle, Loader2, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useInvoiceDocumentUrl } from '../hooks/useInvoiceDocumentUrl';
 
 interface InvoiceReviewModalProps {
     invoice: {
@@ -22,6 +23,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
     const [isRejecting, setIsRejecting] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
     const [processing, setProcessing] = useState(false);
+    const document = useInvoiceDocumentUrl(invoice.invoice_url);
 
     const handleApprove = async () => {
         setProcessing(true);
@@ -98,9 +100,14 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                 <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
                     {/* PDF Preview */}
                     <div className="flex-1 bg-brand-surface-2 dark:bg-slate-950 relative">
-                        {invoice.invoice_url ? (
+                        {document.loading ? (
+                            <div className="flex h-full flex-col items-center justify-center text-brand-muted">
+                                <Loader2 size={36} className="mb-4 animate-spin opacity-60" />
+                                <p className="font-bold">Autorizando arquivo…</p>
+                            </div>
+                        ) : document.url ? (
                             <iframe
-                                src={invoice.invoice_url}
+                                src={document.url}
                                 className="w-full h-full"
                                 title="PDF Preview"
                             />
@@ -108,6 +115,7 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                             <div className="flex flex-col items-center justify-center h-full text-brand-muted">
                                 <AlertTriangle size={48} className="mb-4 opacity-50" />
                                 <p className="font-bold">Arquivo não disponível</p>
+                                {document.error && <p className="mt-2 max-w-sm px-6 text-center text-xs">{document.error}</p>}
                             </div>
                         )}
                     </div>
@@ -123,14 +131,20 @@ const InvoiceReviewModal: React.FC<InvoiceReviewModalProps> = ({ invoice, onClos
                                         R$ {invoice.total_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </p>
                                 </div>
-                                <a
-                                    href={invoice.invoice_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-2 w-full py-3 bg-brand-surface-2 dark:bg-brand-surface-2 hover:bg-slate-200 dark:hover:bg-slate-700 text-brand-muted rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
-                                >
-                                    <Download size={16} /> Baixar PDF
-                                </a>
+                                {document.url ? (
+                                    <a
+                                        href={document.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center justify-center gap-2 w-full py-3 bg-brand-surface-2 dark:bg-brand-surface-2 hover:bg-slate-200 dark:hover:bg-slate-700 text-brand-muted rounded-xl text-xs font-bold uppercase tracking-wider transition-colors"
+                                    >
+                                        <Download size={16} /> Baixar PDF
+                                    </a>
+                                ) : (
+                                    <span className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-surface-2 py-3 text-xs font-bold uppercase tracking-wider text-brand-muted opacity-60">
+                                        <Download size={16} /> Arquivo indisponível
+                                    </span>
+                                )}
                             </div>
                         </div>
 

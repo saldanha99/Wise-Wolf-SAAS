@@ -26,12 +26,28 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   // Materials State
   const [materials, setMaterials] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [newMaterial, setNewMaterial] = useState({ title: '', level: 'A1', type: 'PDF', file: null as File | null, url: '', category: 'General', niche: 'GENERAL', collection_id: '' as string, part_number: '' as string });
+  const [newMaterial, setNewMaterial] = useState({
+    title: '',
+    level: 'A1',
+    type: 'PDF',
+    file: null as File | null,
+    url: '',
+    category: 'General',
+    niche: 'GENERAL',
+    collection_id: '' as string,
+    part_number: '' as string,
+    publishToHub: false,
+    rightsBasis: 'OWNED',
+    rightsDeclaration: '',
+    previewFile: null as File | null,
+  });
   // Catálogo de nichos da escola (base + customizados) — fonte única via list_niches.
   const [niches, setNiches] = useState<{ key: string; label: string }[]>([]);
   const [newNicheLabel, setNewNicheLabel] = useState('');
   const [showNewNiche, setShowNewNiche] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any | null>(null);
+  const [editingMaterialOriginal, setEditingMaterialOriginal] = useState<any | null>(null);
+  const [editingHubPreviewFile, setEditingHubPreviewFile] = useState<File | null>(null);
   // Livros / coleções (agrupam partes de um material fracionado)
   const [collections, setCollections] = useState<any[]>([]);
   const [showNewCollection, setShowNewCollection] = useState(false);
@@ -49,6 +65,43 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
   const isTeacher = user.role === UserRole.TEACHER;
   const canUpload = isTeacher || user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canRequestHubPublication = user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN;
+  const canApproveHubPublication = user.role === UserRole.SUPER_ADMIN;
+
+  const uploadMaterialFile = async (file: File, targetTenantId: string) => {
+    if (targetTenantId.includes('/') || targetTenantId.includes('..')) {
+      throw new Error('Identificador da escola inválido para armazenamento.');
+    }
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!/^[a-z0-9]{1,8}$/.test(extension)) {
+      throw new Error('Extensão de arquivo inválida.');
+    }
+    const objectPath = `${targetTenantId}/${user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from('materials').upload(objectPath, file);
+    if (error) throw error;
+    return objectPath;
+  };
+
+  const openMaterialEdit = (material: any) => {
+    const editable = {
+      ...material,
+      collection_id: material.collection_id || '',
+      part_number: material.part_number ?? '',
+      hub_catalog_opt_in: Boolean(material.hub_catalog_opt_in),
+      hub_commercial_approved: Boolean(material.hub_commercial_approved),
+      hub_rights_basis: material.hub_rights_basis || 'OWNED',
+      hub_rights_declaration: material.hub_rights_declaration || '',
+    };
+    setEditingMaterial(editable);
+    setEditingMaterialOriginal(editable);
+    setEditingHubPreviewFile(null);
+  };
+
+  const closeMaterialEdit = () => {
+    setEditingMaterial(null);
+    setEditingMaterialOriginal(null);
+    setEditingHubPreviewFile(null);
+  };
 
   // Carrega catálogo de nichos (base + customizados) e livros da escola
   const loadNiches = () => supabase.rpc('list_niches').then(({ data }) => { if (Array.isArray(data)) setNiches(data); });
@@ -102,20 +155,115 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
   };
 
   const saveMaterialEdit = async () => {
-    if (!editingMaterial) return;
-    const { data } = await supabase.rpc('update_material', { p_id: editingMaterial.id, p: {
-      title: editingMaterial.title, niche: editingMaterial.niche, level_tag: editingMaterial.level_tag, type: editingMaterial.type,
-    }});
-    if (!data?.ok) return alert('Erro ao salvar edição.');
-    // Vínculo com livro/parte (campo separado, via RPC própria)
-    const partNum = editingMaterial.part_number !== '' && editingMaterial.part_number != null ? Number(editingMaterial.part_number) : null;
-    await supabase.rpc('set_material_collection', {
-      p_material_id: editingMaterial.id,
-      p_collection_id: editingMaterial.collection_id || null,
-      p_part_number: partNum,
-    });
-    setMaterials(prev => prev.map(m => m.id === editingMaterial.id ? { ...m, ...editingMaterial, part_number: partNum, collection_id: editingMaterial.collection_id || null } : m));
-    setEditingMaterial(null);
+    if (!editingMaterial || !editingMaterialOriginal) return;
+    const targetTenantId = editingMaterial.tenant_id || tenantId || user.tenantId;
+    if (!targetTenantId) return alert('Não foi possível identificar a escola deste material.');
+
+    const publicationRequested = Boolean(editingMaterial.hub_catalog_opt_in);
+    const consentChanged = publicationRequested !== Boolean(editingMaterialOriginal.hub_catalog_opt_in)
+      || editingMaterial.hub_rights_basis !== editingMaterialOriginal.hub_rights_basis
+      || editingMaterial.hub_rights_declaration.trim() !== String(editingMaterialOriginal.hub_rights_declaration || '').trim()
+      || editingHubPreviewFile !== null;
+
+    if (publicationRequested) {
+      if (!canRequestHubPublication) return alert('Somente o diretor pode solicitar publicação comercial.');
+      if (editingMaterial.type !== 'PDF' || !editingMaterial.storage_object_path) {
+        return alert('Somente PDFs armazenados com segurança podem ser enviados para o Hub.');
+      }
+      if (!editingMaterial.hub_preview_source_path && !editingHubPreviewFile) {
+        return alert('Envie uma prévia separada antes de solicitar a publicação.');
+      }
+      if (editingMaterial.hub_rights_declaration.trim().length < 20) {
+        return alert('Descreva em pelo menos 20 caracteres por que a escola possui os direitos de distribuição.');
+      }
+    }
+
+    if (!canApproveHubPublication
+      && editingMaterial.hub_commercial_approved
+      && !editingMaterialOriginal.hub_commercial_approved) {
+      return alert('A aprovação comercial é exclusiva da equipe central Wise Wolf.');
+    }
+    if (canApproveHubPublication
+      && editingMaterial.hub_commercial_approved
+      && editingMaterial.hub_publication_requested_by === user.id) {
+      return alert('Quem solicitou a publicação não pode aprovar a própria solicitação.');
+    }
+    if (canApproveHubPublication && editingMaterial.hub_commercial_approved && consentChanged) {
+      return alert('As condições da publicação foram alteradas. Salve a nova solicitação e peça a outro SUPER_ADMIN para aprová-la.');
+    }
+
+    setUploading(true);
+    let uploadedPreviewPath: string | null = null;
+    try {
+      if (editingHubPreviewFile) {
+        if (editingHubPreviewFile.type !== 'application/pdf' && !editingHubPreviewFile.name.toLowerCase().endsWith('.pdf')) {
+          throw new Error('A prévia comercial deve ser um PDF.');
+        }
+        if (editingHubPreviewFile.size > 500 * 1024 * 1024) throw new Error('A prévia deve ter menos de 500MB.');
+        uploadedPreviewPath = await uploadMaterialFile(editingHubPreviewFile, targetTenantId);
+      }
+
+      const { data: basicUpdate, error: basicUpdateError } = await supabase.rpc('update_material', { p_id: editingMaterial.id, p: {
+        title: editingMaterial.title, niche: editingMaterial.niche, level_tag: editingMaterial.level_tag, type: editingMaterial.type,
+      }});
+      if (basicUpdateError || !basicUpdate?.ok) throw new Error('Não foi possível salvar os dados do material.');
+
+      const partNum = editingMaterial.part_number !== '' && editingMaterial.part_number != null ? Number(editingMaterial.part_number) : null;
+      const { data: collectionUpdate, error: collectionError } = await supabase.rpc('set_material_collection', {
+        p_material_id: editingMaterial.id,
+        p_collection_id: editingMaterial.collection_id || null,
+        p_part_number: partNum,
+      });
+      if (collectionError || collectionUpdate?.ok === false) throw new Error('Não foi possível atualizar o livro deste material.');
+
+      const publicationUpdate: Record<string, unknown> = {
+        hub_catalog_opt_in: publicationRequested,
+      };
+      if (publicationRequested) {
+        publicationUpdate.hub_rights_basis = editingMaterial.hub_rights_basis;
+        publicationUpdate.hub_rights_declaration = editingMaterial.hub_rights_declaration.trim();
+        if (uploadedPreviewPath) publicationUpdate.hub_preview_source_path = uploadedPreviewPath;
+      }
+      if (consentChanged) {
+        publicationUpdate.hub_commercial_approved = false;
+      } else if (canApproveHubPublication) {
+        publicationUpdate.hub_commercial_approved = Boolean(editingMaterial.hub_commercial_approved);
+      }
+
+      const { data: updatedMaterial, error: publicationError } = await supabase
+        .from('pedagogical_materials')
+        .update(publicationUpdate)
+        .eq('id', editingMaterial.id)
+        .select('*')
+        .single();
+      if (publicationError) throw publicationError;
+
+      let syncWarning = '';
+      if (updatedMaterial.hub_catalog_opt_in
+        && updatedMaterial.hub_commercial_approved
+        && ['PENDING', 'FAILED'].includes(updatedMaterial.hub_sync_status)) {
+        const { data: syncResult, error: syncError } = await supabase.functions.invoke('sync-hub-material', {
+          body: { materialId: editingMaterial.id },
+        });
+        if (syncError || syncResult?.failed) {
+          syncWarning = '\n\nA autorização foi salva, mas a cópia segura para o Hub ainda precisa ser concluída pela equipe central.';
+        }
+      }
+
+      await fetchMaterials();
+      closeMaterialEdit();
+      alert(publicationRequested
+        ? updatedMaterial.hub_commercial_approved
+          ? `Material salvo e aprovado para publicação comercial.${syncWarning}`
+          : 'Material salvo. A solicitação está aguardando revisão central e ainda não está pública.'
+        : 'Material salvo somente na biblioteca da escola.');
+    } catch (error: any) {
+      if (uploadedPreviewPath) await supabase.storage.from('materials').remove([uploadedPreviewPath]);
+      console.error('Material edit error:', error);
+      alert(`Erro ao salvar: ${error.message || 'falha inesperada'}`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   useEffect(() => {
@@ -197,26 +345,6 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       }) || [];
 
       setMaterials(visibleMaterials);
-
-      // Auto-recuperação: se uma publicação anterior falhou por indisponibilidade
-      // temporária, a própria tela administrativa tenta novamente sem duplicar itens.
-      const recoverableIds = visibleMaterials
-        .filter(m => {
-          const syncPending = ['PENDING', 'FAILED'].includes(m.hub_sync_status);
-          const sameTenant = String(m.tenant_id) === String(targetTenant);
-          const canRetry = user.role === UserRole.SUPER_ADMIN ||
-            (sameTenant && (user.role === UserRole.SCHOOL_ADMIN || m.uploaded_by === user.id));
-          return (m.approval_status || 'APPROVED') === 'APPROVED' && syncPending && canRetry;
-        })
-        .slice(0, 10)
-        .map(m => m.id);
-      if (recoverableIds.length > 0) {
-        void supabase.functions.invoke('sync-hub-material', {
-          body: { materialIds: recoverableIds },
-        }).then(({ error: syncError }) => {
-          if (syncError) console.warn('A recuperação automática de materiais do Hub ficará para a próxima tentativa.', syncError);
-        });
-      }
     } catch (err) {
       console.error(err);
     }
@@ -226,17 +354,45 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
   const handleUploadMaterial = async () => {
     if (!newMaterial.title) return alert('Título obrigatório');
+    const targetTenantId = tenantId || user.tenantId;
+    if (!targetTenantId) {
+      return alert('Erro Crítico: ID da Unidade não identificado. Recarregue a página.');
+    }
+    if (newMaterial.publishToHub) {
+      if (!canRequestHubPublication) {
+        return alert('Somente o diretor da escola pode solicitar publicação comercial.');
+      }
+      if (newMaterial.type !== 'PDF' || !newMaterial.file || !newMaterial.previewFile) {
+        return alert('Para solicitar publicação no Hub, envie o PDF completo e uma prévia separada.');
+      }
+      if (newMaterial.rightsDeclaration.trim().length < 20) {
+        return alert('Descreva em pelo menos 20 caracteres por que a escola possui os direitos de distribuição.');
+      }
+      const sameFile = newMaterial.file.name === newMaterial.previewFile.name &&
+        newMaterial.file.size === newMaterial.previewFile.size &&
+        newMaterial.file.lastModified === newMaterial.previewFile.lastModified;
+      if (sameFile) return alert('A prévia precisa ser um arquivo resumido diferente do material completo.');
+    }
+
     setUploading(true);
+    const uploadedObjectPaths: string[] = [];
+    let materialCreated = false;
     try {
       let finalUrl = newMaterial.url;
+      let storageObjectPath: string | null = null;
+      let previewObjectPath: string | null = null;
       if (newMaterial.type === 'PDF' && newMaterial.file) {
-        const fileExt = newMaterial.file.name.split('.').pop();
-        const fileName = `materials/${Date.now()}.${fileExt}`;
         if (newMaterial.file.size > 500 * 1024 * 1024) throw new Error('O arquivo deve ter menos de 500MB. Para arquivos maiores, aumente o limite no Supabase.');
-        const { error: upErr } = await supabase.storage.from('materials').upload(fileName, newMaterial.file);
-        if (upErr) throw upErr;
-        const { data: { publicUrl } } = supabase.storage.from('materials').getPublicUrl(fileName);
+        storageObjectPath = await uploadMaterialFile(newMaterial.file, targetTenantId);
+        uploadedObjectPaths.push(storageObjectPath);
+        const { data: { publicUrl } } = supabase.storage.from('materials').getPublicUrl(storageObjectPath);
         finalUrl = publicUrl;
+      }
+
+      if (newMaterial.publishToHub && newMaterial.previewFile) {
+        if (newMaterial.previewFile.size > 500 * 1024 * 1024) throw new Error('A prévia deve ter menos de 500MB.');
+        previewObjectPath = await uploadMaterialFile(newMaterial.previewFile, targetTenantId);
+        uploadedObjectPaths.push(previewObjectPath);
       }
 
       const userRole = user.role;
@@ -244,13 +400,6 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
       const scope = isTeacher ? 'PRIVATE' : 'TENANT';
       // Material do professor entra como PENDENTE de aprovação do diretor; admin já entra aprovado
       const approvalStatus = isTeacher ? 'PENDING' : 'APPROVED';
-
-      const targetTenantId = tenantId || user.tenantId;
-      if (!targetTenantId) {
-        alert('Erro Crítico: ID da Unidade não identificado. Recarregue a página.');
-        setUploading(false);
-        return;
-      }
 
       const { data, error } = await supabase.from('pedagogical_materials').insert({
         tenant_id: targetTenantId,
@@ -265,32 +414,36 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
         niche: newMaterial.niche,
         collection_id: newMaterial.collection_id || null, // livro (opcional)
         part_number: newMaterial.part_number !== '' ? Number(newMaterial.part_number) : null, // ordem da parte
+        storage_object_path: storageObjectPath,
+        hub_preview_source_path: previewObjectPath,
+        hub_catalog_opt_in: newMaterial.publishToHub,
+        hub_commercial_approved: false,
+        hub_rights_basis: newMaterial.publishToHub ? newMaterial.rightsBasis : null,
+        hub_rights_declaration: newMaterial.publishToHub ? newMaterial.rightsDeclaration.trim() : null,
       }).select().single();
 
       if (error) {
         console.error('Database Insert Error:', error);
         throw new Error(`Erro de Banco de Dados: ${error.message} (${error.code})`);
       }
-
-      let hubSyncPending = false;
-      if (approvalStatus === 'APPROVED') {
-        const { data: syncResult, error: syncError } = await supabase.functions.invoke('sync-hub-material', {
-          body: { materialId: data.id },
-        });
-        hubSyncPending = Boolean(syncError || syncResult?.ok === false);
-        if (hubSyncPending) {
-          console.warn('Material salvo; sincronização com o Hub ficará pendente.', syncError || syncResult);
-        }
-      }
+      materialCreated = true;
 
       setMaterials(prev => [data, ...prev]);
       alert(approvalStatus === 'PENDING'
-        ? '✅ Material enviado para aprovação do diretor. Depois da aprovação, ele entra automaticamente na Biblioteca do Hub.'
-        : hubSyncPending
-          ? '✅ Material salvo. A cópia para a Biblioteca do Hub ficou na fila e poderá ser reprocessada.'
-          : '✅ Material salvo e publicado na Biblioteca do Hub!');
-      setNewMaterial(m => ({ title: '', level: m.level, type: 'PDF', file: null, url: '', category: 'General', niche: m.niche, collection_id: m.collection_id, part_number: m.part_number !== '' ? String(Number(m.part_number) + 1) : '' }));
+        ? '✅ Material enviado para aprovação pedagógica do diretor. Ele permanece privado da escola.'
+        : newMaterial.publishToHub
+          ? '✅ Material salvo. A solicitação comercial foi enviada para revisão central; nada foi publicado automaticamente.'
+          : '✅ Material salvo apenas na biblioteca da escola.');
+      setNewMaterial(m => ({
+        title: '', level: m.level, type: 'PDF', file: null, url: '', category: 'General',
+        niche: m.niche, collection_id: m.collection_id,
+        part_number: m.part_number !== '' ? String(Number(m.part_number) + 1) : '',
+        publishToHub: false, rightsBasis: 'OWNED', rightsDeclaration: '', previewFile: null,
+      }));
     } catch (err: any) {
+      if (!materialCreated && uploadedObjectPaths.length > 0) {
+        await supabase.storage.from('materials').remove(uploadedObjectPaths);
+      }
       console.error('Upload Error Details:', err);
       alert(`Erro ao salvar: ${err.message || JSON.stringify(err)}`);
     } finally { setUploading(false); }
@@ -315,6 +468,14 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
     const matchesTeacher = selectedTeacherId === 'ALL' || s.assignedTeacherIds.includes(selectedTeacherId);
     return matchesSearch && matchesTeacher;
   });
+  const editingConsentChanged = Boolean(editingMaterial && editingMaterialOriginal) && (
+    Boolean(editingMaterial.hub_catalog_opt_in) !== Boolean(editingMaterialOriginal.hub_catalog_opt_in)
+    || editingMaterial.hub_rights_basis !== editingMaterialOriginal.hub_rights_basis
+    || String(editingMaterial.hub_rights_declaration || '').trim() !== String(editingMaterialOriginal.hub_rights_declaration || '').trim()
+    || editingHubPreviewFile !== null
+  );
+  const editingApprovalBlocked = editingConsentChanged
+    || editingMaterial?.hub_publication_requested_by === user.id;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 h-[calc(100vh-8rem)] flex flex-col">
@@ -377,11 +538,11 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
           {canUpload && (
             <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-8 h-fit">
               <h3 className="text-xl font-black mb-2 flex items-center gap-2"><Upload size={20} className="text-tenant-primary" /> Novo Material</h3>
-              {isTeacher && <p className="text-[11px] text-amber-600 mb-4">📋 Seu material vai para aprovação do diretor antes de entrar no banco.</p>}
+              {isTeacher && <p className="text-[11px] text-amber-600 mb-4">📋 Seu material fica privado e passa pela aprovação pedagógica do diretor.</p>}
               <div className="space-y-4">
                 <input value={newMaterial.title} onChange={e => setNewMaterial({ ...newMaterial, title: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm font-bold outline-none" placeholder="Título" />
                 <div className="flex gap-2">
-                  <select value={newMaterial.type} onChange={e => setNewMaterial({ ...newMaterial, type: e.target.value as any })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
+                  <select value={newMaterial.type} onChange={e => setNewMaterial({ ...newMaterial, type: e.target.value as any, publishToHub: e.target.value === 'PDF' ? newMaterial.publishToHub : false })} className="flex-1 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold">
                     <option value="PDF">PDF</option>
                     <option value="VIDEO">Vídeo (URL)</option>
                     <option value="LINK">Link</option>
@@ -440,6 +601,51 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                 ) : (
                   <input value={newMaterial.url} onChange={e => setNewMaterial({ ...newMaterial, url: e.target.value })} className="w-full p-3 bg-brand-surface-2 rounded-xl text-sm" placeholder="https://..." />
                 )}
+                {canRequestHubPublication && newMaterial.type === 'PDF' && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20 p-4 space-y-3">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newMaterial.publishToHub}
+                        onChange={e => setNewMaterial({ ...newMaterial, publishToHub: e.target.checked })}
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="block text-xs font-black text-amber-900 dark:text-amber-200">Solicitar publicação comercial no Hub</span>
+                        <span className="block text-[10px] text-amber-700 dark:text-amber-300 mt-1">Desligado por padrão. A solicitação não publica nada até a revisão de outro SUPER_ADMIN.</span>
+                      </span>
+                    </label>
+                    {newMaterial.publishToHub && (
+                      <>
+                        <select value={newMaterial.rightsBasis} onChange={e => setNewMaterial({ ...newMaterial, rightsBasis: e.target.value })} className="w-full p-2 bg-brand-surface rounded-xl text-xs font-bold">
+                          <option value="OWNED">Conteúdo próprio</option>
+                          <option value="LICENSED">Licença de distribuição</option>
+                          <option value="PUBLIC_DOMAIN">Domínio público verificado</option>
+                        </select>
+                        <textarea
+                          value={newMaterial.rightsDeclaration}
+                          onChange={e => setNewMaterial({ ...newMaterial, rightsDeclaration: e.target.value })}
+                          maxLength={2000}
+                          rows={3}
+                          className="w-full p-3 bg-brand-surface rounded-xl text-xs"
+                          placeholder="Declare a origem dos direitos e por que a distribuição comercial está autorizada."
+                        />
+                        <div className="p-3 border-2 border-dashed border-amber-300 rounded-xl text-center">
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            onChange={e => setNewMaterial({ ...newMaterial, previewFile: e.target.files?.[0] || null })}
+                            className="hidden"
+                            id="hub-preview-file-up"
+                          />
+                          <label htmlFor="hub-preview-file-up" className="cursor-pointer text-xs font-bold text-amber-800 dark:text-amber-200">
+                            {newMaterial.previewFile ? newMaterial.previewFile.name : 'Selecionar PDF de prévia separado'}
+                          </label>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <button onClick={handleUploadMaterial} disabled={uploading} className="w-full py-3 bg-tenant-primary text-white rounded-xl font-black uppercase tracking-widest hover:scale-105 transition-all">{uploading ? 'Enviando...' : (isTeacher ? 'Enviar para aprovação' : 'Salvar Material')}</button>
               </div>
             </div>
@@ -453,7 +659,7 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                 collections={collections}
                 nicheLabels={nicheLabelMap}
                 onDelete={showSidebar ? handleDeleteMaterial : undefined}
-                onEdit={showSidebar ? (m: any) => setEditingMaterial({ ...m, collection_id: m.collection_id || '', part_number: m.part_number ?? '' }) : undefined}
+                onEdit={showSidebar ? openMaterialEdit : undefined}
                 onEditCollection={showSidebar ? (c: any) => setEditingCollection({ ...c }) : undefined}
                 onDeleteCollection={showSidebar ? handleDeleteCollection : undefined}
                 emptyText="Nenhum material na biblioteca ainda. Suba o primeiro no painel ao lado."
@@ -465,8 +671,8 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
 
       {/* Modal de edição de material (diretor) */}
       {editingMaterial && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setEditingMaterial(null)}>
-          <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeMaterialEdit}>
+          <div className="bg-brand-surface rounded-3xl border border-brand-border shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-black text-brand-text">Editar material</h3>
             <div>
               <label className="text-xs font-bold text-brand-muted">Título</label>
@@ -481,7 +687,12 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
               </div>
               <div className="flex-1">
                 <label className="text-xs font-bold text-brand-muted">Tipo</label>
-                <select value={editingMaterial.type || 'PDF'} onChange={e => setEditingMaterial({ ...editingMaterial, type: e.target.value })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
+                <select value={editingMaterial.type || 'PDF'} onChange={e => setEditingMaterial({
+                  ...editingMaterial,
+                  type: e.target.value,
+                  hub_catalog_opt_in: e.target.value === 'PDF' ? editingMaterial.hub_catalog_opt_in : false,
+                  hub_commercial_approved: e.target.value === 'PDF' ? editingMaterial.hub_commercial_approved : false,
+                })} className="w-full p-2 bg-brand-surface-2 rounded-xl text-xs font-bold mt-1">
                   <option value="PDF">PDF</option><option value="VIDEO">Vídeo</option><option value="LINK">Link</option>
                 </select>
               </div>
@@ -502,9 +713,82 @@ const PedagogicalConfig: React.FC<PedagogicalConfigProps> = ({ user, tenantId })
                 <input type="number" min={1} value={editingMaterial.part_number ?? ''} onChange={e => setEditingMaterial({ ...editingMaterial, part_number: e.target.value })} placeholder="Nº da parte (1, 2, 3...)" className="w-full mt-2 p-2 bg-brand-surface-2 rounded-xl text-xs font-bold" />
               )}
             </div>
+            {canRequestHubPublication && editingMaterial.type === 'PDF' && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20 p-4 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editingMaterial.hub_catalog_opt_in)}
+                    onChange={e => setEditingMaterial({ ...editingMaterial, hub_catalog_opt_in: e.target.checked, hub_commercial_approved: e.target.checked ? editingMaterial.hub_commercial_approved : false })}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-xs font-black text-amber-900 dark:text-amber-200">Solicitar publicação comercial no Hub</span>
+                    <span className="block text-[10px] text-amber-700 dark:text-amber-300 mt-1">Desligado por padrão. A biblioteca da escola continua privada durante toda a revisão.</span>
+                  </span>
+                </label>
+                {editingMaterial.hub_catalog_opt_in && (
+                  <>
+                    <select value={editingMaterial.hub_rights_basis || 'OWNED'} onChange={e => setEditingMaterial({ ...editingMaterial, hub_rights_basis: e.target.value, hub_commercial_approved: false })} className="w-full p-2 bg-brand-surface rounded-xl text-xs font-bold">
+                      <option value="OWNED">Conteúdo próprio</option>
+                      <option value="LICENSED">Licença de distribuição</option>
+                      <option value="PUBLIC_DOMAIN">Domínio público verificado</option>
+                    </select>
+                    <textarea
+                      value={editingMaterial.hub_rights_declaration || ''}
+                      onChange={e => setEditingMaterial({ ...editingMaterial, hub_rights_declaration: e.target.value, hub_commercial_approved: false })}
+                      maxLength={2000}
+                      rows={3}
+                      className="w-full p-3 bg-brand-surface rounded-xl text-xs"
+                      placeholder="Declare a origem dos direitos e por que a distribuição comercial está autorizada."
+                    />
+                    <div className="p-3 border-2 border-dashed border-amber-300 rounded-xl text-center">
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={e => {
+                          setEditingHubPreviewFile(e.target.files?.[0] || null);
+                          setEditingMaterial({ ...editingMaterial, hub_commercial_approved: false });
+                        }}
+                        className="hidden"
+                        id="hub-preview-file-edit"
+                      />
+                      <label htmlFor="hub-preview-file-edit" className="cursor-pointer text-xs font-bold text-amber-800 dark:text-amber-200">
+                        {editingHubPreviewFile?.name
+                          || (editingMaterial.hub_preview_source_path ? 'Substituir PDF de prévia separado' : 'Selecionar PDF de prévia separado')}
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                      Status: {editingMaterial.hub_commercial_approved
+                        ? editingMaterial.hub_sync_status === 'SYNCED' ? 'publicação sincronizada' : 'aprovado, aguardando cópia segura'
+                        : 'aguardando revisão central'}.
+                    </p>
+                    {canApproveHubPublication && (
+                      <label className={`flex items-start gap-3 rounded-xl border p-3 ${editingApprovalBlocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editingMaterial.hub_commercial_approved)}
+                          disabled={editingApprovalBlocked}
+                          onChange={e => setEditingMaterial({ ...editingMaterial, hub_commercial_approved: e.target.checked })}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block text-xs font-black">Aprovar comercialmente</span>
+                          <span className="block text-[10px] text-brand-muted mt-1">
+                            {editingApprovalBlocked
+                              ? 'Salve a nova solicitação; outro SUPER_ADMIN deve revisar e aprovar.'
+                              : 'Confirmo que revisei os direitos e a prévia separada.'}
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             <div className="flex gap-2 pt-2">
-              <button onClick={() => setEditingMaterial(null)} className="flex-1 py-2.5 rounded-xl border border-brand-border text-brand-muted text-sm font-bold">Cancelar</button>
-              <button onClick={saveMaterialEdit} className="flex-1 py-2.5 rounded-xl bg-tenant-primary text-white text-sm font-bold">Salvar</button>
+              <button onClick={closeMaterialEdit} disabled={uploading} className="flex-1 py-2.5 rounded-xl border border-brand-border text-brand-muted text-sm font-bold">Cancelar</button>
+              <button onClick={saveMaterialEdit} disabled={uploading} className="flex-1 py-2.5 rounded-xl bg-tenant-primary text-white text-sm font-bold disabled:opacity-60">{uploading ? 'Salvando...' : 'Salvar'}</button>
             </div>
           </div>
         </div>

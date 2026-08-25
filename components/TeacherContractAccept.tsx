@@ -5,6 +5,8 @@ import { getSchoolInfo } from '../lib/schoolInfo';
 import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
 import type { SchoolInfo } from './ContractDocument';
 import { Loader2, ShieldCheck, X, AlertTriangle } from 'lucide-react';
+import { PROFILE_SAFE_COLS } from '../constants';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 
 // Aceite de contrato PJ para professor JÁ logado que nunca aceitou (contract_accepted=false).
 // Contas criadas pelo caminho manual (create-teacher-account) nascem sem aceite e não passam
@@ -38,15 +40,24 @@ const TeacherContractAccept: React.FC<TeacherContractAcceptProps> = ({ userId, o
     useEffect(() => {
         (async () => {
             try {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('full_name, rg, cpf, address, address_number, postal_code, birth_date, hourly_rate, subscription_id, tenant_id')
-                    .eq('id', userId)
-                    .single();
-                if (error) throw error;
+                const [profileResult, privateProfile, payResult] = await Promise.all([
+                    supabase
+                        .from('profiles')
+                        .select(PROFILE_SAFE_COLS)
+                        .eq('id', userId)
+                        .single(),
+                    loadAuthorizedProfilePrivate(userId),
+                    supabase.rpc('get_my_pay'),
+                ]);
+                if (profileResult.error) throw profileResult.error;
+                const data = {
+                    ...profileResult.data,
+                    ...privateProfile,
+                    hourly_rate: (payResult.data as any)?.hourly_rate ?? privateProfile.hourly_rate,
+                };
                 setProfile(data);
-                setSignature(data?.full_name || '');
-                setSchool(await getSchoolInfo(data?.tenant_id));
+                setSignature((data.full_name as string) || '');
+                setSchool(await getSchoolInfo(data.tenant_id as string));
             } catch (e) {
                 console.error('Erro ao carregar contrato do professor:', e);
                 setError('Não foi possível carregar seu contrato. Tente novamente.');

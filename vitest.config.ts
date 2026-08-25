@@ -26,6 +26,7 @@ export default defineConfig({
       "components/**/*.test.{ts,tsx}",
       "apps/**/*.test.{ts,tsx}",
       "lib/**/*.test.ts",
+      "remotion/**/*.test.{ts,tsx}",
     ],
   },
 });

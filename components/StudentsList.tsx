@@ -11,6 +11,7 @@ import StudentProfileForm from './StudentProfileForm';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import StudentProfileEditor from './StudentProfileEditor';
 import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 
 interface StudentsListProps {
   tenantId?: string;
@@ -29,6 +30,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [pedagogicalStudent, setPedagogicalStudent] = useState<any | null>(null);
   const [wolfProfileStudent, setWolfProfileStudent] = useState<any | null>(null);
@@ -44,43 +46,30 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
   const fetchStudents = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       // 1. Fetch Students
-      let query = supabase
+      const query = supabase
         .from('profiles')
         .select(PROFILE_SAFE_COLS)
         .eq('role', 'STUDENT')
         .eq('tenant_id', tenantId);
 
-      // If teacher, filter students they have bookings with
-      if (user?.role === UserRole.TEACHER) {
-        const { data: teacherBookings } = await supabase
-          .from('bookings')
-          .select('student_id')
-          .eq('teacher_id', user.id)
-          .eq('tenant_id', tenantId)
-          .eq('status', 'SCHEDULED');
-
-        const studentIds = Array.from(new Set(teacherBookings?.map(b => b.student_id) || []));
-        if (studentIds.length > 0) {
-          query = query.in('id', studentIds);
-        } else {
-          setStudents([]);
-          setLoading(false);
-          return;
-        }
-      }
-
+      // profiles_scoped_read_p1 resolve o vínculo professor-aluno no banco.
       const { data: studentsData, error: studentError } = await query;
       if (studentError) throw studentError;
 
       // 2. Fetch Bookings to find teachers and schedule
       // NOTE: Using start_date and time_slot as per schema
-      const { data: bookingsData } = await supabase
+      let bookingsQuery = supabase
         .from('bookings')
         .select('student_id, teacher_id, start_date, day_of_week, time_slot, teacher:teacher_id(id, full_name)')
         .eq('tenant_id', tenantId)
         .eq('status', 'SCHEDULED');
+      if (user?.role === UserRole.TEACHER) {
+        bookingsQuery = bookingsQuery.eq('teacher_id', user.id);
+      }
+      const { data: bookingsData } = await bookingsQuery;
 
       if (studentsData) {
         const mappedStudents = studentsData.map(s => {
@@ -161,23 +150,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             img: s.avatar_url || `https://ui-avatars.com/api/?name=${s.full_name}`,
             meetingLink: s.meeting_link || '',
             fixed_schedule: scheduleDisplay,
-            private_notes: s.private_notes,
             assignedTeachers: teacherNames,
             assignedTeacherIds: assignedTeacherIds,
             createdAt: s.created_at,
-            cpf: s.cpf,
-            postalCode: s.postal_code,
-            address: s.address,
-            addressNumber: s.address_number,
-            asaasCustomerId: s.asaas_customer_id,
             professor_id: s.professor_id,
-            monthly_fee: s.monthly_fee,
-            due_day: s.due_day,
             accepted_at: s.accepted_at,
             documentation_status: s.documentation_status,
             tenant_id: s.tenant_id,
             status: s.status,
-            status_financial: s.status_financial,
             lifecycle_status: s.lifecycle_status,
             attendance_phone: s.attendance_phone,
             is_test_account: s.is_test_account === true,
@@ -188,6 +168,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       }
     } catch (err) {
       console.error('Error fetching students:', err);
+      setLoadError('Não foi possível carregar os alunos com segurança. Atualize o sistema e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -250,15 +231,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         // Dependente NUNCA reusa o perfil do responsável pelo CPF.
         const studentCpf = isDependent ? null : (formData.cpf?.replace(/\D/g, '') || null);
         if (!isDependent && studentCpf && targetTenantId && !existingInTenant) {
-          const { data: existingByCpf } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('cpf', studentCpf)
-            .eq('tenant_id', targetTenantId)
-            .single();
+          const { data: existingByCpf, error: cpfLookupError } = await supabase.rpc(
+            'find_authorized_profile_by_cpf',
+            { p_tenant_id: targetTenantId, p_cpf: studentCpf },
+          );
+          if (cpfLookupError) throw cpfLookupError;
 
           if (existingByCpf) {
-            finalStudentId = existingByCpf.id;
+            finalStudentId = existingByCpf;
           }
         }
 
@@ -266,13 +246,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         // (responsável já cadastrado); senão tenta achar pelo CPF no tenant.
         let guardianId: string | null = isDependent ? (formData.guardian_id || null) : null;
         if (isDependent && !guardianId && guardianCpf && targetTenantId) {
-          const { data: guardianProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('cpf', guardianCpf)
-            .eq('tenant_id', targetTenantId)
-            .maybeSingle();
-          guardianId = guardianProfile?.id || null;
+          const { data: guardianProfileId, error: guardianLookupError } = await supabase.rpc(
+            'find_authorized_profile_by_cpf',
+            { p_tenant_id: targetTenantId, p_cpf: guardianCpf },
+          );
+          if (guardianLookupError) throw guardianLookupError;
+          guardianId = guardianProfileId || null;
         }
 
         // NÃO inventamos link de reunião. O gerador anterior criava códigos
@@ -454,6 +433,24 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       fetchStudents();
     } catch (err: any) {
       alert('Erro ao atualizar aluno: ' + err.message);
+    }
+  };
+
+  const openStudentEditor = async (student: any) => {
+    try {
+      const privateProfile = await loadAuthorizedProfilePrivate(student.id);
+      setEditingStudent({
+        ...student,
+        ...privateProfile,
+        meeting_link: student.meetingLink,
+        fixed_schedule: student.fixed_schedule,
+        postalCode: privateProfile.postal_code || '',
+        addressNumber: privateProfile.address_number || '',
+        asaasCustomerId: privateProfile.asaas_customer_id || '',
+      });
+    } catch (error) {
+      console.error('Erro ao carregar dados privados do aluno:', error);
+      alert('Você não tem permissão para abrir os dados privados deste aluno.');
     }
   };
 
@@ -693,6 +690,29 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           </button>
         </div>
 
+        {loadError && (
+          <div
+            className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+            role="alert"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 shrink-0" size={20} />
+              <div>
+                <p className="text-sm font-black">Os alunos não foram ocultados nem removidos.</p>
+                <p className="mt-1 text-xs font-semibold leading-5">{loadError}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void fetchStudents()}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-950 px-4 text-xs font-black uppercase tracking-wider text-white"
+            >
+              <RefreshCw size={15} />
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
         {/* Grid */}
         <div className="flex-1 min-h-0 overflow-visible xl:overflow-y-auto pr-0 xl:pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
@@ -731,7 +751,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                     </div>
                     {canEdit && (
                       <button
-                        onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
+                        onClick={() => void openStudentEditor(student)}
                         className="w-8 h-8 rounded-full bg-tenant-primary/10 text-tenant-primary flex items-center justify-center hover:bg-tenant-primary hover:text-white transition-all shadow-sm"
                         title="Editar Perfil"
                       >
@@ -903,7 +923,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   {canEdit && (
                     <button
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-brand-border text-brand-muted text-xs font-black uppercase hover:bg-brand-surface-2 transition-colors"
-                      onClick={() => setEditingStudent({ ...student, meeting_link: student.meetingLink, fixed_schedule: student.fixed_schedule, private_notes: student.private_notes })}
+                      onClick={() => void openStudentEditor(student)}
                       title="Editar Perfil Completo"
                     >
                       <Edit3 size={14} />
@@ -916,7 +936,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             })}
           </div>
 
-          {!loading && filteredStudents.length === 0 && (
+          {!loading && !loadError && filteredStudents.length === 0 && (
             <div className="py-24 text-center bg-brand-surface rounded-[3rem] border border-dashed border-brand-border dark:border-brand-border">
               <div className="inline-block p-4 rounded-full bg-brand-surface-2 mb-4">
                 <Search size={24} className="text-slate-300" />

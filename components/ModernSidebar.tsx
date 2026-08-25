@@ -53,7 +53,7 @@ import {
 } from '../types';
 import { ADMIN_NAV, groupForTab } from '../lib/adminNav';
 
-interface ModernSidebarProps {
+export interface ModernSidebarProps {
     tenant: Tenant;
     user: UserType;
     activeTab: string;
@@ -71,9 +71,12 @@ interface ModernSidebarProps {
     onTenantSwitch?: (tenantId: string) => Promise<void>;
     /** Reabre o tour guiado. Ausente = papel sem roteiro. */
     onOpenTour?: () => void;
+    menuItemsOverride?: SidebarMenuItem[];
+    contextLabel?: string;
+    mobilePrimaryNavigation?: boolean;
 }
 
-interface MenuItem {
+export interface SidebarMenuItem {
     id: string;
     label: string;
     icon: React.ElementType;
@@ -100,9 +103,14 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     tenantMemberships = [],
     onTenantSwitch,
     onOpenTour,
+    menuItemsOverride,
+    contextLabel,
+    mobilePrimaryNavigation = false,
 }) => {
     const [isMobile, setIsMobile] = useState(() =>
-        typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches
+        typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(max-width: 1023px)').matches
     );
     const navRef = useRef<HTMLElement>(null);
     const menuScrollRef = useRef<HTMLDivElement>(null);
@@ -136,6 +144,10 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }, []);
 
     useEffect(() => {
+        if (typeof window.matchMedia !== 'function') {
+            setIsMobile(false);
+            return undefined;
+        }
         const media = window.matchMedia('(max-width: 1023px)');
         const handleChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
 
@@ -212,30 +224,34 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         return () => document.removeEventListener('mousedown', closeOnOutsideClick);
     }, [tenantMenuOpen]);
 
-    const teacherMenu: MenuItem[] = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'lessons', label: 'Lançar Aula', icon: BookOpen },
-        { id: 'pending', label: 'Pendentes', icon: AlertCircle, badge: pendingLessonsCount },
-        { id: 'meeting_links', label: 'Links de Aula', icon: Video },
-        { id: 'students', label: 'Alunos', icon: Users },
-        { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles },
-        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain }, // Added
-        { id: 'class_skills', label: 'Skills da Turma', icon: Activity },
-        { id: 'msg_settings', label: 'Mensagens', icon: Bell },
-        { id: 'teacher_workflows', label: 'Saída / Ausência', icon: AlertCircle },
-        { id: 'schedule', label: 'Agenda', icon: Calendar },
-        { id: 'invoices', label: 'Notas Fiscais', icon: FileText },
-        { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign },
-        { id: 'reschedules', label: 'Reposições', icon: Repeat },
-        { id: 'pedagogical', label: 'Pedagógico', icon: Book },
-        { id: 'training', label: 'Treinamentos', icon: GraduationCap },
-        { id: 'oral-tests', label: 'Testes Orais', icon: Mic },
-        { id: 'automation', label: 'Smart', icon: Zap },
-        { id: 'referral', label: 'Indicações', icon: Gift },
-        { id: 'contract_teacher', label: 'Meu Contrato', icon: FileText },
+    const teacherMenu: SidebarMenuItem[] = [
+        { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Dia a dia', primary: true },
+        { id: 'schedule', label: 'Agenda', icon: Calendar, section: 'Dia a dia', primary: true },
+        { id: 'lessons', label: 'Lançar Aula', icon: BookOpen, section: 'Dia a dia', primary: true },
+        { id: 'pending', label: 'Pendentes', icon: AlertCircle, section: 'Dia a dia', badge: pendingLessonsCount, primary: true },
+        { id: 'reschedules', label: 'Reposições', icon: Repeat, section: 'Dia a dia' },
+        { id: 'students', label: 'Alunos', icon: Users, section: 'Dia a dia' },
+        { id: 'meeting_links', label: 'Links de Aula', icon: Video, section: 'Dia a dia' },
+        { id: 'teacher_workflows', label: 'Saída / Ausência', icon: AlertCircle, section: 'Dia a dia' },
+
+        { id: 'pedagogical', label: 'Materiais', icon: Book, section: 'Pedagógico' },
+        { id: 'lesson-planner-ai', label: 'Planner IA', icon: Sparkles, section: 'Pedagógico' },
+        { id: 'class_skills', label: 'Skills da Turma', icon: Activity, section: 'Pedagógico' },
+        { id: 'oral-tests', label: 'Testes Orais', icon: Mic, section: 'Pedagógico' },
+        { id: 'training', label: 'Treinamentos', icon: GraduationCap, section: 'Pedagógico' },
+        { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Pedagógico' },
+
+        { id: 'msg_settings', label: 'Mensagens', icon: Bell, section: 'Comunicação' },
+        { id: 'automation', label: 'Smart', icon: Zap, section: 'Comunicação' },
+
+        { id: 'teacher-financials', label: 'Financeiro', icon: DollarSign, section: 'Financeiro' },
+        { id: 'invoices', label: 'Enviar NFS-e', icon: FileText, section: 'Financeiro' },
+
+        { id: 'referral', label: 'Indicações', icon: Gift, section: 'Conta e carreira' },
+        { id: 'contract_teacher', label: 'Meu Contrato', icon: FileText, section: 'Conta e carreira' },
     ];
 
-    const studentMenu: MenuItem[] = [
+    const studentMenu: SidebarMenuItem[] = [
         { id: 'dashboard', label: 'Meu Portal', icon: LayoutDashboard },
         // Nomes explícitos: "Wolfie Tutor" x "Praticar" não diziam ao aluno qual
         // era a prática livre e qual era a trilha do professor.
@@ -253,12 +269,12 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
     // Deriva de ADMIN_NAV (lib/adminNav.ts), fonte única do menu e das abas.
     // A lista à mão que vivia aqui tinha 37 itens, uma entrada sem seção e duas
     // fora de ordem — o que fazia "Financeiro" aparecer duas vezes na tela.
-    const schoolAdminMenu: MenuItem[] = ADMIN_NAV.map(g => ({
+    const schoolAdminMenu: SidebarMenuItem[] = ADMIN_NAV.map(g => ({
         id: g.id, label: g.label, icon: g.icon, section: g.section,
         badgeKey: g.badgeKey, primary: g.primary,
     }));
 
-    const superAdminMenu: MenuItem[] = [
+    const superAdminMenu: SidebarMenuItem[] = [
         { id: 'dashboard', label: 'Visão Global', icon: Shield },
         { id: 'tenants', label: 'Tenants', icon: Globe },
         { id: 'billing', label: 'Faturamento', icon: DollarSign },
@@ -266,7 +282,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'automation', label: 'Smart', icon: Zap },
     ];
 
-    const salespersonMenu: MenuItem[] = [
+    const salespersonMenu: SidebarMenuItem[] = [
         { id: 'vendor_dashboard', label: 'Dashboard', icon: TrendingUp },
         { id: 'vendor_schedule', label: 'Agenda Professores', icon: CalendarClock },
         { id: 'vendor_trial', label: 'Link Experimental', icon: Zap },
@@ -282,12 +298,12 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         return teacherMenu;
     };
 
-    const menuItems = getMenuItems();
+    const menuItems = menuItemsOverride ?? getMenuItems();
 
     // A aba ativa pode ser uma SUB-ABA (ex.: 'balancete' dentro de Relatórios).
     // Sem isto o menu não destacaria nada e o diretor ficaria sem saber onde
     // está — que é metade da queixa de "menu confuso".
-    const activeMenuId = (user.role === UserRole.SCHOOL_ADMIN
+    const activeMenuId = (!menuItemsOverride && user.role === UserRole.SCHOOL_ADMIN
         ? groupForTab(activeTab)?.id
         : undefined) ?? activeTab;
     const expanded = isMobile || !isCollapsed;
@@ -391,7 +407,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
                                         {user.role === UserRole.SUPER_ADMIN ? 'EduCore SaaS' : tenant.name}
                                     </h3>
                                     <span className="block text-[10px] uppercase font-black tracking-widest text-brand-muted truncate">
-                                        {tenantMemberships.length > 1 ? 'Trocar instituição' : user.role.replace('_', ' ')}
+                                        {tenantMemberships.length > 1 ? 'Trocar instituição' : contextLabel || user.role.replace('_', ' ')}
                                     </span>
                                 </div>
                             )}
@@ -597,7 +613,9 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
               (o trabalho do dia) e um botão que abre o menu inteiro.
               Papéis com menu curto não ganham a barra: seria repetir a gaveta.
             */}
-            {user.role === UserRole.SCHOOL_ADMIN && (
+            {(mobilePrimaryNavigation || (!menuItemsOverride && (
+                user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.TEACHER
+            ))) && (
                 <div className="lg:hidden fixed bottom-0 inset-x-0 z-[80] flex items-stretch justify-between gap-1 px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))] bg-brand-surface border-t border-brand-border">
                     {menuItems.filter(i => i.primary).map(item => {
                         const ativo = activeMenuId === item.id;

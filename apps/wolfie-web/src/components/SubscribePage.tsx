@@ -262,13 +262,17 @@ export function SubscribePage() {
         navigate("/app/praticar", { replace: true });
         return;
       }
-      if (!prepared?.ok || prepared.accessKind !== "STANDALONE") {
+      if (
+        !prepared?.ok || prepared.accessKind !== "STANDALONE" ||
+        !prepared.accountId
+      ) {
         throw new Error("ACCOUNT_PREPARATION_FAILED");
       }
 
       const { data: checkoutData, error: invokeError } =
         await supabase.functions.invoke("create-hub-checkout", {
           body: {
+            accountId: prepared.accountId,
             planCode: toWolfieCheckoutPlanCode(plan.code),
             billingCycle: "MONTHLY",
             billingType,

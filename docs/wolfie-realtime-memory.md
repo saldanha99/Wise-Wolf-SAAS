@@ -50,7 +50,7 @@ flowchart LR
   autenticação, tenant ativo, matrícula financeira, fixture, cota e limite de
   criação. O navegador não envia a configuração pedagógica na URL do WebRTC;
   envia somente o identificador da conversa preparada.
-- O padrão é `gpt-realtime-2.1`, voz `marin`, redução de ruído e VAD semântico.
+- O padrão é `gpt-realtime-2.1`, voz masculina `cedar`, redução de ruído e VAD semântico.
 - A fala pode interromper o Wolfie. Os níveis reais do microfone e da resposta
   movimentam o mascote.
 - A transcrição auxiliar do áudio é salva como histórico sinalizado
@@ -231,11 +231,11 @@ Segredos e configurações exclusivos do runtime das Edge Functions:
 OPENAI_API_KEY=<segredo>
 OPENAI_REALTIME_MODEL=gpt-realtime-2.1
 OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
-OPENAI_REALTIME_VOICE=marin
+OPENAI_REALTIME_VOICE=cedar
 OPENAI_SAFETY_SALT=<segredo-aleatorio>
 WOLFIE_TTS_MODEL=gpt-4o-mini-tts
-WOLFIE_TTS_VOICE_EN=marin
-WOLFIE_TTS_VOICE_PT=marin
+WOLFIE_TTS_VOICE_EN=cedar
+WOLFIE_TTS_VOICE_PT=cedar
 ```
 
 `OPENAI_SAFETY_SALT` é recomendado para separar os identificadores de segurança

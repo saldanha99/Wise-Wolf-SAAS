@@ -1,0 +1,13 @@
+{
+  "id": "wolfie-1-problem",
+  "file": "wolfie-1-problem.mp3",
+  "requestId": "gen-1787593334-o2kX8V18zXsSe9O3jOh0",
+  "sha256": "eb5644a0dd4fa42eb389471ed966fff54939739bbdf97e6054991b05ef5984e0",
+  "bytes": 174333,
+  "transcriptSha256": "91b2d5161a3c03071b3d962aa0f98b8ad65be587bf43c3c98e8584bd31e5b62d",
+  "sceneHash": "c3daa84958584e9ae0802718d7ff26036933fd965dc3679fa4245df151161ba0",
+  "durationSeconds": 7.2,
+  "generatedAt": "2026-08-24T17:42:25Z",
+  "sourcePcmWavSha256": "7dad4672b74ee465f59a30f1d8b2d72a4fe495691363608b486a49fd9af98652",
+  "sourcePcmWavBytes": 345644
+}

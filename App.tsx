@@ -78,7 +78,6 @@ const StudentPedagogicalView = lazy(() => import('./components/StudentPedagogica
 const WhatsappConfig = lazy(() => import('./components/WhatsappConfig'));
 const CRMPage = lazy(() => import('./components/CRMPage'));
 const LandingPageBuilder = lazy(() => import('./components/LandingPageBuilder'));
-const SaasLandingPage = lazy(() => import('./components/landing/SaasLandingPage'));
 const WiseWolfLanding = lazy(() => import('./components/landing/WiseWolfLanding'));
 const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLandingTemplate'));
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
@@ -552,21 +551,22 @@ const App: React.FC = () => {
         .eq('role', 'STUDENT')
         .eq('tenant_id', user.tenantId);
 
-      // 4. Fetch All Bookings
-      const { data: allBookings } = await supabase
+      // 4. A direção precisa dos totais do tenant; o professor recebe somente
+      // os próprios vínculos. A RLS também aplica esse limite, mas o filtro
+      // explícito evita até solicitar o diretório inteiro.
+      let bookingsQuery = supabase
         .from('bookings')
         .select('teacher_id, student_id')
         .eq('tenant_id', user.tenantId);
+      if (user.role === UserRole.TEACHER) {
+        bookingsQuery = bookingsQuery.eq('teacher_id', user.id);
+      }
+      const { data: allBookings } = await bookingsQuery;
 
       if (studentsData) {
-        let filteredStudents = studentsData;
-        
-        if (user.role === UserRole.TEACHER && allBookings) {
-          const teacherStudentIds = new Set(allBookings.filter(b => b.teacher_id === user.id).map(b => b.student_id));
-          filteredStudents = studentsData.filter(s => teacherStudentIds.has(s.id));
-        }
-
-        setStudents(filteredStudents.map(s => ({
+        // O conjunto já vem autorizado pelo profiles_scoped_read_p1. Não faça
+        // isolamento de aluno apenas no cliente.
+        setStudents(studentsData.map(s => ({
           id: s.id,
           name: s.full_name,
           // full_name e phone são usados pelo aviso de reposição no WhatsApp
@@ -803,7 +803,9 @@ const App: React.FC = () => {
   }
 
   if (path === '/new-saas') {
-    return <SaasLandingPage />;
+    return <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" /></div>}>
+      <SchoolSignupPage />
+    </Suspense>;
   }
   if (path === '/lp' || path === '/wisewolf' || path === '/assine') {
     return <WiseWolfLanding />;

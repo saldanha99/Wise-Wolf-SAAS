@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "slug": "hub-overview",
+  "generatedAt": "2026-08-24T21:06:10.661Z",
+  "language": "pt-BR",
+  "compositionId": "HubOverviewPtBr",
+  "commercialUseAllowed": true,
+  "renderFingerprintSha256": "330747ca26d1cb4bfa16f2248bdc6eed84b5cca26f85a9e705ec100359d8c49e",
+  "artifacts": {
+    "videoSha256": "a434fc2185f1af8b5b2edde14a03d9fc596e032aba299be8f10e815308b6cb8a",
+    "posterSha256": "87414e4c798b6d434b4323e9b6b4cd9d15d743c965862c7fe7d89d2641a34ecf",
+    "captionsSha256": "17b0346b5def337ff1701487b5a5b040116fdcdad5e17a2842673f4aad484cc7"
+  },
+  "receiptFingerprintSha256": "6605bdae8037c85f46d61b45b8c745931b2c672fa9492c753856544941638ee9"
+}

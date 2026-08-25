@@ -1,0 +1,13 @@
+{
+  "id": "hub-overview-0-hook",
+  "file": "hub-overview-0-hook.mp3",
+  "requestId": "gen-1787593268-rpFe8TKGzYGWrOKiLfUY",
+  "sha256": "d33d812721b027de468a43199a2bdebf8a91b71717d1d3899d5208b978d8bd91",
+  "bytes": 117908,
+  "transcriptSha256": "ed9aaebc66f2509d39c6077cd1fb50c2a15052749227064ae09994a733b12d71",
+  "sceneHash": "fe6f9f8166846b60756afc0b04e2d00e7272ee11dbea5412a62a1aae825ea99e",
+  "durationSeconds": 4.85,
+  "generatedAt": "2026-08-24T17:41:22Z",
+  "sourcePcmWavSha256": "7696c78a44d4935b92eeb7a9ab4e04bf918d72de3998abfd280de3f566619f27",
+  "sourcePcmWavBytes": 232844
+}

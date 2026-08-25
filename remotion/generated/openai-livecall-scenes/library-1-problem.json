@@ -1,0 +1,13 @@
+{
+  "id": "library-1-problem",
+  "file": "library-1-problem.mp3",
+  "requestId": "gen-1787593293-XGFRG2nE4zKMZXuzfdsx",
+  "sha256": "64e301816a84beed803539db01d35e2b8b21d19f2ac35bf8c26ee7224235fbf6",
+  "bytes": 183737,
+  "transcriptSha256": "df79c15d82ffff94b5105f0bf3dad61ea34758a5227b6ebf179971f6b7113297",
+  "sceneHash": "2ade6f19b2d1beaf698dc91722fa1db4542ebc153f8df04a38b749153dfeac8c",
+  "durationSeconds": 7.6,
+  "generatedAt": "2026-08-24T17:41:43Z",
+  "sourcePcmWavSha256": "8b73b2efedc0519e9124b14743333d641800b54ae45dbc952334d41bd2f926f9",
+  "sourcePcmWavBytes": 364844
+}

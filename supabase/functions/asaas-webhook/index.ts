@@ -13,15 +13,26 @@ import {
 } from "../_shared/account-invite.ts";
 import { classifyStudentPaymentType } from "./payment-classification.ts";
 import {
+  activateThenCancelHubReplacement,
+  HUB_CORE_PRODUCT_FAMILY,
+  hubActivationAllowsReplacementCancellation,
+  type HubBillingBlockCode,
+  hubBillingBlockCode,
   hubCheckoutIdFromExternalReference,
   hubRecoveryReason,
   isHubRecoveryEvent,
   providerCancellationIsFinal,
+  replacementProviderSubscriptionId,
 } from "../_shared/hub-billing-safety.ts";
 import {
   loadTenantCentralWhatsAppContext,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
+import {
+  billingIdentityMismatch,
+  hubPaymentEventRequiresIdentity,
+  providerWebhookEventKey,
+} from "./billing-safety.ts";
 
 // EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
 declare const EdgeRuntime:
@@ -44,19 +55,24 @@ type AsaasWebhookPayment = {
   refundedValue?: number | null;
 };
 
+type AsaasWebhookSubscription = {
+  id: string;
+  customer: string;
+  status?: string | null;
+  value?: number | null;
+  externalReference?: string | null;
+  billingType?: string | null;
+  cycle?: string | null;
+};
+
 type AsaasWebhookBody = {
   id?: string;
   event?: string;
   payment?: AsaasWebhookPayment;
+  subscription?: AsaasWebhookSubscription;
 };
 
 const PAID_EVENTS = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
-const CANCELLED_EVENTS = new Set([
-  "PAYMENT_DELETED",
-  "PAYMENT_REFUNDED",
-  "PAYMENT_PARTIALLY_REFUNDED",
-  "PAYMENT_CHARGEBACK_REQUESTED",
-]);
 const TOPUP_REVERSAL_EVENTS = new Set([
   "PAYMENT_DELETED",
   "PAYMENT_REFUNDED",
@@ -72,6 +88,21 @@ const HUB_REVERSAL_EVENTS = new Set([
   "PAYMENT_REFUNDED",
   "PAYMENT_CHARGEBACK_REQUESTED",
   "PAYMENT_RECEIVED_IN_CASH_UNDONE",
+]);
+const SAAS_ACCESS_EVENTS = new Set([
+  ...PAID_EVENTS,
+  "PAYMENT_OVERDUE",
+  "PAYMENT_REFUND_IN_PROGRESS",
+  "PAYMENT_BANK_SLIP_CANCELLED",
+  "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED",
+  "PAYMENT_REPROVED_BY_RISK_ANALYSIS",
+  "PAYMENT_DELETED",
+  "PAYMENT_REFUNDED",
+  "PAYMENT_PARTIALLY_REFUNDED",
+  "PAYMENT_RECEIVED_IN_CASH_UNDONE",
+  "PAYMENT_CHARGEBACK_REQUESTED",
+  "SUBSCRIPTION_INACTIVATED",
+  "SUBSCRIPTION_DELETED",
 ]);
 
 function isUuid(value: string): boolean {
@@ -326,19 +357,20 @@ async function ensureSaasOwnerAccess(
         );
       }
     }
+  }
 
-    const { error: membershipError } = await supabase
-      .from("tenant_memberships")
-      .upsert({
-        user_id: userId,
-        tenant_id: provisioned.tenant_id,
-        role: "SCHOOL_ADMIN",
-        status: "ACTIVE",
-        is_primary: existingProfile.tenant_id === provisioned.tenant_id,
-      }, { onConflict: "user_id,tenant_id" });
-    if (membershipError) {
-      throw new Error(`owner_membership_${membershipError.code || "failed"}`);
-    }
+  const { error: membershipError } = await supabase
+    .from("tenant_memberships")
+    .upsert({
+      user_id: userId,
+      tenant_id: provisioned.tenant_id,
+      role: "SCHOOL_ADMIN",
+      status: "ACTIVE",
+      is_primary: !existingProfile ||
+        existingProfile.tenant_id === provisioned.tenant_id,
+    }, { onConflict: "user_id,tenant_id" });
+  if (membershipError) {
+    throw new Error(`owner_membership_${membershipError.code || "failed"}`);
   }
 
   const { error: completionError } = await supabase
@@ -377,134 +409,252 @@ async function ensureSaasOwnerAccess(
   }
 }
 
+type SaasBillingInboxClaim = {
+  duplicate: boolean;
+  eventKey: string;
+};
+
+async function resolveSaasCheckoutId(
+  body: AsaasWebhookBody,
+): Promise<string | null> {
+  const entity = body.payment || body.subscription;
+  const externalReference = entity?.externalReference?.trim() ?? "";
+  if (externalReference.startsWith("saas:")) {
+    const checkoutId = externalReference.slice(5);
+    return isUuid(checkoutId) ? checkoutId : null;
+  }
+
+  const providerSubscriptionId = body.payment?.subscription?.trim() ||
+    body.subscription?.id?.trim() || "";
+  const providerPaymentId = body.payment?.id?.trim() || "";
+  if (!providerSubscriptionId && !providerPaymentId) return null;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("saas_checkout_lookup_unavailable");
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  let query = supabase.from("saas_checkout_intents").select("id");
+  query = providerSubscriptionId
+    ? query.eq("asaas_subscription_id", providerSubscriptionId)
+    : query.eq("asaas_payment_id", providerPaymentId);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+async function claimSaasBillingEvent(
+  supabase: SupabaseClient,
+  body: AsaasWebhookBody,
+  checkoutId: string,
+): Promise<SaasBillingInboxClaim> {
+  const event = body.event || "UNKNOWN";
+  const providerEntityId = body.payment?.id || body.subscription?.id ||
+    "unknown";
+  const providerEventId = typeof body.id === "string" ? body.id.trim() : "";
+  const eventKey = providerWebhookEventKey(
+    "saas",
+    providerEventId,
+    event,
+    providerEntityId,
+  );
+  const leaseExpiresAt = new Date(Date.now() + 120_000).toISOString();
+  const { error: insertError } = await supabase
+    .from("saas_billing_event_inbox")
+    .insert({
+      event_key: eventKey,
+      provider_event_id: providerEventId || null,
+      event_name: event,
+      provider_entity_id: providerEntityId,
+      checkout_id: checkoutId,
+      status: "PROCESSING",
+      lease_expires_at: leaseExpiresAt,
+      metadata: {
+        paymentStatus: body.payment?.status || null,
+        subscriptionStatus: body.subscription?.status || null,
+        subscriptionId: body.payment?.subscription || body.subscription?.id ||
+          null,
+        customerId: body.payment?.customer || body.subscription?.customer ||
+          null,
+        amount: body.payment?.value ?? body.subscription?.value ?? null,
+        billingType: body.payment?.billingType ||
+          body.subscription?.billingType || null,
+        billingCycle: body.subscription?.cycle || null,
+        externalReference: body.payment?.externalReference ||
+          body.subscription?.externalReference || null,
+      },
+    });
+
+  if (!insertError) return { duplicate: false, eventKey };
+  if (insertError.code !== "23505") throw insertError;
+
+  const { data: existing, error: existingError } = await supabase
+    .from("saas_billing_event_inbox")
+    .select("status, lease_expires_at, attempt_count")
+    .eq("event_key", eventKey)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) throw new Error("saas_event_inbox_missing");
+  if (existing.status === "PROCESSED") {
+    return { duplicate: true, eventKey };
+  }
+  const leaseIsActive = existing.status === "PROCESSING" &&
+    Date.parse(existing.lease_expires_at) > Date.now();
+  if (leaseIsActive) throw new Error("saas_event_already_processing");
+
+  const { data: reclaimed, error: reclaimError } = await supabase
+    .from("saas_billing_event_inbox")
+    .update({
+      status: "PROCESSING",
+      lease_expires_at: leaseExpiresAt,
+      last_error: null,
+      attempt_count: Math.min(Number(existing.attempt_count || 1) + 1, 100),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("event_key", eventKey)
+    .neq("status", "PROCESSED")
+    .select("event_key")
+    .maybeSingle();
+  if (reclaimError) throw reclaimError;
+  return { duplicate: !reclaimed, eventKey };
+}
+
+async function finishSaasBillingEvent(
+  supabase: SupabaseClient,
+  eventKey: string,
+  status: "PROCESSED" | "FAILED",
+  lastError?: string,
+): Promise<void> {
+  const { error } = await supabase.from("saas_billing_event_inbox").update({
+    status,
+    last_error: lastError?.slice(0, 500) || null,
+    processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
+    lease_expires_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("event_key", eventKey);
+  if (error) throw error;
+}
+
 async function processSaasCheckoutEvent(
   supabase: SupabaseClient,
-  event: string,
-  payment: AsaasWebhookPayment,
+  body: AsaasWebhookBody,
+  resolvedCheckoutId?: string | null,
 ): Promise<boolean> {
-  let checkoutId: string | null = null;
-  if (payment.externalReference?.startsWith("saas:")) {
-    const referencedId = payment.externalReference.slice(5);
-    if (!isUuid(referencedId)) {
-      console.warn("[Webhook] Referência de checkout SaaS inválida.");
-      return true;
-    }
-    checkoutId = referencedId;
-  }
+  const event = body.event || "";
+  if (!SAAS_ACCESS_EVENTS.has(event)) return false;
 
-  let checkoutQuery = supabase
+  const checkoutId = resolvedCheckoutId ?? await resolveSaasCheckoutId(body);
+  if (!checkoutId || !isUuid(checkoutId)) return false;
+
+  const { data: checkout, error: checkoutError } = await supabase
     .from("saas_checkout_intents")
-    .select("id,status,asaas_payment_id");
-  if (checkoutId) {
-    checkoutQuery = checkoutQuery.eq("id", checkoutId);
-  } else if (payment.subscription) {
-    checkoutQuery = checkoutQuery.eq(
-      "asaas_subscription_id",
-      payment.subscription,
-    );
-  } else {
-    checkoutQuery = checkoutQuery.eq("asaas_payment_id", payment.id);
-  }
-
-  const { data: checkout, error: checkoutError } = await checkoutQuery
+    .select(
+      "id,status,amount,billing_type,billing_cycle,asaas_customer_id,asaas_subscription_id,asaas_payment_id",
+    )
+    .eq("id", checkoutId)
     .maybeSingle();
-  if (checkoutError) {
-    console.error("[Webhook] Falha ao localizar checkout SaaS", {
-      code: checkoutError.code,
-    });
-    return Boolean(checkoutId);
-  }
-  if (!checkout) return false;
-  checkoutId = checkout.id;
+  if (checkoutError) throw checkoutError;
+  if (!checkout) throw new Error("saas_checkout_not_found");
 
-  if (checkout.status === "PROVISIONED") return true;
+  const claim = await claimSaasBillingEvent(supabase, body, checkoutId);
+  if (claim.duplicate) return true;
 
-  if (PAID_EVENTS.has(event)) {
-    const { error: paidUpdateError } = await supabase
-      .from("saas_checkout_intents")
-      .update({
-        status: "PAID",
-        asaas_payment_id: payment.id,
-        invoice_url: payment.invoiceUrl || null,
-        bank_slip_url: payment.bankSlipUrl || null,
-        due_date: payment.dueDate || null,
-        paid_at: payment.paymentDate || new Date().toISOString(),
-        last_error: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", checkoutId);
-    if (paidUpdateError) {
-      console.error("[Webhook] Falha ao confirmar checkout SaaS", {
-        code: paidUpdateError.code,
-      });
-      return true;
+  try {
+    const providerIdentity = body.payment
+      ? {
+        subscriptionId: body.payment.subscription,
+        customerId: body.payment.customer,
+        amount: body.payment.value,
+        billingType: body.payment.billingType,
+        billingCycle: undefined,
+      }
+      : {
+        subscriptionId: body.subscription?.id,
+        customerId: body.subscription?.customer,
+        amount: body.subscription?.value,
+        billingType: body.subscription?.billingType,
+        billingCycle: body.subscription?.cycle,
+      };
+    const identityMismatch = billingIdentityMismatch(
+      {
+        subscriptionId: checkout.asaas_subscription_id,
+        customerId: checkout.asaas_customer_id,
+        amount: Number(checkout.amount),
+        billingType: checkout.billing_type,
+        billingCycle: checkout.billing_cycle,
+      },
+      providerIdentity,
+      { requireBillingCycle: Boolean(body.subscription) },
+    );
+    if (identityMismatch) {
+      throw new Error(`saas_${identityMismatch.toLowerCase()}`);
     }
 
-    const { data: provisioned, error: provisionError } = await supabase.rpc(
-      "provision_paid_saas_checkout",
+    const { data: applied, error: applyError } = await supabase.rpc(
+      "apply_saas_checkout_billing_event",
       {
         p_checkout_id: checkoutId,
-        p_payment_id: payment.id,
+        p_event_name: event,
+        p_payment_id: body.payment?.id || null,
+        p_payment_value: providerIdentity.amount,
+        p_billing_type: providerIdentity.billingType,
+        p_customer_id: providerIdentity.customerId,
+        p_subscription_id: providerIdentity.subscriptionId,
+        p_billing_cycle: providerIdentity.billingCycle || null,
+        p_paid_at: body.payment?.paymentDate || null,
+        p_due_date: body.payment?.dueDate || null,
+        p_invoice_url: body.payment?.invoiceUrl || null,
+        p_bank_slip_url: body.payment?.bankSlipUrl || null,
       },
     );
-    if (provisionError || !provisioned?.ok) {
-      console.error("[Webhook] Falha no provisionamento SaaS", {
-        code: provisionError?.code,
-      });
-      await supabase.from("saas_checkout_intents").update({
-        status: "PROVISIONING_FAILED",
-        last_error: `tenant_provision_${provisionError?.code || "failed"}`,
-        updated_at: new Date().toISOString(),
-      }).eq("id", checkoutId);
-      return true;
+    if (applyError || !applied?.ok) {
+      throw applyError || new Error("saas_billing_event_not_applied");
     }
 
-    try {
-      await ensureSaasOwnerAccess(supabase, provisioned);
-      console.log(`[Webhook] SaaS provisionado: ${checkoutId}`);
-    } catch (ownerError) {
-      console.error("[Webhook] Falha ao provisionar responsável SaaS", {
-        type: ownerError instanceof Error ? ownerError.name : "unknown",
-      });
-      await supabase.from("saas_checkout_intents").update({
-        status: "PROVISIONING_FAILED",
-        last_error: ownerError instanceof Error
+    if (applied.action === "PROVISION_REQUIRED") {
+      const paymentId = body.payment?.id;
+      if (!paymentId) throw new Error("saas_payment_id_required");
+      const { data: provisioned, error: provisionError } = await supabase.rpc(
+        "provision_paid_saas_checkout",
+        {
+          p_checkout_id: checkoutId,
+          p_payment_id: paymentId,
+        },
+      );
+      if (provisionError || !provisioned?.ok) {
+        throw provisionError || new Error("saas_tenant_provision_failed");
+      }
+
+      try {
+        await ensureSaasOwnerAccess(supabase, provisioned);
+      } catch (ownerError) {
+        const reason = ownerError instanceof Error
           ? ownerError.message.slice(0, 500)
-          : "owner_provision_failed",
-        updated_at: new Date().toISOString(),
-      }).eq("id", checkoutId);
+          : "owner_provision_failed";
+        await supabase.from("saas_checkout_intents").update({
+          status: "PROVISIONING_FAILED",
+          last_error: reason,
+          updated_at: new Date().toISOString(),
+        }).eq("id", checkoutId);
+        throw ownerError;
+      }
+      console.log(`[Webhook] SaaS provisionado: ${checkoutId}`);
     }
-    return true;
-  }
 
-  if (event === "PAYMENT_OVERDUE") {
-    await supabase.from("saas_checkout_intents").update({
-      status: "OVERDUE",
-      asaas_payment_id: payment.id,
-      invoice_url: payment.invoiceUrl || null,
-      bank_slip_url: payment.bankSlipUrl || null,
-      updated_at: new Date().toISOString(),
-    }).eq("id", checkoutId).neq("status", "PROVISIONED");
+    await finishSaasBillingEvent(supabase, claim.eventKey, "PROCESSED");
     return true;
+  } catch (error) {
+    const reason = error instanceof Error
+      ? error.message
+      : "saas_billing_failed";
+    try {
+      await finishSaasBillingEvent(supabase, claim.eventKey, "FAILED", reason);
+    } catch (finishError) {
+      console.error("[Webhook] SaaS inbox failure could not be recorded", {
+        type: finishError instanceof Error ? finishError.message : "unknown",
+      });
+    }
+    throw error;
   }
-
-  if (CANCELLED_EVENTS.has(event)) {
-    await supabase.from("saas_checkout_intents").update({
-      status: "CANCELLED",
-      asaas_payment_id: payment.id,
-      updated_at: new Date().toISOString(),
-    }).eq("id", checkoutId).neq("status", "PROVISIONED");
-    return true;
-  }
-
-  await supabase.from("saas_checkout_intents").update({
-    asaas_payment_id: payment.id,
-    invoice_url: payment.invoiceUrl || null,
-    bank_slip_url: payment.bankSlipUrl || null,
-    due_date: payment.dueDate || null,
-    updated_at: new Date().toISOString(),
-  }).eq("id", checkoutId);
-  return true;
 }
 
 async function processWolfieTopupEvent(
@@ -687,8 +837,12 @@ async function claimHubPaymentEvent(
   const event = body.event || "UNKNOWN";
   const paymentId = body.payment?.id || "unknown";
   const providerEventId = typeof body.id === "string" ? body.id.trim() : "";
-  const eventKey = (`asaas:${providerEventId || `${event}:${paymentId}`}`)
-    .slice(0, 200);
+  const eventKey = providerWebhookEventKey(
+    "hub",
+    providerEventId,
+    event,
+    paymentId,
+  );
   const leaseExpiresAt = new Date(Date.now() + 120_000).toISOString();
   const { error: insertError } = await supabase
     .from("hub_payment_event_inbox")
@@ -755,6 +909,35 @@ async function finishHubPaymentEvent(
   if (error) throw error;
 }
 
+function scheduleHubFulfillment(checkoutId: string): void {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  const delivery = fetch(
+    `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/process-hub-fulfillment`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ checkoutId }),
+      signal: AbortSignal.timeout(30_000),
+    },
+  ).then((response) => {
+    if (!response.ok) {
+      console.warn("[Webhook] Hub fulfillment kickoff deferred", {
+        status: response.status,
+      });
+    }
+  }).catch((error) => {
+    console.warn("[Webhook] Hub fulfillment kickoff unavailable", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
+  });
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+    EdgeRuntime.waitUntil(delivery);
+  }
+}
+
 async function resolveHubCheckoutId(
   body: AsaasWebhookBody,
 ): Promise<string | null> {
@@ -778,6 +961,95 @@ async function resolveHubCheckoutId(
   return data?.id ?? null;
 }
 
+async function loadHubBillingBlock(
+  supabase: SupabaseClient,
+  accountId: string,
+  productFamily: string,
+): Promise<HubBillingBlockCode | null> {
+  const { data: account, error: accountError } = await supabase
+    .from("hub_accounts")
+    .select("status")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (accountError) throw accountError;
+
+  let hubEnabled = true;
+  if (productFamily === HUB_CORE_PRODUCT_FAMILY) {
+    const { data: settings, error: settingsError } = await supabase
+      .from("hub_settings")
+      .select("metadata")
+      .eq("settings_key", "default")
+      .maybeSingle();
+    if (settingsError) throw settingsError;
+    hubEnabled = settings?.metadata?.hubEnabled !== false;
+  }
+
+  return hubBillingBlockCode(
+    productFamily,
+    account?.status,
+    hubEnabled,
+  );
+}
+
+async function cancelBlockedHubBilling(
+  supabase: SupabaseClient,
+  checkout: {
+    id: string;
+    account_id: string;
+    product_family: string;
+    asaas_payment_id: string | null;
+    metadata: unknown;
+  },
+  providerSubscriptionId: string | null,
+  paymentId: string,
+  blockCode: HubBillingBlockCode,
+): Promise<void> {
+  if (!providerSubscriptionId) {
+    throw new Error("hub_provider_subscription_required_for_billing_block");
+  }
+
+  await cancelHubProviderSubscription(providerSubscriptionId);
+  const blockedAt = new Date().toISOString();
+  const checkoutMetadata = checkout.metadata &&
+      typeof checkout.metadata === "object" &&
+      !Array.isArray(checkout.metadata)
+    ? checkout.metadata
+    : {};
+
+  const { error: subscriptionError } = await supabase
+    .from("hub_subscriptions")
+    .update({
+      status: "CANCELLED",
+      cancelled_at: blockedAt,
+      updated_at: blockedAt,
+    })
+    .eq("account_id", checkout.account_id)
+    .eq("product_family", checkout.product_family)
+    .eq("provider", "ASAAS")
+    .eq("provider_subscription_id", providerSubscriptionId)
+    .in("status", ["TRIALING", "INCOMPLETE", "ACTIVE", "PAST_DUE"]);
+  if (subscriptionError) throw subscriptionError;
+
+  const { error: checkoutError } = await supabase
+    .from("hub_checkout_sessions")
+    .update({
+      status: "CANCELLED",
+      asaas_payment_id: checkout.asaas_payment_id || paymentId,
+      metadata: {
+        ...checkoutMetadata,
+        billingBlockedCode: blockCode,
+        billingBlockedPaymentId: paymentId,
+        billingBlockedAt: blockedAt,
+        providerCancellationId: providerSubscriptionId,
+        requiresManualReconciliation: true,
+      },
+      updated_at: blockedAt,
+    })
+    .eq("id", checkout.id)
+    .neq("status", "REVERSED");
+  if (checkoutError) throw checkoutError;
+}
+
 async function processHubPaymentEvent(
   body: AsaasWebhookBody,
   resolvedCheckoutId?: string | null,
@@ -799,7 +1071,7 @@ async function processHubPaymentEvent(
     const { data: checkout, error: checkoutError } = await supabase
       .from("hub_checkout_sessions")
       .select(
-        "id, account_id, requested_by, status, product_family, asaas_subscription_id, asaas_payment_id, metadata",
+        "id, account_id, requested_by, status, product_family, billing_type, amount, asaas_subscription_id, asaas_payment_id, metadata",
       )
       .eq("id", checkoutId)
       .maybeSingle();
@@ -813,21 +1085,115 @@ async function processHubPaymentEvent(
     }
     const providerSubscriptionId = checkout.asaas_subscription_id ||
       payment.subscription || null;
-    if (payment.subscription && !checkout.asaas_subscription_id) {
-      const { error: linkError } = await supabase
-        .from("hub_checkout_sessions")
-        .update({ asaas_subscription_id: payment.subscription })
-        .eq("id", checkoutId)
-        .is("asaas_subscription_id", null);
-      if (linkError) throw linkError;
+
+    if (hubPaymentEventRequiresIdentity(event)) {
+      const { data: billingAccount, error: billingAccountError } =
+        await supabase
+          .from("hub_accounts")
+          .select("asaas_customer_id")
+          .eq("id", checkout.account_id)
+          .maybeSingle();
+      if (billingAccountError) throw billingAccountError;
+      const identityMismatch = billingIdentityMismatch(
+        {
+          subscriptionId: checkout.asaas_subscription_id,
+          customerId: billingAccount?.asaas_customer_id,
+          amount: Number(checkout.amount),
+          billingType: checkout.billing_type,
+        },
+        {
+          subscriptionId: payment.subscription,
+          customerId: payment.customer,
+          amount: payment.value,
+          billingType: payment.billingType,
+        },
+      );
+      if (identityMismatch) {
+        throw new Error(`hub_${identityMismatch.toLowerCase()}`);
+      }
     }
 
     if (PAID_EVENTS.has(event)) {
-      const { error } = await supabase.rpc("hub_activate_paid_checkout", {
-        p_checkout_id: checkoutId,
-        p_payment_id: payment.id,
-      });
-      if (error) throw error;
+      if (!providerSubscriptionId) {
+        throw new Error("hub_provider_subscription_required_for_payment");
+      }
+      const initialBillingBlock = await loadHubBillingBlock(
+        supabase,
+        checkout.account_id,
+        checkout.product_family,
+      );
+      if (initialBillingBlock) {
+        await cancelBlockedHubBilling(
+          supabase,
+          checkout,
+          providerSubscriptionId,
+          payment.id,
+          initialBillingBlock,
+        );
+        await finishHubPaymentEvent(supabase, claim.eventKey, "PROCESSED");
+        return;
+      }
+
+      const replacedProviderSubscriptionId = replacementProviderSubscriptionId(
+        checkout.metadata,
+        providerSubscriptionId,
+      );
+      if (replacedProviderSubscriptionId && !providerSubscriptionId) {
+        throw new Error("hub_replacement_provider_subscription_required");
+      }
+      const replacementMetadata = checkout.metadata &&
+          typeof checkout.metadata === "object" &&
+          !Array.isArray(checkout.metadata)
+        ? checkout.metadata
+        : {};
+      await activateThenCancelHubReplacement(
+        async () => {
+          const { data: activation, error } = await supabase.rpc(
+            "hub_activate_paid_checkout",
+            {
+              p_checkout_id: checkoutId,
+              p_payment_id: payment.id,
+            },
+          );
+          if (error) {
+            const racedBillingBlock = await loadHubBillingBlock(
+              supabase,
+              checkout.account_id,
+              checkout.product_family,
+            );
+            if (racedBillingBlock) {
+              await cancelBlockedHubBilling(
+                supabase,
+                checkout,
+                providerSubscriptionId,
+                payment.id,
+                racedBillingBlock,
+              );
+              return false;
+            }
+            throw error;
+          }
+          return hubActivationAllowsReplacementCancellation(activation);
+        },
+        replacedProviderSubscriptionId,
+        cancelHubProviderSubscription,
+        async (cancelledProviderSubscriptionId) => {
+          const { error: replacementError } = await supabase
+            .from("hub_checkout_sessions")
+            .update({
+              metadata: {
+                ...replacementMetadata,
+                replacementProviderCancellationCompletedAt: new Date()
+                  .toISOString(),
+                replacementProviderCancellationId:
+                  cancelledProviderSubscriptionId,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", checkoutId);
+          if (replacementError) throw replacementError;
+        },
+      );
     } else if (HUB_REVERSAL_EVENTS.has(event)) {
       if (!providerSubscriptionId) {
         throw new Error("hub_provider_subscription_required_for_reversal");
@@ -882,6 +1248,7 @@ async function processHubPaymentEvent(
     }
 
     await finishHubPaymentEvent(supabase, claim.eventKey, "PROCESSED");
+    if (PAID_EVENTS.has(event)) scheduleHubFulfillment(checkoutId);
   } catch (error) {
     const reason = error instanceof Error
       ? error.message
@@ -916,83 +1283,14 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    if (await processSaasCheckoutEvent(supabase, event, payment)) {
+    if (await processSaasCheckoutEvent(supabase, body)) {
       return;
     }
 
-    // Assinaturas do Wise Wolf Hub têm referência própria e nunca devem
-    // cair no fluxo financeiro de alunos ou tenants escolares.
+    // Keep a single Hub billing implementation even if this background
+    // dispatcher is called directly by a future entrypoint.
     if (payment.externalReference?.startsWith("hub:")) {
-      const checkoutId = payment.externalReference.slice(4);
-      const validCheckoutId =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-          .test(checkoutId);
-      if (!validCheckoutId) {
-        console.warn("[Webhook] Referência de checkout Hub inválida.");
-        return;
-      }
-
-      if (event === "PAYMENT_CONFIRMED" || event === "PAYMENT_RECEIVED") {
-        const { error: activationError } = await supabase.rpc(
-          "hub_activate_paid_checkout",
-          {
-            p_checkout_id: checkoutId,
-            p_payment_id: payment.id,
-          },
-        );
-        if (activationError) {
-          console.error("[Webhook] Falha ao ativar assinatura Hub:", {
-            code: activationError.code,
-          });
-        } else {
-          console.log(`[Webhook] Assinatura Hub ativada: ${checkoutId}`);
-        }
-        return;
-      }
-
-      const { data: checkout } = await supabase
-        .from("hub_checkout_sessions")
-        .select("asaas_subscription_id")
-        .eq("id", checkoutId)
-        .maybeSingle();
-
-      if (event === "PAYMENT_OVERDUE") {
-        await supabase.from("hub_checkout_sessions").update({
-          status: "OVERDUE",
-          asaas_payment_id: payment.id,
-        }).eq("id", checkoutId).neq("status", "PAID");
-        if (checkout?.asaas_subscription_id) {
-          await supabase.from("hub_subscriptions").update({
-            status: "PAST_DUE",
-          })
-            .eq("provider", "ASAAS")
-            .eq("provider_subscription_id", checkout.asaas_subscription_id)
-            .eq("status", "ACTIVE");
-        }
-        return;
-      }
-
-      if (
-        event === "PAYMENT_DELETED" || event === "PAYMENT_REFUNDED" ||
-        event === "PAYMENT_CHARGEBACK_REQUESTED"
-      ) {
-        await supabase.from("hub_checkout_sessions").update({
-          status: "CANCELLED",
-        })
-          .eq("id", checkoutId).neq("status", "PAID");
-        return;
-      }
-
-      await supabase.from("hub_checkout_sessions").update({
-        asaas_payment_id: payment.id,
-        invoice_url: payment.invoiceUrl || null,
-        bank_slip_url: payment.bankSlipUrl || null,
-        metadata: {
-          event,
-          paymentStatus: payment.status,
-          dueDate: payment.dueDate || null,
-        },
-      }).eq("id", checkoutId);
+      await processHubPaymentEvent(body);
       return;
     }
 
@@ -1512,6 +1810,53 @@ serve(async (req) => {
         type: error instanceof Error ? error.message : "unknown",
       });
       return new Response(JSON.stringify({ error: "TOPUP_RETRY_REQUIRED" }), {
+        headers: corsHeaders,
+        status: 503,
+      });
+    }
+  }
+
+  const saasReference = body.payment?.externalReference ||
+    body.subscription?.externalReference || "";
+  let saasCheckoutId: string | null = null;
+  try {
+    saasCheckoutId = await resolveSaasCheckoutId(body);
+  } catch (error) {
+    console.error("[Webhook] SaaS subscription routing failed", {
+      type: error instanceof Error ? error.message : "unknown",
+    });
+    return new Response(JSON.stringify({ error: "SAAS_RETRY_REQUIRED" }), {
+      headers: corsHeaders,
+      status: 503,
+    });
+  }
+
+  if (saasReference.startsWith("saas:") || saasCheckoutId) {
+    if (!saasCheckoutId) {
+      console.warn("[Webhook] Referência de checkout SaaS inválida.");
+      const accessEvent = SAAS_ACCESS_EVENTS.has(body.event || "");
+      return new Response(
+        JSON.stringify(
+          accessEvent ? { error: "SAAS_RETRY_REQUIRED" } : { received: true },
+        ),
+        {
+          headers: corsHeaders,
+          status: accessEvent ? 503 : 200,
+        },
+      );
+    }
+    try {
+      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+      await processSaasCheckoutEvent(supabase, body, saasCheckoutId);
+      return new Response(JSON.stringify({ received: true }), {
+        headers: corsHeaders,
+        status: 200,
+      });
+    } catch (error) {
+      console.error("[Webhook] SaaS subscription processing failed", {
+        type: error instanceof Error ? error.message : "unknown",
+      });
+      return new Response(JSON.stringify({ error: "SAAS_RETRY_REQUIRED" }), {
         headers: corsHeaders,
         status: 503,
       });

@@ -1,0 +1,13 @@
+{
+  "id": "educator-ai-4-cta",
+  "file": "educator-ai-4-cta.mp3",
+  "requestId": "gen-1787593321-9pM5m6Q6rtZWkm2EosFW",
+  "sha256": "5591ac907ef0bdb08125709e2a0ec85b9c01b25c82ec73120d7cab53af11f5de",
+  "bytes": 131074,
+  "transcriptSha256": "2e1e476b9510975a31d0a74faca7ee6cf2170ac2ad294dfe8ce6a5721f1d1347",
+  "sceneHash": "4d573cd59228d9dfc6c6309aaf6d3f318394213063c69f49c6a05f427adf5b8e",
+  "durationSeconds": 5.4,
+  "generatedAt": "2026-08-24T17:42:03Z",
+  "sourcePcmWavSha256": "02944850bc022b72da596b3c488811ee3f54073f83abe6cdb416ec0b756f45f4",
+  "sourcePcmWavBytes": 259244
+}

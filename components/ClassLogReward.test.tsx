@@ -77,10 +77,16 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('<ClassLogReward />', () => {
     it('mostra o valor que veio do servidor, não uma estimativa', async () => {
         mockReducedMotion(false);
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+            const timeoutId = window.setTimeout(() => callback(performance.now() + 2_000), 0);
+            return timeoutId;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((frameId) => {
+            window.clearTimeout(frameId);
+        });
         render(<ClassLogReward result={base({ deltaAmount: 19 })} xp={calcularXp([false])} onClose={() => {}} />);
         // O contador sobe até o valor da RPC — o que importa é onde ele PARA.
-        // Timeout acima da duração da animação (1100ms), senão o teste corre antes do fim.
-        await waitFor(() => expect(screen.getByText(/R\$\s*19,00/)).toBeTruthy(), { timeout: 3000 });
+        await waitFor(() => expect(screen.getByText(/R\$\s*19,00/)).toBeTruthy());
     });
 
     it('respeita prefers-reduced-motion: mostra o valor final sem animar', () => {

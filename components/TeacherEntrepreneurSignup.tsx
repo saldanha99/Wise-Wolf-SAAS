@@ -1,372 +1,515 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-    User, Mail, Phone, FileText, CheckCircle, Loader2,
-    ArrowRight, AlertCircle, ChevronDown, ChevronUp, Zap, TrendingUp, Star
+    AlertCircle,
+    ArrowLeft,
+    ArrowRight,
+    CalendarCheck2,
+    CheckCircle2,
+    CircleCheck,
+    ClipboardCheck,
+    FileSignature,
+    Gauge,
+    LayoutDashboard,
+    Loader2,
+    Mail,
+    Phone,
+    Settings2,
+    ShieldCheck,
+    User,
+    UsersRound,
+    Workflow,
+    type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
-interface Plan {
-    id: string;
-    name: string;
-    price: number;
-    max_students: number;
-    max_teachers: number;
-    description: string;
-    features: string[];
-}
+import HubMarketingShell, {
+    HubReveal,
+    HubSectionIntro,
+    type HubMarketingNavItem,
+} from './hub/HubMarketingShell';
+import HubProductMockup from './hub/HubProductMockups';
+import { hubMarketingPath, resolveSystemAppUrl } from './hub/hubRoutes';
+import { useSystemMarketingMetadata } from './marketing/useSystemMarketingMetadata';
+import './hub/hub-audience.css';
 
 interface TeacherEntrepreneurSignupProps {
-    /** ID do tenant da escola mãe que está indicando o professor */
     parentTenantId?: string;
-    /** ID do professor que indicou este novo professor (programa de indicação) */
     referrerTeacherId?: string;
 }
 
-// ─── Planos (fallback local caso Supabase não retorne) ────────────────────────
+type LeadForm = {
+    teacher_name: string;
+    email: string;
+    phone: string;
+    school_name: string;
+    estimated_students: string;
+    main_bottleneck: string;
+};
 
-const FALLBACK_PLANS: Plan[] = [
+type LeadFieldErrors = Partial<Record<keyof LeadForm, string>>;
+
+const INITIAL_FORM: LeadForm = {
+    teacher_name: '',
+    email: '',
+    phone: '',
+    school_name: '',
+    estimated_students: '',
+    main_bottleneck: '',
+};
+
+const JOURNEY: Array<{
+    label: string;
+    title: string;
+    description: string;
+    marker: string;
+    icon: LucideIcon;
+}> = [
     {
-        id: 'starter',
-        name: 'Teacher Starter',
-        price: 97,
-        max_students: 15,
-        max_teachers: 1,
-        description: 'Para começar',
-        features: ['Contratos digitais', 'Pagamentos Asaas', 'Até 15 alunos', 'Agenda + lançamentos', 'Suporte via chat'],
+        label: 'Rotina',
+        title: 'Agenda que organiza o dia',
+        description: 'Centralize aulas, horários e próximos passos para reduzir ruído na operação cotidiana.',
+        marker: 'Agenda e reposições',
+        icon: CalendarCheck2,
     },
     {
-        id: 'growth',
-        name: 'Teacher Growth',
-        price: 197,
-        max_students: 50,
-        max_teachers: 3,
-        description: 'Para crescer',
-        features: ['Tudo do Starter', 'CRM completo', 'Material didático', 'Wolfie AI Tutor', 'Relatórios financeiros'],
+        label: 'Comercial',
+        title: 'CRM para não perder oportunidades',
+        description: 'Acompanhe contatos, conversas e matrículas com contexto e responsável definidos.',
+        marker: 'Do lead à matrícula',
+        icon: UsersRound,
     },
     {
-        id: 'scale',
-        name: 'Teacher Scale',
-        price: 397,
-        max_students: 99999,
-        max_teachers: 99,
-        description: 'Para dominar',
-        features: ['Tudo do Growth', 'Professores ilimitados', 'Multi-tenant', 'Domínio próprio', 'Suporte prioritário'],
+        label: 'Formalização',
+        title: 'Contratos e pagamentos no fluxo',
+        description: 'Organize a passagem do acordo para a cobrança sem depender de controles espalhados.',
+        marker: 'Menos trabalho manual',
+        icon: FileSignature,
+    },
+    {
+        label: 'Gestão',
+        title: 'Visão financeira para decidir',
+        description: 'Enxergue cobranças e a situação da operação para tomar decisões com mais segurança.',
+        marker: 'Controle do negócio',
+        icon: Gauge,
     },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const NAV_ITEMS: HubMarketingNavItem[] = [
+    { label: 'Visão geral', href: '#inicio' },
+    { label: 'Jornada', href: '#jornada' },
+    { label: 'Implantação', href: '#implantacao' },
+    { label: 'Diagnóstico', href: '#diagnostico' },
+];
 
-const PlanIcon = ({ name }: { name: string }) => {
-    if (name.includes('Scale')) return <Star size={18} />;
-    if (name.includes('Growth')) return <TrendingUp size={18} />;
-    return <Zap size={18} />;
+const onlyDigits = (value: string) => value.replace(/\D/g, '');
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const TEACHER_FIELD_IDS: Record<keyof LeadForm, string> = {
+    teacher_name: 'teacher-name',
+    email: 'teacher-email',
+    phone: 'teacher-phone',
+    school_name: 'teacher-brand',
+    estimated_students: 'teacher-students',
+    main_bottleneck: 'teacher-bottleneck',
 };
 
-const planColors: Record<string, { border: string; bg: string; badge: string; text: string }> = {
-    starter: { border: 'border-blue-500/40', bg: 'bg-blue-500/10', badge: 'bg-blue-500/20 text-blue-300', text: 'text-blue-400' },
-    growth:  { border: 'border-emerald-500/40', bg: 'bg-emerald-500/10', badge: 'bg-emerald-500/20 text-emerald-300', text: 'text-emerald-400' },
-    scale:   { border: 'border-amber-500/40', bg: 'bg-amber-500/10', badge: 'bg-amber-500/20 text-amber-300', text: 'text-amber-400' },
-};
+const focusInvalidField = (fieldId: string) => {
+    const field = document.getElementById(fieldId);
+    if (!(field instanceof HTMLElement)) return;
 
-const getPlanKey = (name: string) => {
-    if (name.toLowerCase().includes('scale')) return 'scale';
-    if (name.toLowerCase().includes('growth')) return 'growth';
-    return 'starter';
-};
+    const reducedMotion = typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// ─── Componente Principal ─────────────────────────────────────────────────────
-
-const TeacherEntrepreneurSignup: React.FC<TeacherEntrepreneurSignupProps> = ({ parentTenantId, referrerTeacherId }) => {
-    const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS);
-    const [selectedPlan, setSelectedPlan] = useState<Plan>(FALLBACK_PLANS[1]); // Growth por padrão
-    const [step, setStep] = useState<'plans' | 'form' | 'success'>('plans');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [faqOpen, setFaqOpen] = useState<number | null>(null);
-
-    const [form, setForm] = useState({
-        teacher_name: '',
-        email: '',
-        phone: '',
-        cpf: '',
-        school_name: '',  // nome da mini-escola do teacher
-        notes: '',
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'center',
     });
+};
 
-    // Carregar planos reais do Supabase
-    useEffect(() => {
-        const fetchPlans = async () => {
-            const { data } = await supabase
-                .from('saas_plans')
-                .select('id, name, price, max_students, max_teachers, description, features')
-                .eq('plan_type', 'teacher')
-                .eq('active', true)
-                .order('price', { ascending: true });
+const TeacherEntrepreneurSignup: React.FC<TeacherEntrepreneurSignupProps> = ({
+    parentTenantId,
+    referrerTeacherId,
+}) => {
+    useSystemMarketingMetadata('teacher-business');
+    const [form, setForm] = useState<LeadForm>(INITIAL_FORM);
+    const [loading, setLoading] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<LeadFieldErrors>({});
 
-            if (data && data.length > 0) {
-                const parsed: Plan[] = data.map((p: any) => ({
-                    ...p,
-                    features: Array.isArray(p.features) ? p.features : JSON.parse(p.features || '[]'),
-                }));
-                setPlans(parsed);
-                setSelectedPlan(parsed[1] ?? parsed[0]);
-            }
-        };
-        fetchPlans();
-    }, []);
+    const updateField = (field: keyof LeadForm, value: string) => {
+        setForm((current) => ({ ...current, [field]: value }));
+        setFieldErrors((current) => {
+            if (!current[field]) return current;
+            const next = { ...current };
+            delete next[field];
+            return next;
+        });
+        setError(null);
+    };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!form.teacher_name || !form.email || !form.phone) {
-            setError('Preencha nome, e-mail e WhatsApp.');
+    const scrollToDiagnosis = () => {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        document.getElementById('diagnostico')?.scrollIntoView({
+            behavior: reducedMotion ? 'auto' : 'smooth',
+            block: 'start',
+        });
+    };
+
+    const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        const teacherName = form.teacher_name.trim();
+        const email = form.email.trim().toLowerCase();
+        const phone = onlyDigits(form.phone);
+        const schoolName = form.school_name.trim();
+        const estimatedStudents = Number.parseInt(form.estimated_students, 10);
+        const mainBottleneck = form.main_bottleneck.trim();
+
+        const validationErrors: LeadFieldErrors = {};
+        if (!teacherName) validationErrors.teacher_name = 'Informe seu nome completo.';
+        if (!email) validationErrors.email = 'Informe seu e-mail.';
+        else if (!isValidEmail(email)) validationErrors.email = 'Informe um e-mail válido.';
+        if (!phone) validationErrors.phone = 'Informe seu WhatsApp com DDD.';
+        else if (phone.length < 10) validationErrors.phone = 'Informe um WhatsApp com DDD.';
+        if (!schoolName) validationErrors.school_name = 'Informe o nome da marca ou operação.';
+        if (!form.estimated_students) validationErrors.estimated_students = 'Informe a estimativa de alunos.';
+        else if (!Number.isFinite(estimatedStudents) || estimatedStudents < 0) {
+            validationErrors.estimated_students = 'Informe uma estimativa válida de alunos.';
+        }
+        if (!mainBottleneck) validationErrors.main_bottleneck = 'Descreva o principal gargalo da operação.';
+
+        const firstInvalidField = (Object.keys(TEACHER_FIELD_IDS) as Array<keyof LeadForm>)
+            .find((field) => validationErrors[field]);
+
+        if (firstInvalidField) {
+            setFieldErrors(validationErrors);
+            setError('Revise os campos destacados para solicitar o diagnóstico.');
+            focusInvalidField(TEACHER_FIELD_IDS[firstInvalidField]);
             return;
         }
+
         setLoading(true);
         setError(null);
+        setFieldErrors({});
+
         try {
-            const { error: insertErr } = await supabase.from('saas_leads').insert({
-                // Campos legados
-                name: form.teacher_name,
-                email: form.email,
-                phone: form.phone.replace(/\D/g, ''),
-                school_name: form.school_name || `Escola de ${form.teacher_name}`,
+            const source = referrerTeacherId
+                ? 'teacher_to_teacher_referral'
+                : parentTenantId
+                    ? 'teacher_referral'
+                    : 'teacher_signup';
+
+            const { error: insertError } = await supabase.from('saas_leads').insert({
+                name: teacherName,
+                email,
+                phone,
+                school_name: schoolName,
                 status: 'new',
-                // Campos novos
-                owner_name: form.teacher_name,
-                owner_email: form.email,
-                owner_phone: form.phone.replace(/\D/g, ''),
-                owner_cpf_cnpj: form.cpf.replace(/\D/g, '') || null,
-                estimated_students: selectedPlan.max_students < 9999 ? selectedPlan.max_students : null,
+                owner_name: teacherName,
+                owner_email: email,
+                owner_phone: phone,
+                estimated_students: estimatedStudents,
                 estimated_teachers: 1,
-                source: referrerTeacherId ? 'teacher_to_teacher_referral' : (parentTenantId ? 'teacher_referral' : 'teacher_signup'),
+                source,
                 referrer_teacher_id: referrerTeacherId || null,
-                plan_interest: selectedPlan.name,
+                plan_interest: 'Professor Negócio',
                 lead_type: 'teacher',
                 parent_tenant_id: parentTenantId || null,
-                notes: form.notes || null,
+                notes: `Principal gargalo informado: ${mainBottleneck}`,
             });
-            if (insertErr) throw insertErr;
-            setStep('success');
-        } catch (err: any) {
-            setError(err.message || 'Erro ao enviar. Tente novamente.');
+
+            if (insertError) throw insertError;
+            setSubmitted(true);
+        } catch {
+            setError('Não foi possível enviar agora. Revise os dados ou tente novamente em alguns instantes.');
         } finally {
             setLoading(false);
         }
     };
 
-    // ── Sucesso ──────────────────────────────────────────────────────────────
-
-    if (step === 'success') {
-        return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-10 text-center">
-                    <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <CheckCircle size={32} className="text-emerald-400" />
-                    </div>
-                    <h2 className="text-2xl font-black text-white mb-3">Inscrição recebida!</h2>
-                    <p className="text-sm text-slate-400 leading-relaxed mb-6">
-                        Ótimo, <b className="text-white">{form.teacher_name}</b>! Recebemos sua solicitação para o plano{' '}
-                        <b className="text-white">{selectedPlan.name}</b>.
-                        Vamos entrar em contato em até 24h no e-mail{' '}
-                        <b className="text-white">{form.email}</b> para ativar sua mini-escola.
-                    </p>
-                    <div className="bg-slate-800 rounded-2xl p-4 text-left text-sm text-slate-300 space-y-1">
-                        <p>✅ Tenant próprio com sua marca</p>
-                        <p>✅ Contratos digitais configurados</p>
-                        <p>✅ Pagamentos Asaas ativados</p>
-                        <p>✅ 14 dias grátis para testar</p>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    // ── Seleção de plano ──────────────────────────────────────────────────────
-
-    if (step === 'plans') {
-        return (
-            <div className="min-h-screen bg-slate-950 text-white">
-                {/* Hero */}
-                <div className="max-w-4xl mx-auto px-4 pt-16 pb-8 text-center">
-                    <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full px-4 py-1.5 text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-6">
-                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-pulse" />
-                        Wise Wolf For Teachers
-                    </div>
-                    <h1 className="text-4xl md:text-5xl font-black mb-4 leading-tight">
-                        Transforme seu talento<br />
-                        <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">
-                            em negócio
-                        </span>
-                    </h1>
-                    <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
-                        Toda a infraestrutura da Wise Wolf — contratos, pagamentos, CRM, alunos, AI — com a sua marca.
-                        Seja seu próprio chefe sem perder o suporte.
-                    </p>
-                </div>
-
-                {/* Cards de planos */}
-                <div className="max-w-4xl mx-auto px-4 pb-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {plans.map((plan) => {
-                            const key = getPlanKey(plan.name);
-                            const colors = planColors[key];
-                            const isSelected = selectedPlan.id === plan.id;
-                            const isPopular = key === 'growth';
-                            return (
-                                <button
-                                    key={plan.id}
-                                    onClick={() => setSelectedPlan(plan)}
-                                    className={`relative text-left rounded-2xl border p-5 transition-all ${colors.border} ${isSelected ? colors.bg + ' ring-2 ring-offset-2 ring-offset-slate-950 ' + colors.text.replace('text-', 'ring-') : 'bg-slate-900/60 hover:bg-slate-900'}`}
-                                >
-                                    {isPopular && (
-                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                                            <span className="bg-emerald-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                                                Mais Popular
-                                            </span>
-                                        </div>
-                                    )}
-                                    <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg mb-3 ${colors.badge}`}>
-                                        <PlanIcon name={plan.name} />
-                                        {plan.name.replace('Teacher ', '')}
-                                    </div>
-                                    <div className="mb-1">
-                                        <span className="text-3xl font-black text-white">R${plan.price}</span>
-                                        <span className="text-slate-500 text-sm">/mês</span>
-                                    </div>
-                                    <p className="text-xs text-slate-500 mb-4">{plan.description}</p>
-                                    <ul className="space-y-1.5">
-                                        {plan.features.map((f, i) => (
-                                            <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
-                                                <span className={`mt-0.5 shrink-0 ${colors.text}`}>✓</span>
-                                                {f}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    {isSelected && (
-                                        <div className={`mt-4 text-xs font-bold ${colors.text} flex items-center gap-1`}>
-                                            <span>Selecionado</span>
-                                        </div>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    <div className="text-center mt-8">
-                        <button
-                            onClick={() => setStep('form')}
-                            className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold px-8 py-4 rounded-2xl transition-all shadow-xl shadow-indigo-900/40"
-                        >
-                            Começar com {selectedPlan.name}
-                            <ArrowRight size={18} />
-                        </button>
-                        <p className="text-xs text-slate-500 mt-3">14 dias grátis · Sem cartão de crédito · Cancele quando quiser</p>
-                    </div>
-                </div>
-
-                {/* FAQ */}
-                <div className="max-w-2xl mx-auto px-4 pb-16">
-                    <h3 className="text-center text-lg font-black text-white mb-4">Dúvidas frequentes</h3>
-                    {[
-                        { q: 'Preciso sair da escola para usar?', a: 'Não necessariamente. Você pode usar a plataforma como professor autônomo ou em paralelo com seu vínculo atual.' },
-                        { q: 'Meus alunos terão acesso com minha marca?', a: 'Sim. Seu tenant terá nome, cores e domínio (ou subdomínio) com a sua identidade visual.' },
-                        { q: 'Como funciona o pagamento dos alunos?', a: 'Os alunos pagam diretamente para você via Asaas (PIX, boleto ou cartão). O dinheiro cai na sua conta.' },
-                        { q: 'Posso convidar outros professores para trabalhar comigo?', a: 'Nos planos Growth e Scale, sim. Você vira o "dono da escola" e pode adicionar professores à sua equipe.' },
-                    ].map((item, i) => (
-                        <div key={i} className="border-b border-slate-800">
-                            <button
-                                className="w-full flex items-center justify-between py-4 text-left text-sm font-semibold text-slate-200 hover:text-white transition-colors"
-                                onClick={() => setFaqOpen(faqOpen === i ? null : i)}
-                            >
-                                {item.q}
-                                {faqOpen === i ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
-                            </button>
-                            {faqOpen === i && (
-                                <p className="text-sm text-slate-400 pb-4 leading-relaxed">{item.a}</p>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-
-    // ── Formulário ────────────────────────────────────────────────────────────
-
-    const planKey = getPlanKey(selectedPlan.name);
-    const colors = planColors[planKey];
-
     return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-            <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-7 text-white">
-                    <button
-                        type="button"
-                        onClick={() => setStep('plans')}
-                        className="text-xs text-white/60 hover:text-white mb-4 flex items-center gap-1 transition-colors"
-                    >
-                        ← Voltar aos planos
-                    </button>
-                    <h1 className="text-2xl font-black mb-1">Criar minha mini-escola</h1>
-                    <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${colors.badge} mt-2`}>
-                        <PlanIcon name={selectedPlan.name} />
-                        {selectedPlan.name} — R${selectedPlan.price}/mês
-                    </div>
-                </div>
+        <HubMarketingShell
+            navItems={NAV_ITEMS}
+            onLogin={() => { window.location.href = resolveSystemAppUrl('/'); }}
+            onPrimary={scrollToDiagnosis}
+            primaryLabel="Solicitar diagnóstico"
+            accent="#258e79"
+            pageLabel="Professor Negócio"
+        >
+            <div className="hub-audience-page" data-audience="schools">
+                <section id="inicio" className="hub-audience-hero">
+                    <div className="hub-container hub-audience-hero__grid">
+                        <HubReveal className="hub-audience-hero__content">
+                            <a href={hubMarketingPath('teachers')} className="hub-audience-back">
+                                <ArrowLeft size={14} />Voltar ao Hub para professores
+                            </a>
+                            <p className="hub-eyebrow"><span />Uma oferta para professores com operação ativa</p>
+                            <h1>Seu trabalho já virou uma operação. <em>Agora, ela precisa funcionar como negócio.</em></h1>
+                            <p className="hub-audience-hero__description">
+                                Professor Negócio conecta agenda, CRM, contratos, pagamentos e visão financeira em um ambiente preparado com implantação assistida.
+                            </p>
+                            <div className="hub-audience-hero__actions">
+                                <button type="button" className="hub-button hub-button--primary" onClick={scrollToDiagnosis}>
+                                    Solicitar diagnóstico<ArrowRight size={17} />
+                                </button>
+                                <a className="hub-button hub-button--secondary" href="#jornada">Ver como funciona</a>
+                            </div>
+                            <div className="hub-audience-hero__proof">
+                                <span><CircleCheck size={13} />Oferta única</span>
+                                <span><Settings2 size={13} />Implantação assistida</span>
+                                <span><ShieldCheck size={13} />Sem ativação automática</span>
+                            </div>
+                        </HubReveal>
 
-                <div className="p-7 space-y-4">
-                    {error && (
-                        <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 flex items-start gap-2">
-                            <AlertCircle size={15} className="text-rose-400 shrink-0 mt-0.5" />
-                            <p className="text-xs text-rose-300">{error}</p>
+                        <HubReveal className="hub-audience-hero__visual" delay={0.12} direction="scale">
+                            <div className="hub-audience-hero__visual-head">
+                                <span>Professor Negócio</span>
+                                <em>Operação conectada</em>
+                            </div>
+                            <HubProductMockup kind="school" />
+                            <div className="hub-audience-hero__floating-card is-school">
+                                <span><ClipboardCheck size={17} /></span>
+                                <div><b>Entrada orientada</b><small>Diagnóstico antes de definir o escopo</small></div>
+                            </div>
+                        </HubReveal>
+                    </div>
+                </section>
+
+                <section className="hub-audience-proof-strip" aria-label="Pilares do Professor Negócio">
+                    <div className="hub-container">
+                        <span><CalendarCheck2 size={16} /><b>Agenda organizada</b></span>
+                        <span><Workflow size={16} /><b>CRM com continuidade</b></span>
+                        <span><FileSignature size={16} /><b>Contratos e pagamentos</b></span>
+                        <span><Gauge size={16} /><b>Visão financeira</b></span>
+                    </div>
+                </section>
+
+                <section id="jornada" className="hub-section hub-audience-journey-section">
+                    <div className="hub-container">
+                        <HubReveal>
+                            <HubSectionIntro
+                                eyebrow="Uma operação, quatro momentos"
+                                title={<>Do horário confirmado à decisão financeira. <em>Sem perder o contexto no caminho.</em></>}
+                                description="A jornada mostra os blocos da oferta. O diagnóstico identifica prioridades e define como a implantação deve começar."
+                            />
+                        </HubReveal>
+
+                        <ol className="hub-audience-journey" aria-label="Jornada do Professor Negócio">
+                            {JOURNEY.map(({ label, title, description, marker, icon: Icon }, index) => (
+                                <HubReveal as="li" key={label} delay={index * 0.06} className="hub-audience-journey__step">
+                                        <div className="hub-audience-journey__rail" aria-hidden="true">
+                                            <span>{String(index + 1).padStart(2, '0')}</span>
+                                        </div>
+                                        <div className="hub-audience-journey__icon"><Icon size={21} /></div>
+                                        <p className="hub-audience-journey__label">{label}</p>
+                                        <h3>{title}</h3>
+                                        <p className="hub-audience-journey__description">{description}</p>
+                                        <span className="hub-audience-journey__marker">{marker}</span>
+                                </HubReveal>
+                            ))}
+                        </ol>
+                    </div>
+                </section>
+
+                <section id="implantacao" className="hub-section hub-audience-rollout-section">
+                    <div className="hub-container hub-audience-rollout">
+                        <HubReveal className="hub-audience-rollout__intro">
+                            <HubSectionIntro
+                                eyebrow="Implantação assistida"
+                                title={<>Primeiro entendemos a rotina. <em>Depois desenhamos a entrada.</em></>}
+                                description="Professor Negócio não começa por uma seleção pública de planos. O diagnóstico orienta demonstração, prioridades e escopo."
+                            />
+                            <button type="button" className="hub-button hub-button--primary" onClick={scrollToDiagnosis}>
+                                Compartilhar meu cenário<ArrowRight size={16} />
+                            </button>
+                        </HubReveal>
+
+                        <div className="hub-audience-rollout__steps">
+                            {[
+                                { number: '01', icon: ClipboardCheck, title: 'Diagnóstico', description: 'Mapeamos carteira de alunos, rotina atual e o principal gargalo da operação.' },
+                                { number: '02', icon: LayoutDashboard, title: 'Tour orientado', description: 'Apresentamos os fluxos ligados ao seu cenário, sem uma demonstração genérica.' },
+                                { number: '03', icon: Settings2, title: 'Escopo de implantação', description: 'Organizamos prioridades, configurações e a sequência de adoção antes de qualquer ativação.' },
+                            ].map(({ number, icon: Icon, title, description }, index) => (
+                                <HubReveal key={number} delay={index * 0.06}>
+                                    <article>
+                                        <span className="hub-audience-rollout__number">{number}</span>
+                                        <span className="hub-audience-rollout__icon"><Icon size={21} /></span>
+                                        <div><h3>{title}</h3><p>{description}</p></div>
+                                    </article>
+                                </HubReveal>
+                            ))}
                         </div>
-                    )}
-
-                    <Field icon={User} label="Seu nome completo *" value={form.teacher_name} onChange={v => setForm({ ...form, teacher_name: v })} required />
-                    <Field icon={Mail} label="E-mail *" type="email" value={form.email} onChange={v => setForm({ ...form, email: v })} required />
-                    <Field icon={Phone} label="WhatsApp *" value={form.phone} onChange={v => setForm({ ...form, phone: v })} required placeholder="(11) 99999-9999" />
-                    <Field icon={FileText} label="CPF (opcional)" value={form.cpf} onChange={v => setForm({ ...form, cpf: v })} placeholder="000.000.000-00" />
-                    <Field icon={User} label="Nome da sua escola/marca" value={form.school_name} onChange={v => setForm({ ...form, school_name: v })} placeholder={`Ex: ${form.teacher_name || 'João'} English`} />
-
-                    <div>
-                        <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">
-                            Observações (opcional)
-                        </label>
-                        <textarea
-                            value={form.notes}
-                            onChange={e => setForm({ ...form, notes: e.target.value })}
-                            rows={2}
-                            placeholder="Especialidade, idioma que leciona, público-alvo..."
-                            className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                        />
                     </div>
+                </section>
 
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2 disabled:opacity-60"
-                    >
-                        {loading ? (
-                            <><Loader2 className="animate-spin" size={18} /> Enviando...</>
-                        ) : (
-                            <>Quero minha mini-escola <ArrowRight size={18} /></>
-                        )}
-                    </button>
-                    <p className="text-[11px] text-slate-600 text-center">
-                        Ao enviar, você concorda com os Termos de Uso e Política de Privacidade da Wise Wolf Language School.
-                    </p>
-                </div>
-            </form>
-        </div>
+                <section id="diagnostico" className="hub-audience-assisted scroll-mt-24">
+                    <div className="hub-container hub-audience-assisted__panel">
+                        <HubReveal className="hub-audience-assisted__copy">
+                            <p className="hub-eyebrow"><span />Diagnóstico Professor Negócio</p>
+                            <h2>Conte onde sua operação trava. <em>Nós começamos por aí.</em></h2>
+                            <p>
+                                O formulário qualifica seu cenário para que a primeira conversa seja objetiva e conectada à sua realidade.
+                            </p>
+                            <div className="hub-audience-assisted__capabilities">
+                                <span><ClipboardCheck size={15} />Análise do contexto</span>
+                                <span><LayoutDashboard size={15} />Tour orientado</span>
+                                <span><ShieldCheck size={15} />Nenhuma ativação automática</span>
+                            </div>
+                        </HubReveal>
+
+                        <HubReveal className="hub-audience-assisted__commercial" delay={0.08} direction="scale">
+                            {submitted ? (
+                                <section className="py-3 text-center" aria-live="polite">
+                                    <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-emerald-400/15 text-emerald-300">
+                                        <CheckCircle2 size={32} />
+                                    </span>
+                                    <p className="mt-6 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300">Solicitação recebida</p>
+                                    <h2 className="mt-2 text-3xl font-black tracking-tight text-white">Diagnóstico solicitado.</h2>
+                                    <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-slate-300">
+                                        Recebemos seu contexto, {form.teacher_name.trim()}. A equipe vai analisar a operação e entrar em contato pelos dados informados para uma conversa de diagnóstico.
+                                    </p>
+                                    <div className="mt-6 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left text-xs leading-6 text-slate-300">
+                                        <ShieldCheck className="mt-0.5 shrink-0 text-emerald-300" size={18} />
+                                        <span>Nenhuma conta, assinatura ou cobrança foi ativada com este envio.</span>
+                                    </div>
+                                    <a className="hub-button hub-button--inverse mt-7" href={hubMarketingPath('teachers')}>
+                                        Voltar ao Hub para professores<ArrowRight size={16} />
+                                    </a>
+                                </section>
+                            ) : (
+                                <form onSubmit={handleSubmit} noValidate className="space-y-5">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300">Seu cenário atual</p>
+                                        <h2 className="mt-2 text-2xl font-black tracking-tight text-white">Solicite uma conversa de diagnóstico</h2>
+                                        <p className="mt-2 text-xs leading-6 text-slate-400">Campos com * são necessários. Não informe dados de alunos, documentos ou credenciais.</p>
+                                    </div>
+
+                                    {error && (
+                                        <div id="teacher-form-error-summary" className="flex items-start gap-3 rounded-2xl border border-rose-400/25 bg-rose-400/10 p-4" role="alert" aria-live="assertive">
+                                            <AlertCircle className="mt-0.5 shrink-0 text-rose-300" size={17} />
+                                            <p className="text-xs leading-5 text-rose-100">{error}</p>
+                                        </div>
+                                    )}
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <Field
+                                            id="teacher-name"
+                                            icon={User}
+                                            label="Nome completo *"
+                                            value={form.teacher_name}
+                                            onChange={(value) => updateField('teacher_name', value)}
+                                            autoComplete="name"
+                                            required
+                                            error={fieldErrors.teacher_name}
+                                        />
+                                        <Field
+                                            id="teacher-email"
+                                            icon={Mail}
+                                            label="E-mail *"
+                                            type="email"
+                                            value={form.email}
+                                            onChange={(value) => updateField('email', value)}
+                                            autoComplete="email"
+                                            required
+                                            error={fieldErrors.email}
+                                        />
+                                        <Field
+                                            id="teacher-phone"
+                                            icon={Phone}
+                                            label="WhatsApp com DDD *"
+                                            type="tel"
+                                            value={form.phone}
+                                            onChange={(value) => updateField('phone', value)}
+                                            autoComplete="tel"
+                                            placeholder="(11) 99999-9999"
+                                            required
+                                            error={fieldErrors.phone}
+                                        />
+                                        <Field
+                                            id="teacher-brand"
+                                            icon={LayoutDashboard}
+                                            label="Nome da marca / operação *"
+                                            value={form.school_name}
+                                            onChange={(value) => updateField('school_name', value)}
+                                            autoComplete="organization"
+                                            placeholder="Ex.: Macena English"
+                                            required
+                                            error={fieldErrors.school_name}
+                                        />
+                                        <Field
+                                            id="teacher-students"
+                                            icon={UsersRound}
+                                            label="Estimativa de alunos *"
+                                            type="number"
+                                            value={form.estimated_students}
+                                            onChange={(value) => updateField('estimated_students', value)}
+                                            min={0}
+                                            placeholder="Ex.: 24"
+                                            required
+                                            error={fieldErrors.estimated_students}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label htmlFor="teacher-bottleneck" className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                                            Principal gargalo da operação *
+                                        </label>
+                                        <textarea
+                                            id="teacher-bottleneck"
+                                            value={form.main_bottleneck}
+                                            onChange={(event) => updateField('main_bottleneck', event.target.value)}
+                                            rows={4}
+                                            maxLength={600}
+                                            required
+                                            placeholder="Ex.: perco oportunidades no WhatsApp e não consigo acompanhar cobranças sem planilhas."
+                                            aria-invalid={fieldErrors.main_bottleneck ? true : undefined}
+                                            aria-describedby={fieldErrors.main_bottleneck ? 'teacher-bottleneck-error' : undefined}
+                                            className={`w-full resize-none rounded-2xl border bg-white/5 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:ring-2 ${fieldErrors.main_bottleneck
+                                                ? 'border-rose-300/70 focus:border-rose-300 focus:ring-rose-300/15'
+                                                : 'border-white/10 focus:border-emerald-300 focus:ring-emerald-300/15'}`}
+                                        />
+                                        {fieldErrors.main_bottleneck && (
+                                            <p id="teacher-bottleneck-error" className="mt-2 text-xs leading-5 text-rose-200">
+                                                {fieldErrors.main_bottleneck}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={loading}
+                                        className="hub-button hub-button--inverse w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {loading ? <><Loader2 className="animate-spin" size={17} />Enviando contexto...</> : <>Solicitar diagnóstico<ArrowRight size={17} /></>}
+                                    </button>
+                                    <p className="text-center text-[10px] leading-5 text-slate-500">
+                                        Ao enviar, você autoriza o contato para análise desta solicitação. O envio não cria conta, assinatura ou cobrança.
+                                    </p>
+                                </form>
+                            )}
+                        </HubReveal>
+                    </div>
+                </section>
+            </div>
+        </HubMarketingShell>
     );
 };
 
-// ─── Field helper ─────────────────────────────────────────────────────────────
-
-const Field = ({
+const Field: React.FC<{
+    id: string;
+    icon: LucideIcon;
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    type?: React.InputHTMLAttributes<HTMLInputElement>['type'];
+    required?: boolean;
+    placeholder?: string;
+    autoComplete?: string;
+    inputMode?: React.InputHTMLAttributes<HTMLInputElement>['inputMode'];
+    min?: number;
+    error?: string;
+}> = ({
+    id,
     icon: Icon,
     label,
     value,
@@ -374,28 +517,33 @@ const Field = ({
     type = 'text',
     required = false,
     placeholder,
-}: {
-    icon?: React.ComponentType<any>;
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    type?: string;
-    required?: boolean;
-    placeholder?: string;
+    autoComplete,
+    inputMode,
+    min,
+    error,
 }) => (
     <div>
-        <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">{label}</label>
+        <label htmlFor={id} className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</label>
         <div className="relative">
-            {Icon && <Icon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />}
+            <Icon className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={16} aria-hidden="true" />
             <input
+                id={id}
                 type={type}
                 value={value}
-                onChange={e => onChange(e.target.value)}
+                onChange={(event) => onChange(event.target.value)}
                 required={required}
                 placeholder={placeholder}
-                className={`w-full p-3 ${Icon ? 'pl-9' : ''} bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all`}
+                autoComplete={autoComplete}
+                inputMode={inputMode}
+                min={min}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? `${id}-error` : undefined}
+                className={`w-full rounded-2xl border bg-white/5 py-3 pl-11 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:ring-2 ${error
+                    ? 'border-rose-300/70 focus:border-rose-300 focus:ring-rose-300/15'
+                    : 'border-white/10 focus:border-emerald-300 focus:ring-emerald-300/15'}`}
             />
         </div>
+        {error && <p id={`${id}-error`} className="mt-2 text-xs leading-5 text-rose-200">{error}</p>}
     </div>
 );
 

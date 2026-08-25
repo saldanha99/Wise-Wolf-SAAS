@@ -80,18 +80,16 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
 
     // Busca os perfis já cadastrados (com CPF) para vincular como responsável.
     useEffect(() => {
-        if (!formData.is_dependent || !tenantId || guardianCandidates.length > 0) return;
+        if (!isDirector || !formData.is_dependent || !tenantId || guardianCandidates.length > 0) return;
         let cancelled = false;
         (async () => {
             setLoadingGuardians(true);
             try {
-                const { data } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, cpf, email, phone')
-                    .eq('tenant_id', tenantId)
-                    .not('cpf', 'is', null)
-                    .neq('cpf', '')
-                    .order('full_name', { ascending: true });
+                const { data, error } = await supabase.rpc(
+                    'get_authorized_guardian_directory',
+                    { p_tenant_id: tenantId },
+                );
+                if (error) throw error;
                 if (!cancelled && data) {
                     // Não pode ser responsável de si mesmo
                     setGuardianCandidates(data.filter((c: GuardianCandidate) => c.id !== initialData?.id));
@@ -103,7 +101,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
             }
         })();
         return () => { cancelled = true; };
-    }, [formData.is_dependent, tenantId]);
+    }, [formData.is_dependent, tenantId, isDirector]);
 
     // Vincula o dependente a um responsável já cadastrado (autopreenche os campos).
     const selectGuardian = (g: GuardianCandidate) => {

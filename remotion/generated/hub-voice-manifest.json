@@ -1,0 +1,3266 @@
+{
+  "hub-overview": {
+    "ready": true,
+    "durationSeconds": 43.471,
+    "durationInFrames": 1305,
+    "audioPath": "assets/hub/videos/audio/hub-overview.723515c3e981d87fa251ab6fe1f672e924f6659b2b7f2625635b91f64abdf915.mp3",
+    "voiceProvider": "openai",
+    "voiceGateway": "openrouter",
+    "voiceId": "marin",
+    "voiceName": "OpenAI Marin via OpenRouter · LiveCall PT-BR",
+    "voiceLocale": "pt-BR",
+    "voiceAccent": "brazilian-prompted",
+    "voiceSourceAccent": "openai-built-in",
+    "voiceNative": false,
+    "voiceLocaleValidation": "openai_prompted_pt_br",
+    "modelId": "openai/gpt-audio",
+    "scriptHash": "34e018fbd780b8fd99c0bf2d98fe83b9f9cc37b216a82382ce49ea4962ed5a10",
+    "commercialUseAllowed": true,
+    "commercialLicenseBasis": "openrouter_terms",
+    "commercialLicenseAcknowledgedAt": "2026-08-24T17:41:22.000Z",
+    "ttsInstructionsSha256": "350ae3d6072a02c948ba7d6e4145725e4d876c9f9ac02efacfc253ef6b0c090d",
+    "aiDisclosureMode": "burned-in",
+    "generatedAt": "2026-08-24T17:41:22.000Z",
+    "requestId": "gen-1787593268-rpFe8TKGzYGWrOKiLfUY",
+    "captions": [
+      {
+        "text": "Ensinar bem não deveria",
+        "startSeconds": 0,
+        "endSeconds": 1.659,
+        "startMs": 0,
+        "endMs": 1659,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Ensinar",
+            "startMs": 0,
+            "endMs": 581
+          },
+          {
+            "text": "bem",
+            "startMs": 581,
+            "endMs": 829
+          },
+          {
+            "text": "não",
+            "startMs": 829,
+            "endMs": 1078
+          },
+          {
+            "text": "deveria",
+            "startMs": 1078,
+            "endMs": 1659
+          }
+        ]
+      },
+      {
+        "text": "exigir dez ferramentas desconectadas.",
+        "startSeconds": 1.659,
+        "endSeconds": 4.81,
+        "startMs": 1659,
+        "endMs": 4810,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "exigir",
+            "startMs": 1659,
+            "endMs": 2156
+          },
+          {
+            "text": "dez",
+            "startMs": 2156,
+            "endMs": 2405
+          },
+          {
+            "text": "ferramentas",
+            "startMs": 2405,
+            "endMs": 3317
+          },
+          {
+            "text": "desconectadas.",
+            "startMs": 3317,
+            "endMs": 4810
+          }
+        ]
+      },
+      {
+        "text": "O ecossistema Wise Wolf",
+        "startSeconds": 5.03,
+        "endSeconds": 7,
+        "startMs": 5030,
+        "endMs": 7000,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 5030,
+            "endMs": 5129
+          },
+          {
+            "text": "ecossistema",
+            "startMs": 5129,
+            "endMs": 6212
+          },
+          {
+            "text": "Wise",
+            "startMs": 6212,
+            "endMs": 6606
+          },
+          {
+            "text": "Wolf",
+            "startMs": 6606,
+            "endMs": 7000
+          }
+        ]
+      },
+      {
+        "text": "reúne o que professores",
+        "startSeconds": 7,
+        "endSeconds": 8.971,
+        "startMs": 7000,
+        "endMs": 8971,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "reúne",
+            "startMs": 7000,
+            "endMs": 7493
+          },
+          {
+            "text": "o",
+            "startMs": 7493,
+            "endMs": 7592
+          },
+          {
+            "text": "que",
+            "startMs": 7592,
+            "endMs": 7887
+          },
+          {
+            "text": "professores",
+            "startMs": 7887,
+            "endMs": 8971
+          }
+        ]
+      },
+      {
+        "text": "e escolas precisam para",
+        "startSeconds": 8.971,
+        "endSeconds": 10.941,
+        "startMs": 8971,
+        "endMs": 10941,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "e",
+            "startMs": 8971,
+            "endMs": 9069
+          },
+          {
+            "text": "escolas",
+            "startMs": 9069,
+            "endMs": 9759
+          },
+          {
+            "text": "precisam",
+            "startMs": 9759,
+            "endMs": 10547
+          },
+          {
+            "text": "para",
+            "startMs": 10547,
+            "endMs": 10941
+          }
+        ]
+      },
+      {
+        "text": "planejar, engajar, crescer e operar.",
+        "startSeconds": 10.941,
+        "endSeconds": 14.291,
+        "startMs": 10941,
+        "endMs": 14291,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "planejar,",
+            "startMs": 10941,
+            "endMs": 11781
+          },
+          {
+            "text": "engajar,",
+            "startMs": 11781,
+            "endMs": 12536
+          },
+          {
+            "text": "crescer",
+            "startMs": 12536,
+            "endMs": 13123
+          },
+          {
+            "text": "e",
+            "startMs": 13123,
+            "endMs": 13207
+          },
+          {
+            "text": "operar.",
+            "startMs": 13207,
+            "endMs": 14291
+          }
+        ]
+      },
+      {
+        "text": "Biblioteca com curadoria.",
+        "startSeconds": 14.511,
+        "endSeconds": 16.647,
+        "startMs": 14511,
+        "endMs": 16647,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Biblioteca",
+            "startMs": 14511,
+            "endMs": 15302
+          },
+          {
+            "text": "com",
+            "startMs": 15302,
+            "endMs": 15540
+          },
+          {
+            "text": "curadoria.",
+            "startMs": 15540,
+            "endMs": 16647
+          }
+        ]
+      },
+      {
+        "text": "Educador com inteligência",
+        "startSeconds": 16.647,
+        "endSeconds": 18.467,
+        "startMs": 16647,
+        "endMs": 18467,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Educador",
+            "startMs": 16647,
+            "endMs": 17280
+          },
+          {
+            "text": "com",
+            "startMs": 17280,
+            "endMs": 17518
+          },
+          {
+            "text": "inteligência",
+            "startMs": 17518,
+            "endMs": 18467
+          }
+        ]
+      },
+      {
+        "text": "artificial e contexto.",
+        "startSeconds": 18.467,
+        "endSeconds": 20.366,
+        "startMs": 18467,
+        "endMs": 20366,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "artificial",
+            "startMs": 18467,
+            "endMs": 19259
+          },
+          {
+            "text": "e",
+            "startMs": 19259,
+            "endMs": 19338
+          },
+          {
+            "text": "contexto.",
+            "startMs": 19338,
+            "endMs": 20366
+          }
+        ]
+      },
+      {
+        "text": "Prática real com o Wolfie.",
+        "startSeconds": 20.366,
+        "endSeconds": 22.423,
+        "startMs": 20366,
+        "endMs": 22423,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Prática",
+            "startMs": 20366,
+            "endMs": 20920
+          },
+          {
+            "text": "real",
+            "startMs": 20920,
+            "endMs": 21237
+          },
+          {
+            "text": "com",
+            "startMs": 21237,
+            "endMs": 21474
+          },
+          {
+            "text": "o",
+            "startMs": 21474,
+            "endMs": 21553
+          },
+          {
+            "text": "Wolfie.",
+            "startMs": 21553,
+            "endMs": 22423
+          }
+        ]
+      },
+      {
+        "text": "E uma operação escolar",
+        "startSeconds": 22.423,
+        "endSeconds": 23.927,
+        "startMs": 22423,
+        "endMs": 23927,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "E",
+            "startMs": 22423,
+            "endMs": 22503
+          },
+          {
+            "text": "uma",
+            "startMs": 22503,
+            "endMs": 22740
+          },
+          {
+            "text": "operação",
+            "startMs": 22740,
+            "endMs": 23373
+          },
+          {
+            "text": "escolar",
+            "startMs": 23373,
+            "endMs": 23927
+          }
+        ]
+      },
+      {
+        "text": "conectada, do primeiro contato à renovação.",
+        "startSeconds": 23.927,
+        "endSeconds": 27.171,
+        "startMs": 23927,
+        "endMs": 27171,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "conectada,",
+            "startMs": 23927,
+            "endMs": 24735
+          },
+          {
+            "text": "do",
+            "startMs": 24735,
+            "endMs": 24882
+          },
+          {
+            "text": "primeiro",
+            "startMs": 24882,
+            "endMs": 25470
+          },
+          {
+            "text": "contato",
+            "startMs": 25470,
+            "endMs": 25984
+          },
+          {
+            "text": "à",
+            "startMs": 25984,
+            "endMs": 26063
+          },
+          {
+            "text": "renovação.",
+            "startMs": 26063,
+            "endMs": 27171
+          }
+        ]
+      },
+      {
+        "text": "Cada acesso respeita conta,",
+        "startSeconds": 27.391,
+        "endSeconds": 29.728,
+        "startMs": 27391,
+        "endMs": 29728,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Cada",
+            "startMs": 27391,
+            "endMs": 27765
+          },
+          {
+            "text": "acesso",
+            "startMs": 27765,
+            "endMs": 28326
+          },
+          {
+            "text": "respeita",
+            "startMs": 28326,
+            "endMs": 29073
+          },
+          {
+            "text": "conta,",
+            "startMs": 29073,
+            "endMs": 29728
+          }
+        ]
+      },
+      {
+        "text": "papel e ambiente,",
+        "startSeconds": 29.728,
+        "endSeconds": 31.223,
+        "startMs": 29728,
+        "endMs": 31223,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "papel",
+            "startMs": 29728,
+            "endMs": 30195
+          },
+          {
+            "text": "e",
+            "startMs": 30195,
+            "endMs": 30289
+          },
+          {
+            "text": "ambiente,",
+            "startMs": 30289,
+            "endMs": 31223
+          }
+        ]
+      },
+      {
+        "text": "para que a experiência",
+        "startSeconds": 31.223,
+        "endSeconds": 32.999,
+        "startMs": 31223,
+        "endMs": 32999,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "para",
+            "startMs": 31223,
+            "endMs": 31597
+          },
+          {
+            "text": "que",
+            "startMs": 31597,
+            "endMs": 31878
+          },
+          {
+            "text": "a",
+            "startMs": 31878,
+            "endMs": 31971
+          },
+          {
+            "text": "experiência",
+            "startMs": 31971,
+            "endMs": 32999
+          }
+        ]
+      },
+      {
+        "text": "seja simples na frente",
+        "startSeconds": 32.999,
+        "endSeconds": 34.775,
+        "startMs": 32999,
+        "endMs": 34775,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "seja",
+            "startMs": 32999,
+            "endMs": 33373
+          },
+          {
+            "text": "simples",
+            "startMs": 33373,
+            "endMs": 34027
+          },
+          {
+            "text": "na",
+            "startMs": 34027,
+            "endMs": 34214
+          },
+          {
+            "text": "frente",
+            "startMs": 34214,
+            "endMs": 34775
+          }
+        ]
+      },
+      {
+        "text": "e segura por trás.",
+        "startSeconds": 34.775,
+        "endSeconds": 36.551,
+        "startMs": 34775,
+        "endMs": 36551,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "e",
+            "startMs": 34775,
+            "endMs": 34869
+          },
+          {
+            "text": "segura",
+            "startMs": 34869,
+            "endMs": 35429
+          },
+          {
+            "text": "por",
+            "startMs": 35429,
+            "endMs": 35710
+          },
+          {
+            "text": "trás.",
+            "startMs": 35710,
+            "endMs": 36551
+          }
+        ]
+      },
+      {
+        "text": "Você escolhe onde está.",
+        "startSeconds": 36.771,
+        "endSeconds": 38.79,
+        "startMs": 36771,
+        "endMs": 38790,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Você",
+            "startMs": 36771,
+            "endMs": 37108
+          },
+          {
+            "text": "escolhe",
+            "startMs": 37108,
+            "endMs": 37696
+          },
+          {
+            "text": "onde",
+            "startMs": 37696,
+            "endMs": 38033
+          },
+          {
+            "text": "está.",
+            "startMs": 38033,
+            "endMs": 38790
+          }
+        ]
+      },
+      {
+        "text": "A Wise Wolf organiza",
+        "startSeconds": 38.79,
+        "endSeconds": 40.22,
+        "startMs": 38790,
+        "endMs": 40220,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "A",
+            "startMs": 38790,
+            "endMs": 38874
+          },
+          {
+            "text": "Wise",
+            "startMs": 38874,
+            "endMs": 39211
+          },
+          {
+            "text": "Wolf",
+            "startMs": 39211,
+            "endMs": 39547
+          },
+          {
+            "text": "organiza",
+            "startMs": 39547,
+            "endMs": 40220
+          }
+        ]
+      },
+      {
+        "text": "o próximo passo.",
+        "startSeconds": 40.22,
+        "endSeconds": 41.735,
+        "startMs": 40220,
+        "endMs": 41735,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "o",
+            "startMs": 40220,
+            "endMs": 40305
+          },
+          {
+            "text": "próximo",
+            "startMs": 40305,
+            "endMs": 40894
+          },
+          {
+            "text": "passo.",
+            "startMs": 40894,
+            "endMs": 41735
+          }
+        ]
+      },
+      {
+        "text": "Conheça o Hub.",
+        "startSeconds": 41.735,
+        "endSeconds": 43.081,
+        "startMs": 41735,
+        "endMs": 43081,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Conheça",
+            "startMs": 41735,
+            "endMs": 42324
+          },
+          {
+            "text": "o",
+            "startMs": 42324,
+            "endMs": 42408
+          },
+          {
+            "text": "Hub.",
+            "startMs": 42408,
+            "endMs": 43081
+          }
+        ]
+      }
+    ],
+    "scenes": {
+      "hook": {
+        "startSeconds": 0,
+        "endSeconds": 5.03
+      },
+      "problem": {
+        "startSeconds": 5.03,
+        "endSeconds": 14.511
+      },
+      "product": {
+        "startSeconds": 14.511,
+        "endSeconds": 27.391
+      },
+      "proof": {
+        "startSeconds": 27.391,
+        "endSeconds": 36.771
+      },
+      "cta": {
+        "startSeconds": 36.771,
+        "endSeconds": 43.471
+      }
+    }
+  },
+  "library": {
+    "ready": true,
+    "durationSeconds": 36.171,
+    "durationInFrames": 1086,
+    "audioPath": "assets/hub/videos/audio/library.729c049070c7ed1218e84c5fbc4dc6de1065ed3fb373525ac86ac84da451af4d.mp3",
+    "voiceProvider": "openai",
+    "voiceGateway": "openrouter",
+    "voiceId": "marin",
+    "voiceName": "OpenAI Marin via OpenRouter · LiveCall PT-BR",
+    "voiceLocale": "pt-BR",
+    "voiceAccent": "brazilian-prompted",
+    "voiceSourceAccent": "openai-built-in",
+    "voiceNative": false,
+    "voiceLocaleValidation": "openai_prompted_pt_br",
+    "modelId": "openai/gpt-audio",
+    "scriptHash": "b59ddaf458a8caef567c4aff5ecbccc2370673e51a2031acbf76c10e3232f11c",
+    "commercialUseAllowed": true,
+    "commercialLicenseBasis": "openrouter_terms",
+    "commercialLicenseAcknowledgedAt": "2026-08-24T17:41:43.000Z",
+    "ttsInstructionsSha256": "350ae3d6072a02c948ba7d6e4145725e4d876c9f9ac02efacfc253ef6b0c090d",
+    "aiDisclosureMode": "burned-in",
+    "generatedAt": "2026-08-24T17:41:43.000Z",
+    "requestId": "gen-1787593291-LIJRpsE4LDkCxWXYbCBN",
+    "captions": [
+      {
+        "text": "Quanto tempo de uma",
+        "startSeconds": 0,
+        "endSeconds": 1.16,
+        "startMs": 0,
+        "endMs": 1160,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Quanto",
+            "startMs": 0,
+            "endMs": 435
+          },
+          {
+            "text": "tempo",
+            "startMs": 435,
+            "endMs": 798
+          },
+          {
+            "text": "de",
+            "startMs": 798,
+            "endMs": 942
+          },
+          {
+            "text": "uma",
+            "startMs": 942,
+            "endMs": 1160
+          }
+        ]
+      },
+      {
+        "text": "boa aula desaparece procurando material?",
+        "startSeconds": 1.16,
+        "endSeconds": 4.06,
+        "startMs": 1160,
+        "endMs": 4060,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "boa",
+            "startMs": 1160,
+            "endMs": 1378
+          },
+          {
+            "text": "aula",
+            "startMs": 1378,
+            "endMs": 1668
+          },
+          {
+            "text": "desaparece",
+            "startMs": 1668,
+            "endMs": 2393
+          },
+          {
+            "text": "procurando",
+            "startMs": 2393,
+            "endMs": 3117
+          },
+          {
+            "text": "material?",
+            "startMs": 3117,
+            "endMs": 4060
+          }
+        ]
+      },
+      {
+        "text": "Pastas, links e arquivos",
+        "startSeconds": 4.28,
+        "endSeconds": 5.979,
+        "startMs": 4280,
+        "endMs": 5979,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Pastas,",
+            "startMs": 4280,
+            "endMs": 4898
+          },
+          {
+            "text": "links",
+            "startMs": 4898,
+            "endMs": 5284
+          },
+          {
+            "text": "e",
+            "startMs": 5284,
+            "endMs": 5361
+          },
+          {
+            "text": "arquivos",
+            "startMs": 5361,
+            "endMs": 5979
+          }
+        ]
+      },
+      {
+        "text": "dispersos transformam",
+        "startSeconds": 5.979,
+        "endSeconds": 7.678,
+        "startMs": 5979,
+        "endMs": 7678,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "dispersos",
+            "startMs": 5979,
+            "endMs": 6743
+          },
+          {
+            "text": "transformam",
+            "startMs": 6743,
+            "endMs": 7678
+          }
+        ]
+      },
+      {
+        "text": "preparação em improviso antes",
+        "startSeconds": 7.678,
+        "endSeconds": 9.886,
+        "startMs": 7678,
+        "endMs": 9886,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "preparação",
+            "startMs": 7678,
+            "endMs": 8527
+          },
+          {
+            "text": "em",
+            "startMs": 8527,
+            "endMs": 8697
+          },
+          {
+            "text": "improviso",
+            "startMs": 8697,
+            "endMs": 9462
+          },
+          {
+            "text": "antes",
+            "startMs": 9462,
+            "endMs": 9886
+          }
+        ]
+      },
+      {
+        "text": "mesmo da aula começar.",
+        "startSeconds": 9.886,
+        "endSeconds": 11.84,
+        "startMs": 9886,
+        "endMs": 11840,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "mesmo",
+            "startMs": 9886,
+            "endMs": 10311
+          },
+          {
+            "text": "da",
+            "startMs": 10311,
+            "endMs": 10481
+          },
+          {
+            "text": "aula",
+            "startMs": 10481,
+            "endMs": 10821
+          },
+          {
+            "text": "começar.",
+            "startMs": 10821,
+            "endMs": 11840
+          }
+        ]
+      },
+      {
+        "text": "Na Wise Wolf Library,",
+        "startSeconds": 12.06,
+        "endSeconds": 13.674,
+        "startMs": 12060,
+        "endMs": 13674,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Na",
+            "startMs": 12060,
+            "endMs": 12230
+          },
+          {
+            "text": "Wise",
+            "startMs": 12230,
+            "endMs": 12570
+          },
+          {
+            "text": "Wolf",
+            "startMs": 12570,
+            "endMs": 12910
+          },
+          {
+            "text": "Library,",
+            "startMs": 12910,
+            "endMs": 13674
+          }
+        ]
+      },
+      {
+        "text": "você filtra por nível,",
+        "startSeconds": 13.674,
+        "endSeconds": 15.374,
+        "startMs": 13674,
+        "endMs": 15374,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "você",
+            "startMs": 13674,
+            "endMs": 14014
+          },
+          {
+            "text": "filtra",
+            "startMs": 14014,
+            "endMs": 14524
+          },
+          {
+            "text": "por",
+            "startMs": 14524,
+            "endMs": 14779
+          },
+          {
+            "text": "nível,",
+            "startMs": 14779,
+            "endMs": 15374
+          }
+        ]
+      },
+      {
+        "text": "contexto e objetivo,",
+        "startSeconds": 15.374,
+        "endSeconds": 16.988,
+        "startMs": 15374,
+        "endMs": 16988,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "contexto",
+            "startMs": 15374,
+            "endMs": 16053
+          },
+          {
+            "text": "e",
+            "startMs": 16053,
+            "endMs": 16138
+          },
+          {
+            "text": "objetivo,",
+            "startMs": 16138,
+            "endMs": 16988
+          }
+        ]
+      },
+      {
+        "text": "avalia a prévia e",
+        "startSeconds": 16.988,
+        "endSeconds": 18.177,
+        "startMs": 16988,
+        "endMs": 18177,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "avalia",
+            "startMs": 16988,
+            "endMs": 17498
+          },
+          {
+            "text": "a",
+            "startMs": 17498,
+            "endMs": 17583
+          },
+          {
+            "text": "prévia",
+            "startMs": 17583,
+            "endMs": 18092
+          },
+          {
+            "text": "e",
+            "startMs": 18092,
+            "endMs": 18177
+          }
+        ]
+      },
+      {
+        "text": "encontra uma base pronta para adaptar.",
+        "startSeconds": 18.177,
+        "endSeconds": 21.321,
+        "startMs": 18177,
+        "endMs": 21321,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "encontra",
+            "startMs": 18177,
+            "endMs": 18857
+          },
+          {
+            "text": "uma",
+            "startMs": 18857,
+            "endMs": 19112
+          },
+          {
+            "text": "base",
+            "startMs": 19112,
+            "endMs": 19452
+          },
+          {
+            "text": "pronta",
+            "startMs": 19452,
+            "endMs": 19962
+          },
+          {
+            "text": "para",
+            "startMs": 19962,
+            "endMs": 20301
+          },
+          {
+            "text": "adaptar.",
+            "startMs": 20301,
+            "endMs": 21321
+          }
+        ]
+      },
+      {
+        "text": "O catálogo mostra somente",
+        "startSeconds": 21.541,
+        "endSeconds": 23.134,
+        "startMs": 21541,
+        "endMs": 23134,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 21541,
+            "endMs": 21613
+          },
+          {
+            "text": "catálogo",
+            "startMs": 21613,
+            "endMs": 22193
+          },
+          {
+            "text": "mostra",
+            "startMs": 22193,
+            "endMs": 22627
+          },
+          {
+            "text": "somente",
+            "startMs": 22627,
+            "endMs": 23134
+          }
+        ]
+      },
+      {
+        "text": "conteúdos autorizados.",
+        "startSeconds": 23.134,
+        "endSeconds": 24.944,
+        "startMs": 23134,
+        "endMs": 24944,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "conteúdos",
+            "startMs": 23134,
+            "endMs": 23786
+          },
+          {
+            "text": "autorizados.",
+            "startMs": 23786,
+            "endMs": 24944
+          }
+        ]
+      },
+      {
+        "text": "O arquivo completo é",
+        "startSeconds": 24.944,
+        "endSeconds": 26.175,
+        "startMs": 24944,
+        "endMs": 26175,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 24944,
+            "endMs": 25017
+          },
+          {
+            "text": "arquivo",
+            "startMs": 25017,
+            "endMs": 25524
+          },
+          {
+            "text": "completo",
+            "startMs": 25524,
+            "endMs": 26103
+          },
+          {
+            "text": "é",
+            "startMs": 26103,
+            "endMs": 26175
+          }
+        ]
+      },
+      {
+        "text": "liberado apenas para contas",
+        "startSeconds": 26.175,
+        "endSeconds": 27.913,
+        "startMs": 26175,
+        "endMs": 27913,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "liberado",
+            "startMs": 26175,
+            "endMs": 26755
+          },
+          {
+            "text": "apenas",
+            "startMs": 26755,
+            "endMs": 27189
+          },
+          {
+            "text": "para",
+            "startMs": 27189,
+            "endMs": 27479
+          },
+          {
+            "text": "contas",
+            "startMs": 27479,
+            "endMs": 27913
+          }
+        ]
+      },
+      {
+        "text": "e planos com permissão.",
+        "startSeconds": 27.913,
+        "endSeconds": 29.651,
+        "startMs": 27913,
+        "endMs": 29651,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "e",
+            "startMs": 27913,
+            "endMs": 27986
+          },
+          {
+            "text": "planos",
+            "startMs": 27986,
+            "endMs": 28420
+          },
+          {
+            "text": "com",
+            "startMs": 28420,
+            "endMs": 28637
+          },
+          {
+            "text": "permissão.",
+            "startMs": 28637,
+            "endMs": 29651
+          }
+        ]
+      },
+      {
+        "text": "Prepare menos no improviso",
+        "startSeconds": 29.871,
+        "endSeconds": 31.636,
+        "startMs": 29871,
+        "endMs": 31636,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Prepare",
+            "startMs": 29871,
+            "endMs": 30408
+          },
+          {
+            "text": "menos",
+            "startMs": 30408,
+            "endMs": 30792
+          },
+          {
+            "text": "no",
+            "startMs": 30792,
+            "endMs": 30946
+          },
+          {
+            "text": "improviso",
+            "startMs": 30946,
+            "endMs": 31636
+          }
+        ]
+      },
+      {
+        "text": "e ensine com mais intenção.",
+        "startSeconds": 31.636,
+        "endSeconds": 33.709,
+        "startMs": 31636,
+        "endMs": 33709,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "e",
+            "startMs": 31636,
+            "endMs": 31713
+          },
+          {
+            "text": "ensine",
+            "startMs": 31713,
+            "endMs": 32174
+          },
+          {
+            "text": "com",
+            "startMs": 32174,
+            "endMs": 32404
+          },
+          {
+            "text": "mais",
+            "startMs": 32404,
+            "endMs": 32711
+          },
+          {
+            "text": "intenção.",
+            "startMs": 32711,
+            "endMs": 33709
+          }
+        ]
+      },
+      {
+        "text": "Experimente a Biblioteca.",
+        "startSeconds": 33.709,
+        "endSeconds": 35.781,
+        "startMs": 33709,
+        "endMs": 35781,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Experimente",
+            "startMs": 33709,
+            "endMs": 34553
+          },
+          {
+            "text": "a",
+            "startMs": 34553,
+            "endMs": 34630
+          },
+          {
+            "text": "Biblioteca.",
+            "startMs": 34630,
+            "endMs": 35781
+          }
+        ]
+      }
+    ],
+    "scenes": {
+      "hook": {
+        "startSeconds": 0,
+        "endSeconds": 4.28
+      },
+      "problem": {
+        "startSeconds": 4.28,
+        "endSeconds": 12.06
+      },
+      "product": {
+        "startSeconds": 12.06,
+        "endSeconds": 21.541
+      },
+      "proof": {
+        "startSeconds": 21.541,
+        "endSeconds": 29.871
+      },
+      "cta": {
+        "startSeconds": 29.871,
+        "endSeconds": 36.171
+      }
+    }
+  },
+  "educator-ai": {
+    "ready": true,
+    "durationSeconds": 38.97,
+    "durationInFrames": 1170,
+    "audioPath": "assets/hub/videos/audio/educator-ai.57028f08f44b21575bd2f9aeefeb1e3688e364e7349344e821491cf1dfea7909.mp3",
+    "voiceProvider": "openai",
+    "voiceGateway": "openrouter",
+    "voiceId": "marin",
+    "voiceName": "OpenAI Marin via OpenRouter · LiveCall PT-BR",
+    "voiceLocale": "pt-BR",
+    "voiceAccent": "brazilian-prompted",
+    "voiceSourceAccent": "openai-built-in",
+    "voiceNative": false,
+    "voiceLocaleValidation": "openai_prompted_pt_br",
+    "modelId": "openai/gpt-audio",
+    "scriptHash": "ffbc971d66f14a135bc0b6d5b9df7466417f9116f3c8ce28c8fff0bfaea725ea",
+    "commercialUseAllowed": true,
+    "commercialLicenseBasis": "openrouter_terms",
+    "commercialLicenseAcknowledgedAt": "2026-08-24T17:42:03.000Z",
+    "ttsInstructionsSha256": "350ae3d6072a02c948ba7d6e4145725e4d876c9f9ac02efacfc253ef6b0c090d",
+    "aiDisclosureMode": "burned-in",
+    "generatedAt": "2026-08-24T17:42:03.000Z",
+    "requestId": "gen-1787593311-TDqHira5G39QzlPTD7GQ",
+    "captions": [
+      {
+        "text": "Um plano de aula",
+        "startSeconds": 0,
+        "endSeconds": 0.898,
+        "startMs": 0,
+        "endMs": 898,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Um",
+            "startMs": 0,
+            "endMs": 138
+          },
+          {
+            "text": "plano",
+            "startMs": 138,
+            "endMs": 484
+          },
+          {
+            "text": "de",
+            "startMs": 484,
+            "endMs": 622
+          },
+          {
+            "text": "aula",
+            "startMs": 622,
+            "endMs": 898
+          }
+        ]
+      },
+      {
+        "text": "forte não começa em",
+        "startSeconds": 0.898,
+        "endSeconds": 2.004,
+        "startMs": 898,
+        "endMs": 2004,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "forte",
+            "startMs": 898,
+            "endMs": 1244
+          },
+          {
+            "text": "não",
+            "startMs": 1244,
+            "endMs": 1451
+          },
+          {
+            "text": "começa",
+            "startMs": 1451,
+            "endMs": 1866
+          },
+          {
+            "text": "em",
+            "startMs": 1866,
+            "endMs": 2004
+          }
+        ]
+      },
+      {
+        "text": "um pedido genérico para",
+        "startSeconds": 2.004,
+        "endSeconds": 3.387,
+        "startMs": 2004,
+        "endMs": 3387,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "um",
+            "startMs": 2004,
+            "endMs": 2143
+          },
+          {
+            "text": "pedido",
+            "startMs": 2143,
+            "endMs": 2557
+          },
+          {
+            "text": "genérico",
+            "startMs": 2557,
+            "endMs": 3110
+          },
+          {
+            "text": "para",
+            "startMs": 3110,
+            "endMs": 3387
+          }
+        ]
+      },
+      {
+        "text": "uma inteligência artificial.",
+        "startSeconds": 3.387,
+        "endSeconds": 5.46,
+        "startMs": 3387,
+        "endMs": 5460,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "uma",
+            "startMs": 3387,
+            "endMs": 3594
+          },
+          {
+            "text": "inteligência",
+            "startMs": 3594,
+            "endMs": 4423
+          },
+          {
+            "text": "artificial.",
+            "startMs": 4423,
+            "endMs": 5460
+          }
+        ]
+      },
+      {
+        "text": "Sem resultado, nível e",
+        "startSeconds": 5.68,
+        "endSeconds": 7.244,
+        "startMs": 5680,
+        "endMs": 7244,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Sem",
+            "startMs": 5680,
+            "endMs": 5915
+          },
+          {
+            "text": "resultado,",
+            "startMs": 5915,
+            "endMs": 6775
+          },
+          {
+            "text": "nível",
+            "startMs": 6775,
+            "endMs": 7166
+          },
+          {
+            "text": "e",
+            "startMs": 7166,
+            "endMs": 7244
+          }
+        ]
+      },
+      {
+        "text": "duração, surgem atividades",
+        "startSeconds": 7.244,
+        "endSeconds": 9.243,
+        "startMs": 7244,
+        "endMs": 9243,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "duração,",
+            "startMs": 7244,
+            "endMs": 7964
+          },
+          {
+            "text": "surgem",
+            "startMs": 7964,
+            "endMs": 8443
+          },
+          {
+            "text": "atividades",
+            "startMs": 8443,
+            "endMs": 9243
+          }
+        ]
+      },
+      {
+        "text": "bonitas, mas desconectadas da",
+        "startSeconds": 9.243,
+        "endSeconds": 11.415,
+        "startMs": 9243,
+        "endMs": 11415,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "bonitas,",
+            "startMs": 9243,
+            "endMs": 9967
+          },
+          {
+            "text": "mas",
+            "startMs": 9967,
+            "endMs": 10208
+          },
+          {
+            "text": "desconectadas",
+            "startMs": 10208,
+            "endMs": 11254
+          },
+          {
+            "text": "da",
+            "startMs": 11254,
+            "endMs": 11415
+          }
+        ]
+      },
+      {
+        "text": "realidade do aluno.",
+        "startSeconds": 11.415,
+        "endSeconds": 13.24,
+        "startMs": 11415,
+        "endMs": 13240,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "realidade",
+            "startMs": 11415,
+            "endMs": 12197
+          },
+          {
+            "text": "do",
+            "startMs": 12197,
+            "endMs": 12371
+          },
+          {
+            "text": "aluno.",
+            "startMs": 12371,
+            "endMs": 13240
+          }
+        ]
+      },
+      {
+        "text": "Com o Educador IA,",
+        "startSeconds": 13.46,
+        "endSeconds": 15.104,
+        "startMs": 13460,
+        "endMs": 15104,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Com",
+            "startMs": 13460,
+            "endMs": 13768
+          },
+          {
+            "text": "o",
+            "startMs": 13768,
+            "endMs": 13871
+          },
+          {
+            "text": "Educador",
+            "startMs": 13871,
+            "endMs": 14693
+          },
+          {
+            "text": "IA,",
+            "startMs": 14693,
+            "endMs": 15104
+          }
+        ]
+      },
+      {
+        "text": "você define o que",
+        "startSeconds": 15.104,
+        "endSeconds": 16.542,
+        "startMs": 15104,
+        "endMs": 16542,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "você",
+            "startMs": 15104,
+            "endMs": 15515
+          },
+          {
+            "text": "define",
+            "startMs": 15515,
+            "endMs": 16131
+          },
+          {
+            "text": "o",
+            "startMs": 16131,
+            "endMs": 16234
+          },
+          {
+            "text": "que",
+            "startMs": 16234,
+            "endMs": 16542
+          }
+        ]
+      },
+      {
+        "text": "o aluno precisa alcançar.",
+        "startSeconds": 16.542,
+        "endSeconds": 19.214,
+        "startMs": 16542,
+        "endMs": 19214,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "o",
+            "startMs": 16542,
+            "endMs": 16645
+          },
+          {
+            "text": "aluno",
+            "startMs": 16645,
+            "endMs": 17159
+          },
+          {
+            "text": "precisa",
+            "startMs": 17159,
+            "endMs": 17878
+          },
+          {
+            "text": "alcançar.",
+            "startMs": 17878,
+            "endMs": 19214
+          }
+        ]
+      },
+      {
+        "text": "O contexto vira aquecimento,",
+        "startSeconds": 19.214,
+        "endSeconds": 21.885,
+        "startMs": 19214,
+        "endMs": 21885,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 19214,
+            "endMs": 19316
+          },
+          {
+            "text": "contexto",
+            "startMs": 19316,
+            "endMs": 20138
+          },
+          {
+            "text": "vira",
+            "startMs": 20138,
+            "endMs": 20549
+          },
+          {
+            "text": "aquecimento,",
+            "startMs": 20549,
+            "endMs": 21885
+          }
+        ]
+      },
+      {
+        "text": "prática guiada e continuidade.",
+        "startSeconds": 21.885,
+        "endSeconds": 25.07,
+        "startMs": 21885,
+        "endMs": 25070,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "prática",
+            "startMs": 21885,
+            "endMs": 22604
+          },
+          {
+            "text": "guiada",
+            "startMs": 22604,
+            "endMs": 23221
+          },
+          {
+            "text": "e",
+            "startMs": 23221,
+            "endMs": 23323
+          },
+          {
+            "text": "continuidade.",
+            "startMs": 23323,
+            "endMs": 25070
+          }
+        ]
+      },
+      {
+        "text": "A inteligência organiza uma primeira versão.",
+        "startSeconds": 25.29,
+        "endSeconds": 28.855,
+        "startMs": 25290,
+        "endMs": 28855,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "A",
+            "startMs": 25290,
+            "endMs": 25373
+          },
+          {
+            "text": "inteligência",
+            "startMs": 25373,
+            "endMs": 26368
+          },
+          {
+            "text": "organiza",
+            "startMs": 26368,
+            "endMs": 27031
+          },
+          {
+            "text": "uma",
+            "startMs": 27031,
+            "endMs": 27280
+          },
+          {
+            "text": "primeira",
+            "startMs": 27280,
+            "endMs": 27943
+          },
+          {
+            "text": "versão.",
+            "startMs": 27943,
+            "endMs": 28855
+          }
+        ]
+      },
+      {
+        "text": "Você adapta, decide a",
+        "startSeconds": 28.855,
+        "endSeconds": 30.264,
+        "startMs": 28855,
+        "endMs": 30264,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Você",
+            "startMs": 28855,
+            "endMs": 29152
+          },
+          {
+            "text": "adapta,",
+            "startMs": 29152,
+            "endMs": 29745
+          },
+          {
+            "text": "decide",
+            "startMs": 29745,
+            "endMs": 30190
+          },
+          {
+            "text": "a",
+            "startMs": 30190,
+            "endMs": 30264
+          }
+        ]
+      },
+      {
+        "text": "abordagem e conduz a experiência.",
+        "startSeconds": 30.264,
+        "endSeconds": 33,
+        "startMs": 30264,
+        "endMs": 33000,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "abordagem",
+            "startMs": 30264,
+            "endMs": 31010
+          },
+          {
+            "text": "e",
+            "startMs": 31010,
+            "endMs": 31093
+          },
+          {
+            "text": "conduz",
+            "startMs": 31093,
+            "endMs": 31591
+          },
+          {
+            "text": "a",
+            "startMs": 31591,
+            "endMs": 31674
+          },
+          {
+            "text": "experiência.",
+            "startMs": 31674,
+            "endMs": 33000
+          }
+        ]
+      },
+      {
+        "text": "Menos tempo formatando.",
+        "startSeconds": 33.22,
+        "endSeconds": 35.056,
+        "startMs": 33220,
+        "endMs": 35056,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Menos",
+            "startMs": 33220,
+            "endMs": 33587
+          },
+          {
+            "text": "tempo",
+            "startMs": 33587,
+            "endMs": 33954
+          },
+          {
+            "text": "formatando.",
+            "startMs": 33954,
+            "endMs": 35056
+          }
+        ]
+      },
+      {
+        "text": "Mais tempo ensinando.",
+        "startSeconds": 35.056,
+        "endSeconds": 36.744,
+        "startMs": 35056,
+        "endMs": 36744,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Mais",
+            "startMs": 35056,
+            "endMs": 35349
+          },
+          {
+            "text": "tempo",
+            "startMs": 35349,
+            "endMs": 35716
+          },
+          {
+            "text": "ensinando.",
+            "startMs": 35716,
+            "endMs": 36744
+          }
+        ]
+      },
+      {
+        "text": "Crie seu primeiro plano.",
+        "startSeconds": 36.744,
+        "endSeconds": 38.58,
+        "startMs": 36744,
+        "endMs": 38580,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Crie",
+            "startMs": 36744,
+            "endMs": 37038
+          },
+          {
+            "text": "seu",
+            "startMs": 37038,
+            "endMs": 37258
+          },
+          {
+            "text": "primeiro",
+            "startMs": 37258,
+            "endMs": 37846
+          },
+          {
+            "text": "plano.",
+            "startMs": 37846,
+            "endMs": 38580
+          }
+        ]
+      }
+    ],
+    "scenes": {
+      "hook": {
+        "startSeconds": 0,
+        "endSeconds": 5.68
+      },
+      "problem": {
+        "startSeconds": 5.68,
+        "endSeconds": 13.46
+      },
+      "product": {
+        "startSeconds": 13.46,
+        "endSeconds": 25.29
+      },
+      "proof": {
+        "startSeconds": 25.29,
+        "endSeconds": 33.22
+      },
+      "cta": {
+        "startSeconds": 33.22,
+        "endSeconds": 38.97
+      }
+    }
+  },
+  "wolfie": {
+    "ready": true,
+    "durationSeconds": 40.321,
+    "durationInFrames": 1210,
+    "audioPath": "assets/hub/videos/audio/wolfie.5ed6a0cef89279211019d7f6b3aac67cc26d085337388679ce8c92ba99475604.mp3",
+    "voiceProvider": "openai",
+    "voiceGateway": "openrouter",
+    "voiceId": "marin",
+    "voiceName": "OpenAI Marin via OpenRouter · LiveCall PT-BR",
+    "voiceLocale": "pt-BR",
+    "voiceAccent": "brazilian-prompted",
+    "voiceSourceAccent": "openai-built-in",
+    "voiceNative": false,
+    "voiceLocaleValidation": "openai_prompted_pt_br",
+    "modelId": "openai/gpt-audio",
+    "scriptHash": "a7f58394aa5962a2d646b6173ad68bf78e1e55de78a6cf5b0439ed0670aed710",
+    "commercialUseAllowed": true,
+    "commercialLicenseBasis": "openrouter_terms",
+    "commercialLicenseAcknowledgedAt": "2026-08-24T17:42:25.000Z",
+    "ttsInstructionsSha256": "350ae3d6072a02c948ba7d6e4145725e4d876c9f9ac02efacfc253ef6b0c090d",
+    "aiDisclosureMode": "burned-in",
+    "generatedAt": "2026-08-24T17:42:25.000Z",
+    "requestId": "gen-1787593332-st6NtKnD6nXSd3hiWtJo",
+    "captions": [
+      {
+        "text": "A confiança não nasce",
+        "startSeconds": 0,
+        "endSeconds": 1.511,
+        "startMs": 0,
+        "endMs": 1511,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "A",
+            "startMs": 0,
+            "endMs": 84
+          },
+          {
+            "text": "confiança",
+            "startMs": 84,
+            "endMs": 839
+          },
+          {
+            "text": "não",
+            "startMs": 839,
+            "endMs": 1091
+          },
+          {
+            "text": "nasce",
+            "startMs": 1091,
+            "endMs": 1511
+          }
+        ]
+      },
+      {
+        "text": "quando chega a situação real.",
+        "startSeconds": 1.511,
+        "endSeconds": 3.945,
+        "startMs": 1511,
+        "endMs": 3945,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "quando",
+            "startMs": 1511,
+            "endMs": 2015
+          },
+          {
+            "text": "chega",
+            "startMs": 2015,
+            "endMs": 2434
+          },
+          {
+            "text": "a",
+            "startMs": 2434,
+            "endMs": 2518
+          },
+          {
+            "text": "situação",
+            "startMs": 2518,
+            "endMs": 3190
+          },
+          {
+            "text": "real.",
+            "startMs": 3190,
+            "endMs": 3945
+          }
+        ]
+      },
+      {
+        "text": "Ela é construída antes.",
+        "startSeconds": 3.945,
+        "endSeconds": 5.96,
+        "startMs": 3945,
+        "endMs": 5960,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Ela",
+            "startMs": 3945,
+            "endMs": 4197
+          },
+          {
+            "text": "é",
+            "startMs": 4197,
+            "endMs": 4281
+          },
+          {
+            "text": "construída",
+            "startMs": 4281,
+            "endMs": 5121
+          },
+          {
+            "text": "antes.",
+            "startMs": 5121,
+            "endMs": 5960
+          }
+        ]
+      },
+      {
+        "text": "Entre uma aula e",
+        "startSeconds": 6.18,
+        "endSeconds": 7.301,
+        "startMs": 6180,
+        "endMs": 7301,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Entre",
+            "startMs": 6180,
+            "endMs": 6611
+          },
+          {
+            "text": "uma",
+            "startMs": 6611,
+            "endMs": 6870
+          },
+          {
+            "text": "aula",
+            "startMs": 6870,
+            "endMs": 7215
+          },
+          {
+            "text": "e",
+            "startMs": 7215,
+            "endMs": 7301
+          }
+        ]
+      },
+      {
+        "text": "outra, o inglês pode",
+        "startSeconds": 7.301,
+        "endSeconds": 8.682,
+        "startMs": 7301,
+        "endMs": 8682,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "outra,",
+            "startMs": 7301,
+            "endMs": 7838
+          },
+          {
+            "text": "o",
+            "startMs": 7838,
+            "endMs": 7915
+          },
+          {
+            "text": "inglês",
+            "startMs": 7915,
+            "endMs": 8375
+          },
+          {
+            "text": "pode",
+            "startMs": 8375,
+            "endMs": 8682
+          }
+        ]
+      },
+      {
+        "text": "voltar a ser silêncio,",
+        "startSeconds": 8.682,
+        "endSeconds": 10.407,
+        "startMs": 8682,
+        "endMs": 10407,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "voltar",
+            "startMs": 8682,
+            "endMs": 9199
+          },
+          {
+            "text": "a",
+            "startMs": 9199,
+            "endMs": 9286
+          },
+          {
+            "text": "ser",
+            "startMs": 9286,
+            "endMs": 9544
+          },
+          {
+            "text": "silêncio,",
+            "startMs": 9544,
+            "endMs": 10407
+          }
+        ]
+      },
+      {
+        "text": "insegurança e pouca prática ativa.",
+        "startSeconds": 10.407,
+        "endSeconds": 13.34,
+        "startMs": 10407,
+        "endMs": 13340,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "insegurança",
+            "startMs": 10407,
+            "endMs": 11356
+          },
+          {
+            "text": "e",
+            "startMs": 11356,
+            "endMs": 11442
+          },
+          {
+            "text": "pouca",
+            "startMs": 11442,
+            "endMs": 11873
+          },
+          {
+            "text": "prática",
+            "startMs": 11873,
+            "endMs": 12477
+          },
+          {
+            "text": "ativa.",
+            "startMs": 12477,
+            "endMs": 13340
+          }
+        ]
+      },
+      {
+        "text": "Com o Wolfie,",
+        "startSeconds": 13.56,
+        "endSeconds": 14.681,
+        "startMs": 13560,
+        "endMs": 14681,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Com",
+            "startMs": 13560,
+            "endMs": 13840
+          },
+          {
+            "text": "o",
+            "startMs": 13840,
+            "endMs": 13934
+          },
+          {
+            "text": "Wolfie,",
+            "startMs": 13934,
+            "endMs": 14681
+          }
+        ]
+      },
+      {
+        "text": "o aluno pratica conversas",
+        "startSeconds": 14.681,
+        "endSeconds": 16.735,
+        "startMs": 14681,
+        "endMs": 16735,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "o",
+            "startMs": 14681,
+            "endMs": 14774
+          },
+          {
+            "text": "aluno",
+            "startMs": 14774,
+            "endMs": 15241
+          },
+          {
+            "text": "pratica",
+            "startMs": 15241,
+            "endMs": 15895
+          },
+          {
+            "text": "conversas",
+            "startMs": 15895,
+            "endMs": 16735
+          }
+        ]
+      },
+      {
+        "text": "ligadas ao próprio nível,",
+        "startSeconds": 16.735,
+        "endSeconds": 18.883,
+        "startMs": 16735,
+        "endMs": 18883,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "ligadas",
+            "startMs": 16735,
+            "endMs": 17389
+          },
+          {
+            "text": "ao",
+            "startMs": 17389,
+            "endMs": 17576
+          },
+          {
+            "text": "próprio",
+            "startMs": 17576,
+            "endMs": 18229
+          },
+          {
+            "text": "nível,",
+            "startMs": 18229,
+            "endMs": 18883
+          }
+        ]
+      },
+      {
+        "text": "objetivo e rotina.",
+        "startSeconds": 18.883,
+        "endSeconds": 20.751,
+        "startMs": 18883,
+        "endMs": 20751,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "objetivo",
+            "startMs": 18883,
+            "endMs": 19630
+          },
+          {
+            "text": "e",
+            "startMs": 19630,
+            "endMs": 19723
+          },
+          {
+            "text": "rotina.",
+            "startMs": 19723,
+            "endMs": 20751
+          }
+        ]
+      },
+      {
+        "text": "Entrevistas, viagens, reuniões",
+        "startSeconds": 20.751,
+        "endSeconds": 23.179,
+        "startMs": 20751,
+        "endMs": 23179,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Entrevistas,",
+            "startMs": 20751,
+            "endMs": 21803
+          },
+          {
+            "text": "viagens,",
+            "startMs": 21803,
+            "endMs": 22531
+          },
+          {
+            "text": "reuniões",
+            "startMs": 22531,
+            "endMs": 23179
+          }
+        ]
+      },
+      {
+        "text": "ou desafios do dia a dia.",
+        "startSeconds": 23.179,
+        "endSeconds": 25.42,
+        "startMs": 23179,
+        "endMs": 25420,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "ou",
+            "startMs": 23179,
+            "endMs": 23366
+          },
+          {
+            "text": "desafios",
+            "startMs": 23366,
+            "endMs": 24113
+          },
+          {
+            "text": "do",
+            "startMs": 24113,
+            "endMs": 24299
+          },
+          {
+            "text": "dia",
+            "startMs": 24299,
+            "endMs": 24580
+          },
+          {
+            "text": "a",
+            "startMs": 24580,
+            "endMs": 24673
+          },
+          {
+            "text": "dia.",
+            "startMs": 24673,
+            "endMs": 25420
+          }
+        ]
+      },
+      {
+        "text": "É um espaço privado",
+        "startSeconds": 25.64,
+        "endSeconds": 27.216,
+        "startMs": 25640,
+        "endMs": 27216,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "É",
+            "startMs": 25640,
+            "endMs": 25739
+          },
+          {
+            "text": "um",
+            "startMs": 25739,
+            "endMs": 25936
+          },
+          {
+            "text": "espaço",
+            "startMs": 25936,
+            "endMs": 26527
+          },
+          {
+            "text": "privado",
+            "startMs": 26527,
+            "endMs": 27216
+          }
+        ]
+      },
+      {
+        "text": "para tentar, repetir e evoluir.",
+        "startSeconds": 27.216,
+        "endSeconds": 30.172,
+        "startMs": 27216,
+        "endMs": 30172,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "para",
+            "startMs": 27216,
+            "endMs": 27571
+          },
+          {
+            "text": "tentar,",
+            "startMs": 27571,
+            "endMs": 28280
+          },
+          {
+            "text": "repetir",
+            "startMs": 28280,
+            "endMs": 28901
+          },
+          {
+            "text": "e",
+            "startMs": 28901,
+            "endMs": 28990
+          },
+          {
+            "text": "evoluir.",
+            "startMs": 28990,
+            "endMs": 30172
+          }
+        ]
+      },
+      {
+        "text": "O professor orienta.",
+        "startSeconds": 30.172,
+        "endSeconds": 32.339,
+        "startMs": 30172,
+        "endMs": 32339,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 30172,
+            "endMs": 30271
+          },
+          {
+            "text": "professor",
+            "startMs": 30271,
+            "endMs": 31157
+          },
+          {
+            "text": "orienta.",
+            "startMs": 31157,
+            "endMs": 32339
+          }
+        ]
+      },
+      {
+        "text": "O Wolfie amplia a prática.",
+        "startSeconds": 32.339,
+        "endSeconds": 34.901,
+        "startMs": 32339,
+        "endMs": 34901,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 32339,
+            "endMs": 32438
+          },
+          {
+            "text": "Wolfie",
+            "startMs": 32438,
+            "endMs": 33029
+          },
+          {
+            "text": "amplia",
+            "startMs": 33029,
+            "endMs": 33620
+          },
+          {
+            "text": "a",
+            "startMs": 33620,
+            "endMs": 33719
+          },
+          {
+            "text": "prática.",
+            "startMs": 33719,
+            "endMs": 34901
+          }
+        ]
+      },
+      {
+        "text": "Chegue mais confiante à",
+        "startSeconds": 35.121,
+        "endSeconds": 36.648,
+        "startMs": 35121,
+        "endMs": 36648,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Chegue",
+            "startMs": 35121,
+            "endMs": 35579
+          },
+          {
+            "text": "mais",
+            "startMs": 35579,
+            "endMs": 35884
+          },
+          {
+            "text": "confiante",
+            "startMs": 35884,
+            "endMs": 36572
+          },
+          {
+            "text": "à",
+            "startMs": 36572,
+            "endMs": 36648
+          }
+        ]
+      },
+      {
+        "text": "próxima situação real.",
+        "startSeconds": 36.648,
+        "endSeconds": 38.48,
+        "startMs": 36648,
+        "endMs": 38480,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "próxima",
+            "startMs": 36648,
+            "endMs": 37182
+          },
+          {
+            "text": "situação",
+            "startMs": 37182,
+            "endMs": 37793
+          },
+          {
+            "text": "real.",
+            "startMs": 37793,
+            "endMs": 38480
+          }
+        ]
+      },
+      {
+        "text": "Conheça o Wolfie.",
+        "startSeconds": 38.48,
+        "endSeconds": 39.931,
+        "startMs": 38480,
+        "endMs": 39931,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Conheça",
+            "startMs": 38480,
+            "endMs": 39015
+          },
+          {
+            "text": "o",
+            "startMs": 39015,
+            "endMs": 39091
+          },
+          {
+            "text": "Wolfie.",
+            "startMs": 39091,
+            "endMs": 39931
+          }
+        ]
+      }
+    ],
+    "scenes": {
+      "hook": {
+        "startSeconds": 0,
+        "endSeconds": 6.18
+      },
+      "problem": {
+        "startSeconds": 6.18,
+        "endSeconds": 13.56
+      },
+      "product": {
+        "startSeconds": 13.56,
+        "endSeconds": 25.64
+      },
+      "proof": {
+        "startSeconds": 25.64,
+        "endSeconds": 35.121
+      },
+      "cta": {
+        "startSeconds": 35.121,
+        "endSeconds": 40.321
+      }
+    }
+  },
+  "school-os": {
+    "ready": true,
+    "durationSeconds": 38.57,
+    "durationInFrames": 1158,
+    "audioPath": "assets/hub/videos/audio/school-os.f5c6210c2c68933604cc6716af4764b1619745dfb68c7bf27369ff5273178607.mp3",
+    "voiceProvider": "openai",
+    "voiceGateway": "openrouter",
+    "voiceId": "marin",
+    "voiceName": "OpenAI Marin via OpenRouter · LiveCall PT-BR",
+    "voiceLocale": "pt-BR",
+    "voiceAccent": "brazilian-prompted",
+    "voiceSourceAccent": "openai-built-in",
+    "voiceNative": false,
+    "voiceLocaleValidation": "openai_prompted_pt_br",
+    "modelId": "openai/gpt-audio",
+    "scriptHash": "b358a40e7ec6c99ea42a7c4bad91a298af00ad72cb68926cceef7e339119586d",
+    "commercialUseAllowed": true,
+    "commercialLicenseBasis": "openrouter_terms",
+    "commercialLicenseAcknowledgedAt": "2026-08-24T17:42:50.000Z",
+    "ttsInstructionsSha256": "350ae3d6072a02c948ba7d6e4145725e4d876c9f9ac02efacfc253ef6b0c090d",
+    "aiDisclosureMode": "burned-in",
+    "generatedAt": "2026-08-24T17:42:50.000Z",
+    "requestId": "gen-1787593357-0Ymha1fC0lO9GNOs2G5l",
+    "captions": [
+      {
+        "text": "Uma escola não cresce",
+        "startSeconds": 0,
+        "endSeconds": 1.52,
+        "startMs": 0,
+        "endMs": 1520,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Uma",
+            "startMs": 0,
+            "endMs": 253
+          },
+          {
+            "text": "escola",
+            "startMs": 253,
+            "endMs": 760
+          },
+          {
+            "text": "não",
+            "startMs": 760,
+            "endMs": 1013
+          },
+          {
+            "text": "cresce",
+            "startMs": 1013,
+            "endMs": 1520
+          }
+        ]
+      },
+      {
+        "text": "bem com agenda,",
+        "startSeconds": 1.52,
+        "endSeconds": 2.703,
+        "startMs": 1520,
+        "endMs": 2703,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "bem",
+            "startMs": 1520,
+            "endMs": 1774
+          },
+          {
+            "text": "com",
+            "startMs": 1774,
+            "endMs": 2027
+          },
+          {
+            "text": "agenda,",
+            "startMs": 2027,
+            "endMs": 2703
+          }
+        ]
+      },
+      {
+        "text": "matrícula, contratos e",
+        "startSeconds": 2.703,
+        "endSeconds": 4.307,
+        "startMs": 2703,
+        "endMs": 4307,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "matrícula,",
+            "startMs": 2703,
+            "endMs": 3543
+          },
+          {
+            "text": "contratos",
+            "startMs": 3543,
+            "endMs": 4231
+          },
+          {
+            "text": "e",
+            "startMs": 4231,
+            "endMs": 4307
+          }
+        ]
+      },
+      {
+        "text": "cobrança em lugares diferentes.",
+        "startSeconds": 4.307,
+        "endSeconds": 7.01,
+        "startMs": 4307,
+        "endMs": 7010,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "cobrança",
+            "startMs": 4307,
+            "endMs": 4983
+          },
+          {
+            "text": "em",
+            "startMs": 4983,
+            "endMs": 5152
+          },
+          {
+            "text": "lugares",
+            "startMs": 5152,
+            "endMs": 5743
+          },
+          {
+            "text": "diferentes.",
+            "startMs": 5743,
+            "endMs": 7010
+          }
+        ]
+      },
+      {
+        "text": "Quando cada área carrega",
+        "startSeconds": 7.23,
+        "endSeconds": 8.888,
+        "startMs": 7230,
+        "endMs": 8888,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Quando",
+            "startMs": 7230,
+            "endMs": 7704
+          },
+          {
+            "text": "cada",
+            "startMs": 7704,
+            "endMs": 8019
+          },
+          {
+            "text": "área",
+            "startMs": 8019,
+            "endMs": 8335
+          },
+          {
+            "text": "carrega",
+            "startMs": 8335,
+            "endMs": 8888
+          }
+        ]
+      },
+      {
+        "text": "uma versão da operação,",
+        "startSeconds": 8.888,
+        "endSeconds": 10.546,
+        "startMs": 8888,
+        "endMs": 10546,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "uma",
+            "startMs": 8888,
+            "endMs": 9125
+          },
+          {
+            "text": "versão",
+            "startMs": 9125,
+            "endMs": 9598
+          },
+          {
+            "text": "da",
+            "startMs": 9598,
+            "endMs": 9756
+          },
+          {
+            "text": "operação,",
+            "startMs": 9756,
+            "endMs": 10546
+          }
+        ]
+      },
+      {
+        "text": "o contexto se perde",
+        "startSeconds": 10.546,
+        "endSeconds": 11.809,
+        "startMs": 10546,
+        "endMs": 11809,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "o",
+            "startMs": 10546,
+            "endMs": 10624
+          },
+          {
+            "text": "contexto",
+            "startMs": 10624,
+            "endMs": 11256
+          },
+          {
+            "text": "se",
+            "startMs": 11256,
+            "endMs": 11414
+          },
+          {
+            "text": "perde",
+            "startMs": 11414,
+            "endMs": 11809
+          }
+        ]
+      },
+      {
+        "text": "e os pontos cegos aparecem.",
+        "startSeconds": 11.809,
+        "endSeconds": 13.94,
+        "startMs": 11809,
+        "endMs": 13940,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "e",
+            "startMs": 11809,
+            "endMs": 11888
+          },
+          {
+            "text": "os",
+            "startMs": 11888,
+            "endMs": 12045
+          },
+          {
+            "text": "pontos",
+            "startMs": 12045,
+            "endMs": 12519
+          },
+          {
+            "text": "cegos",
+            "startMs": 12519,
+            "endMs": 12914
+          },
+          {
+            "text": "aparecem.",
+            "startMs": 12914,
+            "endMs": 13940
+          }
+        ]
+      },
+      {
+        "text": "O Wise Wolf School",
+        "startSeconds": 14.16,
+        "endSeconds": 15.638,
+        "startMs": 14160,
+        "endMs": 15638,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "O",
+            "startMs": 14160,
+            "endMs": 14259
+          },
+          {
+            "text": "Wise",
+            "startMs": 14259,
+            "endMs": 14653
+          },
+          {
+            "text": "Wolf",
+            "startMs": 14653,
+            "endMs": 15047
+          },
+          {
+            "text": "School",
+            "startMs": 15047,
+            "endMs": 15638
+          }
+        ]
+      },
+      {
+        "text": "OS conecta comercial,",
+        "startSeconds": 15.638,
+        "endSeconds": 17.609,
+        "startMs": 15638,
+        "endMs": 17609,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "OS",
+            "startMs": 15638,
+            "endMs": 15835
+          },
+          {
+            "text": "conecta",
+            "startMs": 15835,
+            "endMs": 16525
+          },
+          {
+            "text": "comercial,",
+            "startMs": 16525,
+            "endMs": 17609
+          }
+        ]
+      },
+      {
+        "text": "pedagógico, equipe e",
+        "startSeconds": 17.609,
+        "endSeconds": 19.285,
+        "startMs": 17609,
+        "endMs": 19285,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "pedagógico,",
+            "startMs": 17609,
+            "endMs": 18668
+          },
+          {
+            "text": "equipe",
+            "startMs": 18668,
+            "endMs": 19197
+          },
+          {
+            "text": "e",
+            "startMs": 19197,
+            "endMs": 19285
+          }
+        ]
+      },
+      {
+        "text": "financeiro, do novo contato",
+        "startSeconds": 19.285,
+        "endSeconds": 21.552,
+        "startMs": 19285,
+        "endMs": 21552,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "financeiro,",
+            "startMs": 19285,
+            "endMs": 20373
+          },
+          {
+            "text": "do",
+            "startMs": 20373,
+            "endMs": 20554
+          },
+          {
+            "text": "novo",
+            "startMs": 20554,
+            "endMs": 20917
+          },
+          {
+            "text": "contato",
+            "startMs": 20917,
+            "endMs": 21552
+          }
+        ]
+      },
+      {
+        "text": "à próxima renovação.",
+        "startSeconds": 21.552,
+        "endSeconds": 23.72,
+        "startMs": 21552,
+        "endMs": 23720,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "à",
+            "startMs": 21552,
+            "endMs": 21650
+          },
+          {
+            "text": "próxima",
+            "startMs": 21650,
+            "endMs": 22340
+          },
+          {
+            "text": "renovação.",
+            "startMs": 22340,
+            "endMs": 23720
+          }
+        ]
+      },
+      {
+        "text": "Cada escola tem seu",
+        "startSeconds": 23.94,
+        "endSeconds": 25.26,
+        "startMs": 23940,
+        "endMs": 25260,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Cada",
+            "startMs": 23940,
+            "endMs": 24270
+          },
+          {
+            "text": "escola",
+            "startMs": 24270,
+            "endMs": 24765
+          },
+          {
+            "text": "tem",
+            "startMs": 24765,
+            "endMs": 25013
+          },
+          {
+            "text": "seu",
+            "startMs": 25013,
+            "endMs": 25260
+          }
+        ]
+      },
+      {
+        "text": "próprio ambiente, sua marca,",
+        "startSeconds": 25.26,
+        "endSeconds": 27.323,
+        "startMs": 25260,
+        "endMs": 27323,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "próprio",
+            "startMs": 25260,
+            "endMs": 25795
+          },
+          {
+            "text": "ambiente,",
+            "startMs": 25795,
+            "endMs": 26559
+          },
+          {
+            "text": "sua",
+            "startMs": 26559,
+            "endMs": 26789
+          },
+          {
+            "text": "marca,",
+            "startMs": 26789,
+            "endMs": 27323
+          }
+        ]
+      },
+      {
+        "text": "suas credenciais e permissões por função.",
+        "startSeconds": 27.323,
+        "endSeconds": 30.624,
+        "startMs": 27323,
+        "endMs": 30624,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "suas",
+            "startMs": 27323,
+            "endMs": 27654
+          },
+          {
+            "text": "credenciais",
+            "startMs": 27654,
+            "endMs": 28561
+          },
+          {
+            "text": "e",
+            "startMs": 28561,
+            "endMs": 28644
+          },
+          {
+            "text": "permissões",
+            "startMs": 28644,
+            "endMs": 29469
+          },
+          {
+            "text": "por",
+            "startMs": 29469,
+            "endMs": 29717
+          },
+          {
+            "text": "função.",
+            "startMs": 29717,
+            "endMs": 30624
+          }
+        ]
+      },
+      {
+        "text": "Os dados permanecem isolados.",
+        "startSeconds": 30.624,
+        "endSeconds": 33.1,
+        "startMs": 30624,
+        "endMs": 33100,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Os",
+            "startMs": 30624,
+            "endMs": 30789
+          },
+          {
+            "text": "dados",
+            "startMs": 30789,
+            "endMs": 31202
+          },
+          {
+            "text": "permanecem",
+            "startMs": 31202,
+            "endMs": 32027
+          },
+          {
+            "text": "isolados.",
+            "startMs": 32027,
+            "endMs": 33100
+          }
+        ]
+      },
+      {
+        "text": "Solicite uma demonstração e",
+        "startSeconds": 33.32,
+        "endSeconds": 35.114,
+        "startMs": 33320,
+        "endMs": 35114,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "Solicite",
+            "startMs": 33320,
+            "endMs": 33918
+          },
+          {
+            "text": "uma",
+            "startMs": 33918,
+            "endMs": 34142
+          },
+          {
+            "text": "demonstração",
+            "startMs": 34142,
+            "endMs": 35040
+          },
+          {
+            "text": "e",
+            "startMs": 35040,
+            "endMs": 35114
+          }
+        ]
+      },
+      {
+        "text": "veja sua operação inteira",
+        "startSeconds": 35.114,
+        "endSeconds": 36.759,
+        "startMs": 35114,
+        "endMs": 36759,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "veja",
+            "startMs": 35114,
+            "endMs": 35414
+          },
+          {
+            "text": "sua",
+            "startMs": 35414,
+            "endMs": 35638
+          },
+          {
+            "text": "operação",
+            "startMs": 35638,
+            "endMs": 36236
+          },
+          {
+            "text": "inteira",
+            "startMs": 36236,
+            "endMs": 36759
+          }
+        ]
+      },
+      {
+        "text": "com mais clareza.",
+        "startSeconds": 36.759,
+        "endSeconds": 38.18,
+        "startMs": 36759,
+        "endMs": 38180,
+        "timestampMs": null,
+        "confidence": null,
+        "tokens": [
+          {
+            "text": "com",
+            "startMs": 36759,
+            "endMs": 36984
+          },
+          {
+            "text": "mais",
+            "startMs": 36984,
+            "endMs": 37283
+          },
+          {
+            "text": "clareza.",
+            "startMs": 37283,
+            "endMs": 38180
+          }
+        ]
+      }
+    ],
+    "scenes": {
+      "hook": {
+        "startSeconds": 0,
+        "endSeconds": 7.23
+      },
+      "problem": {
+        "startSeconds": 7.23,
+        "endSeconds": 14.16
+      },
+      "product": {
+        "startSeconds": 14.16,
+        "endSeconds": 23.94
+      },
+      "proof": {
+        "startSeconds": 23.94,
+        "endSeconds": 33.32
+      },
+      "cta": {
+        "startSeconds": 33.32,
+        "endSeconds": 38.57
+      }
+    }
+  }
+}

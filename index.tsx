@@ -1,11 +1,13 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
-import HubApp from './components/hub/HubApp';
-import ResetPassword from './components/ResetPassword';
+import { isHubMarketingHost } from './components/hub/hubRoutes';
 import { WOLFIE_SCENARIO_UI_V2_ENABLED } from './src/components/wolfie/visuals/featureFlags';
 import { installPwaFreshnessGuard } from './src/services/pwaFreshness';
+
+const App = React.lazy(() => import('./App'));
+const HubApp = React.lazy(() => import('./components/hub/HubApp'));
+const ResetPassword = React.lazy(() => import('./components/ResetPassword'));
 
 document.documentElement.dataset.wolfieScenarioUi =
   WOLFIE_SCENARIO_UI_V2_ENABLED ? 'v2' : 'legacy';
@@ -62,7 +64,7 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 const normalizedPath = window.location.pathname.replace(/\/+$/, '') || '/';
-const RootApp = normalizedPath === '/hub' || normalizedPath.startsWith('/hub/')
+const RootApp = isHubMarketingHost() || normalizedPath === '/hub' || normalizedPath.startsWith('/hub/')
   ? HubApp
   : normalizedPath === '/reset-password'
     ? ResetPassword
@@ -70,7 +72,9 @@ const RootApp = normalizedPath === '/hub' || normalizedPath.startsWith('/hub/')
 root.render(
   <React.StrictMode>
     <ApplicationShell>
-      <RootApp />
+      <React.Suspense fallback={<div className="min-h-screen bg-slate-950" aria-hidden="true" />}>
+        <RootApp />
+      </React.Suspense>
     </ApplicationShell>
   </React.StrictMode>
 );

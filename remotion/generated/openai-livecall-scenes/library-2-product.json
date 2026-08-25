@@ -1,0 +1,13 @@
+{
+  "id": "library-2-product",
+  "file": "library-2-product.mp3",
+  "requestId": "gen-1787593295-7Cc8Z3LjPK5a7otpS2Cz",
+  "sha256": "a4853c186c00d96e04327230646d2793f030fa183620a09e2f66bfcaf026470d",
+  "bytes": 225115,
+  "transcriptSha256": "9c61f3d0b4dfd1c07b3af5bf19ca0cc94c4f839b63dcc966ce265ef0630c6acd",
+  "sceneHash": "bb6d5aba68eb9407202f7b7467e5c35d2e03ae4b4602fb8e365d5deaf2e2fc66",
+  "durationSeconds": 9.301,
+  "generatedAt": "2026-08-24T17:41:43Z",
+  "sourcePcmWavSha256": "92c2194e94ce7169b0c7d286389216ae2e24a057b5364aa2fc537d04100544fd",
+  "sourcePcmWavBytes": 446444
+}
