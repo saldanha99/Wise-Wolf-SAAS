@@ -25,10 +25,19 @@ serve(async (req) => {
         console.log('🔄 Starting Ledger Reconciliation...');
 
         // 1. Fetch Unreconciled Payments
+        //
+        // ⚠️ O conjunto de status tem de ser IDÊNTICO ao do trigger
+        // `ledger_on_payment_received` e ao do `get_cashflow`/`dre_gerencial`.
+        // Estava `['RECEIVED','CONFIRMED']` — divergia nas DUAS pontas: incluía
+        // CONFIRMED (que saiu do trigger, porque na Asaas é pagamento
+        // reconhecido e ainda não liquidado, e o painel de caixa nunca o
+        // contou) e ignorava RECEIVED_IN_CASH (que o trigger sempre lançou).
+        // Duas fontes com regras diferentes para "isto é caixa?" é exatamente
+        // o defeito que esta conciliação existe para acabar.
         const { data: payments, error: fetchError } = await supabase
             .from('student_payments')
             .select('*')
-            .in('status', ['RECEIVED', 'CONFIRMED'])
+            .in('status', ['RECEIVED', 'RECEIVED_IN_CASH'])
             .eq('ledger_entry_created', false)
             .limit(100); // Batch size
 
