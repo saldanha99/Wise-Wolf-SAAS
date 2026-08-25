@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
 
@@ -25,7 +27,7 @@ serve(async (req) => {
         if (!authData?.user) {
             return new Response(JSON.stringify({ success: false, error: 'Não autenticado.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
         }
-        const { data: me } = await supabaseClient.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
+        const { data: me } = await supabaseClient.from('profiles').select('role, tenant_id').eq('id', authData.user.id).maybeSingle();
         if (!me || !['SCHOOL_ADMIN', 'SUPER_ADMIN'].includes(me.role)) {
             return new Response(JSON.stringify({ success: false, error: 'Sem permissão para disparar repasses.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
         }
@@ -53,6 +55,26 @@ serve(async (req) => {
             .single()
 
         if (closingError || !closing) {
+            throw new Error('Closing not found')
+        }
+
+        // 2a. ESCOPO DE ESCOLA (v38): o fechamento é buscado por id puro com o
+        // client de SERVICE ROLE (linha 18), que ignora RLS por construção.
+        // Sem esta comparação, um SCHOOL_ADMIN de qualquer escola podia mandar
+        // a plataforma executar um PIX real, da conta Asaas ÚNICA e global,
+        // para a chave PIX de um professor que não é dele.
+        //
+        // ⚠️ A migration `harden_teacher_finance_tenant_scope` blindou as RPCs
+        // (`can_create_teacher_transfer` checa tenant, e a variante `_unchecked`
+        // só é executável por postgres/supabase_admin) — mas esta function não
+        // passa por RPC nenhuma: ela lê `teacher_closings` direto. A blindagem
+        // do banco não alcança esta porta.
+        //
+        // SUPER_ADMIN passa por cima de propósito: ele mora no tenant 'master'
+        // e é quem dá suporte às escolas clientes.
+        if (me.role !== 'SUPER_ADMIN' && closing.tenant_id !== me.tenant_id) {
+            // Mesma resposta de "não existe": distinguir os dois casos contaria
+            // a um diretor quais ids de fechamento existem na outra escola.
             throw new Error('Closing not found')
         }
 

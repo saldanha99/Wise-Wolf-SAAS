@@ -541,6 +541,8 @@ npx --yes deno check --no-lock \
   supabase/functions/create-teacher-account/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/create-asaas-subaccount/index.ts \
+  supabase/functions/transfer-teacher-pay/index.ts \
+  supabase/functions/delete-student-account/index.ts \
   supabase/functions/send-whatsapp/index.ts \
   supabase/functions/whatsapp-wise-wolf/index.ts \
   supabase/functions/send-contract-confirmation/index.ts \
