@@ -133,6 +133,59 @@ select pg_temp.assert_true(
 );
 
 -- ---------------------------------------------------------------------------
+-- [2b] — estorno TIRA o dinheiro do caixa
+-- ---------------------------------------------------------------------------
+-- Latente até 25/08/2026 (nenhum estorno na história da base). O pagamento saía
+-- de RECEIVED e sumia do get_cashflow, mas a ENTRADA continuava em
+-- financial_transactions — que é o que o Dashboard soma. Receita fantasma
+-- permanente no primeiro estorno.
+insert into public.student_payments
+  (asaas_payment_id, tenant_id, value, status, due_date, payment_date)
+values
+  ('pay_teste_conciliacao_5', 'caixa-test-school', 250.00, 'RECEIVED',
+   date '2026-06-10', date '2026-06-10');
+
+select pg_temp.assert_true(
+  exists (select 1 from public.financial_transactions ft
+           join public.student_payments sp on sp.id = ft.student_payment_id
+          where sp.asaas_payment_id = 'pay_teste_conciliacao_5'),
+  'pagamento recebido nao gerou lancamento (pre-condicao do teste de estorno)'
+);
+
+update public.student_payments
+   set status = 'REFUNDED'
+ where asaas_payment_id = 'pay_teste_conciliacao_5';
+
+select pg_temp.assert_true(
+  not exists (select 1 from public.financial_transactions ft
+               join public.student_payments sp on sp.id = ft.student_payment_id
+              where sp.asaas_payment_id = 'pay_teste_conciliacao_5'),
+  'ESTORNO NAO REVERTEU O CAIXA: a ENTRADA sobreviveu e vira receita fantasma'
+);
+
+select pg_temp.assert_true(
+  exists (select 1 from public.reconciliation_issues ri
+           join public.student_payments sp on sp.id = ri.student_payment_id
+          where sp.asaas_payment_id = 'pay_teste_conciliacao_5'
+            and ri.kind = 'PAYMENT_REVERSED'
+            and (ri.details->>'valor_removido_do_caixa')::numeric = 250.00),
+  'estorno nao deixou rastro em reconciliation_issues'
+);
+
+-- E se o dinheiro voltar, o lançamento volta — com a data do pagamento.
+update public.student_payments
+   set status = 'RECEIVED'
+ where asaas_payment_id = 'pay_teste_conciliacao_5';
+
+select pg_temp.assert_true(
+  (select date_trunc('month', ft.occurred_at) = timestamptz '2026-06-01 00:00:00+00'
+     from public.financial_transactions ft
+     join public.student_payments sp on sp.id = ft.student_payment_id
+    where sp.asaas_payment_id = 'pay_teste_conciliacao_5'),
+  'pagamento reprocessado nao voltou ao caixa no mes correto'
+);
+
+-- ---------------------------------------------------------------------------
 -- [3] — `amount` derivado de `amount_cents` (o insert do reconcile-ledger)
 -- ---------------------------------------------------------------------------
 insert into public.financial_transactions

@@ -806,6 +806,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260824211112_hub_core_self_service_cancellation.sql"
   "supabase/migrations/20260824230000_conciliacao_do_caixa_asaas.sql"
   "supabase/migrations/20260825040358_harden_teacher_activity_report_scope.sql"
+  "supabase/migrations/20260825140000_estorno_reverte_o_caixa.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

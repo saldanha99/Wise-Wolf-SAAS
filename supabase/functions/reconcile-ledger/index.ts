@@ -79,7 +79,11 @@ serve(async (req) => {
                 if (!payment.tenant_id) {
                     console.warn(`[reconcile-ledger] pagamento sem tenant, não conciliado: ${payment.id}`);
                     await supabase.from('reconciliation_issues').insert({
-                        tenant_id: null,
+                        // ⚠️ reconciliation_issues.tenant_id é NOT NULL — inserir
+                        // null aqui falhava em silêncio (supabase-js devolve erro
+                        // em vez de lançar, e o `continue` engolia). Pagamento sem
+                        // escola é item de triagem da plataforma.
+                        tenant_id: 'master',
                         kind: 'PAYMENT_WITHOUT_TENANT',
                         student_payment_id: payment.id,
                         details: { value: payment.value, description: payment.description }
