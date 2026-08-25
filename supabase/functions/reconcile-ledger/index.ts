@@ -62,21 +62,51 @@ serve(async (req) => {
                     continue;
                 }
 
-                // Create Transaction
-                // Logic: Amount in cents. If missing, convert from value.
-                const amountCents = payment.amount_cents || Math.round((payment.value || 0) * 100);
+                // Pagamento sem tenant NÃO vira receita da Wise Wolf por default.
+                // O fallback que estava aqui adotava em silêncio o dinheiro de
+                // quem não tem escola definida — a mesma razão pela qual 38
+                // pagamentos órfãos (R$ 11.466,74) aparecem hoje como receita
+                // dela. Sem tenant, registra a pendência e segue.
+                if (!payment.tenant_id) {
+                    console.warn(`[reconcile-ledger] pagamento sem tenant, não conciliado: ${payment.id}`);
+                    await supabase.from('reconciliation_issues').insert({
+                        tenant_id: null,
+                        kind: 'PAYMENT_WITHOUT_TENANT',
+                        student_payment_id: payment.id,
+                        details: { value: payment.value, description: payment.description }
+                    });
+                    results.skipped++;
+                    continue;
+                }
+
+                const valor = Number(payment.value) || 0;
+                const amountCents = payment.amount_cents || Math.round(valor * 100);
 
                 const { error: insertError } = await supabase
                     .from('financial_transactions')
                     .insert({
-                        tenant_id: payment.tenant_id || 'school-wise-wolf',
+                        tenant_id: payment.tenant_id,
                         type: 'ENTRADA',
-                        category: 'student_tuition',
+                        // Mesma categoria do trigger `ledger_on_payment_received`.
+                        // Esta função gravava 'student_tuition' e o trigger
+                        // 'MENSALIDADE' — duas eras para a mesma coisa na mesma
+                        // tabela, que o mapa do DRE tem de reconciliar na leitura.
+                        category: 'MENSALIDADE',
+                        // ⚠️ `amount` é NOT NULL e esta função NUNCA o enviava:
+                        // todo insert morria em "null value in column amount
+                        // violates not-null constraint". Era o único caminho de
+                        // conserto dos 27 pagamentos sem lançamento (R$ 9.390,00)
+                        // e estava morto — provado em BEGIN/ROLLBACK contra a VPS.
+                        amount: valor,
                         amount_cents: amountCents,
                         description: `Mensalidade - Ref: ${payment.description || 'Asaas'}`,
                         student_payment_id: payment.id,
                         reference_id: payment.student_id, // Legacy field, keeping for now
-                        occurred_at: payment.paid_at || payment.payment_date || new Date().toISOString()
+                        // Mesma cadeia de competência de get_cashflow e do trigger.
+                        // `new Date()` só como última rede: usá-lo cedo joga o
+                        // pagamento para o mês em que a conciliação rodou, não
+                        // para o mês em que o aluno pagou.
+                        occurred_at: payment.paid_at || payment.payment_date || payment.due_date || new Date().toISOString()
                     });
 
                 if (insertError) {
@@ -84,7 +114,7 @@ serve(async (req) => {
 
                     // Log Issue
                     await supabase.from('reconciliation_issues').insert({
-                        tenant_id: payment.tenant_id || 'school-wise-wolf',
+                        tenant_id: payment.tenant_id,
                         kind: 'LEDGER_INSERT_FAILED',
                         student_payment_id: payment.id,
                         details: { error: insertError }

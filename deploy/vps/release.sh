@@ -802,6 +802,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260824205624_guard_empty_hub_catalog.sql"
   "supabase/migrations/20260824210239_hub_core_legal_acceptances.sql"
   "supabase/migrations/20260824211112_hub_core_self_service_cancellation.sql"
+  "supabase/migrations/20260824230000_conciliacao_do_caixa_asaas.sql"
   "supabase/migrations/20260825040358_harden_teacher_activity_report_scope.sql"
 )
 DATABASE_TEST_RELATIVES=(
@@ -814,6 +815,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/teacher_closing_write_scope.sql"
   "supabase/tests/teacher_invoice_isolation.sql"
   "supabase/tests/teacher_schedule_change_scope.sql"
+  "supabase/tests/conciliacao_caixa_asaas.sql"
   "supabase/tests/trial_reschedule_requires_teacher_confirmation.sql"
   "supabase/tests/student_manual_pix_claims.sql"
   "supabase/tests/student_overdue_card_charge_claims.sql"
