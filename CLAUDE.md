@@ -296,6 +296,32 @@ onClick texto → sendMessage() → unlockAudio()
 
 **Base (migrations `automation_base` + `automation_read_rpcs`):**
 - `automation_sent` — dedupe diário. Cada envio insere uma linha; antes de enviar checa se já existe (mesmo `kind`+`subject`+`ref_date`).
+  - ⚠️ **`ref_date` NÃO é a data do envio** — é a data de referência do assunto
+    (no rateio, o `created_at` do pagamento). Para saber **quando o último aviso
+    saiu**, use `automation_sent.created_at`. Ler `max(ref_date)` produziu, em
+    25/08/2026, um diagnóstico de "9 dias de silêncio e 8 pagamentos sem aviso"
+    que **não existiu** — e quase virou 6 avisos duplicados de dinheiro no grupo.
+  - ⚠️ **A marca é gravada ANTES do envio** e apagada se o envio falha. Logo,
+    linha em `automation_sent` = mensagem entregue; ausência = não entregue.
+
+- ⚠️ **`profiles.directors_group_id` tem DOIS donos — cuidado ao mexer.**
+  `accept-opportunity` manda por ele o aviso de experimental aceita (na Wise Wolf
+  aponta para o grupo *EXPERIMENTAL CONFIRMADAS*), e a trava de posse
+  `resolveOwnedTenantWhatsAppDestination` o usa como **allowlist** de quem pode
+  receber relatório financeiro. O grupo do dinheiro é o *Gestão*, configurado em
+  `dre_report_settings.destino` e registrado em campo nenhum do perfil — por isso
+  a trava (22/08/2026) derrubou o aviso de rateio e o DRE, e **só esses dois**:
+  `TEACHER_AGENDA`, `MONTHLY_CLOSING` e `WEEKLY_DIGEST` nunca falharam, porque
+  usam outro destino.
+  Conserto: **`resolveTenantConfiguredWhatsAppDestination`** para destino que vem
+  da configuração da própria escola (linha escopada por `tenant_id`, gravada só
+  pelo admin dela). A trava estrita continua existindo e continua sendo a certa
+  para destino vindo do corpo de uma requisição — não troque uma pela outra sem
+  olhar de onde o valor veio.
+  - ⚠️ **Recusa de destino tem de ser VISÍVEL.** Ela virava só um item em
+    `failures[]` dentro de um corpo de resposta HTTP que ninguém lê. Hoje sai como
+    `console.error("[whatsapp] destino recusado...")`. Diagnóstico:
+    `ssh wisewolf-vps 'docker logs supabase-edge-functions --since 24h | grep "destino recusado"'`.
 - `run_monthly_teacher_closing(p_month text DEFAULT NULL)` — default = mês anterior; gera `teacher_closings` (idempotente por `NOT EXISTS`) computando aulas pagas × `hourly_rate`. Retorna `{ok, month, created}`.
 - RPCs de leitura (só `service_role`): `birthdays_today()`, `teacher_agendas_today()`, `trial_followups()`, `weekly_digest_rows()`, `monthly_closings_to_notify(text)`.
 
@@ -655,7 +681,7 @@ Mesma pedra de `uq_bookings_no_dup_active` e `run_recurring_expenses`.
 ## Higiene de dados / Caixa / Agenda / Wolfie Lab ✅
 
 - **Aluno ativo vs órfão:** `list_students_overview` retorna `has_activity` (tem booking OU pagamento). Painéis contam ATIVOS; órfãos (sem aula/pagamento = testes) ficam num filtro "Sem matrícula" + RPC `archive_student`. **A agenda (`bookings`) é a fonte de verdade de quem é aluno real** (perfis incluem ~20 contas de teste).
-- **Caixa:** trigger `ledger_on_payment_received` lança ENTRADA no `financial_transactions` quando pagamento vira RECEIVED (idempotente — dispensa reconciliação manual). RPC `get_cashflow(month)` = entradas − saídas (repasses PAGOS + comissões + indicações pagas) das fontes autoritativas (sem dupla contagem) + inadimplência aging. Componente `CashflowPanel` (aba "Fluxo de Caixa").
+- **Caixa:** trigger `ledger_on_payment_received` lança ENTRADA no `financial_transactions` quando pagamento vira RECEIVED **e REMOVE quando deixa de ser** (estorno, chargeback, cobrança excluída) — ver a seção *Conciliação do caixa* abaixo, que corrigiu o regime de data e o conjunto de status. RPC `get_cashflow(month)` = entradas − saídas (repasses PAGOS + comissões + indicações pagas) das fontes autoritativas (sem dupla contagem) + inadimplência aging. Componente `CashflowPanel` (aba "Fluxo de Caixa").
 - **Explorador de Agenda** (`TeacherScheduleExplorer`): % ocupação, aulas/alunos distintos, busca que destaca o aluno na grade, alerta de conflito (mesmo horário com 2 alunos). Conflitos detectados no load (`conflictKeys`).
 - **Wolfie Lab:** RPC `wolfie_insights()` (escopo por ALUNO do tenant — `wolfie_sessions.tenant_id` é uuid ≠ slug, então escopa via student_id) → totais, pontos fracos recorrentes (`wolfie_corrections.error_type`), top alunos por uso, quantos nunca usaram. Painel no topo do `WolfieLab`.
 
@@ -1332,6 +1358,72 @@ era R$ 1.199,95, e 10% dela é exatamente R$ 120,00.
   pagamento em vez de repetir a conta — tela e mensagem não podem divergir.
 - Testes: `payment-split-notify/message.test.ts` (6 casos, com os números reais das duas
   réguas).
+
+---
+
+## Conciliação do caixa Asaas — uma resposta só para "quanto entrou" ✅
+
+> **Leia antes de mexer em `ledger_on_payment_received`, `reconcile-ledger` ou em
+> qualquer coisa que datar lançamento.** Conserto de 25/08/2026, cinco releases.
+
+**O problema:** duas telas somavam receita de fontes diferentes e divergiam TODO
+mês. Julho: Fluxo de Caixa e DRE diziam R$ 6.840,69; Dashboard e Relatório
+Financeiro diziam R$ 9.075,59. A soma do ano quase fechava (−R$ 507,20) porque os
+erros se cancelavam — o que engana, porque é o mês que se usa para decidir.
+
+**Causa raiz:** `student_payments.paid_at` estava NULL em **186 de 186**
+pagamentos pagos. O webhook grava `payment_date` e nunca `paid_at`, e o trigger
+usava `occurred_at = coalesce(NEW.paid_at, now())` — ou seja, sempre `now()`.
+
+### As três regras que não podem divergir
+
+| Onde | Conjunto de status |
+|---|---|
+| trigger `ledger_on_payment_received` | `RECEIVED` + `RECEIVED_IN_CASH` |
+| `get_cashflow` / `dre_gerencial` | `RECEIVED` + `RECEIVED_IN_CASH` |
+| edge `reconcile-ledger` | `RECEIVED` + `RECEIVED_IN_CASH` |
+
+⚠️ **`CONFIRMED` está fora de propósito.** Na Asaas é pagamento reconhecido e
+ainda não liquidado, e o painel de caixa nunca o contou. Cartão confirmado vira
+`RECEIVED` na liquidação e o lançamento nasce ali (medido: 2 dos 4 cartões da base
+já fizeram essa transição). Se mexer no conjunto, **mexa nos três lugares** — foi
+exatamente essa divergência que sobrou no primeiro conserto e precisou de outro
+deploy.
+
+### Regime de data
+- `paid_at` virou responsabilidade do **banco** (`trg_student_payment_paid_at`),
+  não do webhook: vale para qualquer escritor.
+- ⚠️ **Meio-dia, não meia-noite.** O banco roda em UTC e a escola pensa em BRT;
+  meia-noite UTC é 21:00 do dia anterior em Brasília, e um pagamento do dia 1º
+  trocaria de mês em qualquer leitura com fuso local.
+- A cadeia de competência é `coalesce(paid_at, payment_date, due_date)` nos três
+  lugares. `now()` só como última rede.
+
+### Estorno remove o lançamento
+O gatilho não é lista de evento, é **"o dinheiro deixou de ser recebido"** — os 15
+`CANCELLED` da base provam que existem caminhos além do webhook. O lançamento é
+APAGADO (o índice `uq_financial_transactions_student_payment` garante uma linha por
+pagamento, então se o dinheiro voltar o ramo de entrada recria com a data certa) e
+o rastro fica em `reconciliation_issues` (`kind = PAYMENT_REVERSED`).
+
+⚠️ `reconciliation_issues.tenant_id` é **NOT NULL** — pagamento sem escola vai para
+o tenant `master`. Inserir `null` ali falha **em silêncio** (o supabase-js devolve
+erro em vez de lançar).
+
+### Pegadinhas medidas
+- ⚠️ **`ledger_entry_created` mente.** O trigger cria o lançamento e não marca a
+  flag; só o `reconcile-ledger` marca. Medido: 96 pagos com a flag em `false`, 69
+  deles já com lançamento. Para saber o que falta conciliar use `NOT EXISTS` contra
+  `financial_transactions`, nunca a flag.
+- ⚠️ O `reconcile-ledger` inseria `amount_cents` **sem `amount`**, que é `NOT NULL`
+  — todo insert morria. Era o único caminho de conserto dos 27 pagamentos sem
+  lançamento (R$ 9.390,00) e estava morto. Hoje um trigger BEFORE deriva um do
+  outro (`trg_sync_financial_amounts`); no Postgres o `NOT NULL` é checado DEPOIS
+  dos triggers BEFORE, e é isso que salva quem insere só um dos lados.
+- ⚠️ **Resíduo legítimo, não erro:** jan/fev carregam R$ 6.277,80 em lançamentos
+  órfãos anteriores ao trigger, apontando para `pay_` que não existem mais.
+  Decisão da direção em 25/08/2026: **ficam como estão.** De março em diante as
+  duas fontes batem exato — divergência a partir de março é regressão de verdade.
 
 ---
 
