@@ -101,19 +101,29 @@ printf '  paid_at pendente: %s → %s  (os que sobram não têm payment_date; ca
 # ---------------------------------------------------------------------------
 azul "Pendente: o que o reconcile-ledger recuperaria (NADA foi escrito aqui)"
 # ---------------------------------------------------------------------------
-psql_vps <<'SQL'
-select '  ' || count(*) || ' pagamentos sem lançamento, somando R$ ' ||
-       to_char(coalesce(sum(value),0), 'FM999G999D00') ||
-       '  (meses: ' || coalesce(string_agg(distinct to_char(coalesce(paid_at, payment_date, due_date),'MM/YYYY'), ', '), '—') || ')'
+pendentes=$(psql_vps <<'SQL'
+select count(*) || '|' || to_char(coalesce(sum(value),0), 'FM999G999G990D00') || '|' ||
+       coalesce(string_agg(distinct to_char(coalesce(paid_at, payment_date, due_date),'MM/YYYY'), ', '), '—')
   from student_payments sp
  where sp.status in ('RECEIVED','RECEIVED_IN_CASH')
    and sp.tenant_id is not null
    and not exists (select 1 from financial_transactions ft where ft.student_payment_id = sp.id);
 SQL
+)
+IFS='|' read -r p_qtd p_valor p_meses <<<"$pendentes"
+
+if [[ "$p_qtd" == "0" ]]; then
+  ok "nenhum pagamento sem lançamento — nada a recuperar"
+else
+  printf '  %s pagamentos sem lançamento, somando R$ %s  (meses: %s)\n' "$p_qtd" "$p_valor" "$p_meses"
+fi
 
 if [[ "$erros" == "0" ]]; then
   printf '\n\033[1;32m✓ Conciliação do caixa no ar e verificada no banco.\033[0m\n'
-  printf '  Falta chamar o reconcile-ledger para recuperar os pagamentos acima — passo separado.\n\n'
+  if [[ "$p_qtd" != "0" ]]; then
+    printf '  Falta chamar o reconcile-ledger para recuperar os pagamentos acima — passo separado.\n'
+  fi
+  printf '\n'
 else
   printf '\n\033[1;31m✗ O release terminou mas a verificação falhou. NÃO considere publicado.\033[0m\n\n'
   exit 1
