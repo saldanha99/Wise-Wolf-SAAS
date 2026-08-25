@@ -25,6 +25,23 @@ serve(async (req) => {
 
         console.log("Starting Sync...");
 
+        // A escola tem de ser DITA, não deduzida.
+        //
+        // ⚠️ Esta função varria os alunos de TODAS as escolas de uma vez e criava
+        // cobrança para todas. Só o SUPER_ADMIN chama, mas "sou super admin" não
+        // é o mesmo que "quis faturar a rede inteira" — e a função não tem cron
+        // nem confirmação: um clique gerava mensalidade em toda a base. Nunca
+        // rodou (medido: 0 pagamentos `MANUAL_` em 273), então exigir o tenant
+        // não quebra chamada existente.
+        const body = await req.json().catch(() => ({})) as { tenant_id?: unknown };
+        const tenantId = typeof body?.tenant_id === 'string' ? body.tenant_id.trim() : '';
+        if (!tenantId) {
+            return new Response(
+                JSON.stringify({ error: 'tenant_id_obrigatorio', detalhe: 'Informe a escola para a qual gerar as mensalidades.' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
+            );
+        }
+
         const today = new Date();
         const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
         const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString();
@@ -34,7 +51,8 @@ serve(async (req) => {
             .from('profiles')
             .select('id, tenant_id, monthly_fee, due_day, full_name')
             .eq('role', 'STUDENT')
-            .eq('status', 'Ativo');
+            .eq('status', 'Ativo')
+            .eq('tenant_id', tenantId);
 
         if (stError) throw stError;
 
@@ -69,14 +87,22 @@ serve(async (req) => {
                 const dueDay = student.due_day || 10;
                 const dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
 
-                // Default tenant if missing (safety net for legacy profiles)
-                const safeTenantId = student.tenant_id || 'school-wise-wolf';
+                // Sem fallback chumbado. O `|| 'school-wise-wolf'` que estava aqui
+                // faturava aluno sem escola definida em nome da Wise Wolf — é a
+                // mesma raiz dos 38 pagamentos órfãos (R$ 11.466,74) que hoje
+                // aparecem como receita dela. O filtro por tenant acima já
+                // garante o valor; esta guarda existe para o caso de o filtro
+                // mudar um dia.
+                if (student.tenant_id !== tenantId) {
+                    logs.push(`Ignorado ${student.full_name}: escola divergente`);
+                    continue;
+                }
 
                 const { error: insError } = await supabase
                     .from('student_payments')
                     .insert({
                         student_id: student.id,
-                        tenant_id: safeTenantId,
+                        tenant_id: tenantId,
                         value: feeValue,
                         due_date: dueDate.toISOString().split('T')[0],
                         status: today > dueDate ? 'OVERDUE' : 'PENDING',
