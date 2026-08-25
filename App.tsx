@@ -5,6 +5,8 @@ import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
 import { fetchPendingLessons } from './lib/pendingLessons';
+import { calculateDaysWithoutAbsence } from './lib/teacherManagement';
+import { calculateDaysWithoutAbsence } from './lib/teacherManagement';
 import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
@@ -580,9 +582,54 @@ const App: React.FC = () => {
       }
 
       if (teachersData) {
+        const teacherIds = teachersData.map((teacher: any) => teacher.id);
+        const latestAbsenceByTeacher = new Map<string, string>();
+        const turboByTeacher = new Map<string, { active: boolean | null; blockedBy: string | null }>();
+
+        if (teacherIds.length > 0) {
+          const [absenceResult, turboResults] = await Promise.all([
+            supabase
+              .from('class_logs')
+              .select('teacher_id, class_date')
+              .eq('tenant_id', user.tenantId)
+              .in('teacher_id', teacherIds)
+              .in('presence', ['TEACHER_ABSENCE', 'Falta do Professor'])
+              .order('class_date', { ascending: false }),
+            Promise.all(teacherIds.map(async (teacherId: string) => {
+              const { data: turboData, error: turboError } = await supabase.rpc('teacher_turbo_status', {
+                p_teacher: teacherId,
+              });
+              if (turboError) {
+                console.warn(`[Teachers] Turbo indisponível para ${teacherId}:`, turboError.message);
+                return { teacherId, active: null, blockedBy: null };
+              }
+              return {
+                teacherId,
+                active: typeof turboData?.active === 'boolean' ? turboData.active : null,
+                blockedBy: typeof turboData?.blocked_by === 'string' ? turboData.blocked_by : null,
+              };
+            })),
+          ]);
+
+          if (absenceResult.error) {
+            console.warn('[Teachers] Não foi possível carregar a ofensiva sem faltas:', absenceResult.error.message);
+          } else {
+            (absenceResult.data || []).forEach((absence: any) => {
+              if (!latestAbsenceByTeacher.has(absence.teacher_id)) {
+                latestAbsenceByTeacher.set(absence.teacher_id, absence.class_date);
+              }
+            });
+          }
+          turboResults.forEach(({ teacherId, active, blockedBy }) => {
+            turboByTeacher.set(teacherId, { active, blockedBy });
+          });
+        }
+
         const formattedTeachers: Teacher[] = teachersData.map((t: any) => {
           const teacherBookings = allBookings?.filter(b => b.teacher_id === t.id) || [];
           const uniqueStudents = new Set(teacherBookings.map(b => b.student_id));
+          const lastTeacherAbsenceAt = latestAbsenceByTeacher.get(t.id) || null;
+          const turbo = turboByTeacher.get(t.id);
 
           return {
             id: t.id,
@@ -601,8 +648,13 @@ const App: React.FC = () => {
             classesCount: teacherBookings.length,
             retention: '100%',
             tpi: 100,
-            status: 'Ativo',
-            lifecycle_status: t.lifecycle_status || 'active',
+            status: t.status === 'Inactive' ? 'Inativo' : 'Ativo',
+            lifecycle_status: t.lifecycle_status || (t.status === 'Inactive' ? 'suspended' : 'active'),
+            createdAt: t.created_at,
+            lastTeacherAbsenceAt,
+            daysWithoutAbsence: calculateDaysWithoutAbsence(t.created_at, lastTeacherAbsenceAt),
+            turboActive: turbo?.active ?? null,
+            turboBlockedBy: turbo?.blockedBy ?? null,
             occupancy: t.occupancy || 0
           };
         });
