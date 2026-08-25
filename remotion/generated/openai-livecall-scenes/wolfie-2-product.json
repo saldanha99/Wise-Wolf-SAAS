@@ -1,0 +1,13 @@
+{
+  "id": "wolfie-2-product",
+  "file": "wolfie-2-product.mp3",
+  "requestId": "gen-1787593337-qqfpEHOffO8jntlnZWlo",
+  "sha256": "92bc2da0d8ea39c78e3349d786094070804ac2a518f38e5f12765fdb3d43b0c7",
+  "bytes": 287182,
+  "transcriptSha256": "a97eaf07f5d129f23d92fb492198a686fc6c650111c0d552e34c7973153a373d",
+  "sceneHash": "fb814a48b22cce7637d9b715b77e600e8e5194983dc995ae6203a05ad3e03e09",
+  "durationSeconds": 11.9,
+  "generatedAt": "2026-08-24T17:42:25Z",
+  "sourcePcmWavSha256": "59ca9d3e8ba7952421fcea5d08c6c12cef666700c8b8aba499cea8a047f145c5",
+  "sourcePcmWavBytes": 571244
+}

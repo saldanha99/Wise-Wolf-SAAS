@@ -1,3 +1,5 @@
+/// <reference lib="deno.ns" />
+
 import {
   createClient,
   type SupabaseClient,
@@ -27,11 +29,6 @@ const profileColumns = [
   "level",
   "streak_count",
   "last_activity",
-  "monthly_fee",
-  "due_day",
-  "status_financial",
-  "paid_through",
-  "prepaid_months",
   "wolfie_settings",
   "english_for",
   "preferred_topics",
@@ -71,6 +68,14 @@ interface StudentProfile {
 }
 
 type PublicStudentProfile = Omit<StudentProfile, "is_test_account">;
+
+interface AuthorizedStudentFinancialProfile {
+  monthly_fee: number | null;
+  due_day: number | null;
+  status_financial: string | null;
+  paid_through: string | null;
+  prepaid_months: number | null;
+}
 
 interface PaymentRow {
   due_date: string;
@@ -280,22 +285,53 @@ Deno.serve(async (req: Request) => {
       .select(profileColumns)
       .eq("id", user.id)
       .maybeSingle();
-    const profile = singleRelation(
+    const directoryProfile = singleRelation(
       rawProfile as unknown as StudentProfile | StudentProfile[] | null,
     );
 
     if (profileError) {
       return jsonResponse(unavailableResponse("PROFILE_UNAVAILABLE"), 503);
     }
-    if (!profile) {
+    if (!directoryProfile) {
       return jsonResponse(unavailableResponse("PROFILE_NOT_FOUND"), 404);
     }
-    if (profile.role !== "STUDENT") {
+    if (directoryProfile.role !== "STUDENT") {
       return jsonResponse(unavailableResponse("FORBIDDEN"), 403);
     }
-    if (!profile.tenant_id) {
+    if (!directoryProfile.tenant_id) {
       return jsonResponse(unavailableResponse("TENANT_REQUIRED"), 403);
     }
+
+    const { data: privateProfileData, error: privateProfileError } =
+      await supabase.rpc("get_authorized_profile_private", {
+        p_profile_id: user.id,
+      });
+    if (privateProfileError || !privateProfileData) {
+      return jsonResponse(unavailableResponse("PROFILE_UNAVAILABLE"), 503);
+    }
+
+    const privateProfile = privateProfileData as Record<string, unknown>;
+    const financialProfile: AuthorizedStudentFinancialProfile = {
+      monthly_fee: typeof privateProfile.monthly_fee === "number"
+        ? privateProfile.monthly_fee
+        : null,
+      due_day: typeof privateProfile.due_day === "number"
+        ? privateProfile.due_day
+        : null,
+      status_financial: typeof privateProfile.status_financial === "string"
+        ? privateProfile.status_financial
+        : null,
+      paid_through: typeof privateProfile.paid_through === "string"
+        ? privateProfile.paid_through
+        : null,
+      prepaid_months: typeof privateProfile.prepaid_months === "number"
+        ? privateProfile.prepaid_months
+        : null,
+    };
+    const profile: StudentProfile = {
+      ...directoryProfile,
+      ...financialProfile,
+    };
 
     const now = new Date();
     let streak = profile.streak_count ?? 0;

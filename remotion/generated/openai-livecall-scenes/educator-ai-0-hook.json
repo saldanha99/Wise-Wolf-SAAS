@@ -1,0 +1,13 @@
+{
+  "id": "educator-ai-0-hook",
+  "file": "educator-ai-0-hook.mp3",
+  "requestId": "gen-1787593311-TDqHira5G39QzlPTD7GQ",
+  "sha256": "a16c9cc42e827e9b00506ba387131d4e3df23a7cc6789ebf60f76821c6386ed6",
+  "bytes": 133582,
+  "transcriptSha256": "3f98ab91fcd467acb16f99b65e6f4427a571017cbd3d2ccd11178fda88213f1d",
+  "sceneHash": "935823672fdbcda5fe32621674ce252fa40e8e74002368105b7fcf6a93a027fa",
+  "durationSeconds": 5.5,
+  "generatedAt": "2026-08-24T17:42:03Z",
+  "sourcePcmWavSha256": "1c402909c1ed813addf64448a5bda8971439068ceac3b891d8dfe05f8677dd3e",
+  "sourcePcmWavBytes": 264044
+}

@@ -1,0 +1,13 @@
+{
+  "id": "educator-ai-1-problem",
+  "file": "educator-ai-1-problem.mp3",
+  "requestId": "gen-1787593313-uVbjNmiALMGH7kZUMLbJ",
+  "sha256": "df080bc798c865dc48bc03b2f4c69671dc70058b216d8345b7f0da0ce650ab51",
+  "bytes": 183737,
+  "transcriptSha256": "16c825d7fa8bbc2bd5765733c427c72ebea80bbe935084bf84c1aac903805d35",
+  "sceneHash": "58333a5e0cd93089560b1a35db495b990347bb3ee2481af1331bbb49ce493591",
+  "durationSeconds": 7.6,
+  "generatedAt": "2026-08-24T17:42:03Z",
+  "sourcePcmWavSha256": "e8d2c7d65971a1810a390e12910c67a64152a7c58a015975950a4281ff3aa59b",
+  "sourcePcmWavBytes": 364844
+}

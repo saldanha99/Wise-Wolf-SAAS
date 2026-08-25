@@ -21,6 +21,7 @@ cleanup() {
   trap - EXIT
   unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY \
     VITE_WOLFIE_REALTIME_ENABLED VITE_WOLFIE_SCENARIO_UI_V2 \
+    VITE_HUB_PUBLIC_VIDEOS \
     caller_wolfie_scenario_ui_v2_was_set \
     caller_wolfie_scenario_ui_v2_value
   if [[ -n "$LOCAL_STAGE" && -d "$LOCAL_STAGE" ]]; then
@@ -77,6 +78,9 @@ if [[ "$caller_wolfie_scenario_ui_v2_was_set" = "true" ]]; then
   VITE_WOLFIE_SCENARIO_UI_V2="$caller_wolfie_scenario_ui_v2_value"
 fi
 DEPLOY_PRESERVE_REMOTE_FUNCTIONS="${DEPLOY_PRESERVE_REMOTE_FUNCTIONS:-0}"
+VITE_HUB_PUBLIC_VIDEOS="${VITE_HUB_PUBLIC_VIDEOS:-false}"
+[[ "$VITE_HUB_PUBLIC_VIDEOS" = "true" || "$VITE_HUB_PUBLIC_VIDEOS" = "false" ]] ||
+  die "VITE_HUB_PUBLIC_VIDEOS deve ser true ou false"
 [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "0" ||
   "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" = "1" ]] ||
   die "DEPLOY_PRESERVE_REMOTE_FUNCTIONS deve ser 0 ou 1"
@@ -162,6 +166,13 @@ source "$SCRIPT_DIR/lib/function-drift-guard.sh"
 
 cd "$PROJECT_DIR"
 
+node scripts/verify-hub-public-videos.mjs \
+  --root public \
+  --enabled "$VITE_HUB_PUBLIC_VIDEOS"
+if [[ "$VITE_HUB_PUBLIC_VIDEOS" = "true" ]]; then
+  npm run video:validate -- --public
+fi
+
 expected_current_release="$(
   ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
     "$DEPLOY_RELEASES_DIR" <<'REMOTE_BASE_RELEASE'
@@ -236,7 +247,7 @@ if [[ -d "$backups_dir" ]]; then
     [[ "$activation_state_release_id" = "$activation_release_id" ]]
     case "$activation_phase" in
       active | rolled_back) ;;
-      prepared | code_staged | database_transaction_started | database_committed | post_commit_failed | rollback_failed)
+      prepared | code_staged | database_transaction_started | database_commit_unknown | database_committed | post_commit_failed | rollback_failed)
         echo "ERRO: release $activation_release_id possui estado não reconciliado '$activation_phase'; valide banco, frontend, functions e markers antes de outro deploy." >&2
         exit 1
         ;;
@@ -257,7 +268,11 @@ done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-edge-functions --format '{{.State.Running}}' | grep -qx true
 docker exec supabase-edge-functions sh -lc \
-  'test -n "${OPENAI_API_KEY:-}" && test -n "${OPENROUTER_API_KEY:-}"'
+  'test -n "${OPENAI_API_KEY:-}" &&
+   test -n "${OPENROUTER_API_KEY:-}" &&
+   test -n "${EVOLUTION_API_URL:-}" &&
+   test -n "${EVOLUTION_API_KEY:-}" &&
+   test -n "${RESEND_API_KEY:-}"'
 docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
   supabase-edge-functions |
   grep -Eq '^SUPABASE_URL=http://(kong|api-gw):8000$'
@@ -366,7 +381,8 @@ validate_https_url "$VITE_SUPABASE_URL" ||
 echo "== Validação local =="
 npm audit --audit-level=moderate
 npm run typecheck
-npm test
+npm test -- --maxWorkers=1 --minWorkers=1 --no-file-parallelism
+node --test scripts/generate-hub-static-html.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno fmt --check \
   supabase/functions/_shared/automation-auth.ts \
@@ -377,6 +393,12 @@ npx --yes deno fmt --check \
   supabase/functions/_shared/opportunity-dispatch.test.ts \
   supabase/functions/_shared/payment-auth.ts \
   supabase/functions/_shared/payment-auth.test.ts \
+  supabase/functions/_shared/evolution-send.ts \
+  supabase/functions/_shared/evolution-send.test.ts \
+  supabase/functions/_shared/tenant-integration-broker.ts \
+  supabase/functions/_shared/tenant-integration-broker.test.ts \
+  supabase/functions/_shared/hub-billing-safety.ts \
+  supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/_shared/tenant-communication.ts \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
@@ -399,6 +421,30 @@ npx --yes deno fmt --check \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
+  supabase/functions/student-context/index.ts \
+  supabase/functions/student-context/profile-access.test.ts \
+  supabase/functions/create-hub-checkout/customer-idempotency.ts \
+  supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
+  supabase/functions/create-hub-checkout/legal.ts \
+  supabase/functions/create-hub-checkout/legal.test.ts \
+  supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
+  supabase/functions/create-hub-checkout/index.ts \
+  supabase/functions/create-hub-checkout/account-scope.test.ts \
+  supabase/functions/cancel-hub-subscription/core.ts \
+  supabase/functions/cancel-hub-subscription/core.test.ts \
+  supabase/functions/cancel-hub-subscription/index.ts \
+  supabase/functions/cancel-hub-subscription/index.test.ts \
+  supabase/functions/asaas-webhook/billing-safety.ts \
+  supabase/functions/asaas-webhook/index.ts \
+  supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/hub-library-access/index.ts \
+  supabase/functions/sync-hub-material/index.ts \
+  supabase/functions/process-hub-fulfillment/core.ts \
+  supabase/functions/process-hub-fulfillment/core.test.ts \
+  supabase/functions/process-hub-fulfillment/index.ts \
+  supabase/functions/process-hub-fulfillment/integration.test.ts \
+  supabase/functions/pedagogical-content/index.ts \
+  supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts
@@ -410,6 +456,9 @@ npx --yes deno test --no-lock \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.test.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/create-hub-checkout/legal.test.ts \
+  supabase/functions/cancel-hub-subscription/core.test.ts \
+  supabase/functions/process-hub-fulfillment/core.test.ts \
   supabase/functions/update-student-billing-method/core.test.ts \
   supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/generate-student-insights/tenant-scope.test.ts \
@@ -419,6 +468,7 @@ npx --yes deno test --no-lock \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
+  supabase/functions/_shared/tenant-integration-broker.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-teacher-closing/tenant-closing.test.ts \
   supabase/functions/school-admin/core.test.ts \
@@ -445,9 +495,21 @@ npx --yes deno test --no-lock \
   scripts/tests/meeting-link.test.ts \
   scripts/tests/wolfie-experience-catalog.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts
+npx --yes deno test --allow-read --no-lock \
+  scripts/tests/wolfie-voice-profile.test.ts \
+  supabase/functions/wolf-tutor-api/conversation-scope.test.ts \
+  supabase/functions/create-hub-checkout/account-scope.test.ts \
+  supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
+  supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
+  supabase/functions/cancel-hub-subscription/index.test.ts \
+  supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/process-hub-fulfillment/integration.test.ts \
+  supabase/functions/manage-hub-account-status/index.test.ts \
+  supabase/functions/student-context/profile-access.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno check --no-lock \
   supabase/functions/_shared/opportunity-dispatch.ts \
+  supabase/functions/_shared/tenant-integration-broker.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
@@ -459,7 +521,13 @@ npx --yes deno check --no-lock \
   supabase/functions/submit-quiz/index.ts \
   supabase/functions/hub-library-access/index.ts \
   supabase/functions/sync-hub-material/index.ts \
+  supabase/functions/create-hub-checkout/customer-idempotency.ts \
+  supabase/functions/create-hub-checkout/legal.ts \
   supabase/functions/create-hub-checkout/index.ts \
+  supabase/functions/cancel-hub-subscription/core.ts \
+  supabase/functions/cancel-hub-subscription/index.ts \
+  supabase/functions/process-hub-fulfillment/index.ts \
+  supabase/functions/manage-hub-account-status/index.ts \
   supabase/functions/create-saas-checkout/index.ts \
   supabase/functions/sync-student-asaas/index.ts \
   supabase/functions/create-asaas-subscription/index.ts \
@@ -529,10 +597,66 @@ npx --yes deno check --no-lock \
   supabase/functions/teacher-daily-agenda/index.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/whatsapp-notificacao-matricula/index.ts
+if [[ "$VITE_HUB_PUBLIC_VIDEOS" = "true" ]]; then
+  npm run video:validate -- --public
+fi
 npm run build
+node scripts/verify-hub-public-videos.mjs \
+  --root dist \
+  --enabled "$VITE_HUB_PUBLIC_VIDEOS"
 find dist -type d -exec chmod 0755 {} +
 find dist -type f -exec chmod 0644 {} +
 npm run wolfie:assets:verify:dist
+for hub_static_html in \
+  dist/hub/index.html \
+  dist/hub/professores/index.html \
+  dist/hub/escolas/index.html \
+  dist/hub/biblioteca/index.html \
+  dist/hub/educador-ia/index.html \
+  dist/hub/wolfie/index.html \
+  dist/hub/saas-escolar/index.html \
+  dist/hub/termos/index.html \
+  dist/hub/privacidade/index.html \
+  dist/hub/404.html \
+  dist/__hub_host/index.html \
+  dist/__hub_host/professores/index.html \
+  dist/__hub_host/escolas/index.html \
+  dist/__hub_host/biblioteca/index.html \
+  dist/__hub_host/educador-ia/index.html \
+  dist/__hub_host/wolfie/index.html \
+  dist/__hub_host/saas-escolar/index.html \
+  dist/__hub_host/termos/index.html \
+  dist/__hub_host/privacidade/index.html \
+  dist/__hub_host/404.html \
+  dist/seja-professor/index.html \
+  dist/new-saas/index.html; do
+  [[ -s "$hub_static_html" ]] || die "shell HTML do Hub ausente: $hub_static_html"
+done
+for hub_seo_file in \
+  dist/sitemap.xml \
+  dist/robots.txt \
+  dist/__hub_host/sitemap.xml \
+  dist/__hub_host/robots.txt; do
+  [[ -s "$hub_seo_file" ]] || die "arquivo de indexação ausente: $hub_seo_file"
+done
+grep -Fq 'https://system.wisewolflanguage.com.br/new-saas' dist/sitemap.xml \
+  || die "sitemap do sistema sem a landing de diagnóstico"
+grep -Fq 'https://hub.wisewolflanguage.com.br/saas-escolar' dist/__hub_host/sitemap.xml \
+  || die "sitemap do Hub sem a landing do SaaS Escolar"
+grep -Fq 'https://hub.wisewolflanguage.com.br/termos' dist/__hub_host/sitemap.xml \
+  || die "sitemap do Hub sem os Termos de Uso"
+grep -Fq 'https://hub.wisewolflanguage.com.br/privacidade' dist/__hub_host/sitemap.xml \
+  || die "sitemap do Hub sem a Política de Privacidade"
+if grep -R -E -i -q '(^|[^A-Za-z])fbq([^A-Za-z]|$)|Meta Pixel|facebook\.com/tr' \
+  dist/__hub_host --include='*.html'; then
+  die "host dedicado do Hub contém Meta Pixel antes do consentimento"
+fi
+grep -Fq "fbq('init'" dist/hub/index.html \
+  || die "espelho do sistema perdeu o Pixel existente"
+grep -Fq 'Sitemap: https://system.wisewolflanguage.com.br/sitemap.xml' dist/robots.txt \
+  || die "robots.txt do sistema sem a declaração do sitemap"
+grep -Fq 'Sitemap: https://hub.wisewolflanguage.com.br/sitemap.xml' dist/__hub_host/robots.txt \
+  || die "robots.txt do Hub sem a declaração do sitemap"
 wolfie_asset_count="$(
   node -e \
     'const m=require("./src/components/wolfie/visuals/visualAssetManifest.json"); console.log((m.scenes.length * 2) + m.characters.length + m.legacyAliases.length)'
@@ -657,6 +781,28 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260822093650_secure_trial_management_writes.sql"
   "supabase/migrations/20260822095301_private_tenant_legal_assets.sql"
   "supabase/migrations/20260822121843_harden_trial_reschedule_lifecycle.sql"
+  "supabase/migrations/20260822185207_secure_hub_content_isolation.sql"
+  "supabase/migrations/20260822185211_harden_hub_account_access.sql"
+  "supabase/migrations/20260823011835_hub_fulfillment_outbox.sql"
+  "supabase/migrations/20260823033343_clarify_hub_teacher_offers.sql"
+  "supabase/migrations/20260823035136_harden_saas_lead_public_intake.sql"
+  "supabase/migrations/20260823043537_enforce_active_hub_profile_lifecycle.sql"
+  "supabase/migrations/20260823140000_hub_library_collections.sql"
+  "supabase/migrations/20260823153000_harden_hub_wolfie_conversation_scope.sql"
+  "supabase/migrations/20260823184000_hub_educator_native_planner.sql"
+  "supabase/migrations/20260823185000_harden_hub_account_mutations.sql"
+  "supabase/migrations/20260823191000_harden_hub_member_profiles_and_learner_crud.sql"
+  "supabase/migrations/20260824041712_hub_catalog_collection_read_grants.sql"
+  "supabase/migrations/20260824051022_harden_saas_subscription_lifecycle.sql"
+  "supabase/migrations/20260824051348_restrict_teacher_profile_pii.sql"
+  "supabase/migrations/20260824152421_harden_teacher_finance_tenant_scope.sql"
+  "supabase/migrations/20260824165951_tenant_integration_broker_evolution_pilot.sql"
+  "supabase/migrations/20260824183059_reconcile_legacy_material_storage_ownership.sql"
+  "supabase/migrations/20260824193205_repair_wise_wolf_legacy_branding_reference.sql"
+  "supabase/migrations/20260824205624_guard_empty_hub_catalog.sql"
+  "supabase/migrations/20260824210239_hub_core_legal_acceptances.sql"
+  "supabase/migrations/20260824211112_hub_core_self_service_cancellation.sql"
+  "supabase/migrations/20260825040358_harden_teacher_activity_report_scope.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -666,6 +812,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_standalone_subscriptions.sql"
   "supabase/tests/wolfie_free_premium_tiers.sql"
   "supabase/tests/teacher_closing_write_scope.sql"
+  "supabase/tests/teacher_invoice_isolation.sql"
   "supabase/tests/teacher_schedule_change_scope.sql"
   "supabase/tests/trial_reschedule_requires_teacher_confirmation.sql"
   "supabase/tests/student_manual_pix_claims.sql"
@@ -680,6 +827,23 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/atomic_opportunity_claim.sql"
   "supabase/tests/secure_trial_management_writes.sql"
   "supabase/tests/private_tenant_legal_assets.sql"
+  "supabase/tests/hub_content_isolation.sql"
+  "supabase/tests/hub_account_usage_hardening.sql"
+  "supabase/tests/hub_fulfillment_outbox.sql"
+  "supabase/tests/saas_leads_public_intake.sql"
+  "supabase/tests/hub_wolfie_conversation_scope.sql"
+  "supabase/tests/hub_educator_native_planner.sql"
+  "supabase/tests/hub_account_mutations.sql"
+  "supabase/tests/hub_member_profiles_and_learner_crud.sql"
+  "supabase/tests/saas_subscription_lifecycle.sql"
+  "supabase/tests/profile_teacher_pii_isolation.sql"
+  "supabase/tests/teacher_finance_tenant_scope.sql"
+  "supabase/tests/tenant_integration_broker.sql"
+  "supabase/tests/material_storage_reconciliation.sql"
+  "supabase/tests/tenant_branding_asset_repair.sql"
+  "supabase/tests/hub_catalog_readiness.sql"
+  "supabase/tests/hub_core_legal_acceptances.sql"
+  "supabase/tests/hub_core_self_service_cancellation.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -690,9 +854,11 @@ CONTEXT_FUNCTION_RELATIVE="supabase/functions/student-context"
 HUB_LIBRARY_FUNCTION_RELATIVE="supabase/functions/hub-library-access"
 HUB_MATERIAL_SYNC_FUNCTION_RELATIVE="supabase/functions/sync-hub-material"
 HUB_CHECKOUT_FUNCTION_RELATIVE="supabase/functions/create-hub-checkout"
+HUB_FULFILLMENT_FUNCTION_RELATIVE="supabase/functions/process-hub-fulfillment"
 HUB_AI_FUNCTION_RELATIVE="supabase/functions/pedagogical-content"
 HUB_TUTOR_FUNCTION_RELATIVE="supabase/functions/wolf-tutor-api"
 ASAAS_WEBHOOK_FUNCTION_RELATIVE="supabase/functions/asaas-webhook"
+NGINX_CONFIG_RELATIVE="deploy/vps/proxy/nginx-spa.conf"
 # O config.toml atende ao Supabase CLI local. Na VPS, o Edge Runtime monta os
 # fontes diretamente e usa VERIFY_JWT=false; funções protegidas autenticam no handler.
 # Por isso ele não integra o artefato, e os smokes 401 abaixo validam essa barreira.
@@ -711,6 +877,7 @@ SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safet
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
+SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
 HARDENED_FUNCTIONS=(
   sync-subscription-status
   notify-payment-due
@@ -762,6 +929,8 @@ HARDENED_FUNCTIONS=(
   delete-student-account
   generate-student-insights
   kiwify-webhook
+  manage-hub-account-status
+  cancel-hub-subscription
   model-probe
   monthly-teacher-closing
   oral-test-scan
@@ -814,12 +983,16 @@ done
   die "função de sincronização de materiais do Hub ausente"
 [[ -s "$HUB_CHECKOUT_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de checkout do Hub ausente"
+[[ -s "$HUB_FULFILLMENT_FUNCTION_RELATIVE/index.ts" ]] ||
+  die "função de fulfillment do Hub ausente"
 [[ -s "$HUB_AI_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função de IA do Hub ausente"
 [[ -s "$HUB_TUTOR_FUNCTION_RELATIVE/index.ts" ]] ||
   die "função Wolfie do Hub ausente"
 [[ -s "$ASAAS_WEBHOOK_FUNCTION_RELATIVE/index.ts" ]] ||
   die "webhook Asaas ausente"
+[[ -s "$NGINX_CONFIG_RELATIVE" && ! -L "$NGINX_CONFIG_RELATIVE" ]] ||
+  die "configuração Nginx auditada ausente"
 [[ -s "$SHARED_AUTH_RELATIVE" ]] || die "guard de autenticação ausente"
 [[ -s "$SHARED_AUTOMATION_AUTH_RELATIVE" ]] || die "guard de automações ausente"
 [[ -s "$SHARED_INVITE_REGISTRATION_RELATIVE" ]] || die "guard de convites ausente"
@@ -834,6 +1007,7 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 [[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
+[[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -871,6 +1045,9 @@ append_release_input_checksum() {
   append_release_input_checksum \
     "$hardened_functions_manifest" \
     "hardened-functions.txt"
+  append_release_input_checksum \
+    "$NGINX_CONFIG_RELATIVE" \
+    "nginx.conf"
   while IFS= read -r release_input; do
     append_release_input_checksum \
       "$release_input" \
@@ -886,6 +1063,7 @@ append_release_input_checksum() {
     "$HUB_LIBRARY_FUNCTION_RELATIVE" \
     "$HUB_MATERIAL_SYNC_FUNCTION_RELATIVE" \
     "$HUB_CHECKOUT_FUNCTION_RELATIVE" \
+    "$HUB_FULFILLMENT_FUNCTION_RELATIVE" \
     "$HUB_AI_FUNCTION_RELATIVE" \
     "$HUB_TUTOR_FUNCTION_RELATIVE" \
     "$ASAAS_WEBHOOK_FUNCTION_RELATIVE"; do
@@ -917,7 +1095,8 @@ append_release_input_checksum() {
     "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
-    "$SHARED_EVOLUTION_SEND_RELATIVE"; do
+    "$SHARED_EVOLUTION_SEND_RELATIVE" \
+    "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE"; do
     append_release_input_checksum \
       "$shared_relative" \
       "functions/${shared_relative#supabase/functions/}"
@@ -975,6 +1154,7 @@ mkdir -p -- \
   "$release_dir/functions/hub-library-access" \
   "$release_dir/functions/sync-hub-material" \
   "$release_dir/functions/create-hub-checkout" \
+  "$release_dir/functions/process-hub-fulfillment" \
   "$release_dir/functions/pedagogical-content" \
   "$release_dir/functions/wolf-tutor-api" \
   "$release_dir/functions/asaas-webhook" \
@@ -996,6 +1176,8 @@ REMOTE
 
 rsync -a --delete -- dist/ \
   "$DEPLOY_SSH_HOST:$remote_release/frontend-dist/"
+rsync -a -- "$NGINX_CONFIG_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/nginx.conf"
 rsync -a -- "$hardened_functions_manifest" \
   "$DEPLOY_SSH_HOST:$remote_release/hardened-functions.txt"
 rsync -a -- "$release_inputs_manifest" \
@@ -1019,6 +1201,8 @@ rsync -a --delete -- "$HUB_MATERIAL_SYNC_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/sync-hub-material/"
 rsync -a --delete -- "$HUB_CHECKOUT_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/create-hub-checkout/"
+rsync -a --delete -- "$HUB_FULFILLMENT_FUNCTION_RELATIVE/" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/process-hub-fulfillment/"
 rsync -a --delete -- "$HUB_AI_FUNCTION_RELATIVE/" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/pedagogical-content/"
 rsync -a --delete -- "$HUB_TUTOR_FUNCTION_RELATIVE/" \
@@ -1055,6 +1239,8 @@ rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
+rsync -a -- "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tenant-integration-broker.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
@@ -1144,6 +1330,11 @@ flock -n 9 || {
   echo "ERRO: já existe outro deploy em andamento." >&2
   exit 1
 }
+exec 8>"$compose_dir/.hub-activation.lock"
+flock -n 8 || {
+  echo "ERRO: a configuração pública do Hub está sendo ativada; rode o deploy novamente depois da conclusão." >&2
+  exit 1
+}
 
 current_marker="$releases_dir/current"
 if [[ "$expected_current_release" = "none" ]]; then
@@ -1196,9 +1387,12 @@ current_marker_tmp="$releases_dir/.current-$release_id.tmp"
 current_marker_rollback_tmp="$releases_dir/.current-$release_id.rollback.tmp"
 activation_state_file="$backup_dir/ACTIVATION_STATE"
 activation_state_tmp="$backup_dir/.ACTIVATION_STATE.tmp"
+nginx_path="$compose_dir/nginx.conf"
+nginx_next="$compose_dir/.nginx-$release_id.tmp"
 current_marker_existed=0
 current_marker_swapped=0
 frontend_swapped=0
+nginx_swapped=0
 function_swapped=0
 conversation_function_swapped=0
 realtime_function_swapped=0
@@ -1208,6 +1402,7 @@ context_function_swapped=0
 hub_library_function_swapped=0
 hub_material_sync_function_swapped=0
 hub_checkout_function_swapped=0
+hub_fulfillment_function_swapped=0
 hub_ai_function_swapped=0
 hub_tutor_function_swapped=0
 asaas_webhook_function_swapped=0
@@ -1225,6 +1420,8 @@ hardened_functions_swapped=()
 rollback_owner_subshell=$BASH_SUBSHELL
 rollback_started=0
 database_committed=0
+database_commit_unknown=0
+database_release_manifest_checksum=""
 HARDENED_FUNCTIONS=()
 declare -A hardened_function_names=()
 [[ -f "$release_dir/hardened-functions.txt" &&
@@ -1241,11 +1438,112 @@ done < "$release_dir/hardened-functions.txt"
 release_symlink="$(find "$release_dir" -type l -print -quit)"
 [[ -z "$release_symlink" ]]
 [[ -d "$release_dir/frontend-dist" && ! -L "$release_dir/frontend-dist" ]]
+[[ -f "$release_dir/nginx.conf" && ! -L "$release_dir/nginx.conf" ]]
+[[ -f "$nginx_path" && ! -L "$nginx_path" ]]
 [[ -f "$release_dir/release-inputs.sha256" &&
   ! -L "$release_dir/release-inputs.sha256" ]]
 (
   cd "$release_dir" &&
     sha256sum --check --strict --quiet release-inputs.sha256
+)
+frontend_id="$(cd "$compose_dir" && docker compose ps -q frontend)"
+[[ -n "$frontend_id" ]]
+frontend_image="$(docker inspect "$frontend_id" --format '{{.Image}}')"
+[[ "$frontend_image" =~ ^sha256:[a-f0-9]{64}$ ]]
+docker run --rm --entrypoint nginx \
+  -v "$release_dir/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+  "$frontend_image" -t >/dev/null
+(
+  set -Eeuo pipefail
+  nginx_qa_dir="$(mktemp -d /tmp/wisewolf-nginx-release-qa.XXXXXX)"
+  [[ "$nginx_qa_dir" =~ ^/tmp/wisewolf-nginx-release-qa\.[A-Za-z0-9]+$ ]]
+  nginx_qa_container=""
+  cleanup_nginx_qa() {
+    if [[ "$nginx_qa_container" =~ ^[a-f0-9]{64}$ ]]; then
+      docker rm -f "$nginx_qa_container" >/dev/null 2>&1 || true
+    fi
+    rm -rf -- "$nginx_qa_dir"
+  }
+  trap cleanup_nginx_qa EXIT
+
+  nginx_qa_container="$(docker run -d --rm \
+    -v "$release_dir/frontend-dist:/usr/share/nginx/html:ro" \
+    -v "$release_dir/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+    "$frontend_image")"
+  [[ "$nginx_qa_container" =~ ^[a-f0-9]{64}$ ]]
+  nginx_qa_ip="$(docker inspect "$nginx_qa_container" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
+  [[ "$nginx_qa_ip" =~ ^[0-9]+(\.[0-9]+){3}$ ]]
+
+  nginx_qa_ready=0
+  for attempt in {1..20}; do
+    if curl -fsS --connect-timeout 2 --max-time 5 \
+      -H 'Host: system.wisewolflanguage.com.br' \
+      "http://$nginx_qa_ip/hub" >/dev/null 2>&1; then
+      nginx_qa_ready=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$nginx_qa_ready" = "1" ]]
+
+  nginx_qa_request() {
+    local host=$1 request_path=$2 output_file=$3
+    curl -sS --connect-timeout 2 --max-time 10 \
+      -o "$output_file" -w '%{http_code}' \
+      -H "Host: $host" "http://$nginx_qa_ip$request_path"
+  }
+
+  pwa_refresh_asset="$(find "$release_dir/frontend-dist" -maxdepth 1 -type f -name 'pwa-critical-refresh-*.js' -printf '%f\n')"
+  workbox_asset="$(find "$release_dir/frontend-dist" -maxdepth 1 -type f -name 'workbox-*.js' -printf '%f\n')"
+  [[ "$pwa_refresh_asset" =~ ^pwa-critical-refresh-[A-Za-z0-9._-]+\.js$ ]]
+  [[ "$workbox_asset" =~ ^workbox-[A-Za-z0-9._-]+\.js$ ]]
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br "/$pwa_refresh_asset" "$nginx_qa_dir/pwa-refresh.js")" = "200" ]]
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br "/$workbox_asset" "$nginx_qa_dir/workbox.js")" = "200" ]]
+
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /hub/professores "$nginx_qa_dir/system-professores.html")" = "200" ]]
+  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+    "$nginx_qa_dir/system-professores.html"
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /professores "$nginx_qa_dir/hub-professores.html")" = "200" ]]
+  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+    "$nginx_qa_dir/hub-professores.html"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /hub/termos "$nginx_qa_dir/system-termos.html")" = "200" ]]
+  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/termos">' \
+    "$nginx_qa_dir/system-termos.html"
+  grep -Fq "fbq('init'" "$nginx_qa_dir/system-termos.html"
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /termos "$nginx_qa_dir/hub-termos.html")" = "200" ]]
+  grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/termos">' \
+    "$nginx_qa_dir/hub-termos.html"
+  ! grep -E -i -q '(^|[^A-Za-z])fbq([^A-Za-z]|$)|Meta Pixel|facebook\.com/tr' \
+    "$nginx_qa_dir/hub-termos.html"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /seja-professor "$nginx_qa_dir/seja-professor.html")" = "200" ]]
+  grep -Fq '<title>Professor Negócio | Gestão para Professores de Inglês</title>' \
+    "$nginx_qa_dir/seja-professor.html"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /new-saas "$nginx_qa_dir/new-saas.html")" = "200" ]]
+  grep -Fq '<title>Diagnóstico para Escolas de Inglês | Wise Wolf School OS</title>' \
+    "$nginx_qa_dir/new-saas.html"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /hub/rota-inexistente-seo "$nginx_qa_dir/system-404.html")" = "404" ]]
+  grep -Fq '<meta name="robots" content="noindex, nofollow">' "$nginx_qa_dir/system-404.html"
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /rota-inexistente-seo "$nginx_qa_dir/hub-404.html")" = "404" ]]
+  grep -Fq '<meta name="robots" content="noindex, nofollow">' "$nginx_qa_dir/hub-404.html"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /__hub_host/professores/index.html "$nginx_qa_dir/internal.html")" = "404" ]]
+  # Os dois hosts precisam entregar sitemap e robots: no host dedicado o
+  # catch-all devolve 404, então a rota própria é a única coisa que os serve.
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /sitemap.xml "$nginx_qa_dir/system-sitemap.xml")" = "200" ]]
+  grep -Fq '<loc>https://system.wisewolflanguage.com.br/new-saas</loc>' \
+    "$nginx_qa_dir/system-sitemap.xml"
+  [[ "$(nginx_qa_request system.wisewolflanguage.com.br /robots.txt "$nginx_qa_dir/system-robots.txt")" = "200" ]]
+  grep -Fq 'Sitemap: https://system.wisewolflanguage.com.br/sitemap.xml' \
+    "$nginx_qa_dir/system-robots.txt"
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /sitemap.xml "$nginx_qa_dir/hub-sitemap.xml")" = "200" ]]
+  grep -Fq '<loc>https://hub.wisewolflanguage.com.br/saas-escolar</loc>' \
+    "$nginx_qa_dir/hub-sitemap.xml"
+  grep -Fq '<loc>https://hub.wisewolflanguage.com.br/termos</loc>' \
+    "$nginx_qa_dir/hub-sitemap.xml"
+  grep -Fq '<loc>https://hub.wisewolflanguage.com.br/privacidade</loc>' \
+    "$nginx_qa_dir/hub-sitemap.xml"
+  [[ "$(nginx_qa_request hub.wisewolflanguage.com.br /robots.txt "$nginx_qa_dir/hub-robots.txt")" = "200" ]]
+  grep -Fq 'Sitemap: https://hub.wisewolflanguage.com.br/sitemap.xml' \
+    "$nginx_qa_dir/hub-robots.txt"
 )
 if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/wolfie-activity/index.ts" ]]
@@ -1257,6 +1555,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/hub-library-access/index.ts" ]]
 [[ -s "$release_dir/functions/sync-hub-material/index.ts" ]]
 [[ -s "$release_dir/functions/create-hub-checkout/index.ts" ]]
+[[ -s "$release_dir/functions/process-hub-fulfillment/index.ts" ]]
 [[ -s "$release_dir/functions/pedagogical-content/index.ts" ]]
 [[ -s "$release_dir/functions/wolf-tutor-api/index.ts" ]]
 [[ -s "$release_dir/functions/asaas-webhook/index.ts" ]]
@@ -1275,6 +1574,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 [[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
+[[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -1283,7 +1583,7 @@ fi
 write_activation_state() {
   local activation_phase=$1
   case "$activation_phase" in
-    prepared | code_staged | database_transaction_started | database_committed | post_commit_failed | rollback_failed | active | rolled_back) ;;
+    prepared | code_staged | database_transaction_started | database_commit_unknown | database_committed | post_commit_failed | rollback_failed | active | rolled_back) ;;
     *) return 1 ;;
   esac
   [[ -d "$backup_dir" && ! -L "$backup_dir" ]]
@@ -1305,14 +1605,21 @@ restore_previous_release() {
   rollback_started=1
   trap - ERR
   set +Ee
-  if [[ "$database_committed" = "1" ]]; then
-    echo "ERRO: validação pós-commit falhou; mantendo banco, frontend e funções da mesma release." >&2
-    write_activation_state post_commit_failed || true
+  if [[ "$database_committed" = "1" || "$database_commit_unknown" = "1" ]]; then
+    if [[ "$database_committed" = "1" ]]; then
+      echo "ERRO: validação pós-commit falhou; mantendo banco, frontend e funções da mesma release." >&2
+      write_activation_state post_commit_failed || true
+      printf '%s\n' "post_commit_validation_failed:$release_id" \
+        > "$backup_dir/POST_COMMIT_FAILURE"
+    else
+      echo "ERRO CRÍTICO: resultado do commit não pôde ser confirmado; mantendo o código novo para evitar incompatibilidade com um banco possivelmente atualizado." >&2
+      write_activation_state database_commit_unknown || true
+      printf '%s\n' "database_commit_unknown:$release_id:$database_release_manifest_checksum" \
+        > "$backup_dir/DATABASE_COMMIT_UNKNOWN"
+    fi
     rm -f -- "$current_marker_tmp" "$current_marker_rollback_tmp"
     printf '%s\n' "$release_id" > "$current_marker_tmp" &&
       mv -f -- "$current_marker_tmp" "$current_marker"
-    printf '%s\n' "post_commit_validation_failed:$release_id" \
-      > "$backup_dir/POST_COMMIT_FAILURE"
     if [[ "$preserve_remote_functions" != "1" ]]; then
       (
         cd "$supabase_dir" &&
@@ -1339,6 +1646,12 @@ restore_previous_release() {
     fi
   fi
   rm -f -- "$current_marker_tmp" "$current_marker_rollback_tmp"
+
+  rm -f -- "$nginx_next"
+  if [[ "$nginx_swapped" = "1" && -f "$backup_dir/nginx.conf" ]]; then
+    cp -a -- "$backup_dir/nginx.conf" "$nginx_next"
+    mv -f -- "$nginx_next" "$nginx_path"
+  fi
 
   if [[ "$frontend_swapped" = "1" ]]; then
     if [[ -d "$app_dir/dist" ]]; then
@@ -1425,6 +1738,16 @@ restore_previous_release() {
     fi
     if [[ -d "$backup_dir/create-hub-checkout" ]]; then
       mv -- "$backup_dir/create-hub-checkout" "$functions_dir/create-hub-checkout"
+    fi
+  fi
+  if [[ "$hub_fulfillment_function_swapped" = "1" ]]; then
+    if [[ -d "$functions_dir/process-hub-fulfillment" ]]; then
+      mv -- "$functions_dir/process-hub-fulfillment" \
+        "$backup_dir/failed-process-hub-fulfillment"
+    fi
+    if [[ -d "$backup_dir/process-hub-fulfillment" ]]; then
+      mv -- "$backup_dir/process-hub-fulfillment" \
+        "$functions_dir/process-hub-fulfillment"
     fi
   fi
   if [[ "$hub_ai_function_swapped" = "1" ]]; then
@@ -1573,7 +1896,9 @@ trap restore_previous_release ERR
 [[ ! -e "$current_marker_backup" && ! -L "$current_marker_backup" ]]
 [[ ! -e "$current_marker_tmp" && ! -L "$current_marker_tmp" ]]
 [[ ! -e "$current_marker_rollback_tmp" && ! -L "$current_marker_rollback_tmp" ]]
+[[ ! -e "$nginx_next" && ! -L "$nginx_next" ]]
 [[ ! -L "$current_marker" ]]
+cp -a -- "$nginx_path" "$backup_dir/nginx.conf"
 if [[ -f "$current_marker" ]]; then
   cp -a -- "$current_marker" "$current_marker_backup"
   current_marker_existed=1
@@ -1581,6 +1906,408 @@ elif [[ -e "$current_marker" ]]; then
   echo "ERRO: marcador de release atual não é um arquivo regular." >&2
   false
 fi
+
+sql_envelope_info() {
+  local sql_path=$1
+  local envelope_kind=$2
+  awk -v envelope_kind="$envelope_kind" '
+    function normalize_sql(value) {
+      value = tolower(value)
+      gsub(/[[:space:]]+/, " ", value)
+      gsub(/^ +| +$/, "", value)
+      return value
+    }
+    function append_statement(value) {
+      if (statement_start_line == 0 && value !~ /^[[:space:]]*$/) {
+        statement_start_line = NR
+      }
+      statement = statement value
+    }
+    function statement_label(normalized) {
+      if (normalized == "begin") return "begin;"
+      if (normalized == "commit") return "commit;"
+      if (normalized == "rollback") return "rollback;"
+      return "other"
+    }
+    function boundary_line_is(raw_line, expected, normalized) {
+      normalized = tolower(raw_line)
+      sub(/[[:space:]]*--.*$/, "", normalized)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+      return normalized == expected
+    }
+    function record_statement(end_line, raw_line, normalized, label, allowed_savepoint, forbidden_transaction) {
+      normalized = normalize_sql(statement)
+      statement = ""
+      if (normalized == "") {
+        statement_start_line = 0
+        return
+      }
+
+      statement_count++
+      label = statement_label(normalized)
+      if (statement_count == 1) {
+        first_sql = label
+        first_line = statement_start_line
+        first_boundary_safe = statement_start_line == end_line && boundary_line_is(raw_line, label)
+      }
+      last_sql = label
+      last_line = end_line
+      last_boundary_safe = statement_start_line == end_line && boundary_line_is(raw_line, label)
+
+      if (label == "begin;" || label == "commit;" || label == "rollback;") {
+        transaction_control_count++
+      } else {
+        allowed_savepoint = envelope_kind == "test" && normalized ~ /^(savepoint|release savepoint|rollback to savepoint) [a-z][a-z0-9_]*$/
+        forbidden_transaction = 0
+        if (normalized ~ /^(begin|commit|rollback|abort)( .*)?$/) forbidden_transaction = 1
+        if (normalized ~ /^(savepoint|release savepoint)( .*)?$/) forbidden_transaction = 1
+        if (normalized ~ /^start transaction( .*)?$/) forbidden_transaction = 1
+        if (normalized ~ /^end (work|transaction)( .*)?$/) forbidden_transaction = 1
+        if (normalized ~ /^prepare transaction( .*)?$/) forbidden_transaction = 1
+        if (!allowed_savepoint && forbidden_transaction) {
+          forbidden_transaction_count++
+        }
+      }
+      statement_start_line = 0
+    }
+    function record_meta(raw_meta, prefix, normalized, test_set_allowed, meta_allowed) {
+      normalized = tolower(raw_meta)
+      gsub(/[[:space:]]+/, " ", normalized)
+      gsub(/^ +| +$/, "", normalized)
+      recorded_meta = normalized
+      meta_allowed = prefix ~ /^[[:space:]]*$/ || normalized == "\\gset"
+      test_set_allowed = 0
+      if (normalized ~ /^\\set [a-z][a-z0-9_]*_failed (true|false)$/) {
+        test_set_allowed = 1
+      }
+      if (normalized ~ /^\\set [a-z][a-z0-9_]*_sqlstate ('\''\''|:sqlstate)$/) {
+        test_set_allowed = 1
+      }
+
+      if (envelope_kind == "migration") {
+        meta_allowed = meta_allowed && normalized == "\\set on_error_stop on"
+      } else if (envelope_kind == "test") {
+        test_meta_allowed = normalized ~ /^\\set on_error_stop (on|off)$/
+        if (test_set_allowed || normalized == "\\if :error" ||
+          normalized == "\\endif" || normalized == "\\gset") {
+          test_meta_allowed = 1
+        }
+        meta_allowed = meta_allowed && test_meta_allowed
+      } else {
+        meta_allowed = 0
+      }
+
+      if (!meta_allowed) {
+        forbidden_meta_count++
+        return
+      }
+      if (normalized == "\\if :error") {
+        conditional_depth++
+      } else if (normalized == "\\endif") {
+        if (conditional_depth == 0) {
+          forbidden_meta_count++
+        } else {
+          conditional_depth--
+        }
+      }
+    }
+    {
+      raw_line = $0
+      line = $0 "\n"
+      position = 1
+      while (position <= length(line)) {
+        character = substr(line, position, 1)
+        next_character = substr(line, position + 1, 1)
+
+        if (block_comment_depth > 0) {
+          if (character == "/" && next_character == "*") {
+            block_comment_depth++
+            position += 2
+          } else if (character == "*" && next_character == "/") {
+            block_comment_depth--
+            position += 2
+          } else {
+            position++
+          }
+          continue
+        }
+        if (dollar_tag != "") {
+          if (substr(line, position, length(dollar_tag)) == dollar_tag) {
+            position += length(dollar_tag)
+            dollar_tag = ""
+            append_statement(" ")
+          } else {
+            position++
+          }
+          continue
+        }
+        if (single_quote) {
+          if (single_quote_escape && character == "\\") {
+            position += 2
+          } else if (character == "'\''" && next_character == "'\''") {
+            position += 2
+          } else if (character == "'\''") {
+            single_quote = 0
+            single_quote_escape = 0
+            append_statement(" ")
+            position++
+          } else {
+            position++
+          }
+          continue
+        }
+        if (double_quote) {
+          if (character == "\"" && next_character == "\"") {
+            position += 2
+          } else if (character == "\"") {
+            double_quote = 0
+            append_statement(" ")
+            position++
+          } else {
+            position++
+          }
+          continue
+        }
+
+        if (character == "-" && next_character == "-") {
+          append_statement(" ")
+          break
+        }
+        if (character == "/" && next_character == "*") {
+          append_statement(" ")
+          block_comment_depth = 1
+          position += 2
+          continue
+        }
+        if (character == "'\''") {
+          previous_character = position > 1 ? substr(line, position - 1, 1) : ""
+          before_previous_character = position > 2 ? substr(line, position - 2, 1) : ""
+          single_quote_escape = tolower(previous_character) == "e" && (position <= 2 || before_previous_character !~ /[[:alnum:]_$]/)
+          single_quote = 1
+          append_statement(" ")
+          position++
+          continue
+        }
+        if (character == "\"") {
+          double_quote = 1
+          append_statement(" ")
+          position++
+          continue
+        }
+        if (character == "$") {
+          dollar_candidate = substr(line, position)
+          previous_character = position > 1 ? substr(line, position - 1, 1) : ""
+          if (previous_character !~ /[[:alnum:]_$]/ && match(dollar_candidate, /^\$([[:alpha:]_][[:alnum:]_]*)?\$/)) {
+            dollar_tag = substr(dollar_candidate, 1, RLENGTH)
+            append_statement(" ")
+            position += length(dollar_tag)
+            continue
+          }
+        }
+        if (character == "\\") {
+          record_meta(substr(line, position), substr(raw_line, 1, position - 1))
+          if (recorded_meta == "\\gset") {
+            record_statement(NR, raw_line)
+          }
+          break
+        }
+        if (character == ";") {
+          record_statement(NR, raw_line)
+          position++
+          continue
+        }
+        append_statement(tolower(character))
+        position++
+      }
+    }
+    END {
+      if (normalize_sql(statement) != "") {
+        record_statement(NR, raw_line)
+      }
+      if (block_comment_depth != 0 || dollar_tag != "" ||
+        single_quote || double_quote) {
+        lexical_error_count++
+      }
+      if (conditional_depth != 0) {
+        forbidden_meta_count++
+      }
+      printf "%d\t%d\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%d\n",
+        first_line + 0,
+        last_line + 0,
+        first_sql,
+        last_sql,
+        transaction_control_count + 0,
+        forbidden_transaction_count + 0,
+        forbidden_meta_count + 0,
+        first_boundary_safe + 0,
+        last_boundary_safe + 0,
+        lexical_error_count + 0
+    }
+  ' "$sql_path"
+}
+
+emit_sql_payload() {
+  local sql_path=$1
+  local envelope_kind=$2
+  local first_line last_line first_sql last_sql transaction_count forbidden_transaction_count meta_count
+  local first_boundary_safe last_boundary_safe lexical_error_count
+  IFS=$'\t' read -r \
+    first_line last_line first_sql last_sql transaction_count forbidden_transaction_count meta_count \
+    first_boundary_safe last_boundary_safe lexical_error_count \
+    < <(sql_envelope_info "$sql_path" "$envelope_kind")
+
+  local skip_first_line=0
+  local skip_last_line=0
+  if [[ "$envelope_kind" = "test" ||
+    ("$first_sql" = "begin;" && "$last_sql" = "commit;") ]]; then
+    skip_first_line=$first_line
+    skip_last_line=$last_line
+  fi
+
+  awk -v skip_first_line="$skip_first_line" \
+      -v skip_last_line="$skip_last_line" \
+      -v envelope_kind="$envelope_kind" '
+    NR == skip_first_line || NR == skip_last_line { next }
+    {
+      normalized = tolower($0)
+      sub(/[[:space:]]*--.*$/, "", normalized)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
+      if (envelope_kind == "migration" &&
+        normalized == "\\set on_error_stop on") {
+        next
+      }
+      print
+    }
+  ' "$sql_path"
+}
+
+prepare_database_release_journal() {
+  local expected_manifest_checksum=$1
+
+  docker exec -i supabase-db \
+    psql -X -q -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+    -v release_id="$release_id" \
+    -v release_manifest_checksum="$expected_manifest_checksum" <<'SQL'
+set statement_timeout = '60s';
+create schema if not exists private;
+revoke all on schema private from public, anon;
+create table if not exists private.release_commit_journal (
+  release_id text primary key,
+  release_manifest_checksum text not null,
+  release_state text not null default 'PREPARED',
+  prepared_at timestamptz not null default clock_timestamp(),
+  committed_at timestamptz,
+  constraint release_commit_journal_release_id_format
+    check (release_id ~ '^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{7,12}$'),
+  constraint release_commit_journal_manifest_checksum_format
+    check (release_manifest_checksum ~ '^[a-f0-9]{64}$'),
+  constraint release_commit_journal_state_check
+    check (release_state in ('PREPARED', 'IN_TRANSACTION', 'COMMITTED'))
+);
+alter table private.release_commit_journal
+  add column if not exists release_state text not null default 'COMMITTED';
+alter table private.release_commit_journal
+  add column if not exists prepared_at timestamptz not null
+    default clock_timestamp();
+update private.release_commit_journal
+set release_state = 'COMMITTED'
+where release_state is null;
+alter table private.release_commit_journal
+  alter column release_state set default 'PREPARED';
+alter table private.release_commit_journal
+  alter column release_state set not null;
+alter table private.release_commit_journal
+  alter column committed_at drop not null;
+do $journal_constraint$
+begin
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conrelid = 'private.release_commit_journal'::regclass
+      and conname = 'release_commit_journal_state_check'
+  ) then
+    alter table private.release_commit_journal
+      add constraint release_commit_journal_state_check
+      check (release_state in ('PREPARED', 'IN_TRANSACTION', 'COMMITTED'));
+  end if;
+end;
+$journal_constraint$;
+alter table private.release_commit_journal enable row level security;
+revoke all on table private.release_commit_journal
+  from public, anon, authenticated, service_role;
+insert into private.release_commit_journal (
+  release_id,
+  release_manifest_checksum,
+  release_state,
+  prepared_at,
+  committed_at
+) values (
+  :'release_id',
+  :'release_manifest_checksum',
+  'PREPARED',
+  clock_timestamp(),
+  null
+)
+on conflict (release_id) do nothing;
+select 1 / pg_catalog.count(*)
+from private.release_commit_journal
+where release_id = :'release_id'
+  and release_manifest_checksum = :'release_manifest_checksum'
+  and release_state = 'PREPARED';
+SQL
+}
+
+reconcile_database_release_commit() {
+  local expected_manifest_checksum=$1
+  local commit_outcome
+
+  if ! commit_outcome="$(
+    docker exec -i supabase-db \
+      psql -X -qAt -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+      -v release_id="$release_id" \
+      -v release_manifest_checksum="$expected_manifest_checksum" <<'SQL'
+set statement_timeout = '60s';
+\o /dev/null
+select pg_advisory_lock(982451653, 1431655765);
+\o
+select to_regclass('private.release_commit_journal') is not null as journal_exists \gset
+\if :journal_exists
+select case
+  when exists (
+    select 1
+    from private.release_commit_journal
+    where release_id = :'release_id'
+      and release_manifest_checksum = :'release_manifest_checksum'
+      and release_state = 'COMMITTED'
+  ) then 'committed'
+  when exists (
+    select 1
+    from private.release_commit_journal
+    where release_id = :'release_id'
+      and release_manifest_checksum = :'release_manifest_checksum'
+      and release_state = 'PREPARED'
+  ) then 'rolled_back'
+  when exists (
+    select 1
+    from private.release_commit_journal
+    where release_id = :'release_id'
+  ) then 'mismatch'
+  else 'unknown'
+end;
+\else
+select 'unknown';
+\endif
+SQL
+  )"; then
+    printf 'unknown'
+    return 0
+  fi
+
+  case "$commit_outcome" in
+    committed | rolled_back) printf '%s' "$commit_outcome" ;;
+    *) printf 'unknown' ;;
+  esac
+}
 
 run_database_release() {
 shopt -s nullglob
@@ -1594,50 +2321,15 @@ expected_database_test_count="$(
 [[ ${#database_tests[@]} -eq "$expected_database_test_count" ]]
 for database_test in "${database_tests[@]}"; do
   [[ -s "$database_test" ]]
-  if ! awk '
-    {
-      normalized = tolower($0)
-      sub(/[[:space:]]*--.*$/, "", normalized)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-      if (normalized == "") {
-        next
-      }
-      if (substr(normalized, 1, 1) == "\\") {
-        if (normalized != "\\set on_error_stop on") {
-          forbidden_meta_count++
-        }
-        next
-      }
-      if (first_sql == "") {
-        first_sql = normalized
-      }
-      last_sql = normalized
-      if (normalized == "begin;") {
-        begin_count++
-      } else if (normalized == "rollback;") {
-        rollback_count++
-      } else if (normalized ~ /^begin[[:space:]].*;$/ ||
-        normalized ~ /^commit([[:space:]].*)?;$/ ||
-        normalized ~ /^rollback[[:space:]].*;$/ ||
-        normalized ~ /^abort([[:space:]].*)?;$/ ||
-        normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
-        normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
-        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/) {
-        forbidden_count++
-      }
-    }
-    END {
-      if (begin_count != 1 ||
-        rollback_count != 1 ||
-        forbidden_count != 0 ||
-        forbidden_meta_count != 0 ||
-        first_sql != "begin;" ||
-        last_sql != "rollback;") {
-        exit 1
-      }
-    }
-  ' "$database_test"; then
-    echo "ERRO: teste SQL deve ter exatamente um BEGIN inicial, um ROLLBACK final e nenhum COMMIT: $database_test" >&2
+  IFS=$'\t' read -r \
+    first_line last_line first_sql last_sql transaction_count forbidden_transaction_count meta_count \
+    first_boundary_safe last_boundary_safe lexical_error_count \
+    < <(sql_envelope_info "$database_test" test)
+  if [[ "$first_sql" != "begin;" || "$last_sql" != "rollback;" ||
+    "$transaction_count" != "2" || "$forbidden_transaction_count" != "0" ||
+    "$meta_count" != "0" || "$first_boundary_safe" != "1" ||
+    "$last_boundary_safe" != "1" || "$lexical_error_count" != "0" ]]; then
+    echo "ERRO: teste SQL possui envelope, sintaxe lexical ou diretiva psql incompatível: $database_test" >&2
     return 1
   fi
 done
@@ -1658,50 +2350,20 @@ for migration_path in "${migration_files[@]}"; do
   migration_file="$(basename -- "$migration_path")"
   [[ "$migration_file" =~ ^([0-9]{14})_[A-Za-z0-9_]+\.sql$ ]]
   migration_version="${BASH_REMATCH[1]}"
-  if ! awk '
-    {
-      normalized = tolower($0)
-      sub(/[[:space:]]*--.*$/, "", normalized)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-      if (normalized == "") {
-        next
-      }
-      if (substr(normalized, 1, 1) == "\\") {
-        if (normalized != "\\set on_error_stop on") {
-          forbidden_meta_count++
-        }
-        next
-      }
-      if (first_sql == "") {
-        first_sql = normalized
-      }
-      last_sql = normalized
-      if (normalized == "begin;") {
-        begin_count++
-      } else if (normalized == "commit;") {
-        commit_count++
-      } else if (normalized ~ /^begin[[:space:]].*;$/ ||
-        normalized ~ /^commit[[:space:]].*;$/ ||
-        normalized ~ /^rollback([[:space:]].*)?;$/ ||
-        normalized ~ /^abort([[:space:]].*)?;$/ ||
-        normalized ~ /^start[[:space:]]+transaction([[:space:]].*)?;$/ ||
-        normalized ~ /^end[[:space:]]+(work|transaction)([[:space:]].*)?;$/ ||
-        normalized ~ /^prepare[[:space:]]+transaction([[:space:]].*)?;$/) {
-        forbidden_count++
-      }
-    }
-    END {
-      unwrapped = begin_count == 0 && commit_count == 0
-      wrapped = begin_count == 1 && commit_count == 1 &&
-        first_sql == "begin;" && last_sql == "commit;"
-      if (forbidden_count != 0 ||
-        forbidden_meta_count != 0 ||
-        (!unwrapped && !wrapped)) {
-        exit 1
-      }
-    }
-  ' "$migration_path"; then
-    echo "ERRO: migration possui controle transacional incompatível com a transação atômica da release: $migration_file" >&2
+  IFS=$'\t' read -r \
+    first_line last_line first_sql last_sql transaction_count forbidden_transaction_count meta_count \
+    first_boundary_safe last_boundary_safe lexical_error_count \
+    < <(sql_envelope_info "$migration_path" migration)
+  migration_is_wrapped=0
+  if [[ "$first_sql" = "begin;" && "$last_sql" = "commit;" &&
+    "$transaction_count" = "2" && "$first_boundary_safe" = "1" &&
+    "$last_boundary_safe" = "1" ]]; then
+    migration_is_wrapped=1
+  fi
+  if [[ "$meta_count" != "0" || "$forbidden_transaction_count" != "0" ||
+    "$lexical_error_count" != "0" ||
+    ("$migration_is_wrapped" = "0" && "$transaction_count" != "0") ]]; then
+    echo "ERRO: migration possui envelope, sintaxe lexical ou diretiva psql incompatível: $migration_file" >&2
     return 1
   fi
   migration_checksum="$(sha256sum "$migration_path" | awk '{print $1}')"
@@ -1727,6 +2389,14 @@ if [[ "${1:-}" = "validate-only" ]]; then
 fi
 
 if ((${#unapplied_migrations[@]} > 0)); then
+  database_release_manifest_checksum="$(
+    sha256sum "$release_dir/release-inputs.sha256" | awk '{print $1}'
+  )"
+  [[ "$database_release_manifest_checksum" =~ ^[a-f0-9]{64}$ ]]
+  if ! prepare_database_release_journal \
+    "$database_release_manifest_checksum"; then
+    prepare_database_release_journal "$database_release_manifest_checksum"
+  fi
   database_backup_tmp="$backup_dir/postgres-before-migration.dump.tmp"
   database_backup="$backup_dir/postgres-before-migration.dump"
   echo "== Backup do banco antes das migrations =="
@@ -1747,20 +2417,22 @@ if ((${#unapplied_migrations[@]} > 0)); then
   rm -f -- "$database_release_sql"
   {
     printf 'begin;\n\n'
+    printf 'select pg_advisory_xact_lock(982451653, 1431655765);\n\n'
+    cat <<'SQL'
+update private.release_commit_journal
+set release_state = 'IN_TRANSACTION'
+where release_id = :'release_id'
+  and release_manifest_checksum = :'release_manifest_checksum'
+  and release_state = 'PREPARED';
+select 1 / pg_catalog.count(*)
+from private.release_commit_journal
+where release_id = :'release_id'
+  and release_manifest_checksum = :'release_manifest_checksum'
+  and release_state = 'IN_TRANSACTION';
+
+SQL
     for migration_path in "${unapplied_migrations[@]}"; do
-      awk '
-        {
-          normalized = tolower($0)
-          sub(/[[:space:]]*--.*$/, "", normalized)
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-          if (normalized == "begin;" ||
-            normalized == "commit;" ||
-            normalized == "\\set on_error_stop on") {
-            next
-          }
-          print
-        }
-      ' "$migration_path"
+      emit_sql_payload "$migration_path" migration
       printf '\n'
     done
 
@@ -1768,31 +2440,51 @@ if ((${#unapplied_migrations[@]} > 0)); then
     for database_test in "${database_tests[@]}"; do
       database_test_savepoint="release_database_test_$database_test_index"
       printf 'savepoint %s;\n' "$database_test_savepoint"
-      awk '
-        {
-          normalized = tolower($0)
-          sub(/[[:space:]]*--.*$/, "", normalized)
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", normalized)
-          if (normalized == "begin;" ||
-            normalized == "rollback;" ||
-            normalized == "\\set on_error_stop on") {
-            next
-          }
-          print
-        }
-      ' "$database_test"
-      printf '\nrollback to savepoint %s;\n' "$database_test_savepoint"
+      emit_sql_payload "$database_test" test
+      printf '\n\\set ON_ERROR_STOP on\n'
+      printf 'rollback to savepoint %s;\n' "$database_test_savepoint"
       printf 'release savepoint %s;\n\n' "$database_test_savepoint"
       database_test_index=$((database_test_index + 1))
     done
+    cat <<'SQL'
+update private.release_commit_journal
+set release_state = 'COMMITTED',
+    committed_at = clock_timestamp()
+where release_id = :'release_id'
+  and release_manifest_checksum = :'release_manifest_checksum'
+  and release_state = 'IN_TRANSACTION';
+select 1 / pg_catalog.count(*)
+from private.release_commit_journal
+where release_id = :'release_id'
+  and release_manifest_checksum = :'release_manifest_checksum'
+  and release_state = 'COMMITTED';
+
+SQL
     printf 'commit;\n'
   } > "$database_release_sql"
   [[ -s "$database_release_sql" ]]
   write_activation_state database_transaction_started
   docker exec -i supabase-db \
     psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
-    < "$database_release_sql"
-  database_committed=1
+    -v release_id="$release_id" \
+    -v release_manifest_checksum="$database_release_manifest_checksum" \
+    < "$database_release_sql" || true
+  database_commit_outcome="$(
+    reconcile_database_release_commit "$database_release_manifest_checksum"
+  )"
+  case "$database_commit_outcome" in
+    committed)
+      database_committed=1
+      ;;
+    rolled_back)
+      return 1
+      ;;
+    *)
+      database_commit_unknown=1
+      write_activation_state database_commit_unknown
+      return 1
+      ;;
+  esac
   write_activation_state database_committed
 
   for marker_index in "${!unapplied_markers[@]}"; do
@@ -1974,6 +2666,10 @@ if [[ -d "$app_dir/dist" ]]; then
 fi
 frontend_swapped=1
 cp -a -- "$release_dir/frontend-dist" "$app_dir/dist"
+cp -a -- "$release_dir/nginx.conf" "$nginx_next"
+chmod 0644 "$nginx_next"
+nginx_swapped=1
+mv -f -- "$nginx_next" "$nginx_path"
 
 if [[ "$preserve_remote_functions" != "1" ]]; then
 if [[ -d "$functions_dir/wolfie-activity" ]]; then
@@ -2040,6 +2736,14 @@ hub_checkout_function_swapped=1
 cp -a -- "$release_dir/functions/create-hub-checkout" \
   "$functions_dir/create-hub-checkout"
 
+if [[ -d "$functions_dir/process-hub-fulfillment" ]]; then
+  mv -- "$functions_dir/process-hub-fulfillment" \
+    "$backup_dir/process-hub-fulfillment"
+fi
+hub_fulfillment_function_swapped=1
+cp -a -- "$release_dir/functions/process-hub-fulfillment" \
+  "$functions_dir/process-hub-fulfillment"
+
 if [[ -d "$functions_dir/pedagogical-content" ]]; then
   mv -- "$functions_dir/pedagogical-content" "$backup_dir/pedagogical-content"
 fi
@@ -2069,7 +2773,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts tenant-communication.ts tenant-legal-assets.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
@@ -2222,7 +2926,49 @@ wait_for_service_http_status() {
 }
 
 wait_for_http_status 200 "frontend público" "$public_url/"
+wait_for_http_status 200 "landing Professor Negócio" "$public_url/seja-professor"
+wait_for_http_status 200 "landing de diagnóstico escolar" "$public_url/new-saas"
 wait_for_http_status 200 "frontend do Wise Wolf Hub" "$public_url/hub"
+wait_for_http_status 200 "landing para professores do Hub" "$public_url/hub/professores"
+wait_for_http_status 200 "landing para escolas do Hub" "$public_url/hub/escolas"
+wait_for_http_status 200 "landing da biblioteca do Hub" "$public_url/hub/biblioteca"
+wait_for_http_status 200 "landing do Educador IA" "$public_url/hub/educador-ia"
+wait_for_http_status 200 "landing do Wolfie no Hub" "$public_url/hub/wolfie"
+wait_for_http_status 200 "landing do SaaS Escolar no Hub" "$public_url/hub/saas-escolar"
+wait_for_http_status 200 "Termos de Uso do Hub" "$public_url/hub/termos"
+wait_for_http_status 200 "Política de Privacidade do Hub" "$public_url/hub/privacidade"
+wait_for_http_status 404 "rota desconhecida do Hub" "$public_url/hub/rota-inexistente-seo"
+wait_for_http_status 200 "sitemap do Hub" "$public_url/sitemap.xml"
+wait_for_http_status 200 "robots do Hub" "$public_url/robots.txt"
+
+hub_seo_smoke_dir="$backup_dir/hub-seo-smoke"
+[[ ! -e "$hub_seo_smoke_dir" && ! -L "$hub_seo_smoke_dir" ]]
+mkdir -- "$hub_seo_smoke_dir"
+curl -fsS --retry 3 --retry-connrefused --retry-max-time 45 \
+  --connect-timeout 5 --max-time 20 \
+  "$public_url/hub/professores" > "$hub_seo_smoke_dir/professores.html"
+grep -Fq '<title>Plataforma para Professores de Inglês | Wise Wolf</title>' \
+  "$hub_seo_smoke_dir/professores.html"
+grep -Fq '<link rel="canonical" href="https://hub.wisewolflanguage.com.br/professores">' \
+  "$hub_seo_smoke_dir/professores.html"
+grep -Fq '<meta property="og:image" content="https://hub.wisewolflanguage.com.br/assets/hub/marketing/hub-overview-og.webp">' \
+  "$hub_seo_smoke_dir/professores.html"
+curl -fsS --retry 3 --retry-connrefused --retry-max-time 45 \
+  --connect-timeout 5 --max-time 20 \
+  "$public_url/seja-professor" > "$hub_seo_smoke_dir/seja-professor.html"
+grep -Fq '<title>Professor Negócio | Gestão para Professores de Inglês</title>' \
+  "$hub_seo_smoke_dir/seja-professor.html"
+curl -fsS --retry 3 --retry-connrefused --retry-max-time 45 \
+  --connect-timeout 5 --max-time 20 \
+  "$public_url/new-saas" > "$hub_seo_smoke_dir/new-saas.html"
+grep -Fq '<title>Diagnóstico para Escolas de Inglês | Wise Wolf School OS</title>' \
+  "$hub_seo_smoke_dir/new-saas.html"
+curl -sS --retry 3 --retry-connrefused --retry-max-time 45 \
+  --connect-timeout 5 --max-time 20 \
+  "$public_url/hub/rota-inexistente-seo" > "$hub_seo_smoke_dir/404.html"
+grep -Fq '<meta name="robots" content="noindex, nofollow">' \
+  "$hub_seo_smoke_dir/404.html"
+grep -Fq 'Esta página saiu da trilha.' "$hub_seo_smoke_dir/404.html"
 
 asset_smoke_dir="$backup_dir/wolfie-asset-smoke"
 asset_lock_file="$asset_smoke_dir/asset-lock.tsv"
@@ -2319,6 +3065,24 @@ wait_for_http_status 401 "autenticação do checkout do Hub" \
   -X POST "$api_url/functions/v1/create-hub-checkout" \
   -H 'Content-Type: application/json' \
   --data '{}'
+wait_for_http_status 200 "preflight do fulfillment do Hub" \
+  -X OPTIONS "$api_url/functions/v1/process-hub-fulfillment"
+wait_for_http_status 401 "autenticação do fulfillment do Hub" \
+  -X POST "$api_url/functions/v1/process-hub-fulfillment" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 200 "preflight da gestão de status do Hub" \
+  -X OPTIONS "$api_url/functions/v1/manage-hub-account-status"
+wait_for_http_status 401 "autenticação da gestão de status do Hub" \
+  -X POST "$api_url/functions/v1/manage-hub-account-status" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+wait_for_http_status 200 "preflight do cancelamento do Hub" \
+  -X OPTIONS "$api_url/functions/v1/cancel-hub-subscription"
+wait_for_http_status 401 "autenticação do cancelamento do Hub" \
+  -X POST "$api_url/functions/v1/cancel-hub-subscription" \
+  -H 'Content-Type: application/json' \
+  --data '{}'
 wait_for_http_status 200 "preflight do checkout SaaS" \
   -X OPTIONS "$api_url/functions/v1/create-saas-checkout"
 wait_for_http_status 400 "validação do checkout SaaS" \
@@ -2391,6 +3155,10 @@ for retired_service_function in \
     -H 'Content-Type: application/json' \
     --data '{}'
 done
+wait_for_service_http_status 200 "fulfillment autenticado sem fixture existente" \
+  -X POST "$api_url/functions/v1/process-hub-fulfillment" \
+  -H 'Content-Type: application/json' \
+  --data '{"checkoutId":"00000000-0000-4000-8000-000000000000","limit":1}'
 wait_for_service_http_status 403 "bloqueio de service role em notify-claim" \
   -X POST "$api_url/functions/v1/notify-claim" \
   -H 'Content-Type: application/json' \
@@ -2476,7 +3244,7 @@ if [[ -f "$activation_state_file" && ! -L "$activation_state_file" ]]; then
       printf 'rolledback'
       exit 0
       ;;
-    prepared | code_staged | database_transaction_started | rollback_failed)
+    prepared | code_staged | database_transaction_started | database_commit_unknown | rollback_failed)
       printf 'unresolved:%s' "$activation_phase"
       exit 0
       ;;

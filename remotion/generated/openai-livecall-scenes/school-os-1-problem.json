@@ -1,0 +1,13 @@
+{
+  "id": "school-os-1-problem",
+  "file": "school-os-1-problem.mp3",
+  "requestId": "gen-1787593360-6XBv9oqPxMv8Gw272HzP",
+  "sha256": "97204cc4d14dfe6d760c86c9256958269ec14f42567e55cec257a48996540add",
+  "bytes": 163675,
+  "transcriptSha256": "65bf7cd26b31cbdff8072e10901b365465e4bb83d50ce23358c4e7a29577da0e",
+  "sceneHash": "3c7bfcc7d6571cb81e7f62fc4432e11bc03b4fab8118d2a88557c5f64f2e7e3c",
+  "durationSeconds": 6.75,
+  "generatedAt": "2026-08-24T17:42:50Z",
+  "sourcePcmWavSha256": "96a78ea845c829c5abd44b74dd948f8603162f5829f15f3508ebdaf171b7a126",
+  "sourcePcmWavBytes": 324044
+}

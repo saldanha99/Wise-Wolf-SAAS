@@ -30,6 +30,7 @@ import { localYMD } from '../lib/dateUtils';
 import { nullableUuid } from '../lib/dbValues';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -299,16 +300,15 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         // Check for existing profile by CPF+tenant BEFORE upsert (unique constraint: profiles_cpf_tenant_key)
         const studentCpf = data.studentData.cpf?.replace(/\D/g, '') || null;
         if (studentCpf && targetTenantId) {
-          const { data: existingByCpf } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('cpf', studentCpf)
-            .eq('tenant_id', targetTenantId)
-            .single();
+          const { data: existingByCpf, error: cpfLookupError } = await supabase.rpc(
+            'find_authorized_profile_by_cpf',
+            { p_tenant_id: targetTenantId, p_cpf: studentCpf },
+          );
+          if (cpfLookupError) throw cpfLookupError;
 
           if (existingByCpf) {
             // A profile with this CPF already exists in this tenant — reuse it
-            finalStudentId = existingByCpf.id;
+            finalStudentId = existingByCpf;
           }
         }
 
@@ -555,6 +555,22 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     } catch (err: any) {
       console.error("Error updating profile:", err);
       alert("Erro ao atualizar perfil: " + err.message);
+    }
+  };
+
+  const openBookingEditor = async (booking: any) => {
+    try {
+      const privateProfile = await loadAuthorizedProfilePrivate(booking.studentId);
+      setEditingBooking({
+        ...booking,
+        fullProfile: {
+          ...booking.fullProfile,
+          ...privateProfile,
+        },
+      });
+    } catch (error) {
+      console.error('Erro ao carregar dados privados do aluno:', error);
+      alert('Você não tem permissão para editar os dados privados deste aluno.');
     }
   };
 
@@ -824,7 +840,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                                 {booking && (
                                   <button
                                     type="button"
-                                    onClick={() => setEditingBooking(booking)}
+                                    onClick={() => void openBookingEditor(booking)}
                                     aria-label={`Editar aula de ${booking.student}, ${day} às ${time}`}
                                     className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left cursor-pointer bg-emerald-500 text-white ${conflict ? 'ring-2 ring-red-400' : ''} ${match ? 'ring-2 ring-yellow-300' : ''}`}
                                   >
@@ -926,7 +942,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                               {booking ? (
                                 <button
                                   type="button"
-                                  onClick={() => setEditingBooking(booking)}
+                                  onClick={() => void openBookingEditor(booking)}
                                   aria-label={`Editar aula de ${booking.student}, ${DAYS[dIdx]} às ${time}`}
                                   className={`w-full h-full border rounded-md p-1 flex flex-col justify-center transition-all cursor-pointer shadow-md group/booking bg-emerald-500 dark:bg-emerald-600 border-emerald-600 dark:border-emerald-500 hover:scale-[1.02] ${isConflict ? 'ring-2 ring-red-500' : ''} ${matchSearch ? 'ring-2 ring-yellow-300 scale-105 z-10' : ''} ${dimmed ? 'opacity-20' : ''}`}
                                 >

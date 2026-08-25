@@ -1,0 +1,13 @@
+{
+  "id": "wolfie-4-cta",
+  "file": "wolfie-4-cta.mp3",
+  "requestId": "gen-1787593343-mbE5BlfxIl94tPPHueVM",
+  "sha256": "41113bdb09623cbe1f95228aaa62c1e27a171535e5fe4bd6f703a7e7d26bcd4e",
+  "bytes": 117908,
+  "transcriptSha256": "5adf6e1941ab578d8daede7033432677a910b8b08d71fb2cdaf3fe7f0919f227",
+  "sceneHash": "69208c509fda9f143497275e294dfae564d0d384eaaee82417e4cf7a55fe5e7e",
+  "durationSeconds": 4.85,
+  "generatedAt": "2026-08-24T17:42:25Z",
+  "sourcePcmWavSha256": "799ba46b47f735d82ae514ee9b3f97d42a102353f3c3302344e219e6077865f1",
+  "sourcePcmWavBytes": 232844
+}

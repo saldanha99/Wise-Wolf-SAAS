@@ -64,3 +64,13 @@ graphify-out/
 /design-assets/wolfie/generated-sources/
 /src/wolfie-visual-qa.tsx
 /wolfie-visual-qa.html
+
+# Locks, metadata de requests e frames temporários da produção Remotion.
+/remotion/.locks/
+/remotion/.renders/
+/remotion/generated/voice/
+/remotion/previews/
+/remotion/public/assets/hub/videos/audio/
+/public/assets/hub/videos/*.mp4
+/public/assets/hub/videos/manifest.json
+/public/assets/hub/videos/posters/

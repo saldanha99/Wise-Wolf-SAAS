@@ -5,29 +5,29 @@ import {
   Bot,
   Building2,
   Check,
-  ChevronRight,
+  CircleDollarSign,
   FileText,
-  Gauge,
   GraduationCap,
-  Library,
-  LockKeyhole,
-  Play,
   ShieldCheck,
   Sparkles,
   Users,
   Workflow,
-  Zap,
 } from 'lucide-react';
-import type { HubAudience, HubContentItem, HubPlan, HubSettings } from './types';
-
-const BRAND_LOGO = 'https://wisewolflanguage.com.br/logo.png';
-const BRAND_VIDEO = 'https://wisewolflanguage.com.br/grok-video-d537321f-f935-4b43-abb2-5446b61753dd.mp4';
+import HubMarketingShell, { HubFaq, HubReveal, HubSectionIntro } from './HubMarketingShell';
+import HubNativeProductTour from './HubNativeProductTour';
+import HubPricingSection from './HubPricingSection';
+import HubProductMockup, { type HubMockupKind } from './HubProductMockups';
+import HubVideoShowcase, { HUB_PUBLIC_VIDEOS_ENABLED } from './HubVideoShowcase';
+import { hubMarketingPath, resolveSystemAppUrl } from './hubRoutes';
+import type { HubAudience, HubBillingCycle, HubContentItem, HubPlan, HubSettings } from './types';
 
 interface HubLandingProps {
   plans: HubPlan[];
   settings: HubSettings;
   content: HubContentItem[];
+  catalogReady?: boolean;
   onAuthenticate: (mode: 'login' | 'signup', audience?: HubAudience) => void;
+  onPlanSelect: (planCode: string, billingCycle: HubBillingCycle) => void;
 }
 
 export function resolveHubVideoEmbed(url?: string | null): string | null {
@@ -52,358 +52,305 @@ export function resolveHubVideoEmbed(url?: string | null): string | null {
   return null;
 }
 
-const BrandLogo: React.FC<{ compact?: boolean }> = ({ compact = false }) => (
-  <div className="flex items-center gap-3">
-    <img src={BRAND_LOGO} alt="Wise Wolf" className={`${compact ? 'h-8' : 'h-10'} w-auto max-w-[145px] object-contain`} />
-    <div className="h-8 w-px bg-white/15" />
-    <div>
-      <p className="font-[Montserrat] text-sm font-extrabold leading-none text-white">HUB</p>
-      <p className="mt-1 text-[8px] font-bold uppercase tracking-[0.24em] text-blue-300">Teach · Practice · Scale</p>
-    </div>
-  </div>
-);
-
-const PremiumGrid: React.FC<{ subtle?: boolean }> = ({ subtle = false }) => (
-  <div
-    aria-hidden="true"
-    className={`pointer-events-none absolute inset-0 ${subtle ? 'opacity-[0.08]' : 'opacity-[0.14]'}`}
-    style={{
-      backgroundImage: 'linear-gradient(rgba(255,255,255,.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.09) 1px, transparent 1px)',
-      backgroundSize: '54px 54px',
-      maskImage: 'linear-gradient(to bottom, black, transparent 88%)',
-    }}
-  />
-);
-
 export const HubSaasShowcase: React.FC<{
   settings: HubSettings;
   compact?: boolean;
   onCta?: () => void;
 }> = ({ settings, compact = false, onCta }) => {
   const embedUrl = resolveHubVideoEmbed(settings.saas_video_url);
-  const capabilities: Array<{ label: string; description: string; icon: React.ElementType }> = [
-    { label: 'Operação automatizada', description: 'Agenda, contratos e matrículas.', icon: Workflow },
-    { label: 'Gestão financeira', description: 'Cobrança e visão de resultados.', icon: Gauge },
-    { label: 'Portal do aluno', description: 'Uma experiência que gera retenção.', icon: GraduationCap },
-    { label: 'Equipe e permissões', description: 'Tudo organizado para crescer.', icon: Users },
-  ];
+  const ctaUrl = compact
+    ? resolveSystemAppUrl(settings.saas_cta_url, '/new-saas')
+    : hubMarketingPath('school-os');
 
   return (
-    <section className={`${compact ? 'rounded-[2rem] p-5 sm:p-8' : 'py-24 sm:py-32'} relative overflow-hidden bg-[#070d1a] text-white`}>
-      <PremiumGrid subtle />
-      <div className="absolute left-1/2 top-1/2 h-[560px] w-[760px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/15 blur-[120px]" />
-      <div className={`${compact ? '' : 'mx-auto max-w-7xl px-5 sm:px-8'} relative grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center`}>
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/25 bg-blue-500/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-blue-300">
-            <Building2 size={14} /> Wise Wolf SaaS
+    <section className={compact ? 'hub-portal-saas' : 'hub-section hub-section--dark hub-school-showcase'}>
+      <div className={compact ? 'hub-school-showcase__grid' : 'hub-container hub-school-showcase__grid'}>
+        <div className="hub-school-showcase__copy">
+          <p className="hub-eyebrow"><span />Para escolas de idiomas</p>
+          <h2>A operação inteira pode falar a <em>mesma língua.</em></h2>
+          <p>Agenda, matrícula, contratos, financeiro, equipe e portal do aluno conectados em um ambiente com papéis definidos e dados separados por escola.</p>
+          <div className="hub-school-showcase__capabilities">
+            <span><Workflow size={15} />Fluxos conectados</span>
+            <span><ShieldCheck size={15} />Permissões por papel</span>
+            <span><Building2 size={15} />Ambiente por escola</span>
           </div>
-          <h2 className={`${compact ? 'text-3xl sm:text-4xl' : 'text-4xl sm:text-6xl'} mt-6 font-[Montserrat] font-extrabold leading-[1.04] tracking-[-0.04em]`}>
-            Quando você estiver pronto, <span className="text-blue-400">a operação inteira também estará.</span>
-          </h2>
-          <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-            O Hub é a porta de entrada. O SaaS Wise Wolf é o próximo nível: uma plataforma completa para transformar uma operação de ensino em uma empresa organizada, automatizada e escalável.
-          </p>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            {capabilities.map(({ label, description, icon: Icon }) => (
-              <div key={label} className="rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4 backdrop-blur-xl">
-                <Icon size={18} className="text-blue-400" />
-                <p className="mt-3 text-sm font-extrabold text-white">{label}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-400">{description}</p>
-              </div>
-            ))}
-          </div>
-          <a
-            href={settings.saas_cta_url || '/new-saas'}
-            onClick={onCta}
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-4 text-sm font-extrabold text-white shadow-[0_18px_45px_-18px_rgba(37,99,235,.9)] transition hover:-translate-y-0.5 hover:bg-blue-500"
-          >
-            Conhecer o SaaS Escolar <ArrowRight size={17} />
-          </a>
+          <a href={ctaUrl} onClick={onCta} className="hub-button hub-button--inverse">Conhecer o sistema escolar <ArrowRight size={16} /></a>
         </div>
-
-        <div className="relative">
-          <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-blue-600/25 to-red-500/10 blur-2xl" />
-          <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-[#0b1426] shadow-[0_35px_100px_-30px_rgba(0,0,0,.9)]">
-            <div className="flex items-center gap-1.5 border-b border-white/10 px-5 py-4">
-              <span className="size-2.5 rounded-full bg-red-400" />
-              <span className="size-2.5 rounded-full bg-amber-400" />
-              <span className="size-2.5 rounded-full bg-emerald-400" />
-              <span className="ml-auto text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">Wise Wolf Operating System</span>
+        <div className="hub-school-showcase__visual">
+          {embedUrl ? (
+            <div className="hub-mock-window hub-school-video">
+              <div className="hub-mock-window__chrome"><span /><span /><span /><p>Wise Wolf School OS</p></div>
+              <iframe
+                src={embedUrl}
+                title="Apresentação do sistema escolar Wise Wolf"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
             </div>
-            <div className="aspect-video">
-              {embedUrl ? (
-                <iframe
-                  className="h-full w-full"
-                  src={embedUrl}
-                  title="Apresentação do SaaS Escolar Wise Wolf"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="relative flex h-full flex-col items-center justify-center overflow-hidden p-8 text-center">
-                  <video autoPlay loop muted playsInline preload="metadata" className="absolute inset-0 h-full w-full object-cover opacity-25">
-                    <source src={BRAND_VIDEO} type="video/mp4" />
-                  </video>
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#070d1a] via-[#070d1a]/65 to-transparent" />
-                  <div className="relative grid size-20 place-items-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-xl">
-                    <Play size={28} fill="currentColor" />
-                  </div>
-                  <p className="relative mt-5 font-[Montserrat] text-lg font-extrabold">Sua apresentação vai transformar curiosidade em decisão.</p>
-                  <p className="relative mt-2 max-w-sm text-sm text-slate-400">Quando o vídeo estiver pronto, a URL do YouTube entra aqui sem nova publicação.</p>
-                </div>
-              )}
-            </div>
-          </div>
+          ) : <HubProductMockup kind="school" />}
         </div>
       </div>
     </section>
   );
 };
 
-const HubLanding: React.FC<HubLandingProps> = ({ plans, settings, content, onAuthenticate }) => {
-  const paidPlans = plans.filter((plan) => plan.code !== 'DISCOVERY');
+const HubLanding: React.FC<HubLandingProps> = ({ plans, settings, content, catalogReady = true, onAuthenticate, onPlanSelect }) => {
+  const discoveryDays = Math.max(Number(plans.find((plan) => plan.code === 'DISCOVERY')?.trial_days || 0), 0);
+  const discoveryAvailable = discoveryDays > 0;
   const previews = content.slice(0, 3);
-  const catalogCount = content.length;
+
+  const choosePlan = (plan: HubPlan, billingCycle: HubBillingCycle) => {
+    if (!catalogReady) return;
+    onPlanSelect(plan.code, billingCycle);
+    onAuthenticate('signup', 'EDUCATOR');
+  };
+
+  const solutions: Array<{
+    name: string;
+    description: string;
+    href: string;
+    icon: React.ElementType;
+    accent: string;
+  }> = [
+    { name: 'Ensinar', description: 'Biblioteca, planejamento com IA, materiais e trilhas para preparar com intenção.', href: hubMarketingPath('teachers'), icon: Sparkles, accent: '#d66a45' },
+    { name: 'Engajar', description: 'Portal, atividades e prática contextual com o Wolfie entre uma aula e outra.', href: hubMarketingPath('wolfie'), icon: Bot, accent: '#20a9cc' },
+    { name: 'Crescer', description: 'CRM, aula experimental, matrícula, contratos e automações trabalhando em sequência.', href: hubMarketingPath('schools'), icon: Users, accent: '#7652ed' },
+    { name: 'Operar', description: 'Agenda, equipe, presença, financeiro, permissões e marca no mesmo contexto.', href: hubMarketingPath('schools'), icon: Workflow, accent: '#258e79' },
+  ];
+
+  // As quatro páginas de solução. A home roteia por público; este índice existe
+  // para que cada módulo tenha uma entrada própria a partir do topo do funil.
+  const modules: Array<{
+    name: string;
+    summary: string;
+    href: string;
+    icon: React.ElementType;
+    accent: string;
+  }> = [
+    { name: 'Biblioteca', summary: 'Acervo com curadoria', href: hubMarketingPath('library'), icon: BookOpen, accent: '#d66a45' },
+    { name: 'Educador IA', summary: 'Planejamento com contexto', href: hubMarketingPath('educator-ai'), icon: Sparkles, accent: '#7652ed' },
+    { name: 'Wolfie', summary: 'Prática conversacional', href: hubMarketingPath('wolfie'), icon: Bot, accent: '#20a9cc' },
+    { name: 'School OS', summary: 'Sistema da escola', href: hubMarketingPath('school-os'), icon: Building2, accent: '#258e79' },
+  ];
+
+  const features: Array<{
+    label: string;
+    title: string;
+    description: string;
+    pills: string[];
+    href: string;
+    link: string;
+    kind: HubMockupKind;
+    icon: React.ElementType;
+    accent: string;
+  }> = [
+    {
+      label: 'Wise Wolf para professores',
+      title: 'Ensine melhor hoje. Profissionalize sua operação no seu ritmo.',
+      description: 'Comece preparando aulas com Biblioteca e Educador IA. Quando sua rotina pedir mais estrutura, conecte agenda, oportunidades, contratos, pagamentos e gestão em uma implantação acompanhada.',
+      pills: ['Preparação de aulas', 'Estúdio individual', 'Crescimento assistido'],
+      href: hubMarketingPath('teachers'),
+      link: 'Ver a jornada do professor',
+      kind: 'educator',
+      icon: BookOpen,
+      accent: '#d66a45',
+    },
+    {
+      label: 'Wise Wolf para escolas',
+      title: 'Cresça sem transformar sua escola em processos soltos.',
+      description: 'Conecte captação, experimental, matrícula, entrega pedagógica, agenda, equipe e financeiro em um ambiente configurado para a sua operação e implantado por etapas.',
+      pills: ['Comercial conectado', 'Entrega pedagógica', 'Operação por escola'],
+      href: hubMarketingPath('schools'),
+      link: 'Ver a jornada da escola',
+      kind: 'school',
+      icon: Building2,
+      accent: '#258e79',
+    },
+  ];
+
+  const faq = [
+    { question: 'O que exatamente é o Wise Wolf Hub?', answer: 'É a marca guarda-chuva das soluções Wise Wolf para professores autônomos, escolas de idiomas e prática individual. O Hub ajuda você a escolher uma jornada; os produtos, acessos e contratações continuam com escopos próprios.' },
+    { question: 'Qual é a diferença entre a oferta para professor e para escola?', answer: 'O professor pode começar em autoatendimento com ferramentas pedagógicas. A escola passa por diagnóstico e implantação assistida, porque envolve equipe, processos, integrações, permissões e migração de operação.' },
+    { question: 'Já sou aluno Wise Wolf. Preciso assinar?', answer: 'Não para usar o que sua escola já incluiu. A biblioteca escolar e a experiência parcial do tutor ficam no Portal do Aluno. Uma assinatura externa só é necessária se você quiser um produto individual adicional.' },
+    { question: 'O teste gratuito pede cartão?', answer: discoveryDays > 0 ? `Não. O acesso de descoberta para educadores dura ${discoveryDays} dias e não exige cartão.` : 'Não. Quando o acesso de descoberta está disponível, ele pode ser iniciado sem cartão.' },
+    { question: 'Quando o plano do professor é liberado após a compra?', answer: 'Somente depois que o Asaas confirma o pagamento. Cobrança pendente não libera acesso; e-mail e WhatsApp seguem uma fila com controle de reenvio.' },
+    { question: 'Como funciona a proteção entre escolas?', answer: 'A contratação institucional é assistida justamente para validar ambiente, papéis, vínculos e limites de acesso antes da abertura. Cada implantação permanece ligada ao contexto da própria escola.' },
+    { question: 'O Wolfie substitui uma aula com professor?', answer: 'Não. Ele é uma ferramenta de prática com inteligência artificial. Acompanhamento, adaptação pedagógica e decisões de ensino continuam com o professor.' },
+  ];
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#070d1a] font-[Inter] text-white selection:bg-blue-500 selection:text-white">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.07] bg-[#070d1a]/80 backdrop-blur-2xl">
-        <div className="mx-auto flex h-[76px] max-w-7xl items-center justify-between px-5 sm:px-8">
-          <a href="/hub" aria-label="Wise Wolf Hub"><BrandLogo /></a>
-          <nav className="hidden items-center gap-8 text-xs font-bold text-slate-300 lg:flex">
-            <a href="#experiencia" className="transition hover:text-white">Experiência</a>
-            <a href="#biblioteca" className="transition hover:text-white">Biblioteca</a>
-            <a href="#saas" className="transition hover:text-white">SaaS Escolar</a>
-            <a href="#planos" className="transition hover:text-white">Planos</a>
+    <HubMarketingShell
+      onLogin={() => onAuthenticate('login', 'EDUCATOR')}
+      primaryHref={hubMarketingPath('teachers')}
+      primaryLabel="Para professores"
+    >
+      <section className="hub-hero">
+        <div className="hub-container hub-hero__grid">
+          <HubReveal className="hub-hero__content">
+            <div className="hub-hero__kicker"><span />Infraestrutura para professores e escolas de inglês</div>
+            <h1>Do primeiro plano de aula à <em>operação inteira.</em></h1>
+            <p className="hub-hero__description">A Wise Wolf conecta criação pedagógica, prática do aluno, captação e gestão. Você escolhe a jornada; a tecnologia organiza o caminho sem transformar tudo em mais uma ferramenta solta.</p>
+            <div className="hub-hero__actions">
+              <a className="hub-button hub-button--primary" href={hubMarketingPath('teachers')}>Sou professor <ArrowRight size={17} /></a>
+              <a className="hub-button hub-button--secondary" href={hubMarketingPath('schools')}>Tenho uma escola</a>
+            </div>
+            <div className="hub-hero__proof">
+              <span><Check size={13} />Entrada por objetivo</span>
+              <span><Check size={13} />Venda direta para educadores</span>
+              <span><ShieldCheck size={13} />Implantação assistida para escolas</span>
+            </div>
+          </HubReveal>
+          <HubReveal className="hub-hero__visual" delay={0.12}>
+            {HUB_PUBLIC_VIDEOS_ENABLED ? <HubVideoShowcase videoId="overview" /> : <HubProductMockup kind="ecosystem" />}
+          </HubReveal>
+        </div>
+      </section>
+
+      <section className="hub-audience-strip hub-audience-strip--dual" aria-label="Escolha seu ponto de entrada">
+        <div className="hub-container hub-audience-strip__inner">
+          {[
+            { icon: BookOpen, title: 'Professor autônomo', text: 'Prepare aulas, engaje alunos e estruture seu negócio.', href: hubMarketingPath('teachers') },
+            { icon: Building2, title: 'Escola de idiomas', text: 'Conecte comercial, pedagógico e operação com clareza.', href: hubMarketingPath('schools') },
+          ].map(({ icon: Icon, title, text, href }) => (
+            <a key={title} href={href}><span className="hub-audience-strip__icon"><Icon size={17} /></span><span><b>{title}</b><small>{text}</small></span><ArrowRight size={14} /></a>
+          ))}
+        </div>
+        <div className="hub-container hub-audience-strip__utility">
+          <a href={resolveSystemAppUrl('/')}><GraduationCap size={14} />Já sou aluno Wise Wolf</a>
+          <a href={hubMarketingPath('wolfie')}><Bot size={14} />Quero praticar com o Wolfie</a>
+        </div>
+      </section>
+
+      <section className="hub-section hub-native-story-section">
+        <div className="hub-container">
+          <HubReveal>
+            <HubSectionIntro
+              eyebrow="O produto, por dentro"
+              title={<>Não são quatro promessas. <em>São quatro módulos reais trabalhando.</em></>}
+              description="Role a página para percorrer telas nativas da plataforma. O Hub reutiliza o núcleo existente e adiciona assinatura, conta e autorização próprias para cada acesso."
+            />
+          </HubReveal>
+          <HubNativeProductTour kind="ecosystem" />
+        </div>
+      </section>
+
+      <section id="solucoes" className="hub-section">
+        <div className="hub-container">
+          <HubReveal>
+            <HubSectionIntro
+              eyebrow="Uma plataforma, quatro resultados"
+              title={<>O comprador entende o destino. <em>A tecnologia conecta o percurso.</em></>}
+              description="Cada módulo aparece pelo trabalho que resolve — da preparação de uma aula à gestão completa de uma escola."
+              align="center"
+            />
+          </HubReveal>
+          <div className="hub-solutions-grid">
+            {solutions.map(({ name, description, href, icon: Icon, accent }, index) => (
+              <a key={name} href={href} className="hub-solution-card" style={{ '--card-accent': accent } as React.CSSProperties}>
+                <span className="hub-solution-card__index">{String(index + 1).padStart(2, '0')}</span>
+                <div className="hub-solution-card__object"><div><Icon size={31} /></div></div>
+                <h3>{name}</h3>
+                <p>{description}</p>
+                <span className="hub-solution-card__link">Ver esta jornada <ArrowRight size={15} /></span>
+              </a>
+            ))}
+          </div>
+
+          <nav className="hub-module-index" aria-label="Páginas das soluções do Hub">
+            <p className="hub-module-index__label">Ou vá direto a uma solução</p>
+            <div className="hub-module-index__links">
+              {modules.map(({ name, summary, href, icon: Icon, accent }) => (
+                <a key={name} href={href} style={{ '--module-accent': accent } as React.CSSProperties}>
+                  <span className="hub-module-index__icon"><Icon size={16} /></span>
+                  <span className="hub-module-index__text"><b>{name}</b><small>{summary}</small></span>
+                  <ArrowRight size={13} />
+                </a>
+              ))}
+            </div>
           </nav>
-          <div className="flex items-center gap-2">
-            <button onClick={() => onAuthenticate('login')} className="hidden rounded-xl px-4 py-2.5 text-sm font-bold text-slate-300 transition hover:bg-white/5 hover:text-white sm:block">
-              Entrar
-            </button>
-            <button onClick={() => onAuthenticate('signup', 'EDUCATOR')} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_14px_35px_-14px_rgba(37,99,235,.9)] transition hover:-translate-y-0.5 hover:bg-blue-500">
-              Testar grátis
-            </button>
+
+          <div className="hub-feature-stack">
+            {features.map(({ label, title, description, pills, href, link, kind, icon: Icon, accent }, index) => (
+              <HubReveal key={label}>
+                <article className={`hub-feature-row ${index % 2 === 1 ? 'is-reversed' : ''}`} style={{ '--row-accent': accent } as React.CSSProperties}>
+                  <div className="hub-feature-row__text">
+                    <span className="hub-feature-row__label"><Icon size={14} />{label}</span>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                    <div className="hub-feature-row__pills">{pills.map((pill) => <span key={pill}>{pill}</span>)}</div>
+                    <a href={href} className="hub-feature-row__link">{link}<ArrowRight size={15} /></a>
+                  </div>
+                  <div className="hub-feature-row__visual"><HubProductMockup kind={kind} /></div>
+                </article>
+              </HubReveal>
+            ))}
           </div>
         </div>
-      </header>
+      </section>
 
-      <main>
-        <section className="relative flex min-h-[94vh] items-center overflow-hidden pb-20 pt-32 sm:pt-36">
-          <video autoPlay loop muted playsInline preload="metadata" className="absolute inset-0 h-full w-full object-cover opacity-[0.28]">
-            <source src={BRAND_VIDEO} type="video/mp4" />
-          </video>
-          <div className="absolute inset-0 bg-[linear-gradient(100deg,#070d1a_4%,rgba(7,13,26,.96)_42%,rgba(7,13,26,.48)_100%)]" />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#070d1a] via-transparent to-[#070d1a]/30" />
-          <PremiumGrid />
-          <div className="absolute -left-40 top-28 size-[520px] rounded-full bg-blue-600/15 blur-[120px]" />
-
-          <div className="relative mx-auto grid w-full max-w-7xl gap-14 px-5 sm:px-8 lg:grid-cols-[1.03fr_.97fr] lg:items-center">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-400/25 bg-blue-500/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.22em] text-blue-300 backdrop-blur-xl">
-                <Sparkles size={13} /> Ecossistema educacional premium
-              </div>
-              <h1 className="mt-7 font-[Montserrat] text-[3.25rem] font-extrabold leading-[0.98] tracking-[-0.055em] sm:text-7xl lg:text-[5.4rem]">
-                Tudo para ensinar melhor. <span className="bg-gradient-to-r from-blue-400 via-blue-500 to-white bg-clip-text text-transparent">Tudo para crescer.</span>
-              </h1>
-              <p className="mt-7 max-w-2xl text-base font-light leading-8 text-slate-300 sm:text-xl sm:leading-9">
-                Materiais premium, inteligência pedagógica e prática com IA — conectados ao sistema que automatiza uma escola inteira.
-              </p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <button onClick={() => onAuthenticate('signup', 'EDUCATOR')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-7 py-4 text-sm font-extrabold text-white shadow-[0_20px_50px_-18px_rgba(37,99,235,.95)] transition hover:-translate-y-0.5 hover:bg-blue-500">
-                  Começar gratuitamente <ArrowRight size={18} />
-                </button>
-                <a href="#experiencia" className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-7 py-4 text-sm font-bold text-white backdrop-blur-xl transition hover:bg-white/10">
-                  Explorar o ecossistema <ChevronRight size={18} />
-                </a>
-              </div>
-              <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-xs font-semibold text-slate-400">
-                <span className="flex items-center gap-2"><Check size={14} className="text-emerald-400" /> 7 dias grátis</span>
-                <span className="flex items-center gap-2"><Check size={14} className="text-emerald-400" /> Sem cartão</span>
-                <span className="flex items-center gap-2"><LockKeyhole size={14} className="text-emerald-400" /> Conteúdo protegido</span>
-              </div>
-            </div>
-
-            <div className="relative hidden lg:block">
-              <div className="absolute -inset-10 rounded-full bg-blue-600/20 blur-[90px]" />
-              <div className="relative rotate-[1.5deg] overflow-hidden rounded-[2rem] border border-white/15 bg-[#0b1426]/90 shadow-[0_45px_120px_-35px_rgba(0,0,0,.95)] backdrop-blur-2xl">
-                <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
-                  <span className="size-2.5 rounded-full bg-red-400" />
-                  <span className="size-2.5 rounded-full bg-amber-400" />
-                  <span className="size-2.5 rounded-full bg-emerald-400" />
-                  <span className="ml-auto text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">hub.wisewolf</span>
-                </div>
-                <div className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-400">Seu espaço de evolução</p><p className="mt-2 font-[Montserrat] text-2xl font-extrabold">Good evening, teacher.</p></div>
-                    <div className="grid size-11 place-items-center rounded-xl bg-blue-600 text-lg">🐺</div>
-                  </div>
-                  <div className="mt-6 grid grid-cols-3 gap-3">
-                    {[
-                      { value: catalogCount || 27, label: 'Materiais', color: 'text-blue-400' },
-                      { value: '24/7', label: 'IA disponível', color: 'text-emerald-400' },
-                      { value: '1', label: 'Ecossistema', color: 'text-red-400' },
-                    ].map((metric) => <div key={metric.label} className="rounded-xl border border-white/[0.07] bg-white/[0.035] p-3"><p className={`font-[Montserrat] text-xl font-extrabold ${metric.color}`}>{metric.value}</p><p className="mt-1 text-[9px] uppercase tracking-wider text-slate-500">{metric.label}</p></div>)}
-                  </div>
-                  <div className="mt-4 grid grid-cols-[1.2fr_.8fr] gap-3">
-                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4">
-                      <div className="flex items-center justify-between"><p className="text-xs font-bold">Preparação da semana</p><Sparkles size={15} className="text-blue-400" /></div>
-                      <div className="mt-5 flex h-24 items-end gap-2">
-                        {[42, 64, 52, 78, 68, 91, 84].map((height, index) => <div key={index} className="flex-1 rounded-t-sm bg-gradient-to-t from-blue-700 to-blue-400" style={{ height: `${height}%` }} />)}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 p-4">
-                      <Bot size={19} />
-                      <p className="mt-4 text-sm font-extrabold">Wolfie online</p>
-                      <p className="mt-1 text-[10px] leading-4 text-blue-100">Prática inteligente em qualquer nível.</p>
-                      <div className="mt-4 h-1.5 rounded-full bg-white/20"><div className="h-full w-3/4 rounded-full bg-white" /></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <section className="hub-editorial-banner">
+        <div className="hub-container hub-editorial-banner__layout">
+          <div className="hub-editorial-banner__content">
+            <p>Da primeira conversa à próxima renovação</p>
+            <h2>Uma jornada conectada. <em>Responsabilidades separadas.</em></h2>
+            <p>Captação, ensino, prática e operação compartilham o contexto necessário. Conta, papel e ambiente definem quem pode acessar cada etapa.</p>
+            <a href={hubMarketingPath('schools')} className="hub-button hub-button--inverse">Ver a arquitetura para escolas <ArrowRight size={16} /></a>
           </div>
-        </section>
-
-        <section className="border-y border-white/[0.07] bg-white/[0.025]">
-          <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/[0.07] px-5 sm:px-8 lg:grid-cols-4">
-            {[
-              { value: catalogCount || '27', label: 'materiais no catálogo' },
-              { value: '7 dias', label: 'para experimentar' },
-              { value: '3', label: 'experiências conectadas' },
-              { value: '1', label: 'plataforma para evoluir' },
-            ].map((metric) => <div key={metric.label} className="px-4 py-8 text-center"><p className="font-[Montserrat] text-2xl font-extrabold text-white sm:text-3xl">{metric.value}</p><p className="mt-2 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">{metric.label}</p></div>)}
-          </div>
-        </section>
-
-        <section id="experiencia" className="relative py-24 sm:py-32">
-          <div className="absolute right-0 top-1/3 size-[520px] rounded-full bg-blue-600/[0.08] blur-[130px]" />
-          <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-            <div className="max-w-3xl">
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Seu ponto de partida</p>
-              <h2 className="mt-5 font-[Montserrat] text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-6xl">Escolha o que resolve hoje. <span className="text-slate-500">Descubra o que transforma amanhã.</span></h2>
+          <HubReveal className="hub-architecture-visual" direction="scale">
+            <div className="hub-architecture-visual__character">
+              <img src="/assets/wolfie/characters/wolfie-coach/wolfie-v2-listening.07cf0629cc2d.webp" alt="Wolfie, personagem da Wise Wolf" loading="lazy" decoding="async" />
             </div>
-            <div className="mt-14 grid gap-4 lg:grid-cols-12">
-              <article className="group relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.035] p-7 lg:col-span-5 lg:p-9">
-                <div className="absolute right-0 top-0 size-56 rounded-full bg-blue-600/10 blur-3xl" />
-                <div className="relative grid size-13 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-950"><Library size={23} /></div>
-                <p className="relative mt-10 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Wise Wolf Library</p>
-                <h3 className="relative mt-3 font-[Montserrat] text-3xl font-extrabold">Menos tempo procurando. Mais confiança ensinando.</h3>
-                <p className="relative mt-4 max-w-lg leading-7 text-slate-400">Um acervo vivo, organizado por nível, nicho e coleção, pronto para acompanhar cada tipo de aluno.</p>
-                <div className="relative mt-10 flex items-center gap-3 border-t border-white/[0.07] pt-5 text-xs font-bold text-slate-300"><ShieldCheck size={17} className="text-emerald-400" /> Licenciado e protegido por assinatura</div>
-              </article>
-              <article className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-blue-600 to-blue-800 p-7 lg:col-span-4 lg:p-9">
-                <Sparkles size={27} />
-                <p className="mt-10 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-100">Educador IA</p>
-                <h3 className="mt-3 font-[Montserrat] text-3xl font-extrabold">Planejamento que começa com contexto.</h3>
-                <p className="mt-4 leading-7 text-blue-100">Crie aulas e atividades adequadas ao nível, ao objetivo e ao momento real do aprendiz.</p>
-                <div className="mt-8 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-xl">
-                  <div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-white text-blue-700"><FileText size={17} /></span><div><p className="text-xs font-extrabold">Lesson plan created</p><p className="mt-1 text-[10px] text-blue-100">B1 · Business · 60 min</p></div></div>
-                </div>
-              </article>
-              <article className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.035] p-7 lg:col-span-3 lg:p-9">
-                <div className="grid size-13 place-items-center rounded-2xl bg-red-500 text-white"><Bot size={24} /></div>
-                <p className="mt-10 text-[10px] font-bold uppercase tracking-[0.2em] text-red-400">Wolfie</p>
-                <h3 className="mt-3 font-[Montserrat] text-3xl font-extrabold">Prática que não espera a próxima aula.</h3>
-                <p className="mt-4 leading-7 text-slate-400">Conversação e feedback no nível certo, sempre disponíveis.</p>
-                <div className="mt-8 flex items-center gap-2 text-xs font-bold text-emerald-400"><span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_14px_#34d399]" /> Online agora</div>
-              </article>
-            </div>
-          </div>
-        </section>
+            <span className="hub-architecture-node is-library"><Users size={17} /><b>Atrair</b></span>
+            <span className="hub-architecture-node is-educator"><BookOpen size={17} /><b>Ensinar</b></span>
+            <span className="hub-architecture-node is-wolfie"><Bot size={17} /><b>Engajar</b></span>
+            <span className="hub-architecture-node is-school"><CircleDollarSign size={17} /><b>Gerir</b></span>
+            <div className="hub-architecture-lock"><ShieldCheck size={18} /><span><b>Contexto por ambiente</b><small>papéis, conta e implantação</small></span></div>
+          </HubReveal>
+        </div>
+      </section>
 
-        <section id="biblioteca" className="relative overflow-hidden border-y border-white/[0.07] bg-[#0a1222] py-24 sm:py-32">
-          <PremiumGrid subtle />
-          <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-            <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-              <div className="max-w-3xl">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Biblioteca Wise Wolf</p>
-                <h2 className="mt-5 font-[Montserrat] text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-6xl">Conteúdo com acabamento de marca. <span className="text-slate-500">Pronto para a aula.</span></h2>
-              </div>
-              <button onClick={() => onAuthenticate('signup', 'EDUCATOR')} className="inline-flex items-center gap-2 text-sm font-extrabold text-blue-400 transition hover:text-blue-300">Explorar catálogo <ArrowRight size={17} /></button>
-            </div>
-            <div className="mt-14 grid gap-5 md:grid-cols-3">
-              {(previews.length ? previews : [
-                { id: 'sample-1', title: 'Business English', description: 'Comunicação profissional por situações reais.', level_tag: 'B1', niche: 'BUSINESS', content_type: 'PDF' },
-                { id: 'sample-2', title: 'Conversation Missions', description: 'Roteiros práticos para aulas de conversação.', level_tag: 'A2', niche: 'CONVERSATION', content_type: 'ACTIVITY' },
-                { id: 'sample-3', title: 'Global Meetings', description: 'Reuniões, apresentações e vocabulário corporativo.', level_tag: 'B2', niche: 'BUSINESS', content_type: 'PDF' },
-              ] as Partial<HubContentItem>[]).map((item, index) => (
-                <article key={item.id} className="group overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.035] transition duration-500 hover:-translate-y-2 hover:border-blue-400/35">
-                  <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-[#0d1930]">
-                    <div className={`absolute inset-0 ${index === 1 ? 'bg-[radial-gradient(circle_at_30%_20%,rgba(239,68,68,.35),transparent_38%),linear-gradient(140deg,#111827,#071b36)]' : 'bg-[radial-gradient(circle_at_70%_30%,rgba(59,130,246,.4),transparent_40%),linear-gradient(140deg,#111827,#071b36)]'}`} />
-                    <PremiumGrid subtle />
-                    <div className="relative flex h-[72%] w-[56%] rotate-[-4deg] flex-col rounded-xl border border-white/15 bg-gradient-to-br from-white/[0.14] to-white/[0.04] p-4 shadow-2xl backdrop-blur-xl transition duration-500 group-hover:rotate-0 group-hover:scale-105">
-                      <div className="h-1 w-10 rounded-full bg-red-500" />
-                      <p className="mt-4 text-[8px] font-bold uppercase tracking-[0.18em] text-blue-300">Wise Wolf Material</p>
-                      <p className="mt-2 font-[Montserrat] text-sm font-extrabold leading-tight text-white">{item.title}</p>
-                      <BookOpen className="mt-auto text-white/70" size={22} />
+      {previews.length > 0 && (
+        <section className="hub-section">
+          <div className="hub-container">
+            <HubReveal>
+              <HubSectionIntro eyebrow="Prévia da Biblioteca" title={<>Conteúdo para entrar na aula com <em>intenção.</em></>} description="Uma amostra do catálogo publicado. O acesso ao arquivo completo segue o plano e a licença do conteúdo." />
+            </HubReveal>
+            <div className="hub-catalog-grid">
+              {previews.map((item, index) => (
+                <HubReveal key={item.id} delay={index * 0.06}>
+                  <article className="hub-catalog-card">
+                    <div className="hub-catalog-card__cover"><span>{item.level_tag || 'Todos os níveis'}</span><FileText size={28} /></div>
+                    <div className="hub-catalog-card__body">
+                      <div className="hub-catalog-card__tags"><span>{item.niche || 'Geral'}</span>{item.collection_name && <span>{item.collection_name}</span>}</div>
+                      <h3>{item.title}</h3>
+                      <p>{item.description || 'Material organizado para aplicação prática em aula.'}</p>
                     </div>
-                  </div>
-                  <div className="p-6">
-                    <div className="flex gap-2 text-[9px] font-extrabold uppercase tracking-[0.14em] text-blue-300">
-                      <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-2.5 py-1">{item.level_tag || 'Todos'}</span>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-400">{item.niche || 'Geral'}</span>
-                    </div>
-                    <h3 className="mt-5 font-[Montserrat] text-xl font-extrabold">{item.title}</h3>
-                    <p className="mt-2 min-h-12 text-sm leading-6 text-slate-400">{item.description || 'Material organizado para aplicação prática em aula.'}</p>
-                  </div>
-                </article>
+                  </article>
+                </HubReveal>
               ))}
             </div>
           </div>
         </section>
+      )}
 
-        <div id="saas"><HubSaasShowcase settings={settings} /></div>
+      <HubPricingSection plans={plans} onChoosePlan={choosePlan} mode="overview" catalogReady={catalogReady} />
 
-        <section id="planos" className="relative border-t border-white/[0.07] py-24 sm:py-32">
-          <div className="absolute left-1/2 top-1/2 size-[680px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/[0.08] blur-[140px]" />
-          <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
-            <div className="text-center">
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-blue-400">Planos de lançamento</p>
-              <h2 className="mx-auto mt-5 max-w-4xl font-[Montserrat] text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-6xl">Comece leve. <span className="text-slate-500">Evolua sem trocar de ecossistema.</span></h2>
-              <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-400">Teste gratuitamente e assine apenas a experiência que já faz diferença na sua rotina.</p>
-            </div>
-            <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {paidPlans.map((plan) => {
-                const popular = plan.metadata?.popular === true;
-                return (
-                  <article key={plan.id} className={`relative flex flex-col overflow-hidden rounded-[2rem] border p-7 ${popular ? 'border-blue-400/50 bg-gradient-to-b from-blue-600/25 to-white/[0.04] shadow-[0_25px_80px_-30px_rgba(37,99,235,.8)]' : 'border-white/[0.08] bg-white/[0.035]'}`}>
-                    {popular && <span className="absolute right-5 top-5 rounded-full bg-blue-600 px-3 py-1 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white">Mais escolhido</span>}
-                    <p className="text-sm font-extrabold text-blue-300">{plan.name}</p>
-                    <div className="mt-7 flex items-end gap-1"><span className="font-[Montserrat] text-5xl font-extrabold">R$ {Number(plan.price_monthly || 0).toLocaleString('pt-BR')}</span><span className="pb-1.5 text-sm text-slate-500">/mês</span></div>
-                    {Number(plan.price_yearly || 0) > 0 && <p className="mt-2 text-xs font-bold text-emerald-400">R$ {Number(plan.price_yearly).toLocaleString('pt-BR')}/ano · 2 meses grátis</p>}
-                    <p className="mt-5 min-h-12 text-sm leading-6 text-slate-400">{plan.description}</p>
-                    <div className="my-6 h-px bg-white/[0.08]" />
-                    <ul className="flex-1 space-y-3 text-sm text-slate-300">{(Array.isArray(plan.features) ? plan.features : []).map((feature) => <li key={feature} className="flex gap-3"><span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-emerald-400/10 text-emerald-400"><Check size={12} /></span>{feature}</li>)}</ul>
-                    <button onClick={() => onAuthenticate('signup', plan.audience === 'LEARNER' ? 'LEARNER' : plan.audience === 'INSTITUTION' ? 'INSTITUTION' : 'EDUCATOR')} className={`mt-8 w-full rounded-xl px-5 py-4 text-sm font-extrabold transition hover:-translate-y-0.5 ${popular ? 'bg-blue-600 text-white hover:bg-blue-500' : 'border border-white/15 bg-white/[0.06] text-white hover:bg-white/10'}`}>Começar com 7 dias grátis</button>
-                  </article>
-                );
-              })}
+      <HubFaq items={faq} />
+
+      <section className="hub-final-cta">
+        <div className="hub-container hub-final-cta__panel">
+          <div className="hub-final-cta__content">
+            <span>Duas jornadas. Uma infraestrutura.</span>
+            <h2>Escolha onde você está. <em>A Wise Wolf mostra o próximo passo.</em></h2>
+            <p>Professores podem começar pelas ferramentas pedagógicas. Escolas entram por um diagnóstico de operação e implantação assistida.</p>
+            <div className="hub-final-cta__actions">
+              <a href={hubMarketingPath('teachers')} className="hub-button hub-button--inverse">Explorar para professores <ArrowRight size={17} /></a>
+              <a href={hubMarketingPath('schools')} className="hub-button hub-button--secondary">Explorar para escolas</a>
             </div>
           </div>
-        </section>
-
-        <section className="px-5 pb-24 sm:px-8 sm:pb-32">
-          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] border border-blue-400/20 bg-gradient-to-br from-blue-700 via-blue-600 to-[#122653] px-7 py-14 text-center shadow-[0_35px_100px_-35px_rgba(37,99,235,.85)] sm:px-14 sm:py-20">
-            <PremiumGrid subtle />
-            <div className="absolute -right-16 -top-20 size-72 rounded-full bg-red-500/20 blur-3xl" />
-            <div className="relative mx-auto max-w-4xl">
-              <Zap className="mx-auto" size={30} />
-              <h2 className="mt-6 font-[Montserrat] text-4xl font-extrabold leading-[1.05] tracking-[-0.04em] sm:text-6xl">A próxima fase da sua jornada começa aqui.</h2>
-              <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-blue-100 sm:text-lg">Entre pelo material que você precisa hoje. Fique pelo ecossistema que ajuda você a ensinar, organizar e crescer.</p>
-              <button onClick={() => onAuthenticate('signup', 'EDUCATOR')} className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-4 text-sm font-extrabold text-blue-800 shadow-xl transition hover:-translate-y-0.5">Criar minha conta gratuita <ArrowRight size={17} /></button>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="border-t border-white/[0.07] px-5 py-10 sm:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 text-center sm:flex-row sm:text-left">
-          <BrandLogo compact />
-          <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500"><ShieldCheck size={15} className="text-blue-400" /> Conteúdo, inteligência e operação em um ecossistema seguro.</div>
-          <p className="text-xs text-slate-600">© {new Date().getFullYear()} Wise Wolf</p>
         </div>
-      </footer>
-    </div>
+      </section>
+    </HubMarketingShell>
   );
 };
 

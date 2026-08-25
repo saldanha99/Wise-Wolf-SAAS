@@ -1,0 +1,13 @@
+{
+  "id": "school-os-3-proof",
+  "file": "school-os-3-proof.mp3",
+  "requestId": "gen-1787593366-wYQzfqTseInlOb9pkTlT",
+  "sha256": "70d4e6d6bb61dc8c6e9478928d5d9024cd549e768cba507f39db1097691e1b57",
+  "bytes": 222607,
+  "transcriptSha256": "ca4a62f58305682f3ee20be8784630e5a3be7410ed9d12e461060336af979b60",
+  "sceneHash": "f88a2d4b56b3370f2b480282c47a9bad981184a5796fc13f2178f623767e5d82",
+  "durationSeconds": 9.2,
+  "generatedAt": "2026-08-24T17:42:50Z",
+  "sourcePcmWavSha256": "5b15b12e59ab184fa3e896a51a1ce884dae88bec57bdc9baac6ee954372c8ec9",
+  "sourcePcmWavBytes": 441644
+}

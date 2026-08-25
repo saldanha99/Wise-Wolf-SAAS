@@ -5,6 +5,7 @@ import { PROFILE_SAFE_COLS } from '../constants';
 import { AlertCircle, Download, FileText, Loader2, RefreshCw } from 'lucide-react';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
 import { getSchoolInfo } from '../lib/schoolInfo';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
 
 // O bucket 'contracts' é PRIVADO (dados pessoais/LGPD). Registros antigos guardam a URL
 // pública completa; registros novos guardam apenas o path dentro do bucket. Em ambos os
@@ -58,16 +59,20 @@ const ContractView: React.FC<ContractViewProps> = ({
         try {
             setLoading(true);
             setLoadError(null);
-            const { data, error } = await supabase
-                .from('profiles')
-                .select(PROFILE_SAFE_COLS)
-                .eq('id', userId)
-                .single();
-            if (error) throw error;
+            const [profileResult, privateProfile] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select(PROFILE_SAFE_COLS)
+                    .eq('id', userId)
+                    .single(),
+                loadAuthorizedProfilePrivate(userId),
+            ]);
+            if (profileResult.error) throw profileResult.error;
+            const data: any = { ...profileResult.data, ...privateProfile };
             setProfile(data);
-            setContractUrl(await resolveContractUrl(data?.contract_url));
+            setContractUrl(await resolveContractUrl(data.contract_url as string | null));
             // Carrega os dados da escola (cabeçalho/rodapé do contrato)
-            setSchool(await getSchoolInfo(data?.tenant_id));
+            setSchool(await getSchoolInfo(data.tenant_id as string));
         } catch (err) {
             console.error('Erro ao carregar contrato:', err);
             setProfile(null);

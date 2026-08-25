@@ -1,6 +1,7 @@
 import { PROFILE_SAFE_COLS } from "../constants";
 import { User, UserRole } from "../types";
 import { supabase } from "./supabase";
+import { loadAuthorizedProfilePrivate } from "./profilePrivacy";
 
 type ProfileRecord = Record<string, any>;
 
@@ -11,10 +12,13 @@ type ProfileRecord = Record<string, any>;
 export async function mapProfileToAppUser(
   profile: ProfileRecord,
 ): Promise<User> {
-  // Dados de pagamento não fazem mais parte do SELECT público de profiles.
-  const [{ data: myPay }, { data: accessContext }] = await Promise.all([
+  // Dados privados não fazem parte do diretório de profiles. O próprio usuário
+  // recebe apenas o seu registro por RPC; professores não conseguem apontar a
+  // chamada para um aluno.
+  const [{ data: myPay }, { data: accessContext }, privateProfile] = await Promise.all([
     supabase.rpc("get_my_pay"),
     supabase.rpc("get_my_access_context").maybeSingle(),
+    loadAuthorizedProfilePrivate(profile.id),
   ]);
   const activeAccess = accessContext as
     | { tenant_id?: string; role?: string }
@@ -35,8 +39,8 @@ export async function mapProfileToAppUser(
     currentBookPart: profile.current_book_part,
     evaluationUnlocked: profile.evaluation_unlocked,
     hourlyRate: (myPay as any)?.hourly_rate ?? undefined,
-    status_financial: profile.status_financial,
-    due_day: profile.due_day,
+    status_financial: privateProfile.status_financial as string | undefined,
+    due_day: privateProfile.due_day as number | undefined,
     contract_accepted: profile.contract_accepted,
     accepted_at: profile.accepted_at,
     is_trainer: profile.is_trainer,

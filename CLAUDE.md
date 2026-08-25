@@ -98,7 +98,7 @@ tudo que não está numa sessão speech-to-speech da Realtime API.
 ```
 POST https://api.openai.com/v1/audio/speech
   model: gpt-4o-mini-tts        ← WOLFIE_TTS_MODEL sobrescreve
-  voice: marin                  ← WOLFIE_TTS_VOICE_PT / _EN, contra allowlist
+  voice: cedar                  ← WOLFIE_TTS_VOICE_PT / _EN, contra allowlist
   instructions: <por idioma>    ← pt | en | mixed
   response_format: mp3
   speed: 0.25–4                 ← normalizado no servidor
@@ -111,8 +111,8 @@ POST https://api.openai.com/v1/audio/speech
 - ✅ **Só aluno autenticado chama** (`allowedRoles: ["STUDENT"]`, sem
   service-role) e assinante do tenant `wolfie-direct` passa por
   `requireWolfieProductAccess` antes de gerar áudio.
-- ✅ **Voz vem de allowlist** (`marin`, `alloy`, `nova`…); valor de env inválido
-  cai em `marin` em vez de quebrar.
+- ✅ **Voz vem de allowlist** (`cedar`, `marin`, `alloy`, `nova`…); valor de env inválido
+  cai em `cedar` em vez de quebrar.
 - ✅ **`instructions` por idioma** manda preservar nome próprio, cidade e número
   exatamente — é o que impede o TTS de "corrigir" o que o aluno disse.
 - ✅ **Teto de 32 KB por request**; acima disso, 413.

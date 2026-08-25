@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "provider": "OpenAI image generation",
+  "generatedAt": "2026-08-23",
+  "usageStatement": "generated for Wise Wolf project",
+  "assets": [
+    {
+      "file": "hub-corridor.png",
+      "name": "Hub Corridor",
+      "purpose": "Key visual for the Wise Wolf Hub overview video.",
+      "description": "A cinematic architectural corridor connecting four color-coded education environments into one continuous ecosystem.",
+      "promptSummary": "Premium dark glass corridor with coral, violet, cyan and mint zones connected by a restrained ribbon of light; no text, logos or generated interface.",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "sha256": "746a4c40793e642e62afb33ae015db7de00e7f7cded8dc2277d95e4eed46fa76"
+    },
+    {
+      "file": "library-curation.png",
+      "name": "Library Curation",
+      "purpose": "Key visual for the Wise Wolf Library video.",
+      "description": "An editorial worktable where dispersed teaching materials resolve into a selected folio illuminated by coral light.",
+      "promptSummary": "Dark tactile educator desk with scattered papers, books and coral indexing converging on one curated material; no readable text, logos or generated interface.",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "sha256": "32cb988ab8970cb9c79be0ca1e2b711a89d07f3ffe6e29caf78709535169a364"
+    },
+    {
+      "file": "educator-structure.png",
+      "name": "Educator Structure",
+      "purpose": "Key visual for the Educador IA video.",
+      "description": "A teacher's hand arranges translucent violet lesson blocks into a deliberate instructional sequence on a dark planning desk.",
+      "promptSummary": "Top-down premium lesson-design atelier with a human educator arranging violet illuminated blocks, emphasizing teacher control; no text, logos, robots or generated interface.",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "sha256": "9eb934cab0cf3e1ba56cbb9f703d5f82c4529331595a3347a10a51956bfef2ae"
+    },
+    {
+      "file": "wolfie-real-world.png",
+      "name": "Wolfie Real World",
+      "purpose": "Key visual for the Wolfie AI Tutor video.",
+      "description": "A learner approaches connected professional conversation environments guided by a subtle cyan audio ribbon.",
+      "promptSummary": "Cinematic learner at the threshold of interview and global meeting scenarios connected by a cyan soundwave path; no text, logos or generated interface.",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "sha256": "af0af039b23a2100fa946340b3212e749cfae520463fdfd49be86197a5c4a0ad"
+    },
+    {
+      "file": "school-living-system.png",
+      "name": "School Living System",
+      "purpose": "Key visual for the Wise Wolf School OS video.",
+      "description": "A multi-level language school campus visualized as connected operational spaces at twilight.",
+      "promptSummary": "Premium architectural cutaway of a school with commercial, pedagogical and administrative environments connected by restrained mint light paths; no text, logos or generated interface.",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "sha256": "2752e2521e9aaa3b2a0970783e57a2b0e42119bb4342c938518a718183680dbe"
+    }
+  ]
+}

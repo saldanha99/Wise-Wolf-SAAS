@@ -17,12 +17,13 @@ import {
 import { supabase } from '../lib/supabase';
 import { User as UserType, UserRole } from '../types';
 
-interface LessonPlannerAIProps {
+export interface LessonPlannerAIProps {
     user: UserType;
     tenantId?: string;
+    adapter?: LessonPlannerAdapter;
 }
 
-type PlannerTaskMode =
+export type PlannerTaskMode =
     | 'lesson_plan'
     | 'student_feedback'
     | 'oral_test'
@@ -33,7 +34,7 @@ type PlannerTaskMode =
     | 'progress_report'
     | 'material_generation';
 
-interface StudentOption {
+export interface StudentOption {
     id: string;
     full_name: string | null;
     module: string | null;
@@ -43,7 +44,7 @@ interface BookingStudentRow {
     student: StudentOption | StudentOption[] | null;
 }
 
-interface StudentProfile {
+export interface StudentProfile {
     id: string;
     module: string | null;
     english_for: string | null;
@@ -52,7 +53,7 @@ interface StudentProfile {
     preferred_topics: string[] | null;
 }
 
-interface WolfIntelligence {
+export interface WolfIntelligence {
     accumulated_context: string | null;
     strong_points: string[] | null;
     weak_points: string[] | null;
@@ -60,7 +61,7 @@ interface WolfIntelligence {
     total_classes_analyzed: number | null;
 }
 
-interface LessonPlanHistoryItem {
+export interface LessonPlanHistoryItem {
     id: string;
     created_at: string;
     objectives: string | null;
@@ -128,7 +129,7 @@ interface StudentMemoryUpdate {
     notes_to_verify: string[];
 }
 
-interface PlannerPlan {
+export interface PlannerPlan {
     task_mode: PlannerTaskMode;
     title: string;
     objective: string;
@@ -163,6 +164,32 @@ interface GeneratedPlanState {
     plan: PlannerPlan;
     knowledge: PlannerKnowledgeStatus;
     saved: boolean;
+}
+
+export interface LessonPlannerLearnerContext {
+    profile: StudentProfile;
+    intelligence: WolfIntelligence | null;
+    history: LessonPlanHistoryItem[];
+}
+
+export interface LessonPlannerGenerateInput {
+    learnerId: string;
+    taskMode: PlannerTaskMode;
+    bilingual: boolean;
+    durationMinutes: number;
+    teacherRequest: string;
+}
+
+export interface LessonPlannerAdapter {
+    contextKey: string;
+    listLearners: () => Promise<StudentOption[]>;
+    loadLearnerContext: (learnerId: string) => Promise<LessonPlannerLearnerContext>;
+    generate: (input: LessonPlannerGenerateInput) => Promise<unknown>;
+    save?: (runId: string) => Promise<void>;
+    capabilities?: {
+        canPersist?: boolean;
+        hasPedagogicalMemory?: boolean;
+    };
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -267,8 +294,11 @@ const MemoryList: React.FC<{ label: string; items: string[] }> = ({ label, items
     );
 };
 
-const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => {
+const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId, adapter }) => {
     const activeTenantId = tenantId || user.tenantId;
+    const activeContextKey = adapter?.contextKey || activeTenantId;
+    const canPersist = adapter?.capabilities?.canPersist ?? true;
+    const hasPedagogicalMemory = adapter?.capabilities?.hasPedagogicalMemory ?? true;
     const selectedStudentRef = useRef('');
     const [students, setStudents] = useState<StudentOption[]>([]);
     const [selectedStudent, setSelectedStudent] = useState('');
@@ -295,7 +325,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         setWolfIntelligence(null);
         setHistory([]);
         setStatusMessage('');
-    }, [activeTenantId]);
+    }, [activeContextKey]);
 
     useEffect(() => {
         let active = true;
@@ -304,10 +334,12 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
             setLoading(true);
             setError('');
             try {
-                if (!activeTenantId) throw new Error('Selecione uma escola antes de usar o Planner AI.');
-
                 let nextStudents: StudentOption[] = [];
-                if (user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) {
+                if (adapter) {
+                    nextStudents = await adapter.listLearners();
+                } else if (!activeTenantId) {
+                    throw new Error('Selecione uma escola antes de usar o Planner AI.');
+                } else if (user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.SUPER_ADMIN) {
                     const { data, error: queryError } = await supabase
                         .from('profiles')
                         .select('id, full_name, module')
@@ -351,13 +383,13 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         return () => {
             active = false;
         };
-    }, [activeTenantId, user.id, user.role]);
+    }, [activeContextKey, activeTenantId, adapter, user.id, user.role]);
 
     useEffect(() => {
         let active = true;
 
         const fetchStudentContext = async (): Promise<void> => {
-            if (!selectedStudent || !activeTenantId) {
+            if (!selectedStudent || (!adapter && !activeTenantId)) {
                 setStudentProfile(null);
                 setWolfIntelligence(null);
                 setHistory([]);
@@ -367,37 +399,46 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
             setContextLoading(true);
             setError('');
             try {
-                const [profileRes, wolfRes, historyRes] = await Promise.all([
-                    supabase
-                        .from('profiles')
-                        .select('id, module, english_for, occupation, personality, preferred_topics')
-                        .eq('tenant_id', activeTenantId)
-                        .eq('id', selectedStudent)
-                        .maybeSingle(),
-                    supabase
-                        .from('wolf_intelligence')
-                        .select('accumulated_context, strong_points, weak_points, recommended_approach, total_classes_analyzed')
-                        .eq('tenant_id', activeTenantId)
-                        .eq('student_id', selectedStudent)
-                        .maybeSingle(),
-                    supabase
-                        .from('lesson_plans')
-                        .select('id, created_at, objectives, task_mode, duration_minutes')
-                        .eq('tenant_id', activeTenantId)
-                        .eq('student_id', selectedStudent)
-                        .order('created_at', { ascending: false })
-                        .limit(5),
-                ]);
+                if (adapter) {
+                    const context = await adapter.loadLearnerContext(selectedStudent);
+                    if (active) {
+                        setStudentProfile(context.profile);
+                        setWolfIntelligence(context.intelligence);
+                        setHistory(context.history);
+                    }
+                } else {
+                    const [profileRes, wolfRes, historyRes] = await Promise.all([
+                        supabase
+                            .from('profiles')
+                            .select('id, module, english_for, occupation, personality, preferred_topics')
+                            .eq('tenant_id', activeTenantId)
+                            .eq('id', selectedStudent)
+                            .maybeSingle(),
+                        supabase
+                            .from('wolf_intelligence')
+                            .select('accumulated_context, strong_points, weak_points, recommended_approach, total_classes_analyzed')
+                            .eq('tenant_id', activeTenantId)
+                            .eq('student_id', selectedStudent)
+                            .maybeSingle(),
+                        supabase
+                            .from('lesson_plans')
+                            .select('id, created_at, objectives, task_mode, duration_minutes')
+                            .eq('tenant_id', activeTenantId)
+                            .eq('student_id', selectedStudent)
+                            .order('created_at', { ascending: false })
+                            .limit(5),
+                    ]);
 
-                if (profileRes.error) throw profileRes.error;
-                if (wolfRes.error) throw wolfRes.error;
-                if (historyRes.error) throw historyRes.error;
-                if (!profileRes.data) throw new Error('Aluno não encontrado nesta escola.');
+                    if (profileRes.error) throw profileRes.error;
+                    if (wolfRes.error) throw wolfRes.error;
+                    if (historyRes.error) throw historyRes.error;
+                    if (!profileRes.data) throw new Error('Aluno não encontrado nesta escola.');
 
-                if (active) {
-                    setStudentProfile(profileRes.data as StudentProfile);
-                    setWolfIntelligence((wolfRes.data as WolfIntelligence | null) || null);
-                    setHistory((historyRes.data || []) as LessonPlanHistoryItem[]);
+                    if (active) {
+                        setStudentProfile(profileRes.data as StudentProfile);
+                        setWolfIntelligence((wolfRes.data as WolfIntelligence | null) || null);
+                        setHistory((historyRes.data || []) as LessonPlanHistoryItem[]);
+                    }
                 }
             } catch (queryError: unknown) {
                 if (active) {
@@ -415,7 +456,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         return () => {
             active = false;
         };
-    }, [activeTenantId, selectedStudent]);
+    }, [activeContextKey, activeTenantId, adapter, selectedStudent]);
 
     const handleStudentChange = (studentId: string): void => {
         selectedStudentRef.current = studentId;
@@ -437,21 +478,33 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         setGeneratedPlan(null);
 
         try {
-            const { data, error: invokeError } = await supabase.functions.invoke<unknown>('lesson-planner', {
-                body: {
-                    action: 'generate',
-                    student_id: requestedStudentId,
-                    task_mode: taskMode,
+            let response: unknown;
+            if (adapter) {
+                response = await adapter.generate({
+                    learnerId: requestedStudentId,
+                    taskMode,
                     bilingual,
-                    duration_minutes: durationMinutes,
-                    teacher_request: customPrompt.trim(),
-                },
-            });
+                    durationMinutes,
+                    teacherRequest: customPrompt.trim(),
+                });
+            } else {
+                const { data, error: invokeError } = await supabase.functions.invoke<unknown>('lesson-planner', {
+                    body: {
+                        action: 'generate',
+                        student_id: requestedStudentId,
+                        task_mode: taskMode,
+                        bilingual,
+                        duration_minutes: durationMinutes,
+                        teacher_request: customPrompt.trim(),
+                    },
+                });
 
-            if (invokeError) {
-                throw new Error(apiErrorMessage(data) || invokeError.message || 'Falha ao consultar o Planner AI.');
+                if (invokeError) {
+                    throw new Error(apiErrorMessage(data) || invokeError.message || 'Falha ao consultar o Planner AI.');
+                }
+                response = data;
             }
-            const parsed = parseGenerateResponse(data);
+            const parsed = parseGenerateResponse(response);
             if (selectedStudentRef.current !== requestedStudentId) return;
 
             setGeneratedPlan({
@@ -459,7 +512,9 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                 studentId: requestedStudentId,
                 saved: false,
             });
-            setStatusMessage('Plano gerado. Revise antes de salvar.');
+            setStatusMessage(canPersist
+                ? 'Plano gerado. Revise antes de salvar.'
+                : 'Plano gerado. Revise e use nesta aula.');
         } catch (invokeFailure: unknown) {
             if (selectedStudentRef.current === requestedStudentId) {
                 setError(errorMessage(invokeFailure, 'Não foi possível gerar o plano.'));
@@ -482,35 +537,51 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         setError('');
         setStatusMessage('');
         try {
-            const { data, error: invokeError } = await supabase.functions.invoke<unknown>('lesson-planner', {
-                body: {
-                    action: 'save',
-                    run_id: runId,
-                },
-            });
+            if (adapter) {
+                if (!adapter.save) throw new Error('Este ambiente ainda não permite salvar planos.');
+                await adapter.save(runId);
+            } else {
+                const { data, error: invokeError } = await supabase.functions.invoke<unknown>('lesson-planner', {
+                    body: {
+                        action: 'save',
+                        run_id: runId,
+                    },
+                });
 
-            if (invokeError) {
-                throw new Error(apiErrorMessage(data) || invokeError.message || 'Falha ao salvar o plano.');
+                if (invokeError) {
+                    throw new Error(apiErrorMessage(data) || invokeError.message || 'Falha ao salvar o plano.');
+                }
+                const serverError = apiErrorMessage(data);
+                if (serverError) throw new Error(serverError);
             }
-            const serverError = apiErrorMessage(data);
-            if (serverError) throw new Error(serverError);
             if (selectedStudentRef.current !== generatedPlan.studentId) return;
 
             setGeneratedPlan((current) => (
                 current?.runId === runId ? { ...current, saved: true } : current
             ));
-            setStatusMessage('Plano salvo e memória pedagógica proposta para revisão.');
+            setStatusMessage(hasPedagogicalMemory
+                ? 'Plano salvo e memória pedagógica proposta para revisão.'
+                : 'Plano salvo neste ambiente.');
 
-            const { data: refreshedHistory, error: historyError } = await supabase
-                .from('lesson_plans')
-                .select('id, created_at, objectives, task_mode, duration_minutes')
-                .eq('tenant_id', activeTenantId)
-                .eq('student_id', generatedPlan.studentId)
-                .order('created_at', { ascending: false })
-                .limit(5);
+            if (adapter) {
+                const context = await adapter.loadLearnerContext(generatedPlan.studentId);
+                if (selectedStudentRef.current === generatedPlan.studentId) {
+                    setStudentProfile(context.profile);
+                    setWolfIntelligence(context.intelligence);
+                    setHistory(context.history);
+                }
+            } else {
+                const { data: refreshedHistory, error: historyError } = await supabase
+                    .from('lesson_plans')
+                    .select('id, created_at, objectives, task_mode, duration_minutes')
+                    .eq('tenant_id', activeTenantId)
+                    .eq('student_id', generatedPlan.studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
 
-            if (!historyError && selectedStudentRef.current === generatedPlan.studentId) {
-                setHistory((refreshedHistory || []) as LessonPlanHistoryItem[]);
+                if (!historyError && selectedStudentRef.current === generatedPlan.studentId) {
+                    setHistory((refreshedHistory || []) as LessonPlanHistoryItem[]);
+                }
             }
         } catch (saveFailure: unknown) {
             setError(errorMessage(saveFailure, 'Não foi possível salvar o plano.'));
@@ -524,7 +595,9 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
         generatedPlan
         && planBelongsToSelectedStudent
         && !generatedPlan.saved
-        && !saving,
+        && !saving
+        && canPersist
+        && (!adapter || Boolean(adapter.save)),
     );
     const knowledge = generatedPlan?.knowledge;
     const knowledgeReady = Boolean(knowledge?.rag_used || knowledge?.sources.length);
@@ -540,7 +613,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                         <h2 className="text-4xl font-black text-brand-text tracking-tighter">Planner AI</h2>
                     </div>
                     <p className="text-brand-muted text-sm">
-                        Estruture aulas com a metodologia Wise Wolf e a memória isolada de cada aluno.
+                        Estruture aulas com a metodologia Wise Wolf e o contexto isolado de cada aluno.
                     </p>
                 </div>
             </header>
@@ -762,7 +835,9 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                 </div>
                             )) : (
                                 <p className="text-xs text-brand-muted italic text-center py-4">
-                                    {selectedStudent ? 'Nenhum plano salvo para este aluno.' : 'Selecione um aluno para ver o histórico.'}
+                                    {selectedStudent
+                                        ? canPersist ? 'Nenhum plano salvo para este aluno.' : 'O histórico não está incluído neste ambiente.'
+                                        : 'Selecione um aluno para ver o histórico.'}
                                 </p>
                             )}
                         </div>
@@ -789,15 +864,17 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                             {generatedPlan.plan.duration_minutes} min · {generatedPlan.plan.level || 'Nível a confirmar'}
                                         </span>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleSavePlan}
-                                        disabled={!canSave}
-                                        className="flex items-center justify-center gap-2 text-tenant-primary font-black text-[10px] uppercase tracking-widest hover:underline disabled:opacity-50 disabled:no-underline"
-                                    >
-                                        {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
-                                        {saving ? 'Salvando...' : generatedPlan.saved ? 'Salvo' : 'Salvar plano'}
-                                    </button>
+                                    {canPersist && (
+                                        <button
+                                            type="button"
+                                            onClick={handleSavePlan}
+                                            disabled={!canSave}
+                                            className="flex items-center justify-center gap-2 text-tenant-primary font-black text-[10px] uppercase tracking-widest hover:underline disabled:opacity-50 disabled:no-underline"
+                                        >
+                                            {saving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                                            {saving ? 'Salvando...' : generatedPlan.saved ? 'Salvo' : 'Salvar plano'}
+                                        </button>
+                                    )}
                                 </div>
 
                                 <section>
@@ -1008,7 +1085,7 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
 
                                 <section className="p-6 bg-slate-950 rounded-[2rem] text-white">
                                     <h4 className="flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-tenant-primary mb-4">
-                                        <Brain size={16} /> Memória proposta
+                                        <Brain size={16} /> {hasPedagogicalMemory ? 'Memória proposta' : 'Continuidade sugerida'}
                                     </h4>
                                     <p className="text-xs font-medium text-slate-300 leading-relaxed mb-5">
                                         {generatedPlan.plan.ai_memory_reflection}
@@ -1044,7 +1121,9 @@ const LessonPlannerAI: React.FC<LessonPlannerAIProps> = ({ user, tenantId }) => 
                                         <MemoryList label="Confirmar com o professor" items={generatedPlan.plan.student_memory_update.notes_to_verify} />
                                     </div>
                                     <p className="text-[9px] text-slate-500 mt-5">
-                                        A memória só é enviada para revisão quando o plano é salvo.
+                                        {hasPedagogicalMemory
+                                            ? 'A memória só é enviada para revisão quando o plano é salvo.'
+                                            : 'Estas sugestões pertencem somente a esta geração e não atualizam a memória escolar.'}
                                     </p>
                                 </section>
 

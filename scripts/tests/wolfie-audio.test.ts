@@ -5,8 +5,10 @@ import {
   getTTSSpeed,
   prepareForTTS,
   resolveTtsVoice,
+  selectWolfieBrowserVoice,
   SILENT_WAV,
   splitSpeechSentences,
+  WOLFIE_OPENAI_VOICE,
 } from "../../lib/wolfieAudio.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -79,12 +81,36 @@ Deno.test("velocidade do TTS é mais lenta para iniciante", () => {
   );
 });
 
-Deno.test("voz corresponde ao idioma pedido", () => {
-  assert(resolveTtsVoice("pt").startsWith("pt-BR"), "português → voz pt-BR");
-  assert(resolveTtsVoice("en").startsWith("en-US"), "inglês → voz en-US");
+Deno.test("Wolfie mantém a mesma identidade OpenAI em todos os idiomas", () => {
+  assert(WOLFIE_OPENAI_VOICE === "cedar", "a identidade padrão precisa ser cedar");
+  for (const language of ["pt", "en", "mixed"] as const) {
+    assert(
+      resolveTtsVoice(language) === WOLFIE_OPENAI_VOICE,
+      `o idioma ${language} não pode trocar a identidade vocal`,
+    );
+  }
+});
+
+Deno.test("fallback do navegador prioriza vozes masculinas aprovadas", () => {
+  const voices = [
+    { name: "Luciana", lang: "pt-BR" },
+    { name: "Microsoft Felipe Online (Natural)", lang: "pt-BR" },
+    { name: "Samantha", lang: "en-US" },
+    { name: "Microsoft Guy Online (Natural)", lang: "en-US" },
+  ];
+
   assert(
-    resolveTtsVoice("mixed") === "auto-Bilingual",
-    "bilíngue precisa da voz automática",
+    selectWolfieBrowserVoice(voices, "pt")?.name.includes("Felipe"),
+    "português precisa escolher Felipe antes de Luciana",
+  );
+  assert(
+    selectWolfieBrowserVoice(voices, "en")?.name.includes("Guy"),
+    "inglês precisa escolher Guy antes de Samantha",
+  );
+  assert(
+    selectWolfieBrowserVoice([{ name: "Luciana", lang: "pt-BR" }], "pt") ===
+      null,
+    "sem voz masculina aprovada o fallback deve permanecer em texto",
   );
 });
 

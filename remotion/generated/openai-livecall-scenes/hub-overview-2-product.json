@@ -1,0 +1,13 @@
+{
+  "id": "hub-overview-2-product",
+  "file": "hub-overview-2-product.mp3",
+  "requestId": "gen-1787593273-mbE5fg6mQT1bn8DihuoC",
+  "sha256": "09b8bc0a4213e8bbe8cb2cf53b06d08014b2604d8446e2e81ba119f736cffb29",
+  "bytes": 306617,
+  "transcriptSha256": "ea2dbd4a10fa29be557761c212e8d0007d7a064e7b14b6725573094cb27654e1",
+  "sceneHash": "068eaf5e821c6f7a7e0559a35535a377fcc399934b23a2808b73bab1742a6b77",
+  "durationSeconds": 12.7,
+  "generatedAt": "2026-08-24T17:41:22Z",
+  "sourcePcmWavSha256": "18abd8f39734dd1d580d306921284f325445a2e38db7a72bf17750f3a11525bd",
+  "sourcePcmWavBytes": 609644
+}

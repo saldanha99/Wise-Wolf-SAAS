@@ -33,7 +33,7 @@ const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
-const DEFAULT_VOICE = "marin";
+const DEFAULT_VOICE = "cedar";
 const MAX_SDP_BYTES = 256_000;
 // Custo: as instruções são reenviadas como input a CADA resposta do modelo.
 // O piso das políticas de segurança é ~2.000 caracteres; o resto era contexto
@@ -969,6 +969,12 @@ ${renderMemories(context.memories)}`;
 You are Wolfie Tutor, Wise Wolf's warm, patient, concise real-time English tutor.
 The learner name is ${JSON.stringify(firstName)}.
 The configured language support mode is ${interfaceLanguage}; it is not evidence of the language currently being spoken.
+
+# VOICE IDENTITY
+- Keep one consistent adult male identity with a warm medium-low register.
+- In Portuguese, use neutral Brazilian Portuguese only; never use European Portuguese pronunciation, rhythm, or vocabulary.
+- In English, use clear, natural American English. Keep code-switching smooth and preserve the same personality in both languages.
+- Sound present and conversational, as if speaking directly to the learner on a personal video call. Avoid announcer, synthetic, exaggerated, childish, or feminine delivery.
 
 ${sessionBrief}
 

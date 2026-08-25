@@ -1,0 +1,13 @@
+{
+  "id": "wolfie-3-proof",
+  "file": "wolfie-3-proof.mp3",
+  "requestId": "gen-1787593340-m7FswJNXGVCUe1bt8Pyu",
+  "sha256": "dc1768e3f13310fe7a93b527f9f62547c1a0ea8cb206ed4068443e35bf198e5f",
+  "bytes": 225115,
+  "transcriptSha256": "5a1dbe94937ceeec29d4dbe7b4766339a83a8bcaf305e0ff448a0a9d021fba6f",
+  "sceneHash": "b51e153b48e54378019986facbe29d1104823ec01ac4fa1710757b844fc90eed",
+  "durationSeconds": 9.301,
+  "generatedAt": "2026-08-24T17:42:25Z",
+  "sourcePcmWavSha256": "c2d4f37341af4d9157bfb244ade2e69c48a4254dd30be8bd2325f1ad4e345806",
+  "sourcePcmWavBytes": 446444
+}

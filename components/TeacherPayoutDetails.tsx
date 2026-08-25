@@ -11,6 +11,9 @@ import {
     X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { buildTeacherInvoiceObjectPath } from '../lib/invoiceStorage';
+import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import InvoiceDocumentLink from './InvoiceDocumentLink';
 
 // Dados de recebimento + envio de nota fiscal, na MESMA tela do Financeiro.
 // Antes o professor tinha que sair para "Meu Perfil" (dados bancários) e para
@@ -38,6 +41,7 @@ const EMPTY: BankForm = { bankName: '', agency: '', accountNumber: '', pixKey: '
 interface Props {
     teacherId: string;
     teacherName?: string;
+    tenantId?: string;
     /** Mês YYYY-MM em foco — define de qual fechamento é a NF. */
     month: string;
     /** false quando é o diretor olhando a ficha de outro professor (só leitura). */
@@ -52,7 +56,7 @@ const Field: React.FC<{ label: string; value?: string | null }> = ({ label, valu
     </div>
 );
 
-const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, canEdit, onChanged }) => {
+const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, tenantId, month, canEdit, onChanged }) => {
     const [form, setForm] = useState<BankForm>(EMPTY);
     const [draft, setDraft] = useState<BankForm>(EMPTY);
     const [editing, setEditing] = useState(false);
@@ -66,11 +70,7 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
         setLoading(true);
         setError(null);
         try {
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('bank_name, agency, account_number, full_name')
-                .eq('id', teacherId)
-                .maybeSingle();
+            const privateProfile = await loadAuthorizedProfilePrivate(teacherId);
 
             // pix_key não é legível direto em profiles (privacidade): vem por RPC.
             // O próprio professor usa get_my_pay; o diretor lê a lista do tenant.
@@ -88,28 +88,29 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
             }
 
             const next: BankForm = {
-                bankName: profile?.bank_name || '',
-                agency: profile?.agency || '',
-                accountNumber: profile?.account_number || '',
+                bankName: (privateProfile.bank_name as string) || '',
+                agency: (privateProfile.agency as string) || '',
+                accountNumber: (privateProfile.account_number as string) || '',
                 pixKey,
                 pixKeyType,
             };
             setForm(next);
             setDraft(next);
 
-            const { data: closingData } = await supabase
+            let closingQuery = supabase
                 .from('teacher_closings')
                 .select('id, status, nf_link, total_amount, total_lessons')
                 .eq('teacher_id', teacherId)
-                .eq('month_year', month)
-                .maybeSingle();
+                .eq('month_year', month);
+            if (tenantId) closingQuery = closingQuery.eq('tenant_id', tenantId);
+            const { data: closingData } = await closingQuery.maybeSingle();
             setClosing(closingData || null);
         } catch (err: any) {
             setError(err.message || 'Não foi possível carregar os dados de recebimento.');
         } finally {
             setLoading(false);
         }
-    }, [teacherId, month, canEdit]);
+    }, [teacherId, tenantId, month, canEdit]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -156,29 +157,23 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
         setUploading(true);
         setError(null);
         try {
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            const cleanUserId = (authUser?.id || teacherId).replace(/[^a-zA-Z0-9]/g, '');
-            const filePath = `user_${cleanUserId}/${Date.now()}_${file.name}`;
+            const filePath = buildTeacherInvoiceObjectPath(closing.id);
 
             const { error: uploadError } = await supabase.storage
                 .from('invoices')
-                .upload(filePath, file, { upsert: true });
+                .upload(filePath, file, { upsert: false });
             if (uploadError) {
                 throw uploadError.message === 'Bucket not found'
                     ? new Error('Bucket "invoices" não encontrado. Contate o suporte.')
                     : uploadError;
             }
 
-            // Bucket privado: getPublicUrl daria 403 pro diretor. Signed URL longa.
-            const { data: signed } = await supabase.storage
-                .from('invoices')
-                .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 5);
-
             // Via RPC: o professor não escreve direto em teacher_closings (o mesmo
-            // PATCH alcançaria total_amount/status). Ver teacher_attach_invoice.
+            // PATCH alcançaria total_amount/status). O banco guarda o object path;
+            // a URL assinada curta só nasce depois de uma nova autorização.
             const { error: updateError } = await supabase.rpc('teacher_attach_invoice', {
                 p_closing_id: closing.id,
-                p_nf_link: signed?.signedUrl || filePath,
+                p_nf_link: filePath,
             });
             if (updateError) throw updateError;
 
@@ -192,6 +187,9 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
     };
 
     const hasBankData = Boolean(form.bankName || form.accountNumber || form.pixKey);
+    const canUploadInvoice = canEdit
+        && Number(closing?.total_amount || 0) > 0
+        && ['PAID_WAITING_NF', 'PAGO', 'PAID', 'REJECTED', 'REJEITADO', 'UNDER_REVIEW'].includes(closing?.status || '');
 
     const nfBadge = () => {
         const status = closing?.status || '';
@@ -400,17 +398,15 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
                             </div>
 
                             {closing.nf_link && (
-                                <a
-                                    href={closing.nf_link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                <InvoiceDocumentLink
+                                    reference={closing.nf_link}
                                     className="flex items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-xs font-black uppercase tracking-widest text-brand-text transition-colors hover:text-tenant-primary"
                                 >
                                     <FileText size={14} /> Ver nota enviada
-                                </a>
+                                </InvoiceDocumentLink>
                             )}
 
-                            {canEdit && (
+                            {canUploadInvoice && (
                                 <div className="relative">
                                     <input
                                         type="file"
@@ -437,7 +433,9 @@ const TeacherPayoutDetails: React.FC<Props> = ({ teacherId, teacherName, month, 
                             )}
 
                             <p className="text-[11px] font-medium leading-relaxed text-brand-muted">
-                                Só PDF, até 5MB. Depois de enviada, a nota entra em análise da coordenação.
+                                {canUploadInvoice
+                                    ? 'Só PDF, até 5MB. Depois de enviada, a nota entra em análise da coordenação.'
+                                    : 'O envio será liberado somente depois que o repasse estiver pago e houver valor a faturar.'}
                             </p>
                         </>
                     )}

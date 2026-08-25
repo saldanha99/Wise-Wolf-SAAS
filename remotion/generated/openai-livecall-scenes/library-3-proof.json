@@ -1,0 +1,13 @@
+{
+  "id": "library-3-proof",
+  "file": "library-3-proof.mp3",
+  "requestId": "gen-1787593298-flLspsh6E2ifg9PgIrL9",
+  "sha256": "a26a4dcc04b76fd0a4d8d139ce6070c373cf68921f62a230dc7b89956ed0d622",
+  "bytes": 196902,
+  "transcriptSha256": "70bbfe334cca9117473373a9b2f332959998813d65582e72d4f19ed237d6b064",
+  "sceneHash": "715350d8752ec42915c3e575d0ae7e81afad6c14d12686b67eefcad15bdd1fb4",
+  "durationSeconds": 8.15,
+  "generatedAt": "2026-08-24T17:41:43Z",
+  "sourcePcmWavSha256": "432884c4c67bdcff58f8f5d6f50291ec987de6f9f6dda05aa178bd5cf843d702",
+  "sourcePcmWavBytes": 391244
+}

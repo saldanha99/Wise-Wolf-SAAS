@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, Clock, CheckCircle, XCircle, FileUp, AlertCircle, RefreshCw, Hash, Calendar, HelpCircle } from 'lucide-react';
+import { FileText, Upload, Clock, CheckCircle, XCircle, FileUp, AlertCircle, RefreshCw, Hash, Calendar, HelpCircle, ShieldCheck } from 'lucide-react';
 import { User as UserType } from '../types';
 import { supabase } from '../lib/supabase';
+import { buildTeacherInvoiceObjectPath } from '../lib/invoiceStorage';
 import NfIssuanceTour from './NfIssuanceTour';
+import InvoiceDocumentLink from './InvoiceDocumentLink';
 
 interface TeacherInvoicesProps {
     user: UserType;
@@ -29,6 +31,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 .from('teacher_closings')
                 .select('*')
                 .eq('teacher_id', user.id)
+                .eq('tenant_id', tenantId)
                 .order('month_year', { ascending: false });
 
             if (closingsData) setClosings(closingsData);
@@ -52,24 +55,13 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
 
         setIsUploadingFile(closingId);
         try {
-            // DEBUG: Check what ID Supabase thinks we are
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            console.log("DEBUG: Current Auth User:", authUser);
-            console.log("DEBUG: User ID sent to Storage:", authUser?.id);
-
-            // If the user ID is "wise-wolf-school" (text), this IS the problem.
-            // We cannot upload as this user to standard Supabase Storage.
-
-            // Sanitize file path just in case
-            const userIdToUse = authUser?.id || user.id || 'unknown';
-            const cleanUserId = userIdToUse.replace(/[^a-zA-Z0-9]/g, '');
-            const filePath = `user_${cleanUserId}/${Date.now()}_${file.name}`;
+            const filePath = buildTeacherInvoiceObjectPath(closingId);
 
             // 1. Upload to Supabase Storage
             const { error: uploadError } = await supabase.storage
                 .from('invoices')
                 .upload(filePath, file, {
-                    upsert: true
+                    upsert: false
                 });
 
             if (uploadError) {
@@ -79,20 +71,15 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 throw uploadError;
             }
 
-            // 2. Get Signed URL — o bucket "invoices" é PRIVADO; getPublicUrl gera link
-            // que dá 403. Signed URL de longa duração permite o diretor abrir a NF.
-            const { data: signed } = await supabase.storage
-                .from('invoices')
-                .createSignedUrl(filePath, 60 * 60 * 24 * 365 * 5); // ~5 anos
-            const nfUrl = signed?.signedUrl || filePath;
-
-            // 3. Anexa pela RPC (badge "Em Análise"). O professor não escreve mais
+            // 2. Anexa pela RPC (badge "Em Análise"). O banco guarda somente o
+            // object path; a URL temporária é emitida apenas ao abrir o arquivo.
+            // O professor não escreve mais
             // direto em teacher_closings — pelo PostgREST o mesmo PATCH alcançaria
             // total_amount e status. A RPC grava só o link e só move o status quando
             // o fechamento já está na faixa de NF.
             const { error: updateError } = await supabase.rpc('teacher_attach_invoice', {
                 p_closing_id: closingId,
-                p_nf_link: nfUrl,
+                p_nf_link: filePath,
             });
 
             if (updateError) throw updateError;
@@ -123,9 +110,10 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
 
     const renderInvoiceAction = (inv: any) => {
         const status = inv.status || '';
-        const isRejected = status === 'REJECTED';
+        const isRejected = status === 'REJECTED' || status === 'REJEITADO';
         const hasLink = !!inv.nf_link;
-        const canUpload = ['PENDENTE', 'REJECTED', 'CONFIRMADO', 'PAGO', 'PAID_WAITING_NF'].includes(status);
+        const canUpload = ['REJECTED', 'REJEITADO', 'PAGO', 'PAID', 'PAID_WAITING_NF', 'UNDER_REVIEW'].includes(status)
+            && Number(inv.total_amount || 0) > 0;
 
         if (canUpload) {
             return (
@@ -139,14 +127,12 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                         </p>
                     )}
                     {hasLink && (
-                        <a
-                            href={inv.nf_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <InvoiceDocumentLink
+                            reference={inv.nf_link}
                             className={`mb-2 block text-center text-[10px] font-bold hover:underline ${isRejected ? 'text-red-500' : 'text-blue-500'}`}
                         >
                             {isRejected ? 'Ver Nota Rejeitada' : 'Ver Nota Atual'}
-                        </a>
+                        </InvoiceDocumentLink>
                     )}
                     <label
                         className={`flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-[1.02] active:scale-95 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 ${isUploadingFile === inv.id ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${isRejected ? 'bg-red-500 shadow-red-500/20' : 'bg-blue-700 bg-tenant-primary shadow-tenant-primary/20'}`}
@@ -174,15 +160,13 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
 
         if (hasLink) {
             return (
-                <a
-                    href={inv.nf_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                <InvoiceDocumentLink
+                    reference={inv.nf_link}
                     className="flex w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-brand-surface-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted transition-all hover:bg-blue-700 hover:bg-tenant-primary hover:text-white dark:bg-brand-surface-2"
                 >
                     <FileText size={14} />
                     <span>Ver Nota Fiscal</span>
-                </a>
+                </InvoiceDocumentLink>
             );
         }
 
@@ -200,9 +184,9 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                     <div className="shrink-0 rounded-xl bg-tenant-primary/10 p-3">
                         <FileText className="text-tenant-primary" size={24} />
                     </div>
-                    <h1 className="min-w-0 text-2xl font-black tracking-tight text-brand-text sm:text-3xl">Minhas Notas Fiscais</h1>
+                    <h1 className="min-w-0 text-2xl font-black tracking-tight text-brand-text sm:text-3xl">Minhas Notas Fiscais (NFS-e)</h1>
                 </div>
-                <p className="text-brand-muted font-medium">Envie suas notas fiscais após o receber o pagamento para regularizar sua situação.</p>
+                <p className="text-brand-muted font-medium">Cada linha abaixo é um fechamento exclusivamente seu. Depois do repasse, envie a NFS-e emitida para a escola.</p>
                 <button
                     type="button"
                     onClick={() => setShowNfHelp(true)}
@@ -210,6 +194,12 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 >
                     <HelpCircle size={13} /> Como emitir minha nota
                 </button>
+                <div className="mt-4 flex max-w-3xl items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100">
+                    <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+                    <p className="text-xs font-semibold leading-relaxed">
+                        Esta não é uma lista geral de pagamentos. Você só pode visualizar seus próprios valores e PDFs. Se aparecer qualquer documento de outra pessoa, não abra nem compartilhe e avise a direção.
+                    </p>
+                </div>
             </div>
 
             {/* Tour obrigatório: aparece sozinho quando há pagamento autorizado sem
@@ -222,7 +212,7 @@ const TeacherInvoices: React.FC<TeacherInvoicesProps> = ({ user, tenantId }) => 
                 <div className="flex items-center justify-between border-b bg-brand-surface-2/50 p-5 dark:border-brand-border dark:bg-brand-surface-2/30 sm:p-8">
                     <h3 className="font-black text-brand-text dark:text-slate-200 text-xs uppercase tracking-widest flex items-center gap-2">
 
-                        <FileUp size={16} className="text-tenant-primary" /> Envios Pendentes e Histórico
+                        <FileUp size={16} className="text-tenant-primary" /> Meus fechamentos e envios
                     </h3>
                 </div>
 

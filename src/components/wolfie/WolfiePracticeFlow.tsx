@@ -8,7 +8,6 @@ import React, {
 import {
   ArrowLeft,
   ArrowRight,
-  BookOpen,
   BriefcaseBusiness,
   FileText,
   Loader2,
@@ -56,6 +55,7 @@ import {
   primaryButton,
   secondaryButton,
 } from "./WolfieActivityUI";
+import { WolfiePracticeHeader } from "./WolfiePracticeHeader";
 import { WolfieQuizActivity } from "./WolfieQuizActivity";
 import { WolfieWritingActivity } from "./WolfieWritingActivity";
 import { WolfieMeetingActivity } from "./WolfieMeetingActivity";
@@ -1099,66 +1099,11 @@ export function WolfiePracticeFlow({
   return (
     <>
       <div className="min-h-[70vh] overflow-hidden rounded-3xl border border-brand-border bg-brand-bg shadow-sm">
-        <header
-          className={`px-4 py-5 sm:px-7 ${
-            view === "subject"
-              ? "border-b border-white/10 bg-[#071120]"
-              : "bg-brand-surface"
-          }`}
-        >
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span
-                className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-sm ${
-                  view === "subject"
-                    ? "bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 shadow-blue-500/25"
-                    : "bg-brand-accent"
-                }`}
-              >
-                <Sparkles size={22} aria-hidden="true" />
-              </span>
-              <div>
-                <p
-                  className={`font-black tracking-tight ${
-                    view === "subject" ? "text-white" : "text-brand-text"
-                  }`}
-                >
-                  Wolfie Tutor
-                </p>
-                <p
-                  className={`text-xs ${
-                    view === "subject" ? "text-slate-400" : "text-brand-muted"
-                  }`}
-                >
-                  Imersão que parte da sua vida
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => openRepertoire("subject")}
-              className={view === "subject"
-                ? `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-bold text-white backdrop-blur-xl transition hover:border-cyan-300/40 hover:bg-white/10 ${focusRing}`
-                : secondaryButton}
-            >
-              <BookOpen size={17} aria-hidden="true" />
-              <span className="hidden sm:inline">Meu repertório</span>
-              {overview?.repertoireCount
-                ? (
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] ${
-                      view === "subject"
-                        ? "bg-white/10 text-cyan-200"
-                        : "bg-brand-surface-2 text-brand-accent"
-                    }`}
-                  >
-                    {overview.repertoireCount}
-                  </span>
-                )
-                : null}
-            </button>
-          </div>
-        </header>
+        <WolfiePracticeHeader
+          isSubjectView={view === "subject"}
+          actionBadge={overview?.repertoireCount}
+          onAction={() => openRepertoire("subject")}
+        />
         {view === "subject" ? null : <JourneySteps view={view} />}
 
         {view === "subject"

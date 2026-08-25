@@ -95,20 +95,15 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
     } else {
       setData(d);
       if (d?.can_edit_financial) {
-        const { data: bal } = await supabase.rpc('get_student_credit_balance', { p_student_id: studentId });
+        const [{ data: bal }, { data: deps }] = await Promise.all([
+          supabase.rpc('get_student_credit_balance', { p_student_id: studentId }),
+          supabase.rpc('get_authorized_profile_dependents', { p_guardian_id: studentId }),
+        ]);
         setCreditBalance(Number(bal) || 0);
+        setDependents((deps as any[]) || []);
+      } else {
+        setDependents([]);
       }
-    }
-    // Busca beneficiários cobrados no CPF deste titular (não bloqueante)
-    try {
-      const { data: deps } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, monthly_fee, subscription_id, status_financial')
-        .eq('guardian_id', studentId)
-        .order('full_name', { ascending: true });
-      setDependents(deps || []);
-    } catch (_) {
-      setDependents([]);
     }
     setLoading(false);
   };

@@ -1,0 +1,28 @@
+# Compose label fragment for the existing frontend service. The Hub uses a
+# separate router and certificate so a DNS or ACME problem cannot replace the
+# certificate already serving app/system.
+
+traefik.enable: "true"
+
+traefik.http.routers.wisecore-hub-http.rule: "Host(`hub.wisewolflanguage.com.br`)"
+traefik.http.routers.wisecore-hub-http.entrypoints: "${TRAEFIK_HTTP_ENTRYPOINT:-web}"
+traefik.http.routers.wisecore-hub-http.service: "${TRAEFIK_FRONTEND_SERVICE:?Set the existing Traefik frontend service name}"
+traefik.http.routers.wisecore-hub-http.middlewares: "wisecore-hub-https-redirect"
+
+traefik.http.routers.wisecore-hub.rule: "Host(`hub.wisewolflanguage.com.br`)"
+traefik.http.routers.wisecore-hub.entrypoints: "${TRAEFIK_HTTPS_ENTRYPOINT:-websecure}"
+traefik.http.routers.wisecore-hub.service: "${TRAEFIK_FRONTEND_SERVICE:?Set the existing Traefik frontend service name}"
+traefik.http.routers.wisecore-hub.middlewares: "wisecore-hub-security"
+traefik.http.routers.wisecore-hub.tls: "true"
+traefik.http.routers.wisecore-hub.tls.certresolver: "${TRAEFIK_CERT_RESOLVER:?Set the resolver already used by the app router}"
+
+traefik.http.middlewares.wisecore-hub-https-redirect.redirectscheme.scheme: "https"
+traefik.http.middlewares.wisecore-hub-https-redirect.redirectscheme.permanent: "true"
+
+traefik.http.middlewares.wisecore-hub-security.headers.contenttypenosniff: "true"
+traefik.http.middlewares.wisecore-hub-security.headers.framedeny: "true"
+traefik.http.middlewares.wisecore-hub-security.headers.referrerpolicy: "strict-origin-when-cross-origin"
+traefik.http.middlewares.wisecore-hub-security.headers.stsseconds: "31536000"
+traefik.http.middlewares.wisecore-hub-security.headers.stsincludesubdomains: "false"
+traefik.http.middlewares.wisecore-hub-security.headers.stspreload: "false"
+traefik.http.middlewares.wisecore-hub-security.headers.forcestsheader: "true"

@@ -371,6 +371,70 @@ Deno.test("bloqueia escola com assinatura inativa", async () => {
   assertEquals(upstreamCalled, false, "chamada ao provedor");
 });
 
+Deno.test("falha do broker é sanitizada e não alcança a Evolution", async () => {
+  const userId = "00000000-0000-4000-8000-000000000019";
+  let upstreamCalled = false;
+  const admin = {
+    from(table: string) {
+      const builder = {
+        select() {
+          return builder;
+        },
+        eq() {
+          return builder;
+        },
+        limit() {
+          return builder;
+        },
+        async maybeSingle() {
+          if (table === "tenants") {
+            return {
+              data: { id: "tenant-a", saas_status: "active" },
+              error: null,
+            };
+          }
+          if (table === "whatsapp_instances") {
+            return {
+              data: { id: "instance-row-a", user_id: userId },
+              error: null,
+            };
+          }
+          throw new Error(`Tabela inesperada: ${table}`);
+        },
+      };
+      return builder;
+    },
+  };
+
+  const response = await handleRequest(
+    request({
+      action: "message/sendText",
+      instanceName: "instance-abc",
+      payload: { number: "5511999999999", text: "Teste" },
+    }),
+    {
+      authorize: async () =>
+        authorizedContext(admin, "TEACHER", "tenant-a", userId),
+      resolveIntegration: async () => {
+        throw new Error("segredo-que-nao-pode-vazar");
+      },
+      fetchUpstream: async () => {
+        upstreamCalled = true;
+        throw new Error("Evolution não deve ser chamada");
+      },
+    },
+  );
+  const responseText = await response.text();
+
+  assertEquals(response.status, 503, "status de falha do broker");
+  assertEquals(upstreamCalled, false, "chamada ao provedor");
+  assertEquals(
+    responseText.includes("segredo-que-nao-pode-vazar"),
+    false,
+    "segredo na resposta",
+  );
+});
+
 Deno.test("professor envia somente pela instância canônica do próprio tenant", async () => {
   const userId = "00000000-0000-4000-8000-000000000009";
   const queries: Array<{
@@ -379,6 +443,8 @@ Deno.test("professor envia somente pela instância canônica do próprio tenant"
   }> = [];
   let authorizationRoles: readonly string[] = [];
   let upstreamUrl = "";
+  let upstreamRedirect = "";
+  let brokerScope: Record<string, unknown> = {};
 
   const admin = {
     from(table: string) {
@@ -422,17 +488,25 @@ Deno.test("professor envia somente pela instância canônica do próprio tenant"
       payload: { number: "5511999999999", text: "Mensagem isolada" },
     }),
     {
-      getEnv: (name) =>
-        ({
-          EVOLUTION_API_URL: "https://evolution.invalid",
-          EVOLUTION_API_KEY: "segredo-de-teste",
-        })[name],
       authorize: async (_req, options) => {
         authorizationRoles = options.allowedRoles;
         return authorizedContext(admin, "TEACHER", "tenant-a", userId);
       },
-      fetchUpstream: async (input) => {
+      resolveIntegration: async (_admin, tenantId, purpose) => {
+        brokerScope = { tenantId, purpose };
+        return {
+          integrationId: "00000000-0000-4000-8000-0000000000e1",
+          tenantId,
+          provider: "evolution",
+          mode: "PLATFORM_MANAGED",
+          version: 1,
+          baseUrl: "https://evolution.invalid",
+          apiKey: "segredo-de-teste",
+        };
+      },
+      fetchUpstream: async (input, init) => {
         upstreamUrl = String(input);
+        upstreamRedirect = String(init?.redirect || "");
         return new Response(JSON.stringify({ key: { id: "message-1" } }), {
           status: 200,
         });
@@ -465,5 +539,11 @@ Deno.test("professor envia somente pela instância canônica do próprio tenant"
     upstreamUrl,
     "https://evolution.invalid/message/sendText/instance-abc",
     "rota upstream",
+  );
+  assertEquals(upstreamRedirect, "error", "redirecionamento upstream");
+  assertEquals(
+    brokerScope,
+    { tenantId: "tenant-a", purpose: "message.send_text" },
+    "broker deve receber apenas o tenant canônico e a finalidade",
   );
 });

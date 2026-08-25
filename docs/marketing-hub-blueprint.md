@@ -1,5 +1,9 @@
 # Blueprint do Wise Wolf Marketing Hub
 
+> Documento histórico de concepção. A arquitetura comercial vigente está em
+> `docs/marketing-hub-offer-architecture-2026-08-23.md`. Em caso de conflito,
+> prevalece o documento mais recente.
+
 ## 1. Resumo executivo
 
 O Wise Wolf já possui ativos suficientes para criar um segundo produto, sem precisar construir tudo do zero. A oportunidade é transformar partes do sistema escolar em uma porta de entrada de baixo risco para três públicos:

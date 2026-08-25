@@ -138,6 +138,33 @@ describe("WolfieScenarioStage", () => {
       name: paletteOnlyProfile.accessibleEnvironmentLabel,
     })).toHaveAttribute("data-background-status", "fallback");
   });
+
+  it("renders the UGC camera as the primary responsive conversation surface", () => {
+    const { container } = render(
+      <WolfieScenarioStage
+        profile={profile}
+        presentation="ugc"
+        reducedMotion
+        character={<div>Wolfie em primeiro plano</div>}
+        sceneContent={<button>Segure para falar</button>}
+        caption={<p>Legenda dentro da chamada</p>}
+        context={<p>Feedback sob demanda</p>}
+      />,
+    );
+
+    const stage = screen.getByRole("region", {
+      name: profile.accessibleEnvironmentLabel,
+    });
+    expect(stage).toHaveAttribute("data-stage-presentation", "ugc");
+    expect(container.querySelector("[data-stage-camera='ugc']"))
+      .toBeInTheDocument();
+    expect(container.querySelector("[data-stage-layer='camera-background']"))
+      .toBeInTheDocument();
+    expect(container.querySelector("[data-stage-slot='caption']"))
+      .toContainElement(screen.getByText("Legenda dentro da chamada"));
+    expect(screen.getByRole("complementary", { name: "Contexto da prática" }))
+      .toHaveClass("absolute");
+  });
 });
 
 describe("WolfieCharacter", () => {
@@ -235,6 +262,27 @@ describe("WolfieCharacter", () => {
       name: "Alex, interlocutor virtual: ouvindo.",
     })).toBeInTheDocument();
   });
+
+  it("uses the declared camera to crop the Wolfie into UGC framing", () => {
+    const { container, rerender } = render(
+      <WolfieCharacter profile={profile} framing="ugc" reducedMotion />,
+    );
+
+    expect(container.querySelector("[data-character-state]"))
+      .toHaveAttribute("data-character-framing", "ugc");
+    expect(container.querySelector("[data-character-layer='crop']"))
+      .toHaveClass("h-[152%]");
+
+    rerender(
+      <WolfieCharacter
+        profile={{ ...profile, camera: "close" }}
+        framing="ugc"
+        reducedMotion
+      />,
+    );
+    expect(container.querySelector("[data-character-layer='crop']"))
+      .toHaveClass("h-[172%]");
+  });
 });
 
 describe("WolfieSessionHUD", () => {
@@ -318,5 +366,16 @@ describe("WolfieCaptionBar", () => {
       .toHaveClass("pointer-events-auto");
     fireEvent.click(screen.getByRole("button", { name: "Ouvir novamente" }));
     expect(onReplay).toHaveBeenCalledOnce();
+  });
+
+  it("offers a compact lower-third variant for the UGC camera", () => {
+    const { container } = render(
+      <WolfieCaptionBar text="I'm right here with you." variant="ugc" />,
+    );
+
+    expect(container.querySelector("[data-caption-variant='ugc']"))
+      .toBeInTheDocument();
+    expect(screen.getByText("I'm right here with you."))
+      .toHaveClass("font-semibold");
   });
 });

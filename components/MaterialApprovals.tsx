@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { FileCheck, RefreshCw, Check, X, ExternalLink, Clock, BookOpen } from 'lucide-react';
 import { User as UserType } from '../types';
+import { openMaterialAccess } from '../services/materialAccessService';
 
 interface Props { user: UserType; tenantId?: string; }
 
@@ -9,6 +10,19 @@ const MaterialApprovals: React.FC<Props> = () => {
   const [data, setData] = useState<any>({ items: [], pending_count: 0 });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
+
+  const openMaterial = async (material: any) => {
+    if (!material.file_url) return;
+    setOpening(material.id);
+    try {
+      await openMaterialAccess(material.file_url);
+    } catch {
+      alert('Não foi possível abrir este material. Confirme seu acesso e tente novamente.');
+    } finally {
+      setOpening(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -30,17 +44,7 @@ const MaterialApprovals: React.FC<Props> = () => {
       alert('Erro ao revisar material.');
       return;
     }
-    if (approve) {
-      const { data: syncResult, error: syncError } = await supabase.functions.invoke('sync-hub-material', {
-        body: { materialId: id },
-      });
-      if (syncError || syncResult?.ok === false) {
-        console.warn('Material aprovado; sincronização com o Hub ficará pendente.', syncError || syncResult);
-        alert('✅ Material aprovado. A cópia para a Biblioteca do Hub ficou na fila e poderá ser reprocessada.');
-      } else {
-        alert('✅ Material aprovado e publicado na Biblioteca do Hub!');
-      }
-    }
+    if (approve) alert('✅ Material aprovado para uso interno da escola.');
     setBusy(null);
     await load();
   };
@@ -87,7 +91,7 @@ const MaterialApprovals: React.FC<Props> = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {m.file_url && <a href={m.file_url} target="_blank" rel="noreferrer" className="p-2 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text" title="Ver material"><ExternalLink size={14} /></a>}
+                  {m.file_url && <button type="button" onClick={() => void openMaterial(m)} disabled={opening === m.id} className="p-2 rounded-lg border border-brand-border text-brand-muted hover:text-brand-text disabled:opacity-50" title="Ver material"><ExternalLink size={14} /></button>}
                   <button onClick={() => review(m.id, false)} disabled={busy === m.id} className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1 disabled:opacity-50"><X size={13} /> Reprovar</button>
                   <button onClick={() => review(m.id, true)} disabled={busy === m.id} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 disabled:opacity-50"><Check size={13} /> Aprovar</button>
                 </div>

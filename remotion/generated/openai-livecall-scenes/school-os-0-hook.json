@@ -1,0 +1,13 @@
+{
+  "id": "school-os-0-hook",
+  "file": "school-os-0-hook.mp3",
+  "requestId": "gen-1787593357-0Ymha1fC0lO9GNOs2G5l",
+  "sha256": "cc0a356cfb32f48583e522f50bd0019a95272042bad91db3d8ae512d30f9a3cf",
+  "bytes": 170571,
+  "transcriptSha256": "07589917cb4eec891e6232d737ffab73dccb807a0798976daa505354561e26be",
+  "sceneHash": "13be02a222f82c115fc06d4356a728d6fe24269dafe0e97294aeb1a394979a00",
+  "durationSeconds": 7.05,
+  "generatedAt": "2026-08-24T17:42:50Z",
+  "sourcePcmWavSha256": "48bd99da53d7769a8561cc05cba9006a7fde9ded4a94653ac9bee3e1bb9fbd21",
+  "sourcePcmWavBytes": 338444
+}

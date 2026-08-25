@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "slug": "educator-ai",
+  "generatedAt": "2026-08-24T21:06:22.501Z",
+  "language": "pt-BR",
+  "compositionId": "HubEducadorIaPtBr",
+  "commercialUseAllowed": true,
+  "renderFingerprintSha256": "f0fbb313b3d2315619f2cb339b46f54333d74e25e9e9343e08150d85b74f9866",
+  "artifacts": {
+    "videoSha256": "d1c7171c42d66119907ce5cc885b279af969538a52492ebecddfb5f8522fd87f",
+    "posterSha256": "dcd5a42bf427cf9f8cf23b20c357bbd41b3fd4e31f947bf5c5c7f6b3a504adc3",
+    "captionsSha256": "410822aad4b4c15e65e9a6594f2c162ebd887ead15ec85dd44ff1b19e78d4495"
+  },
+  "receiptFingerprintSha256": "4c0b954984f746f8d7e4c515e9e92d00202044af52684a2ce01de44e4d7b9816"
+}

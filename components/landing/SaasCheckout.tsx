@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Loader2, ArrowRight, Check, Building2, User, Mail, Phone, FileText, MapPin, CreditCard, Smartphone, Barcode, Copy, Sparkles, Shield, Lock, AlertCircle, ChevronLeft } from 'lucide-react';
+import { X, Loader2, ArrowRight, Check, Building2, User, Mail, Phone, FileText, MapPin, Smartphone, Barcode, Copy, Sparkles, Shield, Lock, AlertCircle, ChevronLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Props {
@@ -73,11 +73,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
         address: '',
         addressNumber: '',
         province: '',
-        billing_type: 'PIX' as 'PIX' | 'BOLETO' | 'CREDIT_CARD',
-        cc_name: '',
-        cc_number: '',
-        cc_expiry: '',
-        cc_ccv: '',
+        billing_type: 'PIX' as 'PIX' | 'BOLETO',
     });
 
     const price = yearly ? plan.price_yearly : plan.price;
@@ -91,11 +87,6 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
         form.owner_cpf_cnpj.replace(/\D/g, '').length >= 11 &&
         form.owner_phone.replace(/\D/g, '').length >= 10;
 
-    const isPaymentValid = form.billing_type === 'CREDIT_CARD'
-        ? form.cc_name.length >= 3 && form.cc_number.replace(/\D/g, '').length >= 13 &&
-          /^\d{2}\/\d{2,4}$/.test(form.cc_expiry) && form.cc_ccv.length >= 3
-        : true; // PIX/Boleto não precisam de dados extras
-
     // ─── Formatters ───
     const formatCpfCnpj = (v: string) => {
         const d = v.replace(/\D/g, '');
@@ -108,9 +99,6 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
         return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
     };
     const formatCep = (v: string) => v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2');
-    const formatCard = (v: string) => v.replace(/\D/g, '').slice(0, 19).replace(/(\d{4})(?=\d)/g, '$1 ');
-    const formatExpiry = (v: string) => v.replace(/\D/g, '').slice(0, 6).replace(/(\d{2})(\d)/, '$1/$2');
-
     const lookupCep = async (cep: string) => {
         const c = cep.replace(/\D/g, '');
         if (c.length !== 8) return;
@@ -140,17 +128,6 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                 addressNumber: form.addressNumber,
                 province: form.province,
             };
-            if (form.billing_type === 'CREDIT_CARD') {
-                const [m, y] = form.cc_expiry.split('/');
-                payload.creditCard = {
-                    holderName: form.cc_name,
-                    number: form.cc_number.replace(/\D/g, ''),
-                    expiryMonth: m,
-                    expiryYear: y.length === 2 ? '20' + y : y,
-                    ccv: form.cc_ccv,
-                };
-            }
-
             const { data, error: fnErr } = await supabase.functions.invoke('create-saas-checkout', { body: payload });
             if (fnErr) throw new Error(fnErr.message || 'Erro de conexão');
             if (data?.error) throw new Error(data.error);
@@ -203,7 +180,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                 {/* BODY */}
                 <div className="flex-1 overflow-y-auto px-6 py-6">
                     {step === 'INFO' && <StepInfo form={form} setForm={setForm} formatters={{ formatCpfCnpj, formatPhone, formatCep, lookupCep }} />}
-                    {step === 'PAYMENT' && <StepPayment form={form} setForm={setForm} formatters={{ formatCard, formatExpiry }} error={error} loading={loading} price={price} monthly={monthly} yearly={yearly} plan={plan} />}
+                    {step === 'PAYMENT' && <StepPayment form={form} setForm={setForm} error={error} loading={loading} price={price} monthly={monthly} yearly={yearly} plan={plan} />}
                     {step === 'SUCCESS' && <StepSuccess result={result} plan={plan} />}
                 </div>
 
@@ -220,7 +197,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                                 Continuar <ArrowRight size={14} />
                             </button>
                         ) : (
-                            <button onClick={submit} disabled={loading || !isPaymentValid}
+                            <button onClick={submit} disabled={loading}
                                 className="px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
                                 Confirmar
@@ -262,7 +239,7 @@ const StepInfo: React.FC<any> = ({ form, setForm, formatters }) => (
         </div>
         <div className="flex items-start gap-2 text-[11px] text-slate-400 bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
             <Shield size={14} className="text-violet-400 shrink-0 mt-0.5" />
-            <p>Seus dados são criptografados. Usamos Asaas (gateway certificado PCI-DSS) para processar o pagamento.</p>
+            <p>PIX e boleto são gerados pelo Asaas. A Wise Wolf não solicita, recebe ou armazena dados de cartão.</p>
         </div>
     </div>
 );
@@ -270,10 +247,9 @@ const StepInfo: React.FC<any> = ({ form, setForm, formatters }) => (
 // ─────────────────────────────────────────────────────────────
 // STEP 2 — PAYMENT
 // ─────────────────────────────────────────────────────────────
-const StepPayment: React.FC<any> = ({ form, setForm, formatters, error, plan, monthly, yearly, price }) => {
-    const opts: { id: 'PIX' | 'BOLETO' | 'CREDIT_CARD'; label: string; sub: string; icon: any }[] = [
+const StepPayment: React.FC<any> = ({ form, setForm, error, plan, monthly, yearly, price }) => {
+    const opts: { id: 'PIX' | 'BOLETO'; label: string; sub: string; icon: any }[] = [
         { id: 'PIX', label: 'PIX', sub: 'Aprovação imediata', icon: Smartphone },
-        { id: 'CREDIT_CARD', label: 'Cartão', sub: 'Recorrência automática', icon: CreditCard },
         { id: 'BOLETO', label: 'Boleto', sub: '3 dias úteis', icon: Barcode },
     ];
 
@@ -288,7 +264,7 @@ const StepPayment: React.FC<any> = ({ form, setForm, formatters, error, plan, mo
 
             <div>
                 <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Forma de pagamento</p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                     {opts.map(o => {
                         const Icon = o.icon;
                         const active = form.billing_type === o.id;
@@ -303,17 +279,6 @@ const StepPayment: React.FC<any> = ({ form, setForm, formatters, error, plan, mo
                     })}
                 </div>
             </div>
-
-            {form.billing_type === 'CREDIT_CARD' && (
-                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                    <Input label="Nome impresso no cartão" value={form.cc_name} onChange={(v: string) => setForm({ ...form, cc_name: v.toUpperCase() })} placeholder="JOAO SILVA" />
-                    <Input label="Número do cartão" value={form.cc_number} onChange={(v: string) => setForm({ ...form, cc_number: formatters.formatCard(v) })} placeholder="0000 0000 0000 0000" />
-                    <div className="grid grid-cols-2 gap-3">
-                        <Input label="Validade (MM/AA)" value={form.cc_expiry} onChange={(v: string) => setForm({ ...form, cc_expiry: formatters.formatExpiry(v) })} placeholder="12/30" />
-                        <Input label="CVV" value={form.cc_ccv} onChange={(v: string) => setForm({ ...form, cc_ccv: v.replace(/\D/g, '').slice(0, 4) })} placeholder="123" />
-                    </div>
-                </div>
-            )}
 
             {form.billing_type === 'PIX' && (
                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">

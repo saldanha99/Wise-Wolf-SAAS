@@ -1,4 +1,14 @@
 export type HubAudience = 'LEARNER' | 'EDUCATOR' | 'INSTITUTION';
+export type HubBillingCycle = 'MONTHLY' | 'YEARLY';
+export type HubAuthorityRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+export type HubSubjectRole = 'LEARNER' | 'EDUCATOR';
+
+export interface HubCheckoutIntent {
+  version: 1;
+  planCode: string;
+  billingCycle: HubBillingCycle;
+  expiresAt: number;
+}
 
 export interface HubPlan {
   id: string;
@@ -11,6 +21,16 @@ export interface HubPlan {
   trial_days: number;
   features: string[];
   metadata: Record<string, unknown>;
+  product_family: string;
+}
+
+export interface HubAccountSummary {
+  id: string;
+  name: string;
+  audience: HubAudience;
+  account_type: 'PERSONAL' | 'ORGANIZATION';
+  status: string;
+  membership_role: HubAuthorityRole;
 }
 
 export interface HubSettings {
@@ -33,6 +53,10 @@ export interface HubContentItem {
   level_tag: string | null;
   niche: string;
   collection_name: string | null;
+  // Estrutura de livro espelhada de `pedagogical_collections`: é o que liga o
+  // modo "Pastas" (Nicho › Nível › Livro › Partes) do módulo da escola.
+  collection_id: string | null;
+  part_number: number | null;
   cover_url: string | null;
   preview_enabled: boolean;
   license_summary: string | null;
@@ -56,6 +80,11 @@ export interface HubPreferences {
   personalized_at?: string;
 }
 
+export interface HubMemberProfile extends HubPreferences {
+  display_name?: string | null;
+  subjectRole: HubSubjectRole;
+}
+
 export interface HubBootstrap {
   account: {
     id: string;
@@ -63,21 +92,28 @@ export interface HubBootstrap {
     account_type: 'PERSONAL' | 'ORGANIZATION';
     audience: HubAudience;
     status: string;
+    trial_claimed_at?: string | null;
     metadata: HubPreferences & Record<string, unknown>;
   };
   membership: {
-    membership_role: 'OWNER' | 'ADMIN' | 'MEMBER';
+    membership_role: HubAuthorityRole;
     status: string;
   };
   subscription: {
     id: string;
+    plan_id?: string;
     status: string;
+    billing_cycle?: 'MONTHLY' | 'YEARLY' | null;
     trial_ends_at: string | null;
     current_period_ends_at: string | null;
+    product_family?: string;
   } | null;
   plan: HubPlan | null;
   entitlements: Record<string, HubEntitlement>;
   settings: HubSettings;
+  memberProfile?: HubMemberProfile;
+  isManager?: boolean;
+  access?: { allowed: boolean; code?: string };
 }
 
 export interface HubUsageResult {

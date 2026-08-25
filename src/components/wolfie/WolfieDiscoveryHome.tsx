@@ -98,6 +98,7 @@ interface WolfieDiscoveryHomeProps {
   ) => void;
   onEndSession: (sessionId: string) => void;
   onEndConversation: (conversationId: string) => void;
+  repertoireAvailable?: boolean;
   /** Cartão de início em um toque, renderizado acima do catálogo. */
   quickStart?: React.ReactNode;
 }
@@ -462,6 +463,7 @@ export function WolfieDiscoveryHome({
   onResumeConversation,
   onEndSession,
   onEndConversation,
+  repertoireAvailable = true,
   quickStart,
 }: WolfieDiscoveryHomeProps) {
   const [query, setQuery] = useState("");
@@ -752,20 +754,24 @@ export function WolfieDiscoveryHome({
             onClick={() => onChooseExperience(recommendation)}
           />
           <QuickAction
-            eyebrow="Correção para revisar"
-            title={dueReviewCount > 0
+            eyebrow={repertoireAvailable ? 'Correção para revisar' : 'Repertório pedagógico'}
+            title={!repertoireAvailable
+              ? 'Consulte a disponibilidade no seu plano'
+              : dueReviewCount > 0
               ? `${dueReviewCount} ${
                 dueReviewCount === 1 ? "expressão espera" : "expressões esperam"
               } por você`
               : overview?.repertoireCount
               ? "Fortaleça seu repertório"
               : "Sua revisão nasce da prática"}
-            description={dueReviewCount > 0
+            description={!repertoireAvailable
+              ? 'A prática continua isolada nesta conta; a revisão inteligente só abre quando estiver incluída na assinatura.'
+              : dueReviewCount > 0
               ? "Recupere o que aprendeu antes que a expressão fique distante."
               : overview?.repertoireCount
               ? `${overview.repertoireCount} expressões já estão conectadas às suas atividades.`
               : "As correções e expressões importantes aparecerão aqui para voltar no momento certo."}
-            cta="Abrir revisão inteligente"
+            cta={repertoireAvailable ? 'Abrir revisão inteligente' : 'Ver disponibilidade'}
             icon={RefreshCw}
             tone="amber"
             onClick={onOpenRepertoire}
@@ -1349,17 +1355,20 @@ export function WolfieDiscoveryHome({
             />
           </div>
           <p className="mt-5 text-[11px] font-black uppercase tracking-wider text-brand-accent">
-            Revisão inteligente
+            {repertoireAvailable ? 'Revisão inteligente' : 'Recurso da assinatura'}
           </p>
           <h2 className="mt-2 text-xl font-black text-brand-text">
-            Seus erros viram novas tentativas — não pontos finais
+            {repertoireAvailable
+              ? 'Seus erros viram novas tentativas — não pontos finais'
+              : 'Repertório e revisão sem misturar ambientes'}
           </h2>
           <p className="mt-2 text-sm leading-6 text-brand-muted">
-            Recupere expressões no momento certo e use o mesmo repertório em
-            situações diferentes até ele ficar disponível de verdade.
+            {repertoireAvailable
+              ? 'Recupere expressões no momento certo e use o mesmo repertório em situações diferentes até ele ficar disponível de verdade.'
+              : 'Confira se a revisão inteligente está incluída antes de abrir esse histórico pessoal.'}
           </p>
           <span className="mt-5 inline-flex items-center gap-2 text-xs font-black text-brand-accent">
-            Abrir meu repertório
+            {repertoireAvailable ? 'Abrir meu repertório' : 'Ver disponibilidade'}
           </span>
         </button>
       </section>

@@ -19,6 +19,8 @@ export type WolfieCharacterStateImages = Partial<
   Record<WolfieCharacterState, string>
 >;
 
+export type WolfieCharacterFraming = "full" | "ugc";
+
 export interface WolfieCharacterProps {
   profile: WolfieVisualSceneProfile;
   state?: WolfieCharacterState;
@@ -28,6 +30,7 @@ export interface WolfieCharacterProps {
   speakingMouthSrc?: string | null;
   stateImages?: WolfieCharacterStateImages;
   fallbackImageSrc?: string | null;
+  framing?: WolfieCharacterFraming;
   reducedMotion?: boolean;
   decorative?: boolean;
   accessibleLabel?: string;
@@ -66,6 +69,12 @@ const alignmentClass: Record<
   center: "justify-center",
 };
 
+const ugcCropClass: Record<WolfieVisualSceneProfile["camera"], string> = {
+  close: "h-[172%] sm:h-[180%] lg:h-[188%]",
+  medium: "h-[162%] sm:h-[170%] lg:h-[178%]",
+  wide: "h-[152%] sm:h-[160%] lg:h-[168%]",
+};
+
 /**
  * Personagem em camada transparente, separado do cenário e da UI.
  *
@@ -82,6 +91,7 @@ export function WolfieCharacter({
   speakingMouthSrc = DEFAULT_WOLFIE_SPEAKING_MOUTH_IMAGE,
   stateImages,
   fallbackImageSrc = LEGACY_WOLFIE_CHARACTER_IMAGE,
+  framing = "full",
   reducedMotion,
   decorative = true,
   accessibleLabel = "Wolfie, tutor virtual da Wise Wolf",
@@ -232,12 +242,19 @@ export function WolfieCharacter({
 
   const stateLabel = STATE_LABELS[state];
   const announcedLabel = `${accessibleLabel}: ${stateLabel}.`;
+  const isUgcFraming = framing === "ugc";
 
   return (
     <div
-      className={`pointer-events-none relative flex h-full w-full select-none items-end overflow-visible ${alignmentClass[profile.characterSide]} ${className}`}
+      className={`pointer-events-none relative flex h-full w-full select-none ${
+        isUgcFraming
+          ? "items-start justify-center overflow-hidden"
+          : `items-end overflow-visible ${alignmentClass[profile.characterSide]}`
+      } ${className}`}
       data-character-side={profile.characterSide}
       data-character-state={state}
+      data-character-camera={profile.camera}
+      data-character-framing={framing}
       data-input-level={inputEnergy.toFixed(3)}
       data-output-level={outputEnergy.toFixed(3)}
       data-motion={staticMode ? "static" : "dynamic"}
@@ -249,7 +266,11 @@ export function WolfieCharacter({
     >
       <motion.div
         aria-hidden="true"
-        className="absolute bottom-[8%] h-[58%] w-[58%] rounded-full blur-[72px]"
+        className={`absolute rounded-full blur-[72px] ${
+          isUgcFraming
+            ? "left-1/2 top-[8%] h-[62%] w-[58%] -translate-x-1/2"
+            : "bottom-[8%] h-[58%] w-[58%]"
+        }`}
         animate={staticMode
           ? { opacity: 0.26, scale: 1 }
           : {
@@ -271,7 +292,11 @@ export function WolfieCharacter({
       />
 
       <motion.div
-        className="relative flex h-full max-w-[88%] items-end justify-center sm:max-w-[76%] lg:max-w-[68%]"
+        className={`relative flex h-full items-start justify-center ${
+          isUgcFraming
+            ? "w-full max-w-none overflow-hidden"
+            : "max-w-[88%] items-end sm:max-w-[76%] lg:max-w-[68%]"
+        }`}
         animate={characterMotion.animate}
         transition={characterMotion.transition}
         style={{
@@ -283,7 +308,14 @@ export function WolfieCharacter({
       >
         {activeSource
           ? (
-            <>
+            <div
+              className={`relative flex shrink-0 items-start justify-center ${
+                isUgcFraming
+                  ? `${ugcCropClass[profile.camera]} max-w-none`
+                  : "h-full max-w-full items-end"
+              }`}
+              data-character-layer="crop"
+            >
               <img
                 src={activeSource}
                 alt=""
@@ -291,7 +323,11 @@ export function WolfieCharacter({
                 decoding="async"
                 onError={handleImageError}
                 data-character-layer="base"
-                className="max-h-full w-auto max-w-full object-contain object-bottom"
+                className={`h-full w-auto object-contain ${
+                  isUgcFraming
+                    ? "max-w-none object-top"
+                    : "max-h-full max-w-full object-bottom"
+                }`}
               />
               {canAnimateMouth && speakingMouthSrc
                 ? (
@@ -310,11 +346,13 @@ export function WolfieCharacter({
                       onImageError?.(speakingMouthSrc);
                     }}
                     data-character-layer="mouth"
-                    className="absolute inset-0 h-full w-full object-contain object-bottom"
+                    className={`absolute inset-0 h-full w-full object-contain ${
+                      isUgcFraming ? "object-top" : "object-bottom"
+                    }`}
                   />
                 )
                 : null}
-            </>
+            </div>
           )
           : (
             <div

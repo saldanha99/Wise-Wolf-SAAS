@@ -1,0 +1,13 @@
+{
+  "id": "wolfie-0-hook",
+  "file": "wolfie-0-hook.mp3",
+  "requestId": "gen-1787593332-st6NtKnD6nXSd3hiWtJo",
+  "sha256": "0d95bb1823189ea2dd9788d1e421ca76ea4b0a4eede52bee1caaebaadeb8580e",
+  "bytes": 145493,
+  "transcriptSha256": "a838805da96457d7f3bd9e9bbb566c66e9648f7d5829573d1449d8aa515f3b72",
+  "sceneHash": "b03e6cb56357eb8db3f859041608410e440444b7ee65486f0cea260e735505fc",
+  "durationSeconds": 6,
+  "generatedAt": "2026-08-24T17:42:25Z",
+  "sourcePcmWavSha256": "30ddb828a5424731db15556184c64b7f5e6f1eaa37a20c0db4d0b4bdc5baf77e",
+  "sourcePcmWavBytes": 288044
+}

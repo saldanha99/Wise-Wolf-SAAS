@@ -1,0 +1,13 @@
+{
+  "id": "library-4-cta",
+  "file": "library-4-cta.mp3",
+  "requestId": "gen-1787593301-kqPzwDx4f5mzaaoQA7J4",
+  "sha256": "c542be0463f7cbbdbb409f2b649cdc1f23b67e80c4922694b84c8c4f9d5f1b6c",
+  "bytes": 144240,
+  "transcriptSha256": "b7a80c2cbb2c3d7e4a81e6d00ad87b009e6b77b431aec1367e7d7ff9622c5367",
+  "sceneHash": "6ddb107d827967434282c40e66e64a4ae1aaca55dac4ef4efe6d032405ce940d",
+  "durationSeconds": 5.95,
+  "generatedAt": "2026-08-24T17:41:43Z",
+  "sourcePcmWavSha256": "75ceecfb095a3a6c0d3884da5dd2ea68fc6627f0e3874a2399c43cabc465bfc6",
+  "sourcePcmWavBytes": 285644
+}
