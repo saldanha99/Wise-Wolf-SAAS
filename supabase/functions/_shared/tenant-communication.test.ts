@@ -286,11 +286,11 @@ Deno.test("director destinations must belong to the canonical tenant route", () 
 });
 
 Deno.test("configured tenant destination is accepted even outside the profile groups", () => {
-  // Regressão do silêncio de 9 dias (16-25/08/2026): o grupo que recebe o
-  // rateio ("Gestão") não estava em campo nenhum do perfil, porque
-  // directors_group_id já tinha outro dono — accept-opportunity manda por ele o
-  // aviso de experimental aceita. A trava estrita recusava, e 8 pagamentos
-  // (R$ 1.589,09) passaram sem aviso.
+  // Regressão de 25/08/2026: o grupo que recebe o rateio ("Gestão") não estava
+  // em campo nenhum do perfil, porque directors_group_id já tinha outro dono —
+  // accept-opportunity manda por ele o aviso de experimental aceita. A trava
+  // estrita entrou em 22/08 e recusou os dois primeiros pagamentos que vieram
+  // depois dela (25/08, R$ 149,00 e R$ 169,00).
   const route = {
     instanceName: "school-a-central",
     ownerPhone: "5511999990000",

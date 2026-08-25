@@ -65,8 +65,16 @@ export function resolveOwnedTenantWhatsAppDestination(
  * OUTRO uso — `accept-opportunity` manda por ele o aviso de experimental
  * aceita, e na Wise Wolf ele aponta para o grupo "EXPERIMENTAL CONFIRMADAS".
  * O grupo que recebe dinheiro é o "Gestão", que não estava registrado em campo
- * nenhum do perfil. Resultado: um campo com dois donos, e o aviso de rateio
- * ficou 9 dias em silêncio (8 pagamentos, R$ 1.589,09, nenhum avisado).
+ * nenhum do perfil. Um campo com dois donos: a trava entrou em 22/08 (4e19c07)
+ * e os DOIS primeiros pagamentos depois dela — 25/08, R$ 149,00 e R$ 169,00 —
+ * foram recusados com "destino não pertence à escola". Até 21/08 os avisos
+ * saíam normalmente.
+ *
+ * ⚠️ Ao medir silêncio de automação, NÃO use `max(automation_sent.ref_date)`:
+ * `ref_date` é o `created_at` do PAGAMENTO, não a data do envio. Foi
+ * exatamente essa leitura que produziu, no diagnóstico original, um "silêncio de
+ * 9 dias e 8 pagamentos" que não existiu. Quem responde "quando saiu o último
+ * aviso" é `automation_sent.created_at`.
  *
  * ⚠️ NÃO use esta função para destino vindo do corpo de uma requisição. Para
  * esse caso a trava estrita continua sendo a certa — é ela que impede um
