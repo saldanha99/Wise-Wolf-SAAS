@@ -50,6 +50,43 @@ export function resolveOwnedTenantWhatsAppDestination(
   return allowed.has(normalized) ? normalized : null;
 }
 
+/**
+ * Destino que veio da CONFIGURAÇÃO DA PRÓPRIA ESCOLA — não de entrada de
+ * requisição.
+ *
+ * Use esta variante quando o valor sai de uma linha escopada por `tenant_id`
+ * que só o admin daquela escola grava (hoje: `dre_report_settings.destino`, via
+ * a tela do diretor). Nesse caminho a posse já está estabelecida por
+ * construção: o `tenant_id` é resolvido no servidor e a busca é chaveada por
+ * ele, então não existe caminho para alcançar o grupo de outra escola.
+ *
+ * ⚠️ Por que ela precisou existir (medido em 25/08/2026): a trava estrita acima
+ * só aceita `directors_group_id` e o telefone do dono. Mas esse campo já tinha
+ * OUTRO uso — `accept-opportunity` manda por ele o aviso de experimental
+ * aceita, e na Wise Wolf ele aponta para o grupo "EXPERIMENTAL CONFIRMADAS".
+ * O grupo que recebe dinheiro é o "Gestão", que não estava registrado em campo
+ * nenhum do perfil. Resultado: um campo com dois donos, e o aviso de rateio
+ * ficou 9 dias em silêncio (8 pagamentos, R$ 1.589,09, nenhum avisado).
+ *
+ * ⚠️ NÃO use esta função para destino vindo do corpo de uma requisição. Para
+ * esse caso a trava estrita continua sendo a certa — é ela que impede um
+ * diretor de disparar no grupo de outra escola.
+ */
+export function resolveTenantConfiguredWhatsAppDestination(
+  route: TenantWhatsAppRoute,
+  configuredDestination: unknown,
+): string | null {
+  const normalized = safeWhatsAppGroupId(configuredDestination) ||
+    safePhone(configuredDestination);
+  if (!normalized) return null;
+  const allowed = new Set(
+    [route.directorsGroupId, route.ownerPhone, normalized].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+  return allowed.has(normalized) ? normalized : null;
+}
+
 function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

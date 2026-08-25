@@ -19,7 +19,7 @@ import {
 } from "../_shared/automation-auth.ts";
 import {
   loadTenantWhatsAppRoute,
-  resolveOwnedTenantWhatsAppDestination,
+  resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
 
 const corsHeaders = {
@@ -202,11 +202,17 @@ serve(async (req) => {
         );
         continue;
       }
-      const destino = resolveOwnedTenantWhatsAppDestination(
+      const destino = resolveTenantConfiguredWhatsAppDestination(
         route,
         alvo.destino,
       );
       if (!destino) {
+        // Recusa VISIVEL. Antes isto virava um item em  dentro do
+        // corpo de uma resposta HTTP que ninguém lê — foi assim que o aviso de
+        // rateio passou 9 dias mudo sem ninguém notar.
+        console.error('[whatsapp] destino recusado: nao pertence a escola', {
+          tenant: tenantId,
+        });
         resultado.failures.push(`${tenantId}: destino não pertence à escola`);
         continue;
       }

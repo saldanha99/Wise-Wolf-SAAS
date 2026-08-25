@@ -7,6 +7,7 @@ import {
   loadTenantWhatsAppRoute,
   resolveOwnedTenantWhatsAppDestination,
   resolveTenantCommunicationIdentity,
+  resolveTenantConfiguredWhatsAppDestination,
   safeWhatsAppGroupId,
 } from "./tenant-communication.ts";
 
@@ -280,6 +281,55 @@ Deno.test("director destinations must belong to the canonical tenant route", () 
     assert(
       resolveOwnedTenantWhatsAppDestination(route, unsafe) === null,
       `non-owned destination was accepted: ${unsafe}`,
+    );
+  }
+});
+
+Deno.test("configured tenant destination is accepted even outside the profile groups", () => {
+  // Regressão do silêncio de 9 dias (16-25/08/2026): o grupo que recebe o
+  // rateio ("Gestão") não estava em campo nenhum do perfil, porque
+  // directors_group_id já tinha outro dono — accept-opportunity manda por ele o
+  // aviso de experimental aceita. A trava estrita recusava, e 8 pagamentos
+  // (R$ 1.589,09) passaram sem aviso.
+  const route = {
+    instanceName: "school-a-central",
+    ownerPhone: "5511999990000",
+    hrGroupId: null,
+    teachersGroupId: "120363123456789011@g.us",
+    directorsGroupId: "120363123456789012@g.us",
+    identity: {
+      tenantId: "school-a",
+      whatsappEnabled: true,
+      brandName: "School A",
+      legalName: "School A",
+      taxId: null,
+      logoUrl: null,
+      primaryColor: "#1F2937",
+      secondaryColor: "#0F766E",
+      supportEmail: null,
+      supportPhone: null,
+      portalUrl: null,
+      talentGroupUrl: null,
+    },
+  };
+
+  const grupoGestao = "120363428756333557@g.us";
+  assert(
+    resolveOwnedTenantWhatsAppDestination(route, grupoGestao) === null,
+    "a trava estrita deveria continuar recusando grupo fora do perfil",
+  );
+  assert(
+    resolveTenantConfiguredWhatsAppDestination(route, grupoGestao) ===
+      grupoGestao,
+    "destino configurado pela própria escola foi recusado",
+  );
+
+  // O que a variante NÃO pode fazer é aceitar lixo: continua exigindo JID de
+  // grupo ou telefone válido.
+  for (const invalido of ["", null, undefined, "nao-e-jid", "javascript:x"]) {
+    assert(
+      resolveTenantConfiguredWhatsAppDestination(route, invalido) === null,
+      `destino inválido foi aceito: ${String(invalido)}`,
     );
   }
 });

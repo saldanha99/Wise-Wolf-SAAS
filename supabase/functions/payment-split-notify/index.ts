@@ -21,7 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
 import {
   loadTenantWhatsAppRoute,
-  resolveOwnedTenantWhatsAppDestination,
+  resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
 import { montarMensagem } from "./message.ts";
 
@@ -115,11 +115,17 @@ serve(async (req) => {
         );
         continue;
       }
-      const destino = resolveOwnedTenantWhatsAppDestination(
+      const destino = resolveTenantConfiguredWhatsAppDestination(
         route,
         cfg?.destino,
       );
       if (!destino) {
+        // Recusa VISIVEL. Antes isto virava um item em  dentro do
+        // corpo de uma resposta HTTP que ninguém lê — foi assim que o aviso de
+        // rateio passou 9 dias mudo sem ninguém notar.
+        console.error('[whatsapp] destino recusado: nao pertence a escola', {
+          tenant: tenantId,
+        });
         resultado.failures.push(`${paymentId}: destino não pertence à escola`);
         continue;
       }
