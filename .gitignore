@@ -71,6 +71,11 @@ graphify-out/
 /remotion/generated/voice/
 /remotion/previews/
 /remotion/public/assets/hub/videos/audio/
+# Trilhas geradas por remotion/scripts/generate-original-soundtrack.ts a partir
+# de original-soundtrack.json — saída de build, não fonte. A regra acima dizia
+# 'audio/' e os arquivos vivem em 'sound/': as duas pastas existem, e por isso
+# 53,2 MB de WAV entraram no histórico em 25/08/2026 e precisaram ser removidos.
+/remotion/public/assets/hub/videos/sound/*.wav
 /public/assets/hub/videos/*.mp4
 /public/assets/hub/videos/manifest.json
 /public/assets/hub/videos/posters/
