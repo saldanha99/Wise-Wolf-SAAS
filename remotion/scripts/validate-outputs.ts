@@ -93,6 +93,7 @@ for (const content of HUB_VIDEOS) {
         width: VIDEO_WIDTH,
         height: VIDEO_HEIGHT,
         fps: VIDEO_FPS,
+        strictFinalAudio: !legacyReceiptMode,
       });
       const receiptValidation = await validateCommercialRenderReceipt({
         receiptPath,
