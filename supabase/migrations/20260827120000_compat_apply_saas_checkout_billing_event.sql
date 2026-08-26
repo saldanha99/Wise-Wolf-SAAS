@@ -14,7 +14,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE p.proname = 'apply_saas_checkout_billing_event'
       AND n.nspname = 'public'
-      AND p.pronargtypes::text = '2283 25 25 1184 25 1700 25 25 25 25 1184 1082 25 25'::text
+      AND p.proargtypes::text = '2283 25 25 1184 25 1700 25 25 25 25 1184 1082 25 25'::text
   )
   INTO v_has_legacy_13;
 
@@ -24,7 +24,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE p.proname = 'apply_saas_checkout_billing_event'
       AND n.nspname = 'public'
-      AND p.pronargtypes::text = '2950 25 25 1700 25 25 25 25 1184 1082 25 25'::text
+      AND p.proargtypes::text = '2950 25 25 1700 25 25 25 25 1184 1082 25 25'::text
   )
   INTO v_has_compat_12;
 
