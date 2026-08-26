@@ -15,6 +15,15 @@ begin
 end;
 $$;
 
+grant execute on function pg_temp.assert_true(boolean, text) to public;
+do $$
+begin
+  if to_regprocedure('pg_temp.assert_sqlstate(text, text, text)') is not null then
+    execute 'grant execute on function pg_temp.assert_sqlstate(text, text, text) to public';
+  end if;
+end
+$$;
+
 create or replace function pg_temp.assert_direct_write_denied(
   command text,
   message text
