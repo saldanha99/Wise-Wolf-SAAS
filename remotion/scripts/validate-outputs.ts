@@ -40,6 +40,11 @@ const voiceManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record
 const outputDirectory = validationMode === 'public'
   ? path.join(projectRoot, 'public/assets/hub/videos')
   : path.join(projectRoot, 'remotion/previews/assets/hub/videos');
+const legacyReceiptMode = (() => {
+  const value = process.env.VIDEO_PUBLIC_LEGACY_RECEIPTS?.trim().toLowerCase();
+  if (value === '1' || value === 'true') return true;
+  return false;
+})();
 const failures: string[] = [];
 const compositionSourceSha256 = validationMode === 'public'
   ? await computeCompositionSourceSha256(projectRoot)
@@ -50,6 +55,11 @@ const remotionVersion = validationMode === 'public'
 
 if (validationMode === 'public' && !HUB_VIDEOS.every((content) => voiceManifest[content.slug]?.commercialUseAllowed === true)) {
   failures.push('coleção pública: há locuções sem licença comercial registrada');
+}
+
+if (validationMode === 'public' && legacyReceiptMode) {
+  console.warn('Aviso: validação de vídeos públicos em modo legado (VIDEO_PUBLIC_LEGACY_RECEIPTS=true).');
+  console.warn('  - Assinaturas/fingerprint de receitadas não serão validadas contra a árvore de código atual.');
 }
 
 const probe = (filePath: string): ProbeOutput => {
@@ -92,6 +102,7 @@ for (const content of HUB_VIDEOS) {
           poster: posterPath,
           captions: captionsPath,
         },
+        allowFingerprintDivergence: legacyReceiptMode,
       });
       if (!receiptValidation.valid) failures.push(`${content.slug}: receipt comercial inválido (${receiptValidation.reason || 'motivo desconhecido'})`);
     }

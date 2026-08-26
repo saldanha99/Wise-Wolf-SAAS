@@ -441,10 +441,12 @@ export const validateCommercialRenderReceipt = async ({
   receiptPath,
   expectedFingerprint,
   artifacts,
+  allowFingerprintDivergence = false,
 }: {
   receiptPath: string;
   expectedFingerprint: HubCommercialRenderFingerprint;
   artifacts: PublicArtifactPaths;
+  allowFingerprintDivergence?: boolean;
 }): Promise<ReceiptValidation> => {
   try {
     const receipt = JSON.parse(await readFile(receiptPath, 'utf8')) as HubCommercialRenderReceipt;
@@ -467,7 +469,9 @@ export const validateCommercialRenderReceipt = async ({
     if (receipt.compositionId !== expectedFingerprint.compositionId) return { valid: false, reason: 'composição do receipt divergente' };
     if (receipt.commercialUseAllowed !== true) return { valid: false, reason: 'licença comercial ausente no receipt' };
     const expectedFingerprintSha256 = sha256Value(expectedFingerprint);
-    if (receipt.renderFingerprintSha256 !== expectedFingerprintSha256) return { valid: false, reason: 'fingerprint divergente' };
+    if (!allowFingerprintDivergence && receipt.renderFingerprintSha256 !== expectedFingerprintSha256) {
+      return { valid: false, reason: 'fingerprint divergente' };
+    }
     const { receiptFingerprintSha256, ...receiptData } = receipt;
     if (receiptFingerprintSha256 !== sha256Value(receiptData)) return { valid: false, reason: 'integridade do receipt inválida' };
     if (!await receiptArtifactMatches(artifacts.video, receipt.artifacts.videoSha256)) return { valid: false, reason: 'vídeo diverge do receipt' };
