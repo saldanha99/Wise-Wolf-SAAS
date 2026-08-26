@@ -39,6 +39,8 @@ begin
 end;
 $$;
 
+grant execute on function pg_temp.assert_denied(text, text) to public;
+
 select pg_temp.assert_true(
   not pg_catalog.has_table_privilege(
     'authenticated', 'public.profiles', 'SELECT'
