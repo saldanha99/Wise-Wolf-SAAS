@@ -5,26 +5,58 @@ const assert = (condition: boolean, message: string) => {
 };
 
 Deno.test({
-  name: "checkout stages fulfillment before creating provider resources",
+  name:
+    "fresh and resumed checkouts durably stage exact fulfillment before provider creation",
   permissions: { read: true },
   async fn() {
     const checkoutSource = await Deno.readTextFile(
       new URL("../create-hub-checkout/index.ts", import.meta.url),
     );
+    const snapshotPosition = checkoutSource.indexOf(
+      "fulfillment_snapshot:",
+    );
+    const checkoutInsertPosition = checkoutSource.indexOf(
+      '.from("hub_checkout_sessions")\n        .insert({',
+    );
     const stagePosition = checkoutSource.indexOf(
-      '.from("hub_fulfillment_outbox")',
+      '"hub_ensure_checkout_fulfillment_outbox"',
     );
     const providerPosition = checkoutSource.indexOf(
-      'await asaasRequest("/customers"',
+      "customerResponse = await fetch(",
     );
-    assert(stagePosition >= 0, "checkout must stage its fulfillment outbox");
+    assert(
+      snapshotPosition >= 0 && snapshotPosition < checkoutInsertPosition,
+      "the checkout insert must freeze the exact fulfillment identity",
+    );
+    assert(
+      checkoutInsertPosition >= 0 && checkoutInsertPosition < stagePosition,
+      "the durable checkout root must exist before transactional staging",
+    );
     assert(
       providerPosition >= 0 && stagePosition < providerPosition,
-      "outbox staging must succeed before any provider resource is created",
+      "the transactional outbox postcondition must pass before any provider POST",
     );
     assert(
-      checkoutSource.includes("metadata: isTestFixture"),
-      "fixture suppression must be persisted with both channels",
+      checkoutSource.includes(
+        "deliberately outside the fresh-only block: a retry must prove",
+      ),
+      "the same outbox fence must execute for fresh and resumed checkouts",
+    );
+    assert(
+      !checkoutSource.includes('.from("hub_fulfillment_outbox")'),
+      "checkout must not bypass the atomic outbox RPC with direct inserts",
+    );
+    assert(
+      checkoutSource.includes("resolvePlatformAsaasIntegration(") &&
+        checkoutSource.includes('"customer.create"') &&
+        checkoutSource.includes(
+          "`${customerCreateIntegration.baseUrl}/customers`",
+        ),
+      "provider creation must use the scoped platform integration broker",
+    );
+    assert(
+      checkoutSource.includes("test_fixture: isTestFixture"),
+      "fixture suppression must be frozen in the checkout snapshot",
     );
   },
 });

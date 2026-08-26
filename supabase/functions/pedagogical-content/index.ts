@@ -101,11 +101,9 @@ const UUID_PATTERN =
 const MODEL_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i;
 const SETTLED_PAYMENT_STATUSES = new Set([
   "RECEIVED",
-  "CONFIRMED",
   "RECEIVED_IN_CASH",
   "PAGO",
   "PAYMENT_RECEIVED",
-  "PAYMENT_CONFIRMED",
 ]);
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",

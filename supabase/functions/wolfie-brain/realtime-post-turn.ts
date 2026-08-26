@@ -70,7 +70,7 @@ export interface RealtimePostTurnContext {
   experienceMode: string;
   correctionMode: RealtimePostTurnCorrectionMode;
   difficulty?: string;
-  currentAdaptiveLevel?: number;
+  currentAdaptiveLevel?: number | null;
   currentCounterpart?: string | null;
   currentPendingQuestion?: string | null;
   currentPendingDecision?: string | null;

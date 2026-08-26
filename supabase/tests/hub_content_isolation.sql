@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 select pg_temp.assert_true(
   (
@@ -429,6 +430,9 @@ select pg_temp.assert_true(
   ),
   'one-folder legacy provenance did not bind owner and tenant'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000ca02","role":"authenticated"}';

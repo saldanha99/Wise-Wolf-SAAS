@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_sqlstate(
   statement text,
@@ -686,6 +687,9 @@ create temporary table hub_planner_test_results (
 grant select, insert, update, delete
   on table hub_planner_test_results
   to authenticated, service_role;
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 select pg_catalog.set_config(

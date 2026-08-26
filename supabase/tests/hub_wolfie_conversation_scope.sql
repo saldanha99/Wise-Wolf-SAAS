@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_sqlstate(
   statement text,
@@ -249,6 +250,9 @@ select pg_temp.assert_sqlstate(
   '42501',
   'conversation account scope was mutable after creation'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims =

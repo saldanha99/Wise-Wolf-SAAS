@@ -772,7 +772,7 @@ const PublicRegistration: React.FC = () => {
                     return asaasService.checkOneTimePayment(session.user.id);
                 })()
                 : await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
-            if (res?.paid === true || ['RECEIVED', 'CONFIRMED'].includes(res?.status)) {
+            if (res?.paid === true) {
                 const { data: { session } } = await supabase.auth.getSession();
                 setProcessingStage('FINALIZING');
                 if (session) await sendCompletionNotifications(session.user.id, contractData);

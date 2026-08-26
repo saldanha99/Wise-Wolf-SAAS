@@ -45,8 +45,8 @@ const fingerprint: HubCommercialRenderFingerprint = {
     fps: 30,
     codec: 'h264',
     pixelFormat: 'yuv420p',
-    crf: 22,
-    audioBitrate: '128k',
+    crf: 18,
+    audioBitrate: '192k',
     colorSpace: 'bt709',
     audioMastering: {
       algorithm: 'ffmpeg-loudnorm',
@@ -55,7 +55,7 @@ const fingerprint: HubCommercialRenderFingerprint = {
       targetTruePeakDbtp: -1.5,
       maxTruePeakDbtp: -1,
       audioCodec: 'aac',
-      audioBitrate: '128k',
+      audioBitrate: '192k',
       sampleRateHz: 48000,
     },
   },
@@ -119,6 +119,7 @@ describe('commercial render provenance', () => {
         width: 1920,
         height: 1080,
         fps: 30,
+        strictFinalAudio: false,
       });
       expect(result).toMatchObject({
         schemaVersion: 4,
@@ -133,6 +134,50 @@ describe('commercial render provenance', () => {
           aiDisclosureMode: 'burned-in',
         },
       });
+    });
+  });
+
+  it('keeps legacy commercial validation compatible but rejects it in strict final-audio mode', async () => {
+    await withOpenAiAudio(async (projectRoot) => {
+      const input = {
+        projectRoot,
+        content: HUB_VIDEOS[0],
+        track: openAiTrack(),
+        compositionSourceSha256: 'c'.repeat(64),
+        remotionVersion: '4.0.515',
+        width: 1920,
+        height: 1080,
+        fps: 30,
+      };
+
+      await expect(buildCommercialRenderFingerprint({
+        ...input,
+        strictFinalAudio: false,
+      })).resolves.toMatchObject({ voiceProvider: 'openai' });
+      await expect(buildCommercialRenderFingerprint({
+        ...input,
+        strictFinalAudio: true,
+      })).rejects.toThrow(/ElevenLabs/u);
+    });
+  });
+
+  it('fingerprints the vertical composition independently from its landscape master', async () => {
+    await withOpenAiAudio(async (projectRoot) => {
+      const result = await buildCommercialRenderFingerprint({
+        projectRoot,
+        content: HUB_VIDEOS[0],
+        track: openAiTrack(),
+        compositionSourceSha256: 'c'.repeat(64),
+        remotionVersion: '4.0.515',
+        compositionId: 'HubOverviewPtBrStory',
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        strictFinalAudio: false,
+      });
+
+      expect(result.compositionId).toBe('HubOverviewPtBrStory');
+      expect(result.render).toMatchObject({ width: 1080, height: 1920, fps: 30 });
     });
   });
 
@@ -154,6 +199,7 @@ describe('commercial render provenance', () => {
         width: 1920,
         height: 1080,
         fps: 30,
+        strictFinalAudio: false,
       });
 
       expect(result).toMatchObject({

@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 update public.hub_settings
 set metadata = coalesce(metadata, '{}'::jsonb)
@@ -559,6 +560,9 @@ select pg_temp.assert_true(
   ),
   'sensitive Hub policies must be manager scoped'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 select pg_catalog.set_config(

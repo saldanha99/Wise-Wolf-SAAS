@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
+import { localMonth, monthRange } from '../lib/dateUtils';
 
 interface FinancialChartsProps {
     tenantId?: string;
@@ -35,13 +36,15 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
             const sixMonthsAgo = new Date();
             sixMonthsAgo.setMonth(today.getMonth() - 5);
             sixMonthsAgo.setDate(1); // Start of that month
+            sixMonthsAgo.setHours(0, 0, 0, 0);
+            const historyRange = monthRange(localMonth(sixMonthsAgo));
 
             // 1. Fetch Class Logs (Expenses)
             const { data: logs, error: logsError } = await supabase
                 .from('class_logs')
-                .select(`created_at, teacher_id, presence`)
+                .select('class_date, teacher_id, presence')
                 .eq('tenant_id', tenantId)
-                .gte('created_at', sixMonthsAgo.toISOString());
+                .gte('class_date', historyRange.start);
 
             if (logsError) throw logsError;
 
@@ -55,7 +58,7 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
                 .from('student_payments')
                 .select('value, status, due_date')
                 .eq('tenant_id', tenantId)
-                .gte('due_date', sixMonthsAgo.toISOString())
+                .gte('due_date', historyRange.start)
                 .in('status', ['PENDING', 'OVERDUE']); // Only want pending for projection
 
             if (pendingError) throw pendingError;
@@ -63,10 +66,10 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
             // 3. Fetch Real Transactions (Real Income)
             const { data: transactions, error: transError } = await supabase
                 .from('financial_transactions')
-                .select('amount, created_at, occurred_at, type') // Added occurred_at
+                .select('amount, occurred_at, type, category, refund_student_payment_id')
                 .eq('tenant_id', tenantId)
-                .eq('type', 'ENTRADA')
-                .or(`created_at.gte.${sixMonthsAgo.toISOString()},occurred_at.gte.${sixMonthsAgo.toISOString()}`); // Check both or just one? Let's stick to simple first
+                .in('type', ['ENTRADA', 'SAIDA'])
+                .gte('occurred_at', sixMonthsAgo.toISOString());
 
             if (transError) throw transError;
 
@@ -77,13 +80,14 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
             for (let i = 0; i < 6; i++) {
                 const d = new Date(sixMonthsAgo);
                 d.setMonth(sixMonthsAgo.getMonth() + i);
-                const key = d.toISOString().slice(0, 7); // YYYY-MM
+                const key = localMonth(d);
                 monthlyData.set(key, { income: 0, projected: 0, expense: 0 });
             }
 
             // Aggregate Expenses
             logs?.forEach((log: any) => {
-                const month = log.created_at.slice(0, 7);
+                if (!log.class_date) return;
+                const month = log.class_date.slice(0, 7);
                 if (monthlyData.has(month)) {
                     if (log.presence === 'Presente' || log.presence === 'COMPLETED' || log.presence === 'Realizada') {
                         const rate = rateById.get(log.teacher_id) || 0;
@@ -95,12 +99,19 @@ const FinancialCharts: React.FC<FinancialChartsProps> = ({ tenantId }) => {
 
             // Aggregate Real Income (Transactions)
             transactions?.forEach((t: any) => {
-                // Use occurred_at if available, otherwise created_at
-                const dateStr = t.occurred_at || t.created_at;
-                const month = dateStr.slice(0, 7);
+                if (t.category === 'aporte_ou_movimentacao'
+                    || t.category === 'estorno_aporte_ou_movimentacao') return;
+                // A migration financeira torna occurred_at obrigatorio e
+                // preenche o legado; created_at nao e competencia de caixa.
+                if (!t.occurred_at) return;
+                const month = localMonth(new Date(t.occurred_at));
                 if (monthlyData.has(month)) {
                     const current = monthlyData.get(month)!;
-                    current.income += Number(t.amount || 0);
+                    const amount = Number(t.amount || 0);
+                    if (t.type === 'ENTRADA') current.income += amount;
+                    if (t.type === 'SAIDA' && t.refund_student_payment_id) {
+                        current.income -= amount;
+                    }
                 }
             });
 

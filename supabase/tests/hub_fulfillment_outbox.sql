@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 update public.hub_settings
 set metadata = coalesce(metadata, '{}'::jsonb)
@@ -101,6 +102,25 @@ select pg_temp.assert_true(
     'EXECUTE'
   ),
   'only the service worker may claim Hub deliveries'
+);
+
+select pg_temp.assert_true(
+  not pg_catalog.has_function_privilege(
+    'authenticated',
+    'public.hub_ensure_checkout_fulfillment_outbox(uuid,uuid,uuid,uuid,text,text,text,text,boolean)',
+    'EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'anon',
+    'public.hub_ensure_checkout_fulfillment_outbox(uuid,uuid,uuid,uuid,text,text,text,text,boolean)',
+    'EXECUTE'
+  )
+  and pg_catalog.has_function_privilege(
+    'service_role',
+    'public.hub_ensure_checkout_fulfillment_outbox(uuid,uuid,uuid,uuid,text,text,text,text,boolean)',
+    'EXECUTE'
+  ),
+  'only service role may stage the checkout fulfillment provider fence'
 );
 
 select pg_temp.assert_true(
@@ -231,6 +251,185 @@ values (
   'OWNER',
   'ACTIVE'
 );
+
+-- Simulate a process crash after the durable checkout insert but before the
+-- original code could insert either delivery.  A retry must atomically recover
+-- both exact rows, while a second retry may only prove the same postcondition.
+insert into public.hub_checkout_sessions (
+  id,
+  account_id,
+  plan_id,
+  requested_by,
+  billing_cycle,
+  billing_type,
+  amount,
+  status,
+  request_key,
+  product_family,
+  metadata
+)
+values (
+  '84000000-0000-4000-8000-000000000103',
+  '83000000-0000-4000-8000-000000000101',
+  '82000000-0000-4000-8000-000000000101',
+  '81000000-0000-4000-8000-000000000101',
+  'MONTHLY',
+  'PIX',
+  1,
+  'CREATED',
+  '84000000-0000-4000-8000-000000000103',
+  'HUB_CORE',
+  pg_catalog.jsonb_build_object(
+    'test_fixture', true,
+    'fulfillment_snapshot', pg_catalog.jsonb_build_object(
+      'version', 1,
+      'account_id', '83000000-0000-4000-8000-000000000101'::uuid,
+      'user_id', '81000000-0000-4000-8000-000000000101'::uuid,
+      'plan_id', '82000000-0000-4000-8000-000000000101'::uuid,
+      'product_family', 'HUB_CORE',
+      'plan_code', 'HUB_FULFILLMENT_FIXTURE',
+      'plan_name', 'Hub Fulfillment Fixture',
+      'email_recipient', 'hub-fulfillment@example.invalid',
+      'whatsapp_recipient', '11999990000',
+      'recipient_name', 'Hub Fulfillment Fixture',
+      'test_fixture', true
+    )
+  )
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.hub_fulfillment_outbox
+    where checkout_id = '84000000-0000-4000-8000-000000000103'
+  ),
+  'the crash fixture must begin with a checkout and no outbox rows'
+);
+
+set local request.jwt.claims = '{"role":"service_role"}';
+
+create temporary table recovered_hub_fulfillment on commit drop as
+select public.hub_ensure_checkout_fulfillment_outbox(
+  '84000000-0000-4000-8000-000000000103',
+  '83000000-0000-4000-8000-000000000101',
+  '82000000-0000-4000-8000-000000000101',
+  '81000000-0000-4000-8000-000000000101',
+  'HUB_CORE',
+  'hub-fulfillment@example.invalid',
+  '11999990000',
+  'Hub Fulfillment Fixture',
+  true
+) as result;
+
+select pg_temp.assert_true(
+  (
+    select (result ->> 'ok')::boolean
+      and result ->> 'action' = 'STAGED'
+      and (result ->> 'rowCount')::integer = 2
+    from recovered_hub_fulfillment
+  ),
+  'retry after checkout-only crash must atomically stage both deliveries'
+);
+
+select pg_temp.assert_true(
+  (
+    select count(*) = 2
+      and bool_and(status = 'WAITING_PAYMENT')
+      and bool_and(subscription_id is null)
+      and bool_and(attempt_count = 0)
+      and bool_and(metadata = '{"test_fixture":true}'::jsonb)
+      and bool_and(
+        recipient = case channel
+          when 'EMAIL' then 'hub-fulfillment@example.invalid'
+          when 'WHATSAPP' then '11999990000'
+        end
+      )
+    from public.hub_fulfillment_outbox
+    where checkout_id = '84000000-0000-4000-8000-000000000103'
+  ),
+  'recovered outbox must contain only the exact frozen email and WhatsApp rows'
+);
+
+create temporary table replayed_hub_fulfillment on commit drop as
+select public.hub_ensure_checkout_fulfillment_outbox(
+  '84000000-0000-4000-8000-000000000103',
+  '83000000-0000-4000-8000-000000000101',
+  '82000000-0000-4000-8000-000000000101',
+  '81000000-0000-4000-8000-000000000101',
+  'HUB_CORE',
+  'hub-fulfillment@example.invalid',
+  '11999990000',
+  'Hub Fulfillment Fixture',
+  true
+) as result;
+
+select pg_temp.assert_true(
+  (
+    select (result ->> 'ok')::boolean
+      and result ->> 'action' = 'ALREADY_STAGED'
+      and (result ->> 'rowCount')::integer = 2
+    from replayed_hub_fulfillment
+  )
+  and (
+    select count(*) = 2
+    from public.hub_fulfillment_outbox
+    where checkout_id = '84000000-0000-4000-8000-000000000103'
+  ),
+  'a replay must prove the existing outbox without duplicating deliveries'
+);
+
+create temporary table mismatched_hub_fulfillment on commit drop as
+select public.hub_ensure_checkout_fulfillment_outbox(
+  '84000000-0000-4000-8000-000000000103',
+  '83000000-0000-4000-8000-000000000101',
+  '82000000-0000-4000-8000-000000000101',
+  '81000000-0000-4000-8000-000000000101',
+  'HUB_CORE',
+  'hub-fulfillment@example.invalid',
+  '11999990009',
+  'Hub Fulfillment Fixture',
+  true
+) as result;
+
+select pg_temp.assert_true(
+  (
+    select not (result ->> 'ok')::boolean
+      and result ->> 'reason' = 'fulfillment_snapshot_mismatch'
+    from mismatched_hub_fulfillment
+  )
+  and (
+    select count(*) = 2
+      and bool_and(
+        recipient <> '11999990009'
+      )
+    from public.hub_fulfillment_outbox
+    where checkout_id = '84000000-0000-4000-8000-000000000103'
+  ),
+  'a changed retry identity must fail closed without rewriting the outbox'
+);
+
+do $snapshot_immutability$
+begin
+  begin
+    update public.hub_checkout_sessions
+    set metadata = pg_catalog.jsonb_set(
+      metadata,
+      '{fulfillment_snapshot,whatsapp_recipient}',
+      pg_catalog.to_jsonb('11999990009'::text),
+      false
+    )
+    where id = '84000000-0000-4000-8000-000000000103';
+    raise exception 'expected immutable fulfillment snapshot rejection';
+  exception
+    when sqlstate '55000' then
+      null;
+  end;
+end;
+$snapshot_immutability$;
+
+update public.hub_checkout_sessions
+set status = 'FAILED'
+where id = '84000000-0000-4000-8000-000000000103';
 
 insert into public.hub_checkout_sessions (
   id,
@@ -375,6 +574,10 @@ select pg_temp.assert_true(
   ),
   'suppressed fixture deliveries must never be claimable'
 );
+
+update public.hub_checkout_sessions
+set status = 'PAID'
+where id = '84000000-0000-4000-8000-000000000101';
 
 insert into public.hub_checkout_sessions (
   id,

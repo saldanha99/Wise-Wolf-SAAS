@@ -27,11 +27,13 @@ const manifestPath = path.join(projectRoot, 'remotion/generated/hub-voice-manife
 const voiceManifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<HubVideoSlug, HubVoiceTrack>;
 const forceRender = process.env.VIDEO_FORCE_RENDER === '1';
 const reusePreview = process.env.VIDEO_REUSE_PREVIEW === '1';
+const previewOnly = process.env.VIDEO_PREVIEW_ONLY === '1';
 const renderConcurrency = Number(process.env.VIDEO_RENDER_CONCURRENCY || 4);
 if (!Number.isInteger(renderConcurrency) || renderConcurrency < 1 || renderConcurrency > 8) {
   throw new Error('VIDEO_RENDER_CONCURRENCY precisa ser um inteiro entre 1 e 8.');
 }
-const commercialUseAllowed = HUB_VIDEOS.every((content) => voiceManifest[content.slug]?.commercialUseAllowed === true);
+const commercialUseAllowed = !previewOnly
+  && HUB_VIDEOS.every((content) => voiceManifest[content.slug]?.commercialUseAllowed === true);
 const outputDirectory = commercialUseAllowed
   ? path.join(projectRoot, 'public/assets/hub/videos')
   : path.join(projectRoot, 'remotion/previews/assets/hub/videos');
@@ -61,7 +63,9 @@ await mkdir(temporaryDirectory, { recursive: true });
 if (commercialUseAllowed) await mkdir(receiptDirectory, { recursive: true });
 
 if (!commercialUseAllowed) {
-  console.warn('Locução sem licença comercial validada: os vídeos serão renderizados somente em remotion/previews.');
+  console.warn(previewOnly
+    ? 'Modo de prévia forçado: nenhum arquivo público ou receipt será alterado.'
+    : 'Locução sem licença comercial validada: os vídeos serão renderizados somente em remotion/previews.');
 }
 
 const compositionSourceSha256 = commercialUseAllowed
@@ -134,8 +138,8 @@ for (const content of HUB_VIDEOS) {
       outputPath,
       '--codec=h264',
       '--pixel-format=yuv420p',
-      '--crf=22',
-      '--audio-bitrate=128k',
+      '--crf=18',
+      '--audio-bitrate=192k',
       '--color-space=bt709',
       `--concurrency=${renderConcurrency}`,
       '--overwrite',

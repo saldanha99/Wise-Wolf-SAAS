@@ -15,6 +15,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values
@@ -214,6 +215,9 @@ select pg_temp.assert_true(
   ),
   'funcoes internas de trigger ficaram expostas como RPC'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000961","role":"authenticated"}';

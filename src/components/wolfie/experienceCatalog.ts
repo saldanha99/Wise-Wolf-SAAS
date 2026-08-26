@@ -1,4 +1,4 @@
-import type { WolfieExperienceMode, WolfieSubject } from "./types";
+import type { WolfieExperienceMode, WolfieSubject } from "./types.ts";
 
 export type ExperienceAudience =
   | "all"

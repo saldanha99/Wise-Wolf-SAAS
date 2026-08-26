@@ -18,6 +18,16 @@ type Profile = Record<string, unknown> & {
   lifecycle_status: string | null;
 };
 
+export function isActiveStudentPaymentTarget(
+  profile: Pick<Profile, "role" | "lifecycle_status"> | null,
+): boolean {
+  return Boolean(
+    profile?.role === "STUDENT" &&
+      String(profile.lifecycle_status || "").trim().toLowerCase() ===
+        "active",
+  );
+}
+
 export type ActiveStudentMembership = {
   tenant_id: string;
   role: "STUDENT";
@@ -299,6 +309,13 @@ export async function authorizePaymentTarget(
   if (!targetProfile) {
     return { error: errorResponse("profile_not_found", 404, corsHeaders) };
   }
+  if (!isActiveStudentPaymentTarget(targetProfile as Profile)) {
+    const error = targetProfile.role === "STUDENT"
+      ? "target_profile_inactive"
+      : "target_role_invalid";
+    const status = targetProfile.role === "STUDENT" ? 403 : 409;
+    return { error: errorResponse(error, status, corsHeaders) };
+  }
 
   const membershipResult = await loadActiveStudentMemberships(
     admin,
@@ -329,7 +346,6 @@ export async function authorizePaymentTarget(
     STAFF_ROLES.has(callerProfile?.role || "");
   const scopedTargetProfile = {
     ...(targetProfile as Profile),
-    role: "STUDENT",
     tenant_id: scope.tenantId,
   };
 

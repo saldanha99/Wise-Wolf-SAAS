@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 select id as student_id
 from public.profiles
@@ -137,6 +138,9 @@ select pg_temp.assert_true(
   ) = 0,
   'anonymous intake must use normalized lead identity and the caller JWT, not spoofable headers or the definer role'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role anon;
 select set_config('request.jwt.claims', '{"role":"anon"}', true);

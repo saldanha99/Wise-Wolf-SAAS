@@ -11,11 +11,12 @@ Deno.test({
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
-    const cancellation = source.indexOf(
-      "await cancelProviderSubscription(providerSubscriptionId)",
+    const shared = await Deno.readTextFile(
+      new URL("../_shared/hub-provider-operations.ts", import.meta.url),
     );
-    const finalization = source.indexOf(
-      '"hub_finalize_account_status_change"',
+    const cancellation = shared.indexOf('method: "DELETE"');
+    const finalization = shared.indexOf(
+      '"hub_finalize_provider_cancellation"',
     );
     assert(cancellation >= 0, "provider cancellation must be explicit");
     assert(
@@ -28,9 +29,27 @@ Deno.test({
       "the status flow must remain internal-admin only",
     );
     assert(
-      source.includes('.from("hub_checkout_sessions")') &&
-        source.includes('["CREATED", "PENDING", "OVERDUE", "PAID"]'),
-      "provider-backed checkouts must be reconciled before suspension",
+      source.includes("runHubProviderCancellation({") &&
+        source.includes('operationKind: "ACCOUNT_STATUS"'),
+      "status changes must use the durable provider operation",
+    );
+    assert(
+      !source.includes("ASAAS_API_URL") &&
+        !source.includes("ASAAS_ACCESS_TOKEN") &&
+        shared.includes("resolvePlatformAsaasIntegration") &&
+        shared.includes('"subscription.read"') &&
+        shared.includes('"subscription.delete"'),
+      "admin cancellation must use version-bound platform broker capabilities",
+    );
+    assert(
+      shared.indexOf("const observed = await exactProviderLookup(") <
+          shared.indexOf('method: "DELETE"') &&
+        shared.indexOf('"hub_mark_provider_cancellation_submitting"') <
+          shared.indexOf('method: "DELETE"') &&
+        shared.includes("hubProviderCancellationDecision(") &&
+        shared.includes('action === "RECONCILE_ONLY"') &&
+        shared.includes("resolvePlatformAsaasIntegration"),
+      "provider identity and its local binding must be rechecked before DELETE",
     );
   },
 });

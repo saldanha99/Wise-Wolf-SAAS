@@ -15,6 +15,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('schedule-change-school', 'Schedule Change School');
@@ -56,6 +57,9 @@ values
   ('00000000-0000-4000-8000-00000000095a', 'schedule-change-school', '00000000-0000-4000-8000-000000000951', '00000000-0000-4000-8000-000000000953', 'Segunda', '08:00', 'SCHEDULED'),
   ('00000000-0000-4000-8000-00000000095b', 'schedule-change-school', '00000000-0000-4000-8000-000000000951', '00000000-0000-4000-8000-000000000954', 'Quarta', '10:00', 'SCHEDULED'),
   ('00000000-0000-4000-8000-00000000095c', 'schedule-change-school', '00000000-0000-4000-8000-000000000952', '00000000-0000-4000-8000-000000000954', 'Quinta', '11:00', 'SCHEDULED');
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000951","role":"authenticated"}';

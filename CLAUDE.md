@@ -106,7 +106,7 @@ POST https://api.openai.com/v1/audio/speech
 
 **Regras críticas:**
 - ✅ **A `OPENAI_API_KEY` nunca sai do servidor** — vive só em
-  `/opt/wisewolf/supabase-docker/.env`. Sem ela a função devolve 503, não tenta
+  `/opt/wisewolf/supabase-docker/.env.functions`. Sem ela a função devolve 503, não tenta
   nada alternativo.
 - ✅ **Só aluno autenticado chama** (`allowedRoles: ["STUDENT"]`, sem
   service-role) e assinante do tenant `wolfie-direct` passa por
@@ -222,7 +222,7 @@ onClick texto → sendMessage() → unlockAudio()
   `WOLFIE_TTS_MODEL`, `WOLFIE_TTS_VOICE_PT`, `WOLFIE_TTS_VOICE_EN`,
   `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, `OPENAI_SAFETY_SALT`
 - ⚠️ Nenhuma delas pode ter prefixo `VITE_` nem entrar em arquivo versionado —
-  elas vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root)
+  elas vivem só em `/opt/wisewolf/supabase-docker/.env.functions` (600, root)
 
 ---
 
@@ -681,7 +681,7 @@ Mesma pedra de `uq_bookings_no_dup_active` e `run_recurring_expenses`.
 ## Higiene de dados / Caixa / Agenda / Wolfie Lab ✅
 
 - **Aluno ativo vs órfão:** `list_students_overview` retorna `has_activity` (tem booking OU pagamento). Painéis contam ATIVOS; órfãos (sem aula/pagamento = testes) ficam num filtro "Sem matrícula" + RPC `archive_student`. **A agenda (`bookings`) é a fonte de verdade de quem é aluno real** (perfis incluem ~20 contas de teste).
-- **Caixa:** trigger `ledger_on_payment_received` lança ENTRADA no `financial_transactions` quando pagamento vira RECEIVED **e REMOVE quando deixa de ser** (estorno, chargeback, cobrança excluída) — ver a seção *Conciliação do caixa* abaixo, que corrigiu o regime de data e o conjunto de status. RPC `get_cashflow(month)` = entradas − saídas (repasses PAGOS + comissões + indicações pagas) das fontes autoritativas (sem dupla contagem) + inadimplência aging. Componente `CashflowPanel` (aba "Fluxo de Caixa").
+- **Caixa:** trigger `ledger_on_payment_received` lança a ENTRADA bruta em `financial_transactions` quando o pagamento liquida; estornos confirmados viram SAÍDAS separadas e idempotentes na data do evento, sem reescrever o recebimento original — ver *Conciliação do caixa* abaixo. RPC `get_cashflow(month)` = entradas − saídas (estornos, repasses PAGOS, comissões e indicações pagas) das fontes autoritativas, sem dupla contagem, + inadimplência aging. Componente `CashflowPanel` (aba "Fluxo de Caixa").
 - **Explorador de Agenda** (`TeacherScheduleExplorer`): % ocupação, aulas/alunos distintos, busca que destaca o aluno na grade, alerta de conflito (mesmo horário com 2 alunos). Conflitos detectados no load (`conflictKeys`).
 - **Wolfie Lab:** RPC `wolfie_insights()` (escopo por ALUNO do tenant — `wolfie_sessions.tenant_id` é uuid ≠ slug, então escopa via student_id) → totais, pontos fracos recorrentes (`wolfie_corrections.error_type`), top alunos por uso, quantos nunca usaram. Painel no topo do `WolfieLab`.
 
@@ -1053,9 +1053,9 @@ ssh wisewolf-vps 'docker restart supabase-edge-functions'
 
 Faça backup antes (`cp -a` do diretório em `/opt/wisewolf/backup-<fn>-<data>`).
 
-**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env` (600, root) —
+**Segredos:** vivem só em `/opt/wisewolf/supabase-docker/.env.functions` (600, root) —
 nunca no Git nem no chat. Testes que precisam de chave (OpenAI etc.) devem rodar
-**dentro da VPS**, lendo do `.env`, para a chave não entrar no contexto.
+**dentro da VPS**, lendo do `.env.functions`, para a chave não entrar no contexto.
 
 **Diagnóstico:** `ssh wisewolf-vps 'docker logs --timestamps
 supabase-edge-functions --since 30m'`. Banco: `docker exec supabase-db psql -U
@@ -1375,46 +1375,55 @@ erros se cancelavam — o que engana, porque é o mês que se usa para decidir.
 pagamentos pagos. O webhook grava `payment_date` e nunca `paid_at`, e o trigger
 usava `occurred_at = coalesce(NEW.paid_at, now())` — ou seja, sempre `now()`.
 
-### As três regras que não podem divergir
+### As regras que não podem divergir
 
-| Onde | Conjunto de status |
+| Estado | Regra de caixa |
 |---|---|
-| trigger `ledger_on_payment_received` | `RECEIVED` + `RECEIVED_IN_CASH` |
-| `get_cashflow` / `dre_gerencial` | `RECEIVED` + `RECEIVED_IN_CASH` |
-| edge `reconcile-ledger` | `RECEIVED` + `RECEIVED_IN_CASH` |
+| `RECEIVED` / `RECEIVED_IN_CASH` | uma entrada operacional bruta |
+| `NAO_RECEITA` | uma entrada bruta não operacional (`aporte_ou_movimentacao`) |
+| `CONFIRMED` e demais estados | nenhum lançamento de caixa |
+| aumento confirmado de estorno | uma saída separada, na data real do evento |
 
 ⚠️ **`CONFIRMED` está fora de propósito.** Na Asaas é pagamento reconhecido e
 ainda não liquidado, e o painel de caixa nunca o contou. Cartão confirmado vira
 `RECEIVED` na liquidação e o lançamento nasce ali (medido: 2 dos 4 cartões da base
-já fizeram essa transição). Se mexer no conjunto, **mexa nos três lugares** — foi
-exatamente essa divergência que sobrou no primeiro conserto e precisou de outro
-deploy.
+já fizeram essa transição). A regra vive no trigger; telas, DRE e reconciliador
+leem o ledger canônico em vez de repetir a lista de status.
 
 ### Regime de data
 - `paid_at` virou responsabilidade do **banco** (`trg_student_payment_paid_at`),
   não do webhook: vale para qualquer escritor.
+- `credited_at` guarda o `creditDate` real do Asaas e vence todas as estimativas.
+  `estimated_credit_at` nunca entra no caixa.
 - ⚠️ **Meio-dia, não meia-noite.** O banco roda em UTC e a escola pensa em BRT;
   meia-noite UTC é 21:00 do dia anterior em Brasília, e um pagamento do dia 1º
   trocaria de mês em qualquer leitura com fuso local.
-- A cadeia de competência é `coalesce(paid_at, payment_date, due_date)` nos três
-  lugares. `now()` só como última rede.
+- A cadeia histórica é `coalesce(credited_at, paid_at, payment_date, due_date)`.
+  `occurred_at` é obrigatório no ledger e é a única data lida pelas telas de caixa.
 
-### Estorno remove o lançamento
-O gatilho não é lista de evento, é **"o dinheiro deixou de ser recebido"** — os 15
-`CANCELLED` da base provam que existem caminhos além do webhook. O lançamento é
-APAGADO (o índice `uq_financial_transactions_student_payment` garante uma linha por
-pagamento, então se o dinheiro voltar o ramo de entrada recria com a data certa) e
-o rastro fica em `reconciliation_issues` (`kind = PAYMENT_REVERSED`).
+### Estorno preserva a entrada e cria uma saída
+`student_payments.value` e a entrada original permanecem brutos;
+`refunded_amount` guarda somente a soma dos estornos concluídos pelo provedor.
+Cada aumento gera uma saída separada, idempotente pelo ID do evento e datada por
+`last_provider_event_at`. Um estorno integral preserva a entrada e cria saída do
+mesmo valor. Sem ID/data do evento, o banco abre
+`REFUND_LEDGER_EVENT_CONTEXT_MISSING` e não inventa lançamento nem competência.
+Se um fechamento docente relacionado já estiver `PAGO`, o trigger abre
+`REFUND_REQUIRES_TEACHER_PAYOUT_REVIEW` e **nunca** debita o professor sozinho.
 
-⚠️ `reconciliation_issues.tenant_id` é **NOT NULL** — pagamento sem escola vai para
-o tenant `master`. Inserir `null` ali falha **em silêncio** (o supabase-js devolve
-erro em vez de lançar).
+O caixa usa entrada bruta menos saídas na data em que cada movimento ocorreu.
+DRE e margem continuam líquidos de `refunded_amount` na competência original;
+uma diferença mensal entre os dois pode, portanto, ser legítima quando o estorno
+acontece em mês posterior.
+
+⚠️ `NAO_RECEITA` não é evento Asaas e não pode ser sobrescrito por retry do
+webhook. `provider_status` guarda o estado do provedor separadamente.
 
 ### Pegadinhas medidas
-- ⚠️ **`ledger_entry_created` mente.** O trigger cria o lançamento e não marca a
-  flag; só o `reconcile-ledger` marca. Medido: 96 pagos com a flag em `false`, 69
-  deles já com lançamento. Para saber o que falta conciliar use `NOT EXISTS` contra
-  `financial_transactions`, nunca a flag.
+- ⚠️ **A existência da ENTRADA do ledger é a verdade.** O trigger e o reconciliador agora
+  convergem `ledger_entry_created`, mas seleção de reparo continua usando
+  `NOT EXISTS` contra `financial_transactions.student_payment_id`, nunca a flag
+  como fonte primária. Saídas usam `refund_student_payment_id` e não alteram a flag.
 - ⚠️ O `reconcile-ledger` inseria `amount_cents` **sem `amount`**, que é `NOT NULL`
   — todo insert morria. Era o único caminho de conserto dos 27 pagamentos sem
   lançamento (R$ 9.390,00) e estava morto. Hoje um trigger BEFORE deriva um do
@@ -1422,8 +1431,9 @@ erro em vez de lançar).
   dos triggers BEFORE, e é isso que salva quem insere só um dos lados.
 - ⚠️ **Resíduo legítimo, não erro:** jan/fev carregam R$ 6.277,80 em lançamentos
   órfãos anteriores ao trigger, apontando para `pay_` que não existem mais.
-  Decisão da direção em 25/08/2026: **ficam como estão.** De março em diante as
-  duas fontes batem exato — divergência a partir de março é regressão de verdade.
+  Decisão da direção em 25/08/2026: **ficam como estão.** A partir da nova regra,
+  compare o caixa com o extrato por data de movimento e a DRE por competência;
+  não exija igualdade mensal entre regimes quando houver estorno posterior.
 
 ---
 
@@ -1434,7 +1444,10 @@ erro em vez de lançar).
 - **Decomposição**: `custo_base` = aulas × valor da faixa 1 (lido de `teacher_pay_tiers`, **nunca chumbado**), e tudo acima disso separado por motivo. A ordem da classificação espelha o `COALESCE` de `rate_efetivo` na view — **override primeiro**, depois o 16,00 de quem MINISTRA treinamento, e só então a faixa por carteira. Inverter faria um override de 10,50 ser lido como turbo.
 - ⚠️ **Receita rateada.** `director_teacher_margin` junta a receita INTEIRA do aluno em cada linha professor×aluno — aluno com dois professores aparece com a mensalidade cheia nos dois e o lucro de ambos sai inflado (1 caso em julho/2026, 7 no histórico). O balancete rateia pelo número de aulas.
 - ⚠️ **Receita não atribuível vai numa linha própria**, nunca some nem é diluída: pagamento sem `student_id` (R$ 2.365,00 em julho/2026, 8 pagamentos) e aluno que pagou sem ter aula no mês. Descartar faria o balancete não fechar com o DRE; diluir inventaria lucro.
-- ⚠️ **A expressão de receita é IDÊNTICA à de `dre_gerencial`** (status `RECEIVED`/`RECEIVED_IN_CASH`, escopo por `student_payments.tenant_id`, data por `COALESCE(paid_at, payment_date, due_date)`). `director_teacher_margin` usa outra (aceita `CONFIRMED`/`PAID` e escopo pelo tenant do PERFIL) — por isso os dois não batem. Não "melhore" um lado só.
+- ⚠️ **A receita realizada é líquida de `refunded_amount` em todas as RPCs.**
+  `dre_gerencial`, `director_teacher_margin`, `balancete_professores`,
+  `balancete_receita_sem_aula` e `financial_reconciliation` excluem `CONFIRMED`;
+  valores ainda a receber continuam brutos. Não altere um relatório isoladamente.
 
 **Gasto de anúncio** (`post_ad_spend` → conta 6.1.03 Marketing): gasto de mês em curso **cresce**; reimportar não é duplicata. Por isso a chave `(tenant, origem, conta, período)` faz a segunda importação **atualizar** o lançamento, não criar outro. Controle em `ad_spend_imports`.
 

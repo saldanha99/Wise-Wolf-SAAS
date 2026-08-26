@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertPtBrNarrationModel,
   assertPtBrVoice,
+  getElevenLabsVoiceGender,
   getPtBrNarrationVoiceSettings,
   getPtBrVoiceEvidence,
 } from './pt-br-voice';
@@ -28,6 +29,25 @@ describe('PT-BR voice validation', () => {
       category: 'cloned',
       labels: { language: 'Português', accent: 'Brasileiro' },
     })?.source).toBe('voice_labels');
+  });
+
+  it('requires explicit male evidence for the final Hub narrator', () => {
+    const nativeMale = {
+      voice_id: 'native-male',
+      name: 'Wolfie PT-BR',
+      category: 'professional',
+      labels: { language: 'Portuguese', accent: 'Brazilian', gender: 'male' },
+    };
+
+    expect(getElevenLabsVoiceGender(nativeMale)).toBe('male');
+    expect(() => assertPtBrVoice(nativeMale, {
+      requiredNative: true,
+      requiredGender: 'male',
+    })).not.toThrow();
+    expect(() => assertPtBrVoice({
+      ...nativeMale,
+      labels: { ...nativeMale.labels, gender: 'female' },
+    }, { requiredNative: true, requiredGender: 'male' })).toThrow(/masculina/u);
   });
 
   it('rejects European Portuguese and generic Portuguese voices', () => {

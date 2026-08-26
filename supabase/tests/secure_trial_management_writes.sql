@@ -14,6 +14,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_direct_write_denied(
   command text,
@@ -457,6 +458,9 @@ insert into public.enrollment_links (
 values
   ('30000000-0000-4000-8000-00000000e001', 'secure-trial-a', '10000000-0000-4000-8000-00000000e001', 'secure-trial-link-token-a-000001', 'https://example.invalid/a', 'Secure Read A', 'PENDING', 'ENROLLMENT', now() + interval '30 days'),
   ('30000000-0000-4000-8000-00000000e101', 'secure-trial-b', '10000000-0000-4000-8000-00000000e101', 'secure-trial-link-token-b-000001', 'https://example.invalid/b', 'Secure Read B', 'PENDING', 'ENROLLMENT', now() + interval '30 days');
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims =

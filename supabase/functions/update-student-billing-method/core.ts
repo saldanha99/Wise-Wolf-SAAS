@@ -53,6 +53,38 @@ export function parseCreditCard(value: unknown): CreditCardInput | null {
   return parsed;
 }
 
+/**
+ * Asaas may expose the saved card number either on the subscription or in a
+ * nested creditCard object. Accept only an explicit card-number/last-four
+ * field; a token, brand or successful PUT is not proof of the requested card.
+ */
+export function providerSubscriptionCardMatchesLast4(
+  value: unknown,
+  expectedLast4: string,
+): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const subscription = value as Record<string, unknown>;
+  const nested = subscription.creditCard &&
+      typeof subscription.creditCard === "object" &&
+      !Array.isArray(subscription.creditCard)
+    ? subscription.creditCard as Record<string, unknown>
+    : {};
+  const candidates = [
+    nested.creditCardNumber,
+    nested.cardNumber,
+    nested.number,
+    nested.last4,
+    subscription.creditCardNumber,
+    subscription.cardNumber,
+    subscription.last4,
+  ];
+  const normalizedExpected = digits(expectedLast4);
+  return normalizedExpected.length === 4 && candidates.some((candidate) => {
+    const normalized = digits(candidate);
+    return normalized.length >= 4 && normalized.endsWith(normalizedExpected);
+  });
+}
+
 export function clientIp(headers: Headers): string | null {
   const forwarded = text(headers.get("x-forwarded-for")).split(",")[0]?.trim();
   const candidate = forwarded || text(headers.get("cf-connecting-ip")) ||

@@ -57,7 +57,7 @@ Venda assistida para escolas e professores com operação real. A promessa inclu
 
 ### O que ainda não está realmente ativado
 
-- As credenciais Asaas e Evolution cadastradas pelo tenant são validadas e guardadas, mas os principais runtimes ainda leem `ASAAS_API_KEY`, `ASAAS_API_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_API_URL` globais.
+- Os runtimes escolares do Asaas agora resolvem conexão e capacidade pelo broker antes de acessar o provedor. A conta raiz legada fica explicitamente limitada ao tenant `school-wise-wolf`; os demais tenants ficam `DISABLED` até BYOK/subconta homologada. A migração integral dos demais provedores e consumidores Evolution continua pendente.
 - A validação de domínio comprova TXT e CNAME, mas ainda não provisiona rota, certificado TLS e revalidação periódica.
 - Preferências de WhatsApp/e-mail não funcionam como bloqueio global em todos os emissores.
 - Logo e cores não chegam de forma consistente a todos os contratos, relatórios, PDFs e documentos impressos.
@@ -150,6 +150,7 @@ Existem duas cobranças que jamais podem compartilhar uma decisão de credencial
 
 Modos da conexão operacional:
 
+- `PLATFORM_MANAGED_ROOT`: exceção legada restrita no banco e no runtime ao tenant de referência `school-wise-wolf`;
 - `PLATFORM_MANAGED_SUBACCOUNT`: subconta gerenciada pela Wise Wolf;
 - `TENANT_BYOK`: chave da própria conta Asaas do tenant;
 - `DISABLED`.
@@ -195,7 +196,7 @@ Para BYOK:
 
 ## Broker de integrações
 
-Antes de ativar BYOK, todos os consumidores Asaas, Evolution, OpenAI e OpenRouter devem pedir a configuração efetiva a um broker server-side.
+Antes de ativar BYOK, todos os consumidores Asaas, Evolution, OpenAI e OpenRouter devem pedir a configuração efetiva a um broker server-side. Os consumidores escolares do Asaas e o piloto Evolution já seguem essa fronteira; os demais continuam como trabalho obrigatório antes da ativação comercial correspondente.
 
 Entrada mínima do broker:
 

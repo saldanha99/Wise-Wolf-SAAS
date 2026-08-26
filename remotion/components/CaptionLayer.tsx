@@ -9,7 +9,7 @@ import {
   findActiveCaptionToken,
   summarizeVoiceMotion,
 } from '../caption-motion';
-import type { HubVideoCaption, HubVideoSceneId, HubVideoSceneTiming, HubVideoSlug } from '../types';
+import type { HubVideoCaption, HubVideoFormat, HubVideoSceneId, HubVideoSceneTiming, HubVideoSlug } from '../types';
 
 type CaptionLayerProps = {
   captions: HubVideoCaption[];
@@ -19,6 +19,7 @@ type CaptionLayerProps = {
   secondaryAccent?: string;
   slug?: HubVideoSlug;
   sceneTimings?: Record<HubVideoSceneId, HubVideoSceneTiming>;
+  format?: HubVideoFormat;
 };
 
 type CaptionVisualProps = CaptionLayerProps & {
@@ -32,6 +33,7 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
   frequencies,
   slug = 'hub-overview',
   sceneTimings,
+  format = 'landscape',
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -47,10 +49,11 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
 
   const interfaceScene = activeScene === 'product' || activeScene === 'proof';
   const ctaScene = activeScene === 'cta';
+  const story = format === 'story';
   const compactPage = interfaceScene || ctaScene;
-  const captionMaxWidth = interfaceScene ? 1420 : ctaScene ? 1320 : slug === 'school-os' ? 1480 : 1560;
-  const captionMinHeight = interfaceScene ? 118 : ctaScene ? 108 : 148;
-  const captionBottom = interfaceScene ? 48 : ctaScene ? 46 : 58;
+  const captionMaxWidth = story ? 948 : interfaceScene ? 1260 : ctaScene ? 1180 : slug === 'school-os' ? 1380 : 1440;
+  const captionMinHeight = story ? 112 : interfaceScene ? 100 : ctaScene ? 98 : 124;
+  const captionBottom = story ? 122 : interfaceScene ? 42 : ctaScene ? 42 : 52;
 
   const activeTokenIndex = findActiveCaptionToken(page, timeMs);
   const pageStartFrame = page.startMs / 1000 * fps;
@@ -81,8 +84,8 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
       style={{
         position: 'absolute',
         zIndex: 80,
-        left: 92,
-        right: 92,
+        left: story ? 54 : 92,
+        right: story ? 54 : 92,
         bottom: captionBottom + (page.seed % 2) * 4,
         display: 'flex',
         justifyContent: 'center',
@@ -98,14 +101,14 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
           minHeight: captionMinHeight,
           overflow: 'hidden',
           border: `1px solid rgba(255,255,255,${0.14 + motion.energy * 0.2})`,
-          borderRadius: compactPage ? 28 : 36,
+          borderRadius: story ? 28 : compactPage ? 24 : 30,
           background: compactPage
             ? 'linear-gradient(135deg, rgba(5,6,9,0.9), rgba(13,14,20,0.82))'
             : 'linear-gradient(135deg, rgba(5,6,9,0.88), rgba(13,14,20,0.8))',
           boxShadow: `0 24px 90px rgba(0,0,0,0.5), 0 0 ${28 + motion.energy * 70}px ${accent}${motion.energy > 0.55 ? '38' : '20'}`,
           backdropFilter: 'blur(24px)',
-          padding: compactPage ? '25px 46px 27px' : '31px 54px 33px',
-          scale: 0.968 + entrance * 0.032 + motion.energy * (compactPage ? 0.018 : 0.025),
+          padding: story ? '25px 30px 27px' : compactPage ? '20px 40px 22px' : '25px 48px 27px',
+          scale: 0.972 + entrance * 0.028 + motion.energy * (compactPage ? 0.014 : 0.02),
           translate: `${((page.seed % 5) - 2) * 5 + (motion.presence - 0.5) * 12}px ${interpolate(entrance, [0, 1], [34, 0]) - motion.air * 5}px`,
           rotate: `${(motion.presence - 0.5) * 0.34}deg`,
           transformOrigin: '50% 100%',
@@ -123,10 +126,10 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
         <div
           style={{
             position: 'absolute',
-            left: 38,
-            right: 38,
-            top: compactPage ? 8 : 12,
-            height: compactPage ? 15 : 20,
+            left: story ? 24 : 38,
+            right: story ? 24 : 38,
+            top: story ? 8 : compactPage ? 7 : 10,
+            height: story ? 15 : compactPage ? 13 : 17,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -159,9 +162,11 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
             rowGap: 10,
             color: '#ffffff',
             fontFamily: displayFontFamily,
-            fontSize: compactPage
-              ? page.tokens.length >= 8 ? 52 : page.tokens.length >= 6 ? 58 : 66
-              : page.tokens.length >= 8 ? 68 : page.tokens.length >= 6 ? 76 : 86,
+            fontSize: story
+              ? page.tokens.length >= 8 ? 46 : page.tokens.length >= 6 ? 52 : 60
+              : compactPage
+                ? page.tokens.length >= 8 ? 44 : page.tokens.length >= 6 ? 50 : 58
+                : page.tokens.length >= 8 ? 58 : page.tokens.length >= 6 ? 66 : 74,
             fontWeight: 770,
             lineHeight: 1.01,
             letterSpacing: '-0.055em',
@@ -189,10 +194,10 @@ const CaptionVisual: React.FC<CaptionVisualProps> = ({
                   whiteSpace: 'nowrap',
                   color: active ? '#ffffff' : spoken ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.56)',
                   background: active ? `linear-gradient(135deg, ${accent}d9, ${secondaryAccent}b8)` : 'transparent',
-                  borderRadius: active ? compactPage ? 15 : 19 : 0,
-                  padding: active ? compactPage ? '0 11px 5px' : '0 14px 6px' : compactPage ? '0 0 5px' : '0 0 6px',
-                  marginLeft: active ? compactPage ? -11 : -14 : 0,
-                  marginRight: active ? compactPage ? -11 : -14 : 0,
+                  borderRadius: active ? story ? 14 : compactPage ? 13 : 17 : 0,
+                  padding: active ? story ? '0 10px 5px' : compactPage ? '0 9px 4px' : '0 12px 5px' : compactPage ? '0 0 4px' : '0 0 5px',
+                  marginLeft: active ? story ? -10 : compactPage ? -9 : -12 : 0,
+                  marginRight: active ? story ? -10 : compactPage ? -9 : -12 : 0,
                   boxShadow: active ? `0 13px 42px ${accent}55, inset 0 1px rgba(255,255,255,0.22)` : 'none',
                   textShadow: active ? `0 0 ${22 + motion.energy * 24}px rgba(255,255,255,0.52)` : '0 5px 18px rgba(0,0,0,0.48)',
                   scale: active ? 1.055 + motion.presence * 0.14 : 0.985 + tokenEntrance * 0.015,

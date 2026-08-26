@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:wolfie-web": "vite --config apps/wolfie-web/vite.config.ts",
-    "build": "node scripts/verify-hub-public-videos.mjs --root public && vite build && node scripts/generate-hub-static-html.mjs",
+    "build": "node scripts/verify-hub-public-videos.mjs --root public && node scripts/verify-hub-public-story-videos.mjs --root public && vite build && node scripts/generate-hub-static-html.mjs",
     "build:wolfie-web": "vite build --config apps/wolfie-web/vite.config.ts",
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.app.json",
     "typecheck:wolfie-web": "tsc --noEmit --pretty false -p apps/wolfie-web/tsconfig.json",
@@ -24,11 +24,14 @@
     "video:voiceovers:openai-livecall": "node --env-file-if-exists=.env.deploy.local node_modules/tsx/dist/cli.mjs remotion/scripts/generate-openai-livecall-voiceovers.ts",
     "video:soundtrack": "tsx remotion/scripts/generate-original-soundtrack.ts",
     "video:voiceovers:preview-ptbr": "tsx remotion/scripts/generate-local-ptbr-preview.ts",
+    "video:audio:validate-final": "tsx remotion/scripts/validate-final-audio.ts",
     "video:studio": "remotion studio remotion/index.ts",
     "video:compositions": "remotion compositions remotion/index.ts",
     "video:render:all": "tsx remotion/scripts/render-all.ts",
+    "video:render:stories": "tsx remotion/scripts/render-stories.ts",
     "video:master:public": "tsx remotion/scripts/master-public-outputs.ts",
     "video:validate": "tsx remotion/scripts/validate-outputs.ts",
+    "video:validate:stories": "tsx remotion/scripts/validate-story-outputs.ts",
     "wolfie:assets:verify": "node scripts/verify-wolfie-visual-assets.mjs --root public",
     "wolfie:assets:verify:dist": "node scripts/verify-wolfie-visual-assets.mjs --root dist"
   },

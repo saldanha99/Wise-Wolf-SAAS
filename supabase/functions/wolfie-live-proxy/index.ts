@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { loadOperationalTenantAccess } from "../_shared/request-auth.ts";
 import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
 
 // ============================================================
@@ -20,11 +21,9 @@ const ALLOWED_TOPICS = new Set([
 ]);
 const SETTLED_PAYMENT_STATUSES = new Set([
   "RECEIVED",
-  "CONFIRMED",
   "RECEIVED_IN_CASH",
   "PAGO",
   "PAYMENT_RECEIVED",
-  "PAYMENT_CONFIRMED",
 ]);
 
 serve(async (req) => {
@@ -114,6 +113,20 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       },
     );
+  }
+  if (profile.tenant_id !== "wolfie-direct") {
+    const tenantAccess = await loadOperationalTenantAccess(
+      supabase,
+      profile.tenant_id,
+    );
+    if (!tenantAccess.ok) {
+      return new Response("Could not verify tenant access", { status: 503 });
+    }
+    if (!tenantAccess.operational) {
+      return new Response("Tenant subscription is not active", {
+        status: 403,
+      });
+    }
   }
   if (wolfIntelRes.error) {
     console.error("[WolfieLive] student context lookup failed", {

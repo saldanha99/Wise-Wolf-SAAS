@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 update public.hub_settings
 set metadata = coalesce(metadata, '{}'::jsonb)
@@ -217,6 +218,9 @@ select pg_catalog.set_config(
   '{"sub":"00000000-0000-4000-8000-00000000d002","role":"authenticated"}',
   true
 );
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
+
 set local role authenticated;
 select public.wolfie_prepare_checkout_account(
   'Wolfie Direct Fixture',
@@ -373,7 +377,7 @@ select pg_temp.assert_true(
       and subscription.product_family = 'WOLFIE_STANDALONE'
       and expected.sequence_no = 2
   ),
-  'CONFIRMED and RECEIVED for one recurring payment must be idempotent'
+  'replay of one recurring payment_id must be idempotent'
 );
 
 select public.hub_mark_checkout_overdue(

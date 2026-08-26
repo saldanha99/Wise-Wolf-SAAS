@@ -11,6 +11,7 @@ import AutomacaoSmart from './AutomacaoSmart';
 import ManualTrialScheduler from './ManualTrialScheduler';
 import DirectorPendingCenter from './DirectorPendingCenter';
 import { supabase } from '../lib/supabase';
+import { localMonth, monthRange } from '../lib/dateUtils';
 import { Teacher } from '../types';
 
 interface SchoolAdminDashboardProps {
@@ -53,10 +54,9 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
 
-      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
       const endOfMonth = new Date(startOfMonth);
       endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-      const endOfMonthStr = endOfMonth.toISOString().split('T')[0];
+      const classMonthRange = monthRange(localMonth());
 
       // 1. Fetch Students (MRR Forecast & Active Count)
       const { data: students } = await supabase.rpc(
@@ -70,22 +70,28 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
       // MRR Forecast = Sum of all contracts (monthly_fees)
       const mrrForecast = studentList.reduce((acc, s) => acc + (s.monthly_fee || 0), 0);
 
-      // 2. Fetch REAL Payments (Cash Flow - This Month)
-      // We explicitly check:
-      // a) Recieved/Confirmed payments where PAYMENT_DATE is inside the range (Cash Basis)
-      // OR
-      // b) Pending payments where DUE_DATE is inside the range (Forecast)
-
       // 2. Fetch REAL Revenue from FINANCIAL TRANSACTIONS (Official Ledger)
       const { data: transactions } = await supabase
         .from('financial_transactions') // Use the correct table
-        .select('amount, type, created_at')
+        .select('amount, type, category, occurred_at, refund_student_payment_id')
         .eq('tenant_id', tenantId)
-        .eq('type', 'ENTRADA') // Only income
-        .gte('created_at', startOfMonth.toISOString())
-        .lt('created_at', endOfMonth.toISOString());
+        .in('type', ['ENTRADA', 'SAIDA'])
+        // Caixa usa a data em que o credito ficou disponivel, nunca a data em
+        // que a linha foi criada no banco.
+        .gte('occurred_at', startOfMonth.toISOString())
+        .lt('occurred_at', endOfMonth.toISOString());
 
-      const realRevenue = (transactions || []).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+      // Filtrar localmente preserva lancamentos operacionais legados com
+      // category NULL; somente aporte/movimentacao deixa de ser receita.
+      const realRevenue = (transactions || [])
+        .filter(t => t.category !== 'aporte_ou_movimentacao'
+          && t.category !== 'estorno_aporte_ou_movimentacao')
+        .reduce((acc, t) => {
+          const amount = Number(t.amount) || 0;
+          if (t.type === 'ENTRADA') return acc + amount;
+          if (t.type === 'SAIDA' && t.refund_student_payment_id) return acc - amount;
+          return acc;
+        }, 0);
 
 
       // Calculate Pending (Pending/Overdue)
@@ -123,9 +129,10 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
 
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('teacher_id, presence, subtype')
+        .select('teacher_id, presence, subtype, class_date')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startOfMonth.toISOString());
+        .gte('class_date', classMonthRange.start)
+        .lt('class_date', classMonthRange.endExclusive);
 
       let payroll = 0;
       let attendanceCount = 0;
@@ -414,11 +421,12 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                             R$ {Number(pay.value).toFixed(2)}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${pay.status === 'RECEIVED' || pay.status === 'RECEIVED_IN_CASH' ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
                               pay.status === 'OVERDUE' ? 'bg-red-400/10 text-red-500 border-red-400/30' :
                                 'bg-amber-400/10 text-amber-500 border-amber-400/30'
                               }`}>
-                              {pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'PAGO' :
+                              {pay.status === 'RECEIVED' || pay.status === 'RECEIVED_IN_CASH' ? 'PAGO' :
+                                pay.status === 'CONFIRMED' ? 'CONFIRMADO' :
                                 pay.status === 'OVERDUE' ? 'ATRASADO' : 'PENDENTE'}
                             </span>
                           </td>
@@ -431,36 +439,24 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                                   e.stopPropagation();
                                   if (!confirm(`Confirmar recebimento manual de R$ ${pay.value}?`)) return;
                                   try {
-                                    // 1. Update Payment Status
-                                    const { error: updateError } = await supabase
+                                    const creditedAt = new Date();
+
+                                    // O pagamento e a unica fonte de escrita. O trigger
+                                    // transacional cria o lancamento do caixa exatamente uma vez.
+                                    const { data: updatedPayment, error: updateError } = await supabase
                                       .from('student_payments')
                                       .update({
                                         status: 'RECEIVED',
-                                        payment_date: new Date().toISOString()
+                                        payment_date: creditedAt.toISOString().slice(0, 10),
+                                        credited_at: creditedAt.toISOString()
                                       })
-                                      .eq('id', pay.id);
+                                      .eq('id', pay.id)
+                                      .eq('tenant_id', tenantId)
+                                      .select('id')
+                                      .single();
 
                                     if (updateError) throw updateError;
-
-                                    const payload = {
-                                      tenant_id: pay.profiles?.tenant_id || tenantId,
-                                      type: 'ENTRADA',
-                                      category: 'student_tuition',
-                                      amount: pay.value,
-                                      amount_cents: Math.round(pay.value * 100),
-                                      description: `Mensalidade (Manual) - ${pay.profiles?.full_name || 'Aluno'}`,
-                                      reference_id: pay.student_id,
-                                      student_payment_id: pay.id,
-                                      occurred_at: new Date().toISOString(),
-                                      created_at: new Date().toISOString()
-                                    };
-                                    console.log("💰 Manually inserting transaction:", payload);
-
-                                    const { error: transError } = await supabase
-                                      .from('financial_transactions')
-                                      .insert(payload);
-
-                                    if (transError) throw transError;
+                                    if (!updatedPayment) throw new Error('Pagamento nao encontrado nesta escola');
 
                                     fetchAnalytics(); // Refresh dashboard
                                     alert('Pagamento confirmado e registrado no caixa!');

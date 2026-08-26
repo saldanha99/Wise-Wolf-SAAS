@@ -10,6 +10,7 @@ export type CancellationRequest = {
 };
 
 export type ProviderLinkedCheckout = {
+  id?: string | null;
   status?: string | null;
   asaas_subscription_id?: string | null;
   asaas_payment_id?: string | null;
@@ -18,6 +19,12 @@ export type ProviderLinkedCheckout = {
 export type ProviderLinkedSubscription = {
   provider?: string | null;
   provider_subscription_id?: string | null;
+};
+
+export type ProviderCancellationTarget = {
+  providerSubscriptionId: string;
+  providerCustomerId: string;
+  checkoutId: string;
 };
 
 export class CancellationValidationError extends Error {
@@ -103,4 +110,33 @@ export function collectProviderSubscriptionIds(
     providerIds.add(checkoutProviderId);
   }
   return [...providerIds];
+}
+
+export function resolveProviderCancellationTargets(
+  providerSubscriptionIds: Iterable<string>,
+  checkouts: ProviderLinkedCheckout[],
+  providerCustomerId: string | null | undefined,
+): ProviderCancellationTarget[] {
+  const customerId = providerId(providerCustomerId);
+  if (!customerId) {
+    throw new CancellationValidationError(
+      "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+    );
+  }
+  return [...new Set(providerSubscriptionIds)].map((subscriptionId) => {
+    const matches = checkouts.filter((checkout) =>
+      providerId(checkout.asaas_subscription_id) === subscriptionId
+    );
+    const checkoutId = providerId(matches[0]?.id);
+    if (matches.length !== 1 || !UUID_PATTERN.test(checkoutId)) {
+      throw new CancellationValidationError(
+        "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+      );
+    }
+    return {
+      providerSubscriptionId: subscriptionId,
+      providerCustomerId: customerId,
+      checkoutId,
+    };
+  });
 }

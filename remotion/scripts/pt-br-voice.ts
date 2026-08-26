@@ -1,3 +1,5 @@
+import type { HubVoiceGender } from '../types';
+
 export type ElevenLabsVoiceProfile = {
   voice_id: string;
   name?: string;
@@ -25,6 +27,8 @@ export type PtBrVoiceEvidence = {
 export type PtBrVoiceValidationOptions = {
   allowMultilingualPremade?: boolean;
   modelId?: string;
+  requiredNative?: boolean;
+  requiredGender?: Extract<HubVoiceGender, 'male'>;
 };
 
 const normalize = (value: string | undefined): string => (value || '')
@@ -56,6 +60,14 @@ const isAmerican = (value: string | undefined): boolean => {
     || normalized === 'en-us'
     || normalized.includes('american')
     || normalized.includes('estadunidense');
+};
+
+export const getElevenLabsVoiceGender = (voice: ElevenLabsVoiceProfile): HubVoiceGender => {
+  const gender = normalize(voice.labels?.gender);
+  if (gender === 'male' || gender === 'masculino' || gender === 'homem') return 'male';
+  if (gender === 'female' || gender === 'feminino' || gender === 'mulher') return 'female';
+  if (gender === 'nonbinary' || gender === 'non-binary' || gender === 'nao-binario') return 'nonbinary';
+  return 'unknown';
 };
 
 export const SUPPORTED_PT_BR_NARRATION_MODELS = [
@@ -136,6 +148,17 @@ export const assertPtBrVoice = (
       + 'Voz premade americana exige ELEVENLABS_ALLOW_MULTILINGUAL_PREMADE=1 e modelo eleven_multilingual_v2 ou eleven_v3; '
       + 'sem essa autorização explícita, PT-PT, voz predefinida e voz sem locale verificado são recusadas.',
     );
+  }
+  if (options.requiredGender && getElevenLabsVoiceGender(voice) !== options.requiredGender) {
+    const voiceLabel = voice.name ? `“${voice.name}”` : voice.voice_id;
+    throw new Error(
+      `A voz ${voiceLabel} não possui evidência masculina confiável nos labels da ElevenLabs. `
+      + 'A locução final do Hub exige uma voz PT-BR nativa com gender=male.',
+    );
+  }
+  if (options.requiredNative && evidence.native !== true) {
+    const voiceLabel = voice.name ? `“${voice.name}”` : voice.voice_id;
+    throw new Error(`A voz ${voiceLabel} não é uma voz PT-BR nativa validada.`);
   }
   return evidence;
 };

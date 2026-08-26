@@ -1,6 +1,9 @@
 /// <reference lib="deno.ns" />
 
-import { resolvePaymentTargetScope } from "./payment-auth.ts";
+import {
+  isActiveStudentPaymentTarget,
+  resolvePaymentTargetScope,
+} from "./payment-auth.ts";
 
 function assertEquals(
   actual: unknown,
@@ -19,6 +22,34 @@ function assertEquals(
 const membership = (tenantId: string) => ({
   tenant_id: tenantId,
   role: "STUDENT" as const,
+});
+
+Deno.test("payment target must be an active student profile", () => {
+  assertEquals(
+    isActiveStudentPaymentTarget({
+      role: "STUDENT",
+      lifecycle_status: " active ",
+    }),
+    true,
+    "an active student should be eligible for payment authorization",
+  );
+
+  for (const lifecycle_status of [null, "", "suspended", "offboarded"]) {
+    assertEquals(
+      isActiveStudentPaymentTarget({ role: "STUDENT", lifecycle_status }),
+      false,
+      `student lifecycle ${String(lifecycle_status)} must fail closed`,
+    );
+  }
+
+  assertEquals(
+    isActiveStudentPaymentTarget({
+      role: "TEACHER",
+      lifecycle_status: "active",
+    }),
+    false,
+    "an active profile with an incoherent role must fail closed",
+  );
 });
 
 Deno.test("payment authorization uses the caller ACTIVE context instead of legacy tenant data", () => {

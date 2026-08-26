@@ -5,6 +5,7 @@ import {
   CancellationValidationError,
   collectProviderSubscriptionIds,
   parseCancellationRequest,
+  resolveProviderCancellationTargets,
 } from "./core.ts";
 
 const assert = (condition: boolean, message: string) => {
@@ -70,6 +71,44 @@ Deno.test("provider reconciliation collects every account recurrence once", () =
   assert(
     providerIds.join(",") === "sub_current,sub_replacement",
     "every provider schedule must be cancelled exactly once",
+  );
+});
+
+Deno.test("provider cancellation maps every recurrence to one exact checkout", () => {
+  const checkoutId = "550e8400-e29b-41d4-a716-446655440001";
+  const targets = resolveProviderCancellationTargets(
+    ["sub_current"],
+    [{ id: checkoutId, asaas_subscription_id: "sub_current" }],
+    "cus_account",
+  );
+  assert(
+    targets.length === 1 && targets[0].checkoutId === checkoutId &&
+      targets[0].providerCustomerId === "cus_account",
+    "the provider identity must be anchored to its account checkout",
+  );
+  assertCode(
+    () =>
+      resolveProviderCancellationTargets(
+        ["sub_missing"],
+        [{ id: checkoutId, asaas_subscription_id: "sub_current" }],
+        "cus_account",
+      ),
+    "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
+  );
+  assertCode(
+    () =>
+      resolveProviderCancellationTargets(
+        ["sub_current"],
+        [
+          { id: checkoutId, asaas_subscription_id: "sub_current" },
+          {
+            id: "550e8400-e29b-41d4-a716-446655440002",
+            asaas_subscription_id: "sub_current",
+          },
+        ],
+        "cus_account",
+      ),
+    "HUB_SUBSCRIPTION_RECONCILIATION_REQUIRED",
   );
 });
 

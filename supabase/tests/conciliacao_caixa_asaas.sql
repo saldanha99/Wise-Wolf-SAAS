@@ -32,6 +32,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('caixa-test-school', 'Caixa Test School');
@@ -133,12 +134,12 @@ select pg_temp.assert_true(
 );
 
 -- ---------------------------------------------------------------------------
--- [2b] — estorno TIRA o dinheiro do caixa
+-- [2b] — estorno preserva o bruto e TIRA o dinheiro do caixa com uma SAIDA
 -- ---------------------------------------------------------------------------
--- Latente até 25/08/2026 (nenhum estorno na história da base). O pagamento saía
--- de RECEIVED e sumia do get_cashflow, mas a ENTRADA continuava em
--- financial_transactions — que é o que o Dashboard soma. Receita fantasma
--- permanente no primeiro estorno.
+-- A ENTRADA e a SAIDA sao documentos contabeis distintos: apagar o recebimento
+-- destruiria a trilha historica; deixar apenas a ENTRADA criaria receita
+-- fantasma. O saldo liquido precisa ser zero e cada lado precisa conservar a
+-- data real do respectivo evento.
 insert into public.student_payments
   (asaas_payment_id, tenant_id, value, status, due_date, payment_date)
 values
@@ -153,36 +154,61 @@ select pg_temp.assert_true(
 );
 
 update public.student_payments
-   set status = 'REFUNDED'
+   set status = 'REFUNDED',
+       refunded_amount = 250.00,
+       last_provider_event_id = 'evt_teste_conciliacao_5_refund',
+       last_provider_event_at = timestamptz '2026-07-02 09:30:00+00'
  where asaas_payment_id = 'pay_teste_conciliacao_5';
 
 select pg_temp.assert_true(
-  not exists (select 1 from public.financial_transactions ft
-               join public.student_payments sp on sp.id = ft.student_payment_id
-              where sp.asaas_payment_id = 'pay_teste_conciliacao_5'),
-  'ESTORNO NAO REVERTEU O CAIXA: a ENTRADA sobreviveu e vira receita fantasma'
+  (
+    select count(*) = 2
+       and sum(ft.amount) filter (where ft.type = 'ENTRADA') = 250.00
+       and min(ft.occurred_at) filter (where ft.type = 'ENTRADA') =
+             timestamptz '2026-06-10 12:00:00+00'
+       and sum(ft.amount) filter (where ft.type = 'SAIDA') = 250.00
+       and min(ft.occurred_at) filter (where ft.type = 'SAIDA') =
+             timestamptz '2026-07-02 09:30:00+00'
+       and sum(case when ft.type = 'ENTRADA' then ft.amount else -ft.amount end) = 0
+      from public.student_payments sp
+      join public.financial_transactions ft
+        on ft.student_payment_id = sp.id
+        or ft.refund_student_payment_id = sp.id
+     where sp.asaas_payment_id = 'pay_teste_conciliacao_5'
+  ),
+  'ESTORNO NAO ZEROU O CAIXA com ENTRADA bruta e SAIDA na data real'
 );
 
 select pg_temp.assert_true(
   exists (select 1 from public.reconciliation_issues ri
            join public.student_payments sp on sp.id = ri.student_payment_id
           where sp.asaas_payment_id = 'pay_teste_conciliacao_5'
-            and ri.kind = 'PAYMENT_REVERSED'
-            and (ri.details->>'valor_removido_do_caixa')::numeric = 250.00),
+            and ri.kind = 'PAYMENT_FULLY_REFUNDED'
+            and (ri.details->>'delta_estornado')::numeric = 250.00
+            and ri.details->>'provider_event_id' = 'evt_teste_conciliacao_5_refund'
+            and (ri.details->>'saida_criada')::boolean),
   'estorno nao deixou rastro em reconciliation_issues'
 );
 
--- E se o dinheiro voltar, o lançamento volta — com a data do pagamento.
+-- Retry do mesmo snapshot nao pode apagar a ENTRADA nem duplicar a SAIDA.
 update public.student_payments
-   set status = 'RECEIVED'
+   set status = 'REFUNDED',
+       refunded_amount = 250.00,
+       last_provider_event_id = 'evt_teste_conciliacao_5_refund',
+       last_provider_event_at = timestamptz '2026-07-02 09:30:00+00',
+       updated_at = now()
  where asaas_payment_id = 'pay_teste_conciliacao_5';
 
 select pg_temp.assert_true(
-  (select date_trunc('month', ft.occurred_at) = timestamptz '2026-06-01 00:00:00+00'
-     from public.financial_transactions ft
-     join public.student_payments sp on sp.id = ft.student_payment_id
-    where sp.asaas_payment_id = 'pay_teste_conciliacao_5'),
-  'pagamento reprocessado nao voltou ao caixa no mes correto'
+  (
+    select count(*) = 2
+      from public.student_payments sp
+      join public.financial_transactions ft
+        on ft.student_payment_id = sp.id
+        or ft.refund_student_payment_id = sp.id
+     where sp.asaas_payment_id = 'pay_teste_conciliacao_5'
+  ),
+  'retry do estorno apagou a ENTRADA ou duplicou a SAIDA'
 );
 
 -- ---------------------------------------------------------------------------

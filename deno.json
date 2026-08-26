@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns"
+    ]
+  },
+  "lock": {
+    "path": "./deno.lock",
+    "frozen": true
+  }
+}

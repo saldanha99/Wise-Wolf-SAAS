@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('wolfie-classic-atomic-fixture', 'Wolfie Classic Atomic Fixture');
@@ -1096,6 +1097,9 @@ begin
   end;
 end;
 $anchored_transport_guard$;
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 select set_config(

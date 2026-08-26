@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_access_denied(command text, message text)
 returns void
@@ -177,6 +178,9 @@ insert into storage.objects (bucket_id, name, owner_id, metadata)
 values
   ('invoices', 'closings/e2000000-0000-4000-8000-000000000002/e3000000-0000-4000-8000-000000000002.pdf', 'e1000000-0000-4000-8000-000000000003', '{"mimetype":"application/pdf","fixture":"peer"}'),
   ('invoices', 'closings/e2000000-0000-4000-8000-000000000003/e3000000-0000-4000-8000-000000000003.pdf', 'e1000000-0000-4000-8000-000000000005', '{"mimetype":"application/pdf","fixture":"foreign"}');
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"e1000000-0000-4000-8000-000000000002","role":"authenticated"}';

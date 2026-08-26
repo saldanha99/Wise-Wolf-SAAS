@@ -1,9 +1,23 @@
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  asaasCreationFingerprint,
+  asaasCreationHttpOutcome,
+  claimAsaasCreation,
+  findUniqueAsaasEntity,
+  recordAsaasCreationState,
+} from "../_shared/asaas-creation-guard.ts";
+import {
+  type AsaasMutationPurpose,
+  revalidateAsaasMutationCapability,
+} from "../_shared/asaas-capability-fence.ts";
+import {
+  adoptHubProviderCreationBinding,
+  markHubProviderCreationSubmitting,
+} from "../_shared/hub-provider-operations.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 import {
-  failedCheckoutStatus,
   HUB_CORE_PRODUCT_FAMILY,
   hubBillingBlockCode,
   hubCheckoutDecision,
@@ -12,7 +26,6 @@ import {
   hubReplacementNeedsProviderReconciliation,
   isSupportedHubProductFamily,
   isValidHubAccountId,
-  providerCancellationIsFinal,
   tenantMayCheckoutProduct,
   WOLFIE_PRODUCT_FAMILY,
 } from "../_shared/hub-billing-safety.ts";
@@ -28,12 +41,18 @@ import {
   hubCoreLegalSnapshotsMatchExpectedHashes,
 } from "./legal.ts";
 import {
-  decideHubAsaasCustomerCompensation,
+  decideHubAsaasCustomerPreservation,
   type HubAsaasCustomerOrigin,
   hubAsaasCustomerReference,
   normalizeAsaasCustomerId,
   resolveHubAsaasCustomerCandidate,
+  resolveHubAsaasSubscriptionCandidate,
 } from "./customer-idempotency.ts";
+import {
+  type AsaasIntegrationPurpose,
+  type ResolvedAsaasIntegration,
+  resolvePlatformAsaasIntegration,
+} from "../_shared/tenant-integration-broker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,12 +61,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const ASAAS_URL = (Deno.env.get("ASAAS_API_URL") || "https://api.asaas.com")
-  .replace(/\/+$/, "")
-  .replace(/\/v3$/, "");
-const ASAAS_TOKEN =
-  (Deno.env.get("ASAAS_ACCESS_TOKEN") || Deno.env.get("ASAAS_API_KEY") || "")
-    .trim();
+// Hub/Wolfie subscriptions are platform revenue and use the platform-owned
+// root Asaas credential, regardless of the member's product tenant.
+const PLATFORM_ASAAS_TENANT_ID = "school-wise-wolf";
 const WOLFIE_STANDALONE_CHECKOUT_ENABLED =
   Deno.env.get("WOLFIE_STANDALONE_CHECKOUT_ENABLED")?.trim().toLowerCase() ===
     "true";
@@ -65,6 +81,11 @@ const digits = (value: unknown) =>
   typeof value === "string" ? value.replace(/\D/g, "") : "";
 const text = (value: unknown, max = 180) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
+const sameMoney = (left: unknown, right: number) => {
+  const parsed = Number(left);
+  return Number.isFinite(parsed) &&
+    Math.round(parsed * 100) === Math.round(right * 100);
+};
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -101,14 +122,22 @@ const isValidCnpj = (value: string) => {
 const isValidCpfCnpj = (value: string) =>
   isValidCpf(value) || isValidCnpj(value);
 
-async function asaasRequest(path: string, init: RequestInit = {}) {
-  const response = await fetch(`${ASAAS_URL}/v3${path}`, {
+async function asaasRequest(
+  integration: ResolvedAsaasIntegration,
+  path: string,
+  init: RequestInit = {},
+) {
+  if ((init.method || "GET").toUpperCase() === "POST") {
+    throw new Error("ASAAS_CREATION_REQUIRES_DURABLE_CLAIM");
+  }
+  const response = await fetch(`${integration.baseUrl}${path}`, {
     ...init,
     headers: {
-      access_token: ASAAS_TOKEN,
+      access_token: integration.apiKey,
       "Content-Type": "application/json",
       ...(init.headers || {}),
     },
+    redirect: "error",
     signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => null);
@@ -125,44 +154,33 @@ async function asaasRequest(path: string, init: RequestInit = {}) {
   return payload;
 }
 
-async function deleteAsaasCustomer(customerId: string): Promise<void> {
-  const response = await fetch(
-    `${ASAAS_URL}/v3/customers/${encodeURIComponent(customerId)}`,
-    {
-      method: "DELETE",
-      headers: {
-        access_token: ASAAS_TOKEN,
-        "Content-Type": "application/json",
-      },
-      signal: AbortSignal.timeout(15_000),
-    },
-  );
-  if (!providerCancellationIsFinal(response.status)) {
-    console.error("Hub Asaas customer compensation failed", {
-      status: response.status,
-    });
-    throw new Error("ASAAS_CUSTOMER_COMPENSATION_FAILED");
+async function asaasListAll(
+  integration: ResolvedAsaasIntegration,
+  path: string,
+  query: Record<string, string> = {},
+): Promise<Array<Record<string, unknown>>> {
+  const collected: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+    const params = new URLSearchParams(query);
+    params.set("limit", "100");
+    params.set("offset", String(offset));
+    const payload = await asaasRequest(
+      integration,
+      `${path}?${params.toString()}`,
+    );
+    if (!payload || !Array.isArray(payload.data)) {
+      throw new Error("ASAAS_COLLECTION_INVALID");
+    }
+    const page = payload.data.filter((item: unknown) =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item)
+    ) as Array<Record<string, unknown>>;
+    collected.push(...page);
+    if (payload.hasMore !== true) return collected;
+    if (page.length === 0) throw new Error("ASAAS_COLLECTION_CURSOR_STALLED");
+    offset += page.length;
   }
-}
-
-async function cancelAsaasSubscription(subscriptionId: string): Promise<void> {
-  const response = await fetch(
-    `${ASAAS_URL}/v3/subscriptions/${encodeURIComponent(subscriptionId)}`,
-    {
-      method: "DELETE",
-      headers: {
-        access_token: ASAAS_TOKEN,
-        "Content-Type": "application/json",
-      },
-      signal: AbortSignal.timeout(15_000),
-    },
-  );
-  if (!providerCancellationIsFinal(response.status)) {
-    console.error("Hub Asaas subscription cancellation failed", {
-      status: response.status,
-    });
-    throw new Error("ASAAS_SUBSCRIPTION_CANCELLATION_FAILED");
-  }
+  throw new Error("ASAAS_COLLECTION_PAGE_LIMIT");
 }
 
 type ProviderPaymentSnapshot = {
@@ -172,6 +190,37 @@ type ProviderPaymentSnapshot = {
   dueDate: string | null;
 };
 
+function assertExactHubProviderPayment(
+  entity: unknown,
+  expected: {
+    paymentId: string;
+    subscriptionId: string;
+    customerId: string;
+    externalReference: string;
+    amount: number;
+    billingType: string;
+    dueDate: string;
+  },
+): Record<string, unknown> {
+  if (!entity || typeof entity !== "object" || Array.isArray(entity)) {
+    throw new Error("ASAAS_PAYMENT_PROVIDER_IDENTITY_CONFLICT");
+  }
+  const payment = entity as Record<string, unknown>;
+  if (
+    text(payment.id, 200) !== expected.paymentId ||
+    text(payment.subscription, 200) !== expected.subscriptionId ||
+    text(payment.customer, 200) !== expected.customerId ||
+    text(payment.externalReference, 240) !== expected.externalReference ||
+    text(payment.billingType, 40).toUpperCase() !== expected.billingType ||
+    text(payment.dueDate, 10) !== expected.dueDate ||
+    !sameMoney(payment.value, expected.amount) ||
+    payment.deleted === true
+  ) {
+    throw new Error("ASAAS_PAYMENT_PROVIDER_IDENTITY_CONFLICT");
+  }
+  return payment;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -179,6 +228,7 @@ serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(corsHeaders);
 
   const auth = await authorizeRequest(req, {
+    allowInactiveTenant: true,
     corsHeaders,
     allowWolfieDirect: true,
     allowedRoles: [
@@ -192,12 +242,48 @@ serve(async (req) => {
     ],
   });
   if (auth.ok === false) return auth.response;
-  if (!ASAAS_TOKEN) {
-    return json(503, {
-      error: "PAYMENT_PROVIDER_UNAVAILABLE",
-      code: "PAYMENT_PROVIDER_UNAVAILABLE",
+
+  const integrations = new Map<
+    AsaasIntegrationPurpose,
+    ResolvedAsaasIntegration
+  >();
+  let canonicalIntegration: ResolvedAsaasIntegration | null = null;
+  const providerIntegration = async (purpose: AsaasIntegrationPurpose) => {
+    const cached = integrations.get(purpose);
+    if (cached) return cached;
+    const resolved = await resolvePlatformAsaasIntegration(
+      auth.context.admin,
+      purpose,
+    );
+    if (
+      canonicalIntegration &&
+      (canonicalIntegration.integrationId !== resolved.integrationId ||
+        canonicalIntegration.provider !== resolved.provider ||
+        canonicalIntegration.tenantId !== resolved.tenantId ||
+        canonicalIntegration.mode !== resolved.mode ||
+        canonicalIntegration.version !== resolved.version ||
+        canonicalIntegration.baseUrl !== resolved.baseUrl ||
+        canonicalIntegration.environment !== resolved.environment ||
+        canonicalIntegration.apiKey !== resolved.apiKey)
+    ) {
+      throw new Error("ASAAS_PLATFORM_INTEGRATION_VERSION_CHANGED");
+    }
+    canonicalIntegration = canonicalIntegration || resolved;
+    integrations.set(purpose, resolved);
+    return resolved;
+  };
+  const providerMutationIntegration = async (
+    purpose: AsaasMutationPurpose,
+  ): Promise<ResolvedAsaasIntegration> => {
+    if (!canonicalIntegration) {
+      throw new Error("ASAAS_PLATFORM_INTEGRATION_UNRESOLVED");
+    }
+    return await revalidateAsaasMutationCapability(auth.context.admin, {
+      tenantId: PLATFORM_ASAAS_TENANT_ID,
+      purpose,
+      expected: canonicalIntegration,
     });
-  }
+  };
 
   let checkoutId: string | null = null;
   let providerSubscriptionId: string | null = null;
@@ -208,12 +294,16 @@ serve(async (req) => {
   let providerCustomerLinkConfirmed = false;
   let createdProviderCustomerId: string | null = null;
   let hubLegalAcceptanceId: string | null = null;
-  let compensateCreatedProviderCustomer:
-    | ((providerObjectsSafeToDelete: boolean) => Promise<
+  let providerCreationReconciliationRequired = false;
+  let providerCreationReviewRequired = false;
+  let providerCustomerLinkPending = false;
+  let providerSubscriptionMustBePreserved = false;
+  let providerPaymentReconciliationRequired = false;
+  let inspectCreatedProviderCustomer:
+    | (() => Promise<
       | "NOT_CREATED_BY_ATTEMPT"
-      | "DEFER_UNCONFIRMED_STATE"
       | "KEEP_LINKED_CUSTOMER"
-      | "DELETE_CONFIRMED"
+      | "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW"
     >)
     | null = null;
   try {
@@ -229,8 +319,8 @@ serve(async (req) => {
         code: "UNSUPPORTED_BILLING_TYPE",
       });
     }
-    const billingType = requestedBillingType;
-    const customerName = text(body.name);
+    const billingType = requestedBillingType as "PIX" | "BOLETO";
+    const customerName = text(body.name, 160);
     const customerEmail = text(auth.context.user?.email || body.email)
       .toLowerCase();
     const cpfCnpj = digits(body.cpfCnpj);
@@ -246,10 +336,12 @@ serve(async (req) => {
     const testMode = body.testMode === true;
     const userIsTestFixture =
       auth.context.user?.app_metadata?.test_fixture === true;
+    const providerEnvironment = (await providerIntegration("customer.read"))
+      .environment;
     const fixtureBlockCode = hubFixtureCheckoutBlockCode({
       testMode,
       userIsTestFixture,
-      sandboxProvider: ASAAS_URL.toLowerCase().includes("sandbox"),
+      sandboxProvider: providerEnvironment === "sandbox",
     });
     const isTestFixture = testMode && userIsTestFixture;
     if (
@@ -539,7 +631,7 @@ serve(async (req) => {
       }
       hubLegalAcceptanceId = acceptance.id;
     }
-    const amount = Number(
+    let amount = Number(
       billingCycle === "YEARLY" ? plan.price_yearly : plan.price_monthly,
     );
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -549,11 +641,18 @@ serve(async (req) => {
       });
     }
 
+    let resumableCheckout: {
+      id: string;
+      created_at: string;
+      amount: number;
+      asaas_subscription_id: string | null;
+      metadata: Record<string, unknown>;
+    } | null = null;
     const { data: existingCheckout, error: existingCheckoutError } = await auth
       .context.admin
       .from("hub_checkout_sessions")
       .select(
-        "id, account_id, plan_id, product_family, billing_cycle, billing_type, status, amount, invoice_url, bank_slip_url, asaas_payment_id",
+        "id, account_id, plan_id, product_family, billing_cycle, billing_type, status, amount, invoice_url, bank_slip_url, asaas_payment_id, asaas_subscription_id, metadata, created_at",
       )
       .eq("requested_by", auth.context.userId)
       .eq("request_key", requestKey)
@@ -574,96 +673,183 @@ serve(async (req) => {
         });
       }
       if (existingCheckout.status === "CREATED") {
-        return json(409, {
-          error: "CHECKOUT_IN_PROGRESS",
-          code: "CHECKOUT_IN_PROGRESS",
+        resumableCheckout = {
+          id: existingCheckout.id,
+          created_at: existingCheckout.created_at,
+          amount: Number(existingCheckout.amount),
+          asaas_subscription_id: existingCheckout.asaas_subscription_id,
+          metadata: existingCheckout.metadata &&
+              typeof existingCheckout.metadata === "object"
+            ? existingCheckout.metadata as Record<string, unknown>
+            : {},
+        };
+        checkoutId = existingCheckout.id;
+        checkoutMetadata = resumableCheckout.metadata;
+        if (
+          !Number.isFinite(resumableCheckout.amount) ||
+          resumableCheckout.amount <= 0
+        ) {
+          throw new Error("HUB_CHECKOUT_AMOUNT_INVALID");
+        }
+        amount = resumableCheckout.amount;
+      } else {
+        if (
+          ["FAILED", "CANCELLED", "REVERSED"].includes(
+            existingCheckout.status,
+          )
+        ) {
+          return json(409, {
+            error: "CHECKOUT_RETRY_WITH_NEW_KEY",
+            code: "CHECKOUT_RETRY_WITH_NEW_KEY",
+            checkoutId: existingCheckout.id,
+          });
+        }
+        let existingPix = null;
+        if (existingCheckout.asaas_payment_id) {
+          const expectedCustomerId = normalizeAsaasCustomerId(
+            account.asaas_customer_id,
+          );
+          const expectedSubscriptionId = normalizeAsaasCustomerId(
+            existingCheckout.asaas_subscription_id,
+          );
+          const expectedDueDate = text(
+            existingCheckout.metadata?.dueDate,
+            10,
+          );
+          if (
+            !expectedCustomerId || !expectedSubscriptionId ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(expectedDueDate)
+          ) {
+            throw new Error("ASAAS_PAYMENT_LOCAL_IDENTITY_INCOMPLETE");
+          }
+          const paymentRead = await providerIntegration("payment.read");
+          const providerPaymentSnapshot = await asaasRequest(
+            paymentRead,
+            `/payments/${
+              encodeURIComponent(existingCheckout.asaas_payment_id)
+            }`,
+          );
+          assertExactHubProviderPayment(providerPaymentSnapshot, {
+            paymentId: existingCheckout.asaas_payment_id,
+            subscriptionId: expectedSubscriptionId,
+            customerId: expectedCustomerId,
+            externalReference: `hub:${existingCheckout.id}`,
+            amount: Number(existingCheckout.amount),
+            billingType,
+            dueDate: expectedDueDate,
+          });
+          if (billingType === "PIX") {
+            existingPix = await asaasRequest(
+              paymentRead,
+              `/payments/${
+                encodeURIComponent(existingCheckout.asaas_payment_id)
+              }/pixQrCode`,
+            );
+          }
+        }
+        return json(200, {
+          success: true,
+          idempotent: true,
           checkoutId: existingCheckout.id,
+          status: existingCheckout.status,
+          amount: Number(existingCheckout.amount),
+          invoiceUrl: existingCheckout.invoice_url,
+          bankSlipUrl: existingCheckout.bank_slip_url,
+          pix: existingPix
+            ? {
+              copyPaste: existingPix.payload,
+              qrCode: existingPix.encodedImage,
+            }
+            : null,
         });
       }
-      if (
-        ["FAILED", "CANCELLED", "REVERSED"].includes(existingCheckout.status)
-      ) {
-        return json(409, {
-          error: "CHECKOUT_RETRY_WITH_NEW_KEY",
-          code: "CHECKOUT_RETRY_WITH_NEW_KEY",
-          checkoutId: existingCheckout.id,
-        });
-      }
-      let existingPix = null;
-      if (existingCheckout.asaas_payment_id && billingType === "PIX") {
-        existingPix = await asaasRequest(
-          `/payments/${
-            encodeURIComponent(existingCheckout.asaas_payment_id)
-          }/pixQrCode`,
-        );
-      }
-      return json(200, {
-        success: true,
-        idempotent: true,
-        checkoutId: existingCheckout.id,
-        status: existingCheckout.status,
-        amount: Number(existingCheckout.amount),
-        invoiceUrl: existingCheckout.invoice_url,
-        bankSlipUrl: existingCheckout.bank_slip_url,
-        pix: existingPix
-          ? { copyPaste: existingPix.payload, qrCode: existingPix.encodedImage }
-          : null,
-      });
     }
 
-    const { data: pendingCheckout, error: pendingCheckoutError } = await auth
-      .context.admin
-      .from("hub_checkout_sessions")
-      .select(
-        "id, plan_id, product_family, billing_cycle, billing_type, status, amount, invoice_url, bank_slip_url, asaas_payment_id",
-      )
-      .eq("account_id", membership.account_id)
-      .eq("product_family", productFamily)
-      .in("status", ["CREATED", "PENDING", "OVERDUE"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (pendingCheckoutError) throw pendingCheckoutError;
-    if (pendingCheckout) {
-      if (pendingCheckout.status === "CREATED") {
-        return json(409, {
-          error: "CHECKOUT_IN_PROGRESS",
-          code: "CHECKOUT_IN_PROGRESS",
+    if (!resumableCheckout) {
+      const { data: pendingCheckout, error: pendingCheckoutError } = await auth
+        .context.admin
+        .from("hub_checkout_sessions")
+        .select(
+          "id, plan_id, product_family, billing_cycle, billing_type, status, amount, invoice_url, bank_slip_url, asaas_payment_id, asaas_subscription_id, metadata, created_at",
+        )
+        .eq("account_id", membership.account_id)
+        .eq("product_family", productFamily)
+        .in("status", ["CREATED", "PENDING", "OVERDUE"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (pendingCheckoutError) throw pendingCheckoutError;
+      if (pendingCheckout) {
+        if (pendingCheckout.status === "CREATED") {
+          return json(409, {
+            error: "CHECKOUT_IN_PROGRESS",
+            code: "CHECKOUT_IN_PROGRESS",
+            checkoutId: pendingCheckout.id,
+          });
+        }
+        if (
+          pendingCheckout.plan_id !== plan.id ||
+          pendingCheckout.product_family !== productFamily ||
+          pendingCheckout.billing_cycle !== billingCycle ||
+          pendingCheckout.billing_type !== billingType
+        ) {
+          return json(409, {
+            error: "PENDING_CHECKOUT_EXISTS",
+            code: "PENDING_CHECKOUT_EXISTS",
+            checkoutId: pendingCheckout.id,
+          });
+        }
+        let pendingPix = null;
+        if (pendingCheckout.asaas_payment_id) {
+          const expectedCustomerId = normalizeAsaasCustomerId(
+            account.asaas_customer_id,
+          );
+          const expectedSubscriptionId = normalizeAsaasCustomerId(
+            pendingCheckout.asaas_subscription_id,
+          );
+          const expectedDueDate = text(pendingCheckout.metadata?.dueDate, 10);
+          if (
+            !expectedCustomerId || !expectedSubscriptionId ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(expectedDueDate)
+          ) {
+            throw new Error("ASAAS_PAYMENT_LOCAL_IDENTITY_INCOMPLETE");
+          }
+          const paymentRead = await providerIntegration("payment.read");
+          const providerPaymentSnapshot = await asaasRequest(
+            paymentRead,
+            `/payments/${encodeURIComponent(pendingCheckout.asaas_payment_id)}`,
+          );
+          assertExactHubProviderPayment(providerPaymentSnapshot, {
+            paymentId: pendingCheckout.asaas_payment_id,
+            subscriptionId: expectedSubscriptionId,
+            customerId: expectedCustomerId,
+            externalReference: `hub:${pendingCheckout.id}`,
+            amount: Number(pendingCheckout.amount),
+            billingType,
+            dueDate: expectedDueDate,
+          });
+          if (billingType === "PIX") {
+            pendingPix = await asaasRequest(
+              paymentRead,
+              `/payments/${
+                encodeURIComponent(pendingCheckout.asaas_payment_id)
+              }/pixQrCode`,
+            );
+          }
+        }
+        return json(200, {
+          success: true,
+          idempotent: true,
           checkoutId: pendingCheckout.id,
+          status: pendingCheckout.status,
+          amount: Number(pendingCheckout.amount),
+          invoiceUrl: pendingCheckout.invoice_url,
+          bankSlipUrl: pendingCheckout.bank_slip_url,
+          pix: pendingPix
+            ? { copyPaste: pendingPix.payload, qrCode: pendingPix.encodedImage }
+            : null,
         });
       }
-      if (
-        pendingCheckout.plan_id !== plan.id ||
-        pendingCheckout.product_family !== productFamily ||
-        pendingCheckout.billing_cycle !== billingCycle ||
-        pendingCheckout.billing_type !== billingType
-      ) {
-        return json(409, {
-          error: "PENDING_CHECKOUT_EXISTS",
-          code: "PENDING_CHECKOUT_EXISTS",
-          checkoutId: pendingCheckout.id,
-        });
-      }
-      let pendingPix = null;
-      if (pendingCheckout.asaas_payment_id && billingType === "PIX") {
-        pendingPix = await asaasRequest(
-          `/payments/${
-            encodeURIComponent(pendingCheckout.asaas_payment_id)
-          }/pixQrCode`,
-        );
-      }
-      return json(200, {
-        success: true,
-        idempotent: true,
-        checkoutId: pendingCheckout.id,
-        status: pendingCheckout.status,
-        amount: Number(pendingCheckout.amount),
-        invoiceUrl: pendingCheckout.invoice_url,
-        bankSlipUrl: pendingCheckout.bank_slip_url,
-        pix: pendingPix
-          ? { copyPaste: pendingPix.payload, qrCode: pendingPix.encodedImage }
-          : null,
-      });
     }
 
     const { data: liveSubscription, error: liveSubscriptionError } = await auth
@@ -725,9 +911,32 @@ serve(async (req) => {
     }
 
     checkoutMetadata = {
+      ...checkoutMetadata,
+      ...(!resumableCheckout
+        ? {
+          fulfillment_snapshot: {
+            version: 1,
+            account_id: membership.account_id,
+            user_id: auth.context.userId,
+            plan_id: plan.id,
+            product_family: productFamily,
+            plan_code: plan.code,
+            plan_name: plan.name,
+            email_recipient: customerEmail,
+            whatsapp_recipient: phone,
+            recipient_name: customerName,
+            test_fixture: isTestFixture,
+          },
+        }
+        : {}),
       ...(isTestFixture ? { test_fixture: true } : {}),
       ...(testMode ? { testMode: true } : {}),
       product_family: productFamily,
+      provider_subscription_description:
+        text(checkoutMetadata.provider_subscription_description, 240) ||
+        (productFamily === WOLFIE_PRODUCT_FAMILY
+          ? `Wolfie AI Tutor - ${plan.name}`
+          : `Wise Wolf Hub - ${plan.name} (${billingCycle})`),
       ...(subscriptionDecision === "ALLOW_REPLACEMENT" && liveSubscription
         ? {
           replacesSubscriptionId: liveSubscription.id,
@@ -753,56 +962,82 @@ serve(async (req) => {
         : {}),
     };
 
-    const { data: checkout, error: checkoutError } = await auth.context.admin
-      .from("hub_checkout_sessions")
-      .insert({
-        account_id: membership.account_id,
-        plan_id: plan.id,
-        requested_by: auth.context.userId,
-        billing_cycle: billingCycle,
-        billing_type: billingType,
+    let checkout = resumableCheckout;
+    if (!checkout) {
+      const { data: insertedCheckout, error: checkoutError } = await auth
+        .context
+        .admin
+        .from("hub_checkout_sessions")
+        .insert({
+          account_id: membership.account_id,
+          plan_id: plan.id,
+          requested_by: auth.context.userId,
+          billing_cycle: billingCycle,
+          billing_type: billingType,
+          amount,
+          status: "CREATED",
+          request_key: requestKey,
+          product_family: productFamily,
+          metadata: checkoutMetadata,
+        })
+        .select("id, created_at")
+        .single();
+      if (checkoutError || !insertedCheckout) {
+        throw checkoutError || new Error("CHECKOUT_CREATE_FAILED");
+      }
+      checkout = {
+        id: insertedCheckout.id,
+        created_at: insertedCheckout.created_at,
         amount,
-        status: "CREATED",
-        request_key: requestKey,
-        product_family: productFamily,
+        asaas_subscription_id: null,
         metadata: checkoutMetadata,
-      })
-      .select("id")
-      .single();
-    if (checkoutError || !checkout) {
-      throw checkoutError || new Error("CHECKOUT_CREATE_FAILED");
+      };
+      checkoutId = checkout.id;
     }
-    checkoutId = checkout.id;
 
-    const { error: fulfillmentError } = await auth.context.admin
-      .from("hub_fulfillment_outbox")
-      .insert([
+    // This transactionally repairs the checkout -> outbox crash gap.  It is
+    // deliberately outside the fresh-only block: a retry must prove the same
+    // frozen recipients and the same two durable rows before any Asaas POST.
+    const { data: fulfillmentFenceData, error: fulfillmentFenceError } =
+      await auth.context.admin.rpc(
+        "hub_ensure_checkout_fulfillment_outbox",
         {
-          checkout_id: checkout.id,
-          account_id: membership.account_id,
-          user_id: auth.context.userId,
-          product_family: productFamily,
-          plan_code: plan.code,
-          plan_name: plan.name,
-          channel: "EMAIL",
-          recipient: customerEmail,
-          recipient_name: customerName,
-          metadata: isTestFixture ? { test_fixture: true } : {},
+          p_checkout_id: checkout.id,
+          p_account_id: membership.account_id,
+          p_plan_id: plan.id,
+          p_requested_by: auth.context.userId,
+          p_product_family: productFamily,
+          p_email_recipient: customerEmail,
+          p_whatsapp_recipient: phone,
+          p_recipient_name: customerName,
+          p_test_fixture: isTestFixture,
         },
-        {
-          checkout_id: checkout.id,
-          account_id: membership.account_id,
-          user_id: auth.context.userId,
-          product_family: productFamily,
-          plan_code: plan.code,
-          plan_name: plan.name,
-          channel: "WHATSAPP",
-          recipient: phone,
-          recipient_name: customerName,
-          metadata: isTestFixture ? { test_fixture: true } : {},
-        },
-      ]);
-    if (fulfillmentError) throw fulfillmentError;
+      );
+    if (fulfillmentFenceError) throw fulfillmentFenceError;
+    const fulfillmentFence = fulfillmentFenceData &&
+        typeof fulfillmentFenceData === "object" &&
+        !Array.isArray(fulfillmentFenceData)
+      ? fulfillmentFenceData as Record<string, unknown>
+      : null;
+    if (
+      fulfillmentFence?.ok !== true ||
+      fulfillmentFence.checkoutId !== checkout.id ||
+      Number(fulfillmentFence.rowCount) !== 2
+    ) {
+      console.error("Hub fulfillment outbox reconciliation required", {
+        checkoutId: checkout.id,
+        reason: text(fulfillmentFence?.reason, 80) || "invalid_postcondition",
+      });
+      return json(409, {
+        error: "HUB_FULFILLMENT_RECONCILIATION_REQUIRED",
+        code: "HUB_FULFILLMENT_RECONCILIATION_REQUIRED",
+        checkoutId: checkout.id,
+      });
+    }
+    if (checkoutMetadata.provider_creation_review_required === true) {
+      providerCreationReviewRequired = true;
+      throw new Error("ASAAS_PROVIDER_CREATION_REVIEW_REQUIRED");
+    }
 
     const assertCheckoutStillAuthorized = async (): Promise<void> => {
       const authorityQuery = auth.context.admin
@@ -931,34 +1166,27 @@ serve(async (req) => {
         throw new Error("ASAAS_CUSTOMER_ACCOUNT_CONFLICT");
       }
     };
-
-    const bindCustomerToAccount = async (candidateCustomerId: string) => {
-      const { data: linkedAccount, error: linkError } = await auth.context.admin
-        .from("hub_accounts")
-        .update({ asaas_customer_id: candidateCustomerId })
-        .eq("id", membership.account_id)
-        .eq("status", "ACTIVE")
-        .is("asaas_customer_id", null)
-        .select("asaas_customer_id")
-        .maybeSingle();
-
-      const updatedCustomerId = normalizeAsaasCustomerId(
-        linkedAccount?.asaas_customer_id,
+    const customerReference = hubAsaasCustomerReference(
+      membership.account_id,
+    );
+    const assertProviderCustomerIdentity = async (customerId: string) => {
+      const providerCustomer = await asaasRequest(
+        await providerIntegration("customer.read"),
+        `/customers/${encodeURIComponent(customerId)}`,
       );
-      if (!linkError && updatedCustomerId) return updatedCustomerId;
-
-      // The update result can be ambiguous after a network failure or can lose
-      // a compare-and-set race. Re-read the authoritative account link before
-      // deciding whether the provider customer is orphaned.
-      const currentLink = await loadAccountCustomerLink(true);
-      if (currentLink.customerId) return currentLink.customerId;
-      if (linkError) throw linkError;
-      throw new Error("ASAAS_CUSTOMER_LINK_REJECTED");
+      const resolution = resolveHubAsaasCustomerCandidate(
+        [providerCustomer],
+        customerReference,
+        cpfCnpj,
+      );
+      if (
+        resolution.status !== "MATCH" || resolution.customerId !== customerId
+      ) {
+        throw new Error("ASAAS_CUSTOMER_PROVIDER_IDENTITY_CONFLICT");
+      }
     };
 
-    compensateCreatedProviderCustomer = async (
-      providerObjectsSafeToDelete: boolean,
-    ) => {
+    inspectCreatedProviderCustomer = async () => {
       let linkedCustomerIds: string[] = [];
       let linkStateConfirmed = true;
       if (createdProviderCustomerId) {
@@ -973,19 +1201,11 @@ serve(async (req) => {
           linkStateConfirmed = false;
         }
       }
-      const decision = decideHubAsaasCustomerCompensation({
+      return decideHubAsaasCustomerPreservation({
         createdCustomerId: createdProviderCustomerId,
         linkedCustomerIds,
         linkStateConfirmed,
-        providerObjectsSafeToDelete,
       });
-      if (decision !== "DELETE_CREATED_CUSTOMER") return decision;
-      try {
-        await deleteAsaasCustomer(createdProviderCustomerId!);
-        return "DELETE_CONFIRMED";
-      } catch {
-        return "DEFER_UNCONFIRMED_STATE";
-      }
     };
 
     await assertCheckoutStillAuthorized();
@@ -997,67 +1217,263 @@ serve(async (req) => {
       providerCustomerOrigin = "LINKED";
       providerCustomerLinkConfirmed = true;
     } else {
-      const customerReference = hubAsaasCustomerReference(
-        membership.account_id,
-      );
-      const existingCustomers = await asaasRequest(
-        `/customers?externalReference=${
-          encodeURIComponent(customerReference)
-        }&limit=100`,
-      );
-      if (!Array.isArray(existingCustomers?.data)) {
-        throw new Error("ASAAS_CUSTOMER_LOOKUP_INVALID");
-      }
-      const candidateResolution = resolveHubAsaasCustomerCandidate(
-        existingCustomers.data,
-        customerReference,
+      const customerPayload = {
+        name: customerName,
+        email: customerEmail,
         cpfCnpj,
-      );
-      if (candidateResolution.status === "IDENTITY_CONFLICT") {
-        throw new Error("ASAAS_CUSTOMER_IDENTITY_CONFLICT");
+        mobilePhone: phone,
+        address: text(body.address) || "A definir",
+        addressNumber: text(body.addressNumber, 20) || "SN",
+        province: text(body.province) || "Centro",
+        postalCode: digits(body.postalCode) || "01000000",
+        externalReference: customerReference,
+      };
+      const customerClaim = await claimAsaasCreation(auth.context.admin, {
+        tenantId: PLATFORM_ASAAS_TENANT_ID,
+        operation: "CUSTOMER_CREATE",
+        logicalKey: `hub-account:${membership.account_id}`,
+        externalReference: customerReference,
+        requestFingerprint: await asaasCreationFingerprint({
+          operation: "CUSTOMER_CREATE",
+          tenantId: PLATFORM_ASAAS_TENANT_ID,
+          logicalKey: `hub-account:${membership.account_id}`,
+          payload: customerPayload,
+        }),
+      });
+
+      if (customerClaim.action === "ALREADY_SUCCEEDED") {
+        customerId = normalizeAsaasCustomerId(
+          customerClaim.provider_entity_id,
+        );
+        if (!customerId) {
+          providerCreationReviewRequired = true;
+          throw new Error("ASAAS_CUSTOMER_CLAIM_INVALID");
+        }
+        providerCustomerLinkPending = true;
+        providerCustomerOrigin = "RECOVERED";
+      } else if (
+        customerClaim.action === "REVIEW_REQUIRED" || !customerClaim.ok
+      ) {
+        providerCreationReviewRequired = true;
+        throw new Error("ASAAS_CUSTOMER_CREATION_REVIEW_REQUIRED");
+      } else if (customerClaim.action === "IN_PROGRESS") {
+        providerCreationReconciliationRequired = true;
+        throw new Error("ASAAS_CUSTOMER_CREATION_IN_PROGRESS");
+      } else {
+        // Provider reads are recovery evidence only; the durable claim above is
+        // the concurrency fence and the only authority to submit a POST.
+        const customerReadIntegration = await providerIntegration(
+          "customer.read",
+        );
+        const customerLookup = await findUniqueAsaasEntity<
+          Record<string, unknown>
+        >({
+          baseUrl: customerReadIntegration.baseUrl,
+          apiKey: customerReadIntegration.apiKey,
+          path: "customers",
+          query: { externalReference: customerReference },
+          matches: (candidate) =>
+            candidate.deleted !== true &&
+            text(candidate.externalReference, 240) === customerReference,
+        });
+        if (customerLookup.kind === "DUPLICATE") {
+          providerCreationReviewRequired = true;
+          await recordAsaasCreationState(auth.context.admin, customerClaim, {
+            status: "BLOCKED",
+            error: "duplicate_hub_provider_customers",
+          });
+          throw new Error("ASAAS_CUSTOMER_DUPLICATE_REVIEW_REQUIRED");
+        }
+        if (customerLookup.kind === "UNAVAILABLE") {
+          if (customerClaim.action === "RECONCILE_REQUIRED") {
+            providerCreationReconciliationRequired = true;
+          }
+          await recordAsaasCreationState(auth.context.admin, customerClaim, {
+            status: customerClaim.action === "RECONCILE_REQUIRED"
+              ? "UNKNOWN"
+              : "RETRY",
+            httpStatus: customerLookup.httpStatus,
+            error: "hub_customer_recovery_lookup_unavailable",
+          });
+          throw new Error("ASAAS_CUSTOMER_LOOKUP_UNAVAILABLE");
+        }
+        if (customerLookup.kind === "FOUND") {
+          const candidateResolution = resolveHubAsaasCustomerCandidate(
+            [customerLookup.entity],
+            customerReference,
+            cpfCnpj,
+          );
+          if (candidateResolution.status !== "MATCH") {
+            providerCreationReviewRequired = true;
+            await recordAsaasCreationState(auth.context.admin, customerClaim, {
+              status: "BLOCKED",
+              error: "hub_customer_identity_conflict",
+            });
+            throw new Error("ASAAS_CUSTOMER_IDENTITY_CONFLICT");
+          }
+          customerId = candidateResolution.customerId;
+          providerCustomerLinkPending = true;
+          providerCreationReconciliationRequired = true;
+          await adoptHubProviderCreationBinding({
+            admin: auth.context.admin,
+            attemptId: customerClaim.attempt_id,
+            claimToken: customerClaim.claim_token,
+            accountId: membership.account_id,
+            checkoutId: checkout.id,
+            providerEntityId: customerId,
+            providerStatus: text(customerLookup.entity.status),
+          });
+          providerCreationReconciliationRequired = false;
+          providerCustomerOrigin = "RECOVERED";
+        } else if (customerClaim.action === "RECONCILE_REQUIRED") {
+          providerCreationReconciliationRequired = true;
+          await recordAsaasCreationState(auth.context.admin, customerClaim, {
+            status: "UNKNOWN",
+            error: "hub_customer_not_yet_observed",
+          });
+          throw new Error("ASAAS_CUSTOMER_RECONCILIATION_PENDING");
+        } else {
+          await assertCheckoutStillAuthorized();
+          providerCreationReconciliationRequired = true;
+          await markHubProviderCreationSubmitting({
+            admin: auth.context.admin,
+            attemptId: customerClaim.attempt_id,
+            claimToken: customerClaim.claim_token,
+            accountId: membership.account_id,
+            checkoutId: checkout.id,
+          });
+
+          let customerCreateIntegration: ResolvedAsaasIntegration;
+          try {
+            customerCreateIntegration = await providerMutationIntegration(
+              "customer.create",
+            );
+          } catch {
+            providerCreationReviewRequired = true;
+            await recordAsaasCreationState(auth.context.admin, customerClaim, {
+              status: "BLOCKED",
+              error: "hub_customer_capability_changed_before_post",
+            });
+            throw new Error("ASAAS_CUSTOMER_CAPABILITY_CHANGED");
+          }
+
+          let customerResponse: Response;
+          try {
+            customerResponse = await fetch(
+              `${customerCreateIntegration.baseUrl}/customers`,
+              {
+                method: "POST",
+                headers: {
+                  access_token: customerCreateIntegration.apiKey,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(customerPayload),
+                redirect: "error",
+                signal: AbortSignal.timeout(15_000),
+              },
+            );
+          } catch {
+            await recordAsaasCreationState(auth.context.admin, customerClaim, {
+              status: "UNKNOWN",
+              error: "hub_customer_post_outcome_unknown",
+            });
+            throw new Error("ASAAS_CUSTOMER_CREATION_OUTCOME_UNKNOWN");
+          }
+
+          const rawCustomer = await customerResponse.text();
+          let customer: Record<string, unknown> = {};
+          try {
+            customer = JSON.parse(rawCustomer);
+          } catch {
+            // A malformed successful response is still an ambiguous creation.
+          }
+          const submittedCustomerId = normalizeAsaasCustomerId(customer.id) ||
+            "";
+          const outcome = asaasCreationHttpOutcome(
+            customerResponse.ok,
+            customerResponse.status,
+            submittedCustomerId,
+          );
+          if (outcome === "SUCCEEDED") {
+            try {
+              await assertProviderCustomerIdentity(submittedCustomerId);
+              customerId = submittedCustomerId;
+              createdProviderCustomerId = submittedCustomerId;
+              providerCustomerLinkPending = true;
+              providerCustomerOrigin = "CREATED";
+            } catch {
+              providerCreationReviewRequired = true;
+              await recordAsaasCreationState(
+                auth.context.admin,
+                customerClaim,
+                {
+                  status: "BLOCKED",
+                  providerEntityId: submittedCustomerId,
+                  providerStatus: text(customer.status),
+                  httpStatus: customerResponse.status,
+                  error: "hub_customer_post_identity_conflict",
+                },
+              );
+              throw new Error("ASAAS_CUSTOMER_PROVIDER_IDENTITY_CONFLICT");
+            }
+          }
+          await recordAsaasCreationState(auth.context.admin, customerClaim, {
+            status: outcome,
+            providerEntityId: submittedCustomerId,
+            providerStatus: text(customer.status),
+            httpStatus: customerResponse.status,
+            error: outcome === "SUCCEEDED"
+              ? null
+              : outcome === "FAILED"
+              ? "hub_customer_creation_rejected"
+              : "hub_customer_post_outcome_unknown",
+          });
+          if (outcome === "UNKNOWN") {
+            throw new Error("ASAAS_CUSTOMER_CREATION_OUTCOME_UNKNOWN");
+          }
+          if (outcome === "FAILED") {
+            providerCreationReconciliationRequired = false;
+            throw new Error("ASAAS_CUSTOMER_CREATION_REJECTED");
+          }
+          providerCreationReconciliationRequired = false;
+        }
       }
 
-      if (candidateResolution.status === "MATCH") {
-        customerId = candidateResolution.customerId;
-        providerCustomerOrigin = "RECOVERED";
-      } else {
-        const customer = await asaasRequest("/customers", {
-          method: "POST",
-          body: JSON.stringify({
-            name: customerName,
-            email: customerEmail,
-            cpfCnpj,
-            mobilePhone: phone,
-            address: text(body.address) || "A definir",
-            addressNumber: text(body.addressNumber, 20) || "SN",
-            province: text(body.province) || "Centro",
-            postalCode: digits(body.postalCode) || "01000000",
-            externalReference: customerReference,
-          }),
-        });
-        customerId = normalizeAsaasCustomerId(customer?.id);
-        if (!customerId) throw new Error("ASAAS_CUSTOMER_ID_REQUIRED");
-        createdProviderCustomerId = customerId;
-        providerCustomerOrigin = "CREATED";
-      }
+      if (!customerId) throw new Error("ASAAS_CUSTOMER_ID_REQUIRED");
 
       providerCustomerId = customerId;
       await assertCustomerScopedToAccount(customerId);
-      const linkedCustomerId = await bindCustomerToAccount(customerId);
-      providerCustomerLinkConfirmed = true;
+      // A claim/provider id is not enough authority to write the canonical
+      // account link. Prove id + externalReference + CPF/CNPJ first.
+      await assertProviderCustomerIdentity(customerId);
+      await adoptHubProviderCreationBinding({
+        admin: auth.context.admin,
+        attemptId: customerClaim.attempt_id,
+        claimToken: customerClaim.claim_token,
+        accountId: membership.account_id,
+        checkoutId: checkout.id,
+        providerEntityId: customerId,
+        providerStatus: null,
+      });
+      const linkedCustomerId = (await loadAccountCustomerLink(true)).customerId;
+      if (!linkedCustomerId) {
+        throw new Error("ASAAS_CUSTOMER_LINK_REJECTED");
+      }
       if (linkedCustomerId !== customerId) {
         if (createdProviderCustomerId === customerId) {
-          const compensation = await compensateCreatedProviderCustomer(true);
-          if (compensation !== "DELETE_CONFIRMED") {
-            throw new Error("ASAAS_CUSTOMER_RECONCILIATION_REQUIRED");
-          }
-          createdProviderCustomerId = null;
+          // The durable claim is already SUCCEEDED and cannot safely point to
+          // a customer deleted by compensation. Preserve both ids and require
+          // explicit duplicate triage before any subscription is created.
+          providerCreationReviewRequired = true;
+          throw new Error("ASAAS_CUSTOMER_DUPLICATE_REVIEW_REQUIRED");
         }
         await assertCustomerScopedToAccount(linkedCustomerId);
         customerId = linkedCustomerId;
         providerCustomerId = linkedCustomerId;
         providerCustomerOrigin = "LINKED";
       }
+      providerCustomerLinkConfirmed = true;
+      providerCustomerLinkPending = false;
     }
 
     checkoutMetadata = {
@@ -1067,58 +1483,412 @@ serve(async (req) => {
       provider_customer_link_confirmed: providerCustomerLinkConfirmed,
     };
 
+    if (!customerId) throw new Error("ASAAS_CUSTOMER_ID_REQUIRED");
+    await assertProviderCustomerIdentity(customerId);
+    const checkoutCreatedDate = text(checkout.created_at, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(checkoutCreatedDate)) {
+      throw new Error("HUB_CHECKOUT_CREATED_AT_INVALID");
+    }
+    const subscriptionReference = `hub:${checkout.id}`;
+    const subscriptionDescription = text(
+      checkoutMetadata.provider_subscription_description,
+      240,
+    );
+    if (!subscriptionDescription) {
+      throw new Error("HUB_SUBSCRIPTION_DESCRIPTION_INVALID");
+    }
     const subscriptionPayload: Record<string, unknown> = {
       customer: customerId,
       billingType,
       value: amount,
-      nextDueDate: new Date().toISOString().slice(0, 10),
+      nextDueDate: checkoutCreatedDate,
       cycle: billingCycle,
-      description: productFamily === WOLFIE_PRODUCT_FAMILY
-        ? `Wolfie AI Tutor - ${plan.name}`
-        : `Wise Wolf Hub - ${plan.name} (${billingCycle})`,
-      externalReference: `hub:${checkout.id}`,
+      description: subscriptionDescription,
+      externalReference: subscriptionReference,
     };
+    const existingProviderSubscriptionId = normalizeAsaasCustomerId(
+      checkout.asaas_subscription_id,
+    );
+    if (checkout.asaas_subscription_id && !existingProviderSubscriptionId) {
+      providerCreationReviewRequired = true;
+      throw new Error("ASAAS_SUBSCRIPTION_LOCAL_LINK_INVALID");
+    }
 
-    await assertCheckoutStillAuthorized();
-    const subscription = await asaasRequest("/subscriptions", {
-      method: "POST",
-      body: JSON.stringify(subscriptionPayload),
+    const subscriptionClaim = await claimAsaasCreation(auth.context.admin, {
+      tenantId: PLATFORM_ASAAS_TENANT_ID,
+      operation: "SUBSCRIPTION_CREATE",
+      logicalKey: `hub-checkout:${checkout.id}`,
+      externalReference: subscriptionReference,
+      requestFingerprint: await asaasCreationFingerprint({
+        operation: "SUBSCRIPTION_CREATE",
+        tenantId: PLATFORM_ASAAS_TENANT_ID,
+        logicalKey: `hub-checkout:${checkout.id}`,
+        payload: subscriptionPayload,
+      }),
     });
-    providerSubscriptionId = typeof subscription?.id === "string"
-      ? subscription.id
-      : null;
+
+    if (subscriptionClaim.action === "ALREADY_SUCCEEDED") {
+      providerSubscriptionId = normalizeAsaasCustomerId(
+        subscriptionClaim.provider_entity_id,
+      );
+      if (!providerSubscriptionId) {
+        providerCreationReviewRequired = true;
+        throw new Error("ASAAS_SUBSCRIPTION_CLAIM_INVALID");
+      }
+      providerSubscriptionMustBePreserved = true;
+    } else if (
+      subscriptionClaim.action === "REVIEW_REQUIRED" ||
+      !subscriptionClaim.ok
+    ) {
+      providerCreationReviewRequired = true;
+      throw new Error("ASAAS_SUBSCRIPTION_CREATION_REVIEW_REQUIRED");
+    } else if (subscriptionClaim.action === "IN_PROGRESS") {
+      providerCreationReconciliationRequired = true;
+      throw new Error("ASAAS_SUBSCRIPTION_CREATION_IN_PROGRESS");
+    } else {
+      const subscriptionReadIntegration = await providerIntegration(
+        "subscription.read",
+      );
+      const subscriptionLookup = await findUniqueAsaasEntity<
+        Record<string, unknown>
+      >({
+        baseUrl: subscriptionReadIntegration.baseUrl,
+        apiKey: subscriptionReadIntegration.apiKey,
+        path: "subscriptions",
+        query: { externalReference: subscriptionReference },
+        matches: (candidate) =>
+          candidate.deleted !== true &&
+          text(candidate.externalReference, 240) === subscriptionReference,
+      });
+      if (subscriptionLookup.kind === "DUPLICATE") {
+        providerCreationReviewRequired = true;
+        await recordAsaasCreationState(auth.context.admin, subscriptionClaim, {
+          status: "BLOCKED",
+          error: "duplicate_hub_provider_subscriptions",
+        });
+        throw new Error("ASAAS_SUBSCRIPTION_DUPLICATE_REVIEW_REQUIRED");
+      }
+      if (subscriptionLookup.kind === "UNAVAILABLE") {
+        if (
+          subscriptionClaim.action === "RECONCILE_REQUIRED" ||
+          existingProviderSubscriptionId
+        ) {
+          providerCreationReconciliationRequired = true;
+        }
+        await recordAsaasCreationState(auth.context.admin, subscriptionClaim, {
+          status: subscriptionClaim.action === "RECONCILE_REQUIRED"
+            ? "UNKNOWN"
+            : "RETRY",
+          httpStatus: subscriptionLookup.httpStatus,
+          error: "hub_subscription_recovery_lookup_unavailable",
+        });
+        throw new Error("ASAAS_SUBSCRIPTION_LOOKUP_UNAVAILABLE");
+      }
+      if (subscriptionLookup.kind === "FOUND") {
+        const subscriptionResolution = resolveHubAsaasSubscriptionCandidate(
+          subscriptionLookup.entity,
+          {
+            externalReference: subscriptionReference,
+            customerId,
+            billingType,
+            billingCycle,
+            amount,
+            nextDueDate: checkoutCreatedDate,
+            description: subscriptionDescription,
+            maxPayments: null,
+            splitPolicy: { kind: "NONE" },
+          },
+        );
+        if (subscriptionResolution.status !== "MATCH") {
+          providerCreationReviewRequired = true;
+          await recordAsaasCreationState(
+            auth.context.admin,
+            subscriptionClaim,
+            {
+              status: "BLOCKED",
+              error: "hub_subscription_payload_conflict",
+            },
+          );
+          throw new Error("ASAAS_SUBSCRIPTION_CONFLICT_REVIEW_REQUIRED");
+        }
+        if (
+          existingProviderSubscriptionId &&
+          existingProviderSubscriptionId !==
+            subscriptionResolution.subscriptionId
+        ) {
+          providerCreationReviewRequired = true;
+          await recordAsaasCreationState(
+            auth.context.admin,
+            subscriptionClaim,
+            {
+              status: "BLOCKED",
+              error: "hub_subscription_local_provider_mismatch",
+            },
+          );
+          throw new Error("ASAAS_SUBSCRIPTION_LOCAL_LINK_CONFLICT");
+        }
+        providerSubscriptionId = subscriptionResolution.subscriptionId;
+        providerSubscriptionMustBePreserved = true;
+        providerCreationReconciliationRequired = true;
+        await adoptHubProviderCreationBinding({
+          admin: auth.context.admin,
+          attemptId: subscriptionClaim.attempt_id,
+          claimToken: subscriptionClaim.claim_token,
+          accountId: membership.account_id,
+          checkoutId: checkout.id,
+          providerEntityId: providerSubscriptionId,
+          providerStatus: subscriptionResolution.providerStatus,
+        });
+        providerCreationReconciliationRequired = false;
+      } else if (subscriptionClaim.action === "RECONCILE_REQUIRED") {
+        providerCreationReconciliationRequired = true;
+        await recordAsaasCreationState(auth.context.admin, subscriptionClaim, {
+          status: "UNKNOWN",
+          error: "hub_subscription_not_yet_observed",
+        });
+        throw new Error("ASAAS_SUBSCRIPTION_RECONCILIATION_PENDING");
+      } else if (existingProviderSubscriptionId) {
+        providerCreationReviewRequired = true;
+        await recordAsaasCreationState(auth.context.admin, subscriptionClaim, {
+          status: "BLOCKED",
+          error: "hub_subscription_local_link_not_observed",
+        });
+        throw new Error("ASAAS_SUBSCRIPTION_LOCAL_LINK_REVIEW_REQUIRED");
+      } else {
+        await assertCheckoutStillAuthorized();
+        providerCreationReconciliationRequired = true;
+        await markHubProviderCreationSubmitting({
+          admin: auth.context.admin,
+          attemptId: subscriptionClaim.attempt_id,
+          claimToken: subscriptionClaim.claim_token,
+          accountId: membership.account_id,
+          checkoutId: checkout.id,
+        });
+
+        let subscriptionCreateIntegration: ResolvedAsaasIntegration;
+        try {
+          subscriptionCreateIntegration = await providerMutationIntegration(
+            "subscription.create",
+          );
+        } catch {
+          providerCreationReviewRequired = true;
+          await recordAsaasCreationState(
+            auth.context.admin,
+            subscriptionClaim,
+            {
+              status: "BLOCKED",
+              error: "hub_subscription_capability_changed_before_post",
+            },
+          );
+          throw new Error("ASAAS_SUBSCRIPTION_CAPABILITY_CHANGED");
+        }
+
+        let subscriptionResponse: Response;
+        try {
+          subscriptionResponse = await fetch(
+            `${subscriptionCreateIntegration.baseUrl}/subscriptions`,
+            {
+              method: "POST",
+              headers: {
+                access_token: subscriptionCreateIntegration.apiKey,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(subscriptionPayload),
+              redirect: "error",
+              signal: AbortSignal.timeout(15_000),
+            },
+          );
+        } catch {
+          await recordAsaasCreationState(
+            auth.context.admin,
+            subscriptionClaim,
+            {
+              status: "UNKNOWN",
+              error: "hub_subscription_post_outcome_unknown",
+            },
+          );
+          throw new Error("ASAAS_SUBSCRIPTION_CREATION_OUTCOME_UNKNOWN");
+        }
+
+        const rawSubscription = await subscriptionResponse.text();
+        let subscription: Record<string, unknown> = {};
+        try {
+          subscription = JSON.parse(rawSubscription);
+        } catch {
+          // A malformed successful response is still an ambiguous creation.
+        }
+        const submittedSubscriptionId = normalizeAsaasCustomerId(
+          subscription.id,
+        ) || "";
+        const outcome = asaasCreationHttpOutcome(
+          subscriptionResponse.ok,
+          subscriptionResponse.status,
+          submittedSubscriptionId,
+        );
+        if (outcome === "SUCCEEDED") {
+          const submittedResolution = resolveHubAsaasSubscriptionCandidate(
+            subscription,
+            {
+              externalReference: subscriptionReference,
+              customerId,
+              billingType,
+              billingCycle,
+              amount,
+              nextDueDate: checkoutCreatedDate,
+              description: subscriptionDescription,
+              maxPayments: null,
+              splitPolicy: { kind: "NONE" },
+            },
+          );
+          if (submittedResolution.status !== "MATCH") {
+            providerSubscriptionId = submittedSubscriptionId;
+            providerSubscriptionMustBePreserved = true;
+            providerCreationReviewRequired = true;
+            await recordAsaasCreationState(
+              auth.context.admin,
+              subscriptionClaim,
+              {
+                status: "BLOCKED",
+                providerEntityId: submittedSubscriptionId,
+                providerStatus: text(subscription.status),
+                httpStatus: subscriptionResponse.status,
+                error: "hub_subscription_post_payload_conflict",
+              },
+            );
+            throw new Error("ASAAS_SUBSCRIPTION_CONFLICT_REVIEW_REQUIRED");
+          }
+          providerSubscriptionId = submittedResolution.subscriptionId;
+          providerSubscriptionMustBePreserved = true;
+        }
+        await recordAsaasCreationState(auth.context.admin, subscriptionClaim, {
+          status: outcome,
+          providerEntityId: submittedSubscriptionId,
+          providerStatus: text(subscription.status),
+          httpStatus: subscriptionResponse.status,
+          error: outcome === "SUCCEEDED"
+            ? null
+            : outcome === "FAILED"
+            ? "hub_subscription_creation_rejected"
+            : "hub_subscription_post_outcome_unknown",
+        });
+        if (outcome === "UNKNOWN") {
+          throw new Error("ASAAS_SUBSCRIPTION_CREATION_OUTCOME_UNKNOWN");
+        }
+        if (outcome === "FAILED") {
+          providerCreationReconciliationRequired = false;
+          throw new Error("ASAAS_SUBSCRIPTION_CREATION_REJECTED");
+        }
+        providerCreationReconciliationRequired = false;
+      }
+    }
+
     if (!providerSubscriptionId) {
       throw new Error("ASAAS_SUBSCRIPTION_ID_REQUIRED");
     }
+    if (
+      existingProviderSubscriptionId &&
+      existingProviderSubscriptionId !== providerSubscriptionId
+    ) {
+      providerCreationReviewRequired = true;
+      throw new Error("ASAAS_SUBSCRIPTION_LOCAL_LINK_CONFLICT");
+    }
+    const verifiedProviderSubscription = await asaasRequest(
+      await providerIntegration("subscription.read"),
+      `/subscriptions/${encodeURIComponent(providerSubscriptionId)}`,
+    );
+    const verifiedSubscriptionResolution = resolveHubAsaasSubscriptionCandidate(
+      verifiedProviderSubscription,
+      {
+        externalReference: subscriptionReference,
+        customerId,
+        billingType,
+        billingCycle,
+        amount,
+        nextDueDate: checkoutCreatedDate,
+        description: subscriptionDescription,
+        maxPayments: null,
+        splitPolicy: { kind: "NONE" },
+      },
+    );
+    if (
+      verifiedSubscriptionResolution.status !== "MATCH" ||
+      verifiedSubscriptionResolution.subscriptionId !== providerSubscriptionId
+    ) {
+      providerCreationReviewRequired = true;
+      throw new Error("ASAAS_SUBSCRIPTION_PROVIDER_IDENTITY_CONFLICT");
+    }
+
+    // Provider recovery and ALREADY_SUCCEEDED claims must cross the account
+    // lifecycle fence before the provider id becomes locally authoritative.
+    // This RPC records SUCCEEDED and binds the checkout in one transaction, so
+    // cancellation can never snapshot between those two state changes.
+    await adoptHubProviderCreationBinding({
+      admin: auth.context.admin,
+      attemptId: subscriptionClaim.attempt_id,
+      claimToken: subscriptionClaim.claim_token,
+      accountId: membership.account_id,
+      checkoutId: checkout.id,
+      providerEntityId: providerSubscriptionId,
+      providerStatus: verifiedSubscriptionResolution.providerStatus,
+    });
+    providerPaymentReconciliationRequired = true;
 
     // Persist the provider link before any secondary provider request. If the
     // process fails later, the existing CREATED row remains an open lock and
     // gives reconciliation a durable subscription id.
     const { data: linkedCheckout, error: linkError } = await auth.context.admin
-      .from("hub_checkout_sessions")
-      .update({
-        asaas_subscription_id: providerSubscriptionId,
-        metadata: {
+      .rpc("hub_bind_checkout_provider_subscription", {
+        p_checkout_id: checkout.id,
+        p_subscription_id: providerSubscriptionId,
+        p_metadata_patch: {
           ...checkoutMetadata,
           providerLinkedAt: new Date().toISOString(),
         },
-      })
-      .eq("id", checkout.id)
-      .in("status", ["CREATED", "PENDING"])
-      .select("id")
-      .maybeSingle();
+      });
     if (linkError || !linkedCheckout) {
-      throw linkError || new Error("HUB_CHECKOUT_LINK_REJECTED");
+      const { data: currentCheckout, error: currentCheckoutError } = await auth
+        .context.admin
+        .from("hub_checkout_sessions")
+        .select("asaas_subscription_id,status")
+        .eq("id", checkout.id)
+        .maybeSingle();
+      if (
+        currentCheckoutError ||
+        normalizeAsaasCustomerId(currentCheckout?.asaas_subscription_id) !==
+          providerSubscriptionId ||
+        !["CREATED", "PENDING"].includes(currentCheckout?.status || "")
+      ) {
+        throw linkError || currentCheckoutError ||
+          new Error("HUB_CHECKOUT_LINK_REJECTED");
+      }
     }
 
     await assertCheckoutStillAuthorized();
 
-    const payments = await asaasRequest(
+    const paymentReadIntegration = await providerIntegration("payment.read");
+    const payments = await asaasListAll(
+      paymentReadIntegration,
       `/subscriptions/${encodeURIComponent(providerSubscriptionId)}/payments`,
     );
-    const firstPayment = Array.isArray(payments?.data)
-      ? payments.data[0]
-      : null;
+    const matchingPayments = payments.filter((candidate) =>
+      candidate.deleted !== true &&
+      normalizeAsaasCustomerId(candidate.id) !== null &&
+      text(candidate.subscription, 200) === providerSubscriptionId &&
+      text(candidate.customer, 200) === customerId &&
+      text(candidate.externalReference, 240) === subscriptionReference &&
+      text(candidate.billingType, 40).toUpperCase() === billingType &&
+      text(candidate.dueDate, 10) === checkoutCreatedDate &&
+      sameMoney(candidate.value, amount)
+    );
+    if (matchingPayments.length !== 1) {
+      providerCreationReviewRequired = matchingPayments.length > 1;
+      throw new Error(
+        matchingPayments.length > 1
+          ? "ASAAS_SUBSCRIPTION_PAYMENT_DUPLICATE"
+          : "ASAAS_SUBSCRIPTION_PAYMENT_NOT_READY",
+      );
+    }
+    const firstPayment = matchingPayments[0];
     providerPayment = {
       id: typeof firstPayment?.id === "string" ? firstPayment.id : null,
       invoiceUrl: typeof firstPayment?.invoiceUrl === "string"
@@ -1131,33 +1901,46 @@ serve(async (req) => {
         ? firstPayment.dueDate
         : null,
     };
+    if (!providerPayment.id) {
+      throw new Error("ASAAS_SUBSCRIPTION_PAYMENT_NOT_READY");
+    }
+    const exactPayment = await asaasRequest(
+      paymentReadIntegration,
+      `/payments/${encodeURIComponent(providerPayment.id)}`,
+    );
+    assertExactHubProviderPayment(exactPayment, {
+      paymentId: providerPayment.id,
+      subscriptionId: providerSubscriptionId,
+      customerId,
+      externalReference: subscriptionReference,
+      amount,
+      billingType,
+      dueDate: checkoutCreatedDate,
+    });
     let pix = null;
     if (providerPayment.id && billingType === "PIX") {
       pix = await asaasRequest(
+        paymentReadIntegration,
         `/payments/${encodeURIComponent(providerPayment.id)}/pixQrCode`,
       );
     }
 
     await assertCheckoutStillAuthorized();
     const { data: finalizedCheckout, error: updateError } = await auth.context
-      .admin
-      .from("hub_checkout_sessions")
-      .update({
-        status: "PENDING",
-        asaas_subscription_id: providerSubscriptionId,
-        asaas_payment_id: providerPayment.id,
-        invoice_url: providerPayment.invoiceUrl,
-        bank_slip_url: providerPayment.bankSlipUrl,
-        metadata: {
+      .admin.rpc("hub_merge_checkout_provider_state", {
+        p_checkout_id: checkout.id,
+        p_status: "PENDING",
+        p_expected_subscription_id: providerSubscriptionId,
+        p_payment_id: providerPayment.id,
+        p_invoice_url: providerPayment.invoiceUrl,
+        p_bank_slip_url: providerPayment.bankSlipUrl,
+        p_allowed_statuses: ["CREATED", "PENDING"],
+        p_metadata_patch: {
           ...checkoutMetadata,
           dueDate: providerPayment.dueDate,
           providerLinkedAt: new Date().toISOString(),
         },
-      })
-      .eq("id", checkout.id)
-      .in("status", ["CREATED", "PENDING"])
-      .select("id")
-      .maybeSingle();
+      });
     if (updateError || !finalizedCheckout) {
       throw updateError || new Error("HUB_CHECKOUT_FINALIZE_REJECTED");
     }
@@ -1174,58 +1957,84 @@ serve(async (req) => {
       pix: pix ? { copyPaste: pix.payload, qrCode: pix.encodedImage } : null,
     });
   } catch (error) {
-    let providerCancellationConfirmed = providerSubscriptionId === null;
-    if (providerSubscriptionId) {
-      try {
-        await cancelAsaasSubscription(providerSubscriptionId);
-        providerCancellationConfirmed = true;
-      } catch {
-        console.error("Hub checkout rollback failed", { checkoutId });
-      }
-    }
-    const customerRollbackState = compensateCreatedProviderCustomer
-      ? await compensateCreatedProviderCustomer(providerCancellationConfirmed)
+    // A claimed/ambiguous provider creation is never compensated with a blind
+    // delete: the creation claim cannot be reset for another POST. Keeping the
+    // checkout open makes the next invocation perform GET-only reconciliation.
+    const providerObjectsMustBePreserved =
+      providerCreationReconciliationRequired ||
+      providerCreationReviewRequired ||
+      providerCustomerLinkPending ||
+      providerSubscriptionMustBePreserved ||
+      providerPaymentReconciliationRequired;
+    const customerRollbackState = inspectCreatedProviderCustomer
+      ? await inspectCreatedProviderCustomer()
       : createdProviderCustomerId
-      ? "DEFER_UNCONFIRMED_STATE"
+      ? "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW"
       : "NOT_CREATED_BY_ATTEMPT";
     const customerReconciliationRequired =
-      customerRollbackState === "DEFER_UNCONFIRMED_STATE";
+      customerRollbackState === "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW";
     if (checkoutId) {
       const recoveryRequired = customerReconciliationRequired ||
-        (providerSubscriptionId !== null && !providerCancellationConfirmed);
-      const { error: recoveryError } = await auth.context.admin.from(
-        "hub_checkout_sessions",
-      ).update({
-        status: failedCheckoutStatus(
-          providerSubscriptionId !== null,
-          providerCancellationConfirmed,
-        ),
-        ...(providerSubscriptionId
-          ? { asaas_subscription_id: providerSubscriptionId }
-          : {}),
-        ...(providerPayment?.id
-          ? { asaas_payment_id: providerPayment.id }
-          : {}),
-        ...(providerPayment?.invoiceUrl
-          ? { invoice_url: providerPayment.invoiceUrl }
-          : {}),
-        ...(providerPayment?.bankSlipUrl
-          ? { bank_slip_url: providerPayment.bankSlipUrl }
-          : {}),
-        metadata: {
-          ...checkoutMetadata,
-          provider_customer_id: providerCustomerId,
-          provider_customer_origin: providerCustomerOrigin,
-          provider_customer_link_confirmed: providerCustomerLinkConfirmed,
-          provider_subscription_id: providerSubscriptionId,
-          provider_payment_id: providerPayment?.id ?? null,
-          reconciliation_required: recoveryRequired,
-          rollback_delete_confirmed: providerCancellationConfirmed,
-          customer_rollback_state: customerRollbackState,
-          customer_reconciliation_required: customerReconciliationRequired,
-          checkout_failure_at: new Date().toISOString(),
-        },
-      }).eq("id", checkoutId).in("status", ["CREATED", "PENDING"]);
+        providerObjectsMustBePreserved;
+      const recoveryStatus = providerCreationReconciliationRequired ||
+          providerCreationReviewRequired || providerCustomerLinkPending ||
+          providerPaymentReconciliationRequired
+        ? "CREATED"
+        : recoveryRequired
+        ? "PENDING"
+        : "FAILED";
+      const recoveryMetadata = {
+        ...checkoutMetadata,
+        provider_customer_id: providerCustomerId,
+        provider_customer_origin: providerCustomerOrigin,
+        provider_customer_link_confirmed: providerCustomerLinkConfirmed,
+        provider_subscription_id: providerSubscriptionId,
+        provider_payment_id: providerPayment?.id ?? null,
+        reconciliation_required: recoveryRequired,
+        // Claimed provider creations are never deleted as compensation.
+        rollback_delete_confirmed: false,
+        customer_rollback_state: customerRollbackState,
+        customer_reconciliation_required: customerReconciliationRequired,
+        provider_creation_reconciliation_required:
+          providerCreationReconciliationRequired,
+        provider_creation_review_required: providerCreationReviewRequired,
+        provider_customer_link_pending: providerCustomerLinkPending,
+        provider_payment_reconciliation_required:
+          providerPaymentReconciliationRequired,
+        checkout_failure_at: new Date().toISOString(),
+      };
+      let recoveryError: { code?: string } | null = null;
+      if (providerPayment?.id && providerSubscriptionId) {
+        const result = await auth.context.admin.rpc(
+          "hub_merge_checkout_provider_state",
+          {
+            p_checkout_id: checkoutId,
+            p_status: recoveryStatus,
+            p_expected_subscription_id: providerSubscriptionId,
+            p_payment_id: providerPayment.id,
+            p_invoice_url: providerPayment.invoiceUrl,
+            p_bank_slip_url: providerPayment.bankSlipUrl,
+            p_allowed_statuses: recoveryStatus === "CREATED"
+              ? ["CREATED"]
+              : ["CREATED", "PENDING"],
+            p_metadata_patch: recoveryMetadata,
+          },
+        );
+        recoveryError = result.error;
+      } else {
+        const result = await auth.context.admin.rpc(
+          "hub_merge_checkout_provider_state",
+          {
+            p_checkout_id: checkoutId,
+            p_status: recoveryStatus,
+            p_allowed_statuses: recoveryStatus === "CREATED"
+              ? ["CREATED"]
+              : ["CREATED", "PENDING"],
+            p_metadata_patch: recoveryMetadata,
+          },
+        );
+        recoveryError = result.error;
+      }
       if (recoveryError) {
         // The row was inserted as CREATED before the provider call. Even when
         // this update is unavailable, that open status still prevents a new
@@ -1240,8 +2049,8 @@ serve(async (req) => {
       type: error instanceof Error ? error.name : "UnknownError",
     });
     const reconciliationRequired = customerReconciliationRequired ||
-      (providerSubscriptionId !== null && !providerCancellationConfirmed);
-    return json(500, {
+      providerObjectsMustBePreserved;
+    return json(reconciliationRequired ? 409 : 500, {
       error: reconciliationRequired
         ? "HUB_CHECKOUT_RECONCILIATION_REQUIRED"
         : "HUB_CHECKOUT_FAILED",

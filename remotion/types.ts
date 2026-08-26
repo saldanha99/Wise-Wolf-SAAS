@@ -9,6 +9,8 @@ export type HubVideoSlug =
 
 export type HubVideoSceneId = 'hook' | 'problem' | 'product' | 'proof' | 'cta';
 
+export type HubVideoFormat = 'landscape' | 'story';
+
 export type HubVideoCaptionToken = {
   text: string;
   startMs: number;
@@ -30,6 +32,12 @@ export type HubVoiceProvider = 'elevenlabs' | 'openai' | 'local-preview';
 
 export type HubVoiceGateway = 'openai' | 'openrouter';
 
+export type HubVoiceGender = 'male' | 'female' | 'nonbinary' | 'unknown';
+
+export type HubNarrationTake = 'single_continuous' | 'segmented';
+
+export type HubCaptionTimingSource = 'provider_alignment' | 'forced_alignment' | 'estimated';
+
 export type HubVoiceLocaleValidation =
   | 'verified_languages'
   | 'voice_labels'
@@ -49,7 +57,11 @@ export type HubVoiceTrack = {
   voiceAccent?: string;
   voiceSourceAccent?: string;
   voiceNative?: boolean;
+  voiceGender?: HubVoiceGender;
   voiceLocaleValidation?: HubVoiceLocaleValidation;
+  narrationTake?: HubNarrationTake;
+  narrationRequestCount?: number;
+  captionTimingSource?: HubCaptionTimingSource;
   modelId?: string;
   scriptHash?: string;
   subscriptionTier?: string;
@@ -107,8 +119,8 @@ export type HubCommercialRenderFingerprint = {
     fps: number;
     codec: 'h264';
     pixelFormat: 'yuv420p';
-    crf: 22;
-    audioBitrate: '128k';
+    crf: 18;
+    audioBitrate: '192k';
     colorSpace: 'bt709';
     audioMastering: {
       algorithm: 'ffmpeg-loudnorm';
@@ -117,7 +129,7 @@ export type HubCommercialRenderFingerprint = {
       targetTruePeakDbtp: -1.5;
       maxTruePeakDbtp: -1;
       audioCodec: 'aac';
-      audioBitrate: '128k';
+      audioBitrate: '192k';
       sampleRateHz: 48000;
     };
   };

@@ -65,8 +65,8 @@ const makeFingerprint = (slug: HubVideoSlug): HubCommercialRenderFingerprint => 
     fps: 30,
     codec: 'h264',
     pixelFormat: 'yuv420p',
-    crf: 22,
-    audioBitrate: '128k',
+    crf: 18,
+    audioBitrate: '192k',
     colorSpace: 'bt709',
     audioMastering: {
       algorithm: 'ffmpeg-loudnorm',
@@ -75,7 +75,7 @@ const makeFingerprint = (slug: HubVideoSlug): HubCommercialRenderFingerprint => 
       targetTruePeakDbtp: -1.5,
       maxTruePeakDbtp: -1,
       audioCodec: 'aac',
-      audioBitrate: '128k',
+      audioBitrate: '192k',
       sampleRateHz: 48000,
     },
   },
@@ -129,6 +129,7 @@ describe('Hub public video publication gate', () => {
   it('keeps mockup mode permissive when public videos are disabled and no publishable artifact exists', () => {
     const rootDirectory = makeTemporaryRoot();
     writeArtifact(rootDirectory, 'assets/hub/videos/captions/library.pt-BR.vtt', 'WEBVTT\n');
+    writeArtifact(rootDirectory, 'assets/hub/videos/social/library.mp4', 'pacote vertical isolado');
     expect(verifyHubPublicVideoAssets({ rootDirectory, enabled: false })).toMatchObject({
       enabled: false,
       checked: 0,

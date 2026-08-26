@@ -3,7 +3,18 @@ import {
   authorizeScopedAutomation,
   scopeAutomationRows,
 } from "../_shared/automation-auth.ts";
+import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
+import {
+  claimFinancialReportMessage,
+  financialReportMessageFinish,
+  finishFinancialReportMessage,
+  markFinancialReportMessageSubmitting,
+} from "../_shared/financial-report-message-fence.ts";
 import { loadTenantWhatsAppRoute } from "../_shared/tenant-communication.ts";
+import {
+  type ResolvedEvolutionIntegration,
+  resolveEvolutionIntegration,
+} from "../_shared/tenant-integration-broker.ts";
 
 // Cron semanal (segunda de manhã): resumo de métricas da semana para o diretor de cada escola.
 // Enviado pela instância central da escola para o telefone do SCHOOL_ADMIN.
@@ -14,12 +25,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-const EVOLUTION_API_BASE = `${
-  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
-    .replace(/\/+$/, "")
-}/message/sendText`;
-const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
-
 interface WeeklyDigestRow {
   tenant_id: string;
   active_students?: number;
@@ -40,12 +45,6 @@ serve(async (req) => {
   });
   if (auth.ok === false) return auth.response;
   try {
-    if (!API_TOKEN) {
-      return new Response(JSON.stringify({ error: "provider_unavailable" }), {
-        status: 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
     const supabase = auth.context.admin;
     const tenantId = auth.context.tenantId;
     const today = new Date().toISOString().split("T")[0];
@@ -58,11 +57,17 @@ serve(async (req) => {
 
     for (const r of scopeAutomationRows<WeeklyDigestRow>(rows, tenantId)) {
       // dedupe
-      const { data: dup } = await supabase.from("automation_sent").select("id")
+      const { data: dup, error: dupError } = await supabase.from(
+        "automation_sent",
+      ).select("id")
         .eq("kind", "WEEKLY_DIGEST").eq("subject_id", r.tenant_id).eq(
           "ref_date",
           today,
         ).maybeSingle();
+      if (dupError) {
+        result.failures.push(`${r.tenant_id}: marcador legado indisponível`);
+        continue;
+      }
       if (dup) {
         result.skipped++;
         continue;
@@ -87,32 +92,101 @@ serve(async (req) => {
         } (${money(r.overdue_amount)})\n\n` +
         `Tenha uma ótima semana!`;
 
-      const resp = await fetch(
-        `${EVOLUTION_API_BASE}/${encodeURIComponent(route.instanceName)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: API_TOKEN },
-          body: JSON.stringify({
-            number: route.ownerPhone,
-            text,
-            delay: 800,
-            linkPreview: false,
-          }),
-        },
-      );
-      if (!resp.ok) {
-        result.failures.push(`${r.tenant_id}: evolution ${resp.status}`);
+      let integration: ResolvedEvolutionIntegration;
+      try {
+        integration = await resolveEvolutionIntegration(
+          supabase,
+          r.tenant_id,
+          "message.send_text",
+        );
+      } catch {
+        result.failures.push(`${r.tenant_id}: integração indisponível`);
         continue;
       }
-      await supabase.from("automation_sent").insert({
-        kind: "WEEKLY_DIGEST",
-        subject_id: r.tenant_id,
-        ref_date: today,
+
+      const claim = await claimFinancialReportMessage(supabase, {
+        tenantId: r.tenant_id,
+        notificationKind: "WEEKLY_DIGEST",
+        subjectId: r.tenant_id,
+        refDate: today,
       });
-      result.sent++;
+      if (claim.action === "ALREADY_FINAL") {
+        if (String(claim.status || "").toUpperCase() === "SENT") {
+          try {
+            await recordWeeklyDigestSent(supabase, r.tenant_id, today);
+          } catch {
+            result.failures.push(
+              `${r.tenant_id}: marcador legado indisponível`,
+            );
+          }
+        } else {
+          result.failures.push(
+            `${r.tenant_id}: resultado durável ${claim.status} requer revisão`,
+          );
+        }
+        result.skipped++;
+        continue;
+      }
+      if (claim.action !== "SUBMIT_ONCE") {
+        if (claim.action === "REVIEW_REQUIRED") {
+          result.failures.push(
+            `${r.tenant_id}: ${claim.reason || "escopo inativo"}`,
+          );
+        } else {
+          result.skipped++;
+        }
+        continue;
+      }
+
+      const mark = await markFinancialReportMessageSubmitting(
+        supabase,
+        claim,
+      );
+      if (mark.ok !== true || mark.status !== "SUBMITTING") {
+        if (mark.status === "SUPPRESSED") {
+          result.skipped++;
+        } else {
+          result.failures.push(
+            `${r.tenant_id}: ${mark.reason || "claim perdido antes do envio"}`,
+          );
+        }
+        continue;
+      }
+
+      const providerResult = await sendWhatsTextDetailed({
+        base: integration.baseUrl,
+        keys: [integration.apiKey],
+        instance: route.instanceName,
+        to: route.ownerPhone,
+        text,
+        delayMs: 800,
+      });
+      const finish = financialReportMessageFinish(providerResult);
+      try {
+        await finishFinancialReportMessage(supabase, claim, finish);
+      } catch {
+        result.failures.push(
+          `${r.tenant_id}: resultado do envio não pôde ser persistido`,
+        );
+        continue;
+      }
+      if (finish.status !== "SENT") {
+        result.failures.push(
+          `${r.tenant_id}: ${finish.error || finish.status.toLowerCase()}`,
+        );
+        continue;
+      }
+
+      try {
+        await recordWeeklyDigestSent(supabase, r.tenant_id, today);
+        result.sent++;
+      } catch {
+        result.failures.push(`${r.tenant_id}: marcador legado indisponível`);
+      }
     }
 
     return new Response(JSON.stringify(result), {
+      status: result.failures.length === 0 ? 200 : 503,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
@@ -122,3 +196,19 @@ serve(async (req) => {
     });
   }
 });
+
+async function recordWeeklyDigestSent(
+  supabase: any,
+  tenantId: string,
+  refDate: string,
+) {
+  const { error } = await supabase.from("automation_sent").upsert({
+    kind: "WEEKLY_DIGEST",
+    subject_id: tenantId,
+    ref_date: refDate,
+  }, {
+    onConflict: "kind,subject_id,ref_date",
+    ignoreDuplicates: true,
+  });
+  if (error) throw new Error("weekly_digest_legacy_marker_failed");
+}

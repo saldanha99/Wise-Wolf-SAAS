@@ -14,7 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { localMonth } from '../lib/dateUtils';
+import { localMonth, monthRange } from '../lib/dateUtils';
 import { UserRole, PresenceStatus } from '../types';
 
 interface FinancialReportProps {
@@ -47,21 +47,33 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
       nextMonth.setMonth(nextMonth.getMonth() + 1);
       const endDateStr = nextMonth.toISOString();
       const startDateStr = startDate.toISOString();
+      const classMonthRange = monthRange(selectedMonth);
 
       // 1. REAL Revenue from FINANCIAL TRANSACTIONS (Official Ledger) - Matches Dashboard
       const { data: transactions } = await supabase
         .from('financial_transactions')
         .select('*')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDateStr)
-        .lt('created_at', endDateStr);
+        .gte('occurred_at', startDateStr)
+        .lt('occurred_at', endDateStr);
 
       const totalRevenue = (transactions || [])
-        .filter(t => t.type === 'ENTRADA')
-        .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
+        .filter(t => t.category !== 'aporte_ou_movimentacao'
+          && t.category !== 'estorno_aporte_ou_movimentacao')
+        .reduce((acc, t) => {
+          const amount = Number(t.amount) || Number(t.amount_cents) / 100 || 0;
+          if (t.type === 'ENTRADA') return acc + amount;
+          if (t.type === 'SAIDA' && t.refund_student_payment_id) return acc - amount;
+          return acc;
+        }, 0);
 
       const totalCostsFromTrans = (transactions || [])
-        .filter(t => t.type === 'SAIDA')
+        // Repasse e fechamento sao a mesma obrigacao. Linhas legadas de
+        // teacher_payout/5.1.01 nao podem ser somadas de novo ao custo das aulas.
+        .filter(t => t.type === 'SAIDA'
+          && !t.refund_student_payment_id
+          && t.category !== 'teacher_payout'
+          && t.account_code !== '5.1.01')
         .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
 
       // 2. Teacher Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
@@ -71,10 +83,10 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
 
       const { data: logs } = await supabase
         .from('class_logs')
-        .select('teacher_id, presence, subtype')
+        .select('teacher_id, presence, subtype, class_date')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDateStr)
-        .lt('created_at', endDateStr);
+        .gte('class_date', classMonthRange.start)
+        .lt('class_date', classMonthRange.endExclusive);
 
       // Calculate Payroll per Teacher
       const teacherStats = new Map<string, { lessons: number, owed: number }>();
@@ -107,8 +119,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           profiles!inner (id, full_name, tenant_id)
         `)
         .eq('profiles.tenant_id', tenantId)
-        .gte('due_date', startDateStr)
-        .lt('due_date', endDateStr)
+        .gte('due_date', classMonthRange.start)
+        .lt('due_date', classMonthRange.endExclusive)
         .order('due_date', { ascending: true });
 
       // 4. Forecast (Active Students)
@@ -154,7 +166,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         amount: (p.amount_cents ? p.amount_cents / 100 : p.value),
         status: p.status,
         date: new Date(p.due_date).toLocaleDateString('pt-BR'),
-        isPaid: p.status === 'RECEIVED' || p.status === 'CONFIRMED',
+        isPaid: p.status === 'RECEIVED' || p.status === 'RECEIVED_IN_CASH',
         student_id: p.profiles?.id,
         tenant_id: p.profiles?.tenant_id
       }));
@@ -343,16 +355,23 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                               e.stopPropagation();
                               if (!confirm(`Confirmar recebimento manual de R$ ${receipt.amount.toLocaleString('pt-BR')}?`)) return;
                               try {
-                                // 1. Update Payment Status
-                                const { error: updateError } = await supabase
+                                const creditedAt = new Date();
+
+                                // O trigger do pagamento e o unico escritor do caixa.
+                                const { data: updatedPayment, error: updateError } = await supabase
                                   .from('student_payments')
                                   .update({
                                     status: 'RECEIVED',
-                                    payment_date: new Date().toISOString()
+                                    payment_date: creditedAt.toISOString().slice(0, 10),
+                                    credited_at: creditedAt.toISOString()
                                   })
-                                  .eq('id', receipt.id);
+                                  .eq('id', receipt.id)
+                                  .eq('tenant_id', tenantId)
+                                  .select('id')
+                                  .single();
 
                                 if (updateError) throw updateError;
+                                if (!updatedPayment) throw new Error('Pagamento nao encontrado nesta escola');
 
                                 // O lançamento no caixa é criado pelo trigger ledger_on_payment_received
                                 // (dispara no update de status acima). Insert manual removido em 03/07/2026.
@@ -423,24 +442,18 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                           onClick={async () => {
                             if (!confirm(`Confirmar pagamento de R$ ${teacher.totalOwed} para ${teacher.full_name}?`)) return;
                             try {
-                              // 1. Create Transaction (Exit)
-                              const { error: tErr } = await supabase.from('financial_transactions').insert({
-                                tenant_id: tenantId,
-                                type: 'SAIDA',
-                                category: 'teacher_payout',
-                                amount_cents: Math.round(teacher.totalOwed * 100),
-                                description: `Pagamento Professor - ${teacher.full_name}`,
-                                reference_id: teacher.id
-                              });
-                              if (tErr) throw tErr;
-
-                              // 2. Update Closing (schema unificado — month_year + status PAGO)
-                              const { error: cErr } = await supabase.from('teacher_closings')
+                              // teacher_closings e a fonte canonica deste custo. Criar
+                              // uma SAIDA paralela faria o caixa somar o repasse duas vezes.
+                              const { data: updatedClosing, error: cErr } = await supabase.from('teacher_closings')
                                 .update({ status: 'PAGO', paid_at: new Date().toISOString() })
                                 .eq('teacher_id', teacher.id)
-                                .eq('month_year', selectedMonth);
+                                .eq('tenant_id', tenantId)
+                                .eq('month_year', selectedMonth)
+                                .select('id')
+                                .single();
 
                               if (cErr) throw cErr;
+                              if (!updatedClosing) throw new Error('Fechamento nao encontrado nesta escola');
 
                               alert('Pagamento registrado!');
                               fetchFinancialData();

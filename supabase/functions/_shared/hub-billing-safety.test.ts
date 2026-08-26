@@ -8,6 +8,7 @@ import {
   hubCheckoutIdFromExternalReference,
   hubFixtureCheckoutBlockCode,
   hubPlanMatchesAccountAudience,
+  hubProviderCancellationDecision,
   hubRecoveryReason,
   hubReplacementNeedsProviderReconciliation,
   isHubRecoveryEvent,
@@ -395,6 +396,46 @@ Deno.test("provider cancellation treats already absent subscriptions as final", 
     assert(
       !providerCancellationIsFinal(status),
       `${status} must require retry or reconciliation`,
+    );
+  }
+});
+
+Deno.test("provider cancellation requires the exact Hub subscription identity", () => {
+  const expected = {
+    providerSubscriptionId: "sub_hub",
+    providerCustomerId: "cus_hub",
+    checkoutId: "550e8400-e29b-41d4-a716-446655440000",
+  };
+  const subscription = {
+    id: "sub_hub",
+    customer: "cus_hub",
+    externalReference: `hub:${expected.checkoutId}`,
+    status: "ACTIVE",
+  };
+  assert(
+    hubProviderCancellationDecision(subscription, expected) === "DELETE",
+    "only the exact active provider recurrence may be deleted",
+  );
+  for (const status of ["INACTIVE", "EXPIRED"]) {
+    assert(
+      hubProviderCancellationDecision({ ...subscription, status }, expected) ===
+        "ALREADY_FINAL",
+      `${status} must be idempotently final without another DELETE`,
+    );
+  }
+  for (
+    const conflicting of [
+      { ...subscription, id: "sub_other" },
+      { ...subscription, customer: "cus_other" },
+      { ...subscription, externalReference: "hub:another-checkout" },
+      { ...subscription, status: "UNKNOWN" },
+      { ...subscription, deleted: true },
+    ]
+  ) {
+    assert(
+      hubProviderCancellationDecision(conflicting, expected) ===
+        "REVIEW_REQUIRED",
+      "a divergent or unknown recurrence must fail closed",
     );
   }
 });

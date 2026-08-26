@@ -22,6 +22,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('closing-scope-school', 'Closing Scope School');
@@ -68,6 +69,9 @@ values
 -- ---------------------------------------------------------------------------
 -- [A] O que o professor NÃO pode mais fazer
 -- ---------------------------------------------------------------------------
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000941","role":"authenticated"}';

@@ -18,6 +18,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('wolfie-tier-school', 'Wolfie Tier School');
@@ -145,6 +146,9 @@ select pg_temp.assert_true(
 -- ---------------------------------------------------------------------------
 -- 5. Um aluno não pode perguntar pelo tier de outro.
 -- ---------------------------------------------------------------------------
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
+
 set local role authenticated;
 set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-000000000931","role":"authenticated"}';

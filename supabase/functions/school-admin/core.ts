@@ -6,6 +6,24 @@ export const LIFECYCLE_STATUSES = [
 
 export type LifecycleStatus = typeof LIFECYCLE_STATUSES[number];
 
+export type TargetMembershipSnapshot = {
+  tenant_id?: unknown;
+  role?: unknown;
+  status?: unknown;
+};
+
+export function hasExclusiveActiveTargetMembership(
+  memberships: TargetMembershipSnapshot[],
+  tenantId: string,
+  expectedRole: "STUDENT" | "TEACHER",
+): boolean {
+  if (memberships.length !== 1) return false;
+  const membership = memberships[0];
+  return String(membership.tenant_id || "").trim() === tenantId &&
+    String(membership.role || "").trim().toUpperCase() === expectedRole &&
+    String(membership.status || "").trim().toUpperCase() === "ACTIVE";
+}
+
 export type SchoolAdminAction =
   | {
     action: "setStudentLifecycle";

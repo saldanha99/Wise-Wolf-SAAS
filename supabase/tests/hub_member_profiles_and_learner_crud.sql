@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_sqlstate(
   statement text,
@@ -649,6 +650,9 @@ create temporary table hub_member_security_results (
 grant select, insert, update, delete
   on table hub_member_security_results
   to authenticated, service_role;
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 set local request.jwt.claims = '{"role":"service_role"}';

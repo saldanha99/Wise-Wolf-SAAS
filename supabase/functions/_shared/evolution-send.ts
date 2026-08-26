@@ -124,8 +124,8 @@ export async function sendWhatsTextDetailed(
       // 401 é chave errada: tenta a próxima em vez de desistir do envio.
       if (resp.status === 401) continue;
       if (!resp.ok) {
-        const ambiguous = resp.status === 408 || resp.status === 425 ||
-          resp.status === 429 || resp.status >= 500;
+        const ambiguous = resp.status === 408 || resp.status === 409 ||
+          resp.status === 425 || resp.status === 429 || resp.status >= 500;
         console.warn("[evolution] envio recusado", {
           status: resp.status,
           instance: opts.instance,

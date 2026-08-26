@@ -61,6 +61,7 @@ serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(corsHeaders);
 
   const auth = await authorizeRequest(req, {
+    allowInactiveTenant: true,
     corsHeaders,
     allowedRoles: [
       "NON_STUDENT",

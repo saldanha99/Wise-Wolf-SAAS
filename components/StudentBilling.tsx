@@ -392,7 +392,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         </div>
         <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
           {payments.length > 0 ? payments.map(payment => {
-            const isPaid = payment.status === 'RECEIVED' || payment.status === 'CONFIRMED';
+            const isPaid = payment.status === 'RECEIVED' || payment.status === 'RECEIVED_IN_CASH';
             const isOverdue = payment.status === 'OVERDUE';
             return (
               <article key={payment.id} className="p-5 space-y-4">
@@ -472,7 +472,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                     {payment.billing_type || '-'}
                   </td>
                   <td className="px-8 py-6">
-                    {payment.status === 'RECEIVED' || payment.status === 'CONFIRMED' ? (
+                    {payment.status === 'RECEIVED' || payment.status === 'RECEIVED_IN_CASH' ? (
                       <span className="text-emerald-500 font-black text-[10px] uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full">PAGO</span>
                     ) : payment.status === 'OVERDUE' ? (
                       <span className="text-red-500 font-black text-[10px] uppercase tracking-widest bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full">VENCIDO</span>
@@ -490,7 +490,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                       >
                         Pagar Agora <ExternalLink size={12} />
                       </a>
-                    ) : (payment.status === 'RECEIVED' || payment.status === 'CONFIRMED') ? (
+                    ) : (payment.status === 'RECEIVED' || payment.status === 'RECEIVED_IN_CASH') ? (
                       <span className="inline-flex items-center gap-2 text-emerald-500 font-bold text-xs">
                         <CheckCircle size={16} /> Pago
                       </span>

@@ -4,6 +4,7 @@ import {
   createClient,
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { authorizeRequest } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -250,6 +251,16 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const requestAuth = await authorizeRequest(req, {
+      allowedRoles: ["STUDENT"],
+      corsHeaders,
+    });
+    if (requestAuth.ok === false) return requestAuth.response;
+    const authorizedUserId = requestAuth.context.userId;
+    const authorizedTenantId = requestAuth.context.profile?.tenant_id;
+    if (!authorizedUserId || !authorizedTenantId) {
+      return jsonResponse(unavailableResponse("TENANT_REQUIRED"), 403);
+    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!supabaseUrl || !anonKey) {
@@ -295,12 +306,10 @@ Deno.serve(async (req: Request) => {
     if (!directoryProfile) {
       return jsonResponse(unavailableResponse("PROFILE_NOT_FOUND"), 404);
     }
-    if (directoryProfile.role !== "STUDENT") {
-      return jsonResponse(unavailableResponse("FORBIDDEN"), 403);
+    if (user.id !== authorizedUserId) {
+      return jsonResponse(unavailableResponse("UNAUTHORIZED"), 401);
     }
-    if (!directoryProfile.tenant_id) {
-      return jsonResponse(unavailableResponse("TENANT_REQUIRED"), 403);
-    }
+    const tenantId = authorizedTenantId;
 
     const { data: privateProfileData, error: privateProfileError } =
       await supabase.rpc("get_authorized_profile_private", {
@@ -369,7 +378,7 @@ Deno.serve(async (req: Request) => {
           last_activity: activityTimestamp,
         })
         .eq("id", user.id)
-        .eq("tenant_id", profile.tenant_id)
+        .eq("tenant_id", tenantId)
         .eq("role", "STUDENT");
 
       if (activityError) {
@@ -383,7 +392,7 @@ Deno.serve(async (req: Request) => {
       .from("student_payments")
       .select("due_date, status")
       .eq("student_id", user.id)
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .in("status", ["PENDING", "OVERDUE"])
       .lt("due_date", dateInSaoPaulo(now))
       .order("due_date", { ascending: true });
@@ -412,7 +421,7 @@ Deno.serve(async (req: Request) => {
     const nextClass = await fetchNextClass(
       supabase,
       user.id,
-      profile.tenant_id,
+      tenantId,
       now,
     );
     const { is_test_account: _isTestAccount, ...publicProfile } = profile;

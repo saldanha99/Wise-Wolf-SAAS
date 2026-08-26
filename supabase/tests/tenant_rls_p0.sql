@@ -14,6 +14,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.assert_direct_write_denied(
   command text,
@@ -704,6 +705,9 @@ values
     'CLAIMED', '00000000-0000-4000-8000-00000000b002',
     'tenant-rls-p0-b'
   );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role anon;
 set local request.jwt.claims = '{"role":"anon"}';

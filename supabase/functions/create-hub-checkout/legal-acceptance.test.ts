@@ -33,7 +33,7 @@ Deno.test({
       handlerIndex,
     );
     const providerBillingIndex = checkoutSource.indexOf(
-      'asaasRequest("/subscriptions"',
+      "`${subscriptionCreateIntegration.baseUrl}/subscriptions`",
     );
 
     assert(validationIndex >= 0, "Hub Core legal input must be validated");

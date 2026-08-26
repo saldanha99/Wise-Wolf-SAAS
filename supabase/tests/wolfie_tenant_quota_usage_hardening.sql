@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values
@@ -492,6 +493,7 @@ insert into public.wolfie_topup_orders (
   package_name,
   minutes,
   amount_brl,
+  provider_customer_id,
   request_key,
   status
 )
@@ -503,24 +505,70 @@ values (
   'Fixture 3 minutes',
   3,
   4.50,
+  'cus_wolfie_hardening',
   '40000000-0000-4000-8000-000000000912',
   'AWAITING_PAYMENT'
+);
+do $confirmed_topup_guard$
+begin
+  begin
+    perform public.apply_wolfie_topup_payment(
+      '40000000-0000-4000-8000-000000000910',
+      'pay_wolfie_hardening',
+      'PAYMENT_CONFIRMED',
+      4.50
+    );
+    raise exception 'confirmed_topup_was_accepted';
+  exception when others then
+    if sqlerrm <> 'invalid_wolfie_topup_event' then
+      raise;
+    end if;
+  end;
+end
+$confirmed_topup_guard$;
+select pg_temp.assert_true(
+  not exists (
+    select 1
+      from public.student_minute_credits
+     where order_id = '40000000-0000-4000-8000-000000000910'
+  )
+  and (
+    select status = 'AWAITING_PAYMENT' and paid_at is null
+      from public.wolfie_topup_orders
+     where id = '40000000-0000-4000-8000-000000000910'
+  ),
+  'PAYMENT_CONFIRMED must not create minutes or mark a top-up paid'
 );
 select public.apply_wolfie_topup_payment(
   '40000000-0000-4000-8000-000000000910',
   'pay_wolfie_hardening',
-  'PAYMENT_CONFIRMED',
+  'PAYMENT_RECEIVED_IN_CASH',
+  4.50
+);
+-- Replay of the same settled event must keep a single credit.
+select public.apply_wolfie_topup_payment(
+  '40000000-0000-4000-8000-000000000910',
+  'pay_wolfie_hardening',
+  'PAYMENT_RECEIVED_IN_CASH',
   4.50
 );
 select pg_temp.assert_true(
   (
-    select tenant_id = 'wolfie-hardening-b'
-       and status = 'PAID'
-       and minutes = 3
+    select count(*) = 1
+       and min(tenant_id) = 'wolfie-hardening-b'
+       and min(status) = 'PAID'
+       and min(minutes) = 3
       from public.student_minute_credits
      where order_id = '40000000-0000-4000-8000-000000000910'
+  )
+  and (
+    select tenant_id = 'wolfie-hardening-b'
+       and status = 'PAID'
+       and paid_at is not null
+      from public.wolfie_topup_orders
+     where id = '40000000-0000-4000-8000-000000000910'
   ),
-  'paid top-up must credit the order tenant, not profiles.tenant_id'
+  'settled top-up must credit its tenant exactly once'
 );
 select public.apply_wolfie_topup_payment(
   '40000000-0000-4000-8000-000000000910',
@@ -554,6 +602,7 @@ insert into public.wolfie_topup_orders (
   package_name,
   minutes,
   amount_brl,
+  provider_customer_id,
   request_key,
   status
 )
@@ -565,13 +614,14 @@ values (
   'Fixture 3 minutes',
   3,
   4.50,
+  'cus_wolfie_hardening',
   '40000000-0000-4000-8000-000000000913',
   'AWAITING_PAYMENT'
 );
 select public.apply_wolfie_topup_payment(
   '40000000-0000-4000-8000-000000000911',
   'pay_wolfie_partial_refund',
-  'PAYMENT_CONFIRMED',
+  'PAYMENT_RECEIVED',
   4.50
 );
 select public.apply_wolfie_topup_payment(
@@ -628,7 +678,7 @@ select pg_temp.assert_true(
   )
   and not has_function_privilege(
     'authenticated',
-    'public.apply_wolfie_topup_payment(uuid,text,text,numeric,numeric)',
+    'public.apply_verified_wolfie_topup_payment(uuid,text,text,numeric,numeric,text,text,text)',
     'EXECUTE'
   )
   and not has_function_privilege(
@@ -646,6 +696,9 @@ select set_config(
   '{"sub":"00000000-0000-4000-8000-000000000910","role":"authenticated"}',
   true
 );
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
+
 set local role authenticated;
 select pg_temp.assert_true(
   (

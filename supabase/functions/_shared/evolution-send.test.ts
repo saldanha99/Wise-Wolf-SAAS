@@ -214,6 +214,24 @@ Deno.test("Evolution separa rejeição conhecida de resultado ambíguo", async (
       assertEquals(result.httpStatus, 503);
     },
   );
+
+  await comFetchFalso(
+    (url) =>
+      url.includes("whatsappNumbers")
+        ? ok([{ exists: false }])
+        : new Response("conflict", { status: 409 }),
+    async () => {
+      const result = await sendWhatsTextDetailed({
+        base: BASE,
+        keys: KEYS,
+        instance: "i",
+        to: "5511999999999",
+        text: "oi",
+      });
+      assertEquals(result.outcome, "ambiguous");
+      assertEquals(result.httpStatus, 409);
+    },
+  );
 });
 
 Deno.test("resolveJid devolve null para grupo, sem chamar a API", async () => {

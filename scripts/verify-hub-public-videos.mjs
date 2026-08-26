@@ -112,7 +112,7 @@ const findDisabledPublicArtifacts = (rootDirectory) => {
       if (entry.isSymbolicLink()) {
         blocked.push(`${relativePath}: link simbólico não permitido`);
       } else if (entry.isDirectory()) {
-        walk(absolutePath);
+        if (relativePath !== 'assets/hub/videos/social') walk(absolutePath);
       } else if (entry.isFile() && isDisabledPublicArtifact(relativePath)) {
         blocked.push(relativePath);
       }

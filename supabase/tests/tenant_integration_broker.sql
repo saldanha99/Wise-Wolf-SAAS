@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 select pg_temp.assert_true(
   not exists (
@@ -92,6 +93,9 @@ select pg_temp.assert_true(
   ),
   'broker ou tabela privada ficaram expostos ao cliente'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 set local request.jwt.claims = '{"role":"service_role"}';

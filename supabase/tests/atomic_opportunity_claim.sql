@@ -14,6 +14,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 create or replace function pg_temp.claim_slot(days_from_today integer, slot_time text)
 returns jsonb
@@ -140,6 +141,9 @@ values (
   end,
   '14:00', current_date + 14, 'SCHEDULED'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 

@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $function$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 select pg_temp.assert_true(
   (
@@ -210,6 +211,9 @@ begin
   end;
 end;
 $test$;
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 set local request.jwt.claims = '{"role":"service_role"}';

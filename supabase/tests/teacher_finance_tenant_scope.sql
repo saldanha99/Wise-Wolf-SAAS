@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name, saas_status)
 values
@@ -182,6 +183,9 @@ select pg_temp.assert_true(
   and not has_function_privilege('authenticated', 'public.teacher_pending_carryover(uuid)', 'EXECUTE'),
   'helpers privilegiados de folha ou transferencia continuam publicos'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000f01","role":"authenticated"}';

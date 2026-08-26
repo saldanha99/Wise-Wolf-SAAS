@@ -27,6 +27,7 @@ export default defineConfig({
       "apps/**/*.test.{ts,tsx}",
       "lib/**/*.test.ts",
       "remotion/**/*.test.{ts,tsx}",
+      "remotion-ads/**/*.test.{ts,tsx}",
     ],
   },
 });

@@ -15,6 +15,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values ('trial-reschedule-test', 'Trial Reschedule Test');
@@ -104,6 +105,9 @@ select pg_temp.assert_true(
   ),
   'cliente autenticado consegue responder no lugar do webhook'
 );
+
+grant execute on all functions in schema pg_temp
+  to anon, authenticated, service_role;
 
 set local role service_role;
 

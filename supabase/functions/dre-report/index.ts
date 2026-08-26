@@ -17,22 +17,27 @@ import {
   authorizeScopedAutomation,
   scopeAutomationRows,
 } from "../_shared/automation-auth.ts";
+import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
+import {
+  claimFinancialReportMessage,
+  financialReportMessageFinish,
+  finishFinancialReportMessage,
+  markFinancialReportMessageSubmitting,
+} from "../_shared/financial-report-message-fence.ts";
 import {
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
 } from "../_shared/tenant-communication.ts";
+import {
+  type ResolvedEvolutionIntegration,
+  resolveEvolutionIntegration,
+} from "../_shared/tenant-integration-broker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-const EVOLUTION_API_BASE = `${
-  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
-    .replace(/\/+$/, "")
-}/message/sendText`;
-const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
 
 const MESES = [
   "janeiro",
@@ -151,12 +156,6 @@ serve(async (req) => {
   if (auth.ok === false) return auth.response;
 
   try {
-    if (!API_TOKEN) {
-      return new Response(JSON.stringify({ error: "provider_unavailable" }), {
-        status: 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
     const supabase = auth.context.admin;
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
@@ -210,7 +209,7 @@ serve(async (req) => {
         // Recusa VISIVEL. Antes isto virava um item em  dentro do
         // corpo de uma resposta HTTP que ninguém lê — foi assim que o aviso de
         // rateio passou 9 dias mudo sem ninguém notar.
-        console.error('[whatsapp] destino recusado: nao pertence a escola', {
+        console.error("[whatsapp] destino recusado: nao pertence a escola", {
           tenant: tenantId,
         });
         resultado.failures.push(`${tenantId}: destino não pertence à escola`);
@@ -219,10 +218,21 @@ serve(async (req) => {
 
       // Manual e automático não se bloqueiam.
       const subject = manualRun ? `${tenantId}:manual` : tenantId;
-      const { data: dup } = await supabase.from("automation_sent").select("id")
+      const { data: dup, error: dupError } = await supabase.from(
+        "automation_sent",
+      ).select("id")
         .eq("kind", "DRE_REPORT").eq("subject_id", subject)
         .eq("ref_date", refDate).maybeSingle();
+      if (dupError) {
+        resultado.failures.push(`${tenantId}: marcador legado indisponível`);
+        continue;
+      }
       if (dup) {
+        try {
+          await markDreReportSent(supabase, tenantId);
+        } catch {
+          resultado.failures.push(`${tenantId}: marcador DRE indisponível`);
+        }
         resultado.skipped++;
         continue;
       }
@@ -243,35 +253,106 @@ serve(async (req) => {
         route.identity.brandName,
         dre as Record<string, unknown>,
       );
-
-      const resp = await fetch(
-        `${EVOLUTION_API_BASE}/${encodeURIComponent(route.instanceName)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: API_TOKEN },
-          body: JSON.stringify({
-            number: destino,
-            text: texto,
-            delay: 800,
-            linkPreview: false,
-          }),
-        },
-      );
-      if (!resp.ok) {
-        resultado.failures.push(`${tenantId}: evolution ${resp.status}`);
+      let integration: ResolvedEvolutionIntegration;
+      try {
+        integration = await resolveEvolutionIntegration(
+          supabase,
+          tenantId,
+          "message.send_text",
+        );
+      } catch {
+        resultado.failures.push(`${tenantId}: integração indisponível`);
         continue;
       }
 
-      await supabase.from("automation_sent").insert({
-        kind: "DRE_REPORT",
-        subject_id: subject,
-        ref_date: refDate,
+      const claim = await claimFinancialReportMessage(supabase, {
+        tenantId,
+        notificationKind: "DRE_REPORT",
+        subjectId: subject,
+        refDate,
       });
-      await supabase.rpc("mark_dre_report_sent", { p_tenant: tenantId });
-      resultado.sent++;
+      if (claim.action === "ALREADY_FINAL") {
+        if (String(claim.status || "").toUpperCase() === "SENT") {
+          try {
+            await recordDreReportSent(
+              supabase,
+              tenantId,
+              subject,
+              refDate,
+            );
+          } catch {
+            resultado.failures.push(
+              `${tenantId}: marcador durável indisponível`,
+            );
+          }
+        } else {
+          resultado.failures.push(
+            `${tenantId}: resultado durável ${claim.status} requer revisão`,
+          );
+        }
+        resultado.skipped++;
+        continue;
+      }
+      if (claim.action !== "SUBMIT_ONCE") {
+        if (claim.action === "REVIEW_REQUIRED") {
+          resultado.failures.push(
+            `${tenantId}: ${claim.reason || "escopo inativo"}`,
+          );
+        } else {
+          resultado.skipped++;
+        }
+        continue;
+      }
+
+      const mark = await markFinancialReportMessageSubmitting(
+        supabase,
+        claim,
+      );
+      if (mark.ok !== true || mark.status !== "SUBMITTING") {
+        if (mark.status === "SUPPRESSED") {
+          resultado.skipped++;
+        } else {
+          resultado.failures.push(
+            `${tenantId}: ${mark.reason || "claim perdido antes do envio"}`,
+          );
+        }
+        continue;
+      }
+
+      const providerResult = await sendWhatsTextDetailed({
+        base: integration.baseUrl,
+        keys: [integration.apiKey],
+        instance: route.instanceName,
+        to: destino,
+        text: texto,
+        delayMs: 800,
+      });
+      const finish = financialReportMessageFinish(providerResult);
+      try {
+        await finishFinancialReportMessage(supabase, claim, finish);
+      } catch {
+        resultado.failures.push(
+          `${tenantId}: resultado do envio não pôde ser persistido`,
+        );
+        continue;
+      }
+      if (finish.status !== "SENT") {
+        resultado.failures.push(
+          `${tenantId}: ${finish.error || finish.status.toLowerCase()}`,
+        );
+        continue;
+      }
+
+      try {
+        await recordDreReportSent(supabase, tenantId, subject, refDate);
+        resultado.sent++;
+      } catch {
+        resultado.failures.push(`${tenantId}: marcador durável indisponível`);
+      }
     }
 
     return new Response(JSON.stringify(resultado), {
+      status: resultado.failures.length === 0 ? 200 : 503,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
@@ -284,3 +365,28 @@ serve(async (req) => {
     });
   }
 });
+
+async function markDreReportSent(supabase: any, tenantId: string) {
+  const { error } = await supabase.rpc("mark_dre_report_sent", {
+    p_tenant: tenantId,
+  });
+  if (error) throw new Error("dre_report_marker_failed");
+}
+
+async function recordDreReportSent(
+  supabase: any,
+  tenantId: string,
+  subject: string,
+  refDate: string,
+) {
+  const { error } = await supabase.from("automation_sent").upsert({
+    kind: "DRE_REPORT",
+    subject_id: subject,
+    ref_date: refDate,
+  }, {
+    onConflict: "kind,subject_id,ref_date",
+    ignoreDuplicates: true,
+  });
+  if (error) throw new Error("dre_report_legacy_marker_failed");
+  await markDreReportSent(supabase, tenantId);
+}

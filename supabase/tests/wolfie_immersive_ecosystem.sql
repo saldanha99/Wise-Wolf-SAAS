@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) TO anon, authenticated, service_role;
 
 insert into public.tenants (id, name)
 values
@@ -975,12 +976,12 @@ begin
     'concurrent AI replay must not acquire a second lease'
   );
   perform public.finish_wolfie_ai_request(
-    '00000000-0000-4000-8000-000000000101',
-    '30000000-0000-4000-8000-000000000001',
-    v_lease,
-    'COMPLETED',
-    '{"ok":true}',
-    null
+    p_student_id => '00000000-0000-4000-8000-000000000101'::uuid,
+    p_request_key => '30000000-0000-4000-8000-000000000001'::uuid,
+    p_lease_token => v_lease,
+    p_status => 'COMPLETED',
+    p_response_payload => '{"ok":true}'::jsonb,
+    p_error_code => null
   );
 
   for i in 2 .. 20 loop

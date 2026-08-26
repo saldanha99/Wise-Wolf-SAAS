@@ -79,3 +79,9 @@ graphify-out/
 /public/assets/hub/videos/*.mp4
 /public/assets/hub/videos/manifest.json
 /public/assets/hub/videos/posters/
+
+# Saída gerada do pacote Remotion Ads (mocks/renderizados e áudios temporários).
+/remotion-ads/.stills/
+/remotion-ads/out/
+/remotion-ads/generated/
+/remotion-ads/public/assets/voz/

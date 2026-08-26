@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import {
+  hasExclusiveActiveTargetMembership,
   isEligibleForDunning,
   normalizeEnrollmentPlan,
   normalizeSchoolAdminAction,
@@ -80,6 +81,58 @@ Deno.test("school admin aceita somente IDs e estados normalizados", () => {
         paymentId: "pay_123),tenant_id.neq.safe",
       }),
     "filtro injetavel deveria ser rejeitado",
+  );
+});
+
+Deno.test("lifecycle exige um unico vinculo ativo e coerente do alvo", () => {
+  const activeStudent = {
+    tenant_id: "school-a",
+    role: "STUDENT",
+    status: "ACTIVE",
+  };
+  assert(
+    hasExclusiveActiveTargetMembership(
+      [activeStudent],
+      "school-a",
+      "STUDENT",
+    ),
+    "um unico vinculo ativo e coerente deveria ser aceito",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership([], "school-a", "STUDENT"),
+    "alvo sem membership deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, status: "SUSPENDED" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "membership inativa deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, tenant_id: "school-b" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "membership de outro tenant deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, role: "TEACHER" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "papel incoerente deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [activeStudent, { ...activeStudent, tenant_id: "school-b" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "perfil global multitenant nunca deve sofrer lifecycle por um tenant",
   );
 });
 

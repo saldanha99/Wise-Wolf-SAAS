@@ -3,32 +3,31 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/prom
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HUB_VIDEOS, VIDEO_FPS } from '../content/hub-videos';
-import { balanceHubCaptions, makeHubVtt } from '../captions';
+import { makeHubVtt } from '../captions';
 import {
   assertPtBrNarrationModel,
   assertPtBrVoice,
+  getElevenLabsVoiceGender,
   getPtBrNarrationVoiceSettings,
   type ElevenLabsVoiceProfile,
   type PtBrVoiceEvidence,
 } from './pt-br-voice';
+import {
+  assertProviderCharacterAlignment,
+  buildProviderAlignedCaptions,
+  buildProviderAlignedSceneTimings,
+  type ProviderCharacterAlignment,
+} from './provider-caption-alignment';
+import { assertElevenLabsCollectionCapacity } from './elevenlabs-capacity';
 import type {
-  HubVideoCaption,
-  HubVideoSceneId,
-  HubVideoSceneTiming,
   HubVideoSlug,
   HubVoiceTrack,
 } from '../types';
 
-type ElevenLabsAlignment = {
-  characters: string[];
-  character_start_times_seconds: number[];
-  character_end_times_seconds: number[];
-};
-
 type ElevenLabsSpeechResponse = {
   audio_base64?: string;
-  alignment?: ElevenLabsAlignment | null;
-  normalized_alignment?: ElevenLabsAlignment | null;
+  alignment?: ProviderCharacterAlignment | null;
+  normalized_alignment?: ProviderCharacterAlignment | null;
 };
 
 type ElevenLabsSubscription = {
@@ -114,88 +113,16 @@ const getVoice = async (): Promise<{ voice: ElevenLabsVoiceProfile; evidence: Pt
   }
   return {
     voice,
-    evidence: assertPtBrVoice(voice, { allowMultilingualPremade, modelId }),
+    evidence: assertPtBrVoice(voice, {
+      allowMultilingualPremade,
+      modelId,
+      requiredNative: true,
+      requiredGender: 'male',
+    }),
   };
 };
 
 const fixed = (value: number) => Number(value.toFixed(3));
-const milliseconds = (seconds: number) => Number((seconds * 1000).toFixed(3));
-
-const buildCaptions = (alignment: ElevenLabsAlignment): HubVideoCaption[] => {
-  const fullText = alignment.characters.join('');
-  const words = [...fullText.matchAll(/\S+/gu)].map((match) => {
-    const startIndex = match.index || 0;
-    const endIndex = startIndex + match[0].length - 1;
-    return {
-      text: match[0],
-      startSeconds: alignment.character_start_times_seconds[startIndex] ?? 0,
-      endSeconds: alignment.character_end_times_seconds[endIndex]
-        ?? alignment.character_start_times_seconds[endIndex]
-        ?? 0,
-    };
-  });
-
-  const captions: HubVideoCaption[] = [];
-  let group: typeof words = [];
-  const flush = () => {
-    if (group.length === 0) return;
-    const tokens = group.map((word) => ({
-      text: word.text,
-      startMs: milliseconds(word.startSeconds),
-      endMs: milliseconds(word.endSeconds),
-    }));
-    captions.push({
-      text: group.map((word) => word.text).join(' '),
-      startSeconds: fixed(group[0].startSeconds),
-      endSeconds: fixed(group[group.length - 1].endSeconds),
-      startMs: tokens[0].startMs,
-      endMs: tokens[tokens.length - 1].endMs,
-      timestampMs: null,
-      confidence: null,
-      tokens,
-    });
-    group = [];
-  };
-
-  for (const word of words) {
-    const nextText = [...group, word].map((item) => item.text).join(' ');
-    if (group.length >= 6 || nextText.length > 42) flush();
-    group.push(word);
-    if (/[.!?]$/u.test(word.text) || (group.length >= 4 && /[,;:]$/u.test(word.text))) flush();
-  }
-  flush();
-  return balanceHubCaptions(captions);
-};
-
-const buildSceneTimings = (
-  narrationParts: Array<{ scene: HubVideoSceneId; text: string }>,
-  alignment: ElevenLabsAlignment,
-  durationSeconds: number,
-): Record<HubVideoSceneId, HubVideoSceneTiming> => {
-  const joinedText = alignment.characters.join('');
-  const timings = {} as Record<HubVideoSceneId, HubVideoSceneTiming>;
-  let cursor = 0;
-
-  for (const part of narrationParts) {
-    let startIndex = joinedText.indexOf(part.text, cursor);
-    if (startIndex < 0) startIndex = cursor;
-    const endIndex = Math.min(startIndex + part.text.length - 1, alignment.characters.length - 1);
-    timings[part.scene] = {
-      startSeconds: fixed(alignment.character_start_times_seconds[startIndex] || 0),
-      endSeconds: fixed(alignment.character_end_times_seconds[endIndex] || alignment.character_start_times_seconds[endIndex] || 0),
-    };
-    cursor = endIndex + 1;
-  }
-
-  timings.hook.startSeconds = 0;
-  for (let index = 0; index < narrationParts.length - 1; index += 1) {
-    const currentScene = narrationParts[index].scene;
-    const nextScene = narrationParts[index + 1].scene;
-    timings[currentScene].endSeconds = Math.max(timings[currentScene].endSeconds, timings[nextScene].startSeconds);
-  }
-  timings.cta.endSeconds = durationSeconds;
-  return timings;
-};
 
 const exists = async (filePath: string): Promise<boolean> => {
   try {
@@ -216,9 +143,13 @@ const createScriptHash = (text: string, voiceId: string, evidence: PtBrVoiceEvid
     voiceAccent: evidence.accent,
     voiceSourceAccent: evidence.sourceAccent,
     voiceNative: evidence.native,
+    voiceGender: 'male',
     voiceLocaleValidation: evidence.source,
-    voiceValidationVersion: 2,
-    captionAlignmentVersion: 2,
+    voiceValidationVersion: 3,
+    narrationTake: 'single_continuous',
+    narrationRequestCount: 1,
+    captionTimingSource: 'provider_alignment',
+    captionAlignmentVersion: 3,
     modelId,
     outputFormat,
     seed,
@@ -272,9 +203,43 @@ const commercialUseAllowed = ['starter', 'creator', 'pro', 'scale', 'business', 
 const captionsDirectory = commercialUseAllowed ? publicCaptionsDirectory : previewCaptionsDirectory;
 await mkdir(captionsDirectory, { recursive: true });
 const { voice, evidence: voiceEvidence } = await getVoice();
+const voiceGender = getElevenLabsVoiceGender(voice);
 console.log(`Voz selecionada: ${voice.name || 'voz sem nome'} (${voice.voice_id})`);
 console.log(`Validação regional: ${voiceEvidence.locale} via ${voiceEvidence.source}`);
 console.log(`Origem da voz: sotaque=${voiceEvidence.sourceAccent}; nativa=${voiceEvidence.native ? 'sim' : 'não'}`);
+
+const generationPreflight = await Promise.all(HUB_VIDEOS.map(async (content, index) => {
+  const narrationText = content.narration.map((part) => part.text.trim()).join(' ');
+  const seed = 184_734_221 + index * 7_919;
+  const scriptHash = createScriptHash(narrationText, voice.voice_id, voiceEvidence, seed);
+  const audioPath = path.join(audioDirectory, `${content.slug}.mp3`);
+  const vttPath = path.join(captionsDirectory, `${content.slug}.pt-BR.vtt`);
+  const cached = manifest[content.slug];
+  const reusable = !forceRegeneration
+    && cached?.ready === true
+    && cached.voiceProvider === 'elevenlabs'
+    && cached.voiceLocale === 'pt-BR'
+    && cached.voiceLocaleValidation === voiceEvidence.source
+    && cached.voiceAccent === voiceEvidence.accent
+    && cached.voiceSourceAccent === voiceEvidence.sourceAccent
+    && cached.voiceNative === voiceEvidence.native
+    && cached.voiceGender === voiceGender
+    && cached.narrationTake === 'single_continuous'
+    && cached.narrationRequestCount === 1
+    && cached.captionTimingSource === 'provider_alignment'
+    && cached.scriptHash === scriptHash
+    && await exists(audioPath)
+    && await exists(vttPath);
+  return { slug: content.slug, characterCount: narrationText.length, reusable };
+}));
+const requiredCharacters = generationPreflight
+  .filter((item) => !item.reusable)
+  .reduce((total, item) => total + item.characterCount, 0);
+assertElevenLabsCollectionCapacity({
+  characterCount: subscription.character_count,
+  characterLimit: subscription.character_limit,
+  requiredCharacters,
+});
 
 for (const [index, content] of HUB_VIDEOS.entries()) {
   const narrationText = content.narration.map((part) => part.text.trim()).join(' ');
@@ -290,7 +255,11 @@ for (const [index, content] of HUB_VIDEOS.entries()) {
     && cached.voiceLocaleValidation === voiceEvidence.source
     && cached.voiceAccent === voiceEvidence.accent
     && cached.voiceSourceAccent === voiceEvidence.sourceAccent
-    && cached.voiceNative === voiceEvidence.native;
+    && cached.voiceNative === voiceEvidence.native
+    && cached.voiceGender === voiceGender
+    && cached.narrationTake === 'single_continuous'
+    && cached.narrationRequestCount === 1
+    && cached.captionTimingSource === 'provider_alignment';
   if (!forceRegeneration && cached?.ready && cachedVoiceIsValidated && cached.scriptHash === scriptHash && await exists(audioPath) && await exists(vttPath)) {
     manifest[content.slug] = cached;
     if (commercialUseAllowed && cached.commercialUseAllowed !== true) {
@@ -315,15 +284,23 @@ for (const [index, content] of HUB_VIDEOS.entries()) {
     if (commercialUseAllowed && !requestId) {
       throw new Error(`A ElevenLabs não retornou um request ID para a locução comercial ${content.slug}. Nada foi publicado.`);
     }
-    const alignment = response.alignment || response.normalized_alignment;
-    if (!alignment || alignment.characters.length === 0) throw new Error(`A ElevenLabs não retornou timestamps para ${content.slug}.`);
+    const alignment = response.alignment;
+    if (!alignment) {
+      throw new Error(`A ElevenLabs não retornou o alinhamento original para ${content.slug}; o alinhamento normalizado não substitui a transcrição literal.`);
+    }
+    assertProviderCharacterAlignment(narrationText, alignment);
 
     const audioBuffer = Buffer.from(response.audio_base64, 'base64');
     const audioEnd = alignment.character_end_times_seconds.at(-1) || alignment.character_start_times_seconds.at(-1) || 0;
     const durationSeconds = fixed(audioEnd + 1.4);
     const durationInFrames = Math.ceil(durationSeconds * VIDEO_FPS);
-    const captions = buildCaptions(alignment);
-    const scenes = buildSceneTimings(content.narration, alignment, durationSeconds);
+    const captions = buildProviderAlignedCaptions(narrationText, alignment);
+    const scenes = buildProviderAlignedSceneTimings(
+      content.narration,
+      narrationText,
+      alignment,
+      durationSeconds,
+    );
     const generatedAt = new Date().toISOString();
     const track: HubVoiceTrack = {
       ready: true,
@@ -337,7 +314,11 @@ for (const [index, content] of HUB_VIDEOS.entries()) {
       voiceAccent: voiceEvidence.accent,
       voiceSourceAccent: voiceEvidence.sourceAccent,
       voiceNative: voiceEvidence.native,
+      voiceGender,
       voiceLocaleValidation: voiceEvidence.source,
+      narrationTake: 'single_continuous',
+      narrationRequestCount: 1,
+      captionTimingSource: 'provider_alignment',
       modelId,
       scriptHash,
       subscriptionTier,
@@ -355,7 +336,7 @@ for (const [index, content] of HUB_VIDEOS.entries()) {
     await writeFile(vttTemporaryPath, makeHubVtt(captions), { encoding: 'utf8', mode: 0o644 });
     await rename(audioTemporaryPath, audioPath);
     await rename(vttTemporaryPath, vttPath);
-    await writeFile(metadataPath, `${JSON.stringify({ slug: content.slug, requestId, generatedAt, voiceId: voice.voice_id, voiceName: voice.name, voiceLocale: voiceEvidence.locale, voiceAccent: voiceEvidence.accent, voiceSourceAccent: voiceEvidence.sourceAccent, voiceNative: voiceEvidence.native, voiceLocaleValidation: voiceEvidence.source, modelId, scriptHash, subscriptionTier, subscriptionStatus, commercialUseAllowed, durationSeconds, characterCount: narrationText.length }, null, 2)}\n`, { encoding: 'utf8', mode: 0o644 });
+    await writeFile(metadataPath, `${JSON.stringify({ slug: content.slug, requestId, generatedAt, voiceId: voice.voice_id, voiceName: voice.name, voiceLocale: voiceEvidence.locale, voiceAccent: voiceEvidence.accent, voiceSourceAccent: voiceEvidence.sourceAccent, voiceNative: voiceEvidence.native, voiceGender, voiceLocaleValidation: voiceEvidence.source, narrationTake: 'single_continuous', narrationRequestCount: 1, captionTimingSource: 'provider_alignment', modelId, scriptHash, subscriptionTier, subscriptionStatus, commercialUseAllowed, durationSeconds, characterCount: narrationText.length }, null, 2)}\n`, { encoding: 'utf8', mode: 0o644 });
     manifest[content.slug] = track;
     await persistManifest();
   } finally {

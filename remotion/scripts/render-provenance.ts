@@ -10,6 +10,10 @@ import type {
   HubVoiceTrack,
 } from '../types';
 import { HUB_AUDIO_MASTERING } from './audio-mastering';
+import {
+  assertHubFinalAudioTrack,
+  isFinalAudioStrictModeEnabled,
+} from './final-audio-policy';
 
 type PublicArtifactPaths = {
   video: string;
@@ -314,27 +318,32 @@ export const buildCommercialRenderFingerprint = async ({
   track,
   compositionSourceSha256,
   remotionVersion,
+  compositionId = content.id,
   width,
   height,
   fps,
+  strictFinalAudio = isFinalAudioStrictModeEnabled(),
 }: {
   projectRoot: string;
   content: HubVideoContent;
   track: HubVoiceTrack;
   compositionSourceSha256: string;
   remotionVersion: string;
+  compositionId?: string;
   width: number;
   height: number;
   fps: number;
+  strictFinalAudio?: boolean;
 }): Promise<HubCommercialRenderFingerprint> => {
   const commercialTrack = requireCommercialTrack(track);
+  const finalAudioEvidence = strictFinalAudio ? assertHubFinalAudioTrack(track) : null;
   if (!SHA256_PATTERN.test(compositionSourceSha256)) throw new Error('Hash das fontes Remotion inválido.');
   const audioFile = await resolveVoiceAudioPath(projectRoot, track.audioPath);
 
   return {
     schemaVersion: 4,
     slug: content.slug,
-    compositionId: content.id,
+    compositionId,
     scriptHash: commercialTrack.scriptHash,
     audioSha256: await sha256File(audioFile),
     compositionInputSha256: sha256Value({
@@ -343,6 +352,7 @@ export const buildCommercialRenderFingerprint = async ({
       audioPath: track.audioPath,
       captions: track.captions,
       scenes: track.scenes,
+      ...(finalAudioEvidence ? { finalAudioEvidence } : {}),
     }),
     compositionSourceSha256,
     remotionVersion,
@@ -366,8 +376,8 @@ export const buildCommercialRenderFingerprint = async ({
       fps,
       codec: 'h264',
       pixelFormat: 'yuv420p',
-      crf: 22,
-      audioBitrate: '128k',
+      crf: 18,
+      audioBitrate: '192k',
       colorSpace: 'bt709',
       audioMastering: HUB_AUDIO_MASTERING,
     },

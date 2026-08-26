@@ -9,7 +9,7 @@ export const HUB_AUDIO_MASTERING = {
   targetTruePeakDbtp: -1.5,
   maxTruePeakDbtp: -1,
   audioCodec: 'aac',
-  audioBitrate: '128k',
+  audioBitrate: '192k',
   sampleRateHz: 48_000,
 } as const;
 
