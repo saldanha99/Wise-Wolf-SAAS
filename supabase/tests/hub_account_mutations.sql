@@ -48,6 +48,8 @@ begin
 end;
 $function$;
 
+grant execute on function pg_temp.assert_sqlstate(text, text, text) to public;
+
 select pg_temp.assert_true(
   not has_table_privilege(
     'authenticated',

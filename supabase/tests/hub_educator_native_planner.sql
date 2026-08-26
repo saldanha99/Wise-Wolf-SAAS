@@ -48,6 +48,8 @@ begin
 end;
 $function$;
 
+grant execute on function pg_temp.assert_sqlstate(text, text, text) to public;
+
 update public.hub_settings
 set metadata = coalesce(metadata, '{}'::jsonb)
       || '{"hubEnabled":true,"catalogReady":true}'::jsonb

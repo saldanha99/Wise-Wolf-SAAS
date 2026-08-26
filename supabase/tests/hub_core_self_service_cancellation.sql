@@ -13,6 +13,8 @@ begin
 end;
 $function$;
 
+grant execute on function pg_temp.assert_true(boolean, text) to public;
+
 create or replace function pg_temp.assert_sqlstate(
   statement text,
   expected_sqlstate text,
@@ -37,6 +39,8 @@ begin
   raise exception 'assertion failed: % (statement did not fail)', message;
 end;
 $function$;
+
+grant execute on function pg_temp.assert_sqlstate(text, text, text) to public;
 
 select pg_temp.assert_true(
   has_function_privilege(
