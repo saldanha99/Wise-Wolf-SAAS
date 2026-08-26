@@ -1022,12 +1022,12 @@
         "sha256": "09777e32b94f68e9ed84b9dfc50361b881eea825aa383bc49248b2c996d875c4"
       },
       "mobile": {
-        "url": "/assets/wolfie/scenes/kids-teens/series-characters/mobile.9eb9fc94db9f.webp",
+        "url": "/assets/wolfie/scenes/kids-teens/series-characters/mobile.6d488ca64de6.webp",
         "width": 900,
         "height": 1200,
-        "bytes": 88160,
+        "bytes": 52116,
         "maxBytes": 180000,
-        "sha256": "9eb9fc94db9fb9a9c6b74e903ae830897371d90d035faf14cfe4ec68f0caf043"
+        "sha256": "6d488ca64de6ba214965177e7df54f8c0aa11cfb9346f61f4c12c6a3ad2c4e0b"
       }
     },
     {
