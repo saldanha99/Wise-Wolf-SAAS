@@ -807,6 +807,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260824230000_conciliacao_do_caixa_asaas.sql"
   "supabase/migrations/20260825040358_harden_teacher_activity_report_scope.sql"
   "supabase/migrations/20260825140000_estorno_reverte_o_caixa.sql"
+  "supabase/migrations/20260827000000_reconcile_ledger_refund_reversal.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
