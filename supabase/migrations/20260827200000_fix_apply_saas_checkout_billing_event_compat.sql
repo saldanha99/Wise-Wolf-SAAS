@@ -342,6 +342,24 @@ GRANT EXECUTE ON FUNCTION public.apply_saas_checkout_billing_event(
   timestamptz, date, text, text
 ) TO service_role;
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.proname = 'apply_saas_checkout_billing_event'
+      AND n.nspname = 'public'
+      AND p.proargtypes::text = '2950 25 25 1184 25 1700 25 25 25 25 1184 1082 25 25'
+  ) THEN
+    DROP FUNCTION public.apply_saas_checkout_billing_event(
+      uuid, text, text, timestamptz, text, numeric, text, text, text, text,
+      timestamptz, date, text, text
+    );
+  END IF;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION public.apply_saas_checkout_billing_event(
   p_checkout_id uuid,
   p_event_name text,
