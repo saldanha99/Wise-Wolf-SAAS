@@ -809,6 +809,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260825140000_estorno_reverte_o_caixa.sql"
   "supabase/migrations/20260827000000_reconcile_ledger_refund_reversal.sql"
   "supabase/migrations/20260827120000_compat_apply_saas_checkout_billing_event.sql"
+  "supabase/migrations/20260827200000_fix_apply_saas_checkout_billing_event_compat.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
