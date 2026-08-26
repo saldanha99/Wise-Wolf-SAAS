@@ -233,56 +233,48 @@ revoke all on function public.recompute_student_financial_status(text, uuid)
 grant execute on function public.recompute_student_financial_status(text, uuid)
   to service_role;
 
--- Reconcile existing active students once, with the same auditable rule used
 -- by future webhooks. Replaying this migration is harmless because unchanged
 -- results do not create audit rows.
-do $backfill$
-declare
-  candidate record;
-begin
-  perform pg_catalog.set_config(
-    'request.jwt.claims',
-    '{"role":"service_role"}',
-    true
-  );
-  for candidate in
-    select profile.tenant_id, profile.id
-      from public.profiles as profile
-     where profile.role = 'STUDENT'
-       and profile.tenant_id is not null
-       and pg_catalog.lower(pg_catalog.btrim(coalesce(
-         profile.lifecycle_status,
-         ''
-       ))) = 'active'
-       and pg_catalog.upper(pg_catalog.btrim(coalesce(
-         profile.status_financial,
-         ''
-       ))) <> 'ARCHIVED'
-       and exists (
-         select 1
-           from public.student_payments as payment
-          where payment.tenant_id = profile.tenant_id
-            and payment.student_id = profile.id
-            and payment.due_date <= current_date
-            and pg_catalog.upper(pg_catalog.btrim(coalesce(
-              payment.status,
-              ''
-            ))) in (
-              'OVERDUE',
-              'RECEIVED',
-              'RECEIVED_IN_CASH',
-              'PAGO',
-              'PAYMENT_RECEIVED',
-              'PAYMENT_RECEIVED_IN_CASH',
-              'REFUNDED',
-              'REVERSED'
-            )
-       )
-  loop
-    perform public.recompute_student_financial_status(
-      candidate.tenant_id,
-      candidate.id
-    );
-  end loop;
-end;
-$backfill$;
+SELECT pg_catalog.set_config(
+  'request.jwt.claims',
+  '{"role":"service_role"}',
+  true
+);
+SELECT public.recompute_student_financial_status(
+  candidate.tenant_id,
+  candidate.id
+)
+FROM (
+  SELECT profile.tenant_id, profile.id
+  FROM public.profiles as profile
+ WHERE profile.role = 'STUDENT'
+   AND profile.tenant_id is not null
+   AND pg_catalog.lower(pg_catalog.btrim(coalesce(
+     profile.lifecycle_status,
+     ''
+   ))) = 'active'
+   AND pg_catalog.upper(pg_catalog.btrim(coalesce(
+     profile.status_financial,
+     ''
+   ))) <> 'ARCHIVED'
+   AND exists (
+     SELECT 1
+       FROM public.student_payments as payment
+      WHERE payment.tenant_id = profile.tenant_id
+        AND payment.student_id = profile.id
+        AND payment.due_date <= current_date
+        AND pg_catalog.upper(pg_catalog.btrim(coalesce(
+          payment.status,
+          ''
+        ))) in (
+          'OVERDUE',
+          'RECEIVED',
+          'RECEIVED_IN_CASH',
+          'PAGO',
+          'PAYMENT_RECEIVED',
+          'PAYMENT_RECEIVED_IN_CASH',
+          'REFUNDED',
+          'REVERSED'
+        )
+   )
+) as candidate;
