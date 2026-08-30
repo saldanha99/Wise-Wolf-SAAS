@@ -488,6 +488,8 @@ as $function$
   end
 $function$;
 
+alter function private.canonical_payment_notification_kind(text)
+  owner to postgres;
 revoke all on function private.canonical_payment_notification_kind(text)
   from public, anon, authenticated, service_role;
 
@@ -520,6 +522,8 @@ begin
 end;
 $function$;
 
+alter function private.normalize_notification_phone(text)
+  owner to postgres;
 revoke all on function private.normalize_notification_phone(text)
   from public, anon, authenticated, service_role;
 
@@ -641,6 +645,8 @@ begin
 end;
 $function$;
 
+alter function private.merge_notification_delivery_status(text,text)
+  owner to postgres;
 revoke all on function private.merge_notification_delivery_status(text,text)
   from public, anon, authenticated;
 grant execute on function private.merge_notification_delivery_status(text,text)

@@ -48,6 +48,25 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  (
+    select pg_catalog.pg_get_userbyid(proowner) = 'postgres'
+    from pg_catalog.pg_proc
+    where oid = 'private.canonical_payment_notification_kind(text)'::regprocedure
+  )
+  and (
+    select pg_catalog.pg_get_userbyid(proowner) = 'postgres'
+    from pg_catalog.pg_proc
+    where oid = 'private.normalize_notification_phone(text)'::regprocedure
+  )
+  and (
+    select pg_catalog.pg_get_userbyid(proowner) = 'postgres'
+    from pg_catalog.pg_proc
+    where oid = 'private.merge_notification_delivery_status(text,text)'::regprocedure
+  ),
+  'helpers privados do worker nao pertencem ao owner SECURITY DEFINER'
+);
+
+select pg_temp.assert_true(
   has_function_privilege(
     'service_role',
     'public.claim_notification_delivery_batch(integer,integer)',

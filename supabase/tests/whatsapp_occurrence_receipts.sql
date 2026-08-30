@@ -15,6 +15,15 @@ $$;
 grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 select pg_temp.assert_true(
+  (
+    select pg_catalog.pg_get_userbyid(proowner) = 'postgres'
+    from pg_catalog.pg_proc
+    where oid = 'private.canonicalize_notification_queue_kind()'::regprocedure
+  ),
+  'trigger canonico da fila nao pertence ao owner esperado'
+);
+
+select pg_temp.assert_true(
   to_regprocedure(
     'public.begin_notification_delivery_submission(uuid,uuid,text,text,text,text,uuid,bigint)'
   ) is not null

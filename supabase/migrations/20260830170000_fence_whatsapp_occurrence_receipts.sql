@@ -17,6 +17,8 @@ begin
 end;
 $function$;
 
+alter function private.canonicalize_notification_queue_kind()
+  owner to postgres;
 revoke all on function private.canonicalize_notification_queue_kind()
   from public, anon, authenticated, service_role;
 
