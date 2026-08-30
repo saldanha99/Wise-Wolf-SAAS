@@ -165,6 +165,11 @@ insert into public.financial_transactions (
     'Software operacional do teste', '2026-07-15 12:00:00+00', '6.2.01'
   );
 
+-- RESET de custom GUC pode deixar uma string vazia em conexoes internas. O
+-- fechamento deve tratar isso como ausencia de claims, sem tentar converter
+-- uma string vazia em JSON.
+set local request.jwt.claims = '';
+
 select public.refresh_monthly_payment_closure_financial(
   'monthly-close-school', '2026-07-01'
 );
