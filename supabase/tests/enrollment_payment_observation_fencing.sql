@@ -225,7 +225,9 @@ insert into observation_results values (
     '10000000-0000-4000-8000-00000000e50f',
     'pay_legacy_disabled_prorata',
     'cus_enrollment_observation',
-    'sub_disabled_prorata',
+    -- Subscription identity belongs only to SUBSCRIPTION_ACTIVATION events;
+    -- the stale binding under test remains confined to the offer metadata.
+    null,
     'PRO_RATA',
     'SETTLED',
     84.52,
