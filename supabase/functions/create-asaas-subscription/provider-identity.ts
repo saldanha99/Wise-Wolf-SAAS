@@ -88,10 +88,30 @@ const PENDING_LEDGER_PROVIDER_STATUSES = new Set([
   "AUTHORIZED",
 ]);
 
+const PROVIDER_STATUSES_WITHOUT_CREDIT_DATE = new Set([
+  ...PENDING_LEDGER_PROVIDER_STATUSES,
+  "REPROVED_BY_RISK_ANALYSIS",
+  "CANCELED",
+  "CANCELLED",
+  "DELETED",
+  "BANK_SLIP_CANCELLED",
+  "CREDIT_CARD_CAPTURE_REFUSED",
+  "RECEIVED_IN_CASH",
+  "RECEIVED_IN_CASH_UNDONE",
+]);
+
 export function providerPaymentCanStartPendingLedger(
   providerStatus: unknown,
 ): boolean {
   return PENDING_LEDGER_PROVIDER_STATUSES.has(
+    normalizedText(providerStatus).toUpperCase(),
+  );
+}
+
+export function providerPaymentStatusRejectsCreditDate(
+  providerStatus: unknown,
+): boolean {
+  return PROVIDER_STATUSES_WITHOUT_CREDIT_DATE.has(
     normalizedText(providerStatus).toUpperCase(),
   );
 }

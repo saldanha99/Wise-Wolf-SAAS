@@ -68,4 +68,31 @@ describe('<DirectorPendingCenter />', () => {
     fireEvent.click(pendingButton);
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('student-payments'));
   });
+
+  it('leva pagamentos sem aluno e divergências do Asaas às filas corretas', async () => {
+    rpc.mockResolvedValue({
+      data: { pagamentos_sem_aluno: 2, conciliacao_asaas: 3 },
+      error: null,
+    });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    const unlinked = await screen.findByRole('button', {
+      name: /Pagamentos aguardando identificação do aluno/i,
+    });
+    const reconciliation = screen.getByRole('button', {
+      name: /Divergências atuais entre Asaas e plataforma/i,
+    });
+    expect(unlinked).toHaveTextContent('2');
+    expect(reconciliation).toHaveTextContent('3');
+
+    fireEvent.click(unlinked);
+    fireEvent.click(reconciliation);
+    await waitFor(() => {
+      expect(onNavigate).toHaveBeenCalledTimes(2);
+      expect(onNavigate).toHaveBeenNthCalledWith(1, 'reconciliation');
+      expect(onNavigate).toHaveBeenNthCalledWith(2, 'reconciliation');
+    });
+  });
 });

@@ -14,6 +14,7 @@ import {
   occupiesProviderReference,
   providerPaymentCanStartPendingLedger,
   providerPaymentLedgerStatusMatches,
+  providerPaymentStatusRejectsCreditDate,
   resolveProviderCustomerCandidate,
   resolveProviderPaymentCandidate,
   resolveProviderSubscriptionCandidate,
@@ -290,6 +291,26 @@ Deno.test("decisive provider states cannot be invented as a pending local ledger
     !providerPaymentLedgerStatusMatches("REFUNDED", "PENDING"),
     "a refund can never be represented as pending",
   );
+  for (
+    const status of [
+      "PENDING",
+      "AWAITING_RISK_ANALYSIS",
+      "REPROVED_BY_RISK_ANALYSIS",
+      "CANCELLED",
+      "RECEIVED_IN_CASH",
+    ]
+  ) {
+    assert(
+      providerPaymentStatusRejectsCreditDate(status),
+      `${status} cannot carry an Asaas bank credit date`,
+    );
+  }
+  for (const status of ["RECEIVED", "REFUNDED", "PARTIALLY_REFUNDED"]) {
+    assert(
+      !providerPaymentStatusRejectsCreditDate(status),
+      `${status} may preserve a proven historical bank credit date`,
+    );
+  }
 });
 
 Deno.test("subscription recovery validates identity, schedule and duration", () => {

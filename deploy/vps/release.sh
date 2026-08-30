@@ -1109,6 +1109,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830192410_harden_conflict_alert_submission_recovery.sql"
   "supabase/migrations/20260830192430_surface_management_payment_notification_attention.sql"
   "supabase/migrations/20260830221000_allow_legacy_recurring_subscription_repricing.sql"
+  "supabase/migrations/20260830223000_repair_authoritative_unlinked_student_payments.sql"
+  "supabase/migrations/20260830223100_surface_asaas_reconciliation_attention.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -1184,6 +1186,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/student_lifecycle_mutation_fencing.sql"
   "supabase/tests/student_offboarding_billing_policy.sql"
   "supabase/tests/legacy_recurring_payment_binding_repair.sql"
+  "supabase/tests/authoritative_legacy_payment_repairs.sql"
   "supabase/tests/hub_provider_operations.sql"
   "supabase/tests/student_financial_status_aggregation.sql"
   "supabase/tests/wolfie_topup_provider_identity.sql"

@@ -17,6 +17,36 @@ describe('verdade e segurança da UI financeira', () => {
     const report = read('components/FinancialReport.tsx');
     expect(report).toContain('paymentDate: formatLocalDateBr(p.payment_date');
     expect(report).toContain('Recebido {receipt.paymentDate}');
+    expect(report).toContain(".gte('occurred_at', startDateStr)");
+  });
+
+  it('não esconde pagamentos que ainda aguardam vínculo com um aluno', () => {
+    for (const path of ['components/AdminPaymentsList.tsx', 'components/FinancialReport.tsx']) {
+      const source = read(path);
+      expect(source).not.toContain('profiles!inner');
+      expect(source).toContain(".eq('tenant_id', tenantId)");
+      expect(source).toContain('Sem aluno vinculado');
+    }
+  });
+
+  it('expõe a fila atual de divergências do Asaas ao diretor', () => {
+    const reconciliation = read('components/FinancialReconciliation.tsx');
+    expect(reconciliation).toContain("supabase.rpc('asaas_reconciliation_attention')");
+    expect(reconciliation).toContain('Asaas e plataforma precisam de conferência');
+
+    const pendingCenter = read('components/DirectorPendingCenter.tsx');
+    expect(pendingCenter).toContain("key: 'pagamentos_sem_aluno'");
+    expect(pendingCenter).toContain("key: 'conciliacao_asaas'");
+  });
+
+  it('mantém controles e tabelas financeiras utilizáveis em telas estreitas', () => {
+    const payments = read('components/AdminPaymentsList.tsx');
+    expect(payments).toContain('flex w-full flex-col gap-2 sm:w-auto sm:flex-row');
+    expect(payments).toContain('aria-label="Atualizar pagamentos"');
+
+    const report = read('components/FinancialReport.tsx');
+    expect(report).toContain('max-h-[400px] overflow-auto');
+    expect(report).toContain('Movimentação sem classificação');
   });
 
   it('mantém o desligamento navegável e legível em 320px', () => {

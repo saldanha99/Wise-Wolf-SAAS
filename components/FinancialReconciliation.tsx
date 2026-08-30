@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     AlertTriangle, ArrowUpRight, CalendarClock, CalendarX, Check, CheckCircle2, Copy,
@@ -112,30 +112,52 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
     const [dados, setDados] = useState<any>(null);
     const [renovacao, setRenovacao] = useState<any>(null);
     const [ofertas, setOfertas] = useState<any>(null);
+    const [asaas, setAsaas] = useState<any>(null);
+    const [asaasErro, setAsaasErro] = useState('');
     const [copiado, setCopiado] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [erro, setErro] = useState('');
+    const requestSequence = useRef(0);
 
     const carregar = async () => {
+        const sequence = ++requestSequence.current;
         setLoading(true);
         setErro('');
-        const [recon, renov, ofer] = await Promise.all([
+        setAsaasErro('');
+        setDados(null);
+        setRenovacao(null);
+        setOfertas(null);
+        setAsaas(null);
+        const [recon, renov, ofer, asaasAttention] = await Promise.all([
             supabase.rpc('financial_reconciliation', { p_tenant: tenantId ?? null }),
             supabase.rpc('contratos_para_renovar', { p_tenant: tenantId ?? null }),
             // Janela ampla aqui: a tela mostra tudo que vence em 90 dias para o
             // diretor se organizar. O envio automático usa `dias_antes`.
             supabase.rpc('ofertas_de_renovacao', { p_tenant: tenantId ?? null, p_dias: 90 }),
+            supabase.rpc('asaas_reconciliation_attention'),
         ]);
+        if (sequence !== requestSequence.current) return;
         if (!ofer.error && !ofer.data?.error) setOfertas(ofer.data);
         if (recon.error) setErro(recon.error.message);
         else if (recon.data?.error) setErro(recon.data.error === 'sem_permissao' ? 'Sem permissão.' : String(recon.data.error));
         else setDados(recon.data);
         // Renovação é acessória: falha aqui não pode esconder a reconciliação.
         if (!renov.error && !renov.data?.error) setRenovacao(renov.data);
+        if (asaasAttention.error || asaasAttention.data?.error) {
+            setAsaasErro('Não foi possível conferir o Asaas agora. Tente novamente.');
+        } else if (asaasAttention.data?.audit_available !== true) {
+            setAsaas(asaasAttention.data);
+            setAsaasErro('A auditoria operacional do Asaas ainda não foi concluída. Os pagamentos sem aluno continuam visíveis abaixo.');
+        } else {
+            setAsaas(asaasAttention.data);
+        }
         setLoading(false);
     };
 
-    useEffect(() => { carregar(); }, [tenantId]);
+    useEffect(() => {
+        carregar();
+        return () => { requestSequence.current += 1; };
+    }, [tenantId]);
 
     if (loading) {
         return (
@@ -156,13 +178,14 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
     const semNf = b('pago_sem_nf');
     const paradoNf = b('parado_com_nf');
     const naoLancada = b('aula_nao_lancada');
+    const divergenciasAsaas = asaas || { itens: [], qtd: 0, total: 0 };
 
     const r = (k: string) => renovacao?.[k] || { itens: [], qtd: 0, mensal: 0 };
     const vencendo = r('vencendo');
     const encerrado = r('encerrado');
 
-    const totalPendencias = [semCobertura, semEstudar, arquivado, semNf, paradoNf, naoLancada, vencendo, encerrado]
-        .reduce((s, x) => s + (x.qtd || 0), 0);
+    const totalPendencias = [semCobertura, semEstudar, arquivado, semNf, paradoNf, naoLancada, vencendo, encerrado, divergenciasAsaas]
+        .reduce((s, x) => s + (x.qtd || 0), 0) + (asaasErro ? 1 : 0);
 
     return (
         <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
@@ -182,6 +205,22 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                 </button>
             </header>
 
+            {asaasErro && (
+                <div role="alert" className="flex items-start gap-3 rounded-3xl border border-red-500/40 bg-red-500/5 p-5 text-sm font-bold text-brand-text">
+                    <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-500" />
+                    <div>
+                        <p>{asaasErro}</p>
+                        <button
+                            type="button"
+                            onClick={carregar}
+                            className="mt-3 rounded-xl border border-brand-border bg-brand-surface px-3 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted hover:text-brand-text"
+                        >
+                            Tentar novamente
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {totalPendencias === 0 ? (
                 <div className="flex items-center gap-3 rounded-3xl border border-emerald-500/40 bg-emerald-500/5 p-6">
                     <CheckCircle2 size={20} className="text-emerald-500" />
@@ -189,6 +228,24 @@ const FinancialReconciliation: React.FC<FinancialReconciliationProps> = ({ tenan
                 </div>
             ) : (
                 <>
+                    <Bloco
+                        icone={<AlertTriangle size={15} className="text-red-500" />}
+                        titulo="Asaas e plataforma precisam de conferência"
+                        porque="A auditoria automática mostra somente as divergências atuais. Pagamentos sem aluno ficam separados para ninguém atribuir receita ou dívida à pessoa errada."
+                        qtd={Number(divergenciasAsaas.qtd || 0)}
+                        valor={Number(divergenciasAsaas.total || 0)}
+                        valorRotulo="sob conferência"
+                        tom="critico"
+                    >
+                        <Tabela
+                            colunas={['Aluno', 'Referência', 'Situação', 'Vencimento', 'Valor', 'Problema']}
+                            linhas={(divergenciasAsaas.itens || []).map((i: any) => [
+                                i.aluno || 'Sem aluno vinculado', i.referencia || '—', i.status || '—',
+                                i.vencimento || '—', brl(i.valor || 0), i.problema || 'Revisão necessária',
+                            ])}
+                        />
+                    </Bloco>
+
                     <Bloco
                         icone={<Wallet size={15} className="text-red-500" />}
                         titulo="Aula entregue além do que foi pago"

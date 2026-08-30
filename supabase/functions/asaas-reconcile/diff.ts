@@ -1,3 +1,5 @@
+import { providerPaymentStatusRejectsCreditDate } from "../create-asaas-subscription/provider-identity.ts";
+
 export type Severity = "INFO" | "WARNING" | "HIGH" | "CRITICAL";
 
 export type ReconciliationIssue = {
@@ -14,6 +16,7 @@ export type ReconciliationIssue = {
 export type ProviderPayment = {
   id: string;
   customer?: string | null;
+  subscription?: string | null;
   externalReference?: string | null;
   status?: string | null;
   value?: number | null;
@@ -191,6 +194,7 @@ function addIssue(
 export function buildReconciliationIssues(input: {
   windowStart: string;
   windowEnd: string;
+  referenceTenantId?: string | null;
   providerPayments: ProviderPayment[];
   localPayments: LocalPayment[];
   statement: ProviderStatementEntry[];
@@ -260,7 +264,7 @@ export function buildReconciliationIssues(input: {
       continue;
     }
     addIssue(issues, {
-      tenant_id: null,
+      tenant_id: input.referenceTenantId || null,
       source: "PAYMENT",
       kind: "LOCAL_PAYMENT_PROVIDER_ID_COLLISION",
       severity: "CRITICAL",
@@ -278,7 +282,7 @@ export function buildReconciliationIssues(input: {
   for (const [customerId, candidates] of input.studentByCustomerId) {
     if (candidates.length <= 1) continue;
     addIssue(issues, {
-      tenant_id: null,
+      tenant_id: input.referenceTenantId || null,
       source: "PAYMENT",
       kind: "LOCAL_CUSTOMER_IDENTITY_COLLISION",
       severity: "CRITICAL",
@@ -317,6 +321,35 @@ export function buildReconciliationIssues(input: {
       local_entity_id: null,
       fingerprint: `product-payment-reference-collision:${externalReference}`,
       details: { externalReference, candidates },
+    });
+  }
+
+  for (const [providerId, studentPayments] of localCandidatesByProviderId) {
+    const productPayments = input.productPaymentByProviderId.get(providerId) ||
+      [];
+    if (productPayments.length === 0) continue;
+    const tenantIds = [
+      ...new Set(
+        studentPayments.map((payment) => payment.tenant_id).filter(Boolean),
+      ),
+    ];
+    addIssue(issues, {
+      tenant_id: tenantIds.length === 1
+        ? tenantIds[0] || null
+        : input.referenceTenantId || null,
+      source: "PAYMENT",
+      kind: "STUDENT_AND_PRODUCT_PAYMENT_PROVIDER_ID_COLLISION",
+      severity: "CRITICAL",
+      provider_entity_id: providerId,
+      local_entity_id: studentPayments.length === 1
+        ? studentPayments[0].id
+        : null,
+      fingerprint:
+        `student-product-payment-provider-id-collision:${providerId}`,
+      details: {
+        studentPaymentIds: studentPayments.map((payment) => payment.id),
+        productPayments,
+      },
     });
   }
 
@@ -403,7 +436,8 @@ export function buildReconciliationIssues(input: {
         ? canonicalStudentCandidates[0]
         : null;
       addIssue(issues, {
-        tenant_id: canonicalStudent?.tenantId || null,
+        tenant_id: canonicalStudent?.tenantId || input.referenceTenantId ||
+          null,
         source: "PAYMENT",
         kind: "PROVIDER_PAYMENT_MISSING_LOCAL",
         severity: provider.status === "RECEIVED" ? "HIGH" : "WARNING",
@@ -420,7 +454,7 @@ export function buildReconciliationIssues(input: {
       });
       if (!canonicalStudent) {
         addIssue(issues, {
-          tenant_id: null,
+          tenant_id: input.referenceTenantId || null,
           source: "PAYMENT",
           kind: "PROVIDER_CUSTOMER_UNRESOLVED",
           severity: "CRITICAL",
@@ -433,12 +467,27 @@ export function buildReconciliationIssues(input: {
       continue;
     }
 
-    if (!local.tenant_id || !local.student_id) {
+    const localAccountingStatusForBinding = String(local.status || "")
+      .trim().toUpperCase();
+    if (
+      (!local.tenant_id || !local.student_id) &&
+      !["CANCELLED", "NAO_RECEITA"].includes(
+        localAccountingStatusForBinding,
+      )
+    ) {
+      const unlinkedSettledPayment = Boolean(local.tenant_id) &&
+        !local.student_id &&
+        ["RECEIVED", "RECEIVED_IN_CASH"].includes(
+          localAccountingStatusForBinding,
+        );
       addIssue(issues, {
         tenant_id: local.tenant_id || null,
         source: "PAYMENT",
         kind: "PAYMENT_TENANT_OR_STUDENT_UNRESOLVED",
-        severity: "CRITICAL",
+        // Settled cash without a student is an intentional manual-review
+        // queue: guessing ownership would be worse than leaving it unlinked.
+        // Missing tenant or an open recurring debt remains critical.
+        severity: unlinkedSettledPayment ? "HIGH" : "CRITICAL",
         provider_entity_id: provider.id,
         local_entity_id: local.id,
         fingerprint: `payment-unresolved:${provider.id}`,
@@ -612,35 +661,65 @@ export function buildReconciliationIssues(input: {
       });
     }
 
-    const providerCreditDate = dateOnly(provider.creditDate);
     const localCreditDate = dateOnly(local.credited_at);
-    if (provider.status === "RECEIVED" && !providerCreditDate) {
+    if (
+      providerPaymentStatusRejectsCreditDate(provider.status) &&
+      localCreditDate
+    ) {
       addIssue(issues, {
         tenant_id: local.tenant_id || null,
         source: "PAYMENT",
-        kind: "CREDIT_DATE_MISSING",
-        severity: provider.billingType === "CREDIT_CARD" ? "HIGH" : "WARNING",
-        provider_entity_id: provider.id,
-        local_entity_id: local.id,
-        fingerprint: `credit-date-provider-missing:${provider.id}`,
-        details: {
-          billingType: provider.billingType || null,
-          paymentDate: provider.paymentDate || null,
-        },
-      });
-    } else if (providerCreditDate !== localCreditDate) {
-      addIssue(issues, {
-        tenant_id: local.tenant_id || null,
-        source: "PAYMENT",
-        kind: localCreditDate
-          ? "CREDIT_DATE_MISMATCH"
-          : "LOCAL_CREDIT_DATE_MISSING",
+        kind: "LOCAL_CREDIT_DATE_WITHOUT_PROVIDER_CREDIT",
         severity: "HIGH",
         provider_entity_id: provider.id,
         local_entity_id: local.id,
-        fingerprint: `credit-date-local:${provider.id}`,
-        details: { providerCreditDate, localCreditDate },
+        fingerprint: `credit-date-without-provider-receipt:${provider.id}`,
+        details: {
+          providerStatus: provider.status || null,
+          providerCreditDate: dateOnly(provider.creditDate),
+          localCreditDate,
+        },
       });
+    }
+
+    // CONFIRMED means authorized/confirmed, not cash available. Asaas may
+    // expose a future creditDate for cards in this state; local credited_at
+    // must remain null until RECEIVED.
+    const providerHasHistoricCash = provider.status === "RECEIVED" ||
+      (provider.status === "REFUNDED" && Boolean(
+        localCreditDate ||
+          (input.grossLedgerByPaymentId.get(local.id) || []).length,
+      ));
+    if (providerHasHistoricCash) {
+      const providerCreditDate = dateOnly(provider.creditDate);
+      if (!providerCreditDate && provider.status === "RECEIVED") {
+        addIssue(issues, {
+          tenant_id: local.tenant_id || null,
+          source: "PAYMENT",
+          kind: "CREDIT_DATE_MISSING",
+          severity: provider.billingType === "CREDIT_CARD" ? "HIGH" : "WARNING",
+          provider_entity_id: provider.id,
+          local_entity_id: local.id,
+          fingerprint: `credit-date-provider-missing:${provider.id}`,
+          details: {
+            billingType: provider.billingType || null,
+            paymentDate: provider.paymentDate || null,
+          },
+        });
+      } else if (providerCreditDate !== localCreditDate) {
+        addIssue(issues, {
+          tenant_id: local.tenant_id || null,
+          source: "PAYMENT",
+          kind: localCreditDate
+            ? "CREDIT_DATE_MISMATCH"
+            : "LOCAL_CREDIT_DATE_MISSING",
+          severity: "HIGH",
+          provider_entity_id: provider.id,
+          local_entity_id: local.id,
+          fingerprint: `credit-date-local:${provider.id}`,
+          details: { providerCreditDate, localCreditDate },
+        });
+      }
     }
 
     const providerRefundedAmount =
@@ -1073,7 +1152,7 @@ export function buildReconciliationIssues(input: {
     const local = localByProviderId.get(paymentId);
     if (!local) {
       addIssue(issues, {
-        tenant_id: null,
+        tenant_id: input.referenceTenantId || null,
         source: "STATEMENT",
         kind: isRefund
           ? "STATEMENT_REFUND_MISSING_LOCAL_PAYMENT"
@@ -1103,7 +1182,15 @@ export function buildReconciliationIssues(input: {
 
     const statementDate = dateOnly(entry.date);
     const creditedDate = dateOnly(local.credited_at);
-    if (statementDate !== creditedDate) {
+    const providerCreditDate = dateOnly(providerSnapshot?.creditDate);
+    const statementOnlyCorroboratesMissingLocalCredit = !creditedDate &&
+      providerSnapshot?.status === "RECEIVED" &&
+      Boolean(statementDate) &&
+      statementDate === providerCreditDate;
+    if (
+      statementDate !== creditedDate &&
+      !statementOnlyCorroboratesMissingLocalCredit
+    ) {
       addIssue(issues, {
         tenant_id: local.tenant_id || null,
         source: "STATEMENT",
@@ -1439,6 +1526,24 @@ export function buildReconciliationIssues(input: {
       }
       continue;
     }
+    const providerReference = String(provider.externalReference || "").trim();
+    const localReference = String(local.external_reference || "").trim();
+    if (providerReference !== localReference) {
+      addIssue(issues, {
+        tenant_id: local.tenant_id,
+        source: "TRANSFER",
+        kind: "TRANSFER_REFERENCE_MISMATCH",
+        severity: "CRITICAL",
+        provider_entity_id: provider.id || null,
+        local_entity_id: local.id,
+        fingerprint: `transfer-reference:${local.id}`,
+        details: {
+          providerReference: providerReference || null,
+          expectedReference: localReference || null,
+          matchedByProviderId: byId.length === 1,
+        },
+      });
+    }
     if (cents(provider.value) !== cents(local.expected_amount)) {
       addIssue(issues, {
         tenant_id: local.tenant_id,
@@ -1500,7 +1605,7 @@ export function buildReconciliationIssues(input: {
       !localTransferReferences.has(reference)
     ) {
       addIssue(issues, {
-        tenant_id: null,
+        tenant_id: input.referenceTenantId || null,
         source: "TRANSFER",
         kind: "PROVIDER_TRANSFER_MISSING_LOCAL_ATTEMPT",
         severity: "CRITICAL",

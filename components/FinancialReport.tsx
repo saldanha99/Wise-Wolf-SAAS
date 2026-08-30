@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   DollarSign,
   FileText,
@@ -10,7 +10,8 @@ import {
   Download,
   Wallet,
   ArrowUpRight,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { formatLocalDateBr, localMonth } from '../lib/dateUtils';
@@ -36,10 +37,20 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
   const [teachersFinancials, setTeachersFinancials] = useState<any[]>([]);
   const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(localMonth());
+  const [errorMessage, setErrorMessage] = useState('');
+  const requestSequence = useRef(0);
 
   const fetchFinancialData = async () => {
-    if (!tenantId) return;
+    const sequence = ++requestSequence.current;
+    if (!tenantId) {
+      setLoading(false);
+      setErrorMessage('Escola não identificada.');
+      return;
+    }
     setLoading(true);
+    setErrorMessage('');
+    setTeachersFinancials([]);
+    setStudentReceipts([]);
     try {
       const startOfMonth = `${selectedMonth}-01`;
       const startDate = new Date(`${startOfMonth}T00:00:00`);
@@ -49,12 +60,13 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
       const startDateStr = startDate.toISOString();
 
       // 1. REAL Revenue from FINANCIAL TRANSACTIONS (Official Ledger) - Matches Dashboard
-      const { data: transactions } = await supabase
+      const { data: transactions, error: transactionsError } = await supabase
         .from('financial_transactions')
         .select('*')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDateStr)
-        .lt('created_at', endDateStr);
+        .gte('occurred_at', startDateStr)
+        .lt('occurred_at', endDateStr);
+      if (transactionsError) throw transactionsError;
 
       const totalRevenue = (transactions || [])
         .filter(t => t.type === 'ENTRADA')
@@ -65,16 +77,18 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
 
       // 2. Teacher Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
-      const { data: teachersData } = await supabase.rpc('get_tenant_teacher_pay');
+      const { data: teachersData, error: teachersError } = await supabase.rpc('get_tenant_teacher_pay');
+      if (teachersError) throw teachersError;
 
       const teacherRates = new Map((teachersData as any[] || []).map((t: any) => [t.id, t.hourly_rate || 0]));
 
-      const { data: logs } = await supabase
+      const { data: logs, error: logsError } = await supabase
         .from('class_logs')
         .select('teacher_id, presence, subtype')
         .eq('tenant_id', tenantId)
         .gte('created_at', startDateStr)
         .lt('created_at', endDateStr);
+      if (logsError) throw logsError;
 
       // Calculate Payroll per Teacher
       const teacherStats = new Map<string, { lessons: number, owed: number }>();
@@ -100,22 +114,25 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
       });
 
       // 3. Student Receivables (List)
-      const { data: payments } = await supabase
+      const { data: payments, error: paymentsError } = await supabase
         .from('student_payments')
         .select(`
-          id, value, amount_cents, status, due_date, payment_date,
-          profiles!inner (id, full_name, tenant_id)
+          id, student_id, tenant_id, value, amount_cents, status, due_date, payment_date,
+          profiles (id, full_name, tenant_id)
         `)
-        .eq('profiles.tenant_id', tenantId)
+        .eq('tenant_id', tenantId)
         .gte('due_date', startDateStr)
         .lt('due_date', endDateStr)
         .order('due_date', { ascending: true });
+      if (paymentsError) throw paymentsError;
 
       // 4. Forecast (Active Students)
-      const { data: studentBilling } = await supabase.rpc(
+      const { data: studentBilling, error: studentBillingError } = await supabase.rpc(
         'get_authorized_student_billing_summary',
         { p_tenant_id: tenantId },
       );
+      if (studentBillingError) throw studentBillingError;
+      if (sequence !== requestSequence.current) return;
       const studentsFee = (studentBilling || []).filter(
         (student: any) => student.status_financial === 'ACTIVE',
       );
@@ -150,33 +167,50 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
       // UI Mapping for Receipts
       const mappedReceipts = (payments || []).map((p: any) => ({
         id: p.id,
-        name: p.profiles?.full_name,
+        name: p.profiles?.full_name || 'Sem aluno vinculado',
         amount: (p.amount_cents ? p.amount_cents / 100 : p.value),
         status: p.status,
         dueDate: formatLocalDateBr(p.due_date),
         paymentDate: formatLocalDateBr(p.payment_date, 'data não informada'),
         isPaid: isSettledStudentPayment(p.status),
         isAwaitingCredit: isStudentPaymentAwaitingCredit(p.status),
-        student_id: p.profiles?.id,
-        tenant_id: p.profiles?.tenant_id
+        isUnlinked: !p.student_id,
+        student_id: p.student_id || p.profiles?.id,
+        tenant_id: p.tenant_id
       }));
       setStudentReceipts(mappedReceipts);
 
     } catch (error) {
       console.error('Error fetching admin financial data:', error);
+      if (sequence === requestSequence.current) {
+        setErrorMessage('Não foi possível carregar o financeiro. Os valores não foram zerados; tente novamente.');
+      }
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchFinancialData();
+    return () => { requestSequence.current += 1; };
   }, [tenantId, selectedMonth]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <RefreshCw className="animate-spin text-tenant-primary" size={32} />
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div role="alert" className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-3xl border border-red-500/40 bg-red-500/5 p-8 text-center">
+        <AlertTriangle className="text-red-500" size={28} />
+        <p className="max-w-lg text-sm font-bold text-brand-text">{errorMessage}</p>
+        <button type="button" onClick={fetchFinancialData} className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted">
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -308,8 +342,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
 
             {/* Botão legado 'Corrigir Lançamentos' removido em 03/07/2026: criava linhas sem vínculo/data no caixa; o trigger + reconcile-ledger cobrem a conciliação. */}
           </div>
-          <div className="overflow-y-auto max-h-[400px] custom-scrollbar">
-            <table className="w-full">
+          <div className="max-h-[400px] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-brand-surface-2 text-[10px] uppercase font-black text-brand-muted border-b border-brand-border">
                 <tr>
                   <th className="px-8 py-4 text-left">Aluno</th>
@@ -323,7 +357,9 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                     <td className="px-8 py-5">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-brand-text">{receipt.name}</span>
-                        <span className="text-[9px] font-black text-brand-muted uppercase tracking-tighter">Mensalidade</span>
+                        <span className="text-[9px] font-black text-brand-muted uppercase tracking-tighter">
+                          {receipt.isUnlinked ? 'Movimentação sem classificação' : 'Mensalidade'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-8 py-5">
@@ -366,8 +402,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
               Audit <FileText size={16} className="text-brand-accent" />
             </button>
           </div>
-          <div className="overflow-y-auto max-h-[400px] custom-scrollbar">
-            <table className="w-full">
+          <div className="max-h-[400px] overflow-auto custom-scrollbar">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-brand-surface-2 text-[10px] uppercase font-black text-brand-muted border-b border-brand-border">
                 <tr>
                   <th className="px-8 py-4 text-left">Professor</th>

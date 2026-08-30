@@ -76,6 +76,7 @@ Deno.test(
   () => {
     const issues = buildReconciliationIssues({
       ...empty,
+      referenceTenantId: "school-wise-wolf",
       providerPayments: [
         {
           id: "pay_missing",
@@ -87,9 +88,18 @@ Deno.test(
       localPayments: [],
     });
     if (
-      !issues.some((issue) => issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL")
+      !issues.some((issue) =>
+        issue.kind === "PROVIDER_PAYMENT_MISSING_LOCAL" &&
+        issue.tenant_id === "school-wise-wolf"
+      ) ||
+      !issues.some((issue) =>
+        issue.kind === "PROVIDER_CUSTOMER_UNRESOLVED" &&
+        issue.tenant_id === "school-wise-wolf"
+      )
     ) {
-      throw new Error("missing provider payment was hidden");
+      throw new Error(
+        "missing root-account payment was hidden from its tenant",
+      );
     }
   },
 );
@@ -241,6 +251,49 @@ Deno.test("identity collisions are critical instead of silently collapsed", () =
 });
 
 Deno.test(
+  "a provider payment cannot satisfy a student debt and a product sale",
+  () => {
+    const providerId = "pay_shared_student_product";
+    const localId = "10000000-0000-4000-8000-000000000021";
+    const issues = buildReconciliationIssues({
+      ...empty,
+      referenceTenantId: "school-wise-wolf",
+      providerPayments: [{
+        id: providerId,
+        externalReference: "hub:10000000-0000-4000-8000-000000000022",
+        status: "RECEIVED",
+        value: 169,
+      }],
+      localPayments: [{
+        id: localId,
+        tenant_id: "school-wise-wolf",
+        student_id: "student-shared-provider",
+        asaas_payment_id: providerId,
+        status: "RECEIVED",
+        provider_status: "RECEIVED",
+        value: 169,
+      }],
+      productPaymentByProviderId: new Map([
+        [providerId, [{
+          family: "HUB",
+          localEntityId: "10000000-0000-4000-8000-000000000022",
+          externalReference: "hub:10000000-0000-4000-8000-000000000022",
+        }]],
+      ]),
+    });
+    const collision = issues.find((issue) =>
+      issue.kind === "STUDENT_AND_PRODUCT_PAYMENT_PROVIDER_ID_COLLISION"
+    );
+    if (
+      !collision || collision.severity !== "CRITICAL" ||
+      collision.tenant_id !== "school-wise-wolf"
+    ) {
+      throw new Error("cross-ledger provider id collision was hidden");
+    }
+  },
+);
+
+Deno.test(
   "NAO_RECEITA compares provider_status and preserves its non-revenue ledger",
   () => {
     const localId = "00000000-0000-4000-8000-000000000001";
@@ -337,6 +390,321 @@ Deno.test(
     }
     if (!kinds.has("LEDGER_FLAG_MISMATCH")) {
       throw new Error("lying flag missed");
+    }
+  },
+);
+
+Deno.test(
+  "CONFIRMED card with future credit date is not treated as received cash",
+  () => {
+    const localId = "00000000-0000-4000-8000-000000000082";
+    const issues = buildReconciliationIssues({
+      ...empty,
+      providerPayments: [{
+        id: "pay_confirmed_future_credit",
+        customer: "cus_confirmed",
+        status: "CONFIRMED",
+        value: 315,
+        dueDate: "2026-08-28",
+        paymentDate: "2026-08-28",
+        creditDate: "2026-09-14",
+        billingType: "CREDIT_CARD",
+      }],
+      localPayments: [{
+        id: localId,
+        tenant_id: "school",
+        student_id: "student-confirmed",
+        asaas_payment_id: "pay_confirmed_future_credit",
+        value: 315,
+        status: "CONFIRMED",
+        provider_status: "CONFIRMED",
+        due_date: "2026-08-28",
+        payment_date: "2026-08-28",
+        credited_at: null,
+        paid_at: null,
+        refunded_amount: 0,
+        ledger_entry_created: false,
+      }],
+      customerByStudentId: new Map([
+        ["student-confirmed", "cus_confirmed"],
+      ]),
+    });
+    const creditIssues = issues.filter((issue) =>
+      issue.kind.includes("CREDIT_DATE")
+    );
+    if (creditIssues.length > 0) {
+      throw new Error(
+        `future confirmed credit produced cash issue: ${
+          creditIssues.map((issue) => issue.kind).join(",")
+        }`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "pre-cash provider status rejects an invented local credit marker",
+  () => {
+    for (
+      const [index, status] of [
+        "CONFIRMED",
+        "AWAITING_RISK_ANALYSIS",
+        "AUTHORIZED",
+        "REPROVED_BY_RISK_ANALYSIS",
+        "CANCELLED",
+        "RECEIVED_IN_CASH",
+      ].entries()
+    ) {
+      const localId = `00000000-0000-4000-8000-00000000008${index + 4}`;
+      const providerId = `pay_precash_local_credit_${index}`;
+      const issues = buildReconciliationIssues({
+        ...empty,
+        providerPayments: [{
+          id: providerId,
+          customer: "cus_precash_credit",
+          status,
+          value: 315,
+          dueDate: "2026-08-28",
+          paymentDate: "2026-08-28",
+          creditDate: "2026-09-14",
+          billingType: "CREDIT_CARD",
+        }],
+        localPayments: [{
+          id: localId,
+          tenant_id: "school",
+          student_id: "student-precash-credit",
+          asaas_payment_id: providerId,
+          value: 315,
+          status,
+          provider_status: status,
+          due_date: "2026-08-28",
+          payment_date: "2026-08-28",
+          credited_at: "2026-09-14T12:00:00Z",
+          paid_at: "2026-08-28T12:00:00Z",
+          refunded_amount: 0,
+          ledger_entry_created: false,
+        }],
+        customerByStudentId: new Map([
+          ["student-precash-credit", "cus_precash_credit"],
+        ]),
+      });
+      if (
+        !issues.some((issue) =>
+          issue.kind === "LOCAL_CREDIT_DATE_WITHOUT_PROVIDER_CREDIT" &&
+          issue.severity === "HIGH"
+        )
+      ) {
+        throw new Error(`invented local cash marker was hidden for ${status}`);
+      }
+    }
+  },
+);
+
+Deno.test(
+  "statement-only financial facts remain visible to the audited tenant",
+  () => {
+    const issues = buildReconciliationIssues({
+      ...empty,
+      referenceTenantId: "school-wise-wolf",
+      providerPayments: [],
+      localPayments: [],
+      statement: [
+        {
+          id: "statement_missing_receipt",
+          type: "PAYMENT_RECEIVED",
+          paymentId: "pay_statement_missing_local",
+          value: 169,
+          date: "2026-08-29",
+        },
+        {
+          id: "statement_unresolved_refund",
+          type: "PAYMENT_REVERSAL",
+          value: -50,
+          date: "2026-08-29",
+        },
+      ],
+    });
+    const missingLocal = issues.find((issue) =>
+      issue.kind === "STATEMENT_RECEIPT_MISSING_LOCAL_PAYMENT"
+    );
+    const unresolved = issues.find((issue) =>
+      issue.kind === "STATEMENT_REFUND_PAYMENT_ID_UNRESOLVED"
+    );
+    if (
+      missingLocal?.tenant_id !== "school-wise-wolf" ||
+      unresolved?.tenant_id !== null
+    ) {
+      throw new Error("statement financial facts crossed tenant boundaries");
+    }
+  },
+);
+
+Deno.test(
+  "matching statement corroborates one missing local credit without duplicate issue",
+  () => {
+    const localId = "00000000-0000-4000-8000-000000000083";
+    const issues = buildReconciliationIssues({
+      ...empty,
+      providerPayments: [{
+        id: "pay_missing_local_credit",
+        customer: "cus_received",
+        status: "RECEIVED",
+        value: 169,
+        dueDate: "2026-08-10",
+        paymentDate: "2026-08-10",
+        creditDate: "2026-08-10",
+        billingType: "PIX",
+      }],
+      localPayments: [{
+        id: localId,
+        tenant_id: "school",
+        student_id: "student-received",
+        asaas_payment_id: "pay_missing_local_credit",
+        value: 169,
+        status: "RECEIVED",
+        provider_status: "RECEIVED",
+        due_date: "2026-08-10",
+        payment_date: "2026-08-10",
+        credited_at: null,
+        paid_at: "2026-08-10T12:00:00Z",
+        refunded_amount: 0,
+        ledger_entry_created: true,
+      }],
+      statement: [{
+        id: "ftn_received",
+        type: "PAYMENT_RECEIVED",
+        paymentId: "pay_missing_local_credit",
+        value: 169,
+        date: "2026-08-10",
+      }],
+      customerByStudentId: new Map([
+        ["student-received", "cus_received"],
+      ]),
+      grossLedgerByPaymentId: new Map([
+        [
+          localId,
+          [{
+            student_payment_id: localId,
+            amount: 169,
+            occurred_at: "2026-08-10T12:00:00Z",
+            type: "ENTRADA",
+            category: "MENSALIDADE",
+          }],
+        ],
+      ]),
+    });
+    const creditKinds = issues
+      .filter((issue) => issue.kind.includes("CREDIT_DATE"))
+      .map((issue) => issue.kind);
+    if (
+      creditKinds.length !== 1 ||
+      creditKinds[0] !== "LOCAL_CREDIT_DATE_MISSING"
+    ) {
+      throw new Error(`credit evidence was duplicated: ${creditKinds}`);
+    }
+  },
+);
+
+Deno.test(
+  "unlinked settled cash is reviewable while open debt remains critical",
+  () => {
+    const baseProvider = {
+      customer: "cus_unlinked",
+      value: 169,
+      dueDate: "2026-08-10",
+    };
+    const issues = buildReconciliationIssues({
+      ...empty,
+      providerPayments: [
+        {
+          ...baseProvider,
+          id: "pay_unlinked_received",
+          status: "RECEIVED",
+          paymentDate: "2026-08-10",
+          creditDate: "2026-08-10",
+        },
+        {
+          ...baseProvider,
+          id: "pay_unlinked_open",
+          status: "PENDING",
+        },
+        {
+          ...baseProvider,
+          id: "pay_unlinked_deleted",
+          status: "PENDING",
+          deleted: true,
+        },
+      ],
+      localPayments: [
+        {
+          id: "00000000-0000-4000-8000-000000000084",
+          tenant_id: "school",
+          student_id: null,
+          asaas_payment_id: "pay_unlinked_received",
+          value: 169,
+          status: "RECEIVED",
+          provider_status: "RECEIVED",
+          due_date: "2026-08-10",
+          payment_date: "2026-08-10",
+          credited_at: "2026-08-10T12:00:00Z",
+          paid_at: "2026-08-10T12:00:00Z",
+          refunded_amount: 0,
+          ledger_entry_created: true,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000085",
+          tenant_id: "school",
+          student_id: null,
+          asaas_payment_id: "pay_unlinked_open",
+          value: 169,
+          status: "PENDING",
+          provider_status: "PENDING",
+          due_date: "2026-08-10",
+          refunded_amount: 0,
+          ledger_entry_created: false,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000000086",
+          tenant_id: "school",
+          student_id: null,
+          asaas_payment_id: "pay_unlinked_deleted",
+          value: 169,
+          status: "CANCELLED",
+          provider_status: "DELETED",
+          due_date: "2026-08-10",
+          refunded_amount: 0,
+          ledger_entry_created: false,
+        },
+      ],
+      grossLedgerByPaymentId: new Map([
+        [
+          "00000000-0000-4000-8000-000000000084",
+          [{
+            student_payment_id: "00000000-0000-4000-8000-000000000084",
+            amount: 169,
+            occurred_at: "2026-08-10T12:00:00Z",
+            type: "ENTRADA",
+            category: "MENSALIDADE",
+          }],
+        ],
+      ]),
+    });
+    const unresolved = issues.filter((issue) =>
+      issue.kind === "PAYMENT_TENANT_OR_STUDENT_UNRESOLVED"
+    );
+    if (
+      unresolved.length !== 2 ||
+      unresolved.find((issue) =>
+          issue.provider_entity_id === "pay_unlinked_received"
+        )?.severity !== "HIGH" ||
+      unresolved.find((issue) =>
+          issue.provider_entity_id === "pay_unlinked_open"
+        )?.severity !== "CRITICAL" ||
+      unresolved.some((issue) =>
+        issue.provider_entity_id === "pay_unlinked_deleted"
+      )
+    ) {
+      throw new Error("unlinked payment severities are not operationally safe");
     }
   },
 );
@@ -824,6 +1192,62 @@ Deno.test(
     );
     if (!ids.has("tr_duplicate_1") || !ids.has("tr_duplicate_2")) {
       throw new Error("duplicate issue hid a provider transfer id");
+    }
+  },
+);
+
+Deno.test(
+  "provider transfer id cannot override a different closing reference",
+  () => {
+    const referenceA = "wisewolf-teacher-closing:closing_a";
+    const referenceB = "wisewolf-teacher-closing:closing_b";
+    const issues = buildReconciliationIssues({
+      ...empty,
+      providerPayments: [],
+      localPayments: [],
+      localTransfers: [
+        {
+          id: "attempt_a",
+          closing_id: "closing_a",
+          tenant_id: "school",
+          external_reference: referenceA,
+          provider_transfer_id: "tr_b",
+          provider_status: "DONE",
+          status: "COMPLETED",
+          expected_amount: 250,
+        },
+        {
+          id: "attempt_b",
+          closing_id: "closing_b",
+          tenant_id: "school",
+          external_reference: referenceB,
+          provider_transfer_id: "tr_a",
+          provider_status: "DONE",
+          status: "COMPLETED",
+          expected_amount: 250,
+        },
+      ],
+      providerTransfers: [
+        {
+          id: "tr_a",
+          externalReference: referenceA,
+          status: "DONE",
+          value: 250,
+        },
+        {
+          id: "tr_b",
+          externalReference: referenceB,
+          status: "DONE",
+          value: 250,
+        },
+      ],
+    });
+    const mismatches = issues.filter((issue) =>
+      issue.kind === "TRANSFER_REFERENCE_MISMATCH" &&
+      issue.severity === "CRITICAL"
+    );
+    if (mismatches.length !== 2) {
+      throw new Error("swapped transfer ownership was silently accepted");
     }
   },
 );

@@ -78,6 +78,194 @@ function localPaymentTouchesWindow(
     .some((date) => Boolean(date && date >= windowStart && date <= windowEnd));
 }
 
+function moneyCents(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric * 100);
+}
+
+function providerStatementDate(entry: ProviderStatementEntry): string | null {
+  return stringDateOnly(entry.date);
+}
+
+type HistoricalRepairMetrics = {
+  requested: boolean;
+  creditDatesRepaired: number;
+  creditDatesAlreadyRepaired: number;
+  deletedPaymentsCancelled: number;
+  deletedPaymentsAlreadyCancelled: number;
+  skipped: number;
+};
+
+async function applyHistoricalFactRepairs(input: {
+  admin: SupabaseClient;
+  paymentIntegration: ResolvedAsaasIntegration;
+  providerPayments: ProviderPayment[];
+  localPayments: LocalPayment[];
+  statement: ProviderStatementEntry[];
+  grossLedgerByPaymentId: Map<string, LocalLedgerEntry[]>;
+  refundLedgerByPaymentId: Map<string, LocalLedgerEntry[]>;
+  repairCreditDates: boolean;
+  repairDeletedPayments: boolean;
+  onProgress: (metrics: HistoricalRepairMetrics) => Promise<void>;
+}): Promise<HistoricalRepairMetrics> {
+  const metrics: HistoricalRepairMetrics = {
+    requested: true,
+    creditDatesRepaired: 0,
+    creditDatesAlreadyRepaired: 0,
+    deletedPaymentsCancelled: 0,
+    deletedPaymentsAlreadyCancelled: 0,
+    skipped: 0,
+  };
+  const providerById = new Map(
+    input.providerPayments.map((payment) => [payment.id, payment]),
+  );
+  const statementByPaymentId = new Map<string, ProviderStatementEntry[]>();
+  for (const entry of input.statement) {
+    const paymentId = statementPaymentId(entry);
+    if (!paymentId || entry.type !== "PAYMENT_RECEIVED") continue;
+    const entries = statementByPaymentId.get(paymentId) || [];
+    entries.push(entry);
+    statementByPaymentId.set(paymentId, entries);
+  }
+
+  // Fill only a missing historical cash date. The RPC rechecks every field,
+  // the unique gross ledger and the independent statement row under lock.
+  for (const local of input.repairCreditDates ? input.localPayments : []) {
+    const providerId = String(local.asaas_payment_id || "").trim();
+    const listedProvider = providerById.get(providerId);
+    if (
+      !listedProvider || listedProvider.status !== "RECEIVED" ||
+      listedProvider.deleted === true ||
+      String(local.status || "").toUpperCase() !== "RECEIVED" ||
+      local.credited_at
+    ) continue;
+    // The list response only discovers the candidate. Re-read the exact
+    // payment immediately before mutation so a stale page can never authorize
+    // a historical repair.
+    const provider = await providerGet<ProviderPayment>(
+      input.paymentIntegration,
+      `/payments/${encodeURIComponent(providerId)}`,
+    );
+    if (
+      provider.id !== providerId || provider.status !== "RECEIVED" ||
+      provider.deleted === true
+    ) {
+      metrics.skipped += 1;
+      continue;
+    }
+    const creditDate = stringDateOnly(provider.creditDate);
+    const statements = (statementByPaymentId.get(providerId) || []).filter(
+      (entry) =>
+        providerStatementDate(entry) === creditDate &&
+        moneyCents(entry.value) === moneyCents(provider.value),
+    );
+    if (
+      !creditDate || statements.length !== 1 ||
+      (input.grossLedgerByPaymentId.get(local.id) || []).length !== 1 ||
+      (input.refundLedgerByPaymentId.get(local.id) || []).length !== 0
+    ) {
+      metrics.skipped += 1;
+      continue;
+    }
+    const { data, error } = await input.admin.rpc(
+      "repair_authoritative_legacy_payment_credit",
+      {
+        p_expected_local_payment_id: local.id,
+        p_expected_tenant_id: local.tenant_id,
+        p_authoritative_payment: provider,
+        p_authoritative_statement: statements[0],
+        p_reason:
+          "Conciliação histórica Asaas: GET da cobrança e extrato único concordam",
+      },
+    );
+    if (error) throw error;
+    if (data?.ok !== true) {
+      metrics.skipped += 1;
+    } else if (data.action === "ALREADY_REPAIRED") {
+      metrics.creditDatesAlreadyRepaired += 1;
+    } else {
+      metrics.creditDatesRepaired += 1;
+    }
+    await input.onProgress({ ...metrics });
+  }
+
+  const deletedCandidates = input.repairDeletedPayments
+    ? input.localPayments.filter((local) => {
+      const provider = providerById.get(String(local.asaas_payment_id || ""));
+      return Boolean(
+        provider?.deleted === true && provider.subscription &&
+          ["PENDING", "OVERDUE", "CANCELLED"].includes(
+            String(local.status || "").toUpperCase(),
+          ) &&
+          (input.grossLedgerByPaymentId.get(local.id) || []).length === 0 &&
+          (input.refundLedgerByPaymentId.get(local.id) || []).length === 0,
+      );
+    })
+    : [];
+  let subscriptionIntegration: ResolvedAsaasIntegration | null = null;
+  const parentById = new Map<string, Record<string, unknown>>();
+  if (deletedCandidates.length > 0) {
+    subscriptionIntegration = await resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "subscription.read",
+    );
+    if (
+      subscriptionIntegration.integrationId !==
+        input.paymentIntegration.integrationId ||
+      subscriptionIntegration.version !== input.paymentIntegration.version
+    ) {
+      throw new Error("integration_repair_resolution_mismatch");
+    }
+  }
+  for (const local of deletedCandidates) {
+    const providerId = String(local.asaas_payment_id || "");
+    const provider = await providerGet<ProviderPayment>(
+      input.paymentIntegration,
+      `/payments/${encodeURIComponent(providerId)}`,
+    );
+    if (
+      provider.id !== providerId || provider.deleted !== true ||
+      !provider.subscription
+    ) {
+      metrics.skipped += 1;
+      continue;
+    }
+    const subscriptionId = String(provider.subscription || "").trim();
+    let parent = parentById.get(subscriptionId);
+    if (!parent) {
+      parent = await providerGet<Record<string, unknown>>(
+        subscriptionIntegration!,
+        `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+      );
+      parentById.set(subscriptionId, parent);
+    }
+    const { data, error } = await input.admin.rpc(
+      "repair_authoritative_deleted_legacy_payment",
+      {
+        p_expected_local_payment_id: local.id,
+        p_expected_student_id: local.student_id || null,
+        p_expected_tenant_id: local.tenant_id,
+        p_authoritative_payment: provider,
+        p_authoritative_subscription: parent,
+        p_reason:
+          "Conciliação histórica Asaas: cobrança excluída no provedor e sem evidência de caixa",
+      },
+    );
+    if (error) throw error;
+    if (data?.ok !== true) {
+      metrics.skipped += 1;
+    } else if (data.action === "ALREADY_CANCELLED") {
+      metrics.deletedPaymentsAlreadyCancelled += 1;
+    } else {
+      metrics.deletedPaymentsCancelled += 1;
+    }
+    await input.onProgress({ ...metrics });
+  }
+  return metrics;
+}
+
 async function providerGet<T>(
   integration: ResolvedAsaasIntegration,
   path: string,
@@ -483,7 +671,23 @@ serve(async (req) => {
     lookbackDays?: unknown;
     windowStart?: unknown;
     windowEnd?: unknown;
+    repairHistoricalFacts?: unknown;
+    repairHistoricalCredits?: unknown;
+    repairHistoricalDeletedPayments?: unknown;
   };
+  const repairHistoricalCredits = request.repairHistoricalFacts === true ||
+    request.repairHistoricalCredits === true;
+  const repairHistoricalDeletedPayments =
+    request.repairHistoricalFacts === true ||
+    request.repairHistoricalDeletedPayments === true;
+  const repairHistoricalFacts = repairHistoricalCredits ||
+    repairHistoricalDeletedPayments;
+  if (repairHistoricalFacts && !auth.context.isService) {
+    return new Response(
+      JSON.stringify({ error: "SERVICE_ACCESS_REQUIRED_FOR_REPAIR" }),
+      { status: 403, headers: corsHeaders },
+    );
+  }
   const yesterday = new Date();
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const parsedLookback = Number(request.lookbackDays);
@@ -661,7 +865,7 @@ serve(async (req) => {
     }
     await saveCursor({ ...cursorState });
 
-    const [
+    let [
       localPayments,
       profiles,
       ledgerState,
@@ -770,9 +974,51 @@ serve(async (req) => {
       candidates.push({ id: profile.id, tenantId: profile.tenant_id });
       studentsByCustomerCandidates.set(profile.asaas_customer_id, candidates);
     }
+    let historicalRepairs: HistoricalRepairMetrics = {
+      requested: false,
+      creditDatesRepaired: 0,
+      creditDatesAlreadyRepaired: 0,
+      deletedPaymentsCancelled: 0,
+      deletedPaymentsAlreadyCancelled: 0,
+      skipped: 0,
+    };
+    if (repairHistoricalFacts) {
+      historicalRepairs = await applyHistoricalFactRepairs({
+        admin: auth.context.admin,
+        paymentIntegration: integration,
+        providerPayments,
+        localPayments,
+        statement,
+        grossLedgerByPaymentId: ledgerState.grossByPaymentId,
+        refundLedgerByPaymentId: ledgerState.refundByPaymentId,
+        repairCreditDates: repairHistoricalCredits,
+        repairDeletedPayments: repairHistoricalDeletedPayments,
+        onProgress: async (progress) => {
+          const { error } = await auth.context.admin
+            .from("asaas_reconciliation_runs")
+            .update({
+              metrics: {
+                partial: true,
+                historicalRepairs: progress,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", runId)
+            .eq("status", "RUNNING");
+          if (error) throw error;
+        },
+      });
+      // Database triggers update paid_at and the immutable gross ledger date.
+      // Re-read both snapshots so this very run reports the post-repair truth.
+      [localPayments, ledgerState] = await Promise.all([
+        fetchAllLocalPayments(auth.context.admin, REFERENCE_TENANT_ID),
+        fetchLedgerState(auth.context.admin, REFERENCE_TENANT_ID),
+      ]);
+    }
     const issues = buildReconciliationIssues({
       windowStart,
       windowEnd,
+      referenceTenantId: REFERENCE_TENANT_ID,
       providerPayments,
       localPayments,
       statement,
@@ -810,6 +1056,7 @@ serve(async (req) => {
       localProductEntities: productPaymentState.localEntityCount,
       localProductPaymentIds: productPaymentState.paymentByProviderId.size,
       tenantId: REFERENCE_TENANT_ID,
+      historicalRepairs,
       issues: issues.length,
       severity: {
         critical: issues.filter((issue) => issue.severity === "CRITICAL")
