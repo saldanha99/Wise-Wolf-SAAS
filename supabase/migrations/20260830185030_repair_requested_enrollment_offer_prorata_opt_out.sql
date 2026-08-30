@@ -43,7 +43,11 @@ begin
   if v_offer.processing_state is distinct from 'NOT_STARTED'
      or v_offer.processing_by is not null
      or v_offer.processing_started_at is not null
+     or v_offer.processing_updated_at is not null
      or v_offer.processing_completed_at is not null
+     or v_offer.processing_attempts is distinct from 0
+     or v_offer.processing_error_code is not null
+     or v_offer.processing_error_message is not null
      or v_offer.consumed_at is not null
      or v_offer.consumed_by is not null
      or v_offer.revoked_at is not null
