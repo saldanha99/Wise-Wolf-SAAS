@@ -1068,7 +1068,10 @@ select
   '20000000-0000-4000-8000-00000000000f',
   'attendance-hardening-school',
   '10000000-0000-4000-8000-000000000002',
-  '10000000-0000-4000-8000-000000000003',
+  -- Keep this clock-derived occurrence on its dedicated student. Otherwise a
+  -- release run can land on one of the fixed reconciliation slots above and
+  -- trip the real duplicate-booking guard before exercising coverage routing.
+  '10000000-0000-4000-8000-000000000004',
   case extract(dow from starts_at)::int
     when 0 then 'Sunday' when 1 then 'Monday' when 2 then 'Tuesday'
     when 3 then 'Wednesday' when 4 then 'Thursday'
