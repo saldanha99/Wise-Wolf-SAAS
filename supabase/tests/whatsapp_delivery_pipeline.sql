@@ -1387,13 +1387,14 @@ $$;
 -- Claim, token fence, accepted-vs-delivered e recibos monotonicos.
 insert into public.notification_queue (
   id, tenant_id, student_phone, message_body, scheduled_for, status,
-  attempts, next_attempt_at, delivery_status, max_attempts, idempotency_key
+  attempts, next_attempt_at, delivery_status, max_attempts, idempotency_key,
+  notification_kind
 ) values (
   '00000000-0000-4000-8000-00000000ef01',
   'whatsapp-delivery-test-a',
   '5511999990311', 'accepted fixture', timestamptz '2000-01-01 00:00:00+00',
   'pending', 0, timestamptz '2000-01-01 00:00:00+00', 'queued', 5,
-  'accepted-fixture'
+  'accepted-fixture', 'DELIVERY_PIPELINE_TEST'
 );
 
 do $$
@@ -1469,7 +1470,7 @@ begin
     (result ->> 'ok')::boolean is true
     and result ->> 'action' = 'SUBMIT_AUTHORIZED'
     and result ->> 'deliveryStatus' = 'submitting',
-    'token valido nao iniciou a submissao'
+    'token valido nao iniciou a submissao: ' || result::text
   );
 
   result := public.finalize_notification_delivery(
@@ -1634,13 +1635,14 @@ $$;
 -- UNCERTAIN para impedir um segundo POST cego.
 insert into public.notification_queue (
   id, tenant_id, student_phone, message_body, scheduled_for, status,
-  attempts, next_attempt_at, delivery_status, max_attempts, idempotency_key
+  attempts, next_attempt_at, delivery_status, max_attempts, idempotency_key,
+  notification_kind
 ) values (
   '00000000-0000-4000-8000-00000000ef02',
   'whatsapp-delivery-test-a',
   '5511999990312', 'retry fixture', timestamptz '2000-01-01 00:00:00+00',
   'pending', 0, timestamptz '2000-01-01 00:00:00+00', 'queued', 4,
-  'retry-fixture'
+  'retry-fixture', 'DELIVERY_PIPELINE_TEST'
 );
 
 do $$
@@ -1720,7 +1722,7 @@ begin
   perform pg_temp.assert_true(
     (result ->> 'ok')::boolean is true
       and result ->> 'action' = 'SUBMIT_AUTHORIZED',
-    'fixture pos-POST nao entrou em SUBMITTING'
+    'fixture pos-POST nao entrou em SUBMITTING: ' || result::text
   );
 
   update public.notification_queue
