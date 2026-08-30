@@ -1729,3 +1729,4 @@ comment on function public.apply_enrollment_payment_observation(
   'Serializa taxa, avulso, pro-rata e primeira parcela sem confundir mensalidades futuras com ativacao.';
 
 commit;
+
