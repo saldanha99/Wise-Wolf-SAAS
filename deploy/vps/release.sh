@@ -1099,6 +1099,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830132000_harden_payment_split_report_empty_claims.sql"
   "supabase/migrations/20260830152214_harden_whatsapp_delivery_pipeline.sql"
   "supabase/migrations/20260830170000_fence_whatsapp_occurrence_receipts.sql"
+  "supabase/migrations/20260830185030_repair_requested_enrollment_offer_prorata_opt_out.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
