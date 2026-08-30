@@ -254,6 +254,7 @@ export async function authenticateWhatsAppInboundBoundRequest(
   resolveCurrentIntegration: () => Promise<WhatsAppInboundCurrentIntegration>,
 ): Promise<"instance-header" | "legacy-header" | "legacy-query" | null> {
   let expectedToken: string;
+  let transitionV3Token = "";
   try {
     expectedToken = authVersion === 3
       ? await deriveWhatsAppInboundInstanceTokenV3(
@@ -268,16 +269,38 @@ export async function authenticateWhatsAppInboundBoundRequest(
         binding.tenantId,
         binding.instanceName,
       );
+    // O provedor pode aceitar a troca para v3 e a resposta do POST se perder.
+    // Enquanto o marker ainda for v1/v2, aceitar também o header v3 evita uma
+    // interrupção do inbound. A validação do binding atual abaixo continua
+    // obrigatória, portanto uma integração rotacionada não reabre o acesso.
+    if (authVersion !== 3) {
+      transitionV3Token = await deriveWhatsAppInboundInstanceTokenV3(
+        rootToken,
+        binding.tenantId,
+        binding.instanceName,
+        binding.integrationId,
+        binding.integrationVersion,
+      );
+    }
   } catch {
     return null;
   }
 
-  const authentication = await authenticateWhatsAppInboundRequest(
+  let authentication = await authenticateWhatsAppInboundRequest(
     headers,
     requestUrl,
     expectedToken,
     authVersion === 1 ? rootToken : "",
   );
+  if (!authentication && authVersion !== 3) {
+    // A ponte v3 é somente por header. Nunca coloque a credencial derivada na
+    // query string e nunca mantenha o fallback depois do marker v3.
+    authentication = await authenticateWhatsAppInboundRequest(
+      headers,
+      requestUrl,
+      transitionV3Token,
+    );
+  }
   if (!authentication) return null;
 
   try {

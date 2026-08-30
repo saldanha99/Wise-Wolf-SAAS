@@ -1279,6 +1279,9 @@ export async function handleRequest(
         console.error("[WA Proxy] Falha ao configurar webhook da inbox", {
           code: error instanceof Error ? error.name : "network_error",
         });
+        // O provedor pode ter aceitado o token v3 antes do timeout. O marker
+        // continua antigo até existir 2xx, e o inbound aceita essa ponte v3
+        // somente enquanto o binding exato da integração permanecer atual.
         return json({
           error:
             "N\u00e3o foi poss\u00edvel preparar a sincroniza\u00e7\u00e3o",

@@ -593,18 +593,31 @@ Deno.test({
   name: "payment confirmation delivery is tenant-scoped and submit-once fenced",
   permissions: { read: true },
   async fn() {
-    const [webhook, worker, lifecycleSql] = await Promise.all([
-      Deno.readTextFile(new URL("./index.ts", import.meta.url)),
-      Deno.readTextFile(
-        new URL("../process-notification-queue/index.ts", import.meta.url),
-      ),
-      Deno.readTextFile(
-        new URL(
-          "../../migrations/20260825194716_fence_student_lifecycle_mutations.sql",
-          import.meta.url,
+    const [webhook, worker, lifecycleSql, deliverySql, occurrenceSql] =
+      await Promise.all([
+        Deno.readTextFile(new URL("./index.ts", import.meta.url)),
+        Deno.readTextFile(
+          new URL("../process-notification-queue/index.ts", import.meta.url),
         ),
-      ),
-    ]);
+        Deno.readTextFile(
+          new URL(
+            "../../migrations/20260825194716_fence_student_lifecycle_mutations.sql",
+            import.meta.url,
+          ),
+        ),
+        Deno.readTextFile(
+          new URL(
+            "../../migrations/20260830152214_harden_whatsapp_delivery_pipeline.sql",
+            import.meta.url,
+          ),
+        ),
+        Deno.readTextFile(
+          new URL(
+            "../../migrations/20260830170000_fence_whatsapp_occurrence_receipts.sql",
+            import.meta.url,
+          ),
+        ),
+      ]);
 
     const capiStart = webhook.indexOf("async function deliverMetaPurchaseOnce");
     const capiClaim = webhook.indexOf(
@@ -631,31 +644,43 @@ Deno.test({
 
     const workerClaim = worker.indexOf("claimOutboundMessage(supabaseClient");
     const workerIntegration = worker.indexOf(
-      "await resolveEvolutionIntegration(",
+      "integration = await resolveDeliveryIntegration(",
     );
-    const workerMark = worker.indexOf(
-      "markOutboundMessageSubmittingDecision",
-      workerClaim,
+    const workerJidLookup = worker.indexOf(
+      "await resolveWhatsAppDestination({",
+      workerIntegration,
     );
-    const workerPost = worker.indexOf("response = await fetch(url", workerMark);
-    const workerTerminal = worker.indexOf(
-      "finishOutboundMessage(supabaseClient, paymentOutboundClaim",
-      workerPost,
+    const workerBegin = worker.lastIndexOf(
+      "await beginPaymentConfirmationSubmission(",
     );
-    const queueSent = worker.indexOf('"sent"', workerTerminal);
+    const workerRecover = worker.indexOf(
+      "await recoverNotificationSubmission(",
+      workerBegin,
+    );
+    const workerPost = worker.indexOf(
+      "const providerResult = await sendWhatsTextToResolvedDestinationDetailed(",
+      workerRecover,
+    );
+    const workerTerminal = worker.lastIndexOf(
+      "await finalizePaymentConfirmationSubmission(",
+    );
     if (
       workerIntegration < 0 || workerIntegration > workerClaim ||
-      workerClaim < 0 || workerMark < workerClaim || workerPost < workerMark ||
-      workerTerminal < workerPost || queueSent < workerTerminal ||
+      workerJidLookup < workerIntegration || workerJidLookup > workerClaim ||
+      workerClaim < 0 || workerBegin < workerClaim ||
+      workerRecover < workerBegin || workerPost < workerRecover ||
+      workerTerminal < workerPost ||
+      !worker.includes("pending = resolveEvolutionIntegration(") ||
       !worker.includes("payment_confirmation_destination_changed") ||
       !worker.includes("PAYMENT_CONFIRMED_WHATSAPP") ||
-      !worker.includes("payment_confirmation_terminal") ||
-      !worker.includes("deliveryBaseUrl = integration.baseUrl") ||
-      !worker.includes("deliveryApiKeys = [integration.apiKey]") ||
       !worker.includes("currentProfile?.guardian_id") ||
       !worker.includes("currentProfile?.guardian_phone") ||
-      !worker.includes("const messageId = providerMessageId(payload)") ||
-      !worker.includes("provider_accepted_without_message_id") ||
+      !worker.includes('"begin_payment_confirmation_delivery_submission"') ||
+      !worker.includes('"recover_notification_delivery_submission"') ||
+      !worker.includes('"finalize_payment_confirmation_delivery"') ||
+      !worker.includes("p_provider_destination: providerDestination") ||
+      !worker.includes('decision.status === "sent"') ||
+      !worker.includes("messageId: providerResult.messageId") ||
       !lifecycleSql.includes("'action', 'REPLAY'") ||
       !lifecycleSql.includes(
         "payment_row.last_provider_event_id",
@@ -677,6 +702,34 @@ Deno.test({
     ) {
       if (!lifecycleSql.includes(contract)) {
         throw new Error(`payment confirmation SQL fence missing: ${contract}`);
+      }
+    }
+
+    for (
+      const contract of [
+        "begin_payment_confirmation_delivery_submission",
+        "finalize_payment_confirmation_delivery",
+        "financial_outbound_queue_binding_mismatch",
+        "provider_destination = v_provider_destination",
+      ]
+    ) {
+      if (!deliverySql.includes(contract)) {
+        throw new Error(
+          `payment confirmation delivery bridge missing: ${contract}`,
+        );
+      }
+    }
+
+    for (
+      const contract of [
+        "recover_notification_delivery_submission",
+        "receipt_state = 'SEALED'",
+        "lesson_authorized_snapshot_changed",
+        "notification_provider_binding_changed",
+      ]
+    ) {
+      if (!occurrenceSql.includes(contract)) {
+        throw new Error(`notification occurrence fence missing: ${contract}`);
       }
     }
   },

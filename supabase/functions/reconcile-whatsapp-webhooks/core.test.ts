@@ -1,4 +1,7 @@
-import { deriveWhatsAppInboundInstanceTokenV3 } from "../_shared/whatsapp-inbox.ts";
+import {
+  authenticateWhatsAppInboundBoundRequest,
+  deriveWhatsAppInboundInstanceTokenV3,
+} from "../_shared/whatsapp-inbox.ts";
 import type {
   ResolvedEvolutionIntegration,
   TenantIntegrationRpcClient,
@@ -348,6 +351,63 @@ Deno.test("falha do provedor não marca webhook_auth_version 3", async () => {
   assertEquals(result.failed, 1, "falha contabilizada");
   assertEquals(result.results[0].error, "UPSTREAM_REJECTED", "erro sanitizado");
   assertEquals(result.results[0].upstreamStatus, 503, "status do provedor");
+});
+
+Deno.test("resposta perdida após aceite preserva inbound v3 no marker antigo", async () => {
+  const instance = boundInstance("tenant-a", "instance-a", "a", 2);
+  let providerAccepted = false;
+  let configuredToken = "";
+  let markerCalled = false;
+  const admin: TenantIntegrationRpcClient = {
+    rpc() {
+      markerCalled = true;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    },
+  };
+  const result = await reconcileWhatsAppWebhooks(
+    { includeAll: false, limit: 1 },
+    {
+      admin,
+      getEnv,
+      loadInstances: () => Promise.resolve([instance]),
+      resolveIntegration: () => Promise.resolve(integration("tenant-a", "a")),
+      fetchUpstream: (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        configuredToken = String(
+          body.webhook.headers["x-whatsapp-inbound-token"],
+        );
+        providerAccepted = true;
+        return Promise.reject(new DOMException("response lost", "AbortError"));
+      },
+    },
+  );
+
+  assertEquals(providerAccepted, true, "provedor recebeu a configuração v3");
+  assertEquals(markerCalled, false, "resposta perdida não promove marker");
+  assertEquals(result.configured, 0, "configuração permanece inconclusiva");
+  assertEquals(result.failed, 1, "falha é reconciliável");
+  assertEquals(
+    result.results[0].error,
+    "UPSTREAM_UNAVAILABLE",
+    "timeout sanitizado",
+  );
+  assertEquals(
+    await authenticateWhatsAppInboundBoundRequest(
+      new Headers({ "x-whatsapp-inbound-token": configuredToken }),
+      new URL("https://api.example/functions/v1/whatsapp-inbound"),
+      rootToken,
+      instance.webhookAuthVersion,
+      instance,
+      () =>
+        Promise.resolve({
+          tenantId: instance.tenantId,
+          integrationId: instance.integrationId,
+          version: instance.integrationVersion,
+        }),
+    ),
+    "instance-header",
+    "header v3 continua válido até a reconciliação do marker",
+  );
 });
 
 Deno.test("não configura instância criada em outra versão da integração", async () => {

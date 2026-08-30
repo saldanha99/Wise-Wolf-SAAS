@@ -169,12 +169,15 @@ Deno.test("rollout autentica v1/v2/v3 sem reabrir credencial antiga", async () =
     integrationId: "00000000-0000-4000-8000-0000000000e1",
     integrationVersion: 1,
   };
-  const current = () =>
-    Promise.resolve({
+  let resolutionCalls = 0;
+  const current = () => {
+    resolutionCalls += 1;
+    return Promise.resolve({
       tenantId: "tenant-a",
       integrationId: binding.integrationId,
       version: 1,
     });
+  };
   const url = new URL("https://api.example/functions/v1/whatsapp-inbound");
   const v2 = await deriveWhatsAppInboundInstanceToken(
     rootToken,
@@ -200,14 +203,50 @@ Deno.test("rollout autentica v1/v2/v3 sem reabrir credencial antiga", async () =
 
   assertEquals(await authenticate(1, rootToken), "legacy-header", "ponte v1");
   assertEquals(await authenticate(1, v2), "instance-header", "v1 aceita v2");
-  assertEquals(await authenticate(1, v3), null, "v1 ainda não afirma v3");
+  assertEquals(
+    await authenticate(1, v3),
+    "instance-header",
+    "v1 aceita v3 durante resposta upstream ambígua",
+  );
   assertEquals(await authenticate(2, v2), "instance-header", "v2 preservado");
+  assertEquals(
+    await authenticate(2, v3),
+    "instance-header",
+    "v2 aceita v3 durante resposta upstream ambígua",
+  );
   assertEquals(await authenticate(2, rootToken), null, "v2 fecha raiz");
   assertEquals(await authenticate(3, v3), "instance-header", "v3 vinculado");
   assertEquals(await authenticate(3, v2), null, "v3 revoga v2");
+  assertEquals(await authenticate(3, rootToken), null, "v3 revoga raiz");
+
+  const callsBeforeInvalid = resolutionCalls;
+  assertEquals(
+    await authenticateWhatsAppInboundBoundRequest(
+      new Headers(),
+      new URL(
+        `https://api.example/functions/v1/whatsapp-inbound?token=${v3}`,
+      ),
+      rootToken,
+      2,
+      binding,
+      current,
+    ),
+    null,
+    "ponte v3 nunca aceita segredo pela URL",
+  );
+  assertEquals(
+    await authenticate(2, "token-invalido"),
+    null,
+    "token inválido recusado",
+  );
+  assertEquals(
+    resolutionCalls,
+    callsBeforeInvalid,
+    "broker não é consultado sem autenticação",
+  );
 });
 
-Deno.test("binding stale falha antes de qualquer efeito", async () => {
+Deno.test("binding stale fecha também a ponte v3 dos markers antigos", async () => {
   const rootToken = "token-raiz-com-entropia-suficiente";
   const binding = {
     tenantId: "tenant-a",
@@ -223,22 +262,30 @@ Deno.test("binding stale falha antes de qualquer efeito", async () => {
     binding.integrationVersion,
   );
   let effects = 0;
-  const authenticated = await authenticateWhatsAppInboundBoundRequest(
-    new Headers({ "x-whatsapp-inbound-token": token }),
-    new URL("https://api.example/functions/v1/whatsapp-inbound"),
-    rootToken,
-    3,
-    binding,
-    () =>
-      Promise.resolve({
-        tenantId: "tenant-a",
-        integrationId: binding.integrationId,
-        version: 2,
-      }),
-  );
-  if (authenticated) effects += 1;
+  const authenticate = (version: 1 | 2 | 3) =>
+    authenticateWhatsAppInboundBoundRequest(
+      new Headers({ "x-whatsapp-inbound-token": token }),
+      new URL("https://api.example/functions/v1/whatsapp-inbound"),
+      rootToken,
+      version,
+      binding,
+      () =>
+        Promise.resolve({
+          tenantId: "tenant-a",
+          integrationId: binding.integrationId,
+          version: 2,
+        }),
+    );
+  for (const version of [1, 2, 3] as const) {
+    const authenticated = await authenticate(version);
+    if (authenticated) effects += 1;
+    assertEquals(
+      authenticated,
+      null,
+      `binding obsoleto recusado no marker v${version}`,
+    );
+  }
 
-  assertEquals(authenticated, null, "binding obsoleto recusado");
   assertEquals(effects, 0, "nenhum efeito depois do gate");
   assertEquals(
     whatsappInboundIntegrationBindingMatches(binding, {

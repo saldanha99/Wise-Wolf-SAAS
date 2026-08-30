@@ -1,5 +1,8 @@
 import { handleRequest } from "./index.ts";
-import { deriveWhatsAppInboundInstanceTokenV3 } from "../_shared/whatsapp-inbox.ts";
+import {
+  authenticateWhatsAppInboundBoundRequest,
+  deriveWhatsAppInboundInstanceTokenV3,
+} from "../_shared/whatsapp-inbox.ts";
 
 function assertEquals(
   actual: unknown,
@@ -1532,6 +1535,91 @@ Deno.test("habilita inbox institucional somente após configurar webhook seguro"
     responseText.includes("api-key-ultrassecreta"),
     false,
     "apikey na resposta",
+  );
+});
+
+Deno.test("inbox nova preserva inbound v3 quando a resposta upstream se perde", async () => {
+  const inboundToken = "token-inbound-ultrassecreto";
+  const integrationId = "00000000-0000-4000-8000-0000000000e1";
+  let configuredToken = "";
+  let providerAccepted = false;
+  let rpcCalled = false;
+  const admin = inboxAdmin({
+    ownerIsSchoolAdmin: true,
+    inboxEnabled: false,
+    rpc: async () => {
+      rpcCalled = true;
+      return { data: { ok: true }, error: null };
+    },
+  });
+  const response = await handleRequest(
+    request({
+      action: "inbox/enable",
+      tenantId: "tenant-a",
+      instanceName: "instance-abc",
+      payload: { enabled: true },
+    }),
+    {
+      getEnv: (name) =>
+        ({
+          SUPABASE_URL: "http://kong:8000",
+          WHATSAPP_INBOUND_PUBLIC_URL:
+            "https://api.wisewolflanguage.com.br/functions/v1/whatsapp-inbound",
+          WHATSAPP_INBOUND_TOKEN: inboundToken,
+        })[name],
+      authorize: async () =>
+        authorizedContext(admin, "SCHOOL_ADMIN", "tenant-a"),
+      resolveIntegration: async (_admin, tenantId) => ({
+        integrationId,
+        tenantId,
+        provider: "evolution",
+        mode: "PLATFORM_MANAGED",
+        version: 1,
+        baseUrl: "https://evolution.invalid",
+        apiKey: "api-key-ultrassecreta",
+      }),
+      fetchUpstream: async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        configuredToken = String(
+          body.webhook.headers["x-whatsapp-inbound-token"],
+        );
+        providerAccepted = true;
+        throw new DOMException("response lost", "AbortError");
+      },
+    },
+  );
+  const responseBody = await response.json();
+  const binding = {
+    tenantId: "tenant-a",
+    instanceName: "instance-abc",
+    integrationId,
+    integrationVersion: 1,
+  };
+
+  assertEquals(providerAccepted, true, "provedor recebeu token v3");
+  assertEquals(response.status, 502, "resposta perdida permanece falha segura");
+  assertEquals(
+    responseBody.code,
+    "INBOX_WEBHOOK_CONFIG_FAILED",
+    "erro público sanitizado",
+  );
+  assertEquals(rpcCalled, false, "marker e opt-in local não foram confirmados");
+  assertEquals(
+    await authenticateWhatsAppInboundBoundRequest(
+      new Headers({ "x-whatsapp-inbound-token": configuredToken }),
+      new URL("https://api.example/functions/v1/whatsapp-inbound"),
+      inboundToken,
+      1,
+      binding,
+      () =>
+        Promise.resolve({
+          tenantId: binding.tenantId,
+          integrationId: binding.integrationId,
+          version: binding.integrationVersion,
+        }),
+    ),
+    "instance-header",
+    "webhook aceito continua autenticável antes do retry manual",
   );
 });
 

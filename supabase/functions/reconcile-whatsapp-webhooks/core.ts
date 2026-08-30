@@ -295,6 +295,9 @@ async function reconcileOne(
       },
     );
   } catch {
+    // A Evolution pode ter persistido o token v3 antes de a resposta se
+    // perder. Não promova o marker sem 2xx; o inbound mantém uma ponte v3
+    // vinculada à integração atual enquanto o próximo lote reconcilia.
     return failed(canonicalInstance, "UPSTREAM_UNAVAILABLE");
   } finally {
     clearTimeout(timeout);
