@@ -1,5 +1,7 @@
 /// <reference lib="deno.ns" />
 
+import { providerPaymentSplitMatches } from "../_shared/student-provider-lifecycle.ts";
+
 export type HubAsaasCustomerOrigin = "LINKED" | "RECOVERED" | "CREATED";
 
 export type HubAsaasCustomerResolution =
@@ -7,11 +9,18 @@ export type HubAsaasCustomerResolution =
   | { status: "MATCH"; customerId: string }
   | { status: "IDENTITY_CONFLICT" };
 
-export type HubAsaasCustomerCompensationDecision =
+export type HubAsaasCustomerPreservationDecision =
   | "NOT_CREATED_BY_ATTEMPT"
-  | "DEFER_UNCONFIRMED_STATE"
   | "KEEP_LINKED_CUSTOMER"
-  | "DELETE_CREATED_CUSTOMER";
+  | "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW";
+
+export type HubAsaasSubscriptionResolution =
+  | {
+    status: "MATCH";
+    subscriptionId: string;
+    providerStatus: string;
+  }
+  | { status: "CONFLICT" };
 
 const normalizedText = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
@@ -28,6 +37,60 @@ export function normalizeAsaasCustomerId(value: unknown): string | null {
       /^[A-Za-z0-9_-]+$/.test(customerId)
     ? customerId
     : null;
+}
+
+export function resolveHubAsaasSubscriptionCandidate(
+  candidate: unknown,
+  expected: {
+    externalReference: string;
+    customerId: string;
+    billingType: "PIX" | "BOLETO";
+    billingCycle: "MONTHLY" | "YEARLY";
+    amount: number;
+    nextDueDate: string;
+    description: string;
+    maxPayments: null;
+    splitPolicy: { kind: "NONE" };
+  },
+): HubAsaasSubscriptionResolution {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return { status: "CONFLICT" };
+  }
+
+  const record = candidate as Record<string, unknown>;
+  const subscriptionId = normalizeAsaasCustomerId(record.id);
+  const providerAmount = Number(record.value);
+  const providerStatus = normalizedText(record.status).toUpperCase();
+  const providerMaxPayments = record.maxPayments === null ||
+      record.maxPayments === undefined || record.maxPayments === ""
+    ? null
+    : Number.isInteger(Number(record.maxPayments)) &&
+        Number(record.maxPayments) > 0
+    ? Number(record.maxPayments)
+    : Number.NaN;
+  const amountMatches = Number.isFinite(providerAmount) &&
+    Math.round(providerAmount * 100) === Math.round(expected.amount * 100);
+  if (
+    !subscriptionId || record.deleted === true ||
+    normalizedText(record.externalReference) !== expected.externalReference ||
+    normalizedText(record.customer) !== expected.customerId ||
+    normalizedText(record.billingType).toUpperCase() !== expected.billingType ||
+    normalizedText(record.cycle).toUpperCase() !== expected.billingCycle ||
+    normalizedText(record.nextDueDate) !== expected.nextDueDate ||
+    normalizedText(record.description) !== expected.description ||
+    providerStatus !== "ACTIVE" ||
+    !amountMatches ||
+    !Object.is(providerMaxPayments, expected.maxPayments) ||
+    !providerPaymentSplitMatches(record, expected.splitPolicy)
+  ) {
+    return { status: "CONFLICT" };
+  }
+
+  return {
+    status: "MATCH",
+    subscriptionId,
+    providerStatus,
+  };
 }
 
 export function resolveHubAsaasCustomerCandidate(
@@ -71,18 +134,19 @@ export function resolveHubAsaasCustomerCandidate(
   return { status: "MATCH", customerId: identityMatches[0].customerId };
 }
 
-export function decideHubAsaasCustomerCompensation(input: {
+export function decideHubAsaasCustomerPreservation(input: {
   createdCustomerId: string | null;
   linkedCustomerIds: string[];
   linkStateConfirmed: boolean;
-  providerObjectsSafeToDelete: boolean;
-}): HubAsaasCustomerCompensationDecision {
+}): HubAsaasCustomerPreservationDecision {
   if (!input.createdCustomerId) return "NOT_CREATED_BY_ATTEMPT";
-  if (!input.linkStateConfirmed || !input.providerObjectsSafeToDelete) {
-    return "DEFER_UNCONFIRMED_STATE";
-  }
-  if (input.linkedCustomerIds.includes(input.createdCustomerId)) {
+  if (
+    input.linkStateConfirmed &&
+    input.linkedCustomerIds.includes(input.createdCustomerId)
+  ) {
     return "KEEP_LINKED_CUSTOMER";
   }
-  return "DELETE_CREATED_CUSTOMER";
+  // A successful creation claim is immutable. Deleting its provider entity
+  // would leave ALREADY_SUCCEEDED pointing at an id that no longer exists.
+  return "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW";
 }

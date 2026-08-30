@@ -203,6 +203,42 @@ export function providerCancellationIsFinal(status: number): boolean {
   return (status >= 200 && status < 300) || status === 404 || status === 410;
 }
 
+export type HubProviderCancellationDecision =
+  | "DELETE"
+  | "ALREADY_FINAL"
+  | "REVIEW_REQUIRED";
+
+export function hubProviderCancellationDecision(
+  providerSubscription: unknown,
+  expected: {
+    providerSubscriptionId: string;
+    providerCustomerId: string;
+    checkoutId: string;
+  },
+): HubProviderCancellationDecision {
+  if (
+    !providerSubscription || typeof providerSubscription !== "object" ||
+    Array.isArray(providerSubscription)
+  ) {
+    return "REVIEW_REQUIRED";
+  }
+  const entity = providerSubscription as Record<string, unknown>;
+  const value = (key: string) =>
+    typeof entity[key] === "string" ? entity[key].trim() : "";
+  if (
+    value("id") !== expected.providerSubscriptionId ||
+    value("customer") !== expected.providerCustomerId ||
+    value("externalReference") !== `hub:${expected.checkoutId}` ||
+    entity.deleted === true
+  ) {
+    return "REVIEW_REQUIRED";
+  }
+  const status = value("status").toUpperCase();
+  if (status === "ACTIVE") return "DELETE";
+  if (["INACTIVE", "EXPIRED"].includes(status)) return "ALREADY_FINAL";
+  return "REVIEW_REQUIRED";
+}
+
 export function failedCheckoutStatus(
   providerSubscriptionCreated: boolean,
   providerCancellationConfirmed: boolean,

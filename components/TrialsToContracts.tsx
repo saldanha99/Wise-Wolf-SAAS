@@ -6,8 +6,18 @@ import {
     Link as LinkIcon, Copy, Sparkles, Wallet, ChevronDown, Search, Clock, RefreshCw
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { buildBroadcastErrorMessage, parseFunctionError } from '../lib/functionInvokeErrors';
 import { APP_BASE_URL } from '../constants';
 import { pricingService, PricingMatrix } from '../services/pricingService';
+import { normalizeEnrollmentProRataTerms } from '../lib/enrollment';
+import EnrollmentProRataSwitch from './EnrollmentProRataSwitch';
+import {
+    calculateEnrollmentProRataPreview,
+    dateInSaoPaulo,
+    enrollmentOfferErrorMessage,
+    normalizeEnrollmentTime,
+    weekdayIndex,
+} from '../lib/enrollmentOffer';
 
 const WEEKDAY_OPTIONS = [
     { value: 'monday', label: 'Segunda' },
@@ -148,6 +158,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         }
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+    const proRataEnabled = normalizeEnrollmentProRataTerms({
+        enableProRata,
+        planDuration: duration,
+    }).enabled;
 
     // Generated link
     const [generatedLink, setGeneratedLink] = useState('');
@@ -192,7 +206,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     }, [
         wizardOpp?.id, duration, frequency, dueDay, monthlyFee,
         chargeEnrollmentFee, enrollmentFee, selectedProfessor,
-        classSchedule, enableProRata, billingStartMonth,
+        classSchedule, proRataEnabled, billingStartMonth,
     ]);
 
     // Auto-resize schedule slots based on frequency
@@ -211,6 +225,17 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             return prev.slice(0, frequency);
         });
     }, [frequency]);
+
+    const enrollmentStartDate = dateInSaoPaulo();
+    const proRataPreview = useMemo(() => calculateEnrollmentProRataPreview({
+        enabled: proRataEnabled,
+        monthlyFee,
+        classesPerWeek: frequency,
+        dueDay,
+        billingStartMonth,
+        startDate: enrollmentStartDate,
+        schedule: classSchedule,
+    }), [proRataEnabled, monthlyFee, frequency, dueDay, billingStartMonth, enrollmentStartDate, classSchedule]);
 
     const updateScheduleSlot = (index: number, field: 'weekday' | 'time', value: string) => {
         setClassSchedule(prev => {
@@ -355,6 +380,14 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                     interests: (reschedOpp as any).interests || '',
                 },
             });
+            const parsedError = parseFunctionError({
+                error,
+                data,
+                fallbackMessage: 'Falha ao reenviar o link.',
+            });
+            if (parsedError.code || parsedError.status === 409 || parsedError.status === 502 || parsedError.status === 503) {
+                throw new Error(buildBroadcastErrorMessage(parsedError));
+            }
             if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao reenviar o link.');
             if (data?.warning) {
                 alert(`⚠️ Oportunidade reaberta, mas FALHA no envio ao WhatsApp!\nProfessores notificados: ${data.recipients ?? 0}/${data.total_active_teachers ?? 0}\nErro: ${data.warning}`);
@@ -489,40 +522,16 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setWizardSaving(true);
 
         try {
-            // Calcular pro-rata baseado em aulas avulsas
-            // Fórmula: (mensalidade / frequência×4) × aulas restantes no mês
-            const today = new Date();
-            const proRataValue = enableProRata ? (() => {
-                const totalClassesPerMonth = frequency * 4;
-                const pricePerClass = monthlyFee / totalClassesPerMonth;
-
-                // Mapear dias do horário para getDay() (0=Dom, 1=Seg, ..., 6=Sáb)
-                const DAY_MAP: Record<string, number> = {
-                    'monday': 1, 'tuesday': 2, 'wednesday': 3,
-                    'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
-                };
-                const classDayNums = new Set(
-                    classSchedule.filter(s => s.weekday).map(s => DAY_MAP[s.weekday]).filter(d => d !== undefined)
-                );
-
-                let remainingClasses = 0;
-                if (classDayNums.size > 0) {
-                    // Contar dias reais do horário de hoje até o fim do mês
-                    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                    const cursor = new Date(today);
-                    while (cursor <= endOfMonth) {
-                        if (classDayNums.has(cursor.getDay())) remainingClasses++;
-                        cursor.setDate(cursor.getDate() + 1);
-                    }
-                } else {
-                    // Sem horário definido: estimar proporcionalmente
-                    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                    const remainingDays = daysInMonth - today.getDate() + 1;
-                    remainingClasses = Math.round((frequency / 7) * remainingDays);
-                }
-
-                return Math.round(pricePerClass * remainingClasses * 100) / 100;
-            })() : 0;
+            if (!selectedProfessor) throw new Error('Selecione o professor responsável pela grade.');
+            if (classSchedule.length !== frequency || classSchedule.some(slot => !slot.weekday || !/^\d{2}:\d{2}$/.test(slot.time))) {
+                throw new Error(`Preencha exatamente ${frequency} horários válidos para esta oferta.`);
+            }
+            const scheduleKeys = classSchedule.map(slot =>
+                `${weekdayIndex(slot.weekday)}|${normalizeEnrollmentTime(slot.time)}`
+            );
+            if (new Set(scheduleKeys).size !== scheduleKeys.length) {
+                throw new Error('A grade contém duas aulas no mesmo dia e horário. Escolha horários distintos.');
+            }
 
             // FIX: Normalizar schedule para o mesmo formato do RegistrationLinkGenerator
             // RegistrationLinkGenerator usa { day: 'Monday', time: '14:00' } (capitalizado)
@@ -535,7 +544,11 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             };
             const normalizedSchedule = classSchedule
                 .filter(s => s.weekday)
-                .map(s => ({ day: WEEKDAY_TO_DAY[s.weekday] || s.weekday, time: s.time }));
+                .map(s => ({
+                    day: WEEKDAY_TO_DAY[s.weekday] || s.weekday,
+                    time: s.time,
+                    teacherId: selectedProfessor,
+                }));
 
             // Build magic link data (mesma schema do RegistrationLinkGenerator)
             const data = {
@@ -547,10 +560,9 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 professorId: selectedProfessor || null,
                 requiresEnrollment: duration !== 0,
                 enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
-                startDate: new Date().toISOString().split('T')[0], // Data de hoje como início
+                startDate: enrollmentStartDate,
                 // Pro-rata & billing start month (Módulo 3)
-                enableProRata,
-                proRataValue: enableProRata ? proRataValue : undefined,
+                enableProRata: proRataEnabled,
                 billingStartMonth,
                 // Extra fields for opportunity tracking
                 opportunityId: wizardOpp.id,
@@ -571,7 +583,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             );
             if (offerErr || !offerId) {
                 console.error('create_enrollment_offer failed:', offerErr);
-                throw new Error('Não foi possível gerar a oferta segura de matrícula.');
+                throw offerErr || new Error('Não foi possível gerar a oferta segura de matrícula.');
             }
 
             const url = `${APP_BASE_URL}/matricula?offer=${offerId}`;
@@ -590,7 +602,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
         } catch (err: any) {
             console.error('Generate Link Error:', err);
-            alert(err.message || 'Erro ao gerar link.');
+            const localMessage = err instanceof Error && /^(Selecione|Preencha|A grade)/.test(err.message)
+                ? err.message
+                : '';
+            alert(localMessage || enrollmentOfferErrorMessage(err));
         } finally {
             setWizardSaving(false);
         }
@@ -1153,58 +1168,36 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         <input
                                             type="month"
                                             value={billingStartMonth}
+                                            min={dateInSaoPaulo().slice(0, 7)}
                                             onChange={(e) => setBillingStartMonth(e.target.value)}
                                             className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl font-bold text-sm text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
                                         />
                                         <p className="text-[9px] text-slate-400 mt-1">Deixe como próximo mês para iniciar normalmente, ou escolha um mês futuro para diferir a cobrança.</p>
                                     </div>
 
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <div className="relative">
-                                            <input
-                                                type="checkbox"
-                                                checked={enableProRata}
-                                                onChange={(e) => setEnableProRata(e.target.checked)}
-                                                className="sr-only"
-                                            />
-                                            <div className={`w-10 h-6 rounded-full transition-colors ${enableProRata ? 'bg-amber-500' : 'bg-slate-200'}`} />
-                                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${enableProRata ? 'translate-x-4' : ''}`} />
-                                        </div>
+                                    <div className={`flex items-start gap-3 ${duration === 0 ? 'opacity-60' : ''}`}>
+                                        <EnrollmentProRataSwitch
+                                            checked={proRataEnabled}
+                                            disabled={duration === 0}
+                                            label="Cobrar pró-rata nesta matrícula"
+                                            onCheckedChange={setEnableProRata}
+                                        />
                                         <div>
-                                            <p className="text-sm font-bold text-slate-700">Cobrar Pro-Rata do mês atual</p>
-                                            <p className="text-xs text-slate-400">Cobrança por aulas avulsas (mensalidade ÷ {frequency * 4} aulas)</p>
-                                            {enableProRata && monthlyFee > 0 && (
+                                            <p className="text-sm font-bold text-slate-700">Cobrar pró-rata</p>
+                                            <p className="text-xs text-slate-400">
+                                                {duration === 0
+                                                    ? 'Não se aplica ao plano de aula avulsa.'
+                                                    : proRataEnabled
+                                                        ? `Ativado: cálculo por aula entre o início e ${proRataPreview.firstBillingDate.split('-').reverse().join('/')}.`
+                                                        : 'Desativado: não haverá cobrança proporcional antes da primeira mensalidade.'}
+                                            </p>
+                                            {proRataEnabled && monthlyFee > 0 && (
                                                 <p className="text-xs text-amber-600 font-bold">
-                                                    {(() => {
-                                                        const totalAulas = frequency * 4;
-                                                        const valorAula = monthlyFee / totalAulas;
-                                                        const DAY_MAP: Record<string, number> = {
-                                                            'monday': 1, 'tuesday': 2, 'wednesday': 3,
-                                                            'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
-                                                        };
-                                                        const validDays = new Set(
-                                                            classSchedule.filter(s => s.weekday).map(s => DAY_MAP[s.weekday]).filter(d => d !== undefined)
-                                                        );
-                                                        const today = new Date();
-                                                        let aulasRestantes = 0;
-                                                        if (validDays.size > 0) {
-                                                            const fim = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                                                            const c = new Date(today);
-                                                            while (c <= fim) {
-                                                                if (validDays.has(c.getDay())) aulasRestantes++;
-                                                                c.setDate(c.getDate() + 1);
-                                                            }
-                                                        } else {
-                                                            const dim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                                                            aulasRestantes = Math.round((frequency / 7) * (dim - today.getDate() + 1));
-                                                        }
-                                                        const total = (valorAula * aulasRestantes).toFixed(2);
-                                                        return `R$ ${valorAula.toFixed(2)}/aula × ${aulasRestantes} aulas = R$ ${total}`;
-                                                    })()}
+                                                    R$ {proRataPreview.pricePerClass.toFixed(2)}/aula × {proRataPreview.classCount} aulas = R$ {proRataPreview.value.toFixed(2)}
                                                 </p>
                                             )}
                                         </div>
-                                    </label>
+                                    </div>
                                 </div>
                             </div>
 

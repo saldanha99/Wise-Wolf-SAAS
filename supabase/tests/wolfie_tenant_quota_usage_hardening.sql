@@ -502,7 +502,8 @@ insert into public.wolfie_topup_orders (
   minutes,
   amount_brl,
   request_key,
-  status
+  status,
+  provider_customer_id
 )
 values (
   '40000000-0000-4000-8000-000000000910',
@@ -513,12 +514,13 @@ values (
   3,
   4.50,
   '40000000-0000-4000-8000-000000000912',
-  'AWAITING_PAYMENT'
+  'AWAITING_PAYMENT',
+  'wolfie_hardening_customer_fixture'
 );
 select public.apply_wolfie_topup_payment(
   '40000000-0000-4000-8000-000000000910',
   'pay_wolfie_hardening',
-  'PAYMENT_CONFIRMED',
+  ' payment_received ',
   4.50
 );
 select pg_temp.assert_true(
@@ -564,7 +566,8 @@ insert into public.wolfie_topup_orders (
   minutes,
   amount_brl,
   request_key,
-  status
+  status,
+  provider_customer_id
 )
 values (
   '40000000-0000-4000-8000-000000000911',
@@ -575,12 +578,13 @@ values (
   3,
   4.50,
   '40000000-0000-4000-8000-000000000913',
-  'AWAITING_PAYMENT'
+  'AWAITING_PAYMENT',
+  'wolfie_hardening_customer_fixture'
 );
 select public.apply_wolfie_topup_payment(
   '40000000-0000-4000-8000-000000000911',
   'pay_wolfie_partial_refund',
-  'PAYMENT_CONFIRMED',
+  'PAYMENT_RECEIVED_IN_CASH',
   4.50
 );
 select public.apply_wolfie_topup_payment(
@@ -590,12 +594,18 @@ select public.apply_wolfie_topup_payment(
   4.50,
   1.50
 );
--- A late paid delivery must not reactivate frozen credit.
-select public.apply_wolfie_topup_payment(
-  '40000000-0000-4000-8000-000000000911',
-  'pay_wolfie_partial_refund',
-  'PAYMENT_RECEIVED',
-  4.50
+-- A late paid delivery must not reactivate suspended credit; it must remain
+-- idempotent and keep the previous SUSPENDED state.
+select pg_temp.assert_true(
+  (
+    public.apply_wolfie_topup_payment(
+      '40000000-0000-4000-8000-000000000911',
+      'pay_wolfie_partial_refund',
+      'PAYMENT_RECEIVED',
+      4.50
+    ) ->> 'idempotent'
+  )::boolean,
+  'late payment should be treated as idempotent after suspension'
 );
 select pg_temp.assert_true(
   (

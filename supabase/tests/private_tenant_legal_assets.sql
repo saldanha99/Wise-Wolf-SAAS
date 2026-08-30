@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 select pg_temp.assert_true(
   (select not public from storage.buckets where id = 'tenant-branding')

@@ -6,7 +6,31 @@ import { getSchoolInfo } from '../lib/schoolInfo';
 import { tenantLegalAssetsService } from '../services/tenantLegalAssetsService';
 import ContractModal from './ContractModal';
 import { useReactToPrint } from 'react-to-print';
-import { User, Mail, Lock, Phone, MapPin, CheckCircle, AlertCircle, ArrowRight, Loader2, QrCode, Barcode, CreditCard, ShieldCheck, Download, FileText, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import {
+    AlertCircle,
+    ArrowLeft,
+    ArrowRight,
+    Barcode,
+    CalendarDays,
+    Check,
+    CheckCircle,
+    ChevronRight,
+    Clock3,
+    CreditCard,
+    Eye,
+    EyeOff,
+    FileText,
+    Loader2,
+    Lock,
+    MapPin,
+    QrCode,
+    ReceiptText,
+    ShieldCheck,
+    Sparkles,
+    User,
+    type LucideIcon,
+} from 'lucide-react';
+import './PublicRegistration.css';
 import {
     calculateEnrollmentQuote,
     digitsOnly,
@@ -18,8 +42,17 @@ import {
     isValidCpf,
     isValidCreditCardNumber,
     isValidEmail,
+    normalizeEnrollmentProRataTerms,
     normalizeEmail,
 } from '../lib/enrollment';
+import {
+    classifyEnrollmentPaymentOutcome,
+    classifyEnrollmentProgressOutcome,
+    getEnrollmentConfirmationSource,
+    getPendingEnrollmentPaymentKind,
+    getPendingEnrollmentPaymentPresentation,
+    type PendingEnrollmentPaymentKind,
+} from '../lib/enrollmentPaymentOutcome';
 
 type ProcessingStage =
     | 'IDLE'
@@ -37,6 +70,173 @@ const FieldError: React.FC<{ message?: string }> = ({ message }) => (
         : null
 );
 
+const ENROLLMENT_STEPS = ['Pagamento', 'Seus dados', 'Contrato', 'Conclusão'] as const;
+
+type EnrollmentQuote = ReturnType<typeof calculateEnrollmentQuote>;
+
+interface EnrollmentShellProps {
+    children: React.ReactNode;
+    currentStep: 1 | 2 | 3 | 4;
+    storyTitle: React.ReactNode;
+    storyDescription: string;
+    contractData?: any;
+    quote?: EnrollmentQuote;
+    school?: SchoolInfo | null;
+    isFinished?: boolean;
+}
+
+const planLabel = (duration?: number) => {
+    if (duration === 0) return 'Plano Avulso';
+    if (duration === 12) return 'Plano Anual';
+    if (duration === 6) return 'Plano Semestral';
+    return 'Plano Mensal';
+};
+
+const EnrollmentShell: React.FC<EnrollmentShellProps> = ({
+    children,
+    currentStep,
+    storyTitle,
+    storyDescription,
+    contractData,
+    quote,
+    school,
+    isFinished = false,
+}) => {
+    const schoolName = school?.name || school?.legalName || 'Wise Wolf Languages';
+    const duration = Number(contractData?.planDuration ?? 12);
+    const progress = isFinished ? 1 : (currentStep - 1) / (ENROLLMENT_STEPS.length - 1);
+    const progressStyle = { '--enrollment-progress': progress } as React.CSSProperties;
+
+    return (
+        <div className="enrollment-experience">
+            <header className="enrollment-topbar">
+                <div className="enrollment-brand" aria-label={`${schoolName}, matrícula online`}>
+                    <span className="enrollment-brand__mark" aria-hidden="true">WW</span>
+                    <span>
+                        <span className="enrollment-brand__name">{schoolName}</span>
+                        <span className="enrollment-brand__caption">Matrícula online</span>
+                    </span>
+                </div>
+                <div className="enrollment-secure-chip">
+                    <ShieldCheck size={16} aria-hidden="true" />
+                    <span>Ambiente protegido</span>
+                </div>
+            </header>
+
+            <main className="enrollment-layout">
+                <aside className="enrollment-story" aria-label="Resumo da sua jornada">
+                    <div className="enrollment-story__content">
+                        <img
+                            src="/assets/wolfie/brand/wise-wolf-logo-horizontal-dark.png"
+                            alt="Wise Wolf"
+                            className="h-10 w-auto max-w-[152px] object-contain"
+                        />
+                        <p className="enrollment-story__eyebrow mt-8">
+                            <Sparkles size={14} aria-hidden="true" />
+                            Sua jornada começa aqui
+                        </p>
+                        <h1 className="enrollment-story__title">{storyTitle}</h1>
+                        <p className="enrollment-story__description">{storyDescription}</p>
+
+                        {contractData && quote ? (
+                            <div className="enrollment-plan-spotlight">
+                                <div className="enrollment-plan-spotlight__top">
+                                    <div>
+                                        <p className="enrollment-plan-spotlight__label">Seu plano</p>
+                                        <p className="enrollment-plan-spotlight__name">{planLabel(duration)}</p>
+                                    </div>
+                                    <div className="enrollment-plan-spotlight__price">
+                                        <strong>{formatBrl(Number(contractData.value || 0))}</strong>
+                                        <span>{duration === 0 ? 'pagamento único' : 'por mês'}</span>
+                                    </div>
+                                </div>
+                                <div className="enrollment-plan-spotlight__meta">
+                                    <span>
+                                        <Clock3 size={14} aria-hidden="true" />
+                                        {contractData.classesPerWeek
+                                            ? `${contractData.classesPerWeek}x por semana`
+                                            : 'Jornada personalizada'}
+                                    </span>
+                                    <span>
+                                        <CalendarDays size={14} aria-hidden="true" />
+                                        {duration === 0 ? 'Aula avulsa' : `${duration} meses`}
+                                    </span>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        <div className="enrollment-story__trust" aria-label="Garantias da matrícula">
+                            <span><Check size={15} aria-hidden="true" /> Você revisa tudo antes de assinar</span>
+                            <span><Check size={15} aria-hidden="true" /> Pagamento processado via Asaas</span>
+                            <span><Check size={15} aria-hidden="true" /> Contrato com trilha de auditoria</span>
+                        </div>
+                    </div>
+
+                    <p className="enrollment-story__footer">
+                        Uma experiência {schoolName} · segura do início ao fim
+                    </p>
+                </aside>
+
+                <section className="enrollment-workspace" aria-label="Etapas da matrícula">
+                    <nav className="enrollment-stepper" aria-label="Progresso da matrícula" style={progressStyle}>
+                        <span className="enrollment-stepper__progress" aria-hidden="true" />
+                        {ENROLLMENT_STEPS.map((label, index) => {
+                            const number = index + 1;
+                            const complete = isFinished || number < currentStep;
+                            const active = !isFinished && number === currentStep;
+                            return (
+                                <span
+                                    key={label}
+                                    className={`enrollment-stepper__item${complete ? ' is-complete' : ''}${active ? ' is-active' : ''}`}
+                                    aria-current={active ? 'step' : undefined}
+                                >
+                                    <span className="enrollment-stepper__number">
+                                        {complete ? <Check size={14} aria-hidden="true" /> : number}
+                                    </span>
+                                    <span>{label}</span>
+                                </span>
+                            );
+                        })}
+                    </nav>
+                    <div className="enrollment-panel">{children}</div>
+                </section>
+            </main>
+        </div>
+    );
+};
+
+interface PaymentOptionProps {
+    icon: LucideIcon;
+    title: string;
+    description: string;
+    variant: 'pix' | 'card' | 'boleto';
+    onSelect: () => void;
+}
+
+const PaymentOption: React.FC<PaymentOptionProps> = ({
+    icon: Icon,
+    title,
+    description,
+    variant,
+    onSelect,
+}) => (
+    <button
+        type="button"
+        onClick={onSelect}
+        className={`enrollment-payment-option enrollment-payment-option--${variant}`}
+        aria-label={`${title}. ${description}`}
+    >
+        <span className="enrollment-payment-option__icon" aria-hidden="true">
+            <Icon size={25} strokeWidth={1.8} />
+        </span>
+        <span>
+            <span className="enrollment-payment-option__title">{title}</span>
+            <span className="enrollment-payment-option__description">{description}</span>
+        </span>
+        <ChevronRight className="enrollment-payment-option__arrow" size={20} aria-hidden="true" />
+    </button>
+);
+
 const PublicRegistration: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const submitLockRef = useRef(false);
@@ -46,8 +246,8 @@ const PublicRegistration: React.FC = () => {
         code: string;
         qrCode: string;
         paymentId: string;
-        kind: 'ENROLLMENT_FEE' | 'ONE_TIME';
-        billingType: 'PIX' | 'BOLETO';
+        kind: PendingEnrollmentPaymentKind;
+        billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
         invoiceUrl?: string;
         amount: number;
     } | null>(null);
@@ -150,7 +350,6 @@ const PublicRegistration: React.FC = () => {
             else if (data.unitId) getSchoolInfo(data.unitId).then(setSchool);
             // Matrícula vinculada: contrato/cobrança usa os dados do RESPONSÁVEL.
             if (data.isDependent) {
-                if (data.guardianPhone) setPhone(String(data.guardianPhone));
                 if (data.guardianPostalCode) setPostalCode(String(data.guardianPostalCode));
                 if (data.guardianAddress) setAddress(String(data.guardianAddress));
                 if (data.guardianAddressNumber) setAddressNumber(String(data.guardianAddressNumber));
@@ -204,7 +403,11 @@ const PublicRegistration: React.FC = () => {
 
                 if (progress.status === 'AWAITING_PAYMENT') {
                     try {
-                        if (Number(payload.enrollmentFee || 0) > 0) {
+                        const pendingKind = getPendingEnrollmentPaymentKind(
+                            Number(payload.enrollmentFee || 0),
+                            Number(payload.planDuration),
+                        );
+                        if (pendingKind === 'ENROLLMENT_FEE') {
                             const resumedPix = await asaasService.createEnrollmentPix();
                             setEnrollmentPix({
                                 code: String(resumedPix.pixCode || ''),
@@ -214,7 +417,7 @@ const PublicRegistration: React.FC = () => {
                                 billingType: 'PIX',
                                 amount: Number(payload.enrollmentFee),
                             });
-                        } else if (Number(payload.planDuration) === 0) {
+                        } else if (pendingKind === 'ONE_TIME') {
                             const resumedPayment = await asaasService.createSubscription({
                                 user_id: session.user.id,
                                 value: Number(payload.value),
@@ -231,7 +434,21 @@ const PublicRegistration: React.FC = () => {
                                 invoiceUrl: resumedPayment.invoice_url || undefined,
                                 amount: Number(payload.value),
                             });
+                        } else {
+                            // A assinatura e a primeira cobrança já existem. A
+                            // retomada consulta somente o estado local e nunca
+                            // tenta criar outra assinatura/cobrança no provedor.
+                            setEnrollmentPix({
+                                code: '',
+                                qrCode: '',
+                                paymentId: String(saved.subscription_id || ''),
+                                kind: 'RECURRING_FIRST_PAYMENT',
+                                billingType: progress.billing_type || 'PIX',
+                                amount: Number(payload.value || 0),
+                            });
                         }
+                        setProcessingStage('BILLING');
+                        setError(null);
                         setStep('ENROLLMENT_PAYMENT');
                     } catch {
                         console.error('Não foi possível restaurar a cobrança pendente.');
@@ -270,8 +487,10 @@ const PublicRegistration: React.FC = () => {
         if (!contractData?.isDependent && !isValidCpf(cpf)) {
             nextErrors.cpf = 'Informe um CPF válido.';
         }
-        if (!contractData?.isDependent && !isValidBrazilianMobile(normalizedPhone)) {
-            nextErrors.phone = 'Informe um celular válido com DDD.';
+        if (!isValidBrazilianMobile(normalizedPhone)) {
+            nextErrors.phone = contractData?.isDependent
+                ? 'Informe o celular do aluno com DDD. As confirmações de aula irão para ele.'
+                : 'Informe um celular válido com DDD.';
         }
         if (!contractData?.isDependent && normalizedCep.length !== 8) {
             nextErrors.postalCode = 'Informe um CEP com 8 números.';
@@ -491,6 +710,18 @@ const PublicRegistration: React.FC = () => {
                 if (claimResult?.error === 'OFFER_IN_PROGRESS') {
                     throw new Error('Esta matrícula já foi iniciada por outra conta. Fale com a escola para recuperar o acesso.');
                 }
+                if (['SCHEDULE_UNAVAILABLE', 'SCHEDULE_OCCUPIED', 'SCHEDULE_RESERVED', 'SCHEDULE_CHANGED'].includes(claimResult?.error)) {
+                    throw new Error('Um horário da grade não está mais disponível. A escola precisa gerar um novo link antes de qualquer cobrança.');
+                }
+                if (['FIRST_BILLING_DATE_PASSED', 'BILLING_PERIOD_EXPIRED'].includes(claimResult?.error)) {
+                    throw new Error('O primeiro vencimento desta oferta já passou. Solicite um novo link com datas atualizadas.');
+                }
+                if (claimResult?.error === 'FINANCIAL_SCOPE_CONFLICT') {
+                    throw new Error('Esta conta já possui outro vínculo financeiro ativo. A escola precisa revisar a matrícula antes de criar uma nova cobrança.');
+                }
+                if (claimResult?.error === 'INVALID_STUDENT_PHONE') {
+                    throw new Error('O WhatsApp do aluno informado pela escola é inválido. Solicite um novo link com o número correto.');
+                }
                 throw new Error('Não foi possível reservar este link. Ele pode estar expirado ou já concluído.');
             }
             setCorrelationId(String(claimResult.correlation_id || ''));
@@ -555,6 +786,7 @@ const PublicRegistration: React.FC = () => {
             });
 
             setProcessingStage('BILLING');
+            const proRataTerms = normalizeEnrollmentProRataTerms(enrollmentData);
             // 4. Create Subscription (THE MOMENT OF TRUTH)
             const response = await asaasService.createSubscription({
                 user_id: userId,
@@ -566,8 +798,8 @@ const PublicRegistration: React.FC = () => {
                 // Passa o mês de início da cobrança (billingStartMonth) e pro-rata
                 // para que o Asaas calcule o nextDueDate correto
                 startDate: enrollmentData.billingStartMonth || undefined,
-                proRata: enrollmentData.enableProRata || false,
-                proRataValue: enrollmentData.proRataValue || undefined,
+                proRata: proRataTerms.enabled,
+                proRataValue: proRataTerms.value > 0 ? proRataTerms.value : undefined,
                 creditCard: creditCardData,
                 creditCardHolderInfo: billingType === 'CREDIT_CARD' ? {
                     name: isDependent ? (enrollmentData.guardianName || name) : name,
@@ -642,10 +874,19 @@ const PublicRegistration: React.FC = () => {
                     amount: Number(enrollmentData.value),
                 });
                 setStep('ENROLLMENT_PAYMENT');
+            } else if (response.enrollment_complete !== true) {
+                setEnrollmentPix({
+                    code: '',
+                    qrCode: '',
+                    paymentId: confirmedSubId,
+                    kind: 'RECURRING_FIRST_PAYMENT',
+                    billingType,
+                    amount: Number(enrollmentData.value || 0),
+                });
+                setProcessingStage('BILLING');
+                setError(null);
+                setStep('ENROLLMENT_PAYMENT');
             } else {
-                if (response.enrollment_complete !== true) {
-                    throw new Error('Sua cobrança foi criada e a conclusão está sendo confirmada. Clique novamente para consultar o andamento.');
-                }
                 setProcessingStage('FINALIZING');
                 await sendCompletionNotifications(userId, enrollmentData);
                 setProcessingStage('COMPLETE');
@@ -675,6 +916,19 @@ const PublicRegistration: React.FC = () => {
             }
             if (errorMessage.includes('asaas_not_configured')) {
                 errorMessage = 'A integração financeira está temporariamente indisponível. Seus dados foram salvos; tente novamente em alguns instantes.';
+            }
+            if (
+                errorMessage.includes('booking_materialization_failed') ||
+                errorMessage.includes('enrollment_schedule_changed') ||
+                errorMessage.includes('teacher_slot_')
+            ) {
+                errorMessage = 'Um horário da grade deixou de estar disponível. Nenhuma nova cobrança foi criada; peça à escola um novo link.';
+            }
+            if (errorMessage.includes('enrollment_financial_scope_conflict')) {
+                errorMessage = 'Esta conta já possui outro vínculo financeiro ativo. A escola precisa revisar a matrícula antes de criar uma nova cobrança.';
+            }
+            if (errorMessage.includes('pro_rata_creation_failed')) {
+                errorMessage = 'A assinatura foi localizada, mas a cobrança proporcional ainda não foi concluída. Seus dados foram preservados; tente novamente para reparar somente essa etapa.';
             }
             if (
                 errorMessage.includes('Edge Function returned') ||
@@ -765,6 +1019,39 @@ const PublicRegistration: React.FC = () => {
         if (!enrollmentPix) return;
         setCheckingPayment(true);
         try {
+            if (getEnrollmentConfirmationSource(enrollmentPix.kind) === 'ENROLLMENT_PROGRESS') {
+                const offerId = contractData?._offerId;
+                if (typeof offerId !== 'string') {
+                    throw new Error('enrollment_offer_missing');
+                }
+                const { data: progress, error: progressError } = await supabase.rpc('get_enrollment_progress', {
+                    p_offer_id: offerId,
+                });
+                if (progressError) throw progressError;
+
+                const progressOutcome = classifyEnrollmentProgressOutcome(progress);
+                if (progressOutcome === 'COMPLETE') {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    setProcessingStage('FINALIZING');
+                    if (session) await sendCompletionNotifications(session.user.id, contractData);
+                    setProcessingStage('COMPLETE');
+                    setError(null);
+                    setStep('SUCCESS');
+                    return;
+                }
+                if (progressOutcome === 'UNAVAILABLE') {
+                    throw new Error('enrollment_progress_unavailable');
+                }
+
+                setProcessingStage('BILLING');
+                setError(
+                    progressOutcome === 'AWAITING_PAYMENT'
+                        ? 'Sua conta e seu contrato já foram criados. A primeira mensalidade ainda aguarda confirmação; nenhuma nova cobrança foi criada nesta consulta.'
+                        : 'Sua conta e seu contrato já foram criados, mas a matrícula ainda está sendo processada. Aguarde alguns instantes e consulte novamente.'
+                );
+                return;
+            }
+
             const res = enrollmentPix.kind === 'ONE_TIME'
                 ? await (async () => {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -772,13 +1059,21 @@ const PublicRegistration: React.FC = () => {
                     return asaasService.checkOneTimePayment(session.user.id);
                 })()
                 : await asaasService.checkPaymentStatus(enrollmentPix.paymentId);
-            if (res?.paid === true || ['RECEIVED', 'CONFIRMED'].includes(res?.status)) {
+            const paymentOutcome = classifyEnrollmentPaymentOutcome(res);
+            if (paymentOutcome === 'COMPLETE') {
                 const { data: { session } } = await supabase.auth.getSession();
                 setProcessingStage('FINALIZING');
                 if (session) await sendCompletionNotifications(session.user.id, contractData);
                 setProcessingStage('COMPLETE');
                 setError(null);
                 setStep('SUCCESS');
+            } else if (paymentOutcome === 'SETTLED_AWAITING_COMPLETION') {
+                setProcessingStage('BILLING');
+                setError(
+                    enrollmentPix.kind === 'ENROLLMENT_FEE'
+                        ? 'A taxa de matrícula foi confirmada, mas outra cobrança prevista no contrato ainda precisa ser confirmada. A taxa não será cobrada novamente. Aguarde a atualização automática ou fale com a escola.'
+                        : 'O pagamento foi confirmado, mas a matrícula ainda está sendo concluída pelo sistema. Aguarde alguns instantes e consulte novamente.'
+                );
             } else {
                 setError('Pagamento ainda não identificado. Se você já pagou, aguarde alguns instantes e consulte novamente.');
             }
@@ -791,370 +1086,411 @@ const PublicRegistration: React.FC = () => {
     };
 
     const renderFinancialSummary = () => (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-left space-y-2">
-            <h3 className="text-xs font-black uppercase tracking-widest text-blue-900">Resumo financeiro</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                <span className="text-blue-700">
+        <section className="enrollment-financial-summary" aria-labelledby="enrollment-financial-title">
+            <div className="enrollment-financial-summary__header">
+                <h3 id="enrollment-financial-title">
+                    <ReceiptText size={15} aria-hidden="true" />
+                    Resumo financeiro
+                </h3>
+                <span className="text-[10px] font-bold text-slate-500">Valores do contrato</span>
+            </div>
+
+            {quote.dueToday > 0 ? (
+                <div className="enrollment-financial-summary__today">
+                    <span>Valor solicitado na conclusão de hoje</span>
+                    <strong>{formatBrl(quote.dueToday)}</strong>
+                </div>
+            ) : null}
+
+            <div className="enrollment-financial-summary__rows">
+                <span>
                     {contractData?.planDuration === 0
                         ? 'Pagamento único'
                         : `${quote.installmentCount} mensalidades`}
                 </span>
-                <strong className="text-right text-blue-950">
+                <strong>
                     {contractData?.planDuration === 0
                         ? formatBrl(quote.installmentValue)
                         : `${quote.installmentCount} × ${formatBrl(quote.installmentValue)}`}
                 </strong>
-                {quote.enrollmentFee > 0 && (
+                {quote.enrollmentFee > 0 ? (
                     <>
-                        <span className="text-blue-700">Taxa de matrícula via PIX</span>
-                        <strong className="text-right text-blue-950">{formatBrl(quote.enrollmentFee)}</strong>
+                        <span>Taxa de matrícula via Pix</span>
+                        <strong>{formatBrl(quote.enrollmentFee)}</strong>
                     </>
-                )}
-                {quote.proRataValue > 0 && (
+                ) : null}
+                {quote.proRataValue > 0 ? (
                     <>
-                        <span className="text-blue-700">Valor proporcional inicial</span>
-                        <strong className="text-right text-blue-950">{formatBrl(quote.proRataValue)}</strong>
+                        <span>Valor proporcional inicial</span>
+                        <strong>{formatBrl(quote.proRataValue)}</strong>
                     </>
-                )}
-                {contractData?.planDuration !== 0 && (
+                ) : null}
+                {contractData?.planDuration !== 0 ? (
                     <>
-                        <span className="text-blue-700">Primeiro vencimento</span>
-                        <strong className="text-right text-blue-950">{formatDateBr(quote.firstDueDate)}</strong>
+                        <span>Primeiro vencimento</span>
+                        <strong>{formatDateBr(quote.firstDueDate)}</strong>
                     </>
-                )}
-                <span className="border-t border-blue-200 pt-2 font-bold text-blue-900">Total do contrato</span>
-                <strong className="border-t border-blue-200 pt-2 text-right text-blue-950">{formatBrl(quote.total)}</strong>
+                ) : null}
+                <span className="enrollment-financial-summary__total">Total do contrato</span>
+                <strong>{formatBrl(quote.total)}</strong>
             </div>
-            {quote.dueToday > 0 && (
-                <p className="text-[11px] text-blue-800 pt-1">
-                    Valor solicitado na conclusão de hoje: <strong>{formatBrl(quote.dueToday)}</strong>.
-                </p>
-            )}
-        </div>
+        </section>
     );
 
     // ========== PAYMENT SELECTION STEP ==========
     if (step === 'PAYMENT_SELECTION') {
         if (!contractData && !error) {
-            return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
-        }
-
-        if (!contractData && error) {
             return (
-                <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4 font-sans">
-                    <div className="max-w-md w-full bg-brand-surface rounded-[2.5rem] shadow-2xl border border-white p-10 text-center">
-                        <AlertCircle className="text-red-500 mx-auto mb-5" size={48} />
-                        <h1 className="text-2xl font-black text-brand-text mb-3">Link indisponível</h1>
-                        <p className="text-sm text-brand-muted leading-relaxed">{error}</p>
+                <div className="enrollment-loading" role="status" aria-live="polite">
+                    <div className="enrollment-loading__card">
+                        <Loader2 className="animate-spin" size={20} aria-hidden="true" />
+                        Preparando sua matrícula com segurança…
                     </div>
                 </div>
             );
         }
 
+        if (!contractData && error) {
+            return (
+                <EnrollmentShell
+                    currentStep={1}
+                    storyTitle={<>Uma jornada tranquila, <em>desde o primeiro passo.</em></>}
+                    storyDescription="Sua matrícula foi desenhada para ser clara, segura e fácil de acompanhar."
+                    school={school}
+                >
+                    <div className="py-8 text-center">
+                        <div className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl bg-rose-50 text-rose-600">
+                            <AlertCircle size={30} aria-hidden="true" />
+                        </div>
+                        <p className="enrollment-panel__eyebrow">Não foi possível continuar</p>
+                        <h2 className="enrollment-panel__title">Link indisponível</h2>
+                        <p className="enrollment-panel__description mx-auto">{error}</p>
+                    </div>
+                </EnrollmentShell>
+            );
+        }
+
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-                    {/* Header */}
-                    <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
-                        <div className="relative z-10">
-                            <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Matrícula Online</h1>
-                            {contractData && (
-                                <div className="flex flex-col gap-2 items-center">
-                                    <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
-                                        <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
-                                            Plano {contractData.planDuration === 0 ? 'Avulso' : contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
-                                        </p>
-                                    </div>
-                                    <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
-                                        <p className="text-sm font-black text-blue-900">
-                                            {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}
-                                            {contractData.planDuration === 0 ? ' (pagamento único)' : '/mês'}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/* Decorative Circles */}
-                        <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
-                        <div className="absolute bottom-0 right-0 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+            <EnrollmentShell
+                currentStep={1}
+                storyTitle={<>Seu próximo capítulo <em>começa aqui.</em></>}
+                storyDescription="Em poucos minutos, você confirma seu plano, seus dados e a assinatura — com clareza em cada etapa."
+                contractData={contractData}
+                quote={quote}
+                school={school}
+            >
+                {error ? (
+                    <div className="enrollment-alert" role="alert">
+                        <AlertCircle className="shrink-0" size={19} aria-hidden="true" />
+                        <p>{error}</p>
                     </div>
+                ) : null}
 
-                    <div className="p-8">
-                        {error && (
-                            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3">
-                                <AlertCircle className="text-red-500 shrink-0" size={20} />
-                                <p className="text-sm text-red-600 font-bold">{error}</p>
-                            </div>
-                        )}
+                <p className="enrollment-panel__eyebrow">Etapa 1 de 4</p>
+                <h2 className="enrollment-panel__title">Como você prefere pagar?</h2>
+                <p className="enrollment-panel__description">
+                    Escolha a forma de pagamento do seu plano. Você revisará todos os dados antes de assinar.
+                </p>
 
-                        <div className="text-center mb-8">
-                            <h2 className="text-xl font-black text-brand-text mb-2">Como você prefere pagar?</h2>
-                            <p className="text-brand-muted text-sm">Selecione sua forma de pagamento para prosseguir com a matrícula.</p>
-                        </div>
+                {renderFinancialSummary()}
 
-                        <div className="mb-6">{renderFinancialSummary()}</div>
-
-                        <div className="grid grid-cols-1 gap-4">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setBillingType('PIX');
-                                    setStep('FORM');
-                                }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-500/10 transition-all group text-left"
-                            >
-                                <div className="w-16 h-16 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                                    <QrCode size={32} />
-                                </div>
-                                <div className="ml-5">
-                                    <h3 className="text-lg font-black text-brand-text group-hover:text-emerald-700">Pix</h3>
-                                </div>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setBillingType('CREDIT_CARD');
-                                    setStep('FORM');
-                                }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-500/10 transition-all group text-left"
-                            >
-                                <div className="w-16 h-16 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                                    <CreditCard size={32} />
-                                </div>
-                                <div className="ml-5">
-                                    <h3 className="text-lg font-black text-brand-text group-hover:text-blue-700">Cartão</h3>
-                                </div>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setBillingType('BOLETO');
-                                    setStep('FORM');
-                                }}
-                                className="flex items-center p-6 rounded-2xl border-2 border-brand-border bg-brand-surface hover:border-amber-500 hover:bg-amber-50 hover:shadow-lg hover:shadow-amber-500/10 transition-all group text-left"
-                            >
-                                <div className="w-16 h-16 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                                    <Barcode size={32} />
-                                </div>
-                                <div className="ml-5">
-                                    <h3 className="text-lg font-black text-brand-text group-hover:text-amber-700">Boleto</h3>
-                                </div>
-                            </button>
-                        </div>
-                    </div>
+                <div className="enrollment-payment-options" role="group" aria-label="Formas de pagamento disponíveis">
+                    <PaymentOption
+                        icon={QrCode}
+                        title="Pix"
+                        description="O código é disponibilizado após seus dados e a assinatura."
+                        variant="pix"
+                        onSelect={() => {
+                            setBillingType('PIX');
+                            setStep('FORM');
+                        }}
+                    />
+                    <PaymentOption
+                        icon={CreditCard}
+                        title="Cartão"
+                        description="Cadastro protegido e cobrança conforme as condições do contrato."
+                        variant="card"
+                        onSelect={() => {
+                            setBillingType('CREDIT_CARD');
+                            setStep('FORM');
+                        }}
+                    />
+                    <PaymentOption
+                        icon={Barcode}
+                        title="Boleto"
+                        description="O boleto é disponibilizado ao final da contratação."
+                        variant="boleto"
+                        onSelect={() => {
+                            setBillingType('BOLETO');
+                            setStep('FORM');
+                        }}
+                    />
                 </div>
-            </div>
+
+                <p className="enrollment-trust-note">
+                    <ShieldCheck size={15} aria-hidden="true" />
+                    Seus dados são usados somente para concluir a matrícula e o contrato.
+                </p>
+            </EnrollmentShell>
         );
     }
 
     // ========== ENROLLMENT STEP (Ficha de Matrícula) ==========
     // ========== ENROLLMENT PAYMENT STEP (PIX QR CODE) ==========
     if (step === 'ENROLLMENT_PAYMENT') {
+        const isRecurringFirstPayment = enrollmentPix?.kind === 'RECURRING_FIRST_PAYMENT';
+        const pendingAmount = Number(enrollmentPix?.amount || 0);
+        const paymentPresentation = getPendingEnrollmentPaymentPresentation(
+            enrollmentPix?.kind,
+            pendingAmount,
+        );
+
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-                    <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
-                        <div className="relative z-10 text-white">
-                            <QrCode className="mx-auto mb-4" size={48} />
-                            <h1 className="text-2xl font-black uppercase tracking-tight">
-                                {enrollmentPix?.kind === 'ONE_TIME' ? 'Pagamento da Aula Avulsa' : 'Taxa de Matrícula'}
-                            </h1>
-                            <p className="text-blue-100/80 text-sm">Contrato Assinado com Sucesso! 📜</p>
-                            <p className="text-blue-100/60 text-[10px] mt-1 uppercase font-bold tracking-widest">
-                                {enrollmentPix?.kind === 'ONE_TIME'
-                                    ? 'Conclua o pagamento para confirmar a aula'
-                                    : 'Agora, pague a matrícula para garantir sua vaga'}
-                            </p>
-                        </div>
+            <EnrollmentShell
+                currentStep={4}
+                storyTitle={<>Tudo certo por aqui. <em>Falta só a confirmação.</em></>}
+                storyDescription="Seu cadastro e sua assinatura já estão protegidos. Agora acompanhamos a confirmação financeira sem refazer nenhuma etapa."
+                contractData={contractData}
+                quote={quote}
+                school={school}
+            >
+                <div className="enrollment-payment-status">
+                    <div className="enrollment-payment-status__icon">
+                        {isRecurringFirstPayment
+                            ? <CreditCard size={34} strokeWidth={1.8} aria-hidden="true" />
+                            : <QrCode size={34} strokeWidth={1.8} aria-hidden="true" />}
                     </div>
+                    <p className="enrollment-panel__eyebrow">Etapa 4 de 4</p>
+                    <h2 className="enrollment-panel__title">{paymentPresentation.title}</h2>
+                    <p className="enrollment-panel__description mx-auto">
+                        {enrollmentPix?.kind === 'ONE_TIME'
+                            ? 'Conclua o pagamento para confirmar sua aula.'
+                            : isRecurringFirstPayment
+                                ? 'A matrícula será confirmada assim que a primeira mensalidade for reconhecida.'
+                                : enrollmentPix?.kind === 'ENROLLMENT_FEE'
+                                    ? 'Conclua o pagamento da matrícula para garantir sua vaga.'
+                                    : 'Aguarde enquanto o sistema confirma sua matrícula.'}
+                    </p>
+                </div>
 
-                    <div className="p-8 text-center space-y-6">
-                        {error && (
-                            <div role="status" aria-live="polite" className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left flex gap-3">
-                                <AlertCircle className="text-amber-600 shrink-0" size={20} />
-                                <p className="text-sm font-semibold text-amber-800">{error}</p>
-                            </div>
-                        )}
-                        <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl inline-block">
-                            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Valor a Pagar</p>
-                            <p className="text-3xl font-black text-emerald-700">
-                                R$ {Number(enrollmentPix?.amount || 0).toFixed(2)}
+                <div className="mt-6 space-y-5 text-center">
+                    {error ? (
+                        <div role="status" aria-live="polite" className="enrollment-status-box enrollment-status-box--warning flex gap-3 text-left">
+                            <AlertCircle className="shrink-0" size={19} aria-hidden="true" />
+                            <p>{error}</p>
+                        </div>
+                    ) : null}
+
+                    {enrollmentPix && paymentPresentation.showAmount ? (
+                        <div className="enrollment-amount-card">
+                            <span>{paymentPresentation.amountLabel}</span>
+                            <strong>{formatBrl(pendingAmount)}</strong>
+                        </div>
+                    ) : null}
+
+                    {isRecurringFirstPayment ? (
+                        <div className="enrollment-status-box">
+                            <CheckCircle className="mx-auto mb-2" size={28} aria-hidden="true" />
+                            <p className="font-bold">Conta e contrato já estão criados</p>
+                            <p className="mt-1">
+                                A primeira mensalidade continua pendente. A confirmação será atualizada sem refazer cadastro, assinatura ou cobrança.
                             </p>
                         </div>
+                    ) : null}
 
-                        {enrollmentPix?.billingType === 'PIX' && enrollmentPix?.qrCode ? (
-                            <div className="bg-brand-surface p-4 rounded-3xl border-4 border-slate-50 inline-block shadow-inner">
-                                <img 
-                                    src={`data:image/png;base64,${enrollmentPix.qrCode}`} 
-                                    alt="Asaas Pix QR Code" 
-                                    className="w-64 h-64 mx-auto"
-                                />
-                            </div>
-                        ) : enrollmentPix?.billingType === 'PIX' && !enrollmentPix?.invoiceUrl ? (
-                            <div className="h-64 flex items-center justify-center">
-                                <Loader2 className="animate-spin text-slate-300" size={48} />
-                            </div>
-                        ) : null}
+                    {!isRecurringFirstPayment && enrollmentPix?.billingType === 'PIX' && enrollmentPix?.qrCode ? (
+                        <div className="enrollment-qr-card">
+                            <img
+                                src={`data:image/png;base64,${enrollmentPix.qrCode}`}
+                                alt="QR Code Pix gerado pelo Asaas"
+                                className="mx-auto size-64 max-w-full"
+                            />
+                        </div>
+                    ) : !isRecurringFirstPayment && enrollmentPix?.billingType === 'PIX' && !enrollmentPix?.invoiceUrl ? (
+                        <div className="flex h-56 items-center justify-center" role="status" aria-label="Gerando pagamento">
+                            <Loader2 className="animate-spin text-slate-300" size={44} aria-hidden="true" />
+                        </div>
+                    ) : null}
 
-                        {enrollmentPix?.billingType === 'CREDIT_CARD' && (
-                            <div className="p-5 rounded-2xl border border-blue-200 bg-blue-50 text-blue-800">
-                                <CreditCard className="mx-auto mb-2" size={30} />
-                                <p className="font-bold">Pagamento enviado para confirmação</p>
-                                <p className="text-xs mt-1">A operadora pode levar alguns instantes para confirmar.</p>
-                            </div>
-                        )}
+                    {!isRecurringFirstPayment && enrollmentPix?.billingType === 'CREDIT_CARD' ? (
+                        <div className="enrollment-status-box">
+                            <CreditCard className="mx-auto mb-2" size={28} aria-hidden="true" />
+                            <p className="font-bold">Pagamento enviado para confirmação</p>
+                            <p className="mt-1">A operadora pode levar alguns instantes para confirmar.</p>
+                        </div>
+                    ) : null}
 
-                        {enrollmentPix?.billingType === 'PIX' && enrollmentPix?.code && (
-                        <div className="space-y-3">
-                            <p className="text-xs font-bold text-brand-muted uppercase tracking-widest">Código Pix (Copia e Cola)</p>
-                            <div className="flex gap-2">
-                                <input 
+                    {enrollmentPix?.billingType === 'PIX' && enrollmentPix?.code ? (
+                        <div className="space-y-3 text-left">
+                            <label htmlFor="enrollment-pix-code">Código Pix copia e cola</label>
+                            <div className="enrollment-code-row">
+                                <input
+                                    id="enrollment-pix-code"
                                     readOnly
-                                    value={enrollmentPix?.code || ''}
-                                    className="flex-1 bg-brand-surface-2 border border-brand-border rounded-xl px-4 py-3 text-xs font-mono text-brand-muted overflow-hidden text-ellipsis"
+                                    value={enrollmentPix.code}
+                                    className="min-w-0 overflow-hidden text-ellipsis px-4 font-mono"
                                 />
-                                <button 
+                                <button
+                                    type="button"
                                     onClick={() => {
-                                        if (enrollmentPix?.code) {
-                                            navigator.clipboard.writeText(enrollmentPix.code);
-                                            alert("Código copiado!");
-                                        }
+                                        navigator.clipboard.writeText(enrollmentPix.code);
+                                        alert('Código copiado!');
                                     }}
-                                    className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors"
+                                    className="enrollment-primary-button !min-h-[52px] !rounded-[13px]"
+                                    aria-label="Copiar código Pix"
                                 >
-                                    <FileText size={20} />
+                                    <FileText size={19} aria-hidden="true" />
                                 </button>
                             </div>
                         </div>
-                        )}
+                    ) : null}
 
-                        {enrollmentPix?.invoiceUrl && (
-                            <a
-                                href={enrollmentPix.invoiceUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all"
-                            >
-                                {enrollmentPix.billingType === 'BOLETO' ? 'Abrir boleto' : 'Abrir página de pagamento'}
-                            </a>
-                        )}
+                    {enrollmentPix?.invoiceUrl ? (
+                        <a
+                            href={enrollmentPix.invoiceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="enrollment-primary-button w-full"
+                        >
+                            {enrollmentPix.billingType === 'BOLETO' ? 'Abrir boleto' : 'Abrir página de pagamento'}
+                            <ArrowRight size={17} aria-hidden="true" />
+                        </a>
+                    ) : null}
 
-                        <div className="pt-6 border-t border-brand-border flex flex-col gap-3">
-                            <button
-                                onClick={handleCheckEnrollmentPayment}
-                                disabled={checkingPayment}
-                                className="w-full py-4 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
-                            >
-                                {checkingPayment ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                                Consultar confirmação
-                            </button>
-                            <p className="text-[10px] text-brand-muted font-bold uppercase tracking-tight">
-                                A confirmação pode levar até 30 segundos após o pagamento.
-                            </p>
-                            {correlationId && (
-                                <p className="text-[10px] text-brand-muted">
-                                    Protocolo: <span className="font-mono font-bold">{correlationId.slice(0, 8).toUpperCase()}</span>
-                                </p>
-                            )}
-                        </div>
+                    <div className="flex flex-col gap-3 border-t border-slate-200 pt-6">
+                        <button
+                            type="button"
+                            onClick={handleCheckEnrollmentPayment}
+                            disabled={checkingPayment || !enrollmentPix}
+                            className="enrollment-primary-button w-full"
+                        >
+                            {checkingPayment
+                                ? <Loader2 className="animate-spin" size={18} aria-hidden="true" />
+                                : <CheckCircle size={18} aria-hidden="true" />}
+                            Consultar confirmação
+                        </button>
+                        <p className="text-[11px] font-medium leading-relaxed text-slate-500">
+                            {isRecurringFirstPayment
+                                ? 'Esta consulta verifica apenas o progresso salvo e não cria uma nova cobrança.'
+                                : 'A confirmação pode levar alguns instantes após o pagamento.'}
+                        </p>
+                        {correlationId ? (
+                            <div className="enrollment-protocol">
+                                <span>Protocolo da matrícula</span>
+                                <strong>{correlationId.slice(0, 8).toUpperCase()}</strong>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
-            </div>
+            </EnrollmentShell>
         );
     }
 
     if (step === 'ENROLLMENT') {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-                <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-                    {/* Header */}
-                    <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                                <FileText className="text-blue-300" size={24} />
-                                <h1 className="text-2xl font-black text-white uppercase tracking-tight">Ficha de Matrícula</h1>
+            <EnrollmentShell
+                currentStep={3}
+                storyTitle={<>Revise com calma. <em>Assine com confiança.</em></>}
+                storyDescription="Confirme os dados abaixo. O contrato completo será aberto em seguida para leitura e assinatura digital."
+                contractData={contractData}
+                quote={quote}
+                school={school}
+            >
+                <p className="enrollment-panel__eyebrow">Etapa 3 de 4</p>
+                <h2 className="enrollment-panel__title">Revise antes de assinar</h2>
+                <p className="enrollment-panel__description">
+                    Esta é a sua ficha de matrícula. Se algo estiver diferente, volte e corrija antes de abrir o contrato.
+                </p>
+
+                {renderFinancialSummary()}
+
+                <form onSubmit={handleEnrollmentSubmit} className="mt-6">
+                    <div className="enrollment-review-grid" aria-label="Dados informados">
+                        {contractData?.isDependent ? (
+                            <div className="enrollment-review-card sm:col-span-2">
+                                <p className="enrollment-review-card__label">Responsável contratante</p>
+                                <p className="enrollment-review-card__value">{contratanteName}</p>
                             </div>
-                            <p className="text-blue-100/80 text-sm">Preencha os dados para oficializar sua matrícula</p>
+                        ) : null}
+                        <div className="enrollment-review-card">
+                            <p className="enrollment-review-card__label">{contractData?.isDependent ? 'Aluno' : 'Nome completo'}</p>
+                            <p className="enrollment-review-card__value">{name}</p>
                         </div>
-                        <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
-                        <div className="absolute bottom-0 right-0 w-40 h-40 bg-red-500/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+                        <div className="enrollment-review-card">
+                            <p className="enrollment-review-card__label">CPF do contratante</p>
+                            <p className="enrollment-review-card__value">{formatCpf(contratanteCpf)}</p>
+                        </div>
+                        <div className="enrollment-review-card">
+                            <p className="enrollment-review-card__label">E-mail de acesso</p>
+                            <p className="enrollment-review-card__value">{email}</p>
+                        </div>
+                        <div className="enrollment-review-card">
+                            <p className="enrollment-review-card__label">WhatsApp</p>
+                            <p className="enrollment-review-card__value">{phone}</p>
+                        </div>
+                        <div className="enrollment-review-card sm:col-span-2">
+                            <p className="enrollment-review-card__label">Endereço do contratante</p>
+                            <p className="enrollment-review-card__value">{contratanteAddress}</p>
+                        </div>
                     </div>
 
-                    <form onSubmit={handleEnrollmentSubmit} className="p-8 space-y-6">
-                        {/* Dados do Aluno (já preenchido) */}
-                        <div className="bg-brand-surface-2 p-4 rounded-2xl border border-brand-border">
-                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <User size={14} /> Dados do Aluno
-                            </h3>
-                            <div className="space-y-2 text-sm text-brand-muted">
-                                <p><strong>Nome:</strong> {name}</p>
-                                <p><strong>CPF:</strong> {cpf}</p>
-                                <p><strong>Email:</strong> {email}</p>
-                                <p><strong>Telefone:</strong> {phone}</p>
-                                <p><strong>Endereço:</strong> {address}, {addressNumber} - CEP: {postalCode}</p>
-                            </div>
-                        </div>
-
-                        {/* Navigation Buttons */}
-                        <div className="flex gap-3 pt-4">
-                            <button
-                                type="button"
-                                onClick={() => setStep('FORM')}
-                                className="flex-1 py-4 bg-brand-surface-2 text-brand-muted rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
-                            >
-                                <ArrowLeft size={16} /> Voltar
-                            </button>
-                            <button
-                                type="submit"
-                                className="flex-[2] py-4 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2"
-                            >
-                                Continuar para Contrato <ArrowRight size={16} />
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={() => setStep('FORM')}
+                            className="enrollment-secondary-button px-6 sm:flex-1"
+                        >
+                            <ArrowLeft size={16} aria-hidden="true" /> Voltar e editar
+                        </button>
+                        <button type="submit" className="enrollment-primary-button px-6 sm:flex-[1.7]">
+                            Ler e assinar o contrato <ArrowRight size={17} aria-hidden="true" />
+                        </button>
+                    </div>
+                </form>
+            </EnrollmentShell>
         );
     }
 
     if (step === 'SUCCESS') {
         return (
-            <div className="min-h-screen bg-brand-surface-2 flex items-center justify-center p-4 font-sans">
-                <div className="bg-brand-surface p-8 rounded-3xl shadow-xl max-w-md w-full text-center">
-                    <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <CheckCircle size={40} className="text-emerald-600" />
+            <EnrollmentShell
+                currentStep={4}
+                isFinished
+                storyTitle={<>Agora é oficial. <em>Bem-vindo à sua jornada.</em></>}
+                storyDescription="Sua matrícula foi concluída e seu acesso já está pronto. O próximo passo acontece dentro do portal."
+                contractData={contractData}
+                quote={quote}
+                school={school}
+            >
+                <div className="py-4 text-center">
+                    <div className="enrollment-success-icon">
+                        <CheckCircle size={36} strokeWidth={1.9} aria-hidden="true" />
                     </div>
-                    <h2 className="text-2xl font-black text-brand-text mb-2">Matrícula Confirmada!</h2>
-                    <p className="text-brand-muted mb-6">
-                        Seu acesso ao portal foi criado e o fluxo financeiro foi confirmado.
+                    <p className="enrollment-panel__eyebrow">Matrícula concluída</p>
+                    <h2 className="enrollment-panel__title">Tudo certo, {name.split(' ')[0] || 'bem-vindo'}!</h2>
+                    <p className="enrollment-panel__description mx-auto">
+                        Seu acesso ao portal foi criado, o contrato foi registrado e o fluxo financeiro foi confirmado.
                     </p>
-                    {correlationId && (
-                        <div className="mb-6 rounded-xl bg-brand-surface-2 border border-brand-border px-4 py-3">
-                            <p className="text-[10px] uppercase tracking-widest font-bold text-brand-muted">Protocolo da matrícula</p>
-                            <p className="font-mono font-black text-brand-text">{correlationId.slice(0, 8).toUpperCase()}</p>
-                        </div>
-                    )}
-                    <div className="space-y-3">
-                        <a href="/" className="block w-full px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold uppercase tracking-widest hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20">
-                            Acessar Portal
-                        </a>
-                        {/* 
-                        <button
-                            onClick={() => {
-                                if (signedPdfUrl) {
-                                    window.open(signedPdfUrl, '_blank');
-                                } else {
-                                    handlePrintContract();
-                                }
-                            }}
-                            className="block w-full px-8 py-3 bg-brand-surface border border-brand-border text-brand-muted rounded-xl font-bold uppercase tracking-widest hover:bg-brand-surface-2 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <Download size={18} /> Baixar Contrato Assinado
-                        </button>
-                        */}
+
+                    <div className="mx-auto mt-7 grid max-w-md gap-3 text-left">
+                        {['Contrato assinado digitalmente', 'Acesso ao portal liberado', 'Matrícula confirmada pela escola'].map(item => (
+                            <div key={item} className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm font-bold text-emerald-900">
+                                <CheckCircle size={17} className="shrink-0 text-emerald-600" aria-hidden="true" />
+                                {item}
+                            </div>
+                        ))}
                     </div>
+
+                    {correlationId ? (
+                        <div className="enrollment-protocol mx-auto mt-6 max-w-md">
+                            <span>Protocolo da matrícula</span>
+                            <strong>{correlationId.slice(0, 8).toUpperCase()}</strong>
+                        </div>
+                    ) : null}
+
+                    <a href="/" className="enrollment-primary-button mx-auto mt-7 w-full max-w-md">
+                        Acessar meu portal <ArrowRight size={17} aria-hidden="true" />
+                    </a>
 
                     {/* Hidden Contract Form for PDF Printing */}
                     <div className="hidden">
@@ -1183,94 +1519,91 @@ const PublicRegistration: React.FC = () => {
                             />
                         </div>
                     </div>
+                </div>
+            </EnrollmentShell>
+        );
+    }
 
+    if (!contractData && !error) {
+        return (
+            <div className="enrollment-loading" role="status" aria-live="polite">
+                <div className="enrollment-loading__card">
+                    <Loader2 className="animate-spin" size={20} aria-hidden="true" />
+                    Preparando seus dados…
                 </div>
             </div>
         );
     }
 
-    if (!contractData && !error) {
-        return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-brand-muted" /></div>;
-    }
-
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-12 px-4 font-sans">
-            <div className="max-w-lg mx-auto bg-brand-surface rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-                {/* Header */}
-                <div className="bg-[#002366] p-8 text-center relative overflow-hidden">
-                    <div className="relative z-10">
-                        <h1 className="text-2xl font-black text-white uppercase tracking-tight mb-2">Matrícula Online</h1>
-                        {contractData && (
-                            <div className="flex flex-col gap-2 items-center">
-                                <div className="inline-block bg-brand-surface/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-2">
-                                    <p className="text-sm font-bold text-blue-100 uppercase tracking-widest">
-                                        Plano {contractData.planDuration === 0 ? 'Avulso' : contractData.planDuration === 12 ? 'Anual' : contractData.planDuration === 6 ? 'Semestral' : 'Mensal'}
-                                    </p>
-                                </div>
-                                <div className="inline-block bg-brand-surface px-4 py-1 rounded-full shadow-lg">
-                                    <p className="text-sm font-black text-blue-900">
-                                        {contractData.classesPerWeek}x na semana • R$ {Number(contractData.value).toFixed(2)}
-                                        {contractData.planDuration === 0 ? ' (pagamento único)' : '/mês'}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
+        <>
+            <EnrollmentShell
+                currentStep={step === 'CONTRACT' ? 3 : 2}
+                storyTitle={<>Tudo pronto para criar <em>o seu acesso.</em></>}
+                storyDescription="Seus dados serão usados para o contrato, a cobrança e o acesso ao portal. Você poderá revisar tudo antes de assinar."
+                contractData={contractData}
+                quote={quote}
+                school={school}
+            >
+                {error ? (
+                    <div className="enrollment-alert" role="alert">
+                        <AlertCircle className="shrink-0" size={19} aria-hidden="true" />
+                        <p>{error}</p>
                     </div>
-                    {/* Decorative Circles */}
-                    <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
-                    <div className="absolute bottom-0 right-0 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
-                </div>
+                ) : null}
 
-                <div className="p-8">
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3">
-                            <AlertCircle className="text-red-500 shrink-0" size={20} />
-                            <p className="text-sm text-red-600 font-bold">{error}</p>
-                        </div>
-                    )}
+                <p className="enrollment-panel__eyebrow">Etapa 2 de 4</p>
+                <h2 className="enrollment-panel__title">Conte um pouco sobre você</h2>
+                <p className="enrollment-panel__description">
+                    Preencha os dados abaixo para prepararmos seu acesso e o contrato de matrícula.
+                </p>
 
-                    <form onSubmit={handleFormSubmit} className="space-y-6" noValidate>
+                <form onSubmit={handleFormSubmit} className="enrollment-form" noValidate>
                         {renderFinancialSummary()}
                         {/* 1. Payment Method Overview */}
-                        <div className="space-y-3 relative">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
-                                    <CreditCard size={14} /> Forma de Pagamento
+                        <div className="enrollment-form-section">
+                            <div className="enrollment-form-section__heading">
+                                <h3 className="enrollment-form-section__title">
+                                    <span className="enrollment-form-section__icon"><CreditCard size={16} aria-hidden="true" /></span>
+                                    Forma de pagamento
                                 </h3>
                                 <button
                                     type="button"
                                     onClick={() => setStep('PAYMENT_SELECTION')}
-                                    className="text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
+                                    className="enrollment-change-button"
                                 >
                                     Alterar
                                 </button>
                             </div>
-                            
-                            {billingType === 'PIX' && (
-                                <div className="flex items-center p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800">
-                                    <QrCode size={24} className="text-emerald-600 mr-3 shrink-0" />
+
+                            {billingType === 'PIX' ? (
+                                <div className="enrollment-selected-payment">
+                                    <span className="enrollment-selected-payment__icon"><QrCode size={21} aria-hidden="true" /></span>
                                     <div>
-                                        <h4 className="font-bold text-sm">Pagamento via Pix</h4>
-                                        <p className="text-xs text-emerald-600/80">O QR Code será gerado após concluir o cadastro.</p>
+                                        <strong>Pagamento via Pix</strong>
+                                        <p>O código será gerado depois da revisão e da assinatura.</p>
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
 
-                            {billingType === 'BOLETO' && (
-                                <div className="flex items-center p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800">
-                                    <Barcode size={24} className="text-amber-600 mr-3 shrink-0" />
+                            {billingType === 'BOLETO' ? (
+                                <div className="enrollment-selected-payment">
+                                    <span className="enrollment-selected-payment__icon !bg-amber-50 !text-amber-700"><Barcode size={21} aria-hidden="true" /></span>
                                     <div>
-                                        <h4 className="font-bold text-sm">Pagamento via Boleto</h4>
-                                        <p className="text-xs text-amber-600/80">O boleto será gerado após concluir o cadastro.</p>
+                                        <strong>Pagamento via boleto</strong>
+                                        <p>O boleto será disponibilizado ao final da contratação.</p>
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
 
-                            {billingType === 'CREDIT_CARD' && (
-                                <div className="bg-brand-surface-2 p-4 rounded-2xl border border-brand-border space-y-4 animate-in fade-in duration-300">
-                                    <div className="flex items-center justify-center gap-2 text-emerald-600 mb-2">
-                                        <Lock size={12} />
-                                        <span className="text-[10px] uppercase font-black tracking-widest">Ambiente Seguro (SSL)</span>
+                            {billingType === 'CREDIT_CARD' ? (
+                                <div className="space-y-4 animate-in fade-in duration-300">
+                                    <div className="enrollment-selected-payment">
+                                        <span className="enrollment-selected-payment__icon !bg-blue-50 !text-blue-700"><CreditCard size={21} aria-hidden="true" /></span>
+                                        <div>
+                                            <strong>Pagamento via cartão</strong>
+                                            <p>Os dados são enviados diretamente para o processamento seguro.</p>
+                                        </div>
                                     </div>
 
                                     <div className="space-y-4">
@@ -1279,6 +1612,7 @@ const PublicRegistration: React.FC = () => {
                                                 type="tel"
                                                 inputMode="numeric"
                                                 autoComplete="cc-number"
+                                                aria-label="Número do cartão"
                                                 placeholder="Número do Cartão"
                                                 value={ccNumber}
                                                 onChange={e => {
@@ -1294,6 +1628,7 @@ const PublicRegistration: React.FC = () => {
                                             <input
                                                 type="text"
                                                 autoComplete="cc-name"
+                                                aria-label="Nome impresso no cartão"
                                                 placeholder="Nome Impresso no Cartão"
                                                 value={ccName}
                                                 onChange={e => setCcName(e.target.value)}
@@ -1307,6 +1642,7 @@ const PublicRegistration: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     autoComplete="cc-exp"
+                                                    aria-label="Validade do cartão"
                                                     placeholder="Validade (MM/AAAA)"
                                                     maxLength={7}
                                                     value={ccExpiry}
@@ -1327,6 +1663,7 @@ const PublicRegistration: React.FC = () => {
                                                     type="tel"
                                                     inputMode="numeric"
                                                     autoComplete="cc-csc"
+                                                    aria-label="Código de segurança do cartão"
                                                     placeholder="CVV"
                                                     value={ccCcv}
                                                     onChange={e => setCcCcv(digitsOnly(e.target.value).slice(0, 4))}
@@ -1339,19 +1676,22 @@ const PublicRegistration: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-center gap-2 pt-2 text-[#a3a3a3]">
-                                        <ShieldCheck size={14} />
-                                        <p className="text-[10px] font-medium">Pagamento processado via Asaas</p>
+                                    <div className="flex items-center justify-center gap-2 pt-1 text-slate-500">
+                                        <ShieldCheck size={14} aria-hidden="true" />
+                                        <p className="text-[10px] font-semibold">Pagamento processado via Asaas</p>
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
 
                         {/* 2. Personal Data */}
-                        <div className="space-y-4">
-                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
-                                <User size={14} /> Dados Pessoais
-                            </h3>
+                        <div className="enrollment-form-section space-y-4">
+                            <div className="enrollment-form-section__heading !mb-1">
+                                <h3 className="enrollment-form-section__title">
+                                    <span className="enrollment-form-section__icon"><User size={16} aria-hidden="true" /></span>
+                                    Dados pessoais
+                                </h3>
+                            </div>
 
                             <div>
                                 <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-name">Nome completo</label>
@@ -1369,8 +1709,9 @@ const PublicRegistration: React.FC = () => {
                             {contractData?.isDependent ? (
                                 <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 leading-relaxed">
                                     <strong>Matrícula vinculada.</strong> O contrato e a cobrança são feitos no nome e CPF do responsável
-                                    {contractData?.guardianName ? <> (<strong>{contractData.guardianName}</strong>)</> : ''} — incluindo WhatsApp e endereço dele.
-                                    Você só precisa informar <strong>o nome do aluno</strong> (acima) e os <strong>dados de acesso</strong> (abaixo).
+                                    {contractData?.guardianName ? <> (<strong>{contractData.guardianName}</strong>)</> : ''}, usando o telefone e o endereço financeiro dele.
+                                    As confirmações de aula seguem para o <strong>WhatsApp do aluno</strong> informado pela escola.
+                                    Você só precisa confirmar <strong>o nome do aluno</strong> (acima) e os <strong>dados de acesso</strong> (abaixo).
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1414,10 +1755,13 @@ const PublicRegistration: React.FC = () => {
 
                         {/* 3. Address — oculto em matrícula vinculada (usa o endereço do responsável) */}
                         {!contractData?.isDependent && (
-                        <div className="space-y-4 pt-2">
-                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
-                                <MapPin size={14} /> Endereço
-                            </h3>
+                        <div className="enrollment-form-section space-y-4">
+                            <div className="enrollment-form-section__heading !mb-1">
+                                <h3 className="enrollment-form-section__title">
+                                    <span className="enrollment-form-section__icon"><MapPin size={16} aria-hidden="true" /></span>
+                                    Endereço
+                                </h3>
+                            </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="col-span-1">
                                     <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-cep">CEP</label>
@@ -1436,7 +1780,7 @@ const PublicRegistration: React.FC = () => {
                                     />
                                     <FieldError message={fieldErrors.postalCode} />
                                 </div>
-                                <div className="col-span-2">
+                                <div className="sm:col-span-2">
                                     <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-number">Número</label>
                                     <input
                                         id="enrollment-number"
@@ -1467,10 +1811,13 @@ const PublicRegistration: React.FC = () => {
                         )}
 
                         {/* 4. Credentials */}
-                        <div className="space-y-4 pt-2">
-                            <h3 className="text-xs font-black text-brand-muted uppercase tracking-widest flex items-center gap-2">
-                                <Lock size={14} /> Acesso ao Portal
-                            </h3>
+                        <div className="enrollment-form-section space-y-4">
+                            <div className="enrollment-form-section__heading !mb-1">
+                                <h3 className="enrollment-form-section__title">
+                                    <span className="enrollment-form-section__icon"><Lock size={16} aria-hidden="true" /></span>
+                                    Acesso ao portal
+                                </h3>
+                            </div>
                             <div>
                                 <label className="block text-xs font-bold text-brand-muted mb-1" htmlFor="enrollment-email">E-mail de acesso</label>
                                 <input
@@ -1510,7 +1857,7 @@ const PublicRegistration: React.FC = () => {
                                                 type="button"
                                                 onClick={() => setShowPassword(value => !value)}
                                                 aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-muted"
+                                                className="absolute right-1 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-brand-muted hover:bg-brand-surface"
                                             >
                                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                             </button>
@@ -1538,17 +1885,19 @@ const PublicRegistration: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-5 bg-[#002366] hover:bg-[#001844] text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-2 mt-6 disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="enrollment-primary-button mt-2 w-full"
                         >
-                            {loading ? <Loader2 className="animate-spin" /> : <>Revisar e assinar <ArrowRight size={18} /></>}
+                            {loading
+                                ? <Loader2 className="animate-spin" size={19} aria-hidden="true" />
+                                : <>Revisar meus dados <ArrowRight size={18} aria-hidden="true" /></>}
                         </button>
 
-                        <p className="text-center text-[10px] text-brand-muted font-medium">
-                            Na próxima etapa você poderá ler o contrato antes de assinar.
+                        <p className="enrollment-trust-note !mt-0">
+                            <ShieldCheck size={14} aria-hidden="true" />
+                            Na próxima etapa, você revisa os dados e lê o contrato antes de assinar.
                         </p>
                     </form>
-                </div>
-            </div>
+            </EnrollmentShell>
 
             {/* Signature Modal */}
             {contractData && (
@@ -1583,7 +1932,7 @@ const PublicRegistration: React.FC = () => {
             )}
 
             {/* Hidden Contract for Printing - Moved outside conditional render */}
-            <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
+            <div aria-hidden="true" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
                 <div ref={contractRef}>
                     <ContractDocument
                         studentName={contratanteName.toUpperCase()}
@@ -1609,7 +1958,7 @@ const PublicRegistration: React.FC = () => {
                     />
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 

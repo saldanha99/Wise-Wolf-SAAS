@@ -14,6 +14,47 @@ end;
 $$;
 
 grant execute on function pg_temp.assert_true(boolean, text) to public;
+
+-- A barreira academica posterior exige uma grade completa mesmo quando este
+-- teste esta exercitando apenas tenant/contrato. O helper preserva os mesmos
+-- termos comerciais e acrescenta o menor fixture valido de agenda.
+create or replace function pg_temp.invite_enrollment_payload(
+  p_unit_id text,
+  p_teacher_id uuid
+)
+returns jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'unitId', p_unit_id,
+    'value', 500,
+    'dueDay', 10,
+    'planDuration', 1,
+    'classesPerWeek', 2,
+    'requiresEnrollment', true,
+    'enrollmentFee', 0,
+    'professorId', p_teacher_id,
+    'startDate', to_char(current_date, 'YYYY-MM-DD'),
+    'billingStartMonth', to_char(current_date + interval '1 month', 'YYYY-MM'),
+    'enableProRata', false,
+    'schedule', jsonb_build_array(
+      jsonb_build_object(
+        'day', 'Monday',
+        'time', '19:00',
+        'teacherId', p_teacher_id
+      ),
+      jsonb_build_object(
+        'day', 'Wednesday',
+        'time', '20:00',
+        'teacherId', p_teacher_id
+      )
+    ),
+    'test_fixture', 'invite-registration-security'
+  )
+$$;
+grant execute on function pg_temp.invite_enrollment_payload(text,uuid)
+  to public;
 do $$
 begin
   if to_regprocedure('pg_temp.assert_sqlstate(text, text, text)') is not null then
@@ -72,10 +113,12 @@ update public.profiles
 set tenant_id = 'invite-school-b', role = 'SCHOOL_ADMIN'
 where id = '00000000-0000-4000-8000-000000000b82';
 update public.profiles
-set tenant_id = 'invite-school-a', role = 'TEACHER', hourly_rate = 50
+set tenant_id = 'invite-school-a', role = 'TEACHER',
+    lifecycle_status = 'active', hourly_rate = 50
 where id = '00000000-0000-4000-8000-000000000b83';
 update public.profiles
-set tenant_id = 'invite-school-b', role = 'TEACHER', hourly_rate = 50
+set tenant_id = 'invite-school-b', role = 'TEACHER',
+    lifecycle_status = 'active', hourly_rate = 50
 where id = '00000000-0000-4000-8000-000000000b84';
 
 insert into public.tenant_memberships (user_id, tenant_id, role, status, is_primary)
@@ -94,6 +137,13 @@ values
   ('00000000-0000-4000-8000-000000000b83', 'invite-school-a')
 on conflict (user_id) do update
 set tenant_id = excluded.tenant_id, updated_at = now();
+
+insert into public.teacher_availability (
+  teacher_id, tenant_id, day_of_week, start_time, end_time
+)
+values
+  ('00000000-0000-4000-8000-000000000b83', 'invite-school-a', 1, '19:00', null),
+  ('00000000-0000-4000-8000-000000000b83', 'invite-school-a', 3, '20:00', null);
 
 select pg_temp.assert_true(
   private.valid_cnpj('04.252.011/0001-10')
@@ -217,14 +267,9 @@ $$;
 do $$
 begin
   perform public.create_enrollment_offer(
-    jsonb_build_object(
-      'unitId', 'invite-school-b',
-      'value', 500,
-      'dueDay', 10,
-      'planDuration', 1,
-      'classesPerWeek', 2,
-      'requiresEnrollment', true,
-      'enrollmentFee', 0
+    pg_temp.invite_enrollment_payload(
+      'invite-school-b',
+      '00000000-0000-4000-8000-000000000b83'
     )
   );
   raise exception 'assertion failed: oferta de matricula cruzada foi aceita';
@@ -235,14 +280,9 @@ $$;
 do $$
 begin
   perform public.create_enrollment_offer(
-    jsonb_build_object(
-      'unitId', 'invite-school-a',
-      'value', 500,
-      'dueDay', 10,
-      'planDuration', 1,
-      'classesPerWeek', 2,
-      'enrollmentFee', 0,
-      'professorId', '00000000-0000-4000-8000-000000000b84'
+    pg_temp.invite_enrollment_payload(
+      'invite-school-a',
+      '00000000-0000-4000-8000-000000000b84'
     )
   );
   raise exception 'assertion failed: professor de outro tenant foi aceito';
@@ -251,13 +291,9 @@ end;
 $$;
 
 select public.create_enrollment_offer(
-  jsonb_build_object(
-    'unitId', 'invite-school-a',
-    'value', 500,
-    'dueDay', 10,
-    'planDuration', 1,
-    'classesPerWeek', 2,
-    'enrollmentFee', 0
+  pg_temp.invite_enrollment_payload(
+    'invite-school-a',
+    '00000000-0000-4000-8000-000000000b83'
   )
 ) as enrollment_offer_id \gset
 
@@ -562,13 +598,9 @@ $$;
 do $$
 begin
   perform public.create_enrollment_offer(
-    jsonb_build_object(
-      'unitId', 'invite-school-a',
-      'value', 500,
-      'dueDay', 10,
-      'planDuration', 1,
-      'classesPerWeek', 2,
-      'enrollmentFee', 0
+    pg_temp.invite_enrollment_payload(
+      'invite-school-a',
+      '00000000-0000-4000-8000-000000000b83'
     )
   );
   raise exception 'assertion failed: tenant bloqueado criou matricula';

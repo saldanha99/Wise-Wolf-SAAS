@@ -19,6 +19,7 @@
 export interface MatchBooking {
     id: string;
     studentId?: string | null;
+    timeSlot?: string | null;
 }
 
 export interface MatchLog {
@@ -26,7 +27,23 @@ export interface MatchLog {
     reschedule_id?: string | null;
     appointment_id?: string | null;
     student_id?: string | null;
+    start_time?: string | null;
 }
+
+/**
+ * Remove somente repetições do mesmo agendamento. Horários iguais continuam
+ * independentes: podem representar aula em grupo ou, como no caso do Victor,
+ * um registro técnico antigo e uma aula real às 16:30.
+ */
+export const uniqueBookingsById = <T extends MatchBooking>(candidatos: T[]): T[] => {
+    const vistos = new Set<string>();
+    return candidatos.filter((booking) => {
+        const id = String(booking.id);
+        if (vistos.has(id)) return false;
+        vistos.add(id);
+        return true;
+    });
+};
 
 /**
  * Recebe os agendamentos candidatos do dia (já filtrados por cobertura, horário e
@@ -37,6 +54,11 @@ export const bookingsAindaNaoLancados = <T extends MatchBooking>(
     candidatos: T[],
     logsDoDia: MatchLog[],
 ): T[] => {
+    const normalizeTime = (value?: string | null): string | null => {
+        if (!value) return null;
+        return value.substring(0, 5);
+    };
+
     // Só lançamento de aula REGULAR entra na conta: reposição e experimental do
     // mesmo aluno no mesmo dia são OUTRA aula, não a mesma — consumi-las aqui
     // esconderia a aula fixa e o professor deixaria de receber por ela.
@@ -51,15 +73,30 @@ export const bookingsAindaNaoLancados = <T extends MatchBooking>(
         pendentes.push(b);
     }
 
-    // 2ª passada — pelo aluno: cobre o agendamento trocado/recriado. Consome um
-    // lançamento por agendamento, então quem tem 2 aulas no dia e lançou 1
-    // continua com 1 para lançar.
+    // 2ª passada — pelo aluno: cobre o agendamento trocado/recriado.
+    // Faz matching por horário quando possível, e usa qualquer lançamento do
+    // mesmo aluno apenas quando não houver hora confiável.
     const faltando: T[] = [];
     for (const b of pendentes) {
-        const doAluno = disponiveis.find(
-            l => !consumidos.has(l) && !!l.student_id && !!b.studentId && l.student_id === b.studentId,
-        );
-        if (doAluno) { consumidos.add(doAluno); continue; }
+        const timeSlot = normalizeTime(b.timeSlot);
+        const doAlunoMesmoHorario = disponiveis.find(l => {
+            if (consumidos.has(l) || !l.student_id || !b.studentId) return false;
+            const logTime = normalizeTime(l.start_time);
+            if (!timeSlot || !logTime) return false;
+            return l.student_id === b.studentId && logTime === timeSlot;
+        });
+        if (doAlunoMesmoHorario) {
+            consumidos.add(doAlunoMesmoHorario);
+            continue;
+        }
+
+        const doAluno = b.studentId
+            ? disponiveis.find(l => !consumidos.has(l) && !!l.student_id && l.student_id === b.studentId)
+            : null;
+        if (doAluno) {
+            consumidos.add(doAluno);
+            continue;
+        }
         faltando.push(b);
     }
 

@@ -20,7 +20,7 @@ export default function StudentLandingTemplate() {
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(1)
-                    .single();
+                    .maybeSingle();
 
                 if (data) {
                     setConfig(data);

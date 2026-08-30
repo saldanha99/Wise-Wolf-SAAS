@@ -12,6 +12,7 @@ import {
   parsePlannerRequest,
   plannerLevelRequiresHighAccuracy,
   plannerModelProfile,
+  type PlannerResult,
   plannerResultQualityGaps,
   redactDirectIdentifiers,
   safetyIdentifier,
@@ -34,7 +35,7 @@ function assertEquals(actual: unknown, expected: unknown, message?: string) {
   );
 }
 
-function modelResult(sectionMinutes = [40, 20]) {
+function modelResult(sectionMinutes = [40, 20]): PlannerResult {
   return {
     task_mode: "lesson_plan",
     title: "Speaking with confidence",

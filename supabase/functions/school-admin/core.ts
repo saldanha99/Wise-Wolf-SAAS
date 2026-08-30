@@ -6,6 +6,24 @@ export const LIFECYCLE_STATUSES = [
 
 export type LifecycleStatus = typeof LIFECYCLE_STATUSES[number];
 
+export type TargetMembershipSnapshot = {
+  tenant_id?: unknown;
+  role?: unknown;
+  status?: unknown;
+};
+
+export function hasExclusiveActiveTargetMembership(
+  memberships: TargetMembershipSnapshot[],
+  tenantId: string,
+  expectedRole: "STUDENT" | "TEACHER",
+): boolean {
+  if (memberships.length !== 1) return false;
+  const membership = memberships[0];
+  return String(membership.tenant_id || "").trim() === tenantId &&
+    String(membership.role || "").trim().toUpperCase() === expectedRole &&
+    String(membership.status || "").trim().toUpperCase() === "ACTIVE";
+}
+
 export type SchoolAdminAction =
   | {
     action: "setStudentLifecycle";
@@ -27,6 +45,12 @@ export type SchoolAdminAction =
     action: "createEnrollmentOffer";
     leadId: string;
     planId: string;
+    teacherId: string;
+    schedule: Array<{ day: string; time: string }>;
+    startDate: string;
+    billingStartMonth: string;
+    dueDay: number;
+    enableProRata: boolean;
   }
   | {
     action: "requestTrialReschedule";
@@ -94,6 +118,92 @@ function lifecycleReason(value: unknown): string | null {
   return normalized;
 }
 
+const WEEKDAY_MAP: Record<string, string> = {
+  sunday: "Sunday",
+  domingo: "Sunday",
+  monday: "Monday",
+  segunda: "Monday",
+  segundafeira: "Monday",
+  tuesday: "Tuesday",
+  terca: "Tuesday",
+  tercafeira: "Tuesday",
+  wednesday: "Wednesday",
+  quarta: "Wednesday",
+  quartafeira: "Wednesday",
+  thursday: "Thursday",
+  quinta: "Thursday",
+  quintafeira: "Thursday",
+  friday: "Friday",
+  sexta: "Friday",
+  sextafeira: "Friday",
+  saturday: "Saturday",
+  sabado: "Saturday",
+};
+
+function folded(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z]/gi, "").toLowerCase();
+}
+
+function isoDate(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error("INVALID_START_DATE");
+  }
+  const [year, month, day] = normalized.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error("INVALID_START_DATE");
+  }
+  return normalized;
+}
+
+function billingMonth(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(normalized)) {
+    throw new Error("INVALID_BILLING_START_MONTH");
+  }
+  return normalized;
+}
+
+function enrollmentDueDay(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
+    throw new Error("INVALID_DUE_DAY");
+  }
+  return parsed;
+}
+
+function enrollmentSchedule(
+  value: unknown,
+): Array<{ day: string; time: string }> {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 7) {
+    throw new Error("INVALID_SCHEDULE");
+  }
+  const seen = new Set<string>();
+  return value.map((raw) => {
+    if (!isRecord(raw) || !hasOnlyKeys(raw, ["day", "time"])) {
+      throw new Error("INVALID_SCHEDULE");
+    }
+    const rawDay = typeof raw.day === "string" ? raw.day.trim() : "";
+    const day = WEEKDAY_MAP[folded(rawDay)];
+    const match = typeof raw.time === "string"
+      ? raw.time.trim().match(/^(\d{1,2}):([0-5]\d)$/)
+      : null;
+    if (!day || !match || Number(match[1]) > 23) {
+      throw new Error("INVALID_SCHEDULE");
+    }
+    const time = `${match[1].padStart(2, "0")}:${match[2]}`;
+    const key = `${day}|${time}`;
+    if (seen.has(key)) throw new Error("DUPLICATE_SCHEDULE_SLOT");
+    seen.add(key);
+    return { day, time };
+  });
+}
+
 export function normalizeSchoolAdminAction(body: unknown): SchoolAdminAction {
   if (!isRecord(body) || typeof body.action !== "string") {
     throw new Error("INVALID_ACTION");
@@ -131,13 +241,34 @@ export function normalizeSchoolAdminAction(body: unknown): SchoolAdminAction {
   }
 
   if (body.action === "createEnrollmentOffer") {
-    if (!hasOnlyKeys(body, ["action", "leadId", "planId"])) {
+    if (
+      !hasOnlyKeys(body, [
+        "action",
+        "leadId",
+        "planId",
+        "teacherId",
+        "schedule",
+        "startDate",
+        "billingStartMonth",
+        "dueDay",
+        "enableProRata",
+      ])
+    ) {
       throw new Error("UNEXPECTED_FIELD");
+    }
+    if (typeof body.enableProRata !== "boolean") {
+      throw new Error("INVALID_PRO_RATA");
     }
     return {
       action: body.action,
       leadId: requiredUuid(body.leadId, "LEAD_ID"),
       planId: requiredUuid(body.planId, "PLAN_ID"),
+      teacherId: requiredUuid(body.teacherId, "TEACHER_ID"),
+      schedule: enrollmentSchedule(body.schedule),
+      startDate: isoDate(body.startDate),
+      billingStartMonth: billingMonth(body.billingStartMonth),
+      dueDay: enrollmentDueDay(body.dueDay),
+      enableProRata: body.enableProRata,
     };
   }
 

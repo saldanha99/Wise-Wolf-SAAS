@@ -53,6 +53,7 @@ describe('checkout premium do School OS', () => {
     expect(screen.queryByText(/^Cartão$/i)).toBeNull();
     expect(screen.queryByText(/CVV/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/0000 0000/i)).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /boleto/i }));
     fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
 
@@ -68,5 +69,38 @@ describe('checkout premium do School OS', () => {
     expect(payload).not.toHaveProperty('creditCard');
     expect(JSON.stringify(payload).toLowerCase()).not.toContain('ccv');
     expect(await screen.findByText(/contratação foi registrada/i)).toBeTruthy();
+  });
+
+  it('exige aceite de termos e privacidade antes de confirmar', async () => {
+    render(<SaasCheckout plan={plan} yearly={false} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText('Wise Wolf Centro'), {
+      target: { value: 'Escola Horizonte' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('João Silva'), {
+      target: { value: 'Marina Silva' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('voce@escola.com.br'), {
+      target: { value: 'marina@example.invalid' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('000.000.000-00'), {
+      target: { value: '11.222.333/0001-81' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('(11) 99999-9999'), {
+      target: { value: '(11) 99999-0000' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /continuar/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /boleto/i }));
+    const confirmButton = screen.getByRole('button', { name: /confirmar/i });
+    expect(confirmButton).toBeDisabled();
+    fireEvent.click(confirmButton);
+    expect(invoke).toHaveBeenCalledTimes(0);
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: /confirmar/i })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /confirmar/i }));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
   });
 });

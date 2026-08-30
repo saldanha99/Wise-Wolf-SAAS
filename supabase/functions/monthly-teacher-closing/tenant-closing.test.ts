@@ -133,7 +133,12 @@ Deno.test("manual generation keeps queries and writes inside the authorized tena
     from,
     rpc: (name: string, args: Record<string, unknown>) => {
       calls.push({ table: `rpc:${name}`, args });
-      return Promise.resolve({ data: [], error: null });
+      return Promise.resolve({
+        data: name === "refresh_teacher_closing_snapshot"
+          ? { ok: true, state: "created", closing_id: "closing-a" }
+          : [],
+        error: null,
+      });
     },
   };
 
@@ -167,10 +172,16 @@ Deno.test("manual generation keeps queries and writes inside the authorized tena
     "every tenant-bearing read must include the authorized tenant predicate",
   );
   assertEquals(
-    (calls.find((call) =>
-      call.table === "teacher_closings" && call.operation === "insert"
-    )?.payload as Record<string, unknown> | undefined)?.tenant_id,
+    calls.find((call) => call.table === "rpc:refresh_teacher_closing_snapshot")
+      ?.args?.p_tenant,
     "school-a",
-    "the generated closing must persist the authorized tenant",
+    "the canonical closing refresh must receive the authorized tenant",
+  );
+  assertEquals(
+    calls.find((call) =>
+      call.table === "rpc:teacher_pending_carryover_in_tenant"
+    )?.args?.p_tenant,
+    "school-a",
+    "carryovers must be resolved inside the authorized tenant",
   );
 });

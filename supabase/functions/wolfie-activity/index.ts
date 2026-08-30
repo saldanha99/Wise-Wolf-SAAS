@@ -3162,7 +3162,9 @@ async function resolveRetryContext(
     .order("attempt_number", { ascending: false })
     .limit(500);
   if (error) throw new HttpError(503, "ATTEMPT_LOOKUP_FAILED");
-  const pending = (data ?? []).filter(isJsonObject);
+  const pending: JsonObject[] = Array.isArray(data)
+    ? data.filter(isJsonObject)
+    : [];
   let parent: JsonObject | null = null;
   if (requestedParentId) {
     parent = pending.find((attempt) => attempt.id === requestedParentId) ??
@@ -4416,7 +4418,9 @@ async function handleSubmitQuiz(
   if (keyError || !keyRow || !isJsonObject(keyRow.answer_key)) {
     throw new HttpError(503, "ANSWER_KEY_UNAVAILABLE");
   }
-  const keyQuestions = Array.isArray(keyRow.answer_key.questions)
+  const keyQuestions: JsonObject[] = Array.isArray(
+      keyRow.answer_key.questions,
+    )
     ? keyRow.answer_key.questions.filter(isJsonObject)
     : [];
   if (keyQuestions.length === 0) {
@@ -4702,7 +4706,9 @@ async function handleCheckAnswer(
   if (keyError || !keyRow || !isJsonObject(keyRow.answer_key)) {
     throw new HttpError(503, "ANSWER_KEY_UNAVAILABLE");
   }
-  const keyQuestions = Array.isArray(keyRow.answer_key.questions)
+  const keyQuestions: JsonObject[] = Array.isArray(
+      keyRow.answer_key.questions,
+    )
     ? keyRow.answer_key.questions.filter(isJsonObject)
     : [];
   const keyQuestion = keyQuestions.find((question) =>

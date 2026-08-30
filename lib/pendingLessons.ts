@@ -21,9 +21,9 @@
 
 import { supabase } from './supabase';
 import { localMonth, localYMD } from './dateUtils';
+import { normalizeWeekdayToIndex } from './weekday';
 
 const DAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
 // Janela: aula de até 60 dias atrás, com 7 dias de carência (aula recente não é
 // pendência — o professor ainda tem prazo para lançar no "Lançar Aula").
 export const PENDING_LOOKBACK_DAYS = 60;
@@ -95,8 +95,9 @@ export const computePendingLessons = (input: {
         const rawDate = localYMD(cursor);
         const label = cursor.toLocaleDateString('pt-BR');
 
+        const dayIndex = cursor.getDay() - 1; // 0 = segunda ... 5 = sábado
         for (const b of input.bookings) {
-            if (b.day_of_week !== dayName) continue;
+            if (normalizeWeekdayToIndex(b.day_of_week) !== dayIndex) continue;
             if (b.start_date && rawDate < b.start_date) continue; // aluno ainda não tinha começado
             expected.push({
                 id: `book-${b.id}-${rawDate}`,
@@ -187,7 +188,7 @@ export const fetchPendingLessons = async (params: {
             .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, module)')
             .eq('teacher_id', params.teacherId)
             .eq('tenant_id', params.tenantId)
-            .eq('status', 'SCHEDULED')
+            .in('status', ['SCHEDULED', 'scheduled'])
             .not('day_of_week', 'is', null),
         supabase
             .from('reschedules')

@@ -31,6 +31,8 @@ import { nullableUuid } from '../lib/dbValues';
 import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import { asaasService } from '../services/asaasService';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import { normalizeWeekdayToIndex } from '../lib/weekday';
+import { provisionStudentAccount } from '../lib/studentAccountProvisioning';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 const TIMES = Array.from({ length: 37 }, (_, i) => {
@@ -67,6 +69,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
   // horário para sempre. `weekOffset` em semanas a partir da atual.
   const [weekOffset, setWeekOffset] = useState(0);
   const [trials, setTrials] = useState<GridTrial[]>([]);
+  const canManageAssignments = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const weekStart = React.useMemo(() => {
     const base = weekStartOf();
@@ -97,7 +100,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .from('bookings')
         .select('id, day_of_week, time_slot, type, module, student:student_id(full_name, id, tenant_id, module, occupation, phone, meeting_link)')
         .eq('teacher_id', selectedTeacher.id)
-        .eq('status', 'SCHEDULED'),
+        .in('status', ['SCHEDULED', 'scheduled']),
       supabase
         .from('teacher_availability')
         .select('*')
@@ -109,7 +112,8 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
         .from('appointments')
         .select('id, start_time, student_name, status')
         .eq('teacher_id', selectedTeacher.id)
-        .eq('type', 'experimental'),
+        .eq('type', 'experimental')
+        .eq('status', 'scheduled'),
       supabase
         .from('profiles')
         .select(PROFILE_SAFE_COLS)
@@ -129,13 +133,10 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     if (bookingsRes.data) {
       bookingsRes.data.forEach((b: any) => {
         const fullProfile = profilesById.get(String(b.student?.id)) || b.student;
-        const dayMap: Record<string, number> = {
-          'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5
-        };
-        const dIdx = dayMap[b.day_of_week];
+        const dIdx = normalizeWeekdayToIndex(b.day_of_week);
         if (typeof b.time_slot === 'string') {
           const timeKey = b.time_slot.substring(0, 5);
-          if (dIdx !== undefined) {
+          if (dIdx >= 0) {
              // Conflito: dois alunos no mesmo horário deste professor
              if (newBookings[`${dIdx}-${timeKey}`] && newBookings[`${dIdx}-${timeKey}`].studentId !== b.student?.id) {
                conflictKeys.add(`${dIdx}-${timeKey}`);
@@ -165,7 +166,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     if (availRes.data) {
       const newAvail = new Set<string>();
       availRes.data.forEach((item: any) => {
-        const dIdx = item.day_of_week - 1;
+        const dIdx = normalizeWeekdayToIndex(item.day_of_week);
         if (item.start_time) {
           const timeKey = item.start_time.substring(0, 5);
           if (dIdx >= 0 && dIdx <= 5) {
@@ -200,21 +201,24 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
     }
   }) => {
     if (!selectedTeacher) return;
-    setIsAllocating(true);
-
+    if (!canManageAssignments) {
+      alert('Atribuições de aluno são exclusivas da direção da escola.');
+      return;
+    }
     // VALIDATION: Ensure Schedule is present
     if (!data.schedule || data.schedule.length === 0) {
-      throw new Error("Erro interno: A agenda não foi selecionada corretamente. Tente recarregar a página.");
+      alert('A agenda não foi selecionada corretamente. Recarregue a página e tente novamente.');
+      return;
     }
 
-    const dayMap: Record<string, number> = {
-      'Segunda': 0, 'Terça': 1, 'Quarta': 2, 'Quinta': 3, 'Sexta': 4, 'Sábado': 5
-    };
+    setIsAllocating(true);
 
     // Check for conflicts BEFORE creating student
     const conflicts: string[] = [];
     data.schedule.forEach(item => {
-      const key = `${dayMap[item.day]}-${item.time}`;
+      const dayIdx = normalizeWeekdayToIndex(item.day);
+      if (dayIdx < 0) return;
+      const key = `${dayIdx}-${item.time}`;
       if (bookings[key]) {
         conflicts.push(`${item.day} às ${item.time}`);
       }
@@ -228,50 +232,81 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
     try {
       let finalStudentId = data.studentId;
+      let activationSent = false;
+      let billingConfirmed = !data.financial;
+      let billingFailure = '';
 
       // 1. Create New Auth Account and Profile if needed
       if (data.isNew && data.studentData) {
         const targetTenantId = currentTenantId || selectedTeacher.tenantId;
+        if (!targetTenantId) throw new Error('Selecione uma escola antes de criar o aluno.');
+        const normalizedEmail = String(data.studentData.email || '').trim().toLowerCase();
+        if (!normalizedEmail) throw new Error('Informe o e-mail do aluno.');
 
         // Check for existing profile in THIS tenant first
-        const { data: existingInTenant } = await supabase
+        const { data: existingInTenant, error: existingLookupError } = await supabase
           .from('profiles')
-          .select('id')
-          .eq('email', data.studentData.email)
+          .select('id, role, lifecycle_status')
+          .eq('email', normalizedEmail)
           .eq('tenant_id', targetTenantId)
-          .single();
+          .maybeSingle();
+        if (existingLookupError) throw existingLookupError;
 
-        if (existingInTenant) {
-          finalStudentId = existingInTenant.id;
-        } else {
-          // Create Auth User
-          const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: data.studentData.email,
-            password: '123456',
-          });
+        if (existingInTenant && existingInTenant.role !== 'STUDENT') {
+          throw new Error('Este e-mail já pertence a outro tipo de acesso nesta escola.');
+        }
+        if (
+          existingInTenant &&
+          String(existingInTenant.lifecycle_status || '').trim().toLowerCase() !== 'active'
+        ) {
+          throw new Error('Este aluno está desativado. Reative o cadastro existente antes de matriculá-lo.');
+        }
 
-          if (authError) {
-            if (authError.message.includes('already registered')) {
-              // FALLBACK: User exists in Auth but not in this tenant profile.
-              // Fetch the existing User ID to link them to this tenant.
-              console.log("User exists in Auth. Fetching ID to link profile...");
-
-              const { data: recoveredId, error: rpcError } = await supabase
-                .rpc('get_user_id_by_email', { email_input: data.studentData.email });
-
-              if (rpcError || !recoveredId) {
-                console.error("Failed to recover user ID:", rpcError);
-                throw new Error("Este e-mail já está cadastrado no sistema global, mas não foi possível recuperar o cadastro. Por favor, contate o suporte.");
-              }
-
-              finalStudentId = recoveredId;
-
-            } else {
-              throw authError;
+        // CPF e e-mail são resolvidos antes de criar Auth. Isso impede que um
+        // cadastro já existente produza um segundo usuário sem perfil.
+        const studentCpf = data.studentData.cpf?.replace(/\D/g, '') || null;
+        finalStudentId = existingInTenant?.id;
+        if (!finalStudentId && studentCpf) {
+          const { data: existingByCpf, error: cpfLookupError } = await supabase.rpc(
+            'find_authorized_profile_by_cpf',
+            { p_tenant_id: targetTenantId, p_cpf: studentCpf },
+          );
+          if (cpfLookupError) throw cpfLookupError;
+          if (existingByCpf) {
+            const { data: cpfProfile, error: cpfProfileError } = await supabase
+              .from('profiles')
+              .select('id, role, lifecycle_status, email')
+              .eq('id', existingByCpf)
+              .maybeSingle();
+            if (cpfProfileError) throw cpfProfileError;
+            if (
+              !cpfProfile ||
+              cpfProfile.role !== 'STUDENT' ||
+              String(cpfProfile.lifecycle_status || '').trim().toLowerCase() !== 'active'
+            ) {
+              throw new Error('O CPF informado pertence a um cadastro que não pode ser reutilizado.');
             }
-          } else if (authData.user) {
-            finalStudentId = authData.user.id;
+            if (String(cpfProfile.email || '').trim().toLowerCase() !== normalizedEmail) {
+              throw new Error('Este CPF já pertence a outro aluno. Edite o cadastro existente.');
+            }
+            finalStudentId = cpfProfile.id;
           }
+        }
+
+        if (!finalStudentId) {
+          // A criação do Auth ocorre com credencial administrativa na Edge
+          // Function. Isso preserva a sessão do diretor no navegador.
+          const provisioned = await provisionStudentAccount(supabase, {
+            name: data.studentData.name,
+            email: normalizedEmail,
+            tenantId: targetTenantId,
+            phone: data.studentData.phone,
+            professorId: selectedTeacher.id,
+            monthlyFee: data.financial?.price || 0,
+            dueDay: 10,
+          });
+          finalStudentId = provisioned.userId;
+          activationSent = provisioned.activationSent;
         }
 
         // Handle Contract Upload if present
@@ -292,31 +327,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           }
         }
 
-        // Generate a default meeting link
-        const chars = 'abcdefghijklmnopqrstuvwxyz';
-        const rnd = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-        const meetingLink = `https://meet.google.com/${rnd(3)}-${rnd(4)}-${rnd(3)}`;
-
-        // Check for existing profile by CPF+tenant BEFORE upsert (unique constraint: profiles_cpf_tenant_key)
-        const studentCpf = data.studentData.cpf?.replace(/\D/g, '') || null;
-        if (studentCpf && targetTenantId) {
-          const { data: existingByCpf, error: cpfLookupError } = await supabase.rpc(
-            'find_authorized_profile_by_cpf',
-            { p_tenant_id: targetTenantId, p_cpf: studentCpf },
-          );
-          if (cpfLookupError) throw cpfLookupError;
-
-          if (existingByCpf) {
-            // A profile with this CPF already exists in this tenant — reuse it
-            finalStudentId = existingByCpf;
-          }
-        }
-
         // Create or Update Profile
         const profilePayload: any = {
           id: finalStudentId,
           full_name: data.studentData.name,
-          email: data.studentData.email,
+          email: normalizedEmail,
           role: 'STUDENT',
           tenant_id: targetTenantId,
           module: data.module,
@@ -324,7 +339,6 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           occupation: data.studentData.occupation,
           interests: data.studentData.interests,
           avatar_url: `https://ui-avatars.com/api/?name=${data.studentData.name}`,
-          meeting_link: meetingLink,
           cpf: studentCpf, // null instead of empty string to avoid unique constraint issues
           address: data.studentData.address,
           address_number: data.studentData.addressNumber,
@@ -339,7 +353,7 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           profilePayload.monthly_fee = data.financial.price;
           profilePayload.fidelity_plan = data.financial.planName;
           profilePayload.due_day = 10; // Default due day
-          profilePayload.status_financial = 'ACTIVE';
+          profilePayload.status_financial = 'PENDING';
         }
 
         const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
@@ -380,16 +394,18 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
               planDuration: durationEnum
             });
 
-            if (subResponse?.id || subResponse?.subscription_id) {
-              const confirmedSubId = subResponse.id || subResponse.subscription_id;
-              await supabase.from('profiles').update({
-                subscription_id: confirmedSubId
-              }).eq('id', finalStudentId);
-              console.log("✅ Asaas Injetado com Sucesso. ID:", confirmedSubId);
-            }
+            const confirmedSubId = subResponse?.id || subResponse?.subscription_id;
+            if (!confirmedSubId) throw new Error('O Asaas não confirmou a assinatura.');
+            const { error: bindingError } = await supabase.from('profiles').update({
+              subscription_id: confirmedSubId,
+              status_financial: 'ACTIVE',
+            }).eq('id', finalStudentId);
+            if (bindingError) throw bindingError;
+            billingConfirmed = true;
+            console.log("✅ Asaas Injetado com Sucesso. ID:", confirmedSubId);
           } catch (asaasErr) {
-            console.error("⚠️ Erro ao injetar no Asaas (não bloqueante):", asaasErr);
-            // We do not throw here to allow manual assignment to finish acting as a "contingency airplane"
+            billingFailure = asaasErr instanceof Error ? asaasErr.message : 'falha não identificada';
+            console.error("⚠️ Erro ao injetar no Asaas; aluno mantido como pendente:", asaasErr);
           }
         }
         // --- END ASAAS INJECTION ---
@@ -413,10 +429,11 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       const { data: existing } = await supabase
         .from('bookings')
-        .select('day_of_week, time_slot')
+        .select('id, day_of_week, time_slot')
         .eq('student_id', finalStudentId)
         .eq('teacher_id', selectedTeacher.id)
-        .eq('status', 'SCHEDULED');
+        .eq('tenant_id', currentTenantId || selectedTeacher.tenantId)
+        .in('status', ['SCHEDULED', 'scheduled']);
       const existingKeys = new Set((existing || []).map((b: any) => `${b.day_of_week}|${b.time_slot}`));
 
       const toInsert = desired
@@ -432,67 +449,76 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           start_date: data.startDate
         }));
 
+      let notificationBookingId = (existing || [])[0]?.id as string | undefined;
       if (toInsert.length > 0) {
-        const { error } = await supabase.from('bookings').insert(toInsert);
+        const { data: inserted, error } = await supabase
+          .from('bookings').insert(toInsert).select('id');
         if (error) {
-          // ROLLBACK: If booking fails and we just created the student, delete the profile
-          if (data.isNew && finalStudentId) {
-            console.error("Booking failed. Rolling back created student profile...", error);
-            await supabase.from('profiles').delete().eq('id', finalStudentId);
-          }
+          // A conta é mantida em estado recuperável. Apagar só o perfil deixava
+          // Auth, contrato e eventual assinatura órfãos; o retry é idempotente.
+          console.error("Booking failed; student account kept for safe retry", error);
           throw error;
         }
+        notificationBookingId = inserted?.[0]?.id || notificationBookingId;
       }
 
       // --- SEND WHATSAPP NOTIFICATION ---
+      let notificationConfirmed = false;
+      let notificationFailure = '';
       try {
-        // Fetch phone and name if not already available
-        let studentPhone = data.studentData?.phone;
-        let studentName = data.studentData?.name;
-
-        if (!studentPhone || !studentName) {
-          const { data: stdProfile } = await supabase.from('profiles').select('phone, full_name').eq('id', finalStudentId).single();
-          studentPhone = stdProfile?.phone;
-          studentName = stdProfile?.full_name;
+        if (!notificationBookingId) {
+          throw new Error('occurrence_identity_unavailable');
         }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Sessão expirada. Entre novamente.');
 
-        if (studentPhone) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) throw new Error('Sessão expirada. Entre novamente.');
-
-          const instanceName = selectedTeacher.tenantId === currentTenantId
-            ? `prof-${selectedTeacher.name.split(' ')[0].toLowerCase()}-${selectedTeacher.id.substring(0, 4)}`
-            : 'wise-wolf';
-
-          const scheduleStr = data.schedule.map(s => `${s.day} às ${s.time}`).join(', ');
-
-          fetch(`${FUNCTIONS_URL}/send-class-notification`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            },
-            body: JSON.stringify({
-              type: 'CONFIRMATION',
-              student_name: studentName,
-              student_phone: studentPhone,
-              teacher_name: selectedTeacher.name,
-              date: scheduleStr,
-              time: 'Conforme Agenda',
-              instanceName: instanceName,
-              meeting_link: selectedTeacher.meetingUrl
-            })
-          }).catch(err => console.error("Falha ao enviar notificação whatsapp:", err));
+        const response = await fetch(`${FUNCTIONS_URL}/send-class-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'SCHEDULE_CONFIRMATION',
+            source_id: notificationBookingId,
+            source_type: 'BOOKING',
+            class_date: localYMD(new Date()),
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.error) {
+          throw new Error(result?.error || `status_${response.status}`);
         }
+        if (
+          result?.delivery !== 'accepted' ||
+          typeof result?.provider_message_id !== 'string' ||
+          !result.provider_message_id.trim()
+        ) {
+          throw new Error('delivery_not_confirmed');
+        }
+        notificationConfirmed = true;
       } catch (notifyErr) {
         console.error("Erro no fluxo de notificação:", notifyErr);
+        notificationFailure = notifyErr instanceof Error
+          ? notifyErr.message
+          : 'delivery_not_confirmed';
       }
       // ----------------------------------
 
       await fetchDetailData();
       if (onRefresh) onRefresh();
       setIsAssignmentModalOpen(false);
-      alert("Novo aluno e agendamentos criados com sucesso! Notificação enviada.");
+      const outcome = ['Aluno e agendamentos salvos com segurança.'];
+      if (data.isNew && activationSent) outcome.push('Convite de acesso enviado para definição da senha.');
+      if (data.financial) {
+        outcome.push(billingConfirmed
+          ? 'Financeiro confirmado.'
+          : `Cobrança pendente para revisão (${billingFailure || 'confirmação ausente'}).`);
+      }
+      outcome.push(notificationConfirmed
+        ? 'WhatsApp confirmado.'
+        : `O WhatsApp não confirmou o envio (${notificationFailure}).`);
+      alert(outcome.join(' '));
     } catch (err: any) {
       alert("Erro ao atribuir aluno: " + err.message);
     } finally {
@@ -764,12 +790,14 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
                   placeholder="Localizar aluno na grade…"
                   className="col-span-2 sm:col-span-3 lg:col-span-1 px-3 py-2 text-[11px] font-bold bg-brand-surface-2 border border-brand-border rounded-lg outline-none text-brand-text w-full lg:w-44 min-w-0"
                 />
-                <button
-                  onClick={() => setIsAssignmentModalOpen(true)}
-                  className="col-span-2 sm:col-span-3 lg:col-span-1 w-full lg:w-auto px-4 py-2.5 bg-[#002366] bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.02] lg:hover:scale-[1.05] transition-all flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
-                >
-                  <UserPlus size={14} /> Atribuir Aluno
-                </button>
+                {canManageAssignments && (
+                  <button
+                    onClick={() => setIsAssignmentModalOpen(true)}
+                    className="col-span-2 sm:col-span-3 lg:col-span-1 w-full lg:w-auto px-4 py-2.5 bg-[#002366] bg-tenant-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-tenant-primary/20 hover:scale-[1.02] lg:hover:scale-[1.05] transition-all flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
+                  >
+                    <UserPlus size={14} /> Atribuir Aluno
+                  </button>
+                )}
               </div>
             </div>
 

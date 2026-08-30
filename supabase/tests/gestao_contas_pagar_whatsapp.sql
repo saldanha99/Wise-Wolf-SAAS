@@ -10,6 +10,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 insert into public.tenants (id, name)
 values ('gestao-contas-test', 'Gestao Contas Test');

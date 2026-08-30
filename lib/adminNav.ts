@@ -2,6 +2,7 @@ import type { ElementType } from 'react';
 import {
   LayoutDashboard, CalendarClock, GraduationCap, Users, DollarSign, FileBarChart,
   ShieldAlert, Zap, CalendarOff, Mic, Book, Target, Brain, Globe, Gift, Settings,
+  MessageCircle,
 } from 'lucide-react';
 
 /**
@@ -132,6 +133,16 @@ export const ADMIN_NAV: NavGroup[] = [
   },
   { id: 'wolfie-lab', label: 'Wolfie Lab', icon: Brain, section: 'Pedagógico', tabs: [] },
 
+  // ── Comunicação ──────────────────────────────────────────────────────────
+  {
+    id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, section: 'Comunicação', badgeKey: 'whatsapp_unread',
+    tabs: [
+      { id: 'whatsapp', label: 'Conversas', badgeKey: 'whatsapp_unread' },
+      { id: 'automation', label: 'Conexão' },
+      { id: 'automations', label: 'Disparos' },
+    ],
+  },
+
   // ── Crescimento ───────────────────────────────────────────────────────────
   { id: 'crm', label: 'CRM & Funil', icon: Users, section: 'Crescimento', tabs: [] },
   { id: 'marketing', label: 'Site & Vendas', icon: Globe, section: 'Crescimento', tabs: [] },
@@ -149,8 +160,6 @@ export const ADMIN_NAV: NavGroup[] = [
     tabs: [
       { id: 'settings_school', label: 'Central da escola' },
       { id: 'contracts', label: 'Contratos' },
-      { id: 'automation', label: 'WhatsApp (conexão)' },
-      { id: 'automations', label: 'Disparos' },
       { id: 'admin_workflows', label: 'Workflows' },
     ],
   },

@@ -1,186 +1,346 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import {
   loadTenantCentralWhatsAppContext,
+  safeCommunicationText,
   type TenantCentralWhatsAppContext,
 } from "../_shared/tenant-communication.ts";
+import {
+  ATTENDANCE_CLAIM_LIMIT,
+  type AttendanceDeliveryClaim,
+  attendanceDeliveryHttpStatus,
+  type AttendanceParticipantProfile,
+  buildAttendanceConfirmationUrl,
+  dedupeAttendanceDeliveries,
+  finalizationForEvolutionResult,
+  isFreshAttendanceOccurrence,
+  parseAttendanceDeliveryClaims,
+  resolveAttendanceDeliveryRecipient,
+  resolveAttendancePortal,
+} from "./core.ts";
 
-// Cron: envia o link de confirmação de presença ao ALUNO após a aula.
-// IMPORTANTE: envia pela INSTÂNCIA CENTRAL da escola (não a do professor),
-// para que o professor não consiga interceptar/controlar o canal de verificação.
+// Cron: envia o link de confirmação de presença somente ao ALUNO e sempre pela
+// instância central da escola. O lançamento do professor já é a segunda fonte.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
-const EVOLUTION_API_BASE = `${(Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br").replace(/\/+$/, "")}/message/sendText`;
-// Chave global do servidor Evolution (funciona para qualquer instância)
+const EVOLUTION_API_BASE = (Deno.env.get("EVOLUTION_API_URL") ||
+  "https://api.2b.app.br").replace(/\/+$/, "");
 const API_TOKEN = Deno.env.get("EVOLUTION_API_KEY") || "";
-// Resolve a instância CENTRAL da escola (WhatsApp do admin do tenant).
-// Importante para integridade: a verificação NÃO sai pela instância do professor checado.
+const APP_PUBLIC_URL = Deno.env.get("APP_PUBLIC_URL") || "";
+
+type AdminClient = any;
+
+function rpcSucceeded(value: unknown): boolean {
+  return Boolean(value) && typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).ok === true;
+}
+
+async function completeDelivery(
+  admin: AdminClient,
+  row: AttendanceDeliveryClaim,
+  providerMessageId: string,
+): Promise<void> {
+  const normalizedMessageId = providerMessageId.trim();
+  if (!normalizedMessageId) throw new Error("provider_message_id_required");
+  const { data, error } = await admin.rpc(
+    "complete_attendance_confirmation_delivery",
+    {
+      p_confirmation_id: row.id,
+      p_claim_token: row.claim_token,
+      p_provider_message_id: normalizedMessageId,
+    },
+  );
+  if (error || !rpcSucceeded(data)) {
+    throw new Error("delivery_completion_failed");
+  }
+}
+
+async function failDelivery(
+  admin: AdminClient,
+  row: AttendanceDeliveryClaim,
+  errorCode: string,
+  ambiguous = false,
+): Promise<void> {
+  const { data, error } = await admin.rpc(
+    "fail_attendance_confirmation_delivery",
+    {
+      p_confirmation_id: row.id,
+      p_claim_token: row.claim_token,
+      p_error_code: errorCode.slice(0, 80),
+      p_ambiguous: ambiguous,
+    },
+  );
+  if (error || !rpcSucceeded(data)) {
+    throw new Error("delivery_failure_record_failed");
+  }
+}
+
 async function resolveCentralContext(
-  supabase: any,
-  tenantId: string | null,
+  admin: AdminClient,
+  tenantId: string | null | undefined,
 ): Promise<TenantCentralWhatsAppContext | null> {
   if (!tenantId) return null;
-  return await loadTenantCentralWhatsAppContext(supabase, tenantId, "student");
+  return await loadTenantCentralWhatsAppContext(admin, tenantId, "student");
+}
+
+async function loadCurrentDeliveryRecipient(
+  admin: AdminClient,
+  row: AttendanceDeliveryClaim,
+): Promise<{ allowed: boolean; phone: string | null }> {
+  if (!row.student_id || !row.teacher_id || !row.tenant_id) {
+    return { allowed: false, phone: null };
+  }
+  const { data, error } = await admin
+    .from("profiles")
+    .select(
+      "id, tenant_id, role, lifecycle_status, is_test_account, attendance_phone, phone",
+    )
+    .eq("tenant_id", row.tenant_id)
+    .in("id", [row.student_id, row.teacher_id]);
+  if (error) throw new Error("attendance_participant_revalidation_failed");
+  return resolveAttendanceDeliveryRecipient(
+    row,
+    (data || []) as AttendanceParticipantProfile[],
+  );
+}
+
+async function markAcceptedStateAmbiguous(
+  admin: AdminClient,
+  row: AttendanceDeliveryClaim,
+): Promise<void> {
+  try {
+    await failDelivery(admin, row, "completion_state_unknown", true);
+  } catch (error) {
+    // Se a primeira finalização foi aplicada e somente sua resposta se perdeu,
+    // esta segunda chamada pode ser recusada pelo claim token. A linha já está
+    // segura como SENT nesse caso. Nunca repetimos o envio nesta execução.
+    console.error("attendance_ambiguous_finalization_failed", {
+      confirmationId: row.id,
+      errorType: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   const authError = await authorizeAutomation(req, corsHeaders);
   if (authError) return authError;
 
   try {
     if (!API_TOKEN) throw new Error("EVOLUTION_API_KEY não configurada");
 
-    const supabase = createClient(
+    const admin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    const todayISO = new Date().toISOString().split("T")[0];
-    // Janela de envio: só aulas de ONTEM ou HOJE. Confirmações mais antigas que isso
-    // NÃO são enviadas (evita que um backlog acumulado dispare em massa fora de hora,
-    // mandando "você teve aula" para aulas de dias atrás).
-    const minDateISO = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-    const { data: pending, error } = await supabase
-      .from("attendance_confirmations")
-      .select("id, tenant_id, token, student_name, student_phone, teacher_name, class_date, class_time, send_attempts, source_id, source_type")
-      .is("sent_at", null)
-      .eq("status", "PENDING")
-      .lte("class_date", todayISO)
-      .gte("class_date", minDateISO)
-      .lt("send_attempts", 8)
-      .limit(50);
-
+    // O claim incrementa tentativas e cria um lease em uma única transação.
+    // Duas execuções simultâneas não recebem a mesma confirmação.
+    const { data, error } = await admin.rpc(
+      "claim_attendance_confirmation_deliveries",
+      // Mantém a execução bem abaixo do lease mesmo quando a Evolution demora.
+      // A rota detalhada tem até 10s para JID + 15s para envio: 5 linhas
+      // sequenciais consomem no pior caso ~125s de um lease de 5 minutos.
+      // O cron roda a cada 15 minutos e busca o próximo lote na rodada seguinte.
+      { p_limit: ATTENDANCE_CLAIM_LIMIT },
+    );
     if (error) throw error;
-    if (!pending || pending.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, message: "nada a enviar" }), {
+    const claimed = parseAttendanceDeliveryClaims(data);
+    if (claimed.length === 0) {
+      return new Response(JSON.stringify({ claimed: 0, sent: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // REVALIDAÇÃO ANTI-FANTASMA: uma confirmação é criada válida (aula ocorreu),
-    // mas o agendamento pode ser DELETADO/cancelado/reposto ANTES do envio. Se enviarmos
-    // assim mesmo, o aluno recebe "você teve aula" num dia em que não tem mais aula.
-    // upcoming_classes já aplica TODAS as regras (dia da semana, start_date, status
-    // SCHEDULED, appointments não cancelados, reposições). Só enviamos confirmações cuja
-    // (source_id, source_type, class_date) ainda exista lá; as órfãs viram CANCELLED.
-    const validKeys = new Set<string>();
-    let validationOk = false;
-    try {
-      const { data: valid, error: vErr } = await supabase
-        .from("upcoming_classes")
-        .select("source_id, source_type, class_date")
-        .gte("class_date", minDateISO)
-        .lte("class_date", todayISO);
-      if (vErr) throw vErr;
-      for (const v of valid || []) {
-        validKeys.add(`${v.source_id}|${v.source_type}|${v.class_date}`);
-      }
-      validationOk = true;
-    } catch (vErr) {
-      // Fail-safe: se não conseguir validar, NÃO suprime tudo (quebraria o anti-fraude).
-      // Mantém o comportamento antigo (envia) e registra o aviso.
-      console.error("Revalidação upcoming_classes falhou, enviando sem filtrar:", vErr);
+    const { deliveries, duplicates } = dedupeAttendanceDeliveries(claimed);
+    if (duplicates.length > 0) {
+      // O RPC só pode devolver uma canônica por delivery_key. Não despacha
+      // parcialmente um lote impossível de finalizar com segurança.
+      throw new Error("duplicate_attendance_claim_contract");
     }
-
     let sent = 0;
-    let canceladas = 0;
-    const failures: string[] = [];
-    const contextCache: Record<string, TenantCentralWhatsAppContext | null> = {};
+    let failed = 0;
+    let suppressed = 0;
+    let ambiguous = 0;
+    const failureCodes: string[] = [];
 
-    for (const c of pending) {
+    const contextCache = new Map<
+      string,
+      TenantCentralWhatsAppContext | null
+    >();
+    const now = new Date();
+
+    for (const row of deliveries) {
       try {
-        // Pula (e cancela) confirmações cuja aula não existe mais na agenda atual.
-        if (validationOk && c.source_id) {
-          const key = `${c.source_id}|${c.source_type}|${c.class_date}`;
-          if (!validKeys.has(key)) {
-            await supabase
-              .from("attendance_confirmations")
-              .update({ status: "CANCELLED" })
-              .eq("id", c.id);
-            canceladas++;
-            continue;
-          }
-        }
-        let phone = (c.student_phone || "").replace(/\D/g, "");
-        if (phone.length === 10 || phone.length === 11) phone = "55" + phone;
-        if (phone.length < 12) {
-          failures.push(`${c.id}: telefone inválido`);
-          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
+        // Fixtures e identidades sem elegibilidade atual nunca atravessam a
+        // fronteira externa, mesmo se foram marcadas depois do claim no banco.
+        const recipient = await loadCurrentDeliveryRecipient(admin, row);
+        if (!recipient.allowed) {
+          await failDelivery(
+            admin,
+            row,
+            "test_or_ineligible_participant_suppressed",
+          );
+          suppressed++;
           continue;
         }
 
-        // Instância central da escola (cache por tenant)
-        const tk = c.tenant_id || "_";
-        if (!(tk in contextCache)) {
-          contextCache[tk] = await resolveCentralContext(supabase, c.tenant_id);
+        // Defesa independente do SQL: um rollout desalinhado jamais despacha o
+        // backlog de vários dias acumulado durante uma pane.
+        if (!isFreshAttendanceOccurrence(row.class_date, row.class_time, now)) {
+          await failDelivery(admin, row, "stale_delivery_suppressed");
+          suppressed++;
+          continue;
         }
-        const context = contextCache[tk];
+
+        const phone = recipient.phone;
+        if (!phone) {
+          await failDelivery(admin, row, "invalid_attendance_phone");
+          failed++;
+          failureCodes.push("invalid_attendance_phone");
+          continue;
+        }
+
+        const tenantKey = row.tenant_id || "";
+        if (!contextCache.has(tenantKey)) {
+          contextCache.set(
+            tenantKey,
+            await resolveCentralContext(admin, row.tenant_id),
+          );
+        }
+        const context = contextCache.get(tenantKey) || null;
         if (!context) {
-          failures.push(`${c.id}: escola sem WhatsApp central conectado`);
-          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
-          continue;
-        }
-        if (!context.identity.portalUrl) {
-          failures.push(`${c.id}: escola sem domínio institucional configurado`);
-          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
+          await failDelivery(admin, row, "central_whatsapp_unavailable");
+          failed++;
+          failureCodes.push("central_whatsapp_unavailable");
           continue;
         }
 
-        const aluno = (c.student_name || "").split(" ")[0] || "";
-        const prof = c.teacher_name || "seu professor";
-        const link = `${context.identity.portalUrl}/confirmar-presenca?token=${c.token}`;
-        // "hoje" só se a aula for de hoje; senão referencia a data real (DD/MM)
-        const quando = c.class_date === todayISO
-          ? "hoje"
-          : `no dia ${new Date(c.class_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
-        const text = `Oi ${aluno}! Aqui é a ${context.identity.brandName}.\n\nVimos que você teve aula com *${prof}* ${quando}. Pra manter a qualidade, confirme rapidinho (1 toque):\n\n${link}\n\nLeva 5 segundos e é confidencial. Obrigado!`;
+        const portal = resolveAttendancePortal(
+          context.identity.portalUrl,
+          APP_PUBLIC_URL,
+        );
+        const confirmationUrl = buildAttendanceConfirmationUrl(
+          portal,
+          row.token,
+        );
+        if (!confirmationUrl) {
+          await failDelivery(admin, row, "invalid_confirmation_token");
+          failed++;
+          failureCodes.push("invalid_confirmation_token");
+          continue;
+        }
 
-        const resp = await fetch(`${EVOLUTION_API_BASE}/${context.instanceName}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: API_TOKEN },
-          body: JSON.stringify({
-            number: phone,
-            text,
-            delay: 1000,
-            linkPreview: true,
-          }),
+        const studentFirstName = safeCommunicationText(
+          (row.student_name || "").trim().split(/\s+/)[0],
+          60,
+        );
+        const teacherName = safeCommunicationText(row.teacher_name, 120) ||
+          "seu professor";
+        const brandName = safeCommunicationText(
+          context.identity.brandName,
+          120,
+        ) || "sua escola";
+        const todayInSaoPaulo = now.toLocaleDateString("en-CA", {
+          timeZone: "America/Sao_Paulo",
         });
+        const when = row.class_date === todayInSaoPaulo
+          ? "hoje"
+          : `no dia ${
+            new Date(`${row.class_date}T12:00:00Z`).toLocaleDateString(
+              "pt-BR",
+              { day: "2-digit", month: "2-digit", timeZone: "UTC" },
+            )
+          }`;
+        const greeting = studentFirstName ? `Oi ${studentFirstName}!` : "Oi!";
+        const text = `${greeting} Aqui é a ${brandName}.\n\n` +
+          `Sua aula com *${teacherName}* estava marcada para ${when}. ` +
+          `O que aconteceu? Confirme rapidinho (1 toque):\n\n` +
+          `${confirmationUrl}\n\nLeva 5 segundos. Obrigado!`;
 
-        if (!resp.ok) {
-          const t = await resp.text();
-          failures.push(`${c.id}: evolution ${resp.status}`);
-          console.error("Evolution error:", t);
-          await supabase.from("attendance_confirmations").update({ send_attempts: (c.send_attempts || 0) + 1 }).eq("id", c.id);
+        const providerResult = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_BASE,
+          keys: [API_TOKEN],
+          instance: context.instanceName,
+          to: phone,
+          text,
+          delayMs: 1000,
+        });
+        const finalization = finalizationForEvolutionResult(providerResult);
+        if (finalization.action === "complete") {
+          try {
+            await completeDelivery(
+              admin,
+              row,
+              finalization.providerMessageId,
+            );
+            sent++;
+          } catch {
+            // O provedor aceitou; uma nova tentativa de envio seria duplicidade.
+            await markAcceptedStateAmbiguous(admin, row);
+            failed++;
+            ambiguous++;
+            failureCodes.push("completion_state_unknown");
+          }
           continue;
         }
 
-        await supabase
-          .from("attendance_confirmations")
-          .update({ sent_at: new Date().toISOString(), send_attempts: (c.send_attempts || 0) + 1 })
-          .eq("id", c.id);
-        sent++;
+        await failDelivery(
+          admin,
+          row,
+          finalization.errorCode,
+          finalization.ambiguous,
+        );
+        failed++;
+        if (finalization.ambiguous) ambiguous++;
+        failureCodes.push(finalization.errorCode);
       } catch (inner) {
-        console.error(`Erro confirmação ${c.id}:`, inner);
-        failures.push(`${c.id}: ${(inner as Error).message}`);
+        console.error("attendance_delivery_failed", {
+          confirmationId: row.id,
+          errorType: inner instanceof Error ? inner.message : "unknown",
+        });
+        failed++;
+        failureCodes.push("delivery_processing_failed");
+        try {
+          await failDelivery(admin, row, "delivery_processing_failed");
+        } catch {
+          failureCodes.push("failure_state_unknown");
+        }
       }
     }
 
-    return new Response(
-      JSON.stringify({ sent, canceladas, failures: failures.length, failure_reasons: failures.slice(0, 10) }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (e: any) {
-    console.error("Fatal:", e);
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
+    const summary = {
+      claimed: claimed.length,
+      sent,
+      failed,
+      suppressed,
+      ambiguous,
+      failure_codes: failureCodes.slice(0, 10),
+    };
+    return new Response(JSON.stringify(summary), {
+      status: attendanceDeliveryHttpStatus(summary),
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } catch (error) {
+    console.error("attendance_delivery_fatal", error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "internal_error",
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });

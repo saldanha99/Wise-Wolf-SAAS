@@ -22,6 +22,11 @@ export interface RequestAuthContext {
 }
 
 interface AuthorizeRequestOptions {
+  /**
+   * Explicit exception for recovery/cleanup or independently billed Hub
+   * operations that must remain available after a School SaaS suspension.
+   */
+  allowInactiveTenant?: boolean;
   allowService?: boolean;
   /**
    * The direct-to-consumer Wolfie tenant is denied by default even though its
@@ -46,6 +51,76 @@ const TENANT_SCOPED_ROLES = new Set([
 interface ActiveTenantMembership {
   tenant_id: string;
   role: string;
+}
+
+export function isOperationalTenantState(input: {
+  saasStatus: unknown;
+  currentPeriodEnd: unknown;
+  hasAnyCheckout: boolean;
+  hasProvisionedCheckout: boolean;
+  nowMs?: number;
+}): boolean {
+  const status = String(input.saasStatus || "").trim().toLowerCase();
+  if (!new Set(["active", "trial", "trialing"]).has(status)) return false;
+  if (!input.hasAnyCheckout) return true;
+  if (!input.hasProvisionedCheckout) return false;
+  if (typeof input.currentPeriodEnd !== "string") return false;
+  const periodEnd = Date.parse(input.currentPeriodEnd);
+  return Number.isFinite(periodEnd) && periodEnd > (input.nowMs ?? Date.now());
+}
+
+export async function loadOperationalTenantAccess(
+  admin: unknown,
+  tenantId: string,
+): Promise<{ ok: true; operational: boolean } | { ok: false }> {
+  if (
+    !admin || typeof admin !== "object" ||
+    typeof (admin as { from?: unknown }).from !== "function"
+  ) return { ok: false };
+  // Several legacy functions still pin another compatible supabase-js patch
+  // version. Keep the public boundary structural and narrow only after the
+  // runtime capability check, avoiding nominal private-field incompatibility.
+  const queryClient = admin as SupabaseClient;
+  const [tenantResult, anyCheckoutResult, liveCheckoutResult] = await Promise
+    .all([
+      queryClient
+        .from("tenants")
+        .select("saas_status,current_period_end")
+        .eq("id", tenantId)
+        .maybeSingle(),
+      queryClient
+        .from("saas_checkout_intents")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .limit(1),
+      queryClient
+        .from("saas_checkout_intents")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("status", "PROVISIONED")
+        .not("provisioned_at", "is", null)
+        .limit(1),
+    ]);
+  if (
+    tenantResult.error || anyCheckoutResult.error || liveCheckoutResult.error
+  ) {
+    console.error("Request authorization tenant status lookup failed", {
+      tenantCode: tenantResult.error?.code,
+      checkoutCode: anyCheckoutResult.error?.code,
+      liveCode: liveCheckoutResult.error?.code,
+    });
+    return { ok: false };
+  }
+  if (!tenantResult.data) return { ok: true, operational: false };
+  return {
+    ok: true,
+    operational: isOperationalTenantState({
+      saasStatus: tenantResult.data.saas_status,
+      currentPeriodEnd: tenantResult.data.current_period_end,
+      hasAnyCheckout: (anyCheckoutResult.data || []).length > 0,
+      hasProvisionedCheckout: (liveCheckoutResult.data || []).length > 0,
+    }),
+  };
 }
 
 export function isAuthorizedTenantMembership(
@@ -359,6 +434,37 @@ export async function authorizeRequest(
         "This account is restricted to Wolfie AI Tutor",
       ),
     };
+  }
+
+  if (
+    activeProfile.role !== "SUPER_ADMIN" && activeProfile.tenant_id &&
+    activeProfile.tenant_id !== "wolfie-direct" &&
+    options.allowInactiveTenant !== true
+  ) {
+    const tenantAccess = await loadOperationalTenantAccess(
+      admin,
+      activeProfile.tenant_id,
+    );
+    if (!tenantAccess.ok) {
+      return {
+        ok: false,
+        response: jsonError(
+          options.corsHeaders,
+          503,
+          "Authorization status is unavailable",
+        ),
+      };
+    }
+    if (!tenantAccess.operational) {
+      return {
+        ok: false,
+        response: jsonError(
+          options.corsHeaders,
+          403,
+          "Tenant subscription is not active",
+        ),
+      };
+    }
   }
 
   return {

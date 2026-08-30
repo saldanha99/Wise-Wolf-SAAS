@@ -37,6 +37,8 @@ begin
 end;
 $$;
 
+grant execute on function pg_temp.assert_access_denied(text, text) to public;
+
 create or replace function pg_temp.assert_no_visible_rows(command text, message text)
 returns void
 language plpgsql
@@ -55,6 +57,8 @@ begin
   end if;
 end;
 $$;
+
+grant execute on function pg_temp.assert_no_visible_rows(text, text) to public;
 
 select pg_temp.assert_true(
   exists (

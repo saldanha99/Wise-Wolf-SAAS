@@ -72,12 +72,9 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                 }
 
                 // 3. Conflito de presença aberto (antifraude)
-                const { count: conf } = await supabase
-                    .from('attendance_confirmations')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('teacher_id', userId)
-                    .eq('status', 'CONFLICT');
-                if (conf && conf > 0) {
+                const { data: conflictCount } = await supabase.rpc('my_attendance_conflict_count');
+                const conf = Number(conflictCount || 0);
+                if (Number.isFinite(conf) && conf > 0) {
                     found.push({
                         id: 'conflict', tone: 'red', icon: <ShieldAlert size={18} />,
                         title: `${conf} aula(s) em análise por divergência com o aluno`,

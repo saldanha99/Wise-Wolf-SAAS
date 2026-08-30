@@ -71,7 +71,7 @@ serve(async (req) => {
         if (!user) return json({ error: 'invalid token', slots: [] }, 401);
         const { data: caller } = await S.from('profiles')
             .select('id, role, tenant_id').eq('id', user.id).maybeSingle();
-        if (!caller || !['SCHOOL_ADMIN', 'SUPER_ADMIN', 'COORDINATOR'].includes(caller.role)) {
+        if (!caller || !['SCHOOL_ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'DIRECTOR'].includes(caller.role)) {
             return json({ error: 'forbidden', slots: [] }, 403);
         }
 

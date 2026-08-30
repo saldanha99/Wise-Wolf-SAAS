@@ -5,7 +5,6 @@ import {
     X, Clock, DollarSign, MoreHorizontal, Edit2, Tag, ChevronDown,
     TrendingUp, Users, Target, AlertCircle, Check, Trash2, RefreshCw, Bot, BotOff
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 interface CRMPageProps {
     tenantId: string;
@@ -30,6 +29,7 @@ interface Lead {
 }
 
 type StatusType = 'NEW' | 'CONTACTED' | 'TRIAL' | 'WON' | 'LOST';
+type ManualStatusType = Exclude<StatusType, 'WON'>;
 
 const COLUMN_CONFIG: Record<string, { label: string; color: string; text: string; dot: string; border: string }> = {
     NEW:       { label: 'Novos Leads',    color: 'from-blue-500/10',    text: 'text-blue-500',    dot: 'bg-blue-500',    border: 'border-blue-500/30' },
@@ -39,10 +39,24 @@ const COLUMN_CONFIG: Record<string, { label: string; color: string; text: string
 };
 
 const VISIBLE_COLUMNS: StatusType[] = ['NEW', 'CONTACTED', 'TRIAL', 'WON'];
+const MANUAL_ACTIVE_STATUSES: ManualStatusType[] = ['NEW', 'CONTACTED', 'TRIAL'];
+const WON_MANUAL_BLOCK_MESSAGE = 'A etapa Matriculados é automática e só é liberada após a matrícula autoritativa.';
 
 const SOURCE_OPTIONS = ['Instagram', 'Facebook', 'Indicação', 'Google', 'WhatsApp', 'Site', 'Evento', 'Outro'];
 const LEVEL_OPTIONS  = ['Iniciante', 'Básico', 'Intermediário', 'Avançado', 'Nativo'];
 const TAG_SUGGESTIONS = ['hot-lead', 'adulto', 'infantil', 'business', 'conversação', 'intensivo', 'online'];
+
+const editableLeadPayload = (data: Partial<Lead>) => ({
+    name: data.name?.trim() || '',
+    email: data.email?.trim() || null,
+    phone: data.phone?.trim() || null,
+    source: data.source || null,
+    notes: data.notes?.trim() || null,
+    value: Number(data.value) || 0,
+    tags: data.tags || [],
+    level: data.level || null,
+    goal: data.goal?.trim() || null,
+});
 
 // Componente Modal reutilizável
 const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
@@ -68,9 +82,10 @@ interface LeadFormProps {
     onSave: (data: Partial<Lead>) => Promise<void>;
     onCancel: () => void;
     saving: boolean;
+    formError?: string | null;
 }
 
-const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }) => {
+const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, formError }) => {
     const [form, setForm] = useState<Partial<Lead>>({
         name: '', email: '', phone: '', source: '', notes: '',
         value: 0, tags: [], status: 'NEW', level: '', goal: '',
@@ -78,6 +93,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
     });
     const [tagInput, setTagInput] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const isAuthoritativeWon = initial?.status === 'WON';
 
     const set = (key: keyof Lead, val: unknown) => {
         setForm(f => ({ ...f, [key]: val }));
@@ -102,6 +118,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
 
     const handleSubmit = async () => {
         const e = validate();
+        if (!isAuthoritativeWon && form.status === 'WON') e.status = WON_MANUAL_BLOCK_MESSAGE;
         if (Object.keys(e).length > 0) { setErrors(e); return; }
         await onSave(form);
     };
@@ -184,16 +201,32 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving }
                 </div>
                 <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-1 block">Etapa</label>
-                    <select
-                        value={form.status || 'NEW'}
-                        onChange={e => set('status', e.target.value as StatusType)}
-                        className="w-full px-4 py-2.5 bg-brand-surface-2 border border-brand-border rounded-xl text-sm text-brand-text outline-none focus:border-brand-accent transition-colors"
-                    >
-                        {VISIBLE_COLUMNS.map(s => <option key={s} value={s}>{COLUMN_CONFIG[s].label}</option>)}
-                        <option value="LOST">Perdidos</option>
-                    </select>
+                    {isAuthoritativeWon ? (
+                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5">
+                            <p className="text-sm font-bold text-emerald-600">Matriculado pelo fluxo de matrícula</p>
+                            <p className="mt-0.5 text-[10px] text-brand-muted">Esta etapa é reconciliada automaticamente e não pode ser alterada aqui.</p>
+                        </div>
+                    ) : (
+                        <select
+                            aria-label="Etapa"
+                            value={form.status === 'WON' ? 'NEW' : (form.status || 'NEW')}
+                            onChange={e => set('status', e.target.value as ManualStatusType)}
+                            className={`w-full px-4 py-2.5 bg-brand-surface-2 border rounded-xl text-sm text-brand-text outline-none focus:border-brand-accent transition-colors ${errors.status ? 'border-red-500' : 'border-brand-border'}`}
+                        >
+                            {MANUAL_ACTIVE_STATUSES.map(s => <option key={s} value={s}>{COLUMN_CONFIG[s].label}</option>)}
+                            <option value="LOST">Perdidos</option>
+                        </select>
+                    )}
+                    {errors.status && <p className="text-xs text-red-500 mt-1">{errors.status}</p>}
                 </div>
             </div>
+
+            {formError && (
+                <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2.5 text-xs font-bold text-red-600">
+                    <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                    <span>{formError}</span>
+                </div>
+            )}
 
             {/* Tags */}
             <div>
@@ -344,8 +377,11 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
 const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [actionError, setActionError] = useState('');
     const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
     const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+    const fetchRequestIdRef = useRef(0);
 
     // Modais
     const [showNewModal, setShowNewModal] = useState(false);
@@ -374,12 +410,13 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     };
 
     const toggleLeadHandoff = async (lead: any) => {
+        setActionError('');
         const querSilenciar = !leadHandoffAtivo(lead);
         const { data, error } = await supabase.rpc('set_ai_handoff', {
             p_kind: 'lead', p_id: lead.id, p_handoff: querSilenciar,
         });
         if (error || !(data as any)?.ok) {
-            alert('Não consegui alterar: ' + (error?.message || (data as any)?.error || 'erro'));
+            setActionError('Não foi possível alterar o atendimento deste lead. Tente novamente.');
             return;
         }
         setLeads(prev => prev.map(l => l.id === lead.id
@@ -391,7 +428,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     // FETCH
     // ---------------------------------------------------------
     const fetchLeads = async () => {
+        const requestId = ++fetchRequestIdRef.current;
         setLoading(true);
+        setLoadError('');
+        setLeads([]);
         try {
             const { data, error } = await supabase
                 .from('crm_leads')
@@ -400,15 +440,22 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
+            if (requestId !== fetchRequestIdRef.current) return;
             setLeads(data || []);
         } catch (err) {
             console.error('Erro ao buscar leads:', err);
+            if (requestId === fetchRequestIdRef.current) {
+                setLoadError('Não foi possível carregar o pipeline. Nenhum lead será tratado como ausente até uma leitura válida.');
+            }
         } finally {
-            setLoading(false);
+            if (requestId === fetchRequestIdRef.current) setLoading(false);
         }
     };
 
-    useEffect(() => { fetchLeads(); }, [tenantId]);
+    useEffect(() => {
+        void fetchLeads();
+        return () => { fetchRequestIdRef.current += 1; };
+    }, [tenantId]);
 
     // ---------------------------------------------------------
     // MÉTRICAS
@@ -461,12 +508,23 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     // DRAG & DROP
     // ---------------------------------------------------------
     const handleDragStart = (e: React.DragEvent, lead: Lead) => {
+        if (lead.status === 'WON') {
+            e.preventDefault();
+            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+            return;
+        }
+        setActionError('');
         setDraggedLead(lead);
         e.dataTransfer.effectAllowed = 'move';
     };
 
     const handleDragOver = (e: React.DragEvent, col: string) => {
         e.preventDefault();
+        if (col === 'WON' || draggedLead?.status === 'WON') {
+            e.dataTransfer.dropEffect = 'none';
+            setDragOverCol(null);
+            return;
+        }
         e.dataTransfer.dropEffect = 'move';
         setDragOverCol(col);
     };
@@ -476,32 +534,48 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     const handleDrop = async (e: React.DragEvent, targetStatus: StatusType) => {
         e.preventDefault();
         setDragOverCol(null);
-        if (!draggedLead || draggedLead.status === targetStatus) { setDraggedLead(null); return; }
-
-        const now = new Date().toISOString();
-        if (targetStatus === 'WON') {
-            confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+        const lead = draggedLead;
+        setDraggedLead(null);
+        if (!lead || lead.status === targetStatus) return;
+        if (targetStatus === 'WON' || lead.status === 'WON') {
+            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+            return;
         }
 
-        setLeads(prev => prev.map(l =>
-            l.id === draggedLead.id ? { ...l, status: targetStatus, last_status_change: now } : l
-        ));
-        setDraggedLead(null);
-
-        await supabase.from('crm_leads').update({
-            status: targetStatus,
-            last_status_change: now,
-        }).eq('id', draggedLead.id);
+        setActionError('');
+        const now = new Date().toISOString();
+        try {
+            const { data: updated, error } = await supabase.from('crm_leads').update({
+                status: targetStatus,
+                last_status_change: now,
+            })
+                .eq('id', lead.id)
+                .eq('tenant_id', tenantId)
+                .select('*')
+                .maybeSingle();
+            if (error) throw error;
+            if (!updated) throw new Error('lead_update_not_applied');
+            setLeads(prev => prev.map(item => item.id === lead.id ? (updated as Lead) : item));
+        } catch (err) {
+            console.error('Erro ao mover lead:', err);
+            setActionError('Não foi possível mover o lead. A etapa anterior foi mantida; tente novamente.');
+        }
     };
 
     // ---------------------------------------------------------
     // CRUD
     // ---------------------------------------------------------
     const handleSaveNew = async (data: Partial<Lead>) => {
+        if (data.status === 'WON') {
+            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+            return;
+        }
         setSaving(true);
+        setActionError('');
         try {
             const { data: inserted, error } = await supabase.from('crm_leads').insert({
-                ...data,
+                ...editableLeadPayload(data),
+                status: data.status || 'NEW',
                 tenant_id: tenantId,
                 last_status_change: new Date().toISOString(),
             }).select().single();
@@ -511,6 +585,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
             setShowNewModal(false);
         } catch (err) {
             console.error('Erro ao criar lead:', err);
+            setActionError('Não foi possível criar a oportunidade. Revise os dados e tente novamente.');
         } finally {
             setSaving(false);
         }
@@ -518,11 +593,24 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
     const handleSaveEdit = async (data: Partial<Lead>) => {
         if (!editLead) return;
+        if (editLead.status !== 'WON' && data.status === 'WON') {
+            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+            return;
+        }
         setSaving(true);
+        setActionError('');
         try {
+            const statusChanged = editLead.status !== 'WON'
+                && data.status !== undefined
+                && data.status !== editLead.status;
+            const payload: Record<string, unknown> = editableLeadPayload(data);
+            if (editLead.status !== 'WON') payload.status = data.status || editLead.status;
+            if (statusChanged) payload.last_status_change = new Date().toISOString();
+
             const { data: updated, error } = await supabase.from('crm_leads')
-                .update({ ...data })
+                .update(payload)
                 .eq('id', editLead.id)
+                .eq('tenant_id', tenantId)
                 .select()
                 .single();
 
@@ -531,6 +619,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
             setEditLead(null);
         } catch (err) {
             console.error('Erro ao editar lead:', err);
+            setActionError('Não foi possível salvar as alterações. O lead anterior foi mantido; tente novamente.');
         } finally {
             setSaving(false);
         }
@@ -588,7 +677,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                     </div>
 
                     <button
-                        onClick={() => setShowNewModal(true)}
+                        onClick={() => { setActionError(''); setShowNewModal(true); }}
                         className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-1.5 shadow-sm transition-colors whitespace-nowrap"
                     >
                         <Plus size={15} /> Nova Oportunidade
@@ -627,11 +716,34 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                 </div>
             </header>
 
+            {actionError && !showNewModal && !editLead && (
+                <div role="alert" className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-600">
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                    <span className="flex-1">{actionError}</span>
+                    <button type="button" onClick={() => setActionError('')} aria-label="Fechar aviso"><X size={14} /></button>
+                </div>
+            )}
+
             {/* ── BOARD ── */}
             <main className="flex-1 min-h-0 p-4 overflow-x-auto overflow-y-hidden">
                 {loading ? (
                     <div className="flex items-center justify-center h-full text-brand-muted">
                         <RefreshCw size={24} className="animate-spin mr-2" /> Carregando leads...
+                    </div>
+                ) : loadError ? (
+                    <div role="alert" className="flex h-full items-center justify-center">
+                        <div className="max-w-md rounded-2xl border border-red-400/40 bg-brand-surface p-6 text-center shadow-sm">
+                            <AlertCircle size={28} className="mx-auto text-red-500" />
+                            <h2 className="mt-3 text-sm font-black text-brand-text">Pipeline indisponível</h2>
+                            <p className="mt-1 text-xs leading-relaxed text-brand-muted">{loadError}</p>
+                            <button
+                                type="button"
+                                onClick={() => void fetchLeads()}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-red-400/40 px-4 py-2 text-xs font-black text-red-600 hover:bg-red-500/10"
+                            >
+                                <RefreshCw size={14} /> Tentar novamente
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex gap-4 h-full min-w-[900px]">
@@ -644,6 +756,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                             return (
                                 <div
                                     key={status}
+                                    data-testid={`crm-column-${status}`}
                                     onDragOver={e => handleDragOver(e, status)}
                                     onDragLeave={handleDragLeave}
                                     onDrop={e => handleDrop(e, status)}
@@ -657,6 +770,11 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                 <span className={`text-xs font-extrabold uppercase tracking-widest ${cfg.text}`}>
                                                     {cfg.label}
                                                 </span>
+                                                {status === 'WON' && (
+                                                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-600">
+                                                        Automático
+                                                    </span>
+                                                )}
                                             </div>
                                             <span className="text-xs font-bold text-brand-muted bg-brand-surface-2 px-2 py-0.5 rounded-full border border-brand-border">
                                                 {col.length}
@@ -675,7 +793,11 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                         {col.length === 0 && (
                                             <div className="flex flex-col items-center justify-center h-24 text-brand-muted/50 select-none">
                                                 <Users size={20} className="mb-1 opacity-30" />
-                                                <span className="text-[11px]">Arraste leads aqui</span>
+                                                <span className="px-3 text-center text-[11px]">
+                                                    {status === 'WON'
+                                                        ? 'A matrícula aparece aqui após o fluxo autoritativo.'
+                                                        : 'Arraste leads aqui'}
+                                                </span>
                                             </div>
                                         )}
 
@@ -687,9 +809,11 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                             return (
                                                 <div
                                                     key={lead.id}
-                                                    draggable
+                                                    data-testid={`crm-card-${lead.id}`}
+                                                    draggable={lead.status !== 'WON'}
                                                     onDragStart={e => handleDragStart(e, lead)}
-                                                    className={`group bg-brand-surface-2 p-3.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all select-none hover:shadow-md ${stagnant ? 'border-amber-500/30 hover:border-amber-500/60' : 'border-brand-border hover:border-brand-accent/50'}`}
+                                                    onDragEnd={() => { setDraggedLead(null); setDragOverCol(null); }}
+                                                    className={`group bg-brand-surface-2 p-3.5 rounded-xl border transition-all select-none hover:shadow-md ${lead.status === 'WON' ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} ${stagnant ? 'border-amber-500/30 hover:border-amber-500/60' : 'border-brand-border hover:border-brand-accent/50'}`}
                                                 >
                                                     {/* Header */}
                                                     <div className="flex items-start gap-2.5 mb-2.5">
@@ -717,7 +841,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                             {leadHandoffAtivo(lead) ? <BotOff size={13} /> : <Bot size={13} />}
                                                         </button>
                                                         <button
-                                                            onClick={() => setEditLead(lead)}
+                                                            onClick={() => { setActionError(''); setEditLead(lead); }}
                                                             className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-all"
                                                             title="Editar lead"
                                                         >
@@ -800,23 +924,25 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
             {/* ── MODAL: NOVA OPORTUNIDADE ── */}
             {showNewModal && (
-                <Modal title="Nova Oportunidade" onClose={() => setShowNewModal(false)}>
+                <Modal title="Nova Oportunidade" onClose={() => { setShowNewModal(false); setActionError(''); }}>
                     <LeadForm
                         onSave={handleSaveNew}
-                        onCancel={() => setShowNewModal(false)}
+                        onCancel={() => { setShowNewModal(false); setActionError(''); }}
                         saving={saving}
+                        formError={actionError}
                     />
                 </Modal>
             )}
 
             {/* ── MODAL: EDITAR LEAD ── */}
             {editLead && (
-                <Modal title={`Editar: ${editLead.name}`} onClose={() => setEditLead(null)}>
+                <Modal title={`Editar: ${editLead.name}`} onClose={() => { setEditLead(null); setActionError(''); }}>
                     <LeadForm
                         initial={editLead}
                         onSave={handleSaveEdit}
-                        onCancel={() => setEditLead(null)}
+                        onCancel={() => { setEditLead(null); setActionError(''); }}
                         saving={saving}
+                        formError={actionError}
                     />
                 </Modal>
             )}

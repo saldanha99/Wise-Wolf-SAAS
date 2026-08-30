@@ -112,6 +112,7 @@ validate_https_url "$DEPLOY_API_URL" ||
 # shellcheck source=lib/release-preflight.sh
 source "$SCRIPT_DIR/lib/release-preflight.sh"
 assert_release_tree_is_publishable "$PROJECT_DIR"
+RELEASE_HEAD_AT_PREFLIGHT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 
 cd "$PROJECT_DIR"
 
@@ -313,6 +314,11 @@ MIGRATIONS=(
   "supabase/migrations/20260804034000_ai_pricing_voice_models.sql"
   "supabase/migrations/20260824205624_guard_empty_hub_catalog.sql"
   "supabase/migrations/20260824210239_hub_core_legal_acceptances.sql"
+  "supabase/migrations/20260828000000_fix_apply_wolfie_topup_event_parsing.sql"
+  "supabase/migrations/20260828010000_repair_hub_catalog_readiness_asset_integrity.sql"
+  "supabase/migrations/20260829000000_fix_teacher_turbo_status_auth_permissions.sql"
+  "supabase/migrations/20260829020000_repair_teacher_turbo_permissions_and_trial_reopen_dispatch.sql"
+  "supabase/migrations/20260830080000_restore_settled_wolfie_topup_boundary.sql"
 )
 DATABASE_TESTS=(
   "supabase/tests/wolfie_factual_memory_and_rag.sql"
@@ -417,6 +423,7 @@ for database_test in "${DATABASE_TESTS[@]}"; do
   rsync -a -- "$database_test" \
     "$DEPLOY_SSH_HOST:$remote_release/tests/$(basename -- "$database_test")"
 done
+assert_release_tree_still_publishable "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
 
 echo "== Ativação, verificação e rollback automático =="
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
@@ -617,6 +624,15 @@ migration_versions=(
   20260801220000
   20260801230000
   20260803163128
+  20260803235500
+  20260804034000
+  20260824205624
+  20260824210239
+  20260828000000
+  20260828010000
+  20260829000000
+  20260829020000
+  20260830080000
 )
 migration_paths=(
   "$release_dir/migrations/20260730193415_wolfie_factual_memory_and_rag.sql"
@@ -632,6 +648,15 @@ migration_paths=(
   "$release_dir/migrations/20260801220000_wolfie_meeting_memory_lifecycle.sql"
   "$release_dir/migrations/20260801230000_repair_wolfie_sql_special_forms.sql"
   "$release_dir/migrations/20260803163128_wolfie_standalone_subscriptions.sql"
+  "$release_dir/migrations/20260803235500_wolfie_free_premium_tiers.sql"
+  "$release_dir/migrations/20260804034000_ai_pricing_voice_models.sql"
+  "$release_dir/migrations/20260824205624_guard_empty_hub_catalog.sql"
+  "$release_dir/migrations/20260824210239_hub_core_legal_acceptances.sql"
+  "$release_dir/migrations/20260828000000_fix_apply_wolfie_topup_event_parsing.sql"
+  "$release_dir/migrations/20260828010000_repair_hub_catalog_readiness_asset_integrity.sql"
+  "$release_dir/migrations/20260829000000_fix_teacher_turbo_status_auth_permissions.sql"
+  "$release_dir/migrations/20260829020000_repair_teacher_turbo_permissions_and_trial_reopen_dispatch.sql"
+  "$release_dir/migrations/20260830080000_restore_settled_wolfie_topup_boundary.sql"
 )
 database_tests=(
   "$release_dir/tests/wolfie_factual_memory_and_rag.sql"

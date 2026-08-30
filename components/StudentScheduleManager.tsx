@@ -47,7 +47,7 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 .select('id, day_of_week, time_slot, teacher_id, teacher:teacher_id(full_name)')
                 .eq('student_id', studentId)
                 .eq('tenant_id', tenantId)
-                .eq('status', 'SCHEDULED');
+                .in('status', ['SCHEDULED', 'scheduled']);
 
             if (error) throw error;
             const nextBookings = (data || []).map((booking: any) => ({

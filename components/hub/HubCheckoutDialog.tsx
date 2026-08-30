@@ -240,6 +240,10 @@ const HubCheckoutDialog: React.FC<HubCheckoutDialogProps> = ({
             <span><MailCheck size={16} /></span>
             <div><b>Entrega depois do pagamento</b><small>O acesso e os avisos por e-mail/WhatsApp só são liberados após confirmação do Asaas.</small></div>
           </div>
+          <div className="hub-checkout-summary__delivery">
+            <span><CheckCircle2 size={16} /></span>
+            <div><b>Fluxo rastreável</b><small>Esta etapa registra versão dos documentos aceitos e cria trilha de auditoria para segurança da contratação.</small></div>
+          </div>
         </aside>
 
         <section className="hub-checkout-content">
@@ -331,7 +335,8 @@ const HubCheckoutDialog: React.FC<HubCheckoutDialogProps> = ({
                   <input type="checkbox" checked={acceptedPrivacy} onChange={(event) => setAcceptedPrivacy(event.target.checked)} required />
                   <span>Li e aceito a <a href={hubMarketingPath('privacy')} target="_blank" rel="noreferrer">Política de Privacidade</a>, versão {HUB_CORE_PRIVACY_VERSION}.</span>
                 </label>
-                <p>Esses aceites são necessários para a contratação e não autorizam mensagens de marketing.</p>
+                <div className="hub-checkout-legal">Esses aceites são necessários para a contratação e não autorizam mensagens de marketing.</div>
+                <div className="hub-checkout-legal">A cobrança é criada após revisão e só vira acesso após confirmação do pagamento pelo provedor.</div>
               </fieldset>
 
               {replacingSubscription && <p className="hub-checkout-info">A troca acontece somente após o pagamento. Até lá, sua assinatura atual permanece intacta.</p>}

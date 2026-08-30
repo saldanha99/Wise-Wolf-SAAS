@@ -6,18 +6,41 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import {
+  AsaasCapabilityFenceError,
+  type AsaasMutationPurpose,
+  revalidateAsaasMutationCapability,
+} from "../_shared/asaas-capability-fence.ts";
+import { guardAsaasMutationTarget } from "../_shared/asaas-mutation-guard.ts";
+import {
   authorizeRequest,
   methodNotAllowed,
   type RequestAuthContext,
 } from "../_shared/request-auth.ts";
 import {
-  isEligibleForDunning,
+  type AsaasIntegrationPurpose,
+  resolveAsaasIntegration,
+  type ResolvedAsaasIntegration,
+} from "../_shared/tenant-integration-broker.ts";
+import {
+  hasExclusiveActiveTargetMembership,
   type LifecycleStatus,
   normalizeEnrollmentPlan,
   normalizeSchoolAdminAction,
 } from "./core.ts";
 
 const MAX_BODY_BYTES = 16_384;
+const TERMINAL_PAYMENT_STATUSES = new Set([
+  "RECEIVED",
+  "CONFIRMED",
+  "RECEIVED_IN_CASH",
+  "REFUNDED",
+  "PARTIALLY_REFUNDED",
+  "CHARGEBACK_REQUESTED",
+  "CHARGEBACK_DISPUTE",
+  "AWAITING_CHARGEBACK_REVERSAL",
+  "DUNNING_RECEIVED",
+  "DUNNING_REQUESTED",
+]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const corsHeaders = {
@@ -173,48 +196,56 @@ async function writeAudit(
   }
 }
 
-function asaasConfiguration(): { baseUrl: string; apiKey: string } {
-  const rawUrl = (Deno.env.get("ASAAS_API_URL") ||
-    "https://api-sandbox.asaas.com").trim();
-  const apiKey = (Deno.env.get("ASAAS_API_KEY") ||
-    Deno.env.get("ASAAS_ACCESS_TOKEN") || "").trim();
-  if (!apiKey) {
-    throw new ApiError(503, "ASAAS_UNAVAILABLE", "Billing is unavailable");
-  }
-
-  let parsed: URL;
+async function schoolAsaasIntegration(
+  admin: SupabaseClient,
+  tenantId: string,
+  purpose: AsaasIntegrationPurpose,
+): Promise<ResolvedAsaasIntegration> {
   try {
-    parsed = new URL(rawUrl);
+    return await resolveAsaasIntegration(admin, tenantId, purpose);
   } catch {
-    throw new ApiError(503, "ASAAS_UNAVAILABLE", "Billing is unavailable");
+    throw new ApiError(
+      503,
+      "ASAAS_UNAVAILABLE",
+      "Billing is unavailable for the selected tenant",
+    );
   }
-  if (parsed.protocol !== "https:") {
-    throw new ApiError(503, "ASAAS_UNAVAILABLE", "Billing is unavailable");
-  }
-  const normalized = rawUrl.replace(/\/+$/, "").replace(/\/v3$/, "")
-    .replace(/\/api\/v3$/, "").replace(/\/api$/, "");
-  const prefix = parsed.hostname === "api.asaas.com" ||
-      parsed.hostname === "api-sandbox.asaas.com"
-    ? "/v3"
-    : "/api/v3";
-  return { baseUrl: `${normalized}${prefix}`, apiKey };
 }
 
 async function callAsaas(
+  admin: SupabaseClient,
+  tenantId: string,
+  purpose: AsaasMutationPurpose,
+  expectedIntegration: ResolvedAsaasIntegration,
   path: string,
-  method: "POST" | "DELETE",
-  payload?: Record<string, unknown>,
+  method: "DELETE",
 ): Promise<number> {
-  const config = asaasConfiguration();
+  let integration: ResolvedAsaasIntegration;
+  try {
+    integration = await revalidateAsaasMutationCapability(admin, {
+      tenantId,
+      purpose,
+      expected: expectedIntegration,
+    });
+  } catch (error) {
+    const unavailable = error instanceof AsaasCapabilityFenceError &&
+      error.failure === "UNAVAILABLE";
+    throw new ApiError(
+      unavailable ? 503 : 409,
+      unavailable ? "ASAAS_UNAVAILABLE" : "ASAAS_INTEGRATION_CHANGED",
+      unavailable
+        ? "Billing is unavailable for the selected tenant"
+        : "Billing integration changed before provider mutation",
+    );
+  }
   let response: Response;
   try {
-    response = await fetch(`${config.baseUrl}${path}`, {
+    response = await fetch(`${integration.baseUrl}${path}`, {
       method,
       headers: {
         "Content-Type": "application/json",
-        access_token: config.apiKey,
+        access_token: integration.apiKey,
       },
-      body: payload ? JSON.stringify(payload) : undefined,
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -232,6 +263,98 @@ async function callAsaas(
     );
   }
   return response.status;
+}
+
+async function requireAsaasMutationIdentity(
+  admin: SupabaseClient,
+  integration: ResolvedAsaasIntegration,
+  input: {
+    operation: string;
+    tenantId: string;
+    studentId: string;
+    resource: "subscription" | "payment";
+    entityId: string;
+    customerId: string;
+    subscriptionId: string | null;
+    subscriptionMatch: "entity_id" | "required" | "optional";
+  },
+): Promise<
+  | { kind: "PRESENT"; entity: Record<string, unknown> }
+  | { kind: "ABSENT" }
+> {
+  const guard = await guardAsaasMutationTarget({
+    admin,
+    baseUrl: integration.baseUrl,
+    apiKey: integration.apiKey,
+    operation: input.operation,
+    target: {
+      tenantId: input.tenantId,
+      studentId: input.studentId,
+      resource: input.resource,
+      entityId: input.entityId,
+      customerId: input.customerId,
+      subscriptionId: input.subscriptionId,
+      subscriptionMatch: input.subscriptionMatch,
+    },
+  });
+  if (guard.ok === false) {
+    if (guard.code === "NOT_FOUND") {
+      // DELETE is idempotent: this is also the recovery path after the
+      // provider committed a deletion but the previous HTTP response was
+      // lost. Preserve an auditable signal instead of blocking local
+      // offboarding forever.
+      await admin.from("asaas_reconciliation_issues").insert({
+        run_id: null,
+        tenant_id: input.tenantId,
+        source: "MUTATION_GUARD",
+        kind: "ASAAS_MUTATION_TARGET_ALREADY_ABSENT",
+        severity: "HIGH",
+        provider_entity_id: input.entityId,
+        local_entity_id: input.studentId,
+        fingerprint:
+          `asaas-mutation-absent:${input.resource}:${input.entityId}`,
+        details: {
+          operation: input.operation,
+          desiredState: "DELETED",
+        },
+      });
+      return { kind: "ABSENT" };
+    }
+    throw new ApiError(
+      409,
+      "ASAAS_IDENTITY_MISMATCH",
+      "Billing binding requires review before this operation",
+    );
+  }
+  return { kind: "PRESENT", entity: guard.entity };
+}
+
+async function requireExclusiveActiveTargetMembership(
+  admin: SupabaseClient,
+  targetId: string,
+  tenantId: string,
+  expectedRole: "STUDENT" | "TEACHER",
+): Promise<void> {
+  const { data, error } = await admin.from("tenant_memberships")
+    .select("tenant_id,role,status")
+    .eq("user_id", targetId)
+    .limit(2);
+  if (error) {
+    throw new ApiError(
+      503,
+      "TARGET_SCOPE_UNAVAILABLE",
+      "Could not validate the account tenant membership",
+    );
+  }
+  if (
+    !hasExclusiveActiveTargetMembership(data || [], tenantId, expectedRole)
+  ) {
+    throw new ApiError(
+      409,
+      "TARGET_SCOPE_AMBIGUOUS",
+      "The account does not have one exclusive active tenant membership",
+    );
+  }
 }
 
 function lifecyclePatch(
@@ -261,6 +384,179 @@ function lifecyclePatch(
   return patch;
 }
 
+type OffboardingPaymentSnapshot = {
+  id: string;
+  asaasPaymentId: string;
+};
+
+type OffboardingClaim = {
+  id: string;
+  token: string;
+  action: "PROCEED" | "RECONCILE_REQUIRED" | "FINALIZE_REQUIRED";
+  sourceStatus: string;
+  targetStatus: "suspended" | "offboarded";
+  customerId: string;
+  subscriptionId: string;
+  enrollmentPaymentId: string;
+  payments: OffboardingPaymentSnapshot[];
+};
+
+function parseOffboardingPayments(
+  value: unknown,
+): OffboardingPaymentSnapshot[] {
+  if (!Array.isArray(value)) throw new Error("offboarding_snapshot_invalid");
+  const seenLocal = new Set<string>();
+  const seenProvider = new Set<string>();
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("offboarding_snapshot_invalid");
+    }
+    const row = item as Record<string, unknown>;
+    const id = String(row.id || "").trim();
+    const asaasPaymentId = String(row.asaas_payment_id || "").trim();
+    if (!UUID_PATTERN.test(id) || seenLocal.has(id)) {
+      throw new Error("offboarding_snapshot_invalid");
+    }
+    if (asaasPaymentId && seenProvider.has(asaasPaymentId)) {
+      throw new Error("offboarding_provider_payment_duplicate");
+    }
+    seenLocal.add(id);
+    if (asaasPaymentId) seenProvider.add(asaasPaymentId);
+    return { id, asaasPaymentId };
+  });
+}
+
+async function beginStudentOffboarding(
+  admin: SupabaseClient,
+  input: {
+    tenantId: string;
+    studentId: string;
+    requestedBy: string | null;
+    targetStatus: "suspended" | "offboarded";
+    reason: string | null;
+  },
+): Promise<
+  | { kind: "CLAIMED"; claim: OffboardingClaim }
+  | { kind: "IN_PROGRESS" }
+  | { kind: "COMPLETED" }
+  | { kind: "REVIEW_REQUIRED" }
+> {
+  const token = crypto.randomUUID();
+  const { data, error } = await admin.rpc("begin_student_offboarding", {
+    p_tenant_id: input.tenantId,
+    p_student_id: input.studentId,
+    p_requested_by: input.requestedBy,
+    p_target_status: input.targetStatus,
+    p_reason: input.reason,
+    p_claim_token: token,
+    p_lease_seconds: 300,
+  });
+  if (error || !data || typeof data !== "object") {
+    throw new ApiError(
+      503,
+      "OFFBOARDING_CLAIM_UNAVAILABLE",
+      "Could not acquire the account operation fence",
+    );
+  }
+  const result = data as Record<string, unknown>;
+  const action = String(result.action || "").trim();
+  if (action === "IN_PROGRESS") return { kind: "IN_PROGRESS" };
+  if (action === "ALREADY_COMPLETED") return { kind: "COMPLETED" };
+  if (result.ok !== true || action === "REVIEW_REQUIRED") {
+    return { kind: "REVIEW_REQUIRED" };
+  }
+  if (
+    !["PROCEED", "RECONCILE_REQUIRED", "FINALIZE_REQUIRED"].includes(action)
+  ) {
+    throw new ApiError(
+      503,
+      "OFFBOARDING_CLAIM_INVALID",
+      "The account operation fence returned an invalid state",
+    );
+  }
+  const id = String(result.operation_id || "").trim();
+  const returnedToken = String(result.claim_token || "").trim();
+  const targetStatus = String(result.target_lifecycle_status || "").trim();
+  if (
+    !UUID_PATTERN.test(id) || returnedToken !== token ||
+    !["suspended", "offboarded"].includes(targetStatus)
+  ) {
+    throw new ApiError(
+      503,
+      "OFFBOARDING_CLAIM_INVALID",
+      "The account operation fence returned an invalid state",
+    );
+  }
+  return {
+    kind: "CLAIMED",
+    claim: {
+      id,
+      token,
+      action: action as OffboardingClaim["action"],
+      sourceStatus: String(result.source_lifecycle_status || "").trim(),
+      targetStatus: targetStatus as OffboardingClaim["targetStatus"],
+      customerId: String(result.customer_id || "").trim(),
+      subscriptionId: String(result.subscription_id || "").trim(),
+      enrollmentPaymentId: String(result.enrollment_payment_id || "").trim(),
+      payments: parseOffboardingPayments(result.payment_snapshot),
+    },
+  };
+}
+
+async function recordOffboardingProviderState(
+  admin: SupabaseClient,
+  claim: OffboardingClaim,
+  status: "MUTATING" | "COMPLETE" | "UNKNOWN",
+  error: string | null = null,
+): Promise<void> {
+  const { data, error: rpcError } = await admin.rpc(
+    "record_student_offboarding_provider_state",
+    {
+      p_operation_id: claim.id,
+      p_claim_token: claim.token,
+      p_status: status,
+      p_error: error,
+    },
+  );
+  if (rpcError || data?.ok !== true) {
+    throw new ApiError(
+      409,
+      "OFFBOARDING_CLAIM_LOST",
+      "The account operation fence was lost",
+    );
+  }
+}
+
+async function bindOffboardingIntegrations(
+  admin: SupabaseClient,
+  claim: OffboardingClaim,
+  subscription: ResolvedAsaasIntegration | null,
+  payment: ResolvedAsaasIntegration | null,
+): Promise<void> {
+  const { data, error } = await admin.rpc(
+    "bind_student_offboarding_integrations",
+    {
+      p_operation_id: claim.id,
+      p_claim_token: claim.token,
+      p_subscription_integration_id: subscription?.integrationId || null,
+      p_subscription_version: subscription?.version || null,
+      p_subscription_environment: subscription?.environment || null,
+      p_subscription_mode: subscription?.mode || null,
+      p_payment_integration_id: payment?.integrationId || null,
+      p_payment_version: payment?.version || null,
+      p_payment_environment: payment?.environment || null,
+      p_payment_mode: payment?.mode || null,
+    },
+  );
+  if (error || data?.ok !== true) {
+    throw new ApiError(
+      409,
+      "OFFBOARDING_INTEGRATION_CHANGED",
+      "The billing integration changed during the account operation",
+    );
+  }
+}
+
 function applicationOrigin(): string {
   const fallback = "https://system.wisewolflanguage.com.br";
   const configured = (Deno.env.get("APP_BASE_URL") || fallback).trim();
@@ -283,6 +579,12 @@ async function createEnrollmentOffer(
   tenantId: string,
   leadId: string,
   planId: string,
+  teacherId: string,
+  schedule: Array<{ day: string; time: string }>,
+  startDate: string,
+  billingStartMonth: string,
+  dueDay: number,
+  enableProRata: boolean,
 ): Promise<Response> {
   const admin = context.admin;
   const [leadResult, planResult] = await Promise.all([
@@ -328,6 +630,13 @@ async function createEnrollmentOffer(
   } catch {
     throw new ApiError(409, "INVALID_PLAN", "The selected plan is invalid");
   }
+  if (schedule.length !== normalizedPlan.classesPerWeek) {
+    throw new ApiError(
+      409,
+      "SCHEDULE_FREQUENCY_MISMATCH",
+      `Preencha exatamente ${normalizedPlan.classesPerWeek} horarios para este plano`,
+    );
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() || "";
@@ -349,7 +658,16 @@ async function createEnrollmentOffer(
     resourceType: "crm_lead",
     resourceId: leadId,
     oldValues: { status: leadResult.data.status },
-    newValues: { requested: true, plan_id: planId },
+    newValues: {
+      requested: true,
+      plan_id: planId,
+      teacher_id: teacherId,
+      schedule,
+      start_date: startDate,
+      billing_start_month: billingStartMonth,
+      due_day: dueDay,
+      pro_rata: enableProRata,
+    },
   }, true);
   const { data: offerId, error: offerError } = await userClient.rpc(
     "create_enrollment_offer",
@@ -359,10 +677,14 @@ async function createEnrollmentOffer(
         value: normalizedPlan.value,
         planDuration: normalizedPlan.planDuration,
         classesPerWeek: normalizedPlan.classesPerWeek,
-        dueDay: 10,
+        dueDay,
         enrollmentFee: 0,
         requiresEnrollment: normalizedPlan.planDuration !== 0,
-        startDate: new Date().toISOString().slice(0, 10),
+        professorId: teacherId,
+        schedule: schedule.map((slot) => ({ ...slot, teacherId })),
+        startDate,
+        billingStartMonth,
+        enableProRata,
         studentName: leadResult.data.name || undefined,
         studentPhone: leadResult.data.phone || undefined,
         _linkOrigin: origin,
@@ -373,6 +695,25 @@ async function createEnrollmentOffer(
     console.error("Enrollment offer creation failed", {
       code: offerError?.code || "invalid_result",
     });
+    const reason = String(offerError?.message || "").toLowerCase();
+    if (reason.includes("tenant_legal_identity_incomplete")) {
+      throw new ApiError(
+        409,
+        "SCHOOL_IDENTITY_INCOMPLETE",
+        "Complete a Identidade da escola, incluindo a assinatura valida do representante, antes de gerar o link",
+      );
+    }
+    if (
+      reason.includes("teacher_slot_") ||
+      reason.includes("enrollment_schedule_") ||
+      reason.includes("inactive_enrollment_teacher")
+    ) {
+      throw new ApiError(
+        409,
+        "TEACHER_SCHEDULE_UNAVAILABLE",
+        "Um dos horarios nao esta disponivel para o professor escolhido",
+      );
+    }
     throw new ApiError(
       503,
       "ENROLLMENT_OFFER_FAILED",
@@ -385,7 +726,16 @@ async function createEnrollmentOffer(
     resourceType: "crm_lead",
     resourceId: leadId,
     oldValues: { status: leadResult.data.status },
-    newValues: { offer_id: offerId, plan_id: planId },
+    newValues: {
+      offer_id: offerId,
+      plan_id: planId,
+      teacher_id: teacherId,
+      schedule,
+      start_date: startDate,
+      billing_start_month: billingStartMonth,
+      due_day: dueDay,
+      pro_rata: enableProRata,
+    },
   });
   return json({
     ok: true,
@@ -648,6 +998,12 @@ export async function handleRequest(req: Request): Promise<Response> {
         tenantId,
         action.leadId,
         action.planId,
+        action.teacherId,
+        action.schedule,
+        action.startDate,
+        action.billingStartMonth,
+        action.dueDay,
+        action.enableProRata,
       );
     }
 
@@ -669,7 +1025,9 @@ export async function handleRequest(req: Request): Promise<Response> {
       const isStudent = action.action === "setStudentLifecycle";
       const expectedRole = isStudent ? "STUDENT" : "TEACHER";
       const { data: target, error: targetError } = await admin.from("profiles")
-        .select("id,role,tenant_id,lifecycle_status,subscription_id")
+        .select(
+          "id,role,tenant_id,lifecycle_status,subscription_id,asaas_customer_id,enrollment_payment_id,enrollment_fee_paid",
+        )
         .eq("tenant_id", tenantId)
         .eq("role", expectedRole)
         .eq("id", action.targetId)
@@ -684,6 +1042,12 @@ export async function handleRequest(req: Request): Promise<Response> {
       if (!target) {
         throw new ApiError(404, "ACCOUNT_NOT_FOUND", "Account not found");
       }
+      await requireExclusiveActiveTargetMembership(
+        admin,
+        target.id,
+        tenantId,
+        expectedRole,
+      );
 
       await writeAudit(admin, auth.context, tenantId, req, {
         action: `${action.action}Requested`,
@@ -697,85 +1061,311 @@ export async function handleRequest(req: Request): Promise<Response> {
         },
       }, true);
 
-      let subscriptionCancelled = false;
-      let futurePaymentsCancelled = 0;
-      let futurePaymentIds: string[] = [];
       if (isStudent && action.status !== "active") {
-        if (target.subscription_id) {
-          await callAsaas(
-            `/subscriptions/${encodeURIComponent(target.subscription_id)}`,
-            "DELETE",
+        const begun = await beginStudentOffboarding(admin, {
+          tenantId,
+          studentId: target.id,
+          requestedBy: auth.context.userId,
+          targetStatus: action.status,
+          reason: action.reason,
+        });
+        if (begun.kind === "IN_PROGRESS") {
+          throw new ApiError(
+            409,
+            "OFFBOARDING_IN_PROGRESS",
+            "The account operation is already in progress",
           );
-          subscriptionCancelled = true;
         }
-        if (action.status === "offboarded") {
-          const today = new Date().toISOString().slice(0, 10);
-          const { data: futurePayments, error: paymentsError } = await admin
-            .from("student_payments")
-            .select("id,asaas_payment_id,asaas_id")
-            .eq("tenant_id", tenantId)
-            .eq("student_id", target.id)
-            .eq("status", "PENDING")
-            .gte("due_date", today);
-          if (paymentsError) {
-            throw new ApiError(
-              503,
-              "DATA_UNAVAILABLE",
-              "Could not validate future billing",
+        if (begun.kind === "REVIEW_REQUIRED") {
+          throw new ApiError(
+            409,
+            "OFFBOARDING_REVIEW_REQUIRED",
+            "The account billing snapshot changed and requires review",
+          );
+        }
+        if (begun.kind === "COMPLETED") {
+          return json({
+            ok: true,
+            id: target.id,
+            lifecycle_status: action.status,
+            billing: {
+              subscriptionCancelled: false,
+              futurePaymentsCancelled: 0,
+            },
+            idempotent: true,
+          });
+        }
+        const claim = begun.claim;
+        if (
+          claim.targetStatus !== action.status ||
+          claim.customerId !== String(target.asaas_customer_id || "").trim() ||
+          claim.subscriptionId !==
+            String(target.subscription_id || "").trim() ||
+          claim.enrollmentPaymentId !==
+            String(target.enrollment_payment_id || "").trim()
+        ) {
+          throw new ApiError(
+            409,
+            "OFFBOARDING_SNAPSHOT_MISMATCH",
+            "The account billing snapshot changed and requires review",
+          );
+        }
+        const paymentTargets = [
+          ...claim.payments.flatMap((payment) =>
+            payment.asaasPaymentId
+              ? [{
+                kind: "RECURRING" as const,
+                localId: payment.id,
+                asaasPaymentId: payment.asaasPaymentId,
+              }]
+              : []
+          ),
+          ...(claim.enrollmentPaymentId
+            ? [{
+              kind: "ENROLLMENT" as const,
+              localId: null,
+              asaasPaymentId: claim.enrollmentPaymentId,
+            }]
+            : []),
+        ];
+        const externalPaymentIds = paymentTargets.map((payment) =>
+          payment.asaasPaymentId
+        );
+        const uniqueExternalPaymentIds = [...new Set(externalPaymentIds)];
+        if (uniqueExternalPaymentIds.length !== externalPaymentIds.length) {
+          throw new ApiError(
+            409,
+            "OFFBOARDING_PAYMENT_BINDING_DUPLICATE",
+            "A provider payment is linked more than once",
+          );
+        }
+
+        let subscriptionPresent = false;
+        const presentPayments: string[] = [];
+        if (claim.action !== "FINALIZE_REQUIRED") {
+          const [subscriptionIntegration, paymentIntegration] = await Promise
+            .all([
+              claim.subscriptionId
+                ? schoolAsaasIntegration(
+                  admin,
+                  tenantId,
+                  "subscription.delete",
+                )
+                : Promise.resolve(null),
+              externalPaymentIds.length
+                ? schoolAsaasIntegration(admin, tenantId, "payment.delete")
+                : Promise.resolve(null),
+            ]);
+          await bindOffboardingIntegrations(
+            admin,
+            claim,
+            subscriptionIntegration,
+            paymentIntegration,
+          );
+          if (claim.subscriptionId && subscriptionIntegration) {
+            const subscriptionPresence = await requireAsaasMutationIdentity(
+              admin,
+              subscriptionIntegration,
+              {
+                operation: "school_admin_offboarding_subscription_delete",
+                tenantId,
+                studentId: target.id,
+                resource: "subscription",
+                entityId: claim.subscriptionId,
+                customerId: claim.customerId,
+                subscriptionId: claim.subscriptionId,
+                subscriptionMatch: "entity_id",
+              },
             );
+            if (subscriptionPresence.kind === "PRESENT") {
+              const providerStatus = String(
+                subscriptionPresence.entity.status || "",
+              ).trim().toUpperCase();
+              if (providerStatus === "ACTIVE") {
+                subscriptionPresent = true;
+              } else if (
+                !new Set(["INACTIVE", "EXPIRED"]).has(providerStatus)
+              ) {
+                throw new ApiError(
+                  409,
+                  "OFFBOARDING_SUBSCRIPTION_STATUS_UNSAFE",
+                  "The subscription status requires reconciliation",
+                );
+              }
+            }
           }
-          for (const payment of futurePayments || []) {
-            const externalId = payment.asaas_payment_id || payment.asaas_id;
-            if (externalId) {
+          for (const payment of paymentTargets) {
+            const externalId = payment.asaasPaymentId;
+            if (paymentIntegration) {
+              const presence = await requireAsaasMutationIdentity(
+                admin,
+                paymentIntegration,
+                {
+                  operation: "school_admin_offboarding_payment_delete",
+                  tenantId,
+                  studentId: target.id,
+                  resource: "payment",
+                  entityId: externalId,
+                  customerId: claim.customerId,
+                  subscriptionId: claim.subscriptionId || null,
+                  subscriptionMatch: "optional",
+                },
+              );
+              if (presence.kind === "PRESENT") {
+                const providerStatus = String(
+                  presence.entity.status || "",
+                ).trim().toUpperCase();
+                if (providerStatus === "PENDING") {
+                  presentPayments.push(externalId);
+                } else if (
+                  TERMINAL_PAYMENT_STATUSES.has(providerStatus) &&
+                  payment.kind === "RECURRING"
+                ) {
+                  const { data: localPayment, error: localPaymentError } =
+                    await admin.from("student_payments")
+                      .select("status")
+                      .eq("id", payment.localId)
+                      .eq("tenant_id", tenantId)
+                      .eq("student_id", target.id)
+                      .maybeSingle();
+                  if (
+                    localPaymentError || !localPayment ||
+                    !TERMINAL_PAYMENT_STATUSES.has(
+                      String(localPayment.status || "").trim().toUpperCase(),
+                    )
+                  ) {
+                    throw new ApiError(
+                      409,
+                      "OFFBOARDING_PAYMENT_EVENT_PENDING",
+                      "A terminal provider payment is awaiting local reconciliation",
+                    );
+                  }
+                } else if (TERMINAL_PAYMENT_STATUSES.has(providerStatus)) {
+                  // Enrollment fee state is never rewritten by offboarding;
+                  // a terminal provider object therefore needs no deletion.
+                } else {
+                  throw new ApiError(
+                    409,
+                    "OFFBOARDING_PAYMENT_STATUS_UNSAFE",
+                    "A provider payment status requires reconciliation",
+                  );
+                }
+              }
+            }
+          }
+
+          // All identities are proven before crossing the durable mutation
+          // fence. A retry only GETs and deletes resources still present.
+          await recordOffboardingProviderState(admin, claim, "MUTATING");
+          try {
+            if (
+              claim.subscriptionId && subscriptionIntegration &&
+              subscriptionPresent
+            ) {
               await callAsaas(
-                `/payments/${encodeURIComponent(externalId)}`,
+                admin,
+                tenantId,
+                "subscription.delete",
+                subscriptionIntegration,
+                `/subscriptions/${encodeURIComponent(claim.subscriptionId)}`,
                 "DELETE",
               );
             }
+            for (const externalId of presentPayments) {
+              if (paymentIntegration) {
+                await callAsaas(
+                  admin,
+                  tenantId,
+                  "payment.delete",
+                  paymentIntegration,
+                  `/payments/${encodeURIComponent(externalId)}`,
+                  "DELETE",
+                );
+              }
+            }
+          } catch (providerError) {
+            await recordOffboardingProviderState(
+              admin,
+              claim,
+              "UNKNOWN",
+              providerError instanceof Error
+                ? providerError.name
+                : "provider_request_failed",
+            );
+            throw providerError;
           }
-          futurePaymentIds = (futurePayments || []).map((payment) =>
-            payment.id
+          await recordOffboardingProviderState(admin, claim, "COMPLETE");
+        }
+
+        const { data: finalized, error: finalizeError } = await admin.rpc(
+          "finalize_student_offboarding",
+          {
+            p_operation_id: claim.id,
+            p_claim_token: claim.token,
+          },
+        );
+        if (finalizeError || finalized?.ok !== true) {
+          throw new ApiError(
+            409,
+            "OFFBOARDING_FINALIZE_FAILED",
+            "Provider billing was stopped, but the local snapshot changed",
           );
         }
+        const billing = {
+          subscriptionCancelled: Boolean(claim.subscriptionId),
+          futurePaymentsCancelled: Number(
+            finalized.future_payments_cancelled || 0,
+          ),
+        };
+        await writeAudit(admin, auth.context, tenantId, req, {
+          action: action.action,
+          resourceType: "student",
+          resourceId: target.id,
+          oldValues: { lifecycle_status: target.lifecycle_status },
+          newValues: {
+            lifecycle_status: action.status,
+            reason: action.reason,
+            billing,
+            operation_id: claim.id,
+          },
+        });
+        return json({
+          ok: true,
+          id: target.id,
+          lifecycle_status: action.status,
+          billing,
+        });
       }
 
+      // Teacher lifecycle and student reactivation have no provider mutation,
+      // but still finalize with a compare-and-swap on the original snapshot.
+      await requireExclusiveActiveTargetMembership(
+        admin,
+        target.id,
+        tenantId,
+        expectedRole,
+      );
       const patch = lifecyclePatch(action.status, action.reason);
       const { data: updated, error: updateError } = await admin.from("profiles")
         .update(patch)
         .eq("tenant_id", tenantId)
         .eq("role", expectedRole)
         .eq("id", target.id)
+        .eq("lifecycle_status", target.lifecycle_status)
         .select("id")
         .maybeSingle();
       if (updateError || !updated) {
         throw new ApiError(
-          500,
-          "ACCOUNT_UPDATE_FAILED",
-          "Account was not updated",
+          409,
+          "ACCOUNT_SNAPSHOT_CHANGED",
+          "Account changed before the update could be finalized",
         );
       }
 
-      if (futurePaymentIds.length) {
-        const { data: cancelled, error: cancelError } = await admin
-          .from("student_payments")
-          .update({ status: "CANCELLED", updated_at: new Date().toISOString() })
-          .eq("tenant_id", tenantId)
-          .eq("student_id", target.id)
-          .in("id", futurePaymentIds)
-          .select("id");
-        if (
-          cancelError || (cancelled?.length || 0) !== futurePaymentIds.length
-        ) {
-          throw new ApiError(
-            500,
-            "BILLING_STATE_UPDATE_FAILED",
-            "Billing was cancelled but local reconciliation is required",
-          );
-        }
-        futurePaymentsCancelled = cancelled.length;
-      }
-
-      const billing = { subscriptionCancelled, futurePaymentsCancelled };
+      const billing = {
+        subscriptionCancelled: false,
+        futurePaymentsCancelled: 0,
+      };
       await writeAudit(admin, auth.context, tenantId, req, {
         action: action.action,
         resourceType: isStudent ? "student" : "teacher",
@@ -795,89 +1385,14 @@ export async function handleRequest(req: Request): Promise<Response> {
       });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: payments, error: paymentError } = await admin
-      .from("student_payments")
-      .select(
-        "id,student_id,tenant_id,status,due_date,asaas_payment_id,asaas_id",
-      )
-      .eq("tenant_id", tenantId)
-      .or(
-        `asaas_payment_id.eq.${action.paymentId},asaas_id.eq.${action.paymentId}`,
-      )
-      .limit(2);
-    if (paymentError) {
-      throw new ApiError(503, "DATA_UNAVAILABLE", "Could not validate payment");
-    }
-    if (!payments?.length) {
-      throw new ApiError(404, "PAYMENT_NOT_FOUND", "Payment not found");
-    }
-    if (payments.length !== 1) {
-      throw new ApiError(409, "PAYMENT_AMBIGUOUS", "Payment is ambiguous");
-    }
-    const payment = payments[0];
-    if (!isEligibleForDunning(payment.status, payment.due_date, today)) {
-      throw new ApiError(
-        409,
-        "PAYMENT_NOT_OVERDUE",
-        "Only an overdue payment can be sent to debt collection",
-      );
-    }
-    const externalPaymentId = payment.asaas_payment_id || payment.asaas_id;
-    if (externalPaymentId !== action.paymentId || !payment.student_id) {
-      throw new ApiError(409, "PAYMENT_INVALID", "Payment is not eligible");
-    }
-
-    const { data: student, error: studentError } = await admin.from("profiles")
-      .select("full_name,cpf,phone,postal_code,address,address_number")
-      .eq("tenant_id", tenantId)
-      .eq("role", "STUDENT")
-      .eq("id", payment.student_id)
-      .maybeSingle();
-    if (studentError) {
-      throw new ApiError(503, "DATA_UNAVAILABLE", "Could not validate student");
-    }
-    const cpf = String(student?.cpf || "").replace(/\D/g, "");
-    const phone = String(student?.phone || "").replace(/\D/g, "");
-    const postalCode = String(student?.postal_code || "").replace(/\D/g, "");
-    if (
-      !student?.full_name || ![11, 14].includes(cpf.length) ||
-      phone.length < 10 || phone.length > 13 || postalCode.length !== 8 ||
-      !student.address || !student.address_number
-    ) {
-      throw new ApiError(
-        422,
-        "STUDENT_REGISTRATION_INCOMPLETE",
-        "Student registration is incomplete for debt collection",
-      );
-    }
-
-    await writeAudit(admin, auth.context, tenantId, req, {
-      action: "serasaNegativarRequested",
-      resourceType: "payment",
-      resourceId: payment.id,
-      oldValues: { status: payment.status },
-      newValues: { requested: true },
-    }, true);
-    const providerStatus = await callAsaas("/paymentDunnings", "POST", {
-      type: "SERASA",
-      paymentId: action.paymentId,
-      description: "Cobranca de debito em aberto",
-      customerName: student.full_name,
-      customerCpfCnpj: cpf,
-      customerPrimaryPhone: phone,
-      customerPostalCode: postalCode,
-      customerAddress: student.address,
-      customerAddressNumber: student.address_number,
-    });
-    await writeAudit(admin, auth.context, tenantId, req, {
-      action: "serasaNegativar",
-      resourceType: "payment",
-      resourceId: payment.id,
-      oldValues: { status: payment.status },
-      newValues: { requested: true, provider_status: providerStatus },
-    });
-    return json({ ok: true, asaasStatus: providerStatus });
+    // Negativacao permanece indisponivel ate haver claim/outbox transacional,
+    // payload homologado pelo Asaas e retomada idempotente. Nao chame o
+    // provedor: retries HTTP nao podem criar pedidos duplicados.
+    return json({
+      error: "Debt collection is temporarily unavailable",
+      code: "DUNNING_DISABLED_PENDING_SAFE_OUTBOX",
+      retryable: false,
+    }, 503);
   } catch (error) {
     if (error instanceof ApiError) {
       return json({ error: error.message, code: error.code }, error.status);

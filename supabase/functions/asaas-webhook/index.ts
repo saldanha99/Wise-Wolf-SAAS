@@ -4,14 +4,43 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import {
-  completeEnrollment,
-  markEnrollmentStage,
+  applyEnrollmentPaymentObservation,
+  type EnrollmentPaymentKind,
+  type EnrollmentPaymentObservation,
+  type EnrollmentPaymentObservationBinding,
+  EnrollmentPaymentObservationError,
+  enrollmentPaymentObservationFailureDisposition,
+  resolveEnrollmentPaymentObservationBinding,
 } from "../_shared/enrollment-progress.ts";
 import {
+  prepareAccountActivation,
+  preparedAccountActivationFromStoredPayload,
   secureInitialPassword,
-  sendAccountActivation,
+  sendPreparedAccountActivation,
 } from "../_shared/account-invite.ts";
+import {
+  claimSaasOwnerActivation,
+  classifySaasOwnerActivationIdentity,
+  repairSaasOwnerAccess,
+  stageSaasOwnerActivationPayload,
+  submitSaasOwnerActivationOnce,
+  suppressSaasOwnerActivation,
+} from "../_shared/saas-owner-activation.ts";
 import { classifyStudentPaymentType } from "./payment-classification.ts";
+import {
+  actualCreditAt,
+  asaasDateToIso,
+  completedRefundAmount,
+  financialReviewReason,
+  isProvenHistoricalReversalEvent,
+  isSettledPaymentEvent,
+  paymentCustomerMatchesCanonicalBinding,
+  providerEventRank,
+  providerGeneratedSubscriptionPaymentMatches,
+  SETTLED_PAYMENT_EVENTS,
+  shouldApplyProviderEvent,
+  studentIdFromKnownPaymentReference,
+} from "./event-contract.ts";
 import {
   activateThenCancelHubReplacement,
   HUB_CORE_PRODUCT_FAMILY,
@@ -21,18 +50,34 @@ import {
   hubCheckoutIdFromExternalReference,
   hubRecoveryReason,
   isHubRecoveryEvent,
-  providerCancellationIsFinal,
   replacementProviderSubscriptionId,
 } from "../_shared/hub-billing-safety.ts";
+import { cancelHubProviderSubscriptionOnce } from "../_shared/hub-provider-operations.ts";
+import { safeCommunicationText } from "../_shared/tenant-communication.ts";
 import {
-  loadTenantCentralWhatsAppContext,
-  safeCommunicationText,
-} from "../_shared/tenant-communication.ts";
+  authorizeAsaasHistoricalReversal,
+  resolveAsaasIntegration,
+  type ResolvedAsaasIntegration,
+  resolvePlatformAsaasIntegration,
+} from "../_shared/tenant-integration-broker.ts";
 import {
   billingIdentityMismatch,
   hubPaymentEventRequiresIdentity,
   providerWebhookEventKey,
 } from "./billing-safety.ts";
+import { parseCanonicalAsaasReference } from "../_shared/asaas-mutation-guard.ts";
+import {
+  wolfieTopupDescription,
+  wolfieTopupDueDate,
+  wolfieTopupPaymentCoreIdentityMatches,
+  wolfieTopupPaymentMatches,
+  wolfieTopupProviderReference,
+} from "../create-wolfie-topup/provider-safety.ts";
+import {
+  claimOutboundMessage,
+  finishOutboundMessage,
+  markOutboundMessageSubmittingDecision,
+} from "../_shared/student-billing-period-guard.ts";
 
 // EdgeRuntime é injetado pelo runtime do Supabase (não tem tipagem nos types padrão)
 declare const EdgeRuntime:
@@ -48,11 +93,14 @@ type AsaasWebhookPayment = {
   description?: string | null;
   dueDate?: string | null;
   paymentDate?: string | null;
+  creditDate?: string | null;
+  estimatedCreditDate?: string | null;
   billingType?: string | null;
   subscription?: string | null;
   bankSlipUrl?: string | null;
   invoiceUrl?: string | null;
   refundedValue?: number | null;
+  refunds?: Array<{ value?: number | null; status?: string | null }> | null;
 };
 
 type AsaasWebhookSubscription = {
@@ -68,11 +116,12 @@ type AsaasWebhookSubscription = {
 type AsaasWebhookBody = {
   id?: string;
   event?: string;
+  dateCreated?: string | null;
   payment?: AsaasWebhookPayment;
   subscription?: AsaasWebhookSubscription;
 };
 
-const PAID_EVENTS = new Set(["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"]);
+const PAID_EVENTS = SETTLED_PAYMENT_EVENTS;
 const TOPUP_REVERSAL_EVENTS = new Set([
   "PAYMENT_DELETED",
   "PAYMENT_REFUNDED",
@@ -107,40 +156,16 @@ const SAAS_ACCESS_EVENTS = new Set([
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    .test(value);
+    .test(
+      value,
+    );
 }
 
 // Environment Variables
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const ASAAS_ACCESS_TOKEN =
-  (Deno.env.get("ASAAS_ACCESS_TOKEN") || Deno.env.get("ASAAS_API_KEY") || "")
-    .trim();
-const ASAAS_BASE_URL = (Deno.env.get("ASAAS_API_URL") ||
-  "https://api.asaas.com").replace(/\/+$/, "");
-const ASAAS_V3_URL = ASAAS_BASE_URL.endsWith("/v3")
-  ? ASAAS_BASE_URL
-  : `${ASAAS_BASE_URL}/v3`;
 const ASAAS_WEBHOOK_TOKEN = (Deno.env.get("ASAAS_WEBHOOK_TOKEN") || "").trim();
-// Chave via env para permitir rotação sem novo deploy.
-const EVOLUTION_API_KEYS = Array.from(
-  new Set([
-    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  ].filter(Boolean)),
-);
-const EVOLUTION_API_BASE = `${
-  (Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br")
-    .replace(/\/+$/, "")
-}/message/sendText`;
 const MAX_WEBHOOK_BYTES = 256 * 1024;
-
-function normalizeBrazilianPhone(value: unknown): string | null {
-  let phone = typeof value === "string" ? value.replace(/\D/g, "") : "";
-  if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
-  return phone.startsWith("55") && (phone.length === 12 || phone.length === 13)
-    ? phone
-    : null;
-}
 
 async function readWebhookBody(req: Request): Promise<string> {
   if (!req.body) return "";
@@ -170,24 +195,52 @@ async function readWebhookBody(req: Request): Promise<string> {
 // configurado → no-op silencioso até o secret existir.
 const FB_PIXEL_ID = "1475651934149356";
 const FB_CAPI_TOKEN = (Deno.env.get("FB_CAPI_TOKEN") || "").trim();
+const FB_CAPI_TENANT_ID = (Deno.env.get("FB_CAPI_TENANT_ID") || "").trim();
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(input.trim().toLowerCase()),
   );
-  return Array.from(new Uint8Array(buf)).map((b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("");
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
-async function sendMetaCapiEvent(
-  opts: {
-    eventName: string;
-    phone?: string | null;
-    value?: number;
-    currency?: string;
-  },
-): Promise<void> {
-  if (!FB_CAPI_TOKEN) return;
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${
+    Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")
+  }}`;
+}
+
+async function sha256ExactHex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+async function sendMetaCapiEvent(opts: {
+  eventName: string;
+  phone?: string | null;
+  value?: number;
+  currency?: string;
+}): Promise<{
+  status: "SENT" | "FAILED" | "UNKNOWN";
+  providerHttpStatus: number | null;
+  error: string | null;
+}> {
   try {
     const userData: Record<string, unknown> = {};
     if (opts.phone) {
@@ -197,23 +250,25 @@ async function sendMetaCapiEvent(
       ];
     }
     const body = {
-      data: [{
-        event_name: opts.eventName,
-        event_time: Math.floor(Date.now() / 1000),
-        action_source: "system_generated",
-        event_source_url: "https://system.wisewolflanguage.com.br",
-        user_data: userData,
-        ...(opts.value
-          ? {
-            custom_data: {
-              value: opts.value,
-              currency: opts.currency || "BRL",
-            },
-          }
-          : {}),
-      }],
+      data: [
+        {
+          event_name: opts.eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: "system_generated",
+          event_source_url: "https://system.wisewolflanguage.com.br",
+          user_data: userData,
+          ...(opts.value
+            ? {
+              custom_data: {
+                value: opts.value,
+                currency: opts.currency || "BRL",
+              },
+            }
+            : {}),
+        },
+      ],
     };
-    await fetch(
+    const response = await fetch(
       `https://graph.facebook.com/v20.0/${FB_PIXEL_ID}/events?access_token=${FB_CAPI_TOKEN}`,
       {
         method: "POST",
@@ -221,8 +276,76 @@ async function sendMetaCapiEvent(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(8000),
       },
-    ).catch(() => {});
-  } catch { /* CAPI nunca pode quebrar o fluxo principal */ }
+    );
+    if (response.ok) {
+      return {
+        status: "SENT",
+        providerHttpStatus: response.status,
+        error: null,
+      };
+    }
+    const ambiguous = [408, 409, 425, 429].includes(response.status) ||
+      response.status >= 500;
+    return {
+      status: ambiguous ? "UNKNOWN" : "FAILED",
+      providerHttpStatus: response.status,
+      error: ambiguous
+        ? "provider_delivery_outcome_unknown"
+        : `provider_http_${response.status}`,
+    };
+  } catch {
+    return {
+      status: "UNKNOWN",
+      providerHttpStatus: null,
+      error: "provider_delivery_outcome_unknown",
+    };
+  }
+}
+
+async function deliverMetaPurchaseOnce(input: {
+  admin: SupabaseClient;
+  tenantId: string;
+  studentId: string;
+  localPaymentId: string;
+  phone: string;
+  value?: number;
+}): Promise<void> {
+  const claim = await claimOutboundMessage(input.admin, {
+    tenantId: input.tenantId,
+    studentId: input.studentId,
+    providerEntityId: input.localPaymentId,
+    notificationKind: "PAYMENT_CONFIRMED_CAPI",
+  });
+  if (claim.action === "IN_PROGRESS") {
+    throw new Error("capi_outbound_claim_in_progress");
+  }
+  if (claim.action !== "SUBMIT_ONCE") return;
+
+  if (
+    !FB_CAPI_TOKEN || !FB_CAPI_TENANT_ID ||
+    FB_CAPI_TENANT_ID !== input.tenantId
+  ) {
+    await finishOutboundMessage(input.admin, claim, {
+      status: "SUPPRESSED",
+      error: !FB_CAPI_TOKEN || !FB_CAPI_TENANT_ID
+        ? "capi_not_configured"
+        : "capi_tenant_mismatch",
+    });
+    return;
+  }
+
+  const submit = await markOutboundMessageSubmittingDecision(
+    input.admin,
+    claim,
+  );
+  if (submit.ok !== true || submit.status !== "SUBMITTING") return;
+
+  const delivery = await sendMetaCapiEvent({
+    eventName: "Purchase",
+    phone: input.phone,
+    value: input.value,
+  });
+  await finishOutboundMessage(input.admin, claim, delivery);
 }
 
 const corsHeaders = {
@@ -247,30 +370,45 @@ async function fetchComTimeout(
   }
 }
 
-async function cancelHubProviderSubscription(
+async function cancelHubProviderSubscriptionForAccount(
+  supabase: SupabaseClient,
+  accountId: string,
   providerSubscriptionId: string,
 ): Promise<void> {
-  if (!ASAAS_ACCESS_TOKEN) {
-    throw new Error("asaas_subscription_cancellation_unavailable");
+  const [checkoutResult, accountResult] = await Promise.all([
+    supabase
+      .from("hub_checkout_sessions")
+      .select("id")
+      .eq("account_id", accountId)
+      .eq("asaas_subscription_id", providerSubscriptionId)
+      .limit(2),
+    supabase
+      .from("hub_accounts")
+      .select("asaas_customer_id")
+      .eq("id", accountId)
+      .maybeSingle(),
+  ]);
+  if (checkoutResult.error) throw checkoutResult.error;
+  if (accountResult.error) throw accountResult.error;
+  const matches = checkoutResult.data || [];
+  const providerCustomerId = String(
+    accountResult.data?.asaas_customer_id || "",
+  ).trim();
+  if (
+    matches.length !== 1 || !isUuid(matches[0].id) ||
+    !providerCustomerId || providerCustomerId.length > 200
+  ) {
+    throw new Error("hub_provider_subscription_local_binding_invalid");
   }
-  const response = await fetchComTimeout(
-    `${ASAAS_V3_URL}/subscriptions/${
-      encodeURIComponent(providerSubscriptionId)
-    }`,
-    {
-      method: "DELETE",
-      headers: {
-        access_token: ASAAS_ACCESS_TOKEN,
-        "Content-Type": "application/json",
-      },
+  await cancelHubProviderSubscriptionOnce({
+    admin: supabase,
+    accountId,
+    target: {
+      providerSubscriptionId,
+      providerCustomerId,
+      checkoutId: matches[0].id,
     },
-  );
-  if (!providerCancellationIsFinal(response.status)) {
-    console.error("[Webhook] Hub provider cancellation failed", {
-      status: response.status,
-    });
-    throw new Error("hub_provider_cancellation_failed");
-  }
+  });
 }
 
 async function ensureSaasOwnerAccess(
@@ -283,7 +421,12 @@ async function ensureSaasOwnerAccess(
   },
 ): Promise<void> {
   const ownerEmail = provisioned.owner_email.trim().toLowerCase();
-  let { data: existingUserId, error: lookupError } = await supabase.rpc(
+  const activationClaim = await claimSaasOwnerActivation(supabase, {
+    checkoutId: provisioned.checkout_id,
+    tenantId: provisioned.tenant_id,
+    ownerEmail,
+  });
+  const { data: existingUserId, error: lookupError } = await supabase.rpc(
     "get_user_id_by_email",
     { email_input: ownerEmail },
   );
@@ -292,13 +435,28 @@ async function ensureSaasOwnerAccess(
   }
 
   let userId = existingUserId as string | null;
-  let createdUser = false;
+  let createdForCheckout = false;
+  if (!userId && activationClaim.action === "ALREADY_FINAL") {
+    const repairPreflight = await repairSaasOwnerAccess(supabase, {
+      checkoutId: provisioned.checkout_id,
+      ownerUserId: null,
+    });
+    if (
+      repairPreflight === "NOT_REQUIRED" || repairPreflight === "REPAIRED"
+    ) return;
+    if (repairPreflight !== "IDENTITY_REQUIRED") {
+      throw new Error("saas_owner_access_repair_preflight_invalid");
+    }
+  }
   if (!userId) {
     const { data: created, error: createError } = await supabase.auth.admin
       .createUser({
         email: ownerEmail,
         password: secureInitialPassword(),
         email_confirm: true,
+        app_metadata: {
+          saas_owner_activation_checkout_id: provisioned.checkout_id,
+        },
         user_metadata: { full_name: provisioned.owner_name },
       });
     if (createError || !created.user) {
@@ -312,101 +470,181 @@ async function ensureSaasOwnerAccess(
       userId = retryLookup.data as string;
     } else {
       userId = created.user.id;
-      createdUser = true;
+      createdForCheckout = true;
     }
   }
-
-  const { data: existingProfile, error: profileLookupError } = await supabase
-    .from("profiles")
-    .select("id,tenant_id,role")
-    .eq("id", userId)
-    .maybeSingle();
-  if (profileLookupError) {
+  if (!userId) throw new Error("owner_user_id_unavailable");
+  if (activationClaim.action === "ALREADY_FINAL") {
+    const repairResult = await repairSaasOwnerAccess(supabase, {
+      checkoutId: provisioned.checkout_id,
+      ownerUserId: userId,
+    });
+    if (repairResult === "REPAIRED") return;
+    if (repairResult === "NOT_REQUIRED" && !createdForCheckout) return;
     throw new Error(
-      `owner_profile_lookup_${profileLookupError.code || "failed"}`,
+      repairResult === "IDENTITY_REQUIRED"
+        ? "saas_owner_access_repair_identity_conflict"
+        : "saas_owner_access_repair_not_completed",
     );
   }
 
-  if (!existingProfile) {
-    const { error: createProfileError } = await supabase.from("profiles")
-      .insert({
-        id: userId,
-        full_name: provisioned.owner_name,
-        email: ownerEmail,
-        role: "SCHOOL_ADMIN",
-        tenant_id: provisioned.tenant_id,
-        status_financial: "ACTIVE",
-        created_at: new Date().toISOString(),
+  const identityDisposition = await classifySaasOwnerActivationIdentity(
+    supabase,
+    {
+      checkoutId: provisioned.checkout_id,
+      claimToken: activationClaim.claimToken,
+      ownerUserId: userId,
+    },
+  );
+  switch (identityDisposition) {
+    case "CHECKOUT_IDENTITY":
+    case "DORMANT_CHECKOUT_IDENTITY":
+      break;
+    case "EXISTING_ACCOUNT":
+      await suppressSaasOwnerActivation(supabase, {
+        checkoutId: provisioned.checkout_id,
+        claimToken: activationClaim.claimToken,
+        ownerUserId: userId,
+        reason: "existing_owner_account",
       });
-    if (createProfileError && createProfileError.code !== "23505") {
-      throw new Error(
-        `owner_profile_create_${createProfileError.code || "failed"}`,
-      );
-    }
-  } else {
-    if (
-      existingProfile.tenant_id === provisioned.tenant_id &&
-      existingProfile.role !== "SCHOOL_ADMIN"
-    ) {
-      const { error: promoteError } = await supabase.from("profiles").update({
-        role: "SCHOOL_ADMIN",
-      }).eq("id", userId);
-      if (promoteError) {
-        throw new Error(
-          `owner_profile_promote_${promoteError.code || "failed"}`,
-        );
-      }
-    }
+      return;
+    case "NOT_REQUIRED":
+      await suppressSaasOwnerActivation(supabase, {
+        checkoutId: provisioned.checkout_id,
+        claimToken: activationClaim.claimToken,
+        ownerUserId: userId,
+        reason: "owner_activation_not_required",
+      });
+      return;
   }
 
-  const { error: membershipError } = await supabase
-    .from("tenant_memberships")
-    .upsert({
-      user_id: userId,
-      tenant_id: provisioned.tenant_id,
-      role: "SCHOOL_ADMIN",
-      status: "ACTIVE",
-      is_primary: !existingProfile ||
-        existingProfile.tenant_id === provisioned.tenant_id,
-    }, { onConflict: "user_id,tenant_id" });
-  if (membershipError) {
-    throw new Error(`owner_membership_${membershipError.code || "failed"}`);
+  const { data: priorActivation, error: priorActivationError } = await supabase
+    .from("saas_owner_activation_attempts")
+    .select("checkout_id,status")
+    .eq("owner_user_id", userId)
+    .in("status", [
+      "CLAIMED",
+      "SUBMITTING",
+      "SENT",
+      "FAILED",
+      "UNKNOWN",
+      "SUPPRESSED",
+    ])
+    .neq("checkout_id", provisioned.checkout_id)
+    .limit(1)
+    .maybeSingle();
+  if (priorActivationError) {
+    throw new Error(
+      `owner_activation_history_${priorActivationError.code || "failed"}`,
+    );
+  }
+  if (priorActivation) {
+    await suppressSaasOwnerActivation(supabase, {
+      checkoutId: provisioned.checkout_id,
+      claimToken: activationClaim.claimToken,
+      ownerUserId: userId,
+      reason: "owner_activation_not_required",
+    });
+    return;
   }
 
-  const { error: completionError } = await supabase
-    .from("saas_checkout_intents")
-    .update({
-      status: "PROVISIONED",
-      provisioned_at: new Date().toISOString(),
-      last_error: null,
-      updated_at: new Date().toISOString(),
+  const idempotencyKey = `saas-owner-activation/${provisioned.checkout_id}`;
+  const preparedActivation = activationClaim.action === "SUBMIT_ONCE"
+    ? await prepareAccountActivation(supabase, {
+      email: ownerEmail,
+      name: provisioned.owner_name,
+      accountLabel: "administrador da escola",
+      idempotencyKey,
     })
-    .eq("id", provisioned.checkout_id);
-  if (completionError) {
-    throw new Error(`checkout_completion_${completionError.code || "failed"}`);
+    : preparedAccountActivationFromStoredPayload({
+      payload: activationClaim.providerPayload,
+      expectedEmail: ownerEmail,
+      idempotencyKey,
+    });
+  if (activationClaim.action === "SUBMIT_ONCE") {
+    const staged = await stageSaasOwnerActivationPayload(supabase, {
+      checkoutId: provisioned.checkout_id,
+      claimToken: activationClaim.claimToken,
+      ownerUserId: userId,
+      providerPayload: preparedActivation.payload,
+    });
+    if (staged === "SUPPRESSED") return;
   }
 
-  if (createdUser) {
-    try {
-      await sendAccountActivation(supabase, {
-        email: ownerEmail,
-        name: provisioned.owner_name,
-        accountLabel: "administrador da escola",
-      });
-    } catch (activationError) {
-      // Provisioning is complete and the owner can still use password
-      // recovery. Persist the delivery warning for operational follow-up.
-      console.error("[Webhook] SaaS owner activation delivery failed", {
-        type: activationError instanceof Error
-          ? activationError.name
-          : "unknown",
-      });
-      await supabase.from("saas_checkout_intents").update({
-        last_error: "activation_email_delivery_failed",
+  const delivery = await submitSaasOwnerActivationOnce(supabase, {
+    checkoutId: provisioned.checkout_id,
+    claimToken: activationClaim.claimToken,
+    ownerUserId: userId,
+    send: () => sendPreparedAccountActivation(preparedActivation),
+  });
+  if (delivery.status !== "SENT") {
+    console.error("[Webhook] SaaS owner activation delivery failed", {
+      status: delivery.status,
+    });
+    await supabase
+      .from("saas_checkout_intents")
+      .update({
+        last_error: `activation_email_${delivery.status.toLowerCase()}`,
         updated_at: new Date().toISOString(),
-      }).eq("id", provisioned.checkout_id);
+      })
+      .eq("id", provisioned.checkout_id);
+    if (delivery.status === "UNKNOWN") {
+      // The next inbox pass must reuse both the exact staged body and key.
+      throw new Error("saas_activation_delivery_unknown");
     }
   }
+}
+
+async function resumePendingSaasOwnerActivation(
+  supabase: SupabaseClient,
+  checkoutId: string,
+): Promise<void> {
+  const { data: attempt, error: attemptError } = await supabase
+    .from("saas_owner_activation_attempts")
+    .select("status")
+    .eq("checkout_id", checkoutId)
+    .maybeSingle();
+  if (attemptError) {
+    throw new Error(
+      `saas_activation_recovery_${attemptError.code || "failed"}`,
+    );
+  }
+  if (
+    attempt &&
+    ![
+      "CLAIMED",
+      "SUBMITTING",
+      "UNKNOWN",
+      "SENT",
+      "FAILED",
+      "SUPPRESSED",
+    ].includes(attempt.status)
+  ) return;
+
+  const { data: checkout, error: checkoutError } = await supabase
+    .from("saas_checkout_intents")
+    .select("id,tenant_id,owner_name,owner_email")
+    .eq("id", checkoutId)
+    .maybeSingle();
+  if (checkoutError) {
+    throw new Error(
+      `saas_activation_checkout_recovery_${checkoutError.code || "failed"}`,
+    );
+  }
+  if (
+    !checkout || typeof checkout.tenant_id !== "string" ||
+    !checkout.tenant_id.trim() || typeof checkout.owner_name !== "string" ||
+    !checkout.owner_name.trim() || typeof checkout.owner_email !== "string" ||
+    !checkout.owner_email.trim()
+  ) {
+    throw new Error("saas_activation_checkout_recovery_invalid");
+  }
+  await ensureSaasOwnerAccess(supabase, {
+    checkout_id: checkout.id,
+    tenant_id: checkout.tenant_id,
+    owner_name: checkout.owner_name,
+    owner_email: checkout.owner_email,
+  });
 }
 
 type SaasBillingInboxClaim = {
@@ -480,7 +718,8 @@ async function claimSaasBillingEvent(
           body.subscription?.billingType || null,
         billingCycle: body.subscription?.cycle || null,
         externalReference: body.payment?.externalReference ||
-          body.subscription?.externalReference || null,
+          body.subscription?.externalReference ||
+          null,
       },
     });
 
@@ -524,13 +763,16 @@ async function finishSaasBillingEvent(
   status: "PROCESSED" | "FAILED",
   lastError?: string,
 ): Promise<void> {
-  const { error } = await supabase.from("saas_billing_event_inbox").update({
-    status,
-    last_error: lastError?.slice(0, 500) || null,
-    processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
-    lease_expires_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("event_key", eventKey);
+  const { error } = await supabase
+    .from("saas_billing_event_inbox")
+    .update({
+      status,
+      last_error: lastError?.slice(0, 500) || null,
+      processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
+      lease_expires_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("event_key", eventKey);
   if (error) throw error;
 }
 
@@ -542,13 +784,22 @@ async function processSaasCheckoutEvent(
   const event = body.event || "";
   if (!SAAS_ACCESS_EVENTS.has(event)) return false;
 
-  const checkoutId = resolvedCheckoutId ?? await resolveSaasCheckoutId(body);
+  const checkoutId = resolvedCheckoutId ?? (await resolveSaasCheckoutId(body));
   if (!checkoutId || !isUuid(checkoutId)) return false;
+  const providerEventId = typeof body.id === "string" ? body.id.trim() : "";
+  const providerEventAt = asaasDateToIso(body.dateCreated);
+  if (!providerEventId || !providerEventAt) {
+    throw new AsaasTriageError(
+      "saas_provider_event_ordering_identity_missing",
+      null,
+      checkoutId,
+    );
+  }
 
   const { data: checkout, error: checkoutError } = await supabase
     .from("saas_checkout_intents")
     .select(
-      "id,status,amount,billing_type,billing_cycle,asaas_customer_id,asaas_subscription_id,asaas_payment_id",
+      "id,tenant_id,status,amount,billing_type,billing_cycle,asaas_customer_id,asaas_subscription_id,asaas_payment_id",
     )
     .eq("id", checkoutId)
     .maybeSingle();
@@ -556,7 +807,17 @@ async function processSaasCheckoutEvent(
   if (!checkout) throw new Error("saas_checkout_not_found");
 
   const claim = await claimSaasBillingEvent(supabase, body, checkoutId);
-  if (claim.duplicate) return true;
+  if (claim.duplicate) {
+    const checkoutCanRepairOwnerActivation =
+      typeof checkout.tenant_id === "string" && checkout.tenant_id.trim() &&
+      ["PROVISIONING", "PROVISIONING_FAILED", "PROVISIONED"].includes(
+        String(checkout.status || "").toUpperCase(),
+      );
+    if (PAID_EVENTS.has(event) && checkoutCanRepairOwnerActivation) {
+      await resumePendingSaasOwnerActivation(supabase, checkoutId);
+    }
+    return true;
+  }
 
   try {
     const providerIdentity = body.payment
@@ -594,6 +855,8 @@ async function processSaasCheckoutEvent(
       {
         p_checkout_id: checkoutId,
         p_event_name: event,
+        p_provider_event_id: providerEventId,
+        p_event_created_at: providerEventAt,
         p_payment_id: body.payment?.id || null,
         p_payment_value: providerIdentity.amount,
         p_billing_type: providerIdentity.billingType,
@@ -608,6 +871,22 @@ async function processSaasCheckoutEvent(
     );
     if (applyError || !applied?.ok) {
       throw applyError || new Error("saas_billing_event_not_applied");
+    }
+    if (applied.action === "REVIEW_REQUIRED") {
+      throw new AsaasTriageError(
+        String(applied.reason || "saas_provider_event_review_required"),
+        typeof checkout.tenant_id === "string" ? checkout.tenant_id : null,
+        checkoutId,
+      );
+    }
+    if (
+      applied.action === "STALE_IGNORED" ||
+      applied.action === "STALE_ENTITY_APPLIED" ||
+      applied.action === "TERMINAL_IGNORED" ||
+      applied.action === "TERMINAL_REPLAY_IGNORED"
+    ) {
+      await finishSaasBillingEvent(supabase, claim.eventKey, "PROCESSED");
+      return true;
     }
 
     if (applied.action === "PROVISION_REQUIRED") {
@@ -630,14 +909,20 @@ async function processSaasCheckoutEvent(
         const reason = ownerError instanceof Error
           ? ownerError.message.slice(0, 500)
           : "owner_provision_failed";
-        await supabase.from("saas_checkout_intents").update({
-          status: "PROVISIONING_FAILED",
-          last_error: reason,
-          updated_at: new Date().toISOString(),
-        }).eq("id", checkoutId);
+        await supabase
+          .from("saas_checkout_intents")
+          .update({
+            status: "PROVISIONING_FAILED",
+            last_error: reason,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", checkoutId)
+          .in("status", ["PAID", "PROVISIONING", "PROVISIONING_FAILED"]);
         throw ownerError;
       }
       console.log(`[Webhook] SaaS provisionado: ${checkoutId}`);
+    } else if (PAID_EVENTS.has(event)) {
+      await resumePendingSaasOwnerActivation(supabase, checkoutId);
     }
 
     await finishSaasBillingEvent(supabase, claim.eventKey, "PROCESSED");
@@ -655,6 +940,41 @@ async function processSaasCheckoutEvent(
     }
     throw error;
   }
+}
+
+async function listAllPaymentRefunds(
+  paymentId: string,
+  integration: ResolvedAsaasIntegration,
+): Promise<Array<{ value?: unknown; status?: unknown }> | null> {
+  const refunds: Array<{ value?: unknown; status?: unknown }> = [];
+  for (let offset = 0, pages = 0; pages < 1_000; offset += 100, pages++) {
+    const params = new URLSearchParams({
+      limit: "100",
+      offset: String(offset),
+    });
+    const response = await fetch(
+      `${integration.baseUrl}/payments/${
+        encodeURIComponent(paymentId)
+      }/refunds?${params}`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          access_token: integration.apiKey,
+        },
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    const payload = await response.json().catch(() => null) as
+      | { data?: unknown; hasMore?: unknown }
+      | null;
+    if (!response.ok || !payload || !Array.isArray(payload.data)) return null;
+    refunds.push(
+      ...payload.data as Array<{ value?: unknown; status?: unknown }>,
+    );
+    if (payload.hasMore !== true) return refunds;
+  }
+  throw new Error("asaas_refunds_page_limit");
 }
 
 async function processWolfieTopupEvent(
@@ -675,10 +995,7 @@ async function processWolfieTopupEvent(
     throw new Error("invalid_wolfie_topup_webhook");
   }
   const amount = Number(payment.value);
-  if (
-    payment.value !== undefined &&
-    (!Number.isFinite(amount) || amount < 0)
-  ) {
+  if (payment.value !== undefined && (!Number.isFinite(amount) || amount < 0)) {
     throw new Error("invalid_wolfie_topup_amount");
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -686,48 +1003,54 @@ async function processWolfieTopupEvent(
   }
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  const explicitEventId = typeof body.id === "string" &&
-      body.id.length >= 1 && body.id.length <= 240
-    ? body.id
-    : null;
+  const explicitEventId =
+    typeof body.id === "string" && body.id.length >= 1 && body.id.length <= 240
+      ? body.id
+      : null;
   const eventId = explicitEventId ??
-    `synthetic:${await sha256Hex(JSON.stringify([
-      event,
-      payment.id,
-      reference,
-      payment.status,
-      payment.value ?? null,
-      payment.refundedValue ?? null,
-      payment.paymentDate ?? null,
-    ]))}`;
+    `synthetic:${await sha256Hex(
+      JSON.stringify([
+        event,
+        payment.id,
+        reference,
+        payment.status,
+        payment.value ?? null,
+        payment.refundedValue ?? null,
+        payment.paymentDate ?? null,
+      ]),
+    )}`;
   const receivedAt = new Date().toISOString();
   const { error: inboxError } = await supabase
     .from("wolfie_topup_webhook_inbox")
-    .upsert({
-      provider_event_id: eventId,
-      event_type: event.slice(0, 120),
-      provider_payment_id: payment.id,
-      external_reference: reference,
-      payment_amount_brl: Number.isFinite(amount) ? amount : null,
-      refunded_amount_brl: Number.isFinite(Number(payment.refundedValue)) &&
-          Number(payment.refundedValue) >= 0
-        ? Number(payment.refundedValue)
-        : null,
-      billing_type: typeof payment.billingType === "string"
-        ? payment.billingType.slice(0, 40)
-        : null,
-      processing_status: "RECEIVED",
-      last_error: null,
-      last_received_at: receivedAt,
-      updated_at: receivedAt,
-    }, { onConflict: "provider_event_id" });
+    .upsert(
+      {
+        provider_event_id: eventId,
+        event_type: event.slice(0, 120),
+        provider_payment_id: payment.id,
+        external_reference: reference,
+        payment_amount_brl: Number.isFinite(amount) ? amount : null,
+        refunded_amount_brl: Number.isFinite(Number(payment.refundedValue)) &&
+            Number(payment.refundedValue) >= 0
+          ? Number(payment.refundedValue)
+          : null,
+        billing_type: typeof payment.billingType === "string"
+          ? payment.billingType.slice(0, 40)
+          : null,
+        processing_status: "RECEIVED",
+        last_error: null,
+        last_received_at: receivedAt,
+        updated_at: receivedAt,
+      },
+      { onConflict: "provider_event_id" },
+    );
   if (inboxError) throw new Error("wolfie_topup_inbox_unavailable");
 
   const finishInbox = async (
     status: "APPLIED" | "IGNORED" | "LEGACY_REVIEW" | "FAILED",
     lastError: string | null = null,
   ) => {
-    const { error } = await supabase.from("wolfie_topup_webhook_inbox")
+    const { error } = await supabase
+      .from("wolfie_topup_webhook_inbox")
       .update({
         processing_status: status,
         last_error: lastError,
@@ -763,43 +1086,131 @@ async function processWolfieTopupEvent(
     throw new Error("invalid_wolfie_topup_amount");
   }
 
+  const { data: topupOrder, error: topupOrderError } = await supabase
+    .from("wolfie_topup_orders")
+    .select(
+      "id,tenant_id,student_id,package_name,amount_brl,provider_customer_id,provider_payment_id,created_at",
+    )
+    .eq("id", orderId)
+    .maybeSingle();
+  const providerCustomerId = String(
+    topupOrder?.provider_customer_id || "",
+  ).trim();
+  const providerReference = wolfieTopupProviderReference(orderId);
+  const dueDate = wolfieTopupDueDate(topupOrder?.created_at);
+  const description = wolfieTopupDescription(topupOrder?.package_name);
+  const expectedAmount = Number(topupOrder?.amount_brl);
+  if (
+    topupOrderError || !topupOrder || !providerCustomerId || !dueDate ||
+    !description || !Number.isFinite(expectedAmount) || expectedAmount < 0
+  ) {
+    await finishInbox("FAILED", "topup_customer_snapshot_unavailable");
+    throw new Error("wolfie_topup_identity_unavailable");
+  }
+  const expectedTopupPayment = {
+    reference: providerReference,
+    customerId: providerCustomerId,
+    value: expectedAmount,
+    dueDate,
+    description,
+    splitPolicy: { kind: "NONE" as const },
+  };
+  const locallyBoundPayment = String(
+    topupOrder.provider_payment_id || "",
+  ).trim();
+  if (locallyBoundPayment && locallyBoundPayment !== payment.id) {
+    await finishInbox("FAILED", "provider_payment_binding_mismatch");
+    throw new Error("wolfie_topup_payment_mismatch");
+  }
+
+  let topupReadIntegration: ResolvedAsaasIntegration | null = null;
+  let verifiedProviderPayment: Record<string, unknown> | null = null;
+  try {
+    topupReadIntegration = await resolvePlatformAsaasIntegration(
+      supabase,
+      "payment.read",
+    );
+    const identityResponse = await fetch(
+      `${topupReadIntegration.baseUrl}/payments/${
+        encodeURIComponent(payment.id)
+      }`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          access_token: topupReadIntegration.apiKey,
+        },
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    const identityPayload = await identityResponse.json().catch(() => null);
+    if (
+      identityResponse.ok &&
+      wolfieTopupPaymentCoreIdentityMatches(
+        identityPayload,
+        payment.id,
+        expectedTopupPayment,
+      ) &&
+      (locallyBoundPayment ||
+        wolfieTopupPaymentMatches(identityPayload, expectedTopupPayment))
+    ) {
+      verifiedProviderPayment = identityPayload;
+    }
+  } catch {
+    // A locally linked immutable payment may still be reversed after the
+    // provider object becomes unreadable. An unbound order never gets this
+    // fallback: adoption always requires a fresh exact provider GET.
+  }
+  if (
+    !verifiedProviderPayment && locallyBoundPayment === payment.id &&
+    wolfieTopupPaymentCoreIdentityMatches(
+      payment,
+      payment.id,
+      expectedTopupPayment,
+    )
+  ) {
+    verifiedProviderPayment = payment as unknown as Record<string, unknown>;
+  }
+  if (!verifiedProviderPayment) {
+    await finishInbox("FAILED", "provider_payment_identity_unverified");
+    throw new Error("wolfie_topup_provider_identity_unverified");
+  }
+  const verifiedAmount = Number(verifiedProviderPayment.value);
+  const verifiedCustomerId = String(
+    verifiedProviderPayment.customer || "",
+  ).trim();
+  const verifiedReference = String(
+    verifiedProviderPayment.externalReference || "",
+  ).trim();
+  const verifiedBillingType = String(
+    verifiedProviderPayment.billingType || "",
+  ).trim();
+
   let refundedAmount = typeof payment.refundedValue === "number" &&
-      Number.isFinite(payment.refundedValue) && payment.refundedValue >= 0
+      Number.isFinite(payment.refundedValue) &&
+      payment.refundedValue >= 0
     ? payment.refundedValue
     : Number.NaN;
   if (
     !Number.isFinite(refundedAmount) &&
-    (TOPUP_FREEZE_EVENTS.has(event) || TOPUP_REVERSAL_EVENTS.has(event)) &&
-    ASAAS_ACCESS_TOKEN
+    (TOPUP_FREEZE_EVENTS.has(event) || TOPUP_REVERSAL_EVENTS.has(event))
   ) {
     try {
-      const refundsResponse = await fetch(
-        `${ASAAS_V3_URL}/payments/${encodeURIComponent(payment.id)}/refunds`,
-        {
-          headers: { "access_token": ASAAS_ACCESS_TOKEN },
-          signal: AbortSignal.timeout(8_000),
-        },
+      const refundIntegration = topupReadIntegration ||
+        await resolvePlatformAsaasIntegration(supabase, "payment.read");
+      const refunds = await listAllPaymentRefunds(
+        payment.id,
+        refundIntegration,
       );
-      const refundsPayload: unknown = await refundsResponse.json().catch(() =>
-        null
-      );
-      if (
-        refundsResponse.ok &&
-        refundsPayload &&
-        typeof refundsPayload === "object" &&
-        Array.isArray((refundsPayload as { data?: unknown }).data)
-      ) {
-        refundedAmount = (refundsPayload as { data: unknown[] }).data.reduce<
-          number
-        >(
-          (sum: number, refund: unknown) => {
-            const value = refund && typeof refund === "object"
-              ? Number((refund as { value?: unknown }).value)
-              : Number.NaN;
-            return sum + (Number.isFinite(value) && value > 0 ? value : 0);
-          },
-          0,
-        );
+      if (refunds) {
+        refundedAmount = refunds.reduce<number>((sum, refund) => {
+          const value = Number(refund.value);
+          const status = String(refund.status || "").toUpperCase();
+          return sum +
+            (status === "DONE" && Number.isFinite(value) && value > 0
+              ? value
+              : 0);
+        }, 0);
       }
     } catch {
       console.warn("[Webhook] Refund amount lookup unavailable", {
@@ -807,15 +1218,21 @@ async function processWolfieTopupEvent(
       });
     }
   }
-  const { data, error } = await supabase.rpc("apply_wolfie_topup_payment", {
-    p_order_id: orderId,
-    p_payment_id: payment.id,
-    p_event: event,
-    p_amount_brl: amount,
-    p_refunded_amount_brl: Number.isFinite(refundedAmount)
-      ? refundedAmount
-      : null,
-  });
+  const { data, error } = await supabase.rpc(
+    "apply_verified_wolfie_topup_payment",
+    {
+      p_order_id: orderId,
+      p_payment_id: payment.id,
+      p_event: event,
+      p_amount_brl: verifiedAmount,
+      p_refunded_amount_brl: Number.isFinite(refundedAmount)
+        ? refundedAmount
+        : null,
+      p_provider_customer_id: verifiedCustomerId,
+      p_external_reference: verifiedReference,
+      p_billing_type: verifiedBillingType,
+    },
+  );
   if (error || !data?.ok) {
     await finishInbox("FAILED", "payment_not_applied");
     throw new Error("wolfie_topup_payment_not_applied");
@@ -899,13 +1316,16 @@ async function finishHubPaymentEvent(
   status: "PROCESSED" | "FAILED",
   lastError?: string,
 ): Promise<void> {
-  const { error } = await supabase.from("hub_payment_event_inbox").update({
-    status,
-    last_error: lastError?.slice(0, 500) || null,
-    processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
-    lease_expires_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq("event_key", eventKey);
+  const { error } = await supabase
+    .from("hub_payment_event_inbox")
+    .update({
+      status,
+      last_error: lastError?.slice(0, 500) || null,
+      processed_at: status === "PROCESSED" ? new Date().toISOString() : null,
+      lease_expires_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("event_key", eventKey);
   if (error) throw error;
 }
 
@@ -922,17 +1342,19 @@ function scheduleHubFulfillment(checkoutId: string): void {
       body: JSON.stringify({ checkoutId }),
       signal: AbortSignal.timeout(30_000),
     },
-  ).then((response) => {
-    if (!response.ok) {
-      console.warn("[Webhook] Hub fulfillment kickoff deferred", {
-        status: response.status,
+  )
+    .then((response) => {
+      if (!response.ok) {
+        console.warn("[Webhook] Hub fulfillment kickoff deferred", {
+          status: response.status,
+        });
+      }
+    })
+    .catch((error) => {
+      console.warn("[Webhook] Hub fulfillment kickoff unavailable", {
+        type: error instanceof Error ? error.name : "unknown",
       });
-    }
-  }).catch((error) => {
-    console.warn("[Webhook] Hub fulfillment kickoff unavailable", {
-      type: error instanceof Error ? error.name : "unknown",
     });
-  });
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
     EdgeRuntime.waitUntil(delivery);
   }
@@ -984,11 +1406,7 @@ async function loadHubBillingBlock(
     hubEnabled = settings?.metadata?.hubEnabled !== false;
   }
 
-  return hubBillingBlockCode(
-    productFamily,
-    account?.status,
-    hubEnabled,
-  );
+  return hubBillingBlockCode(productFamily, account?.status, hubEnabled);
 }
 
 async function cancelBlockedHubBilling(
@@ -1008,13 +1426,12 @@ async function cancelBlockedHubBilling(
     throw new Error("hub_provider_subscription_required_for_billing_block");
   }
 
-  await cancelHubProviderSubscription(providerSubscriptionId);
+  await cancelHubProviderSubscriptionForAccount(
+    supabase,
+    checkout.account_id,
+    providerSubscriptionId,
+  );
   const blockedAt = new Date().toISOString();
-  const checkoutMetadata = checkout.metadata &&
-      typeof checkout.metadata === "object" &&
-      !Array.isArray(checkout.metadata)
-    ? checkout.metadata
-    : {};
 
   const { error: subscriptionError } = await supabase
     .from("hub_subscriptions")
@@ -1030,23 +1447,29 @@ async function cancelBlockedHubBilling(
     .in("status", ["TRIALING", "INCOMPLETE", "ACTIVE", "PAST_DUE"]);
   if (subscriptionError) throw subscriptionError;
 
-  const { error: checkoutError } = await supabase
-    .from("hub_checkout_sessions")
-    .update({
-      status: "CANCELLED",
-      asaas_payment_id: checkout.asaas_payment_id || paymentId,
-      metadata: {
-        ...checkoutMetadata,
+  const { error: checkoutError } = await supabase.rpc(
+    "hub_merge_checkout_provider_state",
+    {
+      p_checkout_id: checkout.id,
+      p_payment_id: paymentId,
+      p_expected_subscription_id: providerSubscriptionId,
+      p_status: "CANCELLED",
+      p_allowed_statuses: [
+        "CREATED",
+        "PENDING",
+        "OVERDUE",
+        "PAID",
+        "CANCELLED",
+      ],
+      p_metadata_patch: {
         billingBlockedCode: blockCode,
         billingBlockedPaymentId: paymentId,
         billingBlockedAt: blockedAt,
         providerCancellationId: providerSubscriptionId,
         requiresManualReconciliation: true,
       },
-      updated_at: blockedAt,
-    })
-    .eq("id", checkout.id)
-    .neq("status", "REVERSED");
+    },
+  );
   if (checkoutError) throw checkoutError;
 }
 
@@ -1060,7 +1483,8 @@ async function processHubPaymentEvent(
     throw new Error("hub_webhook_payload_invalid");
   }
   const checkoutId = resolvedCheckoutId ??
-    hubCheckoutIdFromExternalReference(payment.externalReference) ?? "";
+    hubCheckoutIdFromExternalReference(payment.externalReference) ??
+    "";
   if (!isUuid(checkoutId)) throw new Error("hub_checkout_reference_invalid");
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -1078,7 +1502,8 @@ async function processHubPaymentEvent(
     if (checkoutError) throw checkoutError;
     if (!checkout) throw new Error("hub_checkout_not_found");
     if (
-      payment.subscription && checkout.asaas_subscription_id &&
+      payment.subscription &&
+      checkout.asaas_subscription_id &&
       payment.subscription !== checkout.asaas_subscription_id
     ) {
       throw new Error("hub_subscription_mismatch");
@@ -1141,11 +1566,6 @@ async function processHubPaymentEvent(
       if (replacedProviderSubscriptionId && !providerSubscriptionId) {
         throw new Error("hub_replacement_provider_subscription_required");
       }
-      const replacementMetadata = checkout.metadata &&
-          typeof checkout.metadata === "object" &&
-          !Array.isArray(checkout.metadata)
-        ? checkout.metadata
-        : {};
       await activateThenCancelHubReplacement(
         async () => {
           const { data: activation, error } = await supabase.rpc(
@@ -1176,21 +1596,27 @@ async function processHubPaymentEvent(
           return hubActivationAllowsReplacementCancellation(activation);
         },
         replacedProviderSubscriptionId,
-        cancelHubProviderSubscription,
+        async (subscriptionId) =>
+          await cancelHubProviderSubscriptionForAccount(
+            supabase,
+            checkout.account_id,
+            subscriptionId,
+          ),
         async (cancelledProviderSubscriptionId) => {
-          const { error: replacementError } = await supabase
-            .from("hub_checkout_sessions")
-            .update({
-              metadata: {
-                ...replacementMetadata,
+          const { error: replacementError } = await supabase.rpc(
+            "hub_merge_checkout_provider_state",
+            {
+              p_checkout_id: checkoutId,
+              p_payment_id: payment.id,
+              p_expected_subscription_id: providerSubscriptionId,
+              p_metadata_patch: {
                 replacementProviderCancellationCompletedAt: new Date()
                   .toISOString(),
                 replacementProviderCancellationId:
                   cancelledProviderSubscriptionId,
               },
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", checkoutId);
+            },
+          );
           if (replacementError) throw replacementError;
         },
       );
@@ -1201,7 +1627,11 @@ async function processHubPaymentEvent(
       // A local reversal without cancelling the scheduler would keep creating
       // charges for an account whose access was already revoked. Deletion is
       // idempotent (404/410 means it was already absent) and must finish first.
-      await cancelHubProviderSubscription(providerSubscriptionId);
+      await cancelHubProviderSubscriptionForAccount(
+        supabase,
+        checkout.account_id,
+        providerSubscriptionId,
+      );
       const { error } = await supabase.rpc("hub_reverse_paid_checkout", {
         p_checkout_id: checkoutId,
         p_payment_id: payment.id,
@@ -1212,20 +1642,21 @@ async function processHubPaymentEvent(
       // Official Asaas recovery/dispute events are recorded for reconciliation
       // only. They never call the paid RPC, so they cannot grant a fresh period
       // or resurrect a provider subscription that was deliberately cancelled.
-      const { error } = await supabase.from("hub_checkout_sessions").update({
-        metadata: {
-          ...(checkout.metadata && typeof checkout.metadata === "object" &&
-              !Array.isArray(checkout.metadata)
-            ? checkout.metadata
-            : {}),
-          providerRecoveryEvent: event,
-          providerRecoveryReason: hubRecoveryReason(event),
-          providerRecoveryPaymentId: payment.id,
-          providerRecoveryAt: new Date().toISOString(),
-          requiresManualReconciliation: true,
+      const { error } = await supabase.rpc(
+        "hub_merge_checkout_provider_state",
+        {
+          p_checkout_id: checkoutId,
+          p_payment_id: payment.id,
+          p_expected_subscription_id: providerSubscriptionId,
+          p_metadata_patch: {
+            providerRecoveryEvent: event,
+            providerRecoveryReason: hubRecoveryReason(event),
+            providerRecoveryPaymentId: payment.id,
+            providerRecoveryAt: new Date().toISOString(),
+            requiresManualReconciliation: true,
+          },
         },
-        updated_at: new Date().toISOString(),
-      }).eq("id", checkoutId);
+      );
       if (error) throw error;
     } else if (
       event === "PAYMENT_OVERDUE" ||
@@ -1238,12 +1669,18 @@ async function processHubPaymentEvent(
       });
       if (error) throw error;
     } else {
-      const { error } = await supabase.from("hub_checkout_sessions").update({
-        asaas_payment_id: checkout.asaas_payment_id || payment.id,
-        invoice_url: payment.invoiceUrl || null,
-        bank_slip_url: payment.bankSlipUrl || null,
-        updated_at: new Date().toISOString(),
-      }).eq("id", checkoutId).neq("status", "REVERSED");
+      const { error } = await supabase.rpc(
+        "hub_merge_checkout_provider_state",
+        {
+          p_checkout_id: checkoutId,
+          p_payment_id: payment.id,
+          p_expected_subscription_id: providerSubscriptionId,
+          p_invoice_url: payment.invoiceUrl || null,
+          p_bank_slip_url: payment.bankSlipUrl || null,
+          p_allowed_statuses: ["CREATED", "PENDING", "OVERDUE", "PAID"],
+          p_metadata_patch: {},
+        },
+      );
       if (error) throw error;
     }
 
@@ -1264,16 +1701,247 @@ async function processHubPaymentEvent(
   }
 }
 
-// Processa o evento do ASAAS. Roda em BACKGROUND (EdgeRuntime.waitUntil),
-// depois que o webhook já respondeu 200 — então NUNCA lança erro pro ASAAS,
-// apenas registra nos logs.
+class AsaasTriageError extends Error {
+  constructor(
+    message: string,
+    readonly tenantId: string | null = null,
+    readonly localEntityId: string | null = null,
+  ) {
+    super(message);
+    this.name = "AsaasTriageError";
+  }
+}
+
+function buildWebhookEnrollmentObservation(input: {
+  tenantId: string;
+  studentId: string;
+  offerId: string | null;
+  payment: AsaasWebhookPayment;
+  paymentKind: EnrollmentPaymentKind;
+  outcome: "SETTLED" | "UNSETTLED";
+  externalReference: string;
+  providerStatus: string;
+  providerValue: number;
+  persistedDueDate: string | null;
+  localPaymentId: string;
+}): EnrollmentPaymentObservation {
+  const externalReference = input.externalReference.trim();
+  const dueDate = String(
+    input.payment.dueDate || input.persistedDueDate || "",
+  ).trim();
+  const billingType = String(input.payment.billingType || "").trim()
+    .toUpperCase();
+  const description = String(input.payment.description || "").trim();
+  const providerStatus = input.providerStatus.trim();
+  const providerCustomerId = input.payment.customer.trim();
+
+  if (
+    !input.payment.id.trim() || !providerCustomerId || !externalReference ||
+    !providerStatus || providerStatus.length > 120 ||
+    !Number.isFinite(input.providerValue) || input.providerValue <= 0 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+    !["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType) ||
+    !description || description.length > 500
+  ) {
+    throw new AsaasTriageError(
+      "enrollment_observation_evidence_incomplete",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+
+  return {
+    tenantId: input.tenantId,
+    studentId: input.studentId,
+    offerId: input.offerId,
+    providerPaymentId: input.payment.id.trim(),
+    providerCustomerId,
+    providerSubscriptionId: input.paymentKind === "PRO_RATA"
+      ? null
+      : String(input.payment.subscription || "").trim() || null,
+    paymentKind: input.paymentKind,
+    outcome: input.outcome,
+    providerValue: input.providerValue,
+    externalReference,
+    providerStatus,
+    dueDate,
+    billingType: billingType as "PIX" | "BOLETO" | "CREDIT_CARD",
+    description,
+  };
+}
+
+async function resolveWebhookEnrollmentObservationBinding(
+  supabase: SupabaseClient,
+  input: {
+    tenantId: string;
+    studentId: string;
+    providerPaymentId: string;
+    externalReference: string | null;
+    outcome: "SETTLED" | "UNSETTLED";
+    localPaymentId: string;
+  },
+): Promise<EnrollmentPaymentObservationBinding | null> {
+  try {
+    return await resolveEnrollmentPaymentObservationBinding(supabase, input);
+  } catch (error) {
+    const disposition = enrollmentPaymentObservationFailureDisposition(error);
+    if (disposition === "TRIAGE") {
+      throw new AsaasTriageError(
+        error instanceof EnrollmentPaymentObservationError
+          ? error.reason
+          : "enrollment_binding_rejected",
+        input.tenantId,
+        input.localPaymentId,
+      );
+    }
+    if (disposition === "SUPPRESS") return null;
+    throw error;
+  }
+}
+
+async function applyWebhookEnrollmentObservation(
+  supabase: SupabaseClient,
+  input: EnrollmentPaymentObservation,
+  localPaymentId: string,
+): Promise<
+  { applied: true; result: Record<string, unknown> } | {
+    applied: false;
+    reason: string;
+  }
+> {
+  try {
+    return {
+      applied: true,
+      result: await applyEnrollmentPaymentObservation(supabase, input),
+    };
+  } catch (error) {
+    const disposition = enrollmentPaymentObservationFailureDisposition(error);
+    if (disposition === "SUPPRESS") {
+      const reason = error instanceof EnrollmentPaymentObservationError
+        ? error.reason
+        : "enrollment_observation_suppressed";
+      console.info("[Webhook] Enrollment effects safely suppressed", {
+        paymentId: input.providerPaymentId,
+        reason,
+      });
+      return { applied: false, reason };
+    }
+    if (disposition === "TRIAGE") {
+      throw new AsaasTriageError(
+        error instanceof EnrollmentPaymentObservationError
+          ? error.reason
+          : "enrollment_observation_rejected",
+        input.tenantId,
+        localPaymentId,
+      );
+    }
+    throw error;
+  }
+}
+
+async function recordAsaasAutomationIssue(
+  supabase: SupabaseClient,
+  issue: {
+    tenantId: string | null;
+    kind: string;
+    severity: "INFO" | "WARNING" | "HIGH" | "CRITICAL";
+    providerEntityId: string;
+    localEntityId?: string | null;
+    fingerprint: string;
+    details?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { error } = await supabase.from("asaas_reconciliation_issues").insert({
+    run_id: null,
+    tenant_id: issue.tenantId,
+    source: "WEBHOOK",
+    kind: issue.kind,
+    severity: issue.severity,
+    provider_entity_id: issue.providerEntityId,
+    local_entity_id: issue.localEntityId || null,
+    fingerprint: issue.fingerprint,
+    details: issue.details || {},
+  });
+  if (error && error.code !== "23505") throw error;
+}
+
+type ExistingStudentPayment = {
+  id: string;
+  status: string | null;
+  provider_status: string | null;
+  last_provider_event_at: string | null;
+  last_provider_event_rank: number | null;
+  student_id: string | null;
+  tenant_id: string | null;
+  provider_customer_id: string | null;
+  value: number | null;
+  refunded_amount: number | null;
+  due_date: string | null;
+  asaas_payment_id: string | null;
+  asaas_id: string | null;
+};
+
+async function loadExistingStudentPaymentByProviderId(
+  supabase: SupabaseClient,
+  providerPaymentId: string,
+): Promise<ExistingStudentPayment | null> {
+  const columns =
+    "id,status,provider_status,last_provider_event_at,last_provider_event_rank,student_id,tenant_id,provider_customer_id,value,refunded_amount,due_date,asaas_payment_id,asaas_id";
+  const [canonicalResult, legacyResult] = await Promise.all([
+    supabase.from("student_payments").select(columns)
+      .eq("asaas_payment_id", providerPaymentId).limit(2),
+    supabase.from("student_payments").select(columns)
+      .eq("asaas_id", providerPaymentId).limit(2),
+  ]);
+  if (canonicalResult.error) throw canonicalResult.error;
+  if (legacyResult.error) throw legacyResult.error;
+
+  const matches = new Map<string, ExistingStudentPayment>();
+  for (
+    const row of [...(canonicalResult.data || []), ...(legacyResult.data || [])]
+  ) {
+    matches.set(String(row.id), row as ExistingStudentPayment);
+  }
+  if (matches.size > 1) {
+    throw new AsaasTriageError("student_payment_provider_alias_ambiguous");
+  }
+  const payment = matches.values().next().value as
+    | ExistingStudentPayment
+    | undefined;
+  if (!payment) return null;
+
+  const canonical = String(payment.asaas_payment_id || "").trim();
+  const legacy = String(payment.asaas_id || "").trim();
+  if (
+    (canonical && canonical !== providerPaymentId) ||
+    (legacy && legacy !== providerPaymentId) ||
+    (canonical && legacy && canonical !== legacy)
+  ) {
+    throw new AsaasTriageError(
+      "student_payment_provider_alias_divergent",
+      payment.tenant_id,
+      payment.id,
+    );
+  }
+  return payment;
+}
+
+// Processa uma cobrança escolar já persistida na inbox durável. Falhas
+// transitórias são relançadas para lease/retry; inconsistências de identidade
+// viram AsaasTriageError e nunca criam/adotam registros financeiros.
 async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
   try {
     const { event, payment } = body;
 
-    if (!event || !payment) {
-      console.warn("[Webhook] Ignorado: faltou event ou payment.");
-      return;
+    if (
+      !event ||
+      !payment ||
+      typeof payment.id !== "string" ||
+      !payment.id.trim() ||
+      typeof payment.customer !== "string" ||
+      !payment.customer.trim()
+    ) {
+      throw new AsaasTriageError("payment_payload_missing");
     }
 
     console.log("[Webhook] Payment event received", {
@@ -1294,453 +1962,1124 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
       return;
     }
 
-    /*
-          STRATEGY:
-          1. Try to find the student (Profile) via externalReference (our ID) or customer (Asaas ID).
-          2. Update/Insert the Payment in 'student_payments'.
-          3. Update the Profile/Subscription status if necessary.
-        */
+    // Load the immutable local binding before applying operational gates. A
+    // proven refund may arrive after offboarding/suspension and must still
+    // correct the historical cash ledger, but it may never create or adopt a
+    // local payment through this exceptional path.
+    const existingPayment = await loadExistingStudentPaymentByProviderId(
+      supabase,
+      payment.id,
+    );
+    const eventAt = asaasDateToIso(body.dateCreated);
+    if (!eventAt) {
+      throw new AsaasTriageError(
+        "provider_event_timestamp_missing",
+        existingPayment?.tenant_id || null,
+        existingPayment?.id || null,
+      );
+    }
+    const eventRank = providerEventRank(event);
+    const providerStatus = String(
+      payment.status || event.replace(/^PAYMENT_/, ""),
+    );
+    const historicalReversalAmount = completedRefundAmount(
+      {
+        ...payment,
+        value: existingPayment?.value ?? payment.value,
+      },
+      event,
+    );
+    // Explicit reversal events and any snapshot carrying completed refund
+    // evidence take the update-only path. This includes PAYMENT_UPDATED with a
+    // DONE refund and prevents it from recreating a missing payment.
+    const isHistoricalReversal = isProvenHistoricalReversalEvent(event) ||
+      historicalReversalAmount > 0;
 
-    // 1. Find Student
+    if (isHistoricalReversal && !existingPayment) {
+      throw new AsaasTriageError("historical_reversal_payment_missing");
+    }
+
     let studentId: string | null = null;
-    // Basic UUID validation
-    const isValidUUID = (id: string) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        id,
-      );
-
-    if (payment.externalReference && isValidUUID(payment.externalReference)) {
-      studentId = payment.externalReference;
-    } else if (payment.externalReference) {
-      console.warn(
-        "⚠️ externalReference não é UUID; identificação seguirá pelo customer.",
-      );
-    }
-
-    // If no external ref, lookup by Asaas Customer ID
-    if (!studentId) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("asaas_customer_id", payment.customer)
-        .eq("role", "STUDENT")
-        .single();
-
-      if (profile) {
-        studentId = profile.id;
-        console.log("[Webhook] Aluno identificado pelo customer canônico.");
-      } else {
-        console.warn(
-          "⚠️ Perfil não encontrado pelo customer; tentando fallback legado.",
-        );
-
-        // Fallback: Fetch Customer from Asaas to get Email
-        if (ASAAS_ACCESS_TOKEN) {
-          try {
-            const asaasRes = await fetchComTimeout(
-              `https://api.asaas.com/v3/customers/${payment.customer}`,
-              {
-                headers: { "access_token": ASAAS_ACCESS_TOKEN },
-              },
-            );
-
-            if (asaasRes.ok) {
-              const asaasCustomer = await asaasRes.json();
-              if (asaasCustomer.email) {
-                // IMPORTANT: 'profiles' must have 'email' column (added via migration)
-                const { data: profilesByEmail } = await supabase.from(
-                  "profiles",
-                )
-                  .select("id")
-                  .eq("email", String(asaasCustomer.email).trim().toLowerCase())
-                  .eq("role", "STUDENT")
-                  .limit(2);
-                const profileByEmail = profilesByEmail?.length === 1
-                  ? profilesByEmail[0]
-                  : null;
-
-                if (profileByEmail) {
-                  studentId = profileByEmail.id;
-                  console.log("✅ Aluno identificado pelo fallback legado.");
-
-                  // Sync ID for future
-                  await supabase.from("profiles").update({
-                    asaas_customer_id: payment.customer,
-                  }).eq("id", studentId);
-                } else {
-                  console.warn(
-                    "❌ Nenhum perfil encontrado pelo fallback legado.",
-                  );
-                }
-              }
-            } else {
-              console.error("❌ Falha ao consultar customer no Asaas:", {
-                status: asaasRes.status,
-              });
-            }
-          } catch (errFallback) {
-            console.error("[Webhook] Email fallback failed", {
-              type: errFallback instanceof Error
-                ? errFallback.name
-                : "UnknownError",
-            });
-          }
-        } else {
-          console.warn(
-            "⚠️ ASAAS_ACCESS_TOKEN not configured. Skipping email fallback.",
-          );
-        }
-
-        if (!studentId) {
-          console.warn(`⚠️ Final: Student could not be identified.`);
-        }
-      }
-    } else {
-      console.log("[Webhook] Aluno identificado pela referência canônica.");
-    }
-
     let studentTenantId: string | null = null;
-    if (studentId) {
-      const { data: studentScope, error: studentScopeError } = await supabase
-        .from("profiles")
-        .select("tenant_id,role")
-        .eq("id", studentId)
-        .maybeSingle();
-      if (
-        studentScopeError || studentScope?.role !== "STUDENT" ||
-        typeof studentScope?.tenant_id !== "string" ||
-        !studentScope.tenant_id
-      ) {
-        console.warn(
-          "[Webhook] Referência ignorada: perfil não é aluno de tenant.",
-        );
-        studentId = null;
-      } else {
-        studentTenantId = studentScope.tenant_id;
-      }
-    }
+    let canonicalPaymentReference: string | null = null;
+    let persistedPayment: { id: string; due_date: string | null } | null = null;
+    let previousLocalStatus: string | null = existingPayment?.status || null;
+    let creditedAt: string | null = null;
+    let estimatedCreditAt: string | null = null;
+    let inactiveSettlementUpdateOnly = false;
+    const refundedAmount = historicalReversalAmount;
+    const paymentValue = Number(
+      isHistoricalReversal ? existingPayment?.value : payment.value,
+    );
 
-    // 2. Process Events
-
-    // Allow 'PAYMENT_UPDATED' to re-process and potentially link the student if missing
     if (
-      event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED" ||
-      event === "PAYMENT_UPDATED"
+      !isHistoricalReversal && isSettledPaymentEvent(event) && existingPayment
     ) {
-      console.log(`Processing Payment Event: ${event}`);
-
-      // Check existing payment status to prevent duplicate WhatsApp sends (Idempotency check)
-      const { data: existingPayment } = await supabase
-        .from("student_payments")
-        .select("status")
-        .eq("asaas_payment_id", payment.id)
-        .maybeSingle();
-
-      const isAlreadyPaid = existingPayment &&
-        [
-          "CONFIRMED",
-          "RECEIVED",
-          "PAGO",
-          "PAYMENT_RECEIVED",
-          "PAYMENT_CONFIRMED",
-        ].includes(existingPayment.status);
-
-      // A. Update Payment Record
-      // We use upsert to ensure we create it if it was missed during creation
-      const paymentType = classifyStudentPaymentType(
-        payment.description,
+      const localStudentId = String(existingPayment.student_id || "").trim();
+      const localTenantId = String(existingPayment.tenant_id || "").trim();
+      let localCustomerId = String(
+        existingPayment.provider_customer_id || "",
+      ).trim();
+      // Cobranças legadas podiam existir antes de provider_customer_id passar
+      // a ser capturado no INSERT. Adoção ampla pelo perfil seria insegura;
+      // esta RPC aceita somente o evento autenticado já persistido na inbox,
+      // com pagamento, cliente, valor, vencimento, assinatura e oferta
+      // corroborados exatamente. Depois do primeiro vínculo, o trigger o torna
+      // imutável como em qualquer cobrança nova.
+      if (
+        localStudentId && localTenantId && !localCustomerId &&
+        typeof body.id === "string" && body.id.trim()
+      ) {
+        const { data: legacyBinding, error: legacyBindingError } =
+          await supabase
+            .rpc("bind_legacy_student_payment_from_webhook", {
+              p_provider_event_id: body.id.trim(),
+              p_expected_local_payment_id: existingPayment.id,
+              p_expected_student_id: localStudentId,
+              p_expected_tenant_id: localTenantId,
+              p_expected_provider_customer_id: payment.customer.trim(),
+              p_payload: body,
+            });
+        if (!legacyBindingError && legacyBinding?.ok === true) {
+          localCustomerId = payment.customer.trim();
+          existingPayment.provider_customer_id = localCustomerId;
+        }
+      }
+      if (!localStudentId || !localTenantId || !localCustomerId) {
+        throw new AsaasTriageError(
+          "inactive_settlement_local_binding_incomplete",
+          localTenantId || null,
+          existingPayment.id,
+        );
+      }
+      if (
+        !paymentCustomerMatchesCanonicalBinding(
+          localCustomerId,
+          payment.customer,
+        )
+      ) {
+        throw new AsaasTriageError(
+          "inactive_settlement_customer_mismatch",
+          localTenantId,
+          existingPayment.id,
+        );
+      }
+      const referencedStudentId = studentIdFromKnownPaymentReference(
         payment.externalReference,
       );
+      if (referencedStudentId && referencedStudentId !== localStudentId) {
+        throw new AsaasTriageError(
+          "inactive_settlement_reference_mismatch",
+          localTenantId,
+          existingPayment.id,
+        );
+      }
+      const [profileResult, membershipsResult] = await Promise.all([
+        supabase.from("profiles")
+          .select("id,tenant_id,role,lifecycle_status")
+          .eq("id", localStudentId)
+          .maybeSingle(),
+        supabase.from("tenant_memberships")
+          .select("tenant_id,role,status")
+          .eq("user_id", localStudentId)
+          .limit(2),
+      ]);
+      if (profileResult.error) throw profileResult.error;
+      if (membershipsResult.error) throw membershipsResult.error;
+      const currentProfile = profileResult.data;
+      if (
+        currentProfile &&
+        (currentProfile.tenant_id !== localTenantId ||
+          currentProfile.role !== "STUDENT")
+      ) {
+        throw new AsaasTriageError(
+          "inactive_settlement_profile_scope_mismatch",
+          localTenantId,
+          existingPayment.id,
+        );
+      }
+      const memberships = Array.isArray(membershipsResult.data)
+        ? membershipsResult.data
+        : [];
+      const exclusivelyActive = memberships.length === 1 &&
+        memberships[0].tenant_id === localTenantId &&
+        memberships[0].role === "STUDENT" &&
+        memberships[0].status === "ACTIVE";
+      inactiveSettlementUpdateOnly = !currentProfile ||
+        String(currentProfile.lifecycle_status || "").trim().toLowerCase() !==
+          "active" ||
+        !exclusivelyActive;
+    }
 
-      const paymentData: Record<string, unknown> = {
-        asaas_payment_id: payment.id,
-        value: payment.value,
-        status: payment.status, // CONFIRMED or RECEIVED
-        due_date: payment.dueDate,
-        payment_date: payment.paymentDate || new Date().toISOString(), // Critical for Revenue Calc
-        billing_type: payment.billingType,
-        invoice_url: payment.bankSlipUrl || payment.invoiceUrl,
-        description: payment.description || "Mensalidade",
-        payment_type: paymentType,
-        updated_at: new Date().toISOString(),
-      };
-
-      // CRITICAL FIX: Only set student_id if it is defined.
-      // DO NOT OVERWRITE EXISTING STUDENT_ID WITH NULL.
-      if (studentId && studentTenantId) {
-        paymentData.student_id = studentId;
-        paymentData.tenant_id = studentTenantId;
+    if (isHistoricalReversal) {
+      studentId = existingPayment!.student_id;
+      studentTenantId = existingPayment!.tenant_id;
+      const providerCustomerId = existingPayment!.provider_customer_id;
+      if (!studentId || !studentTenantId || !providerCustomerId) {
+        throw new AsaasTriageError(
+          "historical_reversal_local_binding_incomplete",
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      if (
+        !paymentCustomerMatchesCanonicalBinding(
+          providerCustomerId,
+          payment.customer,
+        )
+      ) {
+        throw new AsaasTriageError(
+          "historical_reversal_customer_mismatch",
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      const referencedStudentId = studentIdFromKnownPaymentReference(
+        payment.externalReference,
+      );
+      if (referencedStudentId && referencedStudentId !== studentId) {
+        throw new AsaasTriageError(
+          "historical_reversal_reference_mismatch",
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      if (refundedAmount <= 0) {
+        throw new AsaasTriageError(
+          "historical_reversal_amount_unproven",
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      if (typeof body.id !== "string" || !body.id.trim()) {
+        throw new AsaasTriageError(
+          "historical_reversal_event_id_missing",
+          studentTenantId,
+          existingPayment!.id,
+        );
       }
 
-      const { error: payError } = await supabase
-        .from("student_payments")
-        .upsert(paymentData, { onConflict: "asaas_payment_id" });
+      // This authorization returns no API endpoint or credential. A historical
+      // correction therefore cannot accidentally issue a provider GET after
+      // the connection was disabled or its credentials were offboarded.
+      await authorizeAsaasHistoricalReversal(supabase, studentTenantId);
 
-      if (payError) {
-        console.error("[Webhook] student_payments update failed", {
-          code: payError.code,
+      if (!shouldApplyProviderEvent(existingPayment, eventAt, eventRank)) {
+        console.info("[Webhook] Older historical reversal ignored", {
+          event,
+          paymentId: payment.id,
         });
-        // Roda em background: apenas registra, não relança (o ASAAS já recebeu 200).
         return;
-      } else {
-        console.log("[Webhook] Payment record updated.");
       }
 
-      // B. Update Subscription / Profile Status & Check for Welcome Message
-      if (studentId) {
-        // Fetch Profile Data needed for Welcome Logic & Cash Flow
-        const { data: profileData, error: profileFetchErr } = await supabase
-          .from("profiles")
-          .select(
-            "role, tenant_id, contract_accepted, welcome_sent_at, phone, full_name, signed_document_url, class_frequency, enrollment_payment_id, is_test_account",
+      const { data: reversalResult, error: reversalError } = await supabase.rpc(
+        "apply_historical_asaas_payment_reversal",
+        {
+          p_provider_payment_id: payment.id,
+          p_expected_local_payment_id: existingPayment!.id,
+          p_expected_student_id: studentId,
+          p_expected_tenant_id: studentTenantId,
+          p_expected_provider_customer_id: providerCustomerId,
+          p_event_id: body.id,
+          p_event_name: event,
+          p_event_created_at: eventAt,
+          p_event_rank: eventRank,
+          p_provider_status: providerStatus,
+          p_refunded_amount: refundedAmount,
+          p_payload: body,
+        },
+      );
+      if (reversalError) {
+        if (["22023", "23514"].includes(String(reversalError.code))) {
+          throw new AsaasTriageError(
+            "historical_reversal_database_rejected",
+            studentTenantId,
+            existingPayment!.id,
+          );
+        }
+        throw reversalError;
+      }
+      if (reversalResult?.ok !== true) {
+        if (
+          reversalResult?.reason === "payment_confirmation_delivery_in_flight"
+        ) {
+          throw new Error("payment_confirmation_delivery_in_flight");
+        }
+        throw new AsaasTriageError(
+          String(reversalResult?.reason || "historical_reversal_not_applied"),
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      if (reversalResult.action === "IGNORED") return;
+      if (typeof reversalResult.id !== "string" || !reversalResult.id) {
+        throw new Error("historical_reversal_result_invalid");
+      }
+      persistedPayment = {
+        id: reversalResult.id,
+        due_date: reversalResult.due_date || existingPayment!.due_date || null,
+      };
+    } else if (inactiveSettlementUpdateOnly) {
+      studentId = existingPayment!.student_id;
+      studentTenantId = existingPayment!.tenant_id;
+      const providerCustomerId = String(
+        existingPayment!.provider_customer_id || "",
+      ).trim();
+      const providerValue = Number(payment.value);
+      const paymentDate = String(payment.paymentDate || "").trim();
+      if (
+        !studentId || !studentTenantId || !providerCustomerId ||
+        !Number.isFinite(providerValue) || providerValue <= 0 ||
+        typeof body.id !== "string" || !body.id.trim() ||
+        (paymentDate && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) ||
+        (event === "PAYMENT_RECEIVED_IN_CASH" && !paymentDate)
+      ) {
+        throw new AsaasTriageError(
+          "inactive_settlement_evidence_incomplete",
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      await resolveAsaasIntegration(supabase, studentTenantId, "payment.event");
+      if (!shouldApplyProviderEvent(existingPayment, eventAt, eventRank)) {
+        console.info("[Webhook] Older inactive settlement ignored", {
+          event,
+          paymentId: payment.id,
+        });
+        return;
+      }
+      creditedAt = actualCreditAt(event, payment);
+      estimatedCreditAt = asaasDateToIso(payment.estimatedCreditDate);
+      const { data: settlementResult, error: settlementError } = await supabase
+        .rpc("apply_inactive_student_payment_settlement", {
+          p_provider_payment_id: payment.id,
+          p_expected_local_payment_id: existingPayment!.id,
+          p_expected_student_id: studentId,
+          p_expected_tenant_id: studentTenantId,
+          p_expected_provider_customer_id: providerCustomerId,
+          p_event_id: body.id,
+          p_event_name: event,
+          p_event_created_at: eventAt,
+          p_event_rank: eventRank,
+          p_provider_status: providerStatus,
+          p_provider_value: providerValue,
+          p_payment_date: paymentDate || null,
+          p_credited_at: creditedAt,
+          p_estimated_credit_at: estimatedCreditAt,
+          p_payload: body,
+        });
+      if (settlementError) {
+        if (["22023", "23514"].includes(String(settlementError.code))) {
+          throw new AsaasTriageError(
+            "inactive_settlement_database_rejected",
+            studentTenantId,
+            existingPayment!.id,
+          );
+        }
+        throw settlementError;
+      }
+      if (settlementResult?.ok !== true) {
+        throw new AsaasTriageError(
+          String(settlementResult?.reason || "inactive_settlement_not_applied"),
+          studentTenantId,
+          existingPayment!.id,
+        );
+      }
+      if (settlementResult.action === "IGNORED") return;
+      persistedPayment = {
+        id: settlementResult.id,
+        due_date: settlementResult.due_date || existingPayment!.due_date ||
+          null,
+      };
+    } else {
+      // Normal provider events still require the current canonical profile and
+      // membership. A pre-persisted enrollment payment may use an offer-scoped
+      // reference, so resolve it only through its immutable local payment plus
+      // the exact owned offer. The Asaas customer remains mandatory proof.
+      const existingStudentId = String(existingPayment?.student_id || "")
+        .trim();
+      const offerScopedEnrollmentReference = parseCanonicalAsaasReference(
+        payment.externalReference,
+        existingStudentId || "__offer_scoped_enrollment_reference__",
+        "payment",
+      );
+      const externalStudentId = studentIdFromKnownPaymentReference(
+        payment.externalReference,
+      );
+      const studentScopedDirectMatch = String(payment.externalReference || "")
+        .trim().match(
+          /^student:([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}):(one-time|pro-rata)$/i,
+        );
+      if (
+        offerScopedEnrollmentReference?.kind === "ENROLLMENT" &&
+        ["fee", "one-time", "pro-rata"].includes(
+          offerScopedEnrollmentReference.purpose,
+        )
+      ) {
+        const { data: enrollmentOffer, error: enrollmentOfferError } =
+          await supabase.from("offers")
+            .select("id,tenant_id,kind,processing_by,consumed_by")
+            .eq("id", offerScopedEnrollmentReference.offerId)
+            .eq("kind", "ENROLLMENT")
+            .maybeSingle();
+        if (enrollmentOfferError) throw enrollmentOfferError;
+        const offerStudents = new Set(
+          [enrollmentOffer?.processing_by, enrollmentOffer?.consumed_by]
+            .map((value) => String(value || "").trim())
+            .filter((value) => isUuid(value)),
+        );
+        if (
+          !enrollmentOffer || !enrollmentOffer.tenant_id ||
+          offerStudents.size !== 1
+        ) {
+          throw new AsaasTriageError(
+            "enrollment_payment_offer_binding_mismatch",
+            enrollmentOffer?.tenant_id || existingPayment?.tenant_id || null,
+            existingPayment?.id || enrollmentOffer?.id || null,
+          );
+        }
+        const offerStudentId = [...offerStudents][0];
+        if (
+          offerScopedEnrollmentReference.purpose === "pro-rata" &&
+          (!existingPayment || existingPayment.student_id !== offerStudentId ||
+            existingPayment.tenant_id !== enrollmentOffer.tenant_id ||
+            !paymentCustomerMatchesCanonicalBinding(
+              existingPayment.provider_customer_id,
+              payment.customer,
+            ))
+        ) {
+          throw new AsaasTriageError(
+            "enrollment_pro_rata_payment_binding_mismatch",
+            enrollmentOffer.tenant_id,
+            existingPayment?.id || enrollmentOffer.id,
+          );
+        }
+        const { data: enrollmentProfile, error: enrollmentProfileError } =
+          await supabase.from("profiles")
+            .select("id,tenant_id,role,asaas_customer_id")
+            .eq("id", offerStudentId)
+            .eq("tenant_id", enrollmentOffer.tenant_id)
+            .eq("role", "STUDENT")
+            .maybeSingle();
+        if (enrollmentProfileError) throw enrollmentProfileError;
+        if (
+          !enrollmentProfile?.asaas_customer_id ||
+          !paymentCustomerMatchesCanonicalBinding(
+            enrollmentProfile.asaas_customer_id,
+            payment.customer,
           )
-          .eq("id", studentId)
-          .eq("tenant_id", studentTenantId)
-          .eq("role", "STUDENT")
-          .single();
-
-        if (profileFetchErr) {
-          console.error("[Webhook] Student profile lookup failed", {
-            code: profileFetchErr.code,
-          });
-        }
-
-        // Update Status to ACTIVE
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .update({ status_financial: "ACTIVE" })
-          .eq("id", studentId);
-
-        if (profileError) {
-          console.error("[Webhook] Student financial status update failed", {
-            code: profileError.code,
-          });
-        } else console.log("✅ Profile Financial Status set to ACTIVE");
-
-        // Uma matrícula em processamento só fecha quando o pagamento
-        // obrigatório correspondente (taxa ou serviço avulso) é confirmado.
-        // O webhook usa service_role e é a fonte autoritativa mesmo se o
-        // aluno fechar a página antes de clicar em "já paguei".
-        if (
-          profileData &&
-          (event === "PAYMENT_CONFIRMED" || event === "PAYMENT_RECEIVED")
         ) {
-          try {
-            const { data: processingOffer } = await supabase
-              .from("offers")
-              .select("id, metadata, processing_state")
+          throw new AsaasTriageError(
+            "enrollment_payment_customer_mismatch",
+            enrollmentOffer.tenant_id,
+            existingPayment?.id || enrollmentOffer.id,
+          );
+        }
+        studentId = offerStudentId;
+        studentTenantId = enrollmentOffer.tenant_id;
+        canonicalPaymentReference = String(payment.externalReference || "")
+          .trim();
+      } else if (studentScopedDirectMatch) {
+        const referencedStudent = studentScopedDirectMatch[1].toLowerCase();
+        if (
+          !existingPayment ||
+          existingPayment.student_id !== referencedStudent ||
+          !existingPayment.tenant_id ||
+          !paymentCustomerMatchesCanonicalBinding(
+            existingPayment.provider_customer_id,
+            payment.customer,
+          )
+        ) {
+          throw new AsaasTriageError(
+            "student_direct_payment_binding_mismatch",
+            existingPayment?.tenant_id || null,
+            existingPayment?.id || null,
+          );
+        }
+        const { data: directProfile, error: directProfileError } =
+          await supabase
+            .from("profiles")
+            .select("id,tenant_id,role,asaas_customer_id")
+            .eq("id", referencedStudent)
+            .eq("tenant_id", existingPayment.tenant_id)
+            .eq("role", "STUDENT")
+            .maybeSingle();
+        if (directProfileError) throw directProfileError;
+        if (
+          !directProfile?.asaas_customer_id ||
+          !paymentCustomerMatchesCanonicalBinding(
+            directProfile.asaas_customer_id,
+            payment.customer,
+          )
+        ) {
+          throw new AsaasTriageError(
+            "student_direct_payment_profile_mismatch",
+            existingPayment.tenant_id,
+            existingPayment.id,
+          );
+        }
+        studentId = referencedStudent;
+        studentTenantId = existingPayment.tenant_id;
+        canonicalPaymentReference = String(payment.externalReference).trim();
+      } else if (externalStudentId) {
+        const { data: referenced, error: referencedError } = await supabase
+          .from("profiles")
+          .select("id,tenant_id,role,asaas_customer_id")
+          .eq("id", externalStudentId)
+          .maybeSingle();
+        if (referencedError) throw referencedError;
+        if (
+          !referenced ||
+          referenced.role !== "STUDENT" ||
+          !referenced.tenant_id ||
+          !referenced.asaas_customer_id ||
+          !paymentCustomerMatchesCanonicalBinding(
+            referenced.asaas_customer_id,
+            payment.customer,
+          )
+        ) {
+          throw new AsaasTriageError(
+            "external_reference_customer_mismatch",
+            referenced?.tenant_id || null,
+            referenced?.id || externalStudentId,
+          );
+        }
+        studentId = referenced.id;
+        studentTenantId = referenced.tenant_id;
+        canonicalPaymentReference = String(payment.externalReference || "")
+          .trim();
+      } else {
+        // A customer id alone is not proof that an out-of-band payment belongs
+        // to this ledger. A provider-generated recurring charge may omit our
+        // directly parseable student reference, so adopt it only through the
+        // exact local subscription plus an authoritative GET of its parent.
+        const providerSubscriptionId = String(payment.subscription || "")
+          .trim();
+        if (!providerSubscriptionId) {
+          throw new AsaasTriageError("unbound_provider_payment_origin");
+        }
+        const { data: candidates, error: subscriptionLookupError } =
+          await supabase
+            .from("profiles")
+            .select(
+              "id,tenant_id,role,asaas_customer_id,subscription_id",
+            )
+            .eq("subscription_id", providerSubscriptionId)
+            .eq("asaas_customer_id", payment.customer)
+            .eq("role", "STUDENT")
+            .limit(2);
+        if (subscriptionLookupError) throw subscriptionLookupError;
+        if (candidates?.length !== 1 || !candidates[0].tenant_id) {
+          throw new AsaasTriageError(
+            candidates?.length && candidates.length > 1
+              ? "ambiguous_subscription_binding"
+              : "subscription_binding_unresolved",
+          );
+        }
+        const subscriptionProfile = candidates[0];
+        const subscriptionIntegration = await resolveAsaasIntegration(
+          supabase,
+          subscriptionProfile.tenant_id,
+          "subscription.read",
+        );
+        let parentResponse: Response;
+        try {
+          parentResponse = await fetch(
+            `${subscriptionIntegration.baseUrl}/subscriptions/${
+              encodeURIComponent(providerSubscriptionId)
+            }`,
+            {
+              method: "GET",
+              headers: { access_token: subscriptionIntegration.apiKey },
+              signal: AbortSignal.timeout(12_000),
+            },
+          );
+        } catch {
+          throw new AsaasTriageError(
+            "provider_subscription_identity_lookup_unavailable",
+            subscriptionProfile.tenant_id,
+            subscriptionProfile.id,
+          );
+        }
+        if (!parentResponse.ok) {
+          throw new AsaasTriageError(
+            parentResponse.status === 404
+              ? "provider_subscription_identity_not_found"
+              : "provider_subscription_identity_lookup_unavailable",
+            subscriptionProfile.tenant_id,
+            subscriptionProfile.id,
+          );
+        }
+        const parentSubscription = await parentResponse.json().catch(() =>
+          null
+        ) as Record<string, unknown> | null;
+        const parentReference = String(
+          parentSubscription?.externalReference || "",
+        ).trim();
+        const canonicalReference = parseCanonicalAsaasReference(
+          parentReference,
+          subscriptionProfile.id,
+          "subscription",
+        );
+        if (
+          !providerGeneratedSubscriptionPaymentMatches(
+            payment,
+            parentSubscription,
+            {
+              studentId: subscriptionProfile.id,
+              customerId: String(subscriptionProfile.asaas_customer_id || "")
+                .trim(),
+              subscriptionId: providerSubscriptionId,
+            },
+          ) || !canonicalReference
+        ) {
+          throw new AsaasTriageError(
+            "provider_subscription_identity_mismatch",
+            subscriptionProfile.tenant_id,
+            subscriptionProfile.id,
+          );
+        }
+        if (canonicalReference.kind === "ENROLLMENT") {
+          const { data: enrollmentOffer, error: enrollmentOfferError } =
+            await supabase.from("offers")
+              .select("id,tenant_id,kind,processing_by,consumed_by")
+              .eq("id", canonicalReference.offerId)
+              .eq("tenant_id", subscriptionProfile.tenant_id)
               .eq("kind", "ENROLLMENT")
-              .eq("processing_by", studentId)
-              .neq("processing_state", "COMPLETED")
-              .order("processing_updated_at", { ascending: false })
-              .limit(1)
               .maybeSingle();
-
-            if (processingOffer) {
-              const enrollmentPaymentId = profileData.enrollment_payment_id ||
-                processingOffer.metadata?.enrollment_payment_id;
-              const oneTimePaymentId = processingOffer.metadata
-                ?.one_time_payment_id;
-              const isEnrollmentFee = enrollmentPaymentId === payment.id;
-              const isOneTime = oneTimePaymentId === payment.id;
-
-              if (isEnrollmentFee) {
-                await supabase.from("profiles").update({
-                  enrollment_fee_paid: true,
-                }).eq("id", studentId).eq("enrollment_payment_id", payment.id);
-              }
-
-              if (isEnrollmentFee || isOneTime) {
-                await markEnrollmentStage(
-                  supabase,
-                  processingOffer.id,
-                  studentId,
-                  "BILLING_READY",
-                  {
-                    metadata: isOneTime
-                      ? { one_time_paid_at: new Date().toISOString() }
-                      : { enrollment_fee_paid_at: new Date().toISOString() },
-                  },
-                );
-                await completeEnrollment(
-                  supabase,
-                  processingOffer.id,
-                  studentId,
-                );
-                console.log("[Webhook] Enrollment completed by paid event.");
-              }
-            }
-          } catch (completionError) {
-            console.error("[Webhook] Enrollment completion failed:", {
-              type: completionError instanceof Error
-                ? completionError.name
-                : "UnknownError",
-            });
-          }
-        }
-
-        // --- CONFIRMAÇÃO DE PAGAMENTO VIA WHATSAPP ---
-        // Envia APENAS uma mensagem simples de confirmação, SEM links.
-        // A mensagem de Bem-vindo ao Império é disparada SOMENTE no fluxo de matrícula (PublicRegistration), NUNCA aqui.
-        if (
-          profileData &&
-          profileData.is_test_account !== true &&
-          profileData.phone &&
-          (event === "PAYMENT_CONFIRMED" || event === "PAYMENT_RECEIVED")
-        ) {
-          if (isAlreadyPaid) {
-            console.log(
-              "[Webhook] Payment confirmation WhatsApp skipped: already paid.",
+          if (enrollmentOfferError) throw enrollmentOfferError;
+          if (
+            !enrollmentOffer ||
+            ![enrollmentOffer.processing_by, enrollmentOffer.consumed_by]
+              .includes(subscriptionProfile.id)
+          ) {
+            throw new AsaasTriageError(
+              "provider_subscription_enrollment_mismatch",
+              subscriptionProfile.tenant_id,
+              subscriptionProfile.id,
             );
-          } else {
-            // Primeira confirmação real deste pagamento — dispara o evento de conversão.
-            sendMetaCapiEvent({
-              eventName: "Purchase",
-              phone: profileData.phone,
-              value: Number(payment.value) || undefined,
-            });
-            try {
-              const communication = profileData.tenant_id
-                ? await loadTenantCentralWhatsAppContext(
-                  supabase,
-                  profileData.tenant_id,
-                  "student",
-                )
-                : null;
-              const cleanPhone = normalizeBrazilianPhone(profileData.phone);
-              if (!communication || !cleanPhone || !EVOLUTION_API_KEYS.length) {
-                console.warn(
-                  "[Webhook] Payment confirmation WhatsApp skipped: tenant channel unavailable.",
-                );
-              } else {
-                const studentName = safeCommunicationText(
-                  profileData.full_name?.split(" ")[0],
-                  80,
-                ) || "Aluno";
-                const valorFormatado = payment.value
-                  ? `R$ ${Number(payment.value).toFixed(2).replace(".", ",")}`
-                  : "";
-                const confirmationMessage = `✅ *Pagamento confirmado${
-                  valorFormatado ? `, ${valorFormatado}` : ""
-                }!*\nObrigado, ${studentName}. Seu acesso na ${communication.identity.brandName} segue ativo.`;
-
-                let evoRes: Response | null = null;
-                for (const key of EVOLUTION_API_KEYS) {
-                  evoRes = await fetchComTimeout(
-                    `${EVOLUTION_API_BASE}/${
-                      encodeURIComponent(communication.instanceName)
-                    }`,
-                    {
-                      method: "POST",
-                      headers: {
-                        "apikey": key,
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        number: cleanPhone,
-                        text: confirmationMessage,
-                        delay: 1200,
-                        linkPreview: false,
-                      }),
-                    },
-                  );
-                  if (evoRes.status !== 401) break;
-                }
-
-                if (evoRes?.ok) {
-                  console.log("✅ Payment Confirmation WhatsApp Sent!");
-                } else {
-                  console.error(
-                    "❌ Falha ao enviar confirmação de pagamento:",
-                    { status: evoRes?.status },
-                  );
-                }
-              }
-            } catch (whatsappErr) {
-              console.error(
-                "❌ Error in Payment Confirmation WhatsApp flow:",
-                whatsappErr,
-              );
-            }
           }
         }
-        // -----------------------------
-
-        // LEDGER: a inserção no caixa é responsabilidade EXCLUSIVA do trigger
-        // ledger_on_payment_received (fonte única, idempotente por student_payment_id
-        // + índice único uq_financial_transactions_student_payment). O bloco de
-        // inserção direta que existia aqui foi removido em 03/07/2026 — era a origem
-        // do "caixa dobrado" (linha 'student_tuition Ref: pay_...' sem vínculo,
-        // duplicando a linha MENSALIDADE do trigger). NÃO reintroduzir.
+        studentId = subscriptionProfile.id;
+        studentTenantId = subscriptionProfile.tenant_id;
+        canonicalPaymentReference = parentReference;
       }
-    } else if (event === "PAYMENT_OVERDUE") {
-      console.log("⚠️ PAYMENT OVERDUE! Marking as overdue...");
 
-      const paymentData: Record<string, unknown> = {
-        asaas_payment_id: payment.id,
-        status: "OVERDUE",
-        updated_at: new Date().toISOString(),
-      };
+      if (!studentId || !studentTenantId || !canonicalPaymentReference) {
+        throw new AsaasTriageError("student_or_tenant_unresolved");
+      }
 
-      if (studentId) paymentData.student_id = studentId;
+      await resolveAsaasIntegration(
+        supabase,
+        studentTenantId,
+        "payment.event",
+      );
 
-      const { error: payError } = await supabase
-        .from("student_payments")
-        .update(paymentData)
-        .eq("asaas_payment_id", payment.id);
-
-      if (payError) {
-        console.error("[Webhook] Overdue payment update failed", {
-          code: payError.code,
+      if (
+        existingPayment?.student_id &&
+        existingPayment.student_id !== studentId
+      ) {
+        throw new AsaasTriageError(
+          "existing_payment_student_mismatch",
+          existingPayment.tenant_id || studentTenantId,
+          existingPayment.id,
+        );
+      }
+      if (
+        existingPayment?.tenant_id &&
+        existingPayment.tenant_id !== studentTenantId
+      ) {
+        throw new AsaasTriageError(
+          "existing_payment_tenant_mismatch",
+          existingPayment.tenant_id,
+          existingPayment.id,
+        );
+      }
+      if (
+        existingPayment?.provider_customer_id &&
+        !paymentCustomerMatchesCanonicalBinding(
+          existingPayment.provider_customer_id,
+          payment.customer,
+        )
+      ) {
+        throw new AsaasTriageError(
+          "existing_payment_customer_mismatch",
+          existingPayment.tenant_id || studentTenantId,
+          existingPayment.id,
+        );
+      }
+      if (!shouldApplyProviderEvent(existingPayment, eventAt, eventRank)) {
+        console.info("[Webhook] Older provider event ignored", {
+          event,
+          paymentId: payment.id,
         });
+        return;
       }
 
-      if (studentId) {
-        await supabase
-          .from("profiles")
-          .update({ status_financial: "OVERDUE" })
-          .eq("id", studentId);
-        console.log("✅ Profile Financial Status set to OVERDUE");
+      creditedAt = actualCreditAt(event, payment);
+      estimatedCreditAt = asaasDateToIso(payment.estimatedCreditDate);
+      const dueDate = String(payment.dueDate || "").trim();
+      const paymentDate = String(payment.paymentDate || "").trim();
+      if (
+        typeof body.id !== "string" || !body.id.trim() ||
+        !Number.isFinite(paymentValue) || paymentValue <= 0 ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) ||
+        (paymentDate && !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate))
+      ) {
+        throw new AsaasTriageError(
+          "active_payment_event_evidence_incomplete",
+          studentTenantId,
+          existingPayment?.id || studentId,
+        );
       }
-    } // Handle generic updates (Created, etc)
-    else {
-      console.log(`ℹ️ Generic Event: ${event}. Upserting info...`);
-
-      const paymentData: Record<string, unknown> = {
-        asaas_payment_id: payment.id,
-        value: payment.value,
-        status: payment.status,
-        due_date: payment.dueDate,
-        billing_type: payment.billingType,
-        invoice_url: payment.bankSlipUrl || payment.invoiceUrl,
-        description: payment.description,
-        payment_type: classifyStudentPaymentType(
-          payment.description,
-          payment.externalReference,
-        ),
-        updated_at: new Date().toISOString(),
-      };
-
-      // CRITICAL FIX: Only set student_id if it is defined.
-      if (studentId && studentTenantId) {
-        paymentData.student_id = studentId;
-        paymentData.tenant_id = studentTenantId;
-      }
-
-      const { error: upsertError } = await supabase
-        .from("student_payments")
-        .upsert(paymentData, { onConflict: "asaas_payment_id" });
-
-      if (upsertError) {
-        console.error("[Webhook] Generic payment upsert failed", {
-          code: upsertError.code,
+      const { data: activePaymentResult, error: activePaymentError } =
+        await supabase.rpc("apply_active_student_payment_event", {
+          p_provider_payment_id: payment.id,
+          p_expected_local_payment_id: existingPayment?.id || null,
+          p_expected_student_id: studentId,
+          p_expected_tenant_id: studentTenantId,
+          p_expected_provider_customer_id: payment.customer.trim(),
+          p_expected_provider_subscription_id:
+            String(payment.subscription || "").trim() || null,
+          p_canonical_reference: canonicalPaymentReference,
+          p_event_id: body.id.trim(),
+          p_event_name: event,
+          p_event_created_at: eventAt,
+          p_event_rank: eventRank,
+          p_provider_status: providerStatus,
+          p_provider_value: paymentValue,
+          p_due_date: dueDate,
+          p_payment_date: paymentDate || null,
+          p_billing_type: String(payment.billingType || "").trim() || null,
+          p_invoice_url: String(
+            payment.bankSlipUrl || payment.invoiceUrl || "",
+          ).trim() || null,
+          p_description: String(payment.description || "Mensalidade").trim(),
+          p_payment_type: classifyStudentPaymentType(
+            payment.description,
+            payment.externalReference,
+          ),
+          p_credited_at: creditedAt,
+          p_estimated_credit_at: estimatedCreditAt,
+          p_payload: body,
         });
+      if (activePaymentError) {
+        if (["22023", "23514"].includes(String(activePaymentError.code))) {
+          throw new AsaasTriageError(
+            "active_payment_event_database_rejected",
+            studentTenantId,
+            existingPayment?.id || studentId,
+          );
+        }
+        throw activePaymentError;
+      }
+      if (activePaymentResult?.ok !== true) {
+        throw new AsaasTriageError(
+          String(
+            activePaymentResult?.reason || "active_payment_event_not_applied",
+          ),
+          studentTenantId,
+          existingPayment?.id || studentId,
+        );
+      }
+      if (activePaymentResult.action === "IGNORED") return;
+      if (
+        typeof activePaymentResult.id !== "string" ||
+        !activePaymentResult.id
+      ) {
+        throw new Error("active_payment_event_result_invalid");
+      }
+      previousLocalStatus = typeof activePaymentResult.previous_status ===
+          "string"
+        ? activePaymentResult.previous_status
+        : null;
+      inactiveSettlementUpdateOnly =
+        activePaymentResult.inactive_update_only === true;
+      persistedPayment = {
+        id: activePaymentResult.id,
+        due_date: activePaymentResult.due_date || dueDate,
+      };
+    }
+
+    if (!studentId || !studentTenantId || !persistedPayment) {
+      throw new Error("student_payment_processing_state_invalid");
+    }
+
+    if (event === "PAYMENT_RECEIVED" && !creditedAt) {
+      await recordAsaasAutomationIssue(supabase, {
+        tenantId: studentTenantId,
+        kind: "CREDIT_DATE_MISSING",
+        severity: payment.billingType === "CREDIT_CARD" ? "HIGH" : "WARNING",
+        providerEntityId: payment.id,
+        localEntityId: persistedPayment.id,
+        fingerprint: `credit-date-missing:${payment.id}`,
+        details: {
+          billingType: payment.billingType || null,
+          paymentDate: payment.paymentDate || null,
+          estimatedCreditDate: payment.estimatedCreditDate || null,
+        },
+      });
+    }
+
+    const reviewReason = financialReviewReason(
+      event,
+      previousLocalStatus,
+      refundedAmount,
+    );
+    if (reviewReason) {
+      await recordAsaasAutomationIssue(supabase, {
+        tenantId: studentTenantId,
+        kind: "NON_FINAL_FINANCIAL_EVENT",
+        severity: event === "PAYMENT_DELETED" ? "CRITICAL" : "HIGH",
+        providerEntityId: payment.id,
+        localEntityId: persistedPayment.id,
+        fingerprint: `non-final:${event}:${payment.id}`,
+        details: {
+          reason: reviewReason,
+          providerStatus,
+          localStatusPreserved: previousLocalStatus,
+          refundedAmount,
+        },
+      });
+      throw new AsaasTriageError(
+        reviewReason,
+        studentTenantId,
+        persistedPayment.id,
+      );
+    }
+
+    const settledPayment = isSettledPaymentEvent(event);
+    const fullyRefunded = event === "PAYMENT_REFUNDED" ||
+      (Number.isFinite(paymentValue) &&
+        paymentValue > 0 &&
+        refundedAmount >= paymentValue);
+    const enrollmentPaymentUnsettled = fullyRefunded ||
+      event === "PAYMENT_RECEIVED_IN_CASH_UNDONE";
+
+    // A student's access is derived atomically from the newest matured
+    // competence. Never let arrival order between different charges decide
+    // whether the student is ACTIVE or OVERDUE.
+    if (
+      settledPayment || event === "PAYMENT_OVERDUE" ||
+      enrollmentPaymentUnsettled
+    ) {
+      const { data: financialStatus, error: financialStatusError } =
+        await supabase.rpc("recompute_student_financial_status", {
+          p_tenant_id: studentTenantId,
+          p_student_id: studentId,
+        });
+      if (financialStatusError) throw financialStatusError;
+      if (financialStatus?.ok !== true) {
+        throw new Error("student_financial_status_recompute_failed");
       }
     }
+
+    if (inactiveSettlementUpdateOnly) {
+      console.log("[Webhook] Inactive student settlement applied update-only", {
+        paymentId: payment.id,
+      });
+      return;
+    }
+
+    if (settledPayment || enrollmentPaymentUnsettled) {
+      const profileQuery = supabase
+        .from("profiles")
+        .select(
+          "role,tenant_id,phone,full_name,guardian_id,guardian_name,guardian_cpf,guardian_phone,enrollment_payment_id,subscription_id,is_test_account",
+        )
+        .eq("id", studentId)
+        .eq("tenant_id", studentTenantId)
+        .eq("role", "STUDENT");
+      const { data: profileData, error: profileFetchErr } = await profileQuery
+        .maybeSingle();
+      if (profileFetchErr) throw profileFetchErr;
+      if (!profileData) {
+        // The ledger correction is already complete. Profile-dependent
+        // enrollment and communication effects must not be retried/reactivated
+        // when offboarding finalized immediately after the financial write.
+        await recordAsaasAutomationIssue(supabase, {
+          tenantId: studentTenantId,
+          kind: isHistoricalReversal
+            ? "HISTORICAL_REVERSAL_PROFILE_MISSING"
+            : "ENROLLMENT_OBSERVATION_PROFILE_MISSING",
+          severity: "HIGH",
+          providerEntityId: payment.id,
+          localEntityId: persistedPayment.id,
+          fingerprint: `enrollment-observation-profile-missing:${payment.id}`,
+          details: {
+            event,
+            ledgerCorrectionApplied: true,
+          },
+        });
+        return;
+      }
+
+      const observationOutcome = settledPayment ? "SETTLED" : "UNSETTLED";
+      const observationBinding =
+        await resolveWebhookEnrollmentObservationBinding(supabase, {
+          tenantId: studentTenantId,
+          studentId,
+          providerPaymentId: payment.id,
+          externalReference: canonicalPaymentReference ||
+            String(payment.externalReference || "").trim() || null,
+          outcome: observationOutcome,
+          localPaymentId: persistedPayment.id,
+        });
+      if (observationBinding) {
+        const observation = await applyWebhookEnrollmentObservation(
+          supabase,
+          buildWebhookEnrollmentObservation({
+            tenantId: studentTenantId,
+            studentId,
+            offerId: observationBinding.offerId,
+            payment,
+            paymentKind: observationBinding.paymentKind,
+            outcome: observationOutcome,
+            externalReference: observationBinding.externalReference,
+            providerStatus,
+            providerValue: paymentValue,
+            persistedDueDate: persistedPayment.due_date,
+            localPaymentId: persistedPayment.id,
+          }),
+          persistedPayment.id,
+        );
+        if (!observation.applied) {
+          // A newer financial event or lifecycle transition won. The ledger
+          // remains durable, while enrollment and communication are omitted.
+          return;
+        }
+        console.log("[Webhook] Enrollment observation applied", {
+          paymentId: payment.id,
+          paymentKind: observationBinding.paymentKind,
+          action: observation.result.action || null,
+        });
+      }
+
+      if (settledPayment) {
+        console.log(`[Webhook] Processing settled payment: ${event}`);
+
+        const hasFinancialGuardian = Boolean(
+          profileData.guardian_id || profileData.guardian_cpf,
+        );
+        const financialPhone = hasFinancialGuardian
+          ? profileData.guardian_phone
+          : profileData.phone;
+        const financialName = hasFinancialGuardian
+          ? profileData.guardian_name
+          : profileData.full_name;
+
+        // Confirmation delivery is durable and idempotent. It is enqueued on
+        // every inbox retry, but only after provider settlement (never merely
+        // PAYMENT_CONFIRMED).
+        if (
+          profileData.is_test_account !== true &&
+          financialPhone
+        ) {
+          // The durable outbound claim, not the in-memory "already paid"
+          // snapshot, is the delivery idempotency key. This also repairs an
+          // exact inbox replay after a crash between the financial write and
+          // creation of the communication claim.
+          await deliverMetaPurchaseOnce({
+            admin: supabase,
+            tenantId: studentTenantId,
+            studentId,
+            localPaymentId: persistedPayment.id,
+            phone: financialPhone,
+            value: Number(payment.value) || undefined,
+          });
+          const payerName =
+            safeCommunicationText(financialName?.split(" ")[0], 80) ||
+            "Responsável";
+          const valorFormatado = payment.value
+            ? `R$ ${Number(payment.value).toFixed(2).replace(".", ",")}`
+            : "";
+          const confirmationMessage = `✅ *Pagamento confirmado${
+            valorFormatado ? `, ${valorFormatado}` : ""
+          }!*\nObrigado, ${payerName}. O acesso do aluno segue ativo.`;
+          const classDate = String(
+            persistedPayment.due_date ||
+              payment.dueDate ||
+              payment.paymentDate ||
+              eventAt.slice(0, 10),
+          ).slice(0, 10);
+          const { error: queueError } = await supabase
+            .from("notification_queue")
+            .insert({
+              tenant_id: studentTenantId,
+              teacher_id: null,
+              student_id: studentId,
+              student_name: financialName || profileData.full_name,
+              student_phone: financialPhone,
+              message_body: confirmationMessage,
+              scheduled_for: new Date().toISOString(),
+              status: "pending",
+              attempts: 0,
+              source_id: persistedPayment.id,
+              source_type: "ASAAS_PAYMENT",
+              class_date: classDate,
+              notification_kind: "PAYMENT_CONFIRMED",
+            });
+          if (queueError && queueError.code !== "23505") throw queueError;
+        }
+      }
+
+      // Ledger movements remain exclusively database-triggered from the
+      // persisted student_payment snapshot.
+    } else if (event === "PAYMENT_OVERDUE") {
+      console.log(
+        "[Webhook] Current financial state recomputed after overdue.",
+      );
+    } else {
+      console.log(`[Webhook] Provider snapshot applied: ${event}`);
+    }
   } catch (err: unknown) {
-    console.error("❌ CRITICAL WEBHOOK ERROR (background):", {
+    console.error("[Webhook] Durable payment processing failed", {
       type: err instanceof Error ? err.name : "UnknownError",
     });
+    throw err;
+  }
+}
+
+type DurableInboxClaim = {
+  provider_event_id: string;
+  event_name: string;
+  provider_entity_id: string;
+  payload: AsaasWebhookBody;
+  attempt_count: number;
+};
+
+async function dispatchPersistedAsaasEvent(
+  body: AsaasWebhookBody,
+): Promise<void> {
+  const paymentReference = body.payment?.externalReference ?? "";
+  if (
+    paymentReference.startsWith("wolfie-topup-order:") ||
+    paymentReference.startsWith("topup:")
+  ) {
+    await processWolfieTopupEvent(body);
+    return;
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("asaas_webhook_database_unavailable");
+  }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const saasReference = body.payment?.externalReference ||
+    body.subscription?.externalReference ||
+    "";
+  const saasCheckoutId = await resolveSaasCheckoutId(body);
+  if (saasReference.startsWith("saas:") || saasCheckoutId) {
+    if (!saasCheckoutId) {
+      throw new AsaasTriageError("saas_checkout_unresolved");
+    }
+    await processSaasCheckoutEvent(supabase, body, saasCheckoutId);
+    return;
+  }
+
+  const hubCheckoutId = await resolveHubCheckoutId(body);
+  if (paymentReference.startsWith("hub:") || hubCheckoutId) {
+    if (!hubCheckoutId) {
+      throw new AsaasTriageError("hub_checkout_unresolved");
+    }
+    await processHubPaymentEvent(body, hubCheckoutId);
+    return;
+  }
+
+  if (!body.payment) {
+    throw new AsaasTriageError("unsupported_unrouted_asaas_event");
+  }
+  await processarPagamento(body);
+}
+
+async function drainAsaasWebhookInbox(maxEvents = 25): Promise<{
+  processed: number;
+  retried: number;
+  triaged: number;
+}> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("asaas_webhook_database_unavailable");
+  }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const workerToken = crypto.randomUUID();
+  const stats = { processed: 0, retried: 0, triaged: 0 };
+
+  try {
+    for (
+      let index = 0;
+      index < Math.max(1, Math.min(maxEvents, 100));
+      index++
+    ) {
+      const { data, error } = await supabase.rpc(
+        "claim_next_asaas_webhook_event",
+        { p_worker_token: workerToken, p_lease_seconds: 240 },
+      );
+      if (error) throw error;
+      const claim = data as DurableInboxClaim | null;
+      if (!claim?.provider_event_id) break;
+
+      try {
+        await dispatchPersistedAsaasEvent(claim.payload);
+        const finished = await supabase.rpc("finish_asaas_webhook_event", {
+          p_event_id: claim.provider_event_id,
+          p_worker_token: workerToken,
+          p_outcome: "PROCESSED",
+          p_error: null,
+          p_tenant_id: null,
+          p_local_entity_id: null,
+        });
+        if (finished.error) throw finished.error;
+        if (finished.data?.ok !== true) {
+          throw new Error("asaas_inbox_claim_lost_before_finish");
+        }
+        stats.processed++;
+      } catch (processingError) {
+        const triage = processingError instanceof AsaasTriageError;
+        const reason = processingError instanceof Error
+          ? processingError.message
+          : "asaas_event_processing_failed";
+        const finished = await supabase.rpc("finish_asaas_webhook_event", {
+          p_event_id: claim.provider_event_id,
+          p_worker_token: workerToken,
+          p_outcome: triage ? "TRIAGE" : "RETRY",
+          p_error: reason,
+          p_tenant_id: triage ? processingError.tenantId : null,
+          p_local_entity_id: triage ? processingError.localEntityId : null,
+        });
+        if (finished.error) throw finished.error;
+        if (finished.data?.ok !== true) {
+          throw new Error("asaas_inbox_claim_lost_before_retry");
+        }
+        if (triage) stats.triaged++;
+        else stats.retried++;
+
+        // The claim RPC preserves order inside the same provider entity while
+        // skipping that entity during backoff. Keep draining so a transient
+        // failure for one payment/tenant cannot stall unrelated ready events.
+      }
+    }
+  } finally {
+    const released = await supabase.rpc("release_asaas_webhook_worker", {
+      p_worker_token: workerToken,
+    });
+    if (released.error) {
+      console.error("[Webhook] Worker lease release failed", {
+        code: released.error.code,
+      });
+    }
+  }
+
+  return stats;
+}
+
+function scheduleDurableInboxDrain(): void {
+  const drain = drainAsaasWebhookInbox().catch((error) => {
+    console.error("[Webhook] Durable drain deferred to cron", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
+  });
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+    EdgeRuntime.waitUntil(drain);
   }
 }
 
@@ -1752,12 +3091,53 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { ...corsHeaders, "Allow": "POST" },
+      headers: { ...corsHeaders, Allow: "POST" },
     });
   }
 
-  // 1. Validação rápida (corpo + token) — tudo que precisa retornar erro HTTP
-  //    pro ASAAS acontece AQUI, antes do ACK.
+  // Internal cron/operations route. The service key is compared server-side;
+  // this function deliberately has verify_jwt=false because Asaas itself does
+  // not send Supabase JWTs.
+  const internalBearer = req.headers.get("authorization")?.trim() || "";
+  const internalApiKey = req.headers.get("apikey")?.trim() || "";
+  const isInternalService = Boolean(
+    SUPABASE_SERVICE_ROLE_KEY &&
+      (internalBearer === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` ||
+        internalApiKey === SUPABASE_SERVICE_ROLE_KEY),
+  );
+  if (isInternalService) {
+    const operation = (await req.json().catch(() => ({}))) as {
+      operation?: unknown;
+      maxEvents?: unknown;
+    };
+    if (operation.operation !== "drain") {
+      return new Response(JSON.stringify({ error: "Unknown operation" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const maxEvents = Number(operation.maxEvents);
+    try {
+      const stats = await drainAsaasWebhookInbox(
+        Number.isInteger(maxEvents) ? maxEvents : 50,
+      );
+      return new Response(JSON.stringify({ success: true, ...stats }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error("[Webhook] Internal durable drain failed", {
+        type: error instanceof Error ? error.name : "unknown",
+      });
+      return new Response(JSON.stringify({ error: "DRAIN_FAILED" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Provider route: authentication and body validation happen before durable
+  // persistence. HTTP 200 is emitted only after the database confirms enqueue.
   const requestToken = req.headers.get("asaas-access-token");
   if (!ASAAS_WEBHOOK_TOKEN || requestToken !== ASAAS_WEBHOOK_TOKEN) {
     console.warn("[Webhook] Token ausente ou inválido.");
@@ -1768,8 +3148,9 @@ serve(async (req) => {
   }
 
   let body: AsaasWebhookBody;
+  let reqText = "";
   try {
-    const reqText = await readWebhookBody(req);
+    reqText = await readWebhookBody(req);
     if (!reqText) {
       return new Response(JSON.stringify({ error: "Empty body" }), {
         headers: corsHeaders,
@@ -1791,128 +3172,61 @@ serve(async (req) => {
     );
   }
 
-  // Top-ups are money-like durable credits. Process them synchronously and
-  // return 5xx on transient failure so Asaas retries instead of losing a
-  // confirmed purchase after an early 200 ACK.
-  const topupReference = body.payment?.externalReference ?? "";
-  if (
-    topupReference.startsWith("wolfie-topup-order:") ||
-    topupReference.startsWith("topup:")
-  ) {
-    try {
-      await processWolfieTopupEvent(body);
-      return new Response(JSON.stringify({ received: true }), {
-        headers: corsHeaders,
-        status: 200,
-      });
-    } catch (error) {
-      console.error("[Webhook] Wolfie top-up processing failed", {
-        type: error instanceof Error ? error.message : "unknown",
-      });
-      return new Response(JSON.stringify({ error: "TOPUP_RETRY_REQUIRED" }), {
-        headers: corsHeaders,
-        status: 503,
-      });
-    }
-  }
-
-  const saasReference = body.payment?.externalReference ||
-    body.subscription?.externalReference || "";
-  let saasCheckoutId: string | null = null;
-  try {
-    saasCheckoutId = await resolveSaasCheckoutId(body);
-  } catch (error) {
-    console.error("[Webhook] SaaS subscription routing failed", {
-      type: error instanceof Error ? error.message : "unknown",
+  const eventId = typeof body.id === "string" ? body.id.trim() : "";
+  const eventName = typeof body.event === "string" ? body.event.trim() : "";
+  const entityId = body.payment?.id?.trim() || body.subscription?.id?.trim() ||
+    "";
+  if (!eventId || eventId.length > 240 || !eventName || !entityId) {
+    return new Response(JSON.stringify({ error: "Invalid webhook event" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400,
     });
-    return new Response(JSON.stringify({ error: "SAAS_RETRY_REQUIRED" }), {
-      headers: corsHeaders,
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return new Response(JSON.stringify({ error: "Persistence unavailable" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 503,
     });
   }
 
-  if (saasReference.startsWith("saas:") || saasCheckoutId) {
-    if (!saasCheckoutId) {
-      console.warn("[Webhook] Referência de checkout SaaS inválida.");
-      const accessEvent = SAAS_ACCESS_EVENTS.has(body.event || "");
-      return new Response(
-        JSON.stringify(
-          accessEvent ? { error: "SAAS_RETRY_REQUIRED" } : { received: true },
-        ),
-        {
-          headers: corsHeaders,
-          status: accessEvent ? 503 : 200,
-        },
-      );
-    }
-    try {
-      const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-      await processSaasCheckoutEvent(supabase, body, saasCheckoutId);
-      return new Response(JSON.stringify({ received: true }), {
-        headers: corsHeaders,
-        status: 200,
-      });
-    } catch (error) {
-      console.error("[Webhook] SaaS subscription processing failed", {
-        type: error instanceof Error ? error.message : "unknown",
-      });
-      return new Response(JSON.stringify({ error: "SAAS_RETRY_REQUIRED" }), {
-        headers: corsHeaders,
-        status: 503,
-      });
-    }
-  }
-
-  let hubCheckoutId: string | null = null;
   try {
-    hubCheckoutId = await resolveHubCheckoutId(body);
-  } catch (error) {
-    console.error("[Webhook] Hub subscription routing failed", {
-      type: error instanceof Error ? error.message : "unknown",
-    });
-    return new Response(JSON.stringify({ error: "HUB_RETRY_REQUIRED" }), {
-      headers: corsHeaders,
-      status: 503,
-    });
-  }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const payloadHash = await sha256ExactHex(canonicalJson(body));
+    const { data: enqueueResult, error: enqueueError } = await supabase.rpc(
+      "enqueue_asaas_webhook_event",
+      {
+        p_event_id: eventId,
+        p_event_name: eventName,
+        p_entity_id: entityId,
+        p_event_created_at: asaasDateToIso(body.dateCreated),
+        p_payload: body,
+        p_payload_hash: payloadHash,
+      },
+    );
+    if (enqueueError) throw enqueueError;
 
-  // Hub/Wolfie subscriptions are access-bearing financial events. Process
-  // them synchronously with a durable inbox so a transient database failure
-  // returns 5xx and Asaas retries instead of silently losing access state.
-  if (topupReference.startsWith("hub:") || hubCheckoutId) {
-    try {
-      await processHubPaymentEvent(body, hubCheckoutId);
-      return new Response(JSON.stringify({ received: true }), {
-        headers: corsHeaders,
+    if (enqueueResult?.processable !== false) scheduleDurableInboxDrain();
+    return new Response(
+      JSON.stringify({
+        received: true,
+        duplicate: enqueueResult?.duplicate === true,
+        status: enqueueResult?.status || "RECEIVED",
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
-      });
-    } catch (error) {
-      console.error("[Webhook] Hub subscription processing failed", {
-        type: error instanceof Error ? error.message : "unknown",
-      });
-      return new Response(JSON.stringify({ error: "HUB_RETRY_REQUIRED" }), {
-        headers: corsHeaders,
+      },
+    );
+  } catch (error) {
+    console.error("[Webhook] Durable enqueue failed", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
+    return new Response(
+      JSON.stringify({ error: "PERSISTENCE_RETRY_REQUIRED" }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 503,
-      });
-    }
-  }
-
-  // 2. Processa os demais eventos em BACKGROUND e responde 200 imediatamente.
-  //    Isso evita o "Read timed out" do ASAAS: o banco/WhatsApp continuam
-  //    rodando depois da resposta, sem segurar a conexão do webhook.
-  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
-    EdgeRuntime.waitUntil(processarPagamento(body));
-  } else {
-    // Fallback: process in background (non-blocking) to prevent timeouts
-    processarPagamento(body).catch((err) =>
-      console.error("[Webhook] Background processing failed", {
-        type: err instanceof Error ? err.name : "UnknownError",
-      })
+      },
     );
   }
-
-  return new Response(JSON.stringify({ received: true }), {
-    headers: corsHeaders,
-    status: 200,
-  });
 });

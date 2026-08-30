@@ -1,5 +1,5 @@
--- Modo Turbo prospectivo: carteira tenant-safe, ofensiva de 30 dias, suspensao
--- por relato do aluno, decisao explicita da direcao e preservacao financeira
+-- Modo Turbo prospectivo: carteira tenant-safe, ofensiva de 30 dias, penalidade
+-- somente apos decisao final da direcao e preservacao financeira
 -- anterior a 20/08/2026. Todos os fixtures sao revertidos ao final.
 
 \set ON_ERROR_STOP on
@@ -115,7 +115,12 @@ update public.profiles
        role = 'TEACHER',
        full_name = 'Professor Turbo B',
        start_date = public.teacher_turbo_business_date() - 15
- where id = '00000000-0000-4000-8000-000000000974';
+where id = '00000000-0000-4000-8000-000000000974';
+
+delete from public.teacher_turbo_state
+ where teacher_id = '00000000-0000-4000-8000-000000000974';
+select public.teacher_turbo_ensure_state('00000000-0000-4000-8000-000000000974');
+select public.teacher_turbo_refresh_eligibility('00000000-0000-4000-8000-000000000974');
 
 update public.profiles p
    set tenant_id = 'turbo-streak-school-a',
@@ -146,7 +151,12 @@ select md5('turbo-streak-booking-a-' || g::text)::uuid,
        'turbo-streak-school-a',
        '00000000-0000-4000-8000-000000000973',
        md5('turbo-streak-student-a-' || g::text)::uuid,
-       'Segunda', '08:00', 'SCHEDULED', date '2026-06-01'
+       to_char(
+         public.teacher_turbo_business_date() -
+           case when g = 1 then 2 when g = 2 then 1 else 0 end,
+         'FMDay'
+       ),
+       '08:00', 'SCHEDULED', date '2026-06-01'
 from generate_series(1, 10) g;
 
 insert into public.bookings (
@@ -157,7 +167,8 @@ select md5('turbo-streak-booking-b-' || g::text)::uuid,
        'turbo-streak-school-b',
        '00000000-0000-4000-8000-000000000974',
        md5('turbo-streak-student-b-' || g::text)::uuid,
-       'Terca', '09:00', 'SCHEDULED', public.teacher_turbo_business_date() - 15
+       to_char(public.teacher_turbo_business_date(), 'FMDay'),
+       '09:00', 'SCHEDULED', public.teacher_turbo_business_date() - 15
 from generate_series(1, 10) g;
 
 -- Um booking corrompido entre escolas ainda aparece na carteira financeira
@@ -294,8 +305,9 @@ select pg_temp.assert_true(
   'Turbo nao ativou ao completar 30 dias corridos'
 );
 
--- Dois relatos simultaneos: inocentar um professor remove somente aquela
--- suspensao; o segundo relato continua bloqueando ate ser decidido.
+-- Dois relatos simultaneos ainda pendentes sao apenas sinais para a direcao:
+-- nao suspendem o Turbo, nao abrem disputa e nao alteram a ofensiva. A decisao
+-- final continua auditavel, mas so TEACHER_ABSENT pode aplicar penalidade.
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name,
   class_date, class_time, teacher_name, token,
@@ -310,7 +322,7 @@ values
     'TEACHER_NO_SHOW',
     ((public.teacher_turbo_business_date() - 2)::timestamp + interval '12 hours') AT TIME ZONE 'America/Sao_Paulo',
     'AWAITING_TEACHER',
-    md5('turbo-streak-booking-a-1')::text, 'booking'
+    (md5('turbo-streak-booking-a-1')::uuid)::text, 'booking'
   ),
   (
     '00000000-0000-4000-8000-00000000097e', 'turbo-streak-school-a',
@@ -320,23 +332,51 @@ values
     'TEACHER_NO_SHOW',
     ((public.teacher_turbo_business_date() - 1)::timestamp + interval '12 hours') AT TIME ZONE 'America/Sao_Paulo',
     'AWAITING_TEACHER',
-    md5('turbo-streak-booking-a-2')::text, 'booking'
+    (md5('turbo-streak-booking-a-2')::uuid)::text, 'booking'
   );
 
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
+
 select pg_temp.assert_true(
-  public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'SUSPENDED'
-  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'suspensions_open')::integer = 2
+  public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'ACTIVE'
+  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'suspensions_open')::integer = 0
   and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'active_days')::integer
       = public.teacher_turbo_business_date() - date '2026-07-31',
-  'TEACHER_NO_SHOW nao suspendeu imediatamente o Turbo'
+  'relatos TEACHER_NO_SHOW ainda pendentes penalizaram o Turbo'
 );
 
 select pg_temp.assert_true(
   public.teacher_turbo_status_at(
     '00000000-0000-4000-8000-000000000973',
     public.teacher_turbo_business_date() - 2
-  )->>'status' = 'SUSPENDED',
-  'relato aberto nao suspendeu o Turbo na data em que foi feito'
+  )->>'status' = 'ACTIVE'
+  and (public.teacher_turbo_status_at(
+    '00000000-0000-4000-8000-000000000973',
+    public.teacher_turbo_business_date() - 2
+  )->>'active')::boolean,
+  'relato pendente alterou retroativamente o Turbo na data em que foi feito'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id in (
+       '00000000-0000-4000-8000-00000000097d',
+       '00000000-0000-4000-8000-00000000097e'
+     )
+  )
+  and not exists (
+    select 1
+      from public.teacher_turbo_events
+     where source_type = 'attendance_confirmation'
+       and source_id in (
+         '00000000-0000-4000-8000-00000000097d',
+         '00000000-0000-4000-8000-00000000097e'
+       )
+  ),
+  'relatos pendentes abriram disputa ou evento preventivo'
 );
 
 select pg_temp.assert_true(
@@ -352,15 +392,43 @@ set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","r
 select pg_temp.assert_true(
   public.resolve_attendance_conflict_v2(
     '00000000-0000-4000-8000-00000000097d', 'TEACHER_PRESENT', 'Professor comprovou presenca'
-  )->>'turbo_action' = 'SUSPENSION_REMAINS',
-  'primeira decisao ignorou a segunda suspensao ainda aberta'
+  )->>'turbo_action' = 'RESTORED',
+  'primeira inocentacao nao preservou o Turbo ativo'
+);
+
+select pg_temp.assert_true(
+  public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'ACTIVE'
+  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'suspensions_open')::integer = 0
+  and (select status = 'DISMISSED' and verdict = 'TEACHER_PRESENT'
+         from public.teacher_turbo_disputes
+        where confirmation_id = '00000000-0000-4000-8000-00000000097d')
+  and not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id = '00000000-0000-4000-8000-00000000097e'
+  ),
+  'primeira inocentacao penalizou o professor ou materializou o segundo relato pendente'
+);
+
+select pg_temp.assert_true(
+  (public.resolve_attendance_conflict_v2(
+    '00000000-0000-4000-8000-00000000097d', 'TEACHER_ABSENT', 'Repeticao nao pode reverter absolvimento'
+  )->>'already')::boolean,
+  'primeira inocentacao nao foi idempotente'
 );
 
 select pg_temp.assert_true(
   public.resolve_attendance_conflict(
     '00000000-0000-4000-8000-00000000097e', true, 'Compatibilidade: professor presente'
   )->>'turbo_action' = 'RESTORED',
-  'wrapper legado nao restaurou o ciclo depois da ultima inocentacao'
+  'wrapper legado nao preservou o Turbo na segunda inocentacao'
+);
+
+select pg_temp.assert_true(
+  (public.resolve_attendance_conflict(
+    '00000000-0000-4000-8000-00000000097e', false, 'Repeticao legada nao pode reverter absolvimento'
+  )->>'already')::boolean,
+  'segunda inocentacao nao foi idempotente no wrapper legado'
 );
 
 select pg_temp.assert_true(
@@ -373,6 +441,9 @@ select pg_temp.assert_true(
 );
 
 reset role;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
 
 select pg_temp.assert_true(
   public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'ACTIVE'
@@ -395,12 +466,42 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  (select count(*) = 1
-     from public.teacher_turbo_events
+  (select count(*) = 2
+     from public.teacher_turbo_disputes
     where teacher_id = '00000000-0000-4000-8000-000000000973'
-      and event_type = 'DISPUTE_DISMISSED'
-      and source_id = '00000000-0000-4000-8000-00000000097d'),
-  'sincronizacao repetida duplicou o evento de decisao'
+      and confirmation_id in (
+        '00000000-0000-4000-8000-00000000097d',
+        '00000000-0000-4000-8000-00000000097e'
+      )
+      and status = 'DISMISSED'
+      and verdict = 'TEACHER_PRESENT')
+  and (select count(*) = 2
+         from public.teacher_turbo_events
+        where teacher_id = '00000000-0000-4000-8000-000000000973'
+          and event_type = 'DISPUTE_REPORTED'
+          and source_id in (
+            '00000000-0000-4000-8000-00000000097d',
+            '00000000-0000-4000-8000-00000000097e'
+          ))
+  and (select count(*) = 2
+         from public.teacher_turbo_events
+        where teacher_id = '00000000-0000-4000-8000-000000000973'
+          and event_type = 'DISPUTE_DISMISSED'
+          and source_id in (
+            '00000000-0000-4000-8000-00000000097d',
+            '00000000-0000-4000-8000-00000000097e'
+          ))
+  and not exists (
+    select 1
+      from public.teacher_turbo_events
+     where teacher_id = '00000000-0000-4000-8000-000000000973'
+       and event_type = 'ABSENCE_CONFIRMED'
+       and source_id in (
+         '00000000-0000-4000-8000-00000000097d',
+         '00000000-0000-4000-8000-00000000097e'
+       )
+  ),
+  'inocentacoes nao ficaram auditaveis uma vez ou criaram penalidade'
 );
 
 -- Perder a carteira corta o Turbo; recuperar o decimo aluno reabre a
@@ -431,6 +532,7 @@ select pg_temp.assert_true(
 
 -- Falta confirmada pela direcao: decisao final, reset no dia da aula e evento
 -- unico, mesmo com trigger + chamada explicita de sincronizacao.
+set local role postgres;
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name,
   class_date, class_time, teacher_name, token,
@@ -442,11 +544,23 @@ values (
   'Aluno Turbo A 3', public.teacher_turbo_business_date(), '08:00',
   'Professor Turbo A', 'turbo-streak-no-show-a-confirmed',
   'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-  md5('turbo-streak-booking-a-3')::text, 'booking'
+  (md5('turbo-streak-booking-a-3')::uuid)::text, 'booking'
 );
+set local role authenticated;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
+
+select pg_temp.assert_true(
+  public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'ACTIVE'
+  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'suspensions_open')::integer = 0
+  and not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id = '00000000-0000-4000-8000-00000000097f'
+  ),
+  'relato final ainda pendente penalizou o Turbo antes da decisao'
+);
 
 select pg_temp.assert_true(
   public.resolve_attendance_conflict_v2(
@@ -464,6 +578,9 @@ select pg_temp.assert_true(
 
 reset role;
 
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
+
 select pg_temp.assert_true(
   public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'status' = 'BUILDING'
   and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000973')->>'days_clean')::integer = 0
@@ -479,17 +596,25 @@ select pg_temp.assert_true(
   (select count(*) = 1
      from public.teacher_turbo_events
     where event_type = 'ABSENCE_CONFIRMED'
-      and source_id = '00000000-0000-4000-8000-00000000097f'),
+      and source_id = '00000000-0000-4000-8000-00000000097f')
+  and (select count(*) = 1
+         from public.teacher_turbo_events
+        where event_type = 'DISPUTE_REPORTED'
+          and source_id = '00000000-0000-4000-8000-00000000097f'),
   'decisao de falta nao ficou auditavel/idempotente'
 );
 
 -- Professor ainda construindo a ofensiva: uma falta direta tambem volta a zero.
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000972","role":"authenticated"}';
+
 select pg_temp.assert_true(
   public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'status' = 'BUILDING'
   and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'days_clean')::integer = 15,
   'fixture do professor com 15 dias nao foi montado'
 );
 
+set local role postgres;
 insert into public.class_logs (
   id, tenant_id, teacher_id, student_id, presence, date, class_date
 )
@@ -498,6 +623,8 @@ values (
   '00000000-0000-4000-8000-000000000974', md5('turbo-streak-student-b-1')::uuid,
   'Falta do Professor', public.teacher_turbo_business_date(), public.teacher_turbo_business_date()
 );
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000972","role":"authenticated"}';
 
 select pg_temp.assert_true(
   (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'days_clean')::integer = 0
@@ -506,6 +633,7 @@ select pg_temp.assert_true(
 );
 
 -- Isolamento: diretora A nao lista, le nem decide dados da escola B.
+set local role postgres;
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name,
   class_date, class_time, teacher_name, token,
@@ -517,8 +645,9 @@ values (
   'Aluno Turbo B 2', public.teacher_turbo_business_date(), '09:00',
   'Professor Turbo B', 'turbo-streak-no-show-b',
   'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-  md5('turbo-streak-booking-b-2')::text, 'booking'
+  (md5('turbo-streak-booking-b-2')::uuid)::text, 'booking'
 );
+set local role authenticated;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
@@ -691,7 +820,7 @@ values
     'Aluno Turbo B 3', public.teacher_turbo_business_date(), '09:00',
     'Professor Turbo B', 'turbo-streak-invalid-response',
     'STUDENT_PRESENT', now(), 'CONFLICT',
-    md5('turbo-streak-booking-b-3')::text, 'booking'
+    (md5('turbo-streak-booking-b-3')::uuid)::text, 'booking'
   ),
   (
     '00000000-0000-4000-8000-000000000979', 'turbo-streak-school-b',
@@ -699,7 +828,7 @@ values
     'Aluno Turbo B 4', public.teacher_turbo_business_date(), '09:00',
     'Professor Turbo B', 'turbo-streak-invalid-confirmed',
     'STUDENT_PRESENT', now(), 'CONFIRMED',
-    md5('turbo-streak-booking-b-4')::text, 'booking'
+    (md5('turbo-streak-booking-b-4')::uuid)::text, 'booking'
   ),
   (
     '00000000-0000-4000-8000-000000000980', 'turbo-streak-school-b',
@@ -707,7 +836,7 @@ values
     'Aluno Turbo B 5', public.teacher_turbo_business_date(), '09:00',
     'Professor Turbo B', 'turbo-streak-invalid-cancelled',
     'TEACHER_NO_SHOW', now(), 'CANCELLED',
-    md5('turbo-streak-booking-b-5')::text, 'booking'
+    (md5('turbo-streak-booking-b-5')::uuid)::text, 'booking'
   ),
   (
     '00000000-0000-4000-8000-000000000981', 'turbo-streak-school-b',
@@ -715,7 +844,7 @@ values
     'Aluno Turbo B 6', public.teacher_turbo_business_date(), '09:00',
     'Professor Turbo B', 'turbo-streak-response-removed',
     'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-    md5('turbo-streak-booking-b-6')::text, 'booking'
+    (md5('turbo-streak-booking-b-6')::uuid)::text, 'booking'
   ),
   (
     '00000000-0000-4000-8000-000000000982', 'turbo-streak-school-b',
@@ -723,7 +852,7 @@ values
     'Aluno Turbo B 7', public.teacher_turbo_business_date(), '09:00',
     'Professor Turbo B', 'turbo-streak-confirmation-cancelled',
     'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-    md5('turbo-streak-booking-b-7')::text, 'booking'
+    (md5('turbo-streak-booking-b-7')::uuid)::text, 'booking'
   );
 
 set local role authenticated;
@@ -759,9 +888,17 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'status' = 'SUSPENDED'
-  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 2,
-  'fixtures de remocao/cancelamento nao abriram duas suspensoes'
+  public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'status' = 'BUILDING'
+  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 0
+  and not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id in (
+       '00000000-0000-4000-8000-000000000981',
+       '00000000-0000-4000-8000-000000000982'
+     )
+  ),
+  'fixtures ainda pendentes abriram suspensao ou disputa preventiva'
 );
 
 update public.attendance_confirmations
@@ -769,11 +906,19 @@ update public.attendance_confirmations
  where id = '00000000-0000-4000-8000-000000000981';
 
 select pg_temp.assert_true(
-  (select status = 'DISMISSED' and verdict = 'CANCELLED'
-     from public.teacher_turbo_disputes
-    where confirmation_id = '00000000-0000-4000-8000-000000000981')
-  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 1,
-  'remover TEACHER_NO_SHOW deixou a suspensao OPEN'
+  not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id = '00000000-0000-4000-8000-000000000981'
+  )
+  and not exists (
+    select 1
+      from public.teacher_turbo_events
+     where source_type = 'attendance_confirmation'
+       and source_id = '00000000-0000-4000-8000-000000000981'
+  )
+  and (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 0,
+  'corrigir relato ainda pendente materializou disputa ou penalidade'
 );
 
 update public.attendance_confirmations
@@ -790,14 +935,19 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
-  (select count(*) = 2
+  (select count(*) = 1
      from public.teacher_turbo_events
     where event_type = 'DISPUTE_DISMISSED'
       and source_id in (
         '00000000-0000-4000-8000-000000000981',
         '00000000-0000-4000-8000-000000000982'
-      )),
-  'fechamento automatico nao ficou auditavel uma vez por confirmacao'
+      ))
+  and not exists (
+    select 1
+      from public.teacher_turbo_events
+     where source_id = '00000000-0000-4000-8000-000000000981'
+  ),
+  'cancelamento final nao ficou auditavel uma vez ou correcao pendente criou evento'
 );
 
 -- Corrigir a data de uma fonte atualiza o mesmo evento, em vez de manter a data
@@ -875,7 +1025,7 @@ values
     'Aluno Turbo A 4', public.teacher_turbo_business_date(), '10:00',
     'Professor Turbo B', 'turbo-streak-corrupt-teacher-tenant',
     'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-    md5('turbo-streak-booking-a-4')::text, 'booking', null
+    (md5('turbo-streak-booking-a-4')::uuid)::text, 'booking', null
   ),
   (
     '00000000-0000-4000-8000-000000000984', 'turbo-streak-school-b',
@@ -883,7 +1033,7 @@ values
     'Aluno Turbo B 1', public.teacher_turbo_business_date(), '10:00',
     'Professor Turbo B', 'turbo-streak-corrupt-class-log',
     'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-    md5('turbo-streak-booking-b-1')::text, 'booking',
+    (md5('turbo-streak-booking-b-1')::uuid)::text, 'booking',
     '00000000-0000-4000-8000-00000000097b'
   );
 
@@ -938,8 +1088,9 @@ select pg_temp.assert_true(
   'rejeicao por dados inconsistentes alterou as confirmacoes'
 );
 
--- Uma suspensao valida da escola antiga continua auditavel, mas a transferencia
--- mono-tenant do professor abre um ciclo novo e o status atual nao a carrega.
+-- Um relato ainda pendente da escola antiga continua na confirmacao de origem,
+-- sem virar disputa ou suspensao. A transferencia mono-tenant abre ciclo novo
+-- sem carregar ofensiva ou falta da escola anterior.
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name,
   class_date, class_time, teacher_name, token,
@@ -951,17 +1102,31 @@ values (
   'Aluno Turbo B 8', public.teacher_turbo_business_date(), '10:00',
   'Professor Turbo B', 'turbo-streak-before-tenant-transfer',
   'TEACHER_NO_SHOW', now(), 'AWAITING_TEACHER',
-  md5('turbo-streak-booking-b-8')::text, 'booking'
+  (md5('turbo-streak-booking-b-8')::uuid)::text, 'booking'
 );
 
 select pg_temp.assert_true(
-  (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 1,
-  'fixture de suspensao anterior a transferencia nao abriu'
+  (public.teacher_turbo_status('00000000-0000-4000-8000-000000000974')->>'suspensions_open')::integer = 0
+  and not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id = '00000000-0000-4000-8000-000000000986'
+  )
+  and not exists (
+    select 1
+      from public.teacher_turbo_events
+     where source_type = 'attendance_confirmation'
+       and source_id = '00000000-0000-4000-8000-000000000986'
+  ),
+  'relato pendente anterior a transferencia abriu disputa ou suspensao'
 );
 
 update public.profiles
    set tenant_id = 'turbo-streak-school-a'
  where id = '00000000-0000-4000-8000-000000000974';
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000971","role":"authenticated"}';
 
 select pg_temp.assert_true(
   (select tenant_id = 'turbo-streak-school-a'
@@ -978,6 +1143,7 @@ select pg_temp.assert_true(
   'transferencia entre escolas carregou ofensiva/falta/suspensao antiga'
 );
 
+set local role postgres;
 select pg_temp.assert_true(
   (select count(*) = 1
           and min(tenant_id) = 'turbo-streak-school-a'
@@ -986,10 +1152,15 @@ select pg_temp.assert_true(
     where teacher_id = '00000000-0000-4000-8000-000000000974'
       and event_type = 'STREAK_INITIALIZED'
       and source_type = 'tenant_transfer')
-  and (select status = 'OPEN' and tenant_id = 'turbo-streak-school-b'
-         from public.teacher_turbo_disputes
-        where confirmation_id = '00000000-0000-4000-8000-000000000986'),
-  'transferencia nao registrou novo ciclo ou apagou auditoria da escola anterior'
+  and not exists (
+    select 1
+      from public.teacher_turbo_disputes
+     where confirmation_id = '00000000-0000-4000-8000-000000000986'
+  )
+  and (select status = 'AWAITING_TEACHER' and tenant_id = 'turbo-streak-school-b'
+         from public.attendance_confirmations
+        where id = '00000000-0000-4000-8000-000000000986'),
+  'transferencia nao registrou novo ciclo ou materializou relato pendente antigo'
 );
 
 -- Os tres gatilhos que podem tocar mais de um professor declaram a aquisicao

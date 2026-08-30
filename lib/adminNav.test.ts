@@ -19,7 +19,7 @@ const TELAS_ANTERIORES = [
   'class_skills', 'training', 'oral-tests', 'payments', 'student-payments', 'cashflow', 'dre',
   'balancete', 'margin', 'ai-costs', 'verify-rooms', 'financial', 'crm', 'marketing',
   'referral-admin', 'vendors-mgmt', 'contracts', 'settings_school', 'automation', 'automations',
-  'admin_workflows',
+  'admin_workflows', 'whatsapp',
 ];
 
 describe('navegação do diretor', () => {
@@ -76,5 +76,13 @@ describe('navegação do diretor', () => {
     const primary = ADMIN_NAV.filter(g => g.primary);
     expect(primary.length).toBeGreaterThanOrEqual(3);
     expect(primary.length).toBeLessThanOrEqual(5);
+  });
+
+  it('agrupa conversas, conexão e disparos sem lotar a barra móvel', () => {
+    const whatsapp = groupForTab('whatsapp');
+    expect(whatsapp?.section).toBe('Comunicação');
+    expect(whatsapp?.primary).not.toBe(true);
+    expect(whatsapp?.tabs.map(tab => tab.id)).toEqual(['whatsapp', 'automation', 'automations']);
+    expect(groupForTab('automation')?.id).toBe('whatsapp');
   });
 });

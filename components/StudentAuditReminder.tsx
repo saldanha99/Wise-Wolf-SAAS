@@ -11,7 +11,9 @@ const StudentAuditReminder: React.FC = () => {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.rpc('my_attendance_audits');
-      const n = Array.isArray(data) ? data.filter((a: any) => !a.student_response).length : 0;
+      const n = Array.isArray(data)
+        ? data.filter((a: any) => !a.student_response && a.can_correct === true).length
+        : 0;
       setPending(n);
     })();
   }, []);
@@ -32,7 +34,7 @@ const StudentAuditReminder: React.FC = () => {
         <p className="font-black text-sm leading-tight">
           Você tem {pending} aula{pending > 1 ? 's' : ''} pra confirmar
         </p>
-        <p className="text-[11px] text-white/85">Toque para auditar se {pending > 1 ? 'elas aconteceram' : 'ela aconteceu'} — leva 1 segundo.</p>
+        <p className="text-[11px] text-white/85">Toque para contar o que aconteceu {pending > 1 ? 'com elas' : 'com ela'} — leva 1 segundo.</p>
       </div>
       <ChevronRight size={20} className="shrink-0" />
     </button>

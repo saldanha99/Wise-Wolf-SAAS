@@ -3,8 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { Users, Clock, CheckCircle, TrendingUp, Calendar, ArrowRight, BookOpen, Video, Zap, AlertCircle, Lock, MessageCircle, Send, RefreshCw } from 'lucide-react';
 import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { supabase } from '../lib/supabase';
-import { localMonth } from '../lib/dateUtils';
+import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
+import { localMonth, localYMD } from '../lib/dateUtils';
+import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
 import { WolfieAssignButton } from './WolfieAssignButton';
@@ -17,6 +18,21 @@ interface TeacherDashboardProps {
   user: UserType;
   tenantId?: string;
   onNavigate?: (tab: string) => void;
+}
+
+function saoPauloDateTime(value: string): { date: string; time: string } | null {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return {
+    date: `${byType.year}-${byType.month}-${byType.day}`,
+    time: `${byType.hour}:${byType.minute}`,
+  };
 }
 
 const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onNavigate }) => {
@@ -38,8 +54,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
   const [loading, setLoading] = useState(true);
   const [sentReminders, setSentReminders] = useState<Set<string>>(new Set());
   const [complianceLocked, setComplianceLocked] = useState({ isLocked: false, reason: '' });
-  // Configuração de disparo manual: instância do professor + template + nome
-  const [teacherWa, setTeacherWa] = useState<{ instance: string | null; template: string | null; name: string; automation: boolean }>({ instance: null, template: null, name: '', automation: false });
+  const [teacherWa, setTeacherWa] = useState<{ automation: boolean | null }>({ automation: null });
   // Estado por aula: 'sending' | 'sent' | 'error'
   const [dispatching, setDispatching] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   // Aceite de contrato PJ pendente (contas criadas sem passar pelo onboarding nascem com
@@ -49,28 +64,23 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
   const effectiveTenantId = tenantId || user.tenantId;
 
-  // Template default usado quando o professor não definiu o seu
-  const DEFAULT_TEMPLATE = `Oi {student_name}, tudo bem? 👋\n\nLembrando que nossa aula começa em 30 minutos, às *{class_time}*.\n\n{class_link}\n\nTe espero! 🐺`;
-
-  // Renderiza o template substituindo as variáveis {chave}
-  const renderTemplate = (tpl: string, vars: Record<string, string>) =>
-    tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
-
-  // Busca instância + template do professor para o disparo manual
+  // Busca somente o modo. Os demais dados do envio ficam no servidor.
   useEffect(() => {
     if (!user?.id) return;
+    // Fail-safe: enquanto a preferência não foi confirmada pelo servidor, o
+    // disparo manual fica bloqueado para não concorrer com uma possível AUTO.
+    setTeacherWa(previous => ({ ...previous, automation: null }));
     (async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, whatsapp_instance, lesson_reminder_template, date_automation_enabled')
+        .select('date_automation_enabled')
         .eq('id', user.id)
         .single();
       if (data) {
         setTeacherWa({
-          instance: data.whatsapp_instance || null,
-          template: data.lesson_reminder_template || null,
-          name: data.full_name || user.name || '',
-          automation: !!data.date_automation_enabled,
+          automation: typeof data.date_automation_enabled === 'boolean'
+            ? data.date_automation_enabled
+            : null,
         });
       }
     })();
@@ -89,43 +99,72 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
     })();
   }, [user?.id]);
 
-  // Dispara a mensagem personalizada pela instância do professor (Evolution API)
+  // O navegador envia apenas a identidade da ocorrência; destino, instância,
+  // template, horário e link são validados e montados no servidor.
   const handleDispatch = async (aula: any, key: string) => {
-    if (!aula.phone) {
-      alert('Este aluno não tem telefone cadastrado.');
-      return;
-    }
-    if (!teacherWa.instance) {
-      alert('Conecte seu WhatsApp (QR Code) na seção "Conexão Pessoal" para disparar pela sua instância.');
-      return;
-    }
     setDispatching(prev => ({ ...prev, [key]: 'sending' }));
     try {
-      const classLink = aula.meet || user.meeting_link || '';
-      const tpl = (teacherWa.template && teacherWa.template.trim()) ? teacherWa.template : DEFAULT_TEMPLATE;
-      const message = renderTemplate(tpl, {
-        student_name: (aula.name || '').split(' ')[0],
-        class_time: aula.time || '',
-        teacher_name: teacherWa.name,
-        class_link: classLink,
-        tenant_name: '',
-      });
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session?.access_token) {
+        throw new Error('Sessão expirada. Entre novamente.');
+      }
 
-      const { data, error } = await supabase.functions.invoke('send-class-notification', {
-        body: {
-          type: 'CUSTOM',
-          student_name: aula.name,
-          student_phone: aula.phone,
-          teacher_name: teacherWa.name,
-          date: 'hoje',
-          time: aula.time || '',
-          instanceName: teacherWa.instance,
-          meeting_link: classLink,
-          message,
+      const response = await fetch(`${FUNCTIONS_URL}/send-class-notification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionData.session.access_token}`,
+          'apikey': SUPABASE_ANON_KEY,
         },
+        body: JSON.stringify({
+          action: 'CLASS_REMINDER',
+          source_id: aula.source_id,
+          source_type: aula.source_type,
+          class_date: aula.class_date,
+        }),
       });
 
-      if (error || (data && data.error)) throw new Error(error?.message || data?.error || 'Falha no envio');
+      const rawBody = await response.text();
+      let fnData: any = {};
+      try {
+        fnData = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        fnData = { raw: rawBody };
+      }
+
+      if (!response.ok) {
+        const reason = fnData?.error
+          ? `${fnData.error}`
+          : `status_${response.status}`;
+        if (reason === "whatsapp_instance_unavailable") {
+          throw new Error("Seu WhatsApp não está conectado para disparos de aluno. Verifique a conexão em Conexão Pessoal.");
+        }
+        if (reason === "evolution_api_key_not_configured") {
+          throw new Error("Erro de configuração do provedor de WhatsApp (API key).");
+        }
+        if (reason === "invalid_student_phone") {
+          throw new Error("Número do aluno inválido.");
+        }
+        if (reason === "notification_already_claimed") {
+          throw new Error(
+            "Este envio já foi solicitado, mas o WhatsApp ainda não confirmou a entrega.",
+          );
+        }
+        const detail = fnData?.provider_response
+          ? ` (${fnData.provider_response})`
+          : fnData?.status
+          ? ` [provider status ${fnData.status}]`
+          : '';
+        throw new Error(`${reason}${detail}`);
+      }
+      if (fnData?.error) throw new Error(fnData.error);
+      if (
+        fnData?.delivery !== 'accepted' ||
+        typeof fnData?.provider_message_id !== 'string' ||
+        !fnData.provider_message_id.trim()
+      ) {
+        throw new Error('O WhatsApp não confirmou o envio. A solicitação não será repetida automaticamente.');
+      }
       setDispatching(prev => ({ ...prev, [key]: 'sent' }));
     } catch (err: any) {
       console.error('Erro ao disparar:', err);
@@ -174,9 +213,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
       // 2. Fetch Dashboard Stats
       const now = new Date();
-      const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-      const todayDay = DAYS[now.getDay()];
-      const todayISO = now.toISOString().split('T')[0];
+      const todayISO = localYMD(now);
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
       // 1. Fetch Bookings for stats
@@ -185,12 +222,14 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .select('student_id, day_of_week, time_slot, module, start_date')
         .eq('teacher_id', user.id)
         .eq('tenant_id', effectiveTenantId)
+        .eq('status', 'SCHEDULED')
         .or(`start_date.lte.${todayISO},start_date.is.null`);
 
       const uniqueStudents = new Set(bookings?.map(b => b.student_id));
 
       // 2. Classes Today
-      const todayBookings = (bookings || []).filter(b => b.day_of_week === todayDay);
+      const todayIndex = (now.getDay() + 6) % 7;
+      const todayBookings = (bookings || []).filter((b: any) => normalizeWeekdayToIndex((b as any).day_of_week) === todayIndex);
 
       const { data: todayRepos } = await supabase
         .from('reschedules')
@@ -243,26 +282,30 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
       const { data: bComplete } = await supabase
         .from('bookings')
         .select(`
-          id, time_slot, 
+          id, day_of_week, time_slot,
           student:student_id(id, full_name, avatar_url, module, meeting_link, phone)
         `)
         .eq('teacher_id', user.id)
-        .eq('day_of_week', todayDay)
         .eq('tenant_id', effectiveTenantId)
+        .eq('status', 'SCHEDULED')
         .or(`start_date.lte.${todayISO},start_date.is.null`);
+
+      const todayFixed = (bComplete || []).filter((b: any) => normalizeWeekdayToIndex((b as any).day_of_week) === todayIndex);
 
       // 3. Trials Today (from appointments table)
       const { data: trials } = await supabase
         .from('appointments')
         .select(`
-          id, time, date, student_name, student_phone, type, status
+          id, start_time, student_name, student_phone, type, status
         `)
         .eq('teacher_id', user.id)
-        .eq('date', todayISO)
         .eq('type', 'experimental')
+        .eq('status', 'scheduled')
+        .gte('start_time', `${todayISO}T00:00:00-03:00`)
+        .lt('start_time', `${localYMD(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))}T00:00:00-03:00`)
         .eq('tenant_id', effectiveTenantId);
 
-      const upcomingRegular = (bComplete || [])
+      const upcomingRegular = (todayFixed as any[])
         .filter(b => b.time_slot >= currentTimeStr && !logs?.some(l => l.booking_id === b.id && l.class_date === todayISO))
         .map(b => ({
           name: (b.student as any)?.full_name || 'Desconhecido',
@@ -272,7 +315,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           img: (b.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(b.student as any)?.full_name}`,
           meet: (b.student as any)?.meeting_link,
           phone: (b.student as any)?.phone,
-          type: 'REGULAR'
+          type: 'REGULAR',
+          source_id: b.id,
+          source_type: 'BOOKING',
+          class_date: todayISO,
         }));
 
       const upcomingRepos = (todayRepos || [])
@@ -284,19 +330,26 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           img: (r.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(r.student as any)?.full_name || 'R'}`,
           meet: (r.student as any)?.meeting_link,
           phone: (r.student as any)?.phone,
-          type: 'REPOSIÇÃO'
+          type: 'REPOSIÇÃO',
+          source_id: r.id,
+          source_type: 'RESCHEDULE',
+          class_date: todayISO,
         }));
 
       const upcomingTrials = (trials || [])
-        .filter(t => t.time >= currentTimeStr && !logs?.some(l => l.appointment_id === t.id && l.class_date === todayISO))
-        .map(t => ({
+        .map(t => ({ row: t, local: saoPauloDateTime(t.start_time) }))
+        .filter(({ row: t, local }) => local?.date === todayISO && local.time >= currentTimeStr && !logs?.some(l => l.appointment_id === t.id && l.class_date === todayISO))
+        .map(({ row: t, local }) => ({
           name: t.student_name || 'Aula Experimental',
-          time: t.time,
+          time: local?.time || '',
           module: 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
           meet: user.meeting_link, // Usually teacher's own link
           phone: t.student_phone,
-          type: 'TRIAL'
+          type: 'TRIAL',
+          source_id: t.id,
+          source_type: 'APPOINTMENT',
+          class_date: todayISO,
         }));
 
       setUpcomingLessons([...upcomingRegular, ...upcomingRepos, ...upcomingTrials]
@@ -591,13 +644,17 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
             <div className="flex justify-between items-center mb-6 relative z-10">
               <h3 className="text-sm font-bold text-brand-text">Aulas de Hoje</h3>
               <div className="flex items-center gap-2">
-                {teacherWa.automation ? (
+                {teacherWa.automation === true ? (
                   <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-full font-bold border border-emerald-500/20" title="Os lembretes são enviados automaticamente 30 min antes de cada aula">
                     <Zap size={10} className="fill-current" /> AUTO · 30min
                   </span>
-                ) : (
+                ) : teacherWa.automation === false ? (
                   <span className="flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full font-bold border border-amber-500/20" title="Modo manual: clique em Disparar para enviar o lembrete">
                     <MessageCircle size={10} className="fill-current" /> MANUAL
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] bg-slate-500/10 text-brand-muted px-3 py-1 rounded-full font-bold border border-brand-border" title="Verificando a configuração antes de liberar disparos">
+                    <RefreshCw size={10} className="animate-spin" /> VERIFICANDO
                   </span>
                 )}
               </div>
@@ -605,7 +662,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
             <div className="space-y-4 flex-1 overflow-y-auto pr-1 relative z-10 custom-scrollbar">
               {upcomingLessons.length > 0 ? upcomingLessons.map((aula, i) => {
-                const dispatchKey = `${aula.type}-${aula.time}-${aula.name}`;
+                const dispatchKey = `${aula.source_type}:${aula.source_id}:${aula.class_date}`;
                 const dispatchState = dispatching[dispatchKey];
                 return (
                 <div key={i} className={`flex items-center gap-4 p-4 rounded-xl border transition-all group ${aula.type === 'TRIAL'
@@ -631,8 +688,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                   </div>
 
                   <div className="flex gap-2 items-center shrink-0">
-                    {/* Botão Disparar — envia o lembrete personalizado pela INSTÂNCIA do professor */}
-                    {aula.phone && (
+                    {/* Em modo AUTO o botão manual fica oculto para impedir que
+                        o mesmo lembrete seja enviado pelos dois caminhos. */}
+                    {teacherWa.automation === false && (
                       <button
                         onClick={() => handleDispatch(aula, dispatchKey)}
                         disabled={dispatchState === 'sending' || dispatchState === 'sent'}
@@ -645,7 +703,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
                                 ? 'bg-brand-surface border-brand-border text-brand-muted cursor-wait'
                                 : 'bg-emerald-500 hover:bg-emerald-600 border-emerald-500 text-white'
                         }`}
-                        title={teacherWa.instance ? 'Disparar lembrete agora pelo seu WhatsApp' : 'Conecte seu WhatsApp para disparar'}
+                        title="Disparar lembrete desta aula"
                       >
                         {dispatchState === 'sending' ? (
                           <><RefreshCw size={14} className="animate-spin" /> Enviando</>

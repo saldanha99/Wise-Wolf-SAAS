@@ -12,7 +12,6 @@ begin
   end if;
 end;
 $$;
-
 grant execute on function pg_temp.assert_true(boolean, text) to public;
 do $$
 begin
@@ -142,27 +141,33 @@ values (
 rollback to savepoint allowed_public_lead;
 
 savepoint wolfie_key_required;
-\set wolfie_key_required_failed false
-\set wolfie_key_required_sqlstate ''
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, email, phone, status, source, goal
-)
-values (
-  'school-wise-wolf', 'Missing Quiz Key', 'missing-key@example.invalid',
-  '11999999991', 'NEW', 'wolfie_quiz', 'test'
-);
-\if :ERROR
-  \set wolfie_key_required_failed true
-  \set wolfie_key_required_sqlstate :SQLSTATE
-\endif
-\set ON_ERROR_STOP on
+do $$
+declare
+  _sqlstate text := null;
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, email, phone, status, source, goal
+    )
+    values (
+      'school-wise-wolf', 'Missing Quiz Key', 'missing-key@example.invalid',
+      '11999999991', 'NEW', 'wolfie_quiz', 'test'
+    );
+    raise exception 'wolfie quiz lead without an idempotency key must fail validation';
+  exception
+    when others then
+      _sqlstate := sqlstate;
+  end;
+  perform pg_temp.assert_true(
+    _sqlstate = '22023',
+    format(
+      'wolfie quiz lead without an idempotency key must fail with 22023, got %s',
+      coalesce(_sqlstate, 'none')
+    )
+  );
+end;
+$$;
 rollback to savepoint wolfie_key_required;
-select pg_temp.assert_true(
-  :'wolfie_key_required_failed'::boolean
-    and :'wolfie_key_required_sqlstate' = '22023',
-  'wolfie quiz lead without an idempotency key must fail validation'
-);
 
 savepoint wolfie_duplicate_key;
 insert into public.crm_leads (
@@ -185,80 +190,85 @@ values (
   'test',
   '00000000-0000-4000-8000-000000000101'
 );
-\set wolfie_duplicate_key_failed false
-\set wolfie_duplicate_key_sqlstate ''
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id,
-  name,
-  email,
-  phone,
-  status,
-  source,
-  goal,
-  public_intake_idempotency_key
-)
-values (
-  'school-wise-wolf',
-  'Idempotent Quiz Lead Retry',
-  'idempotent-retry@example.invalid',
-  '11999999993',
-  'NEW',
-  'wolfie_quiz',
-  'test',
-  '00000000-0000-4000-8000-000000000101'
-);
-\if :ERROR
-  \set wolfie_duplicate_key_failed true
-  \set wolfie_duplicate_key_sqlstate :SQLSTATE
-\endif
-\set ON_ERROR_STOP on
+
+do $$
+declare
+  _sqlstate text := null;
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id,
+      name,
+      email,
+      phone,
+      status,
+      source,
+      goal,
+      public_intake_idempotency_key
+    )
+    values (
+      'school-wise-wolf',
+      'Idempotent Quiz Lead Retry',
+      'idempotent-retry@example.invalid',
+      '11999999993',
+      'NEW',
+      'wolfie_quiz',
+      'test',
+      '00000000-0000-4000-8000-000000000101'
+    );
+    raise exception 'retrying a Wolfie quiz key must hit the unique idempotency constraint';
+  exception
+    when others then
+      _sqlstate := sqlstate;
+  end;
+  perform pg_temp.assert_true(
+    _sqlstate = '23505',
+    format(
+      'retrying a Wolfie quiz key must hit the unique idempotency constraint with 23505, got %s',
+      coalesce(_sqlstate, 'none')
+    )
+  );
+end;
+$$;
 rollback to savepoint wolfie_duplicate_key;
-select pg_temp.assert_true(
-  :'wolfie_duplicate_key_failed'::boolean
-    and :'wolfie_duplicate_key_sqlstate' = '23505',
-  'retrying a Wolfie quiz key must hit the unique idempotency constraint'
-);
 
 savepoint invalid_lead_tenant;
-\set invalid_lead_tenant_failed false
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, email, phone, status, source
-)
-values (
-  'master', 'Blocked Tenant', 'blocked@example.invalid',
-  '11999999998', 'NEW', 'migration_test'
-);
-\if :ERROR
-  \set invalid_lead_tenant_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, email, phone, status, source
+    )
+    values (
+      'master', 'Blocked Tenant', 'blocked@example.invalid',
+      '11999999998', 'NEW', 'migration_test'
+    );
+    raise exception 'anon insert for another tenant must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint invalid_lead_tenant;
-select pg_temp.assert_true(
-  :'invalid_lead_tenant_failed'::boolean,
-  'anon insert for another tenant must fail'
-);
 
 savepoint privileged_lead_column;
-\set privileged_lead_column_failed false
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, phone, status, source, ai_handled
-)
-values (
-  'school-wise-wolf', 'Blocked Columns', '11999999997',
-  'NEW', 'migration_test', true
-);
-\if :ERROR
-  \set privileged_lead_column_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, phone, status, source, ai_handled
+    )
+    values (
+      'school-wise-wolf', 'Blocked Columns', '11999999997',
+      'NEW', 'migration_test', true
+    );
+    raise exception 'anon insert into privileged lead columns must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint privileged_lead_column;
-select pg_temp.assert_true(
-  :'privileged_lead_column_failed'::boolean,
-  'anon insert into privileged lead columns must fail'
-);
 
 savepoint allowed_public_application;
 insert into public.job_applications (
@@ -272,60 +282,57 @@ values (
 rollback to savepoint allowed_public_application;
 
 savepoint traversal_resume_url;
-\set traversal_resume_url_failed false
-\set ON_ERROR_STOP off
-insert into public.job_applications (
-  tenant_id, name, whatsapp, resume_url, status, source, role
-)
-values (
-  'school-wise-wolf', 'Blocked Traversal', '11999999994',
-  'https://api.wisewolflanguage.com.br/storage/v1/object/public/resumes/school-wise-wolf/../../contracts/private.pdf',
-  'Novo', 'migration_test', 'professor'
-);
-\if :ERROR
-  \set traversal_resume_url_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into public.job_applications (
+      tenant_id, name, whatsapp, resume_url, status, source, role
+    )
+    values (
+      'school-wise-wolf', 'Blocked Traversal', '11999999994',
+      'https://api.wisewolflanguage.com.br/storage/v1/object/public/resumes/school-wise-wolf/../../contracts/private.pdf',
+      'Novo', 'migration_test', 'professor'
+    );
+    raise exception 'resume path traversal must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint traversal_resume_url;
-select pg_temp.assert_true(
-  :'traversal_resume_url_failed'::boolean,
-  'resume path traversal must fail'
-);
 
 savepoint invalid_resume_url;
-\set invalid_resume_url_failed false
-\set ON_ERROR_STOP off
-insert into public.job_applications (
-  tenant_id, name, whatsapp, resume_url, status, source, role
-)
-values (
-  'school-wise-wolf', 'Blocked SSRF', '11999999995',
-  'http://127.0.0.1:8000/private', 'Novo', 'migration_test', 'professor'
-);
-\if :ERROR
-  \set invalid_resume_url_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into public.job_applications (
+      tenant_id, name, whatsapp, resume_url, status, source, role
+    )
+    values (
+      'school-wise-wolf', 'Blocked SSRF', '11999999995',
+      'http://127.0.0.1:8000/private', 'Novo', 'migration_test', 'professor'
+    );
+    raise exception 'arbitrary resume URL must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint invalid_resume_url;
-select pg_temp.assert_true(
-  :'invalid_resume_url_failed'::boolean,
-  'arbitrary resume URL must fail'
-);
 
 savepoint direct_resume_upload;
-\set direct_resume_upload_failed false
-\set ON_ERROR_STOP off
-insert into storage.objects (bucket_id, name, metadata)
-values ('resumes', 'school-wise-wolf/direct-anon.pdf', '{"mimetype":"application/pdf","size":10}');
-\if :ERROR
-  \set direct_resume_upload_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values ('resumes', 'school-wise-wolf/direct-anon.pdf', '{"mimetype":"application/pdf","size":10}');
+    raise exception 'direct anonymous resume upload must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint direct_resume_upload;
-select pg_temp.assert_true(
-  :'direct_resume_upload_failed'::boolean,
-  'direct anonymous resume upload must fail'
-);
 
 reset role;
 set local role authenticated;
@@ -344,65 +351,69 @@ select pg_temp.assert_true(
 );
 
 savepoint student_lead_insert;
-\set student_lead_insert_failed false
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, email, phone, status, source
-)
-values (
-  'school-wise-wolf', 'Blocked Student', 'student@example.invalid',
-  '11999999989', 'NEW', 'migration_test'
-);
-\if :ERROR
-  \set student_lead_insert_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, email, phone, status, source
+    )
+    values (
+      'school-wise-wolf', 'Blocked Student', 'student@example.invalid',
+      '11999999989', 'NEW', 'migration_test'
+    );
+    raise exception 'authenticated students must not insert CRM leads';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint student_lead_insert;
-select pg_temp.assert_true(
-  :'student_lead_insert_failed'::boolean,
-  'authenticated students must not insert CRM leads'
-);
 
 savepoint student_guard_bypass;
-\set student_guard_bypass_failed false
-\set student_guard_bypass_sqlstate ''
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, phone, status, source
-)
-values (
-  'school-wise-wolf', 'X', '11999999988', 'NEW', 'migration_test'
-);
-\if :ERROR
-  \set student_guard_bypass_failed true
-  \set student_guard_bypass_sqlstate :SQLSTATE
-\endif
-\set ON_ERROR_STOP on
+do $$
+declare
+  _sqlstate text := null;
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, phone, status, source
+    )
+    values (
+      'school-wise-wolf', 'X', '11999999988', 'NEW', 'migration_test'
+    );
+    raise exception 'authenticated students must not bypass public payload validation';
+  exception
+    when others then
+      _sqlstate := sqlstate;
+  end;
+  perform pg_temp.assert_true(
+    _sqlstate = '22023',
+    format(
+      'authenticated students must not bypass public payload validation with 22023, got %s',
+      coalesce(_sqlstate, 'none')
+    )
+  );
+end;
+$$;
 rollback to savepoint student_guard_bypass;
-select pg_temp.assert_true(
-  :'student_guard_bypass_failed'::boolean
-    and :'student_guard_bypass_sqlstate' = '22023',
-  'authenticated students must not bypass public payload validation'
-);
 
 savepoint student_resume_upload;
-\set student_resume_upload_failed false
-\set ON_ERROR_STOP off
-insert into storage.objects (bucket_id, name, metadata)
-values (
-  'resumes',
-  'school-wise-wolf/00000000-0000-4000-8000-000000000002.pdf',
-  '{"mimetype":"application/pdf","size":10}'
-);
-\if :ERROR
-  \set student_resume_upload_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values (
+      'resumes',
+      'school-wise-wolf/00000000-0000-4000-8000-000000000002.pdf',
+      '{"mimetype":"application/pdf","size":10}'
+    );
+    raise exception 'student direct resume upload must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint student_resume_upload;
-select pg_temp.assert_true(
-  :'student_resume_upload_failed'::boolean,
-  'student direct resume upload must fail'
-);
 
 reset role;
 set local role authenticated;
@@ -435,27 +446,33 @@ values (
 rollback to savepoint authorized_staff_guard_bypass;
 
 savepoint cross_tenant_staff_guard_bypass;
-\set cross_tenant_staff_guard_bypass_failed false
-\set cross_tenant_staff_guard_bypass_sqlstate ''
-\set ON_ERROR_STOP off
-insert into public.crm_leads (
-  tenant_id, name, phone, status, source
-)
-values (
-  'not-the-admin-tenant', 'Cross Tenant', '11999999986',
-  'NEW', 'migration_test'
-);
-\if :ERROR
-  \set cross_tenant_staff_guard_bypass_failed true
-  \set cross_tenant_staff_guard_bypass_sqlstate :SQLSTATE
-\endif
-\set ON_ERROR_STOP on
+do $$
+declare
+  _sqlstate text := null;
+begin
+  begin
+    insert into public.crm_leads (
+      tenant_id, name, phone, status, source
+    )
+    values (
+      'not-the-admin-tenant', 'Cross Tenant', '11999999986',
+      'NEW', 'migration_test'
+    );
+    raise exception 'staff must not bypass the guard for another tenant';
+  exception
+    when others then
+      _sqlstate := sqlstate;
+  end;
+  perform pg_temp.assert_true(
+    _sqlstate = '22023',
+    format(
+      'staff must not bypass the guard for another tenant with 22023, got %s',
+      coalesce(_sqlstate, 'none')
+    )
+  );
+end;
+$$;
 rollback to savepoint cross_tenant_staff_guard_bypass;
-select pg_temp.assert_true(
-  :'cross_tenant_staff_guard_bypass_failed'::boolean
-    and :'cross_tenant_staff_guard_bypass_sqlstate' = '22023',
-  'staff must not bypass the guard for another tenant'
-);
 
 savepoint admin_resume_upload;
 insert into storage.objects (bucket_id, name, metadata)
@@ -467,23 +484,22 @@ values (
 rollback to savepoint admin_resume_upload;
 
 savepoint admin_cross_tenant_resume_upload;
-\set admin_cross_tenant_resume_upload_failed false
-\set ON_ERROR_STOP off
-insert into storage.objects (bucket_id, name, metadata)
-values (
-  'resumes',
-  'other-tenant/00000000-0000-4000-8000-000000000004.pdf',
-  '{"mimetype":"application/pdf","size":10}'
-);
-\if :ERROR
-  \set admin_cross_tenant_resume_upload_failed true
-\endif
-\set ON_ERROR_STOP on
+do $$
+begin
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values (
+      'resumes',
+      'other-tenant/00000000-0000-4000-8000-000000000004.pdf',
+      '{"mimetype":"application/pdf","size":10}'
+    );
+    raise exception 'school admin direct upload for another tenant must fail';
+  exception
+    when others then null;
+  end;
+end;
+$$;
 rollback to savepoint admin_cross_tenant_resume_upload;
-select pg_temp.assert_true(
-  :'admin_cross_tenant_resume_upload_failed'::boolean,
-  'school admin direct upload for another tenant must fail'
-);
 
 reset role;
 set local role authenticated;

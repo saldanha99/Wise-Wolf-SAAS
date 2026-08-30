@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck, AlertTriangle, Repeat } from 'lucide-react';
+import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck, AlertTriangle, Repeat, RefreshCw } from 'lucide-react';
 
 // =============================================================
 // Central de Pendências do diretor: lê director_pending_counts() e mostra,
@@ -39,34 +39,92 @@ const ITEMS: Item[] = [
   { key: 'sem_assinatura', label: 'Alunos tendo aula sem cobrança ativa', tab: 'student-payments', icon: AlertTriangle, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/30' },
 ];
 
+type LoadState = 'loading' | 'success' | 'error';
+
+const formatLastUpdated = (date: Date | null) => {
+  if (!date) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
 const DirectorPendingCenter: React.FC<Props> = ({ onNavigate }) => {
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const requestIdRef = useRef(0);
+
+  const loadCounts = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoadState('loading');
+
+    try {
+      const { data, error } = await supabase.rpc('director_pending_counts');
+      if (error) throw error;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error('invalid_pending_counts');
+      }
+      if (requestId !== requestIdRef.current) return;
+
+      setCounts(data as Record<string, number>);
+      setLastUpdatedAt(new Date());
+      setLoadState('success');
+    } catch {
+      if (requestId === requestIdRef.current) setLoadState('error');
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-
-    const loadCounts = async () => {
-      try {
-        const { data } = await supabase.rpc('director_pending_counts');
-        if (active && data && typeof data === 'object') {
-          setCounts(data as Record<string, number>);
-        }
-      } catch {
-        // Mantém o painel silencioso quando a contagem não estiver disponível.
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
     void loadCounts();
-    return () => { active = false; };
-  }, []);
+    return () => { requestIdRef.current += 1; };
+  }, [loadCounts]);
 
   const pendentes = ITEMS.filter(i => (counts[i.key] || 0) > 0);
   const total = pendentes.reduce((acc, i) => acc + (counts[i.key] || 0), 0);
+  const lastUpdatedLabel = formatLastUpdated(lastUpdatedAt);
 
-  if (loading) return null;
+  if (loadState === 'loading') {
+    return (
+      <div role="status" aria-live="polite" className="bg-brand-surface border border-brand-border rounded-2xl p-4 flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-brand-surface-2 text-brand-muted flex items-center justify-center">
+          <RefreshCw size={20} className="animate-spin" />
+        </div>
+        <div>
+          <p className="font-black text-brand-text text-sm">Consultando pendências…</p>
+          <p className="text-brand-muted text-xs">
+            {lastUpdatedLabel ? `Última atualização bem-sucedida às ${lastUpdatedLabel}.` : 'Validando o estado atual da escola.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadState === 'error') {
+    return (
+      <div role="alert" className="bg-brand-surface border border-red-400/40 rounded-2xl p-4 flex flex-col gap-3 mb-6 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-600 flex items-center justify-center">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="min-w-0">
+            <p className="font-black text-brand-text text-sm">Não foi possível consultar as pendências</p>
+            <p className="text-brand-muted text-xs">
+              Não vamos considerar a escola em dia sem uma leitura válida.
+              {lastUpdatedLabel ? ` Última atualização bem-sucedida às ${lastUpdatedLabel}.` : ''}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadCounts()}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-400/40 px-3 py-2 text-xs font-black text-red-600 transition-colors hover:bg-red-500/10"
+        >
+          <RefreshCw size={14} /> Tentar novamente
+        </button>
+      </div>
+    );
+  }
 
   // Estado "tudo em dia" — feedback positivo, não polui
   if (pendentes.length === 0) {
@@ -78,6 +136,7 @@ const DirectorPendingCenter: React.FC<Props> = ({ onNavigate }) => {
         <div>
           <p className="font-black text-brand-text text-sm">Tudo em dia! 🎉</p>
           <p className="text-brand-muted text-xs">Nenhuma pendência aguardando sua ação.</p>
+          {lastUpdatedLabel && <p className="mt-0.5 text-[10px] text-brand-muted">Atualizado às {lastUpdatedLabel}</p>}
         </div>
       </div>
     );
@@ -89,6 +148,7 @@ const DirectorPendingCenter: React.FC<Props> = ({ onNavigate }) => {
         <div>
           <h3 className="font-black text-brand-text text-lg tracking-tight">Precisa da sua atenção</h3>
           <p className="text-brand-muted text-xs">{total} {total === 1 ? 'item aguardando' : 'itens aguardando'} ação.</p>
+          {lastUpdatedLabel && <p className="mt-0.5 text-[10px] text-brand-muted">Atualizado às {lastUpdatedLabel}</p>}
         </div>
         <span className="text-2xl font-black text-tenant-primary">{total}</span>
       </div>

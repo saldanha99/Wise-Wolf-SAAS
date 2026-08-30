@@ -105,3 +105,37 @@ Deno.test("materializa URL curta sem devolver o caminho no fluxo publico", async
   );
   assert(!("signatureUrl" in (result || {})), "alias legado nao foi removido");
 });
+
+Deno.test("troca a origem interna pela API publica sem alterar path ou token", async () => {
+  const path = `${tenantId}/legal-representative-signature/${assetId}.png`;
+  const admin = {
+    storage: {
+      from() {
+        return {
+          createSignedUrl() {
+            return Promise.resolve({
+              data: {
+                signedUrl:
+                  `http://kong:8000/storage/v1/object/sign/${TENANT_LEGAL_ASSETS_BUCKET}/${path}?token=short`,
+              },
+              error: null,
+            });
+          },
+        };
+      },
+    },
+  };
+
+  const result = await materializeLegalSchoolInfo(
+    admin as never,
+    tenantId,
+    { legalRepresentativeSignaturePath: path },
+    { publicBaseUrl: "https://api.example.test" },
+  );
+
+  assert(
+    result?.legalRepresentativeSignatureUrl ===
+      `https://api.example.test/storage/v1/object/sign/${TENANT_LEGAL_ASSETS_BUCKET}/${path}?token=short`,
+    "a URL assinada precisa usar a origem publica configurada",
+  );
+});

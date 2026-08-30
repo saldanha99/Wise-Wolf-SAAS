@@ -5,10 +5,14 @@ import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
-const asaasBase = (Deno.env.get("ASAAS_BASE_URL") || "https://api.asaas.com/v3").replace(/\/+$/, "");
-const asaasToken = (Deno.env.get("ASAAS_ACCESS_TOKEN") || Deno.env.get("ASAAS_API_KEY") || "").trim();
+const asaasBase = (Deno.env.get("ASAAS_BASE_URL") || "https://api.asaas.com/v3")
+  .replace(/\/+$/, "");
+const asaasToken =
+  (Deno.env.get("ASAAS_ACCESS_TOKEN") || Deno.env.get("ASAAS_API_KEY") || "")
+    .trim();
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -18,7 +22,9 @@ function json(body: unknown, status = 200): Response {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return methodNotAllowed(corsHeaders);
 
   const auth = await authorizeRequest(req, {
@@ -30,15 +36,31 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const tenantId = typeof body.tenantId === "string" ? body.tenantId.trim() : "";
-    const ownerName = typeof body.ownerName === "string" ? body.ownerName.trim() : "";
-    const ownerEmail = typeof body.ownerEmail === "string" ? body.ownerEmail.trim().toLowerCase() : "";
-    const ownerCpfCnpj = typeof body.ownerCpfCnpj === "string" ? body.ownerCpfCnpj.replace(/\D/g, "") : "";
-    const splitPercentage = body.splitPercentage === undefined ? 90 : Number(body.splitPercentage);
-    if (!tenantId || !ownerName || !ownerEmail.includes("@") || !/^\d{11,14}$/.test(ownerCpfCnpj)) {
+    const tenantId = typeof body.tenantId === "string"
+      ? body.tenantId.trim()
+      : "";
+    const ownerName = typeof body.ownerName === "string"
+      ? body.ownerName.trim()
+      : "";
+    const ownerEmail = typeof body.ownerEmail === "string"
+      ? body.ownerEmail.trim().toLowerCase()
+      : "";
+    const ownerCpfCnpj = typeof body.ownerCpfCnpj === "string"
+      ? body.ownerCpfCnpj.replace(/\D/g, "")
+      : "";
+    const splitPercentage = body.splitPercentage === undefined
+      ? 90
+      : Number(body.splitPercentage);
+    if (
+      !tenantId || !ownerName || !ownerEmail.includes("@") ||
+      !/^\d{11,14}$/.test(ownerCpfCnpj)
+    ) {
       return json({ error: "Incomplete or invalid account data" }, 400);
     }
-    if (!Number.isFinite(splitPercentage) || splitPercentage < 0 || splitPercentage > 100) {
+    if (
+      !Number.isFinite(splitPercentage) || splitPercentage < 0 ||
+      splitPercentage > 100
+    ) {
       return json({ error: "Invalid split percentage" }, 400);
     }
 
@@ -51,7 +73,10 @@ serve(async (req) => {
     if (tenantError) return json({ error: "Could not validate tenant" }, 500);
     if (!existing) return json({ error: "Tenant not found" }, 404);
     if (existing.asaas_subaccount_id) {
-      return json({ error: "Subaccount already exists", subaccount_id: existing.asaas_subaccount_id }, 409);
+      return json({
+        error: "Subaccount already exists",
+        subaccount_id: existing.asaas_subaccount_id,
+      }, 409);
     }
 
     const response = await fetch(`${asaasBase}/accounts`, {
@@ -61,18 +86,30 @@ serve(async (req) => {
         name: ownerName,
         email: ownerEmail,
         cpfCnpj: ownerCpfCnpj,
-        mobilePhone: typeof body.ownerPhone === "string" ? body.ownerPhone.replace(/\D/g, "") : undefined,
-        address: typeof body.address === "string" && body.address.trim() ? body.address.trim() : "A definir",
-        addressNumber: typeof body.addressNumber === "string" && body.addressNumber.trim() ? body.addressNumber.trim() : "SN",
-        province: typeof body.province === "string" && body.province.trim() ? body.province.trim() : "Centro",
-        postalCode: typeof body.postalCode === "string" && body.postalCode.trim()
-          ? body.postalCode.replace(/\D/g, "")
-          : "01000000",
+        mobilePhone: typeof body.ownerPhone === "string"
+          ? body.ownerPhone.replace(/\D/g, "")
+          : undefined,
+        address: typeof body.address === "string" && body.address.trim()
+          ? body.address.trim()
+          : "A definir",
+        addressNumber:
+          typeof body.addressNumber === "string" && body.addressNumber.trim()
+            ? body.addressNumber.trim()
+            : "SN",
+        province: typeof body.province === "string" && body.province.trim()
+          ? body.province.trim()
+          : "Centro",
+        postalCode:
+          typeof body.postalCode === "string" && body.postalCode.trim()
+            ? body.postalCode.replace(/\D/g, "")
+            : "01000000",
       }),
     });
     const asaasData = await response.json().catch(() => null);
     if (!response.ok || !asaasData?.id || !asaasData?.walletId) {
-      console.error("Asaas subaccount creation failed", { status: response.status });
+      console.error("Asaas subaccount creation failed", {
+        status: response.status,
+      });
       return json({ error: "Failed to create subaccount" }, 502);
     }
 
@@ -85,11 +122,20 @@ serve(async (req) => {
       asaas_split_percentage: splitPercentage,
     }).eq("id", tenantId).is("asaas_subaccount_id", null);
     if (updateError) {
-      console.error("Asaas subaccount persistence failed", { code: updateError.code });
-      return json({ error: "Subaccount created but tenant update failed" }, 500);
+      console.error("Asaas subaccount persistence failed", {
+        code: updateError.code,
+      });
+      return json(
+        { error: "Subaccount created but tenant update failed" },
+        500,
+      );
     }
 
-    return json({ success: true, subaccount_id: asaasData.id, wallet_id: asaasData.walletId });
+    return json({
+      success: true,
+      subaccount_id: asaasData.id,
+      wallet_id: asaasData.walletId,
+    });
   } catch (error) {
     console.error("Create Asaas subaccount failed", {
       message: error instanceof Error ? error.message : "unknown error",

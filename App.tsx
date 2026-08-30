@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { whatsappService } from './services/whatsappService';
 import { supabase } from './lib/supabase';
 import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants';
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
@@ -77,6 +76,7 @@ const MaterialApprovals = lazy(() => import('./components/MaterialApprovals'));
 const StudentMaterials = lazy(() => import('./components/StudentMaterials'));
 const StudentPedagogicalView = lazy(() => import('./components/StudentPedagogicalView'));
 const WhatsappConfig = lazy(() => import('./components/WhatsappConfig'));
+const WhatsappInbox = lazy(() => import('./components/WhatsappInbox'));
 const CRMPage = lazy(() => import('./components/CRMPage'));
 const LandingPageBuilder = lazy(() => import('./components/LandingPageBuilder'));
 const WiseWolfLanding = lazy(() => import('./components/landing/WiseWolfLanding'));
@@ -172,8 +172,9 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'vendors-mgmt', label: 'Vendedores', group: 'Crescimento' },
     { tab: 'contracts', label: 'Contratos', group: 'Configurações' },
     { tab: 'settings_school', label: 'Central da Escola', group: 'Configurações' },
-    { tab: 'automation', label: 'WhatsApp (Conexão)', group: 'Configurações' },
-    { tab: 'automations', label: 'Disparos WhatsApp', group: 'Configurações' },
+    { tab: 'whatsapp', label: 'Conversas do WhatsApp', group: 'Comunicação', keywords: 'mensagens atendimento inbox' },
+    { tab: 'automation', label: 'WhatsApp (Conexão)', group: 'Comunicação' },
+    { tab: 'automations', label: 'Disparos WhatsApp', group: 'Comunicação' },
     { tab: 'admin_workflows', label: 'Workflows', group: 'Configurações' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
@@ -272,6 +273,14 @@ const App: React.FC = () => {
   const [pendingLessonsCount, setPendingLessonsCount] = useState(0);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({}); // pendências do diretor (badges)
   const [tourOpen, setTourOpen] = useState(false);
+
+  const handleWhatsappUnreadChange = React.useCallback((count: number) => {
+    const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    setPendingCounts((current) => current.whatsapp_unread === safeCount
+      ? current
+      : { ...current, whatsapp_unread: safeCount }
+    );
+  }, []);
 
   // Tour no primeiro acesso. `onboarded` nasce false, então quem nunca viu
   // recebe uma vez; concluir OU pular marca true e não volta sozinho — o botão
@@ -570,8 +579,6 @@ const App: React.FC = () => {
         setStudents(studentsData.map(s => ({
           id: s.id,
           name: s.full_name,
-          // full_name e phone são usados pelo aviso de reposição no WhatsApp
-          // (App → onAdd → whatsappService). Sem eles o envio era sempre pulado.
           full_name: s.full_name,
           phone: s.phone,
           module: s.module || 'N/A',
@@ -584,44 +591,84 @@ const App: React.FC = () => {
         const teacherIds = teachersData.map((teacher: any) => teacher.id);
         const latestAbsenceByTeacher = new Map<string, string>();
         const turboByTeacher = new Map<string, { active: boolean | null; blockedBy: string | null }>();
+        const { data: { session: turboSession }, error: turboSessionError } = await supabase.auth.getSession();
+        if (turboSessionError || !turboSession) {
+          console.warn(
+            '[Teachers] Sessão indisponível para consulta de turbo_status; seguindo sem indicador de turbo.',
+            turboSessionError?.message,
+          );
+          teacherIds.forEach((teacherId) => {
+            turboByTeacher.set(teacherId, { active: null, blockedBy: null });
+          });
+        } else {
+          const turboAccessState = {
+            canQuery: true,
+            loggedPermissionIssue: false,
+          };
 
-        if (teacherIds.length > 0) {
-          const [absenceResult, turboResults] = await Promise.all([
-            supabase
-              .from('class_logs')
-              .select('teacher_id, class_date')
-              .eq('tenant_id', user.tenantId)
-              .in('teacher_id', teacherIds)
-              .in('presence', ['TEACHER_ABSENCE', 'Falta do Professor'])
-              .order('class_date', { ascending: false }),
-            Promise.all(teacherIds.map(async (teacherId: string) => {
-              const { data: turboData, error: turboError } = await supabase.rpc('teacher_turbo_status', {
-                p_teacher: teacherId,
-              });
-              if (turboError) {
-                console.warn(`[Teachers] Turbo indisponível para ${teacherId}:`, turboError.message);
+          const isPermissionError = (turboError: any): boolean => {
+            if (!turboError) return false;
+            const message = `${turboError.message || ''}`.toLowerCase();
+            return (
+              turboError.code === '42501' ||
+              message.includes('permission denied for function') ||
+              message.includes('permission denied')
+            );
+          };
+
+          const loadTurboStatusForTeacher = async (teacherId: string) => {
+            if (!turboAccessState.canQuery) {
+              return { teacherId, active: null, blockedBy: null };
+            }
+
+            const { data: turboData, error: turboError } = await supabase.rpc('teacher_turbo_status', {
+              p_teacher: teacherId,
+            });
+            if (turboError) {
+              if (isPermissionError(turboError)) {
+                if (!turboAccessState.loggedPermissionIssue) {
+                  console.error('[Teachers] teacher_turbo_status sem permissão: ', turboError.message);
+                  turboAccessState.loggedPermissionIssue = true;
+                }
+                turboAccessState.canQuery = false;
                 return { teacherId, active: null, blockedBy: null };
               }
-              return {
-                teacherId,
-                active: typeof turboData?.active === 'boolean' ? turboData.active : null,
-                blockedBy: typeof turboData?.blocked_by === 'string' ? turboData.blocked_by : null,
-              };
-            })),
-          ]);
 
-          if (absenceResult.error) {
-            console.warn('[Teachers] Não foi possível carregar a ofensiva sem faltas:', absenceResult.error.message);
-          } else {
-            (absenceResult.data || []).forEach((absence: any) => {
-              if (!latestAbsenceByTeacher.has(absence.teacher_id)) {
-                latestAbsenceByTeacher.set(absence.teacher_id, absence.class_date);
-              }
+              console.warn(`[Teachers] Turbo indisponível para ${teacherId}:`, turboError.message);
+              return { teacherId, active: null, blockedBy: null };
+            }
+            return {
+              teacherId,
+              active: typeof turboData?.active === 'boolean' ? turboData.active : null,
+              blockedBy: typeof turboData?.blocked_by === 'string' ? turboData.blocked_by : null,
+            };
+          };
+
+          if (teacherIds.length > 0) {
+            const [absenceResult, turboResults] = await Promise.all([
+              supabase
+                .from('class_logs')
+                .select('teacher_id, class_date')
+                .eq('tenant_id', user.tenantId)
+                .in('teacher_id', teacherIds)
+                .in('presence', ['TEACHER_ABSENCE', 'Falta do Professor'])
+                .order('class_date', { ascending: false }),
+              Promise.all(teacherIds.map(loadTurboStatusForTeacher)),
+            ]);
+
+            if (absenceResult.error) {
+              console.warn('[Teachers] Não foi possível carregar a ofensiva sem faltas:', absenceResult.error.message);
+            } else {
+              (absenceResult.data || []).forEach((absence: any) => {
+                if (!latestAbsenceByTeacher.has(absence.teacher_id)) {
+                  latestAbsenceByTeacher.set(absence.teacher_id, absence.class_date);
+                }
+              });
+            }
+            turboResults.forEach(({ teacherId, active, blockedBy }) => {
+              turboByTeacher.set(teacherId, { active, blockedBy });
             });
           }
-          turboResults.forEach(({ teacherId, active, blockedBy }) => {
-            turboByTeacher.set(teacherId, { active, blockedBy });
-          });
         }
 
         const formattedTeachers: Teacher[] = teachersData.map((t: any) => {
@@ -1122,6 +1169,12 @@ const App: React.FC = () => {
       'settings_school': <TenantSettings tenant={currentTenant!} onUpdate={handleUpdateTenant} />,
       'crm': <CRMPage tenantId={currentTenant?.id || ''} />,
       'marketing': <LandingPageBuilder tenantId={currentTenant?.id || ''} />,
+      'whatsapp': <WhatsappInbox
+        user={user}
+        tenantId={currentTenant?.id}
+        onUnreadChange={handleWhatsappUnreadChange}
+        onOpenConnection={() => setActiveTab('automation')}
+      />,
       'automation': <WhatsappConfig user={user} tenantId={currentTenant?.id} />,
       'lessons': <LessonLauncher user={user} tenantId={currentTenant?.id} onRefresh={loadAppData} />,
       'pending': <PendingLessons user={user} tenantId={currentTenant?.id} onRegister={() => setActiveTab('lessons')} onRefresh={loadAppData} />,
@@ -1180,19 +1233,9 @@ const App: React.FC = () => {
             console.error('Save Reschedule Error:', error);
             alert(`Erro ao salvar reposição: ${error.message}`);
           } else {
-            // Automation: Send WhatsApp Confirmation
-            const student = students.find(s => s.id === data.studentId);
-            if (student && student.phone && data.date !== 'Pendente') {
-              whatsappService.sendRescheduleConfirmation(
-                user.tenantId,
-                user.id,
-                'default', // Instance Name (TODO: Fetch dynamically)
-                student.full_name || student.name,
-                student.phone,
-                data.date,
-                data.time
-              );
-            }
+            // O aviso sai exclusivamente pelo botão persistente/idempotente da
+            // tela de reposições. O envio direto pelo navegador podia duplicar
+            // a mensagem e não deixava receipt auditável.
             loadAppData();
           }
         }}
@@ -1353,7 +1396,9 @@ const App: React.FC = () => {
                       'financial': 'Financeiro',
                       'ai-tutor': 'Praticar com o Wolfie',
                       'practice': 'Minhas Trilhas',
-                      'automation': 'Automação',
+                      'whatsapp': 'WhatsApp',
+                      'automation': 'Conexão do WhatsApp',
+                      'automations': 'Disparos do WhatsApp',
                       'evolution': 'Evolução',
                       'teachers': 'Professores',
                       'oral-tests': 'Testes Orais',
@@ -1616,7 +1661,7 @@ const App: React.FC = () => {
           <div className={`p-4 md:p-6 lg:p-8 flex-1 min-h-0 overflow-x-clip ${
             user.role === UserRole.SCHOOL_ADMIN ? 'pb-24 lg:pb-8' : ''
           }`}>
-            <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
+            <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 ${['schedule_explorer', 'schedule', 'reschedules', 'whatsapp'].includes(activeTab) ? 'max-w-full px-2' : 'max-w-7xl'}`}>
               <Suspense fallback={
                 <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 w-full">
                   <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -1647,13 +1692,19 @@ const App: React.FC = () => {
 
   if (user.role === UserRole.STUDENT) {
     return (
-      <StudentProvider userId={user.id} tenantId={user.tenantId} onLogout={handleLogout}>
-        {appLayout}
-      </StudentProvider>
+      <ProtectedRoute user={user} onLogout={handleLogout}>
+        <StudentProvider userId={user.id} tenantId={user.tenantId} onLogout={handleLogout}>
+          {appLayout}
+        </StudentProvider>
+      </ProtectedRoute>
     );
   }
 
-  return appLayout;
+  return (
+    <ProtectedRoute user={user} onLogout={handleLogout}>
+      {appLayout}
+    </ProtectedRoute>
+  );
 };
 
 export default App;

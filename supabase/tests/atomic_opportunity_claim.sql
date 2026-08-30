@@ -14,6 +14,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 create or replace function pg_temp.claim_slot(days_from_today integer, slot_time text)
 returns jsonb

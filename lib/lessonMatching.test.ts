@@ -1,10 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { bookingsAindaNaoLancados } from './lessonMatching';
+import { bookingsAindaNaoLancados, uniqueBookingsById } from './lessonMatching';
 
 const VICTOR = 'dd5486b9-victor';
 const MARIANA = '983e716a-mariana';
 
 describe('bookingsAindaNaoLancados', () => {
+    it('mantém agendamentos diferentes que compartilham o mesmo horário', () => {
+        const unicos = uniqueBookingsById([
+            { id: 'treinamento-antigo', studentId: null, timeSlot: '16:30' },
+            { id: 'victor-1630', studentId: VICTOR, timeSlot: '16:30' },
+            { id: 'victor-1700', studentId: VICTOR, timeSlot: '17:00' },
+        ]);
+
+        expect(unicos.map((booking) => booking.id)).toEqual([
+            'treinamento-antigo',
+            'victor-1630',
+            'victor-1700',
+        ]);
+    });
+
+    it('remove somente a repetição do mesmo booking', () => {
+        const unicos = uniqueBookingsById([
+            { id: 'victor-1630', studentId: VICTOR, timeSlot: '16:30' },
+            { id: 'victor-1630', studentId: VICTOR, timeSlot: '16:30' },
+        ]);
+
+        expect(unicos).toHaveLength(1);
+    });
+
     it('esconde a aula lançada pelo próprio agendamento', () => {
         const restou = bookingsAindaNaoLancados(
             [{ id: 'b1', studentId: MARIANA }],
@@ -28,6 +51,14 @@ describe('bookingsAindaNaoLancados', () => {
             [{ booking_id: 'b-1630', student_id: VICTOR }],
         );
         expect(restou.map(b => b.id)).toEqual(['b-1700']);
+    });
+
+    it('agendamento trocado com horário alterado continua sendo considerado lançado', () => {
+        const restou = bookingsAindaNaoLancados(
+            [{ id: 'booking-novo', studentId: VICTOR, timeSlot: '17:00' }],
+            [{ booking_id: 'booking-antigo', student_id: VICTOR, start_time: '16:30:00' }],
+        );
+        expect(restou).toEqual([]);
     });
 
     it('aula de 1h partida com os dois horários lançados some inteira', () => {
@@ -86,5 +117,21 @@ describe('bookingsAindaNaoLancados', () => {
             [{ booking_id: 'apagado', student_id: MARIANA }],
         );
         expect(restou.map(b => b.id)).toEqual(['b2']);
+    });
+
+    it('mantém duas aulas pendentes se só houver um log antigo sem horário para o aluno no dia', () => {
+        const restou = bookingsAindaNaoLancados(
+            [{ id: 'b-1630', studentId: VICTOR }, { id: 'b-1700', studentId: VICTOR }],
+            [{ student_id: VICTOR }],
+        );
+        expect(restou.map(b => b.id)).toEqual(['b-1700']);
+    });
+
+    it('esconde todas as aulas pendentes quando há dois logs sem horário do mesmo aluno no dia', () => {
+        const restou = bookingsAindaNaoLancados(
+            [{ id: 'b-1630', studentId: VICTOR }, { id: 'b-1700', studentId: VICTOR }],
+            [{ student_id: VICTOR }, { student_id: VICTOR }],
+        );
+        expect(restou).toEqual([]);
     });
 });

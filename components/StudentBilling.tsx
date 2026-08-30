@@ -14,13 +14,13 @@ import {
   QrCode
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { User as UserType } from '../types';
+import type { User as UserType } from '../types';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { buildSchoolSupportContact, type SupportContact } from '../lib/supportContact';
 import BillingMethodManager from './BillingMethodManager';
 
 interface StudentBillingProps {
-  user: UserType;
+  user: Pick<UserType, 'id' | 'tenantId'>;
 }
 
 interface Payment {
@@ -42,6 +42,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
   const { data: studentContext, loading: contextLoading } = useStudentContext();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [supportContact, setSupportContact] = useState<SupportContact | null>(null);
 
   // Derived from Context
@@ -74,38 +75,46 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
   const fetchPaymentHistory = async () => {
     setLoadingHistory(true);
+    setHistoryError(null);
     try {
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('student_payments')
         .select('*')
         .eq('student_id', user.id)
+        .eq('tenant_id', user.tenantId)
         .order('due_date', { ascending: false });
 
       if (paymentsError) throw paymentsError;
       setPayments(paymentsData || []);
     } catch (err) {
       console.error('Error fetching payment history:', err);
+      setPayments([]);
+      setHistoryError('Não foi possível carregar suas cobranças agora. Tente novamente antes de concluir que não há valores em aberto.');
     } finally {
       setLoadingHistory(false);
     }
   };
 
   useEffect(() => {
-    if (user?.id) fetchPaymentHistory();
-  }, [user?.id]);
+    if (user?.id && user?.tenantId) fetchPaymentHistory();
+  }, [user?.id, user?.tenantId]);
 
   useEffect(() => {
     let active = true;
     const tenantId = studentContext?.profile?.tenant_id || user.tenantId;
 
-    void getSchoolInfo(tenantId).then((school) => {
-      if (active) {
-        setSupportContact(buildSchoolSupportContact(
-          school,
-          'Olá! Preciso de ajuda com uma cobrança ou forma de pagamento.',
-        ));
-      }
-    });
+    void getSchoolInfo(tenantId)
+      .then((school) => {
+        if (active) {
+          setSupportContact(buildSchoolSupportContact(
+            school,
+            'Olá! Preciso de ajuda com uma cobrança ou forma de pagamento.',
+          ));
+        }
+      })
+      .catch(() => {
+        if (active) setSupportContact(null);
+      });
 
     return () => {
       active = false;
@@ -167,6 +176,23 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         <h2 className="text-2xl sm:text-4xl font-black tracking-tighter">Meu Financeiro</h2>
         <p className="text-white/80 text-sm mt-1">Acompanhe seus planos, pagamentos e histórico de mensalidades.</p>
       </header>
+
+      {historyError && (
+        <div className="flex flex-col gap-4 rounded-2xl border border-red-200 bg-red-50 p-5 text-left dark:border-red-900/40 dark:bg-red-950/20 sm:flex-row sm:items-center" role="alert">
+          <AlertCircle className="shrink-0 text-red-600" size={28} />
+          <div className="flex-1">
+            <p className="font-black text-red-800 dark:text-red-200">Cobranças indisponíveis</p>
+            <p className="mt-1 text-sm font-medium text-red-700 dark:text-red-300">{historyError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchPaymentHistory()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-xs font-black uppercase tracking-widest text-white sm:w-auto"
+          >
+            <RefreshCw size={15} /> Tentar novamente
+          </button>
+        </div>
+      )}
 
       {/* SELO: PAGO ADIANTADO (6 meses / anual) */}
       {billingInfo?.paid_through && billingInfo.paid_through >= new Date().toISOString().split('T')[0] && (
@@ -444,7 +470,9 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
               </article>
             );
           }) : (
-            <p className="px-6 py-10 text-center text-brand-muted text-sm font-bold">Nenhum pagamento registrado no histórico.</p>
+            <p className="px-6 py-10 text-center text-brand-muted text-sm font-bold">
+              {historyError ? 'Histórico temporariamente indisponível.' : 'Nenhum pagamento registrado no histórico.'}
+            </p>
           )}
         </div>
 
@@ -501,7 +529,9 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-10 py-8 text-center text-brand-muted text-sm font-bold">Nenhum pagamento registrado no histórico.</td>
+                  <td colSpan={5} className="px-10 py-8 text-center text-brand-muted text-sm font-bold">
+                    {historyError ? 'Histórico temporariamente indisponível.' : 'Nenhum pagamento registrado no histórico.'}
+                  </td>
                 </tr>
               )}
             </tbody>

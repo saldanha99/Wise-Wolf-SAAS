@@ -186,8 +186,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
   const handleConfirmLog = async (logId: string) => {
     try {
-      const { error } = await supabase.from('class_logs').update({ student_confirmed: true }).eq('id', logId);
-      if (error) throw error;
+      const { data, error } = await supabase.rpc('confirm_my_class_log', { p_class_log_id: logId });
+      if (error || (data && data.ok === false)) {
+        throw new Error(data?.error || error?.message || 'Não foi possível confirmar esta aula.');
+      }
 
       const result = await gamificationService.awardVerifiedXP('CLASS_LOG_CONFIRM', logId);
       if (result?.leveledUp) {

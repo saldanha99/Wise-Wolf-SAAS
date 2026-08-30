@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { MoreHorizontal, Phone, Mail, User, Clock, CheckCircle, XCircle, Plus, Calendar, ArrowRight, X, RefreshCw, ThermometerSun, ThermometerSnowflake, Flame } from 'lucide-react';
 import { User as UserType } from '../../types';
+import { calculateEnrollmentProRataPreview, dateInSaoPaulo } from '../../lib/enrollmentOffer';
+import { normalizeEnrollmentProRataTerms } from '../../lib/enrollment';
+import EnrollmentProRataSwitch from '../EnrollmentProRataSwitch';
 
 interface Lead {
     id: string;
@@ -17,6 +20,33 @@ interface Lead {
 interface LeadsKanbanProps {
     tenantId: string;
 }
+
+const ENROLLMENT_WEEKDAYS = [
+    { value: 'Monday', label: 'Segunda' },
+    { value: 'Tuesday', label: 'Terça' },
+    { value: 'Wednesday', label: 'Quarta' },
+    { value: 'Thursday', label: 'Quinta' },
+    { value: 'Friday', label: 'Sexta' },
+    { value: 'Saturday', label: 'Sábado' },
+    { value: 'Sunday', label: 'Domingo' },
+];
+
+const nextBillingMonthInSaoPaulo = () => {
+    const [year, month] = dateInSaoPaulo().split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+};
+
+const initialConversionData = () => ({
+    planId: '',
+    teacherId: '',
+    startDate: dateInSaoPaulo(),
+    billingStartMonth: nextBillingMonthInSaoPaulo(),
+    dueDay: 10,
+    enableProRata: false,
+    schedule: [] as Array<{ day: string; time: string }>,
+});
 
 const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     const [leads, setLeads] = useState<Lead[]>([]);
@@ -37,11 +67,28 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
     // Conversion State
     const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
-    const [conversionData, setConversionData] = useState({
-        planId: '',
-        paymentMethod: 'credit_card'
-    });
+    const [conversionData, setConversionData] = useState(initialConversionData);
     const [isConverting, setIsConverting] = useState(false);
+    const selectedConversionPlan = useMemo(
+        () => plans.find(plan => plan.id === conversionData.planId) || null,
+        [plans, conversionData.planId],
+    );
+    const conversionProRataAvailable = Boolean(
+        selectedConversionPlan && Number(selectedConversionPlan.fidelity_months) !== 0,
+    );
+    const conversionProRataEnabled = normalizeEnrollmentProRataTerms({
+        enableProRata: conversionData.enableProRata,
+        planDuration: selectedConversionPlan?.fidelity_months,
+    }).enabled;
+    const conversionProRataPreview = useMemo(() => calculateEnrollmentProRataPreview({
+        enabled: conversionProRataEnabled,
+        monthlyFee: Number(selectedConversionPlan?.monthly_price || 0),
+        classesPerWeek: Number(selectedConversionPlan?.classes_per_week || 0),
+        dueDay: conversionData.dueDay,
+        billingStartMonth: conversionData.billingStartMonth,
+        startDate: conversionData.startDate,
+        schedule: conversionData.schedule,
+    }), [selectedConversionPlan, conversionData, conversionProRataEnabled]);
 
     const fetchLeads = async () => {
         try {
@@ -65,7 +112,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             .from('profiles')
             .select('id, full_name')
             .eq('tenant_id', tenantId)
-            .eq('role', 'TEACHER');
+            .eq('role', 'TEACHER')
+            .eq('lifecycle_status', 'active');
         setTeachers(data || []);
     };
 
@@ -93,7 +141,10 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
         if (newStatus === 'WON') {
             const lead = leads.find(l => l.id === id);
-            if (lead) setConvertingLead(lead);
+            if (lead) {
+                setConversionData(initialConversionData());
+                setConvertingLead(lead);
+            }
             return;
         }
 
@@ -185,8 +236,26 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
     const handleConfirmConversion = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!convertingLead || !conversionData.planId) {
-            alert("Selecione um plano.");
+        const selectedPlan = selectedConversionPlan;
+        const expectedFrequency = Number(selectedPlan?.classes_per_week || 0);
+        if (!convertingLead || !selectedPlan) {
+            alert('Selecione um plano.');
+            return;
+        }
+        if (!conversionData.teacherId) {
+            alert('Selecione o professor da grade.');
+            return;
+        }
+        if (
+            conversionData.schedule.length !== expectedFrequency ||
+            conversionData.schedule.some(slot => !slot.day || !/^\d{2}:\d{2}$/.test(slot.time))
+        ) {
+            alert(`Preencha exatamente ${expectedFrequency} horários para este plano.`);
+            return;
+        }
+        const scheduleKeys = conversionData.schedule.map(slot => `${slot.day}|${slot.time}`);
+        if (new Set(scheduleKeys).size !== scheduleKeys.length) {
+            alert('A grade contém um horário repetido.');
             return;
         }
         setIsConverting(true);
@@ -195,11 +264,27 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                 body: {
                     action: 'createEnrollmentOffer',
                     leadId: convertingLead.id,
-                    planId: conversionData.planId
+                    planId: conversionData.planId,
+                    teacherId: conversionData.teacherId,
+                    schedule: conversionData.schedule,
+                    startDate: conversionData.startDate,
+                    billingStartMonth: conversionData.billingStartMonth,
+                    dueDay: conversionData.dueDay,
+                    enableProRata: conversionProRataEnabled,
                 }
             });
             if (error || !data?.ok || typeof data.enrollmentUrl !== 'string') {
-                throw new Error(data?.error || error?.message || 'Falha ao gerar a oferta segura');
+                let responseMessage = typeof data?.error === 'string' ? data.error : '';
+                const context = (error as any)?.context;
+                if (!responseMessage && context && typeof context.clone === 'function') {
+                    try {
+                        const payload = await context.clone().json();
+                        responseMessage = typeof payload?.error === 'string' ? payload.error : '';
+                    } catch {
+                        responseMessage = '';
+                    }
+                }
+                throw new Error(responseMessage || error?.message || 'Falha ao gerar a oferta segura');
             }
 
             let copied = false;
@@ -210,7 +295,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                 copied = false;
             }
             setConvertingLead(null);
-            setConversionData({ planId: '', paymentMethod: 'credit_card' });
+            setConversionData(initialConversionData());
             alert(copied
                 ? 'Link seguro de matrícula criado e copiado. A matrícula será efetivada somente após o aluno concluir o fluxo.'
                 : `Link seguro de matrícula criado:\n\n${data.enrollmentUrl}`);
@@ -489,7 +574,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             {/* Conversion Modal */}
             {convertingLead && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-                    <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-md w-full relative">
+                    <div className="bg-brand-surface rounded-3xl shadow-2xl p-8 max-w-3xl max-h-[92vh] overflow-y-auto w-full relative">
                         <button
                             onClick={() => setConvertingLead(null)}
                             className="absolute top-6 right-6 text-brand-muted hover:text-brand-muted"
@@ -510,7 +595,19 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                         <button
                                             key={plan.id}
                                             type="button"
-                                            onClick={() => setConversionData({ ...conversionData, planId: plan.id })}
+                                            onClick={() => {
+                                                const frequency = Number(plan.classes_per_week || 0);
+                                                setConversionData(current => ({
+                                                    ...current,
+                                                    planId: plan.id,
+                                                    enableProRata: Number(plan.fidelity_months) !== 0
+                                                        ? current.enableProRata
+                                                        : false,
+                                                    schedule: Array.from({ length: frequency }, (_, index) =>
+                                                        current.schedule[index] || { day: '', time: '' }
+                                                    ),
+                                                }));
+                                            }}
                                             className={`p-3 rounded-xl border-2 text-sm font-bold transition-all ${conversionData.planId === plan.id
                                                 ? 'border-purple-500 bg-purple-50 text-purple-700'
                                                 : 'border-brand-border text-brand-muted hover:border-brand-border'
@@ -530,10 +627,147 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Professor da grade</label>
+                                    <select
+                                        required
+                                        value={conversionData.teacherId}
+                                        onChange={event => setConversionData(current => ({
+                                            ...current,
+                                            teacherId: event.target.value,
+                                        }))}
+                                        className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
+                                    >
+                                        <option value="">Selecione um professor...</option>
+                                        {teachers.map(teacher => (
+                                            <option key={teacher.id} value={teacher.id}>{teacher.full_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Início das aulas</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        min={dateInSaoPaulo()}
+                                        value={conversionData.startDate}
+                                        onChange={event => setConversionData(current => ({
+                                            ...current,
+                                            startDate: event.target.value,
+                                        }))}
+                                        className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Primeiro mês de cobrança</label>
+                                    <input
+                                        type="month"
+                                        required
+                                        min={dateInSaoPaulo().slice(0, 7)}
+                                        value={conversionData.billingStartMonth}
+                                        onChange={event => setConversionData(current => ({
+                                            ...current,
+                                            billingStartMonth: event.target.value,
+                                        }))}
+                                        className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-brand-muted mb-1 block">Dia do vencimento</label>
+                                    <select
+                                        value={conversionData.dueDay}
+                                        onChange={event => setConversionData(current => ({
+                                            ...current,
+                                            dueDay: Number(event.target.value),
+                                        }))}
+                                        className="w-full p-3 bg-brand-surface-2 border border-brand-border rounded-xl font-bold text-brand-text"
+                                    >
+                                        {Array.from({ length: 31 }, (_, index) => index + 1).map(day => (
+                                            <option key={day} value={day}>Dia {day}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {conversionData.schedule.length > 0 && (
+                                <div>
+                                    <label className="text-xs font-bold uppercase text-brand-muted mb-2 block">Grade semanal</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {conversionData.schedule.map((slot, index) => (
+                                            <div key={index} className="grid grid-cols-2 gap-2 rounded-xl border border-brand-border bg-brand-surface-2 p-3">
+                                                <select
+                                                    aria-label={`Dia da aula ${index + 1}`}
+                                                    required
+                                                    value={slot.day}
+                                                    onChange={event => setConversionData(current => ({
+                                                        ...current,
+                                                        schedule: current.schedule.map((item, itemIndex) =>
+                                                            itemIndex === index ? { ...item, day: event.target.value } : item
+                                                        ),
+                                                    }))}
+                                                    className="bg-transparent text-sm font-bold text-brand-text outline-none"
+                                                >
+                                                    <option value="">Dia</option>
+                                                    {ENROLLMENT_WEEKDAYS.map(day => (
+                                                        <option key={day.value} value={day.value}>{day.label}</option>
+                                                    ))}
+                                                </select>
+                                                <input
+                                                    aria-label={`Hora da aula ${index + 1}`}
+                                                    type="time"
+                                                    required
+                                                    value={slot.time}
+                                                    onChange={event => setConversionData(current => ({
+                                                        ...current,
+                                                        schedule: current.schedule.map((item, itemIndex) =>
+                                                            itemIndex === index ? { ...item, time: event.target.value } : item
+                                                        ),
+                                                    }))}
+                                                    className="bg-transparent text-sm font-bold text-brand-text outline-none"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="mt-2 text-[11px] text-brand-muted">
+                                        O servidor confirma a disponibilidade do professor antes de criar o link.
+                                    </p>
+                                </div>
+                            )}
+
+                            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <EnrollmentProRataSwitch
+                                    checked={conversionProRataEnabled}
+                                    disabled={!conversionProRataAvailable}
+                                    label="Cobrar pró-rata nesta matrícula"
+                                    onCheckedChange={checked => setConversionData(current => ({
+                                        ...current,
+                                        enableProRata: checked,
+                                    }))}
+                                />
+                                <span>
+                                    <strong className="block">Cobrar pró-rata</strong>
+                                    {!selectedConversionPlan
+                                        ? 'Selecione um plano para configurar.'
+                                        : !conversionProRataAvailable
+                                            ? 'Não se aplica ao plano de aula avulsa.'
+                                            : conversionProRataEnabled
+                                                ? 'Ativado: o valor proporcional será recalculado no servidor pela grade escolhida.'
+                                                : 'Desativado: não haverá cobrança proporcional antes da primeira mensalidade.'}
+                                    {conversionProRataEnabled && conversionProRataPreview.classCount > 0 && (
+                                        <small className="mt-1 block font-bold">
+                                            R$ {conversionProRataPreview.pricePerClass.toFixed(2)} × {conversionProRataPreview.classCount} aulas = R$ {conversionProRataPreview.value.toFixed(2)}
+                                        </small>
+                                    )}
+                                </span>
+                            </div>
+
                             <div className="bg-brand-surface-2 p-4 rounded-xl border border-brand-border text-xs text-brand-muted">
                                 <p className="font-bold mb-1">Fluxo protegido:</p>
                                 <ul className="list-disc pl-4 space-y-1">
                                     <li>Preço e plano validados no servidor</li>
+                                    <li>Professor e horários revalidados antes do link</li>
+                                    <li>Pró-rata opcional, recalculado no servidor quando ativado</li>
                                     <li>Link vinculado ao tenant ativo</li>
                                     <li>Acesso liberado somente após a conclusão</li>
                                 </ul>

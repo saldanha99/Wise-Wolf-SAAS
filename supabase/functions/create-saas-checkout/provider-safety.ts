@@ -1,3 +1,8 @@
+import {
+  providerPaymentSplitMatches,
+  type ProviderSplitPolicy,
+} from "../_shared/student-provider-lifecycle.ts";
+
 export type SaasCheckoutBillingType = "PIX" | "BOLETO";
 
 export type ProviderResolution =
@@ -42,13 +47,6 @@ export function parseSaasCheckoutBillingType(
   return value === "PIX" || value === "BOLETO" ? value : null;
 }
 
-export function requiresProviderReconciliation(
-  mutationWasAmbiguous: boolean,
-  lookupCompleted: boolean,
-): boolean {
-  return mutationWasAmbiguous && !lookupCompleted;
-}
-
 export function normalizeProviderId(value: unknown): string | null {
   const id = text(value);
   return id.length > 0 && id.length <= 200 && /^[A-Za-z0-9_-]+$/.test(id)
@@ -68,12 +66,10 @@ function stableMatch(
     const id = normalizeProviderId(candidate.id);
     return id ? [{ id, createdAt: text(candidate.dateCreated) }] : [];
   });
-  if (valid.length === 0) return { status: "CONFLICT" };
-  valid.sort((left, right) =>
-    `${left.createdAt || "9999"}:${left.id}`.localeCompare(
-      `${right.createdAt || "9999"}:${right.id}`,
-    )
-  );
+  // externalReference is a reconciliation hint, not an idempotency key. Two
+  // active objects occupying the same provider identity are never safe to
+  // choose between automatically, even when their immutable fields match.
+  if (valid.length !== 1) return { status: "CONFLICT" };
   return { status: "MATCH", id: valid[0].id };
 }
 
@@ -84,7 +80,9 @@ export function resolveProviderCustomer(
 ): ProviderResolution {
   if (!Array.isArray(candidates)) return { status: "CONFLICT" };
   const scoped = candidates.filter((candidate) => {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    if (
+      !candidate || typeof candidate !== "object" || Array.isArray(candidate)
+    ) {
       return false;
     }
     const record = candidate as Record<string, unknown>;
@@ -95,9 +93,10 @@ export function resolveProviderCustomer(
   const identityMatches = scoped.filter((candidate) =>
     digits(candidate.cpfCnpj) === expectedCpfCnpj
   );
-  return identityMatches.length > 0
-    ? stableMatch(identityMatches)
-    : { status: "CONFLICT" };
+  if (scoped.length !== 1 || identityMatches.length !== 1) {
+    return { status: "CONFLICT" };
+  }
+  return stableMatch(identityMatches);
 }
 
 export function resolveProviderSubscription(
@@ -108,11 +107,18 @@ export function resolveProviderSubscription(
     billingType: SaasCheckoutBillingType;
     billingCycle: "MONTHLY" | "YEARLY";
     amount: number;
+    description: string;
+    maxPayments: null;
+    splitPolicy: ProviderSplitPolicy;
+    nextDueDate?: string;
+    status?: "ACTIVE";
   },
 ): ProviderResolution {
   if (!Array.isArray(candidates)) return { status: "CONFLICT" };
   const scoped = candidates.filter((candidate) => {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    if (
+      !candidate || typeof candidate !== "object" || Array.isArray(candidate)
+    ) {
       return false;
     }
     const record = candidate as Record<string, unknown>;
@@ -125,12 +131,31 @@ export function resolveProviderSubscription(
     text(candidate.billingType).toUpperCase() === expected.billingType &&
     text(candidate.cycle).toUpperCase() === expected.billingCycle &&
     Number.isFinite(Number(candidate.value)) &&
-    Math.abs(Number(candidate.value) - expected.amount) < 0.005
+    Math.round(Number(candidate.value) * 100) ===
+      Math.round(expected.amount * 100) &&
+    text(candidate.description) === expected.description &&
+    (candidate.maxPayments === null ||
+      candidate.maxPayments === undefined || candidate.maxPayments === "") &&
+    expected.maxPayments === null &&
+    providerPaymentSplitMatches(candidate, expected.splitPolicy) &&
+    (expected.nextDueDate === undefined ||
+      text(candidate.nextDueDate) === expected.nextDueDate) &&
+    (expected.status === undefined ||
+      text(candidate.status).toUpperCase() === expected.status)
   );
   if (scoped.length !== 1 || exactMatches.length !== 1) {
     return { status: "CONFLICT" };
   }
   return stableMatch(exactMatches);
+}
+
+export function saasCheckoutNextDueDate(createdAt: unknown): string | null {
+  const raw = text(createdAt);
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  parsed.setUTCDate(parsed.getUTCDate() + 1);
+  return parsed.toISOString().slice(0, 10);
 }
 
 export function checkoutPayloadMatches(

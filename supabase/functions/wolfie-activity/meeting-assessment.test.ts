@@ -445,9 +445,10 @@ Deno.test("recall validation has deterministic per-block and overall gates", () 
     closing: MEETING_RECALL_BLOCK_GATE - 1,
   });
   assert(passing?.validated);
-  assert(blocked?.score >= 75);
-  assert(!blocked?.validated);
-  assert(blocked?.failedBlocks[0] === "closing");
+  assert(blocked !== null);
+  assert(blocked.score >= 75);
+  assert(!blocked.validated);
+  assert(blocked.failedBlocks[0] === "closing");
 });
 
 Deno.test("only complete server-validation evidence unlocks readaptation", () => {

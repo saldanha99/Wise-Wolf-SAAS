@@ -70,24 +70,17 @@ export const WolfieAssignButton: React.FC<WolfieAssignButtonProps> = ({
             // O WhatsApp sai pela instância do próprio professor, como os
             // demais avisos de aula. Se o envio falhar, a tarefa continua
             // valendo — o aluno a vê ao abrir o app.
-            const phone = String(result.student_phone ?? '').replace(/\D/g, '');
-            if (phone) {
-                const link = 'https://system.wisewolflanguage.com.br/?tab=ai-tutor';
-                await supabase.functions.invoke('send-class-notification', {
-                    body: {
-                        type: 'custom',
-                        student_name: studentName,
-                        student_phone: phone,
-                        message:
-                            `Oi, ${studentName.split(' ')[0]}! 🐺\n\n` +
-                            `Sua tarefa de hoje no Wolfie: *${clean}*.\n` +
-                            (note.trim() ? `${note.trim()}\n\n` : '\n') +
-                            `É rapidinho, e dá para fazer escrevendo ou falando:\n${link}`,
-                    },
-                }).catch(() => undefined);
-                // Marcar o envio é registro, não parte do fluxo: se falhar, a
-                // tarefa já está criada e o aluno já recebeu.
-                await supabase.rpc('mark_wolfie_assignment_sent', { p_id: result.id });
+            const { data: notifyData, error: notifyError } = await supabase.functions.invoke(
+                'send-class-notification',
+                { body: { action: 'WOLFIE_ASSIGNMENT', assignment_id: result.id } },
+            );
+            if (notifyError) throw notifyError;
+            if (
+                notifyData?.delivery !== 'accepted' ||
+                typeof notifyData?.provider_message_id !== 'string' ||
+                !notifyData.provider_message_id.trim()
+            ) {
+                throw new Error('delivery_not_confirmed');
             }
 
             setDone(true);

@@ -91,6 +91,10 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  /** Estado legado de acesso; mantido para compatibilidade visual. */
+  status?: string;
+  /** Estado canônico de ciclo de vida vindo de profiles.lifecycle_status. */
+  lifecycleStatus?: "active" | "suspended" | "offboarded" | string;
   avatar?: string;
   professor_id?: string; // Link to responsible teacher
   module?: string;

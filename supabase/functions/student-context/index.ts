@@ -4,6 +4,7 @@ import {
   createClient,
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { resolveStudentAccess, type StudentAccess } from "./core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,6 +110,7 @@ interface StudentContextResponse {
     status: BillingStatus;
     oldestDue: string | null;
   };
+  access: StudentAccess | { status: "UNAVAILABLE"; enrollmentState: null };
   nextClass: NextClass | null;
   _error?: string;
 }
@@ -120,6 +122,7 @@ const unavailableResponse = (
   gamification: { xp: 0, level: 1, streak: 0, nextLevelProgress: 0 },
   // Fail closed: the application must not grant access based on an unchecked bill.
   billing: { status: "SUSPENDED", oldestDue: null },
+  access: { status: "UNAVAILABLE", enrollmentState: null },
   nextClass: null,
   _error: message,
 });
@@ -252,7 +255,8 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    if (!supabaseUrl || !anonKey) {
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       return jsonResponse(unavailableResponse("SERVICE_UNAVAILABLE"), 503);
     }
 
@@ -270,6 +274,16 @@ Deno.serve(async (req: Request) => {
         detectSessionInUrl: false,
       },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
+    });
+    // The enrollment offer is an operational record and may not be visible
+    // through end-user RLS. This server-side client is used only after JWT,
+    // role and tenant validation, with exact user/tenant predicates below.
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
     });
 
     const {
@@ -301,6 +315,7 @@ Deno.serve(async (req: Request) => {
     if (!directoryProfile.tenant_id) {
       return jsonResponse(unavailableResponse("TENANT_REQUIRED"), 403);
     }
+    const tenantId = directoryProfile.tenant_id;
 
     const { data: privateProfileData, error: privateProfileError } =
       await supabase.rpc("get_authorized_profile_private", {
@@ -333,12 +348,29 @@ Deno.serve(async (req: Request) => {
       ...financialProfile,
     };
 
+    const { data: enrollmentOffers, error: enrollmentOffersError } = await admin
+      .from("offers")
+      .select(
+        "processing_state, processing_by, consumed_by, consumed_at, processing_updated_at",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("kind", "ENROLLMENT")
+      .or(`processing_by.eq.${user.id},consumed_by.eq.${user.id}`)
+      .order("processing_updated_at", { ascending: false });
+    if (enrollmentOffersError) {
+      return jsonResponse(
+        unavailableResponse("ENROLLMENT_STATE_UNAVAILABLE"),
+        503,
+      );
+    }
+    const access = resolveStudentAccess(enrollmentOffers ?? [], user.id);
+
     const now = new Date();
     let streak = profile.streak_count ?? 0;
     let lastActivity = profile.last_activity;
 
     // Test fixtures remain read-only so routine QA cannot create durable activity.
-    if (!profile.is_test_account) {
+    if (!profile.is_test_account && access.status === "ACTIVE") {
       const persistedStreak = streak;
       const previousActivity = profile.last_activity
         ? new Date(profile.last_activity)
@@ -369,7 +401,7 @@ Deno.serve(async (req: Request) => {
           last_activity: activityTimestamp,
         })
         .eq("id", user.id)
-        .eq("tenant_id", profile.tenant_id)
+        .eq("tenant_id", tenantId)
         .eq("role", "STUDENT");
 
       if (activityError) {
@@ -383,7 +415,7 @@ Deno.serve(async (req: Request) => {
       .from("student_payments")
       .select("due_date, status")
       .eq("student_id", user.id)
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .in("status", ["PENDING", "OVERDUE"])
       .lt("due_date", dateInSaoPaulo(now))
       .order("due_date", { ascending: true });
@@ -409,12 +441,14 @@ Deno.serve(async (req: Request) => {
       billingStatus = daysLate > 7 ? "SUSPENDED" : "OVERDUE";
     }
 
-    const nextClass = await fetchNextClass(
-      supabase,
-      user.id,
-      profile.tenant_id,
-      now,
-    );
+    const nextClass = access.status === "ACTIVE"
+      ? await fetchNextClass(
+        supabase,
+        user.id,
+        tenantId,
+        now,
+      )
+      : null;
     const { is_test_account: _isTestAccount, ...publicProfile } = profile;
     void _isTestAccount;
 
@@ -431,6 +465,7 @@ Deno.serve(async (req: Request) => {
         nextLevelProgress: ((profile.xp ?? 0) % 1000) / 10,
       },
       billing: { status: billingStatus, oldestDue },
+      access,
       nextClass,
     });
   } catch {

@@ -13,6 +13,29 @@ export interface LegalSignatureLocation {
   path: string;
 }
 
+function publicSignedAssetUrl(
+  signedUrl: string,
+  configuredPublicBaseUrl?: string,
+): string {
+  const publicBaseUrl = configuredPublicBaseUrl?.trim() || "";
+  if (!publicBaseUrl) return signedUrl;
+
+  const signed = new URL(signedUrl);
+  const publicBase = new URL(publicBaseUrl);
+  const publicIsSafe = publicBase.protocol === "https:" ||
+    (publicBase.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(publicBase.hostname));
+  if (
+    !publicIsSafe || publicBase.username || publicBase.password ||
+    publicBase.hash
+  ) {
+    throw new Error("tenant_legal_public_url_invalid");
+  }
+
+  return new URL(`${signed.pathname}${signed.search}`, publicBase.origin)
+    .toString();
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -54,7 +77,11 @@ export async function materializeLegalSchoolInfo(
   admin: SupabaseClient,
   tenantId: string,
   schoolInfo: unknown,
-  options: { includePath?: boolean; expiresIn?: number } = {},
+  options: {
+    includePath?: boolean;
+    expiresIn?: number;
+    publicBaseUrl?: string;
+  } = {},
 ): Promise<Record<string, unknown> | null> {
   if (!isRecord(schoolInfo)) return null;
   const safeInfo = { ...schoolInfo };
@@ -79,6 +106,9 @@ export async function materializeLegalSchoolInfo(
   if (options.includePath) {
     safeInfo.legalRepresentativeSignaturePath = location.path;
   }
-  safeInfo.legalRepresentativeSignatureUrl = data.signedUrl;
+  safeInfo.legalRepresentativeSignatureUrl = publicSignedAssetUrl(
+    data.signedUrl,
+    options.publicBaseUrl,
+  );
   return safeInfo;
 }

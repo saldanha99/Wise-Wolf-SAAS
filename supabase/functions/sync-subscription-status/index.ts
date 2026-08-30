@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { authorizeAutomation } from "../_shared/automation-auth.ts";
+import { type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
+import { guardAsaasMutationTarget } from "../_shared/asaas-mutation-guard.ts";
+import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
+import { resolveAsaasIntegration } from "../_shared/tenant-integration-broker.ts";
 
 // Espelha para o banco o estado da assinatura na Asaas.
 //
@@ -20,121 +22,226 @@ import { authorizeAutomation } from "../_shared/automation-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
-const ASAAS_KEY = Deno.env.get("ASAAS_API_KEY") || "";
-const ASAAS_URL = (Deno.env.get("ASAAS_API_URL") || "https://api-sandbox.asaas.com").replace(/\/+$/, "");
+type SubscriptionProfile = {
+  id: string;
+  tenant_id: string | null;
+  asaas_customer_id: string | null;
+  subscription_id: string;
+};
 
-// ⚠️ `ASAAS_API_URL` no runtime é a BASE, sem `/v3` — o prefixo é montado aqui.
-// A primeira versão desta função assumiu que a env já trazia `/v3` (é o que está
-// escrito no arquivo .env) e montou `https://api.asaas.com/subscriptions/...`,
-// levando 404 nas 25 assinaturas. Mesma convenção de create-asaas-subscription,
-// create-wolfie-topup e sync-plan-change-billing.
-function asaasPathPrefix() {
-  return ASAAS_URL.includes("api-sandbox") || ASAAS_URL.includes("api.asaas.com")
-    ? "/v3"
-    : "/api/v3";
-}
+async function fetchAllSubscriptionProfiles(
+  supabase: SupabaseClient,
+): Promise<SubscriptionProfile[]> {
+  const students: SubscriptionProfile[] = [];
+  let afterId: string | null = null;
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  const authError = await authorizeAutomation(req, corsHeaders);
-  if (authError) return authError;
-
-  // Sem chave a função para aqui, sem tocar em nada. Gravar "assinatura não
-  // encontrada" por falta de credencial faria o painel acusar cancelamento em
-  // massa por um erro de configuração.
-  if (!ASAAS_KEY) {
-    return new Response(JSON.stringify({ error: "ASAAS_API_KEY ausente" }), {
-      status: 503,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
-    const { data: alunos, error } = await supabase
+  for (let page = 0; page < 10_000; page++) {
+    let query = supabase
       .from("profiles")
-      .select("id, subscription_id")
+      .select("id, tenant_id, asaas_customer_id, subscription_id")
       .eq("role", "STUDENT")
       .not("subscription_id", "is", null)
       .neq("subscription_id", "")
-      .limit(500);
+      .order("id", { ascending: true })
+      .limit(1_000);
+    if (afterId) query = query.gt("id", afterId);
 
+    const { data, error } = await query;
     if (error) throw error;
+    const rows = (data || []) as SubscriptionProfile[];
+    students.push(...rows);
+    if (rows.length < 1_000) return students;
 
-    const prefix = asaasPathPrefix();
-    const total = (alunos || []).length;
+    const nextId = rows.at(-1)?.id || null;
+    if (!nextId || nextId === afterId) {
+      throw new Error("subscription_profile_cursor_stalled");
+    }
+    afterId = nextId;
+  }
 
-    // Primeiro LÊ tudo, depois GRAVA. A separação é a trava contra o incidente
-    // de 07/08/2026: uma URL montada errada devolveu 404 nas 25 assinaturas e a
-    // versão anterior gravou "NOT_FOUND" em todas, fazendo o painel anunciar 20
-    // contratos encerrados que não existiam. Falha sistêmica não pode virar 25
-    // fatos de negócio.
-    const lidos: { id: string; status: string | null; endDate: string | null }[] = [];
+  throw new Error("subscription_profile_page_limit");
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  const auth = await authorizeScopedAutomation(req, corsHeaders);
+  if (auth.ok === false) return auth.response;
+
+  try {
+    const supabase = auth.context.admin;
+
+    const students = await fetchAllSubscriptionProfiles(supabase);
+    const total = students.length;
+    let atualizados = 0;
     let naoEncontrados = 0;
     let falhas = 0;
+    let bloqueados = 0;
     const motivos: string[] = [];
+    const groups = new Map<string, SubscriptionProfile[]>();
 
-    for (const a of alunos || []) {
+    for (const a of students) {
+      const tenantId = String(a.tenant_id || "").trim();
+      if (!tenantId) {
+        bloqueados++;
+        continue;
+      }
+      groups.set(tenantId, [...(groups.get(tenantId) || []), a]);
+    }
+
+    for (const [tenantId, tenantStudents] of groups) {
+      let integration: Awaited<ReturnType<typeof resolveAsaasIntegration>>;
       try {
-        const resp = await fetch(
-          `${ASAAS_URL}${prefix}/subscriptions/${encodeURIComponent(a.subscription_id)}`,
-          { headers: { access_token: ASAAS_KEY } },
+        integration = await resolveAsaasIntegration(
+          supabase,
+          tenantId,
+          "subscription.read",
         );
-        const body = await resp.json().catch(() => ({}));
-
-        if (resp.status === 404) {
-          naoEncontrados++;
-          lidos.push({ id: a.id, status: "NOT_FOUND", endDate: null });
-          continue;
+      } catch {
+        bloqueados += tenantStudents.length;
+        if (motivos.length < 10) {
+          motivos.push(`${tenantId}: integration_unavailable`);
         }
-        if (!resp.ok || body?.errors) {
+        continue;
+      }
+
+      // Primeiro lê a escola inteira, depois grava. Um endpoint/segredo errado
+      // em um tenant não pode virar cancelamento em massa nem impedir os demais.
+      const lidos: {
+        id: string;
+        subscriptionId: string;
+        customerId: string;
+        status: string | null;
+        endDate: string | null;
+      }[] = [];
+      let tenantNotFound = 0;
+      for (const student of tenantStudents) {
+        try {
+          const guard = await guardAsaasMutationTarget({
+            admin: supabase,
+            baseUrl: integration.baseUrl,
+            apiKey: integration.apiKey,
+            operation: "sync_subscription_status_read",
+            target: {
+              tenantId,
+              studentId: student.id,
+              resource: "subscription",
+              entityId: student.subscription_id,
+              customerId: String(student.asaas_customer_id || "").trim(),
+              subscriptionId: student.subscription_id,
+              subscriptionMatch: "entity_id",
+            },
+          });
+          if (guard.ok === false && guard.code === "NOT_FOUND") {
+            tenantNotFound++;
+            lidos.push({
+              id: student.id,
+              subscriptionId: student.subscription_id,
+              customerId: String(student.asaas_customer_id || "").trim(),
+              status: "NOT_FOUND",
+              endDate: null,
+            });
+          } else if (guard.ok === false) {
+            if (
+              guard.code === "IDENTITY_MISMATCH" ||
+              guard.code === "CANONICAL_BINDING_INVALID" ||
+              guard.code === "REFERENCE_UNAVAILABLE"
+            ) {
+              bloqueados++;
+            } else {
+              falhas++;
+            }
+            if (motivos.length < 10) {
+              motivos.push(
+                `${student.subscription_id}: provider_identity_unverified`,
+              );
+            }
+          } else if (guard.entity.errors) {
+            falhas++;
+            if (motivos.length < 10) {
+              motivos.push(`${student.subscription_id}: invalid_response`);
+            }
+          } else {
+            lidos.push({
+              id: student.id,
+              subscriptionId: student.subscription_id,
+              customerId: String(student.asaas_customer_id || "").trim(),
+              status: String(guard.entity.status || "").toUpperCase() || null,
+              endDate: typeof guard.entity.endDate === "string"
+                ? guard.entity.endDate
+                : null,
+            });
+          }
+        } catch (e) {
           falhas++;
-          if (motivos.length < 10) motivos.push(`${a.subscription_id}: HTTP ${resp.status}`);
-          continue;
+          if (motivos.length < 10) {
+            motivos.push(`${student.subscription_id}: ${(e as Error).message}`);
+          }
         }
+      }
 
-        lidos.push({
-          id: a.id,
-          status: String(body.status || "").toUpperCase() || null,
-          endDate: body.endDate || null,
-        });
-      } catch (e) {
-        falhas++;
-        if (motivos.length < 10) motivos.push(`${a.subscription_id}: ${(e as Error).message}`);
+      if (
+        tenantStudents.length > 0 &&
+        tenantNotFound === tenantStudents.length
+      ) {
+        bloqueados += tenantStudents.length;
+        if (motivos.length < 10) {
+          motivos.push(`${tenantId}: all_subscriptions_404`);
+        }
+        continue;
+      }
+
+      const agora = new Date().toISOString();
+      for (const result of lidos) {
+        const { data: updated, error: updateError } = await supabase.from(
+          "profiles",
+        ).update({
+          asaas_subscription_status: result.status,
+          asaas_subscription_end_date: result.endDate,
+          asaas_subscription_synced_at: agora,
+        }).eq("id", result.id)
+          .eq("tenant_id", tenantId)
+          .eq("subscription_id", result.subscriptionId)
+          .eq("asaas_customer_id", result.customerId)
+          .eq("role", "STUDENT")
+          .select("id")
+          .maybeSingle();
+        if (updateError || !updated) {
+          falhas++;
+          if (motivos.length < 10) {
+            motivos.push(`${result.id}: local_update_failed`);
+          }
+        } else {
+          atualizados++;
+          if (result.status === "NOT_FOUND") naoEncontrados++;
+        }
       }
     }
 
-    // Se TODAS deram 404, o problema é configuração (URL, chave, conta trocada),
-    // não 25 alunos que cancelaram no mesmo dia. Aborta sem gravar nada.
-    if (total > 0 && naoEncontrados === total) {
-      return new Response(JSON.stringify({
-        ok: false,
-        error: "todas as assinaturas retornaram 404 — provável erro de configuração (URL/chave). Nada foi gravado.",
+    console.log(
+      `[sync-subscription-status] inspecionados=${total} atualizados=${atualizados} falhas=${falhas} bloqueados=${bloqueados}`,
+    );
+
+    return new Response(
+      JSON.stringify({
+        ok: bloqueados === 0 && falhas === 0,
         inspecionados: total,
-      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    let atualizados = 0;
-    const agora = new Date().toISOString();
-    for (const r of lidos) {
-      await supabase.from("profiles").update({
-        asaas_subscription_status: r.status,
-        asaas_subscription_end_date: r.endDate,
-        asaas_subscription_synced_at: agora,
-      }).eq("id", r.id);
-      atualizados++;
-    }
-
-    return new Response(JSON.stringify({
-      ok: true, inspecionados: total, atualizados, nao_encontrados: naoEncontrados, falhas, motivos,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        atualizados,
+        nao_encontrados: naoEncontrados,
+        falhas,
+        bloqueados,
+        motivos,
+      }),
+      {
+        status: bloqueados === 0 && falhas === 0 ? 200 : 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,

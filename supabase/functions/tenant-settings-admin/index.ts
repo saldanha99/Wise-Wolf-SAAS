@@ -598,7 +598,10 @@ async function loadSettings(admin: SupabaseClient, tenantId: string) {
       admin,
       tenantId,
       tenant.school_info,
-      { includePath: true },
+      {
+        includePath: true,
+        publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL"),
+      },
     );
   } catch (error) {
     console.error("Tenant legal signature lookup failed", {
@@ -928,7 +931,10 @@ export async function handleRequest(req: Request): Promise<Response> {
             auth.context.admin,
             tenantId,
             settings.schoolInfo,
-            { includePath: true },
+            {
+              includePath: true,
+              publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL"),
+            },
           );
           if (!verifiedSchoolInfo?.legalRepresentativeSignatureUrl) {
             throw new Error("signature_missing");

@@ -3887,7 +3887,10 @@ function realtimeRetryCompletionIntent(
   score: number | null;
   feedback: JsonObject;
 } | null {
-  if (!correction || !analysis.retryCompleted) return null;
+  if (
+    !correction || !analysis.retryCompleted ||
+    typeof correction.id !== "string" || !UUID_PATTERN.test(correction.id)
+  ) return null;
   const retryDimension = pendingRealtimeRetryRubricDimension(correction);
   const retryScore = retryDimension
     ? analysis.observedRubric[retryDimension] ?? null
@@ -4400,18 +4403,26 @@ async function analyzeAndPersistRealtimeTurn(input: {
       logDatabaseError("realtime_analysis_turn_lookup", turnsError);
       return fallback;
     }
-    const turns = (rawTurns ?? []).map((turn) => ({
-      id: boundedString(turn.id, 80),
-      speaker: turn.speaker,
-      content: boundedString(turn.content, MAX_MESSAGE_LENGTH),
-      structured_payload: isJsonObject(turn.structured_payload)
-        ? turn.structured_payload
-        : {},
-      turn_index: Number.isInteger(turn.turn_index) ? turn.turn_index : -1,
-      stage: PEDAGOGICAL_STAGES.has(turn.stage as PedagogicalStage)
-        ? turn.stage as PedagogicalStage
-        : null,
-    })) as RealtimeTurnRow[];
+    const rawTurnRows: unknown[] = Array.isArray(rawTurns) ? rawTurns : [];
+    const turns: RealtimeTurnRow[] = rawTurnRows
+      .filter(isJsonObject)
+      .flatMap((turn): RealtimeTurnRow[] => {
+        if (turn.speaker !== "student" && turn.speaker !== "wolfie") return [];
+        return [{
+          id: boundedString(turn.id, 80),
+          speaker: turn.speaker,
+          content: boundedString(turn.content, MAX_MESSAGE_LENGTH),
+          structured_payload: isJsonObject(turn.structured_payload)
+            ? turn.structured_payload
+            : {},
+          turn_index: Number.isInteger(turn.turn_index)
+            ? Number(turn.turn_index)
+            : -1,
+          stage: PEDAGOGICAL_STAGES.has(turn.stage as PedagogicalStage)
+            ? turn.stage as PedagogicalStage
+            : null,
+        }];
+      });
     const studentTurn = turns.find((turn) =>
       turn.id === input.studentTurnId && turn.speaker === "student"
     );
@@ -4662,7 +4673,7 @@ async function analyzeAndPersistRealtimeTurn(input: {
       experienceMode: input.config.experienceMode,
       correctionMode: input.config.correctionMode,
       difficulty: input.config.difficulty,
-      currentAdaptiveLevel,
+      currentAdaptiveLevel: currentAdaptiveLevel ?? undefined,
       currentCounterpart,
       currentPendingQuestion,
       currentPendingDecision,
@@ -4757,8 +4768,13 @@ async function analyzeAndPersistRealtimeTurn(input: {
         existingCorrectionsError,
       );
     }
-    if ((existingCorrectionRows ?? []).length > 0) {
-      const recoverySnapshot = (existingCorrectionRows ?? [])
+    const existingCorrections: JsonObject[] = Array.isArray(
+        existingCorrectionRows,
+      )
+      ? existingCorrectionRows.filter(isJsonObject)
+      : [];
+    if (existingCorrections.length > 0) {
+      const recoverySnapshot = existingCorrections
         .map((row) =>
           isJsonObject(row.retry_feedback) &&
             isJsonObject(row.retry_feedback.analysisSnapshot)
@@ -4768,12 +4784,12 @@ async function analyzeAndPersistRealtimeTurn(input: {
         .find(isJsonObject) ?? {};
       const recoveredAnalysis = normalizeRealtimePostTurnAnalysis({
         ...recoverySnapshot,
-        current_stage: (existingCorrectionRows ?? []).some((row) =>
+        current_stage: existingCorrections.some((row) =>
             row.requires_retry === true
           )
           ? "retry"
           : recoverySnapshot.current_stage ?? currentStage,
-        corrections: (existingCorrectionRows ?? []).map((row) => ({
+        corrections: existingCorrections.map((row) => ({
           original: row.wrong_sentence,
           corrected: row.correct_sentence,
           natural_version: row.natural_sentence,
@@ -4801,11 +4817,7 @@ async function analyzeAndPersistRealtimeTurn(input: {
           expectedStage: currentStage,
           expectedScenarioStatus: currentScenarioStatus,
         },
-        (existingCorrectionRows ?? []).some((row) =>
-            row.requires_retry === true
-          )
-          ? 1
-          : 0,
+        existingCorrections.some((row) => row.requires_retry === true) ? 1 : 0,
         input.config,
         "server_recovery",
         pendingCorrection?.id ?? null,
@@ -6451,6 +6463,10 @@ serve(async (req) => {
         expectedMemorySummary = currentMemorySummary;
       }
     }
+    if (!sessionId || !UUID_PATTERN.test(sessionId)) {
+      throw new HttpError(503, "SERVICE_UNAVAILABLE");
+    }
+    const classicSessionId = sessionId;
     const learnerTurnKind = classifyWolfieLearnerTurn(
       input.message,
       input.hasAudio,
@@ -6806,39 +6822,51 @@ serve(async (req) => {
       : {
         is_kids: profileIsKids,
         accumulated_context: undefined,
-        weak_points: intelligence.weak_points,
-        strong_points: intelligence.strong_points,
-        recommended_approach: intelligence.recommended_approach,
-        short_term_goal: profile.short_term_goal,
-        english_for: profile.english_for,
-        occupation: profile.occupation,
-        student_category: profile.student_category,
-        preferred_topics: profile.preferred_topics,
-        avoided_topics: profile.avoided_topics,
-        age_group: intelligence.age_group,
-        estimated_level: intelligence.estimated_level,
-        primary_goal: intelligence.primary_goal,
-        secondary_goals: intelligence.secondary_goals,
-        profession: profile.occupation,
+        weak_points: intelligence.weak_points ?? undefined,
+        strong_points: intelligence.strong_points ?? undefined,
+        recommended_approach: intelligence.recommended_approach ?? undefined,
+        short_term_goal: boundedString(profile.short_term_goal, 1_000) ||
+          undefined,
+        english_for: boundedString(profile.english_for, 1_000) || undefined,
+        occupation: boundedString(profile.occupation, 240) || undefined,
+        student_category: boundedString(profile.student_category, 160) ||
+          undefined,
+        preferred_topics: boundedStringArray(
+          profile.preferred_topics,
+          20,
+          240,
+        ),
+        avoided_topics: boundedStringArray(profile.avoided_topics, 20, 240),
+        age_group: intelligence.age_group ?? undefined,
+        estimated_level: intelligence.estimated_level ?? undefined,
+        primary_goal: intelligence.primary_goal ?? undefined,
+        secondary_goals: intelligence.secondary_goals ?? undefined,
+        profession: boundedString(profile.occupation, 240) || undefined,
         industry: undefined,
         job_role: undefined,
         interests: boundedStringArray(profile.interests, 20, 240),
-        preferred_correction_mode: intelligence.preferred_correction_mode,
-        preferred_language_mode: intelligence.preferred_language_mode,
-        confidence_level: intelligence.confidence_level,
-        recurring_grammar_errors: intelligence.recurring_grammar_errors,
+        preferred_correction_mode: intelligence.preferred_correction_mode ??
+          undefined,
+        preferred_language_mode: intelligence.preferred_language_mode ??
+          undefined,
+        confidence_level: intelligence.confidence_level ?? undefined,
+        recurring_grammar_errors: intelligence.recurring_grammar_errors ??
+          undefined,
         recurring_pronunciation_issues:
-          intelligence.recurring_pronunciation_issues,
-        recurring_vocabulary_gaps: intelligence.recurring_vocabulary_gaps,
-        structures_mastered: intelligence.structures_mastered,
-        structures_in_progress: intelligence.structures_in_progress,
-        recent_topics: intelligence.recent_topics,
-        professional_scenarios: intelligence.professional_scenarios,
-        completed_simulations: intelligence.completed_simulations,
+          intelligence.recurring_pronunciation_issues ?? undefined,
+        recurring_vocabulary_gaps: intelligence.recurring_vocabulary_gaps ??
+          undefined,
+        structures_mastered: intelligence.structures_mastered ?? undefined,
+        structures_in_progress: intelligence.structures_in_progress ??
+          undefined,
+        recent_topics: intelligence.recent_topics ?? undefined,
+        professional_scenarios: intelligence.professional_scenarios ??
+          undefined,
+        completed_simulations: intelligence.completed_simulations ?? undefined,
         scores_history: Array.isArray(intelligence.scores_history)
           ? intelligence.scores_history.filter(isJsonObject)
           : [],
-        recommended_next_step: intelligence.recommended_next_step,
+        recommended_next_step: intelligence.recommended_next_step ?? undefined,
         previous_session_summary: isJsonObject(
             intelligence.previous_session_summary,
           )
@@ -6847,7 +6875,7 @@ serve(async (req) => {
         recent_corrections: historicCorrections.map((correction) => ({
           wrong: correction.wrong_sentence,
           correct: correction.correct_sentence,
-          explanation: correction.explanation_pt,
+          explanation: correction.explanation_pt ?? undefined,
         })),
         evidence_items: relevantDetailedMemory.map((item) => ({
           kind: item.kind,
@@ -6967,8 +6995,6 @@ serve(async (req) => {
       turnCount: serverHistory.filter((turn) => turn.role === "wolfie")
         .length,
     };
-    let studentTurn: { id: string } | null = null;
-    let wolfieTurn: { id: string } | null = null;
     // No exchange row exists before the provider returns. Provider and
     // normalization failures therefore need no compensating database writes;
     // the anchored empty session remains safe to retry with the same key.
@@ -7011,6 +7037,8 @@ serve(async (req) => {
       stage: PedagogicalStage;
       scenarioStatus: ScenarioStatus;
       retryCount: number;
+      studentTurnId: string;
+      assistantTurnId: string;
     }> => {
       const responsePayload: JsonObject = {
         ...commitInput.response,
@@ -7019,7 +7047,7 @@ serve(async (req) => {
       const recordedAt = now.toISOString();
       const { data: rawCommitResult, error: classicCommitError } =
         await supabase.rpc("commit_wolfie_classic_exchange", {
-          p_session_id: sessionId,
+          p_session_id: classicSessionId,
           p_student_id: profile.id,
           p_tenant_id: profile.tenant_id,
           p_client_turn_id: input.clientTurnId,
@@ -7123,8 +7151,6 @@ serve(async (req) => {
       ) {
         throw new HttpError(503, "CLASSIC_COMMIT_TURNS_MISSING");
       }
-      studentTurn = { id: studentTurnId };
-      wolfieTurn = { id: assistantTurnId };
       const canonicalResponse = isJsonObject(rawCommitResult.responsePayload)
         ? rawCommitResult.responsePayload
         : responsePayload;
@@ -7150,6 +7176,8 @@ serve(async (req) => {
         retryCount: Number.isInteger(rawCommitResult.retryCount)
           ? Math.max(0, Number(rawCommitResult.retryCount))
           : expectedRetryCount,
+        studentTurnId,
+        assistantTurnId,
       };
     };
 
@@ -7276,7 +7304,7 @@ serve(async (req) => {
     };
     const systemPrompt = buildSystemPrompt(
       effectiveConfig,
-      profile.full_name,
+      boundedString(profile.full_name, 200) || undefined,
       profileGoal,
       wolfMemory,
       input.studentLanguage,
@@ -7469,7 +7497,7 @@ serve(async (req) => {
             : null,
         },
         currentReport,
-        cycleId: sessionId,
+        cycleId: classicSessionId,
         clientTurnId: input.clientTurnId,
         recordedAt: now.toISOString(),
         model: providerResult.model,
@@ -8046,9 +8074,9 @@ serve(async (req) => {
 
     const memoryEvidenceBase: JsonObject = {
       source: "wolfie-brain",
-      conversationSessionId: sessionId,
-      studentTurnId: studentTurn?.id ?? null,
-      wolfieTurnId: wolfieTurn?.id ?? null,
+      conversationSessionId: classicSessionId,
+      studentTurnId: classicCommit.studentTurnId,
+      wolfieTurnId: classicCommit.assistantTurnId,
       observedAt: now.toISOString(),
     };
     const memoryCandidates = globalMeetingLongTermBoundary
@@ -8280,8 +8308,8 @@ serve(async (req) => {
       await recordLearnerFacts(
         supabase,
         profile,
-        sessionId,
-        studentTurn?.id ?? null,
+        classicSessionId,
+        classicCommit.studentTurnId,
         input.message,
         input.transcriptionConfidence,
         input.transcriptionAlternatives,
@@ -8293,7 +8321,7 @@ serve(async (req) => {
     const agentResponse: AgentResponse = {
       ...normalized,
       learnerTurnKind,
-      conversationId: sessionId,
+      conversationId: classicSessionId,
       configUsed: effectiveConfig,
     };
     return jsonResponse(200, {

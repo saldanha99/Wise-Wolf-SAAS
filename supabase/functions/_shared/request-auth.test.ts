@@ -4,6 +4,7 @@ import {
   isActiveLifecycleProfile,
   isAuthorizedTenantlessProfile,
   isAuthorizedTenantMembership,
+  isOperationalTenantState,
 } from "./request-auth.ts";
 
 function assertEquals(
@@ -119,4 +120,58 @@ Deno.test("suspended and offboarded profiles fail closed", () => {
     true,
     "active lifecycle should be accepted case-insensitively",
   );
+});
+
+Deno.test("School tenant access follows the paid lifecycle fence", () => {
+  const nowMs = Date.parse("2026-08-25T12:00:00Z");
+  assertEquals(
+    isOperationalTenantState({
+      saasStatus: "trial",
+      currentPeriodEnd: null,
+      hasAnyCheckout: false,
+      hasProvisionedCheckout: false,
+      nowMs,
+    }),
+    true,
+    "legacy/trial tenant without billing checkout should remain operational",
+  );
+  assertEquals(
+    isOperationalTenantState({
+      saasStatus: "active",
+      currentPeriodEnd: "2026-09-25T12:00:00Z",
+      hasAnyCheckout: true,
+      hasProvisionedCheckout: true,
+      nowMs,
+    }),
+    true,
+    "paid provisioned tenant inside its period should remain operational",
+  );
+  for (
+    const input of [
+      {
+        saasStatus: "blocked",
+        currentPeriodEnd: "2026-09-25T12:00:00Z",
+        hasAnyCheckout: true,
+        hasProvisionedCheckout: true,
+      },
+      {
+        saasStatus: "active",
+        currentPeriodEnd: "2026-08-25T11:59:59Z",
+        hasAnyCheckout: true,
+        hasProvisionedCheckout: true,
+      },
+      {
+        saasStatus: "active",
+        currentPeriodEnd: "2026-09-25T12:00:00Z",
+        hasAnyCheckout: true,
+        hasProvisionedCheckout: false,
+      },
+    ]
+  ) {
+    assertEquals(
+      isOperationalTenantState({ ...input, nowMs }),
+      false,
+      "blocked, expired or unprovisioned tenant must fail closed",
+    );
+  }
 });

@@ -22,7 +22,10 @@ export type EvolutionIntegrationPurpose =
   | "instance.logout"
   | "instance.delete"
   | "message.send_text"
-  | "group.list";
+  | "group.list"
+  | "chat.list"
+  | "chat.history"
+  | "webhook.configure";
 
 export type ResolvedEvolutionIntegration = {
   integrationId: string;
@@ -32,6 +35,51 @@ export type ResolvedEvolutionIntegration = {
   version: number;
   baseUrl: string;
   apiKey: string;
+};
+
+export type AsaasIntegrationPurpose =
+  | "customer.create"
+  | "customer.read"
+  | "customer.update"
+  | "customer.delete"
+  | "payment.create"
+  | "payment.read"
+  | "payment.update"
+  | "payment.delete"
+  | "subscription.create"
+  | "subscription.read"
+  | "subscription.update"
+  | "subscription.delete"
+  | "dunning.create"
+  | "payment.event"
+  | "payment.reversal"
+  | "payment.list"
+  | "transfer.submit"
+  | "transfer.read"
+  | "transfer.list";
+
+export type ResolvedAsaasIntegration = {
+  integrationId: string;
+  tenantId: string;
+  provider: "asaas";
+  mode:
+    | "PLATFORM_MANAGED_ROOT"
+    | "PLATFORM_MANAGED_SUBACCOUNT"
+    | "TENANT_BYOK";
+  version: number;
+  environment: "platform" | "production" | "sandbox";
+  baseUrl: string;
+  apiKey: string;
+};
+
+export const PLATFORM_ASAAS_TENANT_ID = "school-wise-wolf";
+
+export type AuthorizedAsaasHistoricalReversal = {
+  integrationId: string;
+  tenantId: string;
+  provider: "asaas";
+  mode: "HISTORICAL_WEBHOOK";
+  version: number;
 };
 
 type BrokerDependencies = {
@@ -47,6 +95,7 @@ type IntegrationResolution = {
   version: number;
   baseUrl: string | null;
   apiKey: string | null;
+  environment: string | null;
 };
 
 export class TenantIntegrationBrokerError extends Error {
@@ -54,6 +103,26 @@ export class TenantIntegrationBrokerError extends Error {
     super(code);
     this.name = "TenantIntegrationBrokerError";
   }
+}
+
+export async function resolvePlatformAsaasIntegration(
+  admin: TenantIntegrationRpcClient,
+  purpose: AsaasIntegrationPurpose,
+  dependencies: BrokerDependencies = {},
+): Promise<ResolvedAsaasIntegration> {
+  const integration = await resolveAsaasIntegration(
+    admin,
+    PLATFORM_ASAAS_TENANT_ID,
+    purpose,
+    dependencies,
+  );
+  if (
+    integration.tenantId !== PLATFORM_ASAAS_TENANT_ID ||
+    integration.mode !== "PLATFORM_MANAGED_ROOT"
+  ) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_RESOLUTION_INVALID");
+  }
+  return integration;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -105,7 +174,43 @@ function asResolution(value: unknown): IntegrationResolution {
     version,
     baseUrl: typeof value.baseUrl === "string" ? value.baseUrl.trim() : null,
     apiKey: typeof value.apiKey === "string" ? value.apiKey.trim() : null,
+    environment: typeof value.environment === "string"
+      ? value.environment.trim()
+      : null,
   };
+}
+
+function asaasCapability(purpose: AsaasIntegrationPurpose): string {
+  if (purpose === "payment.event" || purpose === "payment.reversal") {
+    return "webhook.consume";
+  }
+  if (purpose === "payment.list" || purpose === "transfer.list") {
+    return "reconciliation.read";
+  }
+  if (purpose === "transfer.submit" || purpose === "transfer.read") {
+    return "payout.teacher";
+  }
+  return "billing.school";
+}
+
+function normalizedAsaasBaseUrl(rawValue: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawValue);
+  } catch {
+    throw new TenantIntegrationBrokerError("INTEGRATION_ENDPOINT_BLOCKED");
+  }
+  const hostname = url.hostname.toLowerCase();
+  const path = url.pathname.replace(/\/+$/, "");
+  if (
+    url.protocol !== "https:" || url.username || url.password ||
+    (url.port && url.port !== "443") || url.search || url.hash ||
+    !["api.asaas.com", "api-sandbox.asaas.com"].includes(hostname) ||
+    !["", "/v3"].includes(path)
+  ) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_ENDPOINT_BLOCKED");
+  }
+  return `https://${hostname}/v3`;
 }
 
 function parseIpv4(value: string): number[] | null {
@@ -361,5 +466,139 @@ export async function resolveEvolutionIntegration(
     version: resolution.version,
     baseUrl,
     apiKey: normalizedApiKey,
+  };
+}
+
+export async function resolveAsaasIntegration(
+  admin: TenantIntegrationRpcClient,
+  tenantId: string,
+  purpose: AsaasIntegrationPurpose,
+  dependencies: BrokerDependencies = {},
+): Promise<ResolvedAsaasIntegration> {
+  const canonicalTenantId = requiredString(
+    tenantId,
+    "TENANT_SCOPE_REQUIRED",
+    160,
+  );
+  const { data, error } = await admin.rpc(
+    "resolve_tenant_integration_for_service",
+    {
+      p_tenant_id: canonicalTenantId,
+      p_provider: "asaas",
+      p_capability: asaasCapability(purpose),
+      p_purpose: purpose,
+    },
+  );
+  if (error) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_UNAVAILABLE");
+  }
+
+  const resolution = asResolution(data);
+  // Student provider identifiers still live on the global profile record.
+  // Until they are moved to a (tenant, student, provider) binding, enabling a
+  // second Asaas account could send another school's identifier to the wrong
+  // credential. Keep the only migrated account explicit and fail closed.
+  const supportedModes = ["PLATFORM_MANAGED_ROOT"];
+  if (
+    resolution.tenantId !== canonicalTenantId ||
+    resolution.provider !== "asaas" ||
+    !supportedModes.includes(resolution.mode)
+  ) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_RESOLUTION_INVALID");
+  }
+
+  const platformRoot = resolution.mode === "PLATFORM_MANAGED_ROOT";
+  if (!platformRoot || canonicalTenantId !== "school-wise-wolf") {
+    throw new TenantIntegrationBrokerError("INTEGRATION_RESOLUTION_INVALID");
+  }
+
+  const getEnv = dependencies.getEnv || ((name: string) => Deno.env.get(name));
+  let environment: ResolvedAsaasIntegration["environment"];
+  let rawBaseUrl: string;
+  let rawApiKey: string;
+  if (platformRoot) {
+    environment = "platform";
+    rawBaseUrl = getEnv("ASAAS_API_URL") || "";
+    rawApiKey = getEnv("ASAAS_ACCESS_TOKEN") ||
+      getEnv("ASAAS_API_KEY") || "";
+  } else {
+    if (
+      !(["production", "sandbox"] as const).includes(
+        resolution.environment as "production" | "sandbox",
+      )
+    ) {
+      throw new TenantIntegrationBrokerError("INTEGRATION_RESOLUTION_INVALID");
+    }
+    environment = resolution.environment as "production" | "sandbox";
+    rawBaseUrl = environment === "sandbox"
+      ? "https://api-sandbox.asaas.com/v3"
+      : "https://api.asaas.com/v3";
+    rawApiKey = resolution.apiKey || "";
+  }
+
+  const apiKey = requiredString(
+    rawApiKey,
+    "INTEGRATION_UNAVAILABLE",
+    4096,
+  );
+  if (apiKey.length < 16) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_UNAVAILABLE");
+  }
+
+  return {
+    integrationId: resolution.integrationId,
+    tenantId: resolution.tenantId,
+    provider: "asaas",
+    mode: resolution.mode as ResolvedAsaasIntegration["mode"],
+    version: resolution.version,
+    environment,
+    baseUrl: normalizedAsaasBaseUrl(rawBaseUrl),
+    apiKey,
+  };
+}
+
+/**
+ * Authorizes an already authenticated webhook to correct a locally bound
+ * historical payment. This deliberately returns no endpoint or credential:
+ * consuming a provider event is not permission to read from or mutate Asaas.
+ */
+export async function authorizeAsaasHistoricalReversal(
+  admin: TenantIntegrationRpcClient,
+  tenantId: string,
+): Promise<AuthorizedAsaasHistoricalReversal> {
+  const canonicalTenantId = requiredString(
+    tenantId,
+    "TENANT_SCOPE_REQUIRED",
+    160,
+  );
+  const { data, error } = await admin.rpc(
+    "resolve_tenant_integration_for_service",
+    {
+      p_tenant_id: canonicalTenantId,
+      p_provider: "asaas",
+      p_capability: "webhook.consume",
+      p_purpose: "payment.reversal",
+    },
+  );
+  if (error) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_UNAVAILABLE");
+  }
+
+  const resolution = asResolution(data);
+  if (
+    canonicalTenantId !== "school-wise-wolf" ||
+    resolution.tenantId !== canonicalTenantId ||
+    resolution.provider !== "asaas" ||
+    resolution.mode !== "HISTORICAL_WEBHOOK"
+  ) {
+    throw new TenantIntegrationBrokerError("INTEGRATION_RESOLUTION_INVALID");
+  }
+
+  return {
+    integrationId: resolution.integrationId,
+    tenantId: resolution.tenantId,
+    provider: "asaas",
+    mode: "HISTORICAL_WEBHOOK",
+    version: resolution.version,
   };
 }

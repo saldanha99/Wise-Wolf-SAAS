@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CalendarOff, Search, Send, Zap, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { normalizeWeekdayToIndex } from '../lib/weekday';
 
 // Fase 2 — Substituição temporária: a coordenação registra a ausência de um professor,
 // o sistema lista as aulas do período e sugere substitutos (slots livres, já filtrados
@@ -41,6 +42,108 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
   const [error, setError] = useState('');
   const [done, setDone] = useState<number | null>(null);
 
+  const getFunctionErrorMessage = (error: unknown, data: any) => {
+    if (data?.error && typeof data.error === 'string') return data.error;
+    if (typeof error === 'string') return error;
+    if (!error) return null;
+    if (typeof (error as any).message === 'string') return (error as any).message;
+    if (typeof (error as any).context?.body === 'string') {
+      try {
+        const parsed = JSON.parse((error as any).context.body);
+        if (parsed?.error && typeof parsed.error === 'string') return parsed.error;
+        return JSON.stringify(parsed);
+      } catch {
+        return (error as any).context.body;
+      }
+    }
+    if (typeof (error as any).status === 'number') {
+      return `HTTP ${(error as any).status}`;
+    }
+    return 'falha';
+  };
+
+  const localDateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const getCallerTenantId = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const callerId = sessionData?.session?.user?.id;
+    if (!callerId) return null;
+    const { data: callerProfile } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', callerId)
+      .maybeSingle();
+    return callerProfile?.tenant_id || null;
+  };
+
+  const resolveTenantId = async () => {
+    const { data: teacherProfile } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', teacher.id)
+      .maybeSingle();
+    return teacherProfile?.tenant_id || (await getCallerTenantId());
+  };
+
+  const createLocalAbsence = async () => {
+    const tenantId = await resolveTenantId();
+    const { data: absence, error } = await supabase
+      .from('teacher_absences')
+      .insert({
+        teacher_id: teacher.id,
+        tenant_id: tenantId,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        reason: reason || null,
+        status: 'active',
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return absence as any;
+  };
+
+  const buildFallbackClasses = async () => {
+    const tenantId = await resolveTenantId();
+    const start = new Date(`${startsAt}T00:00:00`);
+    const end = new Date(`${endsAt}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new Error('Período inválido.');
+    }
+    if (end < start) {
+      throw new Error('Data de fim inválida.');
+    }
+
+    let bookingQuery = supabase
+      .from('bookings')
+      .select('id, student_id, day_of_week, time_slot, student:student_id(full_name)')
+      .eq('teacher_id', teacher.id)
+      .neq('status', 'CANCELLED');
+    if (tenantId) bookingQuery = bookingQuery.eq('tenant_id', tenantId);
+    const { data: bookings, error: bookingsError } = await bookingQuery;
+    if (bookingsError) throw bookingsError;
+
+    const classes: AffectedClass[] = [];
+    for (const b of bookings || []) {
+      const dIndex = normalizeWeekdayToIndex((b as any).day_of_week);
+      if (dIndex < 0) continue;
+      const student = Array.isArray((b as any).student) ? (b as any).student[0] : (b as any).student;
+      for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+        if (cursor.getDay() !== dIndex) continue;
+        classes.push({
+          bookingId: (b as any).id,
+          studentId: (b as any).student_id,
+          studentName: student?.full_name || 'Aluno',
+          classDate: localDateKey(cursor),
+          classTime: (b as any).time_slot || '',
+          dow: dIndex,
+        });
+      }
+    }
+
+    return classes.sort((a, b) => (a.classDate + a.classTime).localeCompare(b.classDate + b.classTime));
+  };
+
   const keyOf = (c: AffectedClass) => `${c.bookingId}_${c.classDate}`;
 
   const listClasses = async () => {
@@ -49,12 +152,20 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
       const { data, error } = await supabase.functions.invoke('coverage-admin', {
         body: { action: 'createAbsence', teacherId: teacher.id, startsAt, endsAt, reason: reason || null },
       });
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'falha');
+      if (error || !data?.ok) throw new Error(getFunctionErrorMessage(error, data) || 'falha');
       setAbsenceId(data.absence.id);
       setClasses(data.classes || []);
       if (!data.classes?.length) setError('Nenhuma aula recorrente encontrada nesse período.');
     } catch (e: any) {
-      setError('Erro ao listar aulas: ' + (e.message || 'tente novamente.'));
+      try {
+        const fallbackClasses = await buildFallbackClasses();
+        const fallbackAbsence = await createLocalAbsence();
+        setAbsenceId(fallbackAbsence.id);
+        setClasses(fallbackClasses);
+        if (!fallbackClasses.length) setError('Nenhuma aula recorrente encontrada nesse período.');
+      } catch (localErr: any) {
+        setError('Erro ao listar aulas: ' + (localErr.message || 'tente novamente.'));
+      }
     } finally {
       setLoadingClasses(false);
     }
@@ -98,7 +209,7 @@ const AbsenceCoverageManager: React.FC<Props> = ({ teacher, onClose }) => {
       const { data, error } = await supabase.functions.invoke('coverage-admin', {
         body: { action: 'requestCoverage', absenceId, mode, items },
       });
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'falha');
+      if (error || !data?.ok) throw new Error(getFunctionErrorMessage(error, data) || 'falha');
       setDone((data.results || []).filter((r: any) => r.coverage).length);
     } catch (e: any) {
       setError('Erro ao enviar coberturas: ' + (e.message || 'tente novamente.'));

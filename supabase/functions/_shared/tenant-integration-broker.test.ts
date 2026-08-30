@@ -1,6 +1,9 @@
 import {
+  authorizeAsaasHistoricalReversal,
   isPublicNetworkAddress,
+  resolveAsaasIntegration,
   resolveEvolutionIntegration,
+  resolvePlatformAsaasIntegration,
   TenantIntegrationBrokerError,
   type TenantIntegrationRpcClient,
 } from "./tenant-integration-broker.ts";
@@ -50,6 +53,22 @@ function resolution(
   };
 }
 
+function asaasResolution(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    integrationId: "00000000-0000-4000-8000-0000000000a5",
+    tenantId: "school-wise-wolf",
+    provider: "asaas",
+    mode: "PLATFORM_MANAGED_ROOT",
+    version: 1,
+    baseUrl: null,
+    apiKey: null,
+    environment: "platform",
+    ...overrides,
+  };
+}
+
 Deno.test("resolve Evolution gerenciada pelo tenant canônico", async () => {
   let rpcInput: Record<string, unknown> = {};
   const result = await resolveEvolutionIntegration(
@@ -95,6 +114,32 @@ Deno.test("resolve Evolution gerenciada pelo tenant canônico", async () => {
     },
     "configuração gerenciada",
   );
+});
+
+Deno.test("encaminha finalidades restritas da inbox ao resolver interno", async () => {
+  const purposes = ["chat.list", "chat.history", "webhook.configure"] as const;
+
+  for (const purpose of purposes) {
+    let resolvedPurpose = "";
+    await resolveEvolutionIntegration(
+      rpcClient(resolution(), (_name, args) => {
+        resolvedPurpose = String(args.p_purpose || "");
+      }),
+      "tenant-a",
+      purpose,
+      {
+        getEnv: (name) =>
+          ({
+            EVOLUTION_API_URL: "https://evolution.example.com",
+            EVOLUTION_API_KEY: "platform-secret",
+          })[name],
+        resolveDns: async (_hostname, type) =>
+          type === "A" ? ["203.0.114.10"] : [],
+      },
+    );
+
+    assertEquals(resolvedPurpose, purpose, `finalidade ${purpose} enviada`);
+  }
 });
 
 Deno.test("resolve Evolution BYOK sem consultar segredo global", async () => {
@@ -284,4 +329,230 @@ Deno.test("erro do resolver interno não lê ambiente nem DNS", async () => {
     "INTEGRATION_UNAVAILABLE",
     "falha interna deve ser sanitizada",
   );
+});
+
+Deno.test("resolve conta Asaas raiz somente para o tenant de referência", async () => {
+  let rpcInput: Record<string, unknown> = {};
+  const result = await resolveAsaasIntegration(
+    rpcClient(asaasResolution(), (name, args) => {
+      rpcInput = { name, ...args };
+    }),
+    "school-wise-wolf",
+    "payment.create",
+    {
+      getEnv: (name) =>
+        ({
+          ASAAS_API_URL: "https://api.asaas.com/",
+          ASAAS_ACCESS_TOKEN: "platform-asaas-secret-token",
+        })[name],
+    },
+  );
+
+  assertEquals(
+    rpcInput,
+    {
+      name: "resolve_tenant_integration_for_service",
+      p_tenant_id: "school-wise-wolf",
+      p_provider: "asaas",
+      p_capability: "billing.school",
+      p_purpose: "payment.create",
+    },
+    "escopo Asaas enviado ao resolver interno",
+  );
+  assertEquals(
+    {
+      tenantId: result.tenantId,
+      mode: result.mode,
+      environment: result.environment,
+      baseUrl: result.baseUrl,
+    },
+    {
+      tenantId: "school-wise-wolf",
+      mode: "PLATFORM_MANAGED_ROOT",
+      environment: "platform",
+      baseUrl: "https://api.asaas.com/v3",
+    },
+    "conta raiz Asaas normalizada",
+  );
+});
+
+Deno.test("produto de plataforma resolve explicitamente a conta raiz", async () => {
+  let rpcInput: Record<string, unknown> = {};
+  const result = await resolvePlatformAsaasIntegration(
+    rpcClient(asaasResolution(), (name, args) => {
+      rpcInput = { name, ...args };
+    }),
+    "payment.read",
+    {
+      getEnv: (name) =>
+        ({
+          ASAAS_API_URL: "https://api.asaas.com/v3",
+          ASAAS_ACCESS_TOKEN: "platform-secret-token",
+        })[name],
+    },
+  );
+  assertEquals(result.tenantId, "school-wise-wolf", "tenant raiz explícito");
+  assertEquals(result.mode, "PLATFORM_MANAGED_ROOT", "modo raiz explícito");
+  assertEquals(
+    rpcInput.p_purpose,
+    "payment.read",
+    "capability de leitura preservada",
+  );
+});
+
+Deno.test(
+  "autoriza estorno histórico sem resolver endpoint ou credencial Asaas",
+  async () => {
+    let rpcInput: Record<string, unknown> = {};
+    const result = await authorizeAsaasHistoricalReversal(
+      rpcClient(
+        asaasResolution({
+          mode: "HISTORICAL_WEBHOOK",
+          environment: null,
+        }),
+        (name, args) => {
+          rpcInput = { name, ...args };
+        },
+      ),
+      "school-wise-wolf",
+    );
+
+    assertEquals(
+      rpcInput,
+      {
+        name: "resolve_tenant_integration_for_service",
+        p_tenant_id: "school-wise-wolf",
+        p_provider: "asaas",
+        p_capability: "webhook.consume",
+        p_purpose: "payment.reversal",
+      },
+      "escopo mínimo de estorno enviado ao resolver interno",
+    );
+    assertEquals(
+      result,
+      {
+        integrationId: "00000000-0000-4000-8000-0000000000a5",
+        tenantId: "school-wise-wolf",
+        provider: "asaas",
+        mode: "HISTORICAL_WEBHOOK",
+        version: 1,
+      },
+      "autorização histórica sem segredo",
+    );
+  },
+);
+
+Deno.test("estorno histórico rejeita resolução operacional", async () => {
+  let rejectedCode = "";
+  try {
+    await authorizeAsaasHistoricalReversal(
+      rpcClient(asaasResolution()),
+      "school-wise-wolf",
+    );
+  } catch (error) {
+    rejectedCode = error instanceof TenantIntegrationBrokerError
+      ? error.code
+      : "unexpected";
+  }
+  assertEquals(
+    rejectedCode,
+    "INTEGRATION_RESOLUTION_INVALID",
+    "estorno histórico não aceitou uma resolução com credencial operacional",
+  );
+});
+
+Deno.test("bloqueia Asaas BYOK ate existir binding financeiro por tenant", async () => {
+  let environmentRead = false;
+  let rejectedCode = "";
+  try {
+    await resolveAsaasIntegration(
+      rpcClient(asaasResolution({
+        tenantId: "tenant-byok",
+        mode: "TENANT_BYOK",
+        apiKey: "tenant-asaas-secret-token",
+        environment: "sandbox",
+      })),
+      "tenant-byok",
+      "transfer.read",
+      {
+        getEnv: () => {
+          environmentRead = true;
+          return "should-not-be-read";
+        },
+      },
+    );
+  } catch (error) {
+    rejectedCode = error instanceof TenantIntegrationBrokerError
+      ? error.code
+      : "unexpected";
+  }
+
+  assert(!environmentRead, "Asaas BYOK bloqueado consultou segredo global");
+  assertEquals(
+    rejectedCode,
+    "INTEGRATION_RESOLUTION_INVALID",
+    "BYOK deve falhar fechado enquanto IDs Asaas forem globais",
+  );
+});
+
+Deno.test("bloqueia conta Asaas raiz resolvida para outro tenant", async () => {
+  let environmentRead = false;
+  let rejectedCode = "";
+  try {
+    await resolveAsaasIntegration(
+      rpcClient(asaasResolution({ tenantId: "tenant-b" })),
+      "tenant-b",
+      "payment.read",
+      {
+        getEnv: () => {
+          environmentRead = true;
+          return "should-not-be-read";
+        },
+      },
+    );
+  } catch (error) {
+    rejectedCode = error instanceof TenantIntegrationBrokerError
+      ? error.code
+      : "unexpected";
+  }
+  assert(!environmentRead, "escopo raiz inválido leu segredo global");
+  assertEquals(
+    rejectedCode,
+    "INTEGRATION_RESOLUTION_INVALID",
+    "conta raiz fora do tenant de referência",
+  );
+});
+
+Deno.test("bloqueia endpoint Asaas global fora dos hosts oficiais", async () => {
+  for (
+    const endpoint of [
+      "http://api.asaas.com",
+      "https://api.asaas.com.evil.example",
+      "https://api.asaas.com:8443",
+      "https://api.asaas.com/v3/payments",
+      "https://user:secret@api.asaas.com",
+    ]
+  ) {
+    let rejectedCode = "";
+    try {
+      await resolveAsaasIntegration(
+        rpcClient(asaasResolution()),
+        "school-wise-wolf",
+        "payment.list",
+        {
+          getEnv: (name) =>
+            name === "ASAAS_API_URL" ? endpoint : "platform-asaas-secret-token",
+        },
+      );
+    } catch (error) {
+      rejectedCode = error instanceof TenantIntegrationBrokerError
+        ? error.code
+        : "unexpected";
+    }
+    assertEquals(
+      rejectedCode,
+      "INTEGRATION_ENDPOINT_BLOCKED",
+      `endpoint Asaas inseguro ${endpoint}`,
+    );
+  }
 });

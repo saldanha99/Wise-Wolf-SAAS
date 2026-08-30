@@ -9,10 +9,29 @@ export type EnrollmentQuote = {
     firstDueDate: string;
 };
 
+export type EnrollmentProRataTerms = {
+    enabled: boolean;
+    value: number;
+};
+
 const money = (value: unknown): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
+
+const roundMoney = (value: number): number =>
+    Math.round((value + Number.EPSILON) * 100) / 100;
+
+export function normalizeEnrollmentProRataTerms(
+    contractData: Record<string, unknown> | null,
+): EnrollmentProRataTerms {
+    const enabled = contractData?.enableProRata === true
+        && Number(contractData?.planDuration) !== 0;
+    return {
+        enabled,
+        value: enabled ? money(contractData?.proRataValue) : 0,
+    };
+}
 
 export const digitsOnly = (value: string): string => value.replace(/\D/g, '');
 
@@ -141,16 +160,14 @@ export function calculateEnrollmentQuote(contractData: Record<string, unknown> |
     const duration = Number(contractData?.planDuration);
     const installmentCount = duration === 0 ? 1 : Math.max(duration || 1, 1);
     const installmentValue = money(contractData?.value);
-    const installmentSubtotal = installmentValue * installmentCount;
+    const installmentSubtotal = roundMoney(installmentValue * installmentCount);
     const enrollmentFee = contractData?.requiresEnrollment === false
         ? 0
         : money(contractData?.enrollmentFee);
-    const proRataValue = contractData?.enableProRata
-        ? money(contractData?.proRataValue)
-        : 0;
-    const dueToday = duration === 0
+    const proRataValue = normalizeEnrollmentProRataTerms(contractData).value;
+    const dueToday = roundMoney(duration === 0
         ? installmentValue
-        : enrollmentFee + proRataValue;
+        : enrollmentFee + proRataValue);
 
     return {
         installmentCount,
@@ -159,13 +176,16 @@ export function calculateEnrollmentQuote(contractData: Record<string, unknown> |
         enrollmentFee,
         proRataValue,
         dueToday,
-        total: installmentSubtotal + enrollmentFee + proRataValue,
-        firstDueDate: calculateFirstDueDate(
-            contractData?.dueDay,
-            typeof contractData?.billingStartMonth === 'string'
-                ? contractData.billingStartMonth
-                : undefined,
-        ),
+        total: roundMoney(installmentSubtotal + enrollmentFee + proRataValue),
+        firstDueDate: typeof contractData?.firstBillingDate === 'string'
+            && /^\d{4}-\d{2}-\d{2}$/.test(contractData.firstBillingDate)
+            ? contractData.firstBillingDate
+            : calculateFirstDueDate(
+                contractData?.dueDay,
+                typeof contractData?.billingStartMonth === 'string'
+                    ? contractData.billingStartMonth
+                    : undefined,
+            ),
     };
 }
 

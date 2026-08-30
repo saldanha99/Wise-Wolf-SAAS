@@ -1,0 +1,306 @@
+/// <reference lib="deno.ns" />
+
+import {
+  authenticateWhatsAppInboundRequest,
+  evolutionMessageItems,
+  evolutionWebhookEventKey,
+  findActiveProfileById,
+  isEvolutionInboxJidAllowed,
+  normalizeEvolutionEventName,
+  parseEvolutionMessage,
+  sanitizeEvolutionWebhook,
+  storeEvolutionInboxMessage,
+} from "./whatsapp-inbox.ts";
+
+function assertEquals(actual: unknown, expected: unknown, message: string) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `${message}: esperado ${JSON.stringify(expected)}, recebido ${
+        JSON.stringify(actual)
+      }`,
+    );
+  }
+}
+
+Deno.test("autentica header novo e mantém query legada durante a transição", async () => {
+  const expected = "token-de-transicao-seguro";
+  const headerUrl = new URL(
+    "https://api.example/functions/v1/whatsapp-inbound",
+  );
+  const headerMode = await authenticateWhatsAppInboundRequest(
+    new Headers({ "x-whatsapp-inbound-token": expected }),
+    headerUrl,
+    expected,
+  );
+  const legacyUrl = new URL(
+    `https://api.example/functions/v1/whatsapp-inbound?token=${expected}`,
+  );
+  const legacyMode = await authenticateWhatsAppInboundRequest(
+    new Headers(),
+    legacyUrl,
+    expected,
+  );
+  const deniedMode = await authenticateWhatsAppInboundRequest(
+    new Headers({ "x-whatsapp-inbound-token": "incorreto" }),
+    new URL("https://api.example/functions/v1/whatsapp-inbound?token=errado"),
+    expected,
+  );
+
+  assertEquals(headerMode, "header", "header atual");
+  assertEquals(legacyMode, "legacy-query", "query de transição");
+  assertEquals(deniedMode, null, "credencial inválida");
+});
+
+Deno.test("perfil ativo multi-escola não depende do tenant legado", async () => {
+  const legacyProfile = {
+    id: "00000000-0000-4000-8000-000000000099",
+    tenant_id: "tenant-a",
+    lifecycle_status: "active",
+  };
+  const filters: Array<{ column: string; value: string }> = [];
+  const query = {
+    eq(column: string, value: string) {
+      filters.push({ column, value });
+      return query;
+    },
+    maybeSingle() {
+      const matches = filters.every(({ column, value }) =>
+        String(legacyProfile[column as keyof typeof legacyProfile]) === value
+      );
+      return Promise.resolve({
+        data: matches ? { id: legacyProfile.id } : null,
+        error: null,
+      });
+    },
+  };
+  const client = {
+    from(table: "profiles") {
+      assertEquals(table, "profiles", "tabela de perfil");
+      return {
+        select(columns: "id") {
+          assertEquals(columns, "id", "projeção mínima");
+          return query;
+        },
+      };
+    },
+  };
+
+  const result = await findActiveProfileById(client, legacyProfile.id);
+
+  assertEquals(result.data, { id: legacyProfile.id }, "perfil ativo");
+  assertEquals(filters, [
+    { column: "id", value: legacyProfile.id },
+    { column: "lifecycle_status", value: "active" },
+  ], "filtros sem tenant legado");
+});
+
+Deno.test("normaliza mensagem de texto recebida da Evolution", () => {
+  const parsed = parseEvolutionMessage({
+    key: {
+      id: "wamid-in-1",
+      remoteJid: "5511999999999@s.whatsapp.net",
+      fromMe: false,
+    },
+    pushName: "Maria",
+    messageTimestamp: 1_725_000_000,
+    message: { conversation: "Olá, escola" },
+  });
+
+  assertEquals(parsed?.providerMessageId, "wamid-in-1", "id do provedor");
+  assertEquals(parsed?.remoteJid, "5511999999999@s.whatsapp.net", "jid");
+  assertEquals(parsed?.phone, "5511999999999", "telefone");
+  assertEquals(parsed?.direction, "in", "direção");
+  assertEquals(parsed?.senderKind, "contact", "autor");
+  assertEquals(parsed?.messageType, "text", "tipo");
+  assertEquals(parsed?.body, "Olá, escola", "texto");
+  assertEquals(parsed?.status, "received", "status");
+});
+
+Deno.test("normaliza mídia e atualização de status sem guardar URL", () => {
+  const audio = parseEvolutionMessage({
+    key: { id: "wamid-audio", remoteJid: "5511888888888@s.whatsapp.net" },
+    message: {
+      audioMessage: { url: "https://segredo.invalid/audio", ptt: true },
+    },
+  });
+  const update = parseEvolutionMessage({
+    key: {
+      id: "wamid-out-1",
+      remoteJid: "5511777777777@s.whatsapp.net",
+      fromMe: true,
+    },
+    update: { status: "DELIVERY_ACK" },
+  });
+  const numericUpdate = parseEvolutionMessage({
+    key: {
+      id: "wamid-out-2",
+      remoteJid: "5511777777777@s.whatsapp.net",
+      fromMe: true,
+    },
+    update: { status: 4 },
+  });
+
+  assertEquals(audio?.messageType, "audio", "tipo de áudio");
+  assertEquals(audio?.body, "[Áudio]", "placeholder de áudio");
+  assertEquals(update?.status, "delivered", "status entregue");
+  assertEquals(numericUpdate?.status, "read", "status numérico lido");
+  assertEquals(update?.senderKind, "system", "autor outbound desconhecido");
+});
+
+Deno.test("usa o JID telefônico alternativo quando a Evolution envia @lid", () => {
+  const parsed = parseEvolutionMessage({
+    key: {
+      id: "wamid-lid",
+      remoteJid: "123456789012345@lid",
+      remoteJidAlt: "5511555555555@s.whatsapp.net",
+      fromMe: false,
+    },
+    message: { conversation: "Mensagem via LID" },
+  });
+
+  assertEquals(
+    parsed?.remoteJid,
+    "5511555555555@s.whatsapp.net",
+    "jid canônico",
+  );
+  assertEquals(parsed?.phone, "5511555555555", "telefone alternativo");
+  assertEquals(
+    parsed?.metadata.originalRemoteJid,
+    "123456789012345@lid",
+    "jid original auditável",
+  );
+});
+
+Deno.test("extrai registros paginados de findMessages", () => {
+  const records = [{ key: { id: "1" } }, { key: { id: "2" } }];
+  assertEquals(
+    evolutionMessageItems({ messages: { total: 2, records } }),
+    records,
+    "records paginados",
+  );
+  assertEquals(
+    normalizeEvolutionEventName("MESSAGES_UPSERT"),
+    "messages.upsert",
+    "evento",
+  );
+});
+
+Deno.test("limita grupos da inbox ao grupo de gestão autorizado", () => {
+  assertEquals(
+    isEvolutionInboxJidAllowed("5511999999999@s.whatsapp.net", null),
+    true,
+    "conversa direta",
+  );
+  assertEquals(
+    isEvolutionInboxJidAllowed(
+      "120000000000001@g.us",
+      "120000000000001@g.us",
+    ),
+    true,
+    "grupo de gestão",
+  );
+  assertEquals(
+    isEvolutionInboxJidAllowed(
+      "120000000000002@g.us",
+      "120000000000001@g.us",
+    ),
+    false,
+    "outro grupo",
+  );
+  assertEquals(
+    isEvolutionInboxJidAllowed("status@broadcast", "120000000000001@g.us"),
+    false,
+    "status/broadcast",
+  );
+});
+
+Deno.test("redige credenciais do webhook e gera chave estável", async () => {
+  const event = {
+    event: "MESSAGES_UPSERT",
+    instance: "escola-central",
+    apikey: "evolution-secret",
+    server_url: "https://internal.invalid",
+    data: [{
+      key: { id: "wamid-1", remoteJid: "5511999999999@s.whatsapp.net" },
+      message: {
+        imageMessage: {
+          url: "https://signed.invalid",
+          directPath: "/encrypted/media/path",
+          mediaKey: "media-decryption-secret",
+          fileSha256: "binary-file-hash",
+          jpegThumbnail: "base64-thumbnail",
+          caption: "Foto",
+        },
+      },
+    }],
+  };
+  const sanitized = sanitizeEvolutionWebhook(event);
+  const serialized = JSON.stringify(sanitized);
+  const firstKey = await evolutionWebhookEventKey(event);
+  const secondKey = await evolutionWebhookEventKey(event);
+
+  assertEquals(
+    serialized.includes("evolution-secret"),
+    false,
+    "apikey redigida",
+  );
+  assertEquals(
+    serialized.includes("signed.invalid"),
+    false,
+    "url de mídia redigida",
+  );
+  assertEquals(
+    serialized.includes("internal.invalid"),
+    false,
+    "url interna redigida",
+  );
+  assertEquals(
+    serialized.includes("media-decryption-secret") ||
+      serialized.includes("encrypted/media") ||
+      serialized.includes("base64-thumbnail") ||
+      serialized.includes("binary-file-hash"),
+    false,
+    "segredos e binários de mídia redigidos",
+  );
+  assertEquals(firstKey, secondKey, "chave idempotente");
+  assertEquals(firstKey.length, 64, "sha-256 hexadecimal");
+});
+
+Deno.test("persiste somente o contrato canônico da mensagem", async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args });
+      return Promise.resolve({ data: { ok: true }, error: null });
+    },
+  };
+  const parsed = parseEvolutionMessage({
+    key: {
+      id: "wamid-2",
+      remoteJid: "5511666666666@s.whatsapp.net",
+      fromMe: false,
+    },
+    message: { extendedTextMessage: { text: "Preciso de ajuda" } },
+  });
+  if (!parsed) throw new Error("mensagem deveria ser válida");
+
+  await storeEvolutionInboxMessage(
+    client,
+    "tenant-a",
+    "escola-central",
+    parsed,
+    "webhook",
+  );
+
+  const call = calls[0];
+  if (!call) throw new Error("RPC deveria ter sido chamada");
+  assertEquals(call.name, "store_whatsapp_provider_message", "RPC");
+  assertEquals(call.args.p_tenant_id, "tenant-a", "tenant");
+  assertEquals(call.args.p_instance_name, "escola-central", "instância");
+  assertEquals(call.args.p_provider_message_id, "wamid-2", "provider id");
+  assertEquals(call.args.p_body, "Preciso de ajuda", "conteúdo");
+  assertEquals(call.args.p_metadata, {
+    source: "webhook",
+    fromMe: false,
+  }, "metadados mínimos");
+});

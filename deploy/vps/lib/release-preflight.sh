@@ -161,6 +161,7 @@ assert_release_tree_is_publishable() {
   local project_dir=$1
   local dirty_files branch head_sha head_subject remote_ref
   local deploy_env_file fingerprint_first fingerprint_second
+  local remote_sha
 
   command -v git >/dev/null 2>&1 || die "comando obrigatório ausente: git"
   command -v readlink >/dev/null 2>&1 ||
@@ -202,8 +203,10 @@ assert_release_tree_is_publishable() {
 
   remote_ref="refs/remotes/origin/$DEPLOY_GIT_BRANCH"
   if git -C "$project_dir" rev-parse --verify --quiet "$remote_ref" >/dev/null; then
+    remote_sha="$(git -C "$project_dir" rev-parse "$remote_ref")"
     git -C "$project_dir" merge-base --is-ancestor "$remote_ref" HEAD ||
       die "este checkout está ATRÁS de origin/$DEPLOY_GIT_BRANCH. Atualize (git pull --ff-only) e confira o git log antes de publicar."
+    RELEASE_REMOTE_BRANCH_SHA_AT_PREFLIGHT="$remote_sha"
   fi
 
   # 4. Defesa extra: uma árvore que não contém a main é sempre código velho.
@@ -285,5 +288,42 @@ assert_release_tree_unchanged() {
   if [[ "$fingerprint_now" != "$RELEASE_TREE_FINGERPRINT_AT_PREFLIGHT" ]]; then
     [[ -z "$dirty_files" ]] || printf '%s\n' "$dirty_files" | head -n 20 >&2
     die "a árvore MUDOU durante o release, mesmo com DEPLOY_ALLOW_DIRTY=1. Arquivo rastreado, não rastreado ou a configuração privada de deploy diverge do preflight; rode novamente com o checkout parado."
+  fi
+}
+
+# Uso: assert_release_tree_still_publishable <diretório-do-projeto>
+#
+# Chame isso imediatamente antes de empacotar/ativar a release quando outras pessoas
+# ou agentes podem estar trabalhando no mesmo checkout. Esta checagem faz uma
+# segunda leitura da árvore e bloqueia se:
+# 1) o checkout foi alterado desde o início do release;
+# 2) a origem do branch de produção avançou desde o início do preflight.
+#
+# Isso evita surpresas em cenários com múltiplos chats/slots editando a mesma
+# branch: ninguém publica “versão do dia anterior” sem perceber.
+assert_release_tree_still_publishable() {
+  local project_dir=$1
+  local expected_head=$2
+  local remote_ref remote_sha current_remote_sha expected_remote_sha
+
+  [[ -n "${DEPLOY_GIT_BRANCH:-}" ]] ||
+    die "DEPLOY_GIT_BRANCH ausente: declare no arquivo de deploy qual branch é produção."
+  [[ -n "${expected_head:-}" ]] ||
+    die "expected_head é obrigatório para revalidar a árvore."
+
+  assert_release_tree_unchanged "$project_dir" "$expected_head"
+
+  remote_ref="refs/remotes/origin/$DEPLOY_GIT_BRANCH"
+  if [[ "${DEPLOY_SKIP_FETCH:-0}" != "1" ]]; then
+    git -C "$project_dir" fetch --quiet --no-tags origin "$DEPLOY_GIT_BRANCH" 2>/dev/null ||
+      echo "AVISO: não consegui consultar o origin; mantendo a validação com refs locais." >&2
+  fi
+
+  if git -C "$project_dir" rev-parse --verify --quiet "$remote_ref" >/dev/null; then
+    current_remote_sha="$(git -C "$project_dir" rev-parse "$remote_ref")"
+    expected_remote_sha="${RELEASE_REMOTE_BRANCH_SHA_AT_PREFLIGHT:-}"
+    if [[ -n "$expected_remote_sha" && "$current_remote_sha" != "$expected_remote_sha" ]]; then
+      die "o branch remoto '$DEPLOY_GIT_BRANCH' mudou desde o início do release ($expected_remote_sha → $current_remote_sha). Refaça o pull/merge da produção e rode novamente."
+    fi
   fi
 }

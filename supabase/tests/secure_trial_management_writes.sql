@@ -41,6 +41,8 @@ begin
 end;
 $$;
 
+grant execute on function pg_temp.assert_direct_write_denied(text, text) to public;
+
 select pg_temp.assert_true(
   (
     select array_agg(policyname::text order by policyname)

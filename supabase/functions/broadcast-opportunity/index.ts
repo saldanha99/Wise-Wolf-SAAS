@@ -4,9 +4,7 @@ import {
   loadTenantWhatsAppRoute,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
-import {
-  loadOpportunityDispatchGuard,
-} from "../_shared/opportunity-dispatch.ts";
+import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +18,13 @@ const API_URL = Deno.env.get("EVOLUTION_API_URL") || "https://api.2b.app.br";
 const API_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()].filter(
   Boolean,
 );
+const FALLBACK_PORTAL_URL = (
+  Deno.env.get("APP_BASE_URL") ||
+  Deno.env.get("SYSTEM_URL") ||
+  "https://system.wisewolflanguage.com.br"
+)
+  .trim()
+  .replace(/\/+$/, "");
 
 const DAY_MAP: { [key: number]: string } = {
   1: "Segunda",
@@ -33,13 +38,13 @@ const DAY_MAP: { [key: number]: string } = {
 
 // Map weekday name to short label for display
 const WEEKDAY_LABELS: { [key: string]: string } = {
-  "monday": "Segunda",
-  "tuesday": "Terça",
-  "wednesday": "Quarta",
-  "thursday": "Quinta",
-  "friday": "Sexta",
-  "saturday": "Sábado",
-  "sunday": "Domingo",
+  monday: "Segunda",
+  tuesday: "Terça",
+  wednesday: "Quarta",
+  thursday: "Quinta",
+  friday: "Sexta",
+  saturday: "Sábado",
+  sunday: "Domingo",
 };
 
 // Professor inativo (suspenso/desligado) NUNCA recebe convite — mesma regra do
@@ -66,6 +71,248 @@ function json(body: unknown, status = 200): Response {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+type EvolutionDeliveryResult = {
+  success: boolean;
+  messageId: string | null;
+  providerStatus: number | null;
+  providerFailure: string | null;
+  providerPayload: string | null;
+};
+
+function normalizeStringInput(value: unknown): string | null {
+  if (typeof value === "string") {
+    const cleaned = value.trim();
+    return cleaned ? cleaned.slice(0, 320) : null;
+  }
+  return null;
+}
+
+function getDirectErrorFromField(payload: unknown, key: string): string | null {
+  if (!isRecord(payload)) return null;
+  const raw = normalizeStringInput(payload[key]);
+  if (raw) return raw;
+  if (isRecord(payload[key])) {
+    const rec = payload[key] as Record<string, unknown>;
+    const candidate = normalizeStringInput(rec.message) ||
+      normalizeStringInput(rec.description) ||
+      normalizeStringInput(rec.code) ||
+      normalizeStringInput(rec.error) ||
+      normalizeStringInput(rec.reason);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function getEvolutionError(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+
+  if (payload.error === true) return "provider rejected the message";
+  const directError = getDirectErrorFromField(payload, "error");
+  if (directError) return directError;
+
+  const directErrors = payload.errors;
+  if (Array.isArray(directErrors)) {
+    if (directErrors.length > 0) {
+      const first = directErrors[0];
+      const firstMsg = normalizeStringInput(first);
+      if (firstMsg) return firstMsg;
+      if (isRecord(first)) {
+        const candidate = getDirectErrorFromField(first, "message") ||
+          getDirectErrorFromField(first, "reason") ||
+          getDirectErrorFromField(first, "error");
+        if (candidate) return candidate;
+      }
+      return JSON.stringify(first).slice(0, 320);
+    }
+  }
+
+  const nestedResponse = payload.response;
+  if (isRecord(nestedResponse)) {
+    const nested = nestedResponse as Record<string, unknown>;
+    const responseFailure = getDirectErrorFromField(nested, "error") ||
+      getDirectErrorFromField(nested, "message") ||
+      getDirectErrorFromField(nested, "reason");
+    if (responseFailure) return responseFailure;
+  }
+
+  const directMessage = normalizeStringInput(payload.message);
+  if (directMessage) {
+    const msg = directMessage.toLowerCase();
+    if (
+      msg.includes("error") ||
+      msg.includes("erro") ||
+      msg.includes("failed") ||
+      msg.includes("rejeit") ||
+      msg.includes("invalid") ||
+      msg.includes("disconnected")
+    ) {
+      return directMessage;
+    }
+  }
+
+  const statusValue = payload.status;
+  if (typeof statusValue === "number" && statusValue >= 400) {
+    return `status ${statusValue}`;
+  }
+  if (typeof statusValue === "string") {
+    const normalized = statusValue.trim().toUpperCase();
+    if (
+      [
+        "ERROR",
+        "FAILED",
+        "FAILURE",
+        "KO",
+        "UNDELIVERED",
+        "UNAUTHORIZED",
+        "FORBIDDEN",
+        "DISCONNECTED",
+        "NOT_FOUND",
+        "INVALID",
+        "BLOCKED",
+      ].includes(normalized)
+    ) {
+      return normalized.toLowerCase();
+    }
+    const normalizedErrorHint = normalized.toLowerCase();
+    if (
+      normalizedErrorHint.includes("error") ||
+      normalizedErrorHint.includes("erro") ||
+      normalizedErrorHint.includes("fail") ||
+      normalizedErrorHint.includes("invalid") ||
+      normalizedErrorHint.includes("rejeit")
+    ) {
+      return normalizedErrorHint;
+    }
+    return null;
+  }
+  return null;
+}
+
+function getEvolutionMessageId(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  const rootKey = isRecord(payload.key) ? payload.key : null;
+  const potential = rootKey?.id || payload.id;
+  return typeof potential === "string" && potential.trim()
+    ? potential.trim().slice(0, 320)
+    : null;
+}
+
+function isLikelySuccessPayload(payload: unknown, rawText: string): boolean {
+  const raw = (rawText || "").trim().toLowerCase();
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return (
+      ["ok", "success", "sent", "queued", "pending", "message_id", "id"].some(
+        (marker) => raw.includes(marker),
+      ) &&
+      !["error", "erro", "failed", "invalid", "forbidden", "disconnected"].some(
+        (token) => raw.includes(token),
+      )
+    );
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (record.success === true || record.sent === true) return true;
+  const directStatus = record.status;
+  if (typeof directStatus === "string") {
+    const status = directStatus.toUpperCase();
+    if (["OK", "SUCCESS", "SENT", "PENDING", "QUEUED"].includes(status)) {
+      return true;
+    }
+  }
+  if (typeof getEvolutionMessageId(record) === "string") return true;
+  return (
+    [
+      "ok",
+      "success",
+      "sent",
+      "queued",
+      "pending",
+      "messageid",
+      "message_id",
+    ].some((marker) => raw.includes(marker)) &&
+    !["error", "erro", "failed", "invalid", "forbidden", "disconnected"].some(
+      (token) => raw.includes(token),
+    )
+  );
+}
+
+async function sendEvolutionText(
+  baseEndpoint: string,
+  key: string,
+  number: string,
+  text: string,
+): Promise<EvolutionDeliveryResult> {
+  try {
+    const resp = await fetch(baseEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: key },
+      body: JSON.stringify({
+        number,
+        text,
+        delay: 1200,
+        linkPreview: false,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (resp.status === 401) {
+      return {
+        success: false,
+        messageId: null,
+        providerStatus: 401,
+        providerFailure: "unauthorized",
+        providerPayload: null,
+      };
+    }
+    if (!resp.ok) {
+      return {
+        success: false,
+        messageId: null,
+        providerStatus: resp.status,
+        providerFailure: `http ${resp.status}`,
+        providerPayload: null,
+      };
+    }
+
+    const providerRaw = await resp.text().catch(() => "");
+    let payload: unknown = null;
+    if (providerRaw) {
+      try {
+        payload = JSON.parse(providerRaw);
+      } catch {
+        payload = null;
+      }
+    }
+    const providerFailure = getEvolutionError(payload) ||
+      (providerRaw && !isLikelySuccessPayload(payload, providerRaw)
+        ? "provider returned unexpected response format"
+        : null);
+    if (providerFailure) {
+      return {
+        success: false,
+        messageId: getEvolutionMessageId(payload),
+        providerStatus: resp.status,
+        providerFailure,
+        providerPayload: providerRaw.slice(0, 600),
+      };
+    }
+    return {
+      success: true,
+      messageId: getEvolutionMessageId(payload),
+      providerStatus: resp.status,
+      providerFailure: null,
+      providerPayload: providerRaw.slice(0, 600),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      messageId: null,
+      providerStatus: null,
+      providerFailure: error instanceof Error ? error.message : "network error",
+      providerPayload: null,
+    };
+  }
 }
 
 function saoPauloDateTimeParts(value: Date): { date: string; time: string } {
@@ -219,14 +466,17 @@ serve(async (req) => {
     let oppKind = body.kind === "TRAINING" ? "TRAINING" : "TRIAL";
     const mode = body.dispatch_mode === "group" ? "group" : "individual";
     if (
-      !student_name || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !student_name ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) ||
       (student_phone && student_phone.length < 10) ||
       (!opportunity_id && oppKind === "TRIAL" && student_phone.length < 10) ||
       (opportunity_id && !UUID_PATTERN.test(opportunity_id)) ||
-      (body.kind !== undefined && body.kind !== "TRIAL" &&
+      (body.kind !== undefined &&
+        body.kind !== "TRIAL" &&
         body.kind !== "TRAINING") ||
-      (body.dispatch_mode !== undefined && body.dispatch_mode !== "group" &&
+      (body.dispatch_mode !== undefined &&
+        body.dispatch_mode !== "group" &&
         body.dispatch_mode !== "individual") ||
       (opportunity_id && body.kind === "TRAINING") ||
       (rawPreferredSlots !== null && !Array.isArray(rawPreferredSlots)) ||
@@ -254,7 +504,8 @@ serve(async (req) => {
     }
     const normalizedStart = saoPauloDateTimeParts(requestedStart);
     if (
-      normalizedStart.date !== date || normalizedStart.time !== time ||
+      normalizedStart.date !== date ||
+      normalizedStart.time !== time ||
       requestedStart.getTime() <= Date.now() + 5 * 60_000 ||
       requestedStart.getTime() > Date.now() + 366 * 24 * 60 * 60_000
     ) {
@@ -267,18 +518,29 @@ serve(async (req) => {
       return json({ error: "WhatsApp provider is unavailable" }, 503);
     }
 
-    const route = await loadTenantWhatsAppRoute(
+    let route = await loadTenantWhatsAppRoute(
       supabaseAdmin,
       tenantId,
       "teacher",
     );
+    if (!route) {
+      console.warn(
+        "[Broadcast] Nenhuma rota teacher ativa encontrada; tentando audience general como fallback.",
+      );
+      route = await loadTenantWhatsAppRoute(supabaseAdmin, tenantId, "general");
+    }
     const INSTANCE = route?.instanceName || null;
+    const ROUTE_PORTAL_URL = safeCommunicationText(
+      route?.identity?.portalUrl || FALLBACK_PORTAL_URL,
+      2048,
+    );
 
-    if (!INSTANCE) {
+    if (!route || !INSTANCE) {
       return new Response(
         JSON.stringify({
           error:
             "⚠️ Nenhuma conexão institucional ativa encontrada para esta escola.",
+          error_code: "missing_instance_connection",
         }),
         {
           status: 409,
@@ -286,16 +548,18 @@ serve(async (req) => {
         },
       );
     }
-    if (!route?.identity.portalUrl) {
-      return new Response(
-        JSON.stringify({
-          error:
-            "⚠️ Configure o domínio institucional antes de divulgar oportunidades.",
-        }),
+    if (!ROUTE_PORTAL_URL) {
+      return json(
         {
-          status: 409,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          error: "⚠️ Nenhuma URL de portal configurada para esta escola.",
+          error_code: "missing_portal_url",
         },
+        503,
+      );
+    }
+    if (!route?.identity?.portalUrl) {
+      console.warn(
+        "[Broadcast] tenant sem portalUrl configurado; usando fallback para claim-opportunity",
       );
     }
     if (mode === "group" && !route?.teachersGroupId) {
@@ -303,6 +567,7 @@ serve(async (req) => {
         JSON.stringify({
           error:
             "⚠️ Configure o grupo de professores antes de divulgar em grupo.",
+          error_code: "missing_group_route",
         }),
         {
           status: 409,
@@ -327,6 +592,7 @@ serve(async (req) => {
     };
 
     let oppData: { id: string; claimGeneration: number };
+    let allowTargetedReopen = false;
 
     if (opportunity_id) {
       const dispatchGuard = await loadOpportunityDispatchGuard(
@@ -334,11 +600,19 @@ serve(async (req) => {
         tenantId,
         opportunity_id,
       );
-      if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
-        return json({
-          error: "Esta solicitação é direcionada e não pode ser redistribuída.",
-        }, 409);
+      if (!dispatchGuard.ok) {
+        return json(
+          {
+            error:
+              "Falha de segurança ao validar a oportunidade antes do reenvio.",
+            error_code: "dispatch_guard_failed",
+          },
+          409,
+        );
       }
+
+      const was_targeted_reopen = dispatchGuard.dispatchMode === "TARGETED";
+
       const { data: reopened, error: reopenError } = await supabaseAdmin.rpc(
         "reopen_trial_opportunity_for_broadcast",
         {
@@ -357,12 +631,19 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             error: "Não foi possível reabrir esta experimental com segurança.",
+            error_code: "reopen_failed",
           }),
           {
             status: 409,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           },
         );
+      }
+      if (was_targeted_reopen) {
+        console.info(
+          "[Broadcast] Opção de reabertura solicitada para oportunidade direcionada; prosseguindo com redistribuição geral.",
+        );
+        allowTargetedReopen = true;
       }
       oppData = {
         id: opportunity_id,
@@ -391,24 +672,31 @@ serve(async (req) => {
         .limit(10);
       if (recentError) throw new Error("DB Error: " + recentError.message);
       let reusable: any = null;
-      for (const candidate of (recentOpen || [])) {
+      for (const candidate of recentOpen || []) {
         const dispatchGuard = await loadOpportunityDispatchGuard(
           supabaseAdmin,
           tenantId,
           candidate.id,
         );
-        if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
-          return json({
-            error:
-              "Já existe uma solicitação direcionada para este aluno; ela não pode ser divulgada.",
-          }, 409);
+        if (!dispatchGuard.ok) {
+          return json(
+            {
+              error: "Falha de segurança ao verificar solicitação anterior.",
+              error_code: "dispatch_guard_failed",
+            },
+            409,
+          );
+        }
+        if (dispatchGuard.dispatchMode === "TARGETED") {
+          continue;
         }
         const candidateSlot = Array.isArray(candidate.slots_proposed)
           ? candidate.slots_proposed[0]
           : null;
         if (
           candidate.student_name !== student_name ||
-          candidateSlot?.date !== date || candidateSlot?.time !== time
+          candidateSlot?.date !== date ||
+          candidateSlot?.time !== time
         ) {
           continue;
         }
@@ -456,30 +744,49 @@ serve(async (req) => {
       tenantId,
       oppData.id,
     );
-    if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
-      return json({
-        error: "Esta solicitação é direcionada e não pode ser divulgada.",
-      }, 409);
+    if (
+      dispatchGuard.dispatchMode === "TARGETED" &&
+      !allowTargetedReopen
+    ) {
+      return json(
+        {
+          error: "Esta solicitação é direcionada e não pode ser divulgada.",
+          error_code: "targeted_opportunity",
+        },
+        409,
+      );
+    }
+    if (!dispatchGuard.ok) {
+      return json(
+        {
+          error: "Falha de segurança ao validar a oportunidade antes do envio.",
+          error_code: "dispatch_guard_failed",
+        },
+        409,
+      );
     }
 
     // 4. Construct URL with Params
-    const claimLink = `${route.identity.portalUrl}/claim-opportunity?id=${
-      encodeURIComponent(oppData.id)
+    const claimLink = `${ROUTE_PORTAL_URL}/claim-opportunity?id=${
+      encodeURIComponent(
+        oppData.id,
+      )
     }&g=${oppData.claimGeneration}`;
 
     // Build preferred slots text
     let preferredSlotsText = "";
     if (
-      preferred_slots && Array.isArray(preferred_slots) &&
+      preferred_slots &&
+      Array.isArray(preferred_slots) &&
       preferred_slots.length > 0
     ) {
-      const slotLines = preferred_slots.map(
-        (s: { weekday: string; time: string }) => {
+      const slotLines = preferred_slots
+        .map((s: { weekday: string; time: string }) => {
           const dayLabel = WEEKDAY_LABELS[s.weekday] || s.weekday;
           const timeShort = s.time.replace(":00", "h").replace(":", "h");
           return `  ${dayLabel} ${timeShort}`;
-        },
-      ).join("\n");
+        })
+        .join("\n");
       preferredSlotsText = `\n\n📅 *Preferências do aluno:*\n${slotLines}`;
     }
 
@@ -492,29 +799,44 @@ serve(async (req) => {
       }${preferredSlotsText}\n\n🏆 *Professor(a), essa aula é sua?*\nO primeiro a clicar no link abaixo garante a aula experimental!\n\n👇 *Aceitar agora:*\n${claimLink}`;
 
     const endpoint = `${API_URL}/message/sendText/${
-      encodeURIComponent(INSTANCE)
+      encodeURIComponent(
+        INSTANCE,
+      )
     }`;
 
     // ============ MODO GRUPO: posta no grupo de professores configurado ============
     if (mode === "group") {
-      const destinationGroup = route!.teachersGroupId!;
+      const destinationGroup = route.teachersGroupId!;
       let ok = false;
+      let failureReason: string | null = null;
+      let failureStatus: number | null = null;
 
       try {
         for (const key of API_KEYS) {
-          const resp = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: key },
-            body: JSON.stringify({
-              number: destinationGroup,
-              text: textMessage,
-              delay: 1200,
-              linkPreview: false,
-            }),
-            signal: AbortSignal.timeout(15000),
-          });
-          if (resp.status === 401) continue;
-          ok = resp.ok;
+          const result = await sendEvolutionText(
+            endpoint,
+            key,
+            destinationGroup,
+            textMessage,
+          );
+          if (result.providerStatus === 401) continue;
+          failureReason = result.providerFailure;
+          failureStatus = result.providerStatus;
+          if (failureReason && result.providerPayload) {
+            console.warn(
+              "[Broadcast] Payload bruto provider (grupo):",
+              result.providerPayload,
+            );
+          }
+          ok = result.success;
+          if (!ok) {
+            console.warn(
+              "[Broadcast] Falha no envio de grupo",
+              destinationGroup.slice(-4),
+              result.providerStatus,
+              result.providerFailure,
+            );
+          }
           break;
         }
       } catch {
@@ -522,12 +844,17 @@ serve(async (req) => {
       }
 
       if (!ok) {
-        return json({
-          success: false,
-          error: "WhatsApp delivery failed",
-          id: oppData.id,
-          retryable: true,
-        }, 502);
+        return json(
+          {
+            success: false,
+            error: "WhatsApp delivery failed",
+            provider_status: failureStatus,
+            provider_error: failureReason,
+            id: oppData.id,
+            retryable: true,
+          },
+          502,
+        );
       }
 
       return new Response(
@@ -555,9 +882,9 @@ serve(async (req) => {
     if (membershipsError) {
       throw new Error("DB Error (memberships): " + membershipsError.message);
     }
-    const activeTeacherIds = (memberships || []).map((
-      membership: { user_id: string },
-    ) => membership.user_id);
+    const activeTeacherIds = (memberships || []).map(
+      (membership: { user_id: string }) => membership.user_id,
+    );
     const { data: teachers, error: teachersErr } = activeTeacherIds.length
       ? await supabaseAdmin
         .from("profiles")
@@ -584,24 +911,39 @@ serve(async (req) => {
 
     for (const r of recipients) {
       let ok = false;
+      let failureReason: string | null = null;
+      let failureStatus: number | null = null;
+      let failurePayload: string | null = null;
       // Resolve o JID real (corrige o caso do 9º dígito) antes de enviar; se a
       // resolução falhar, cai pro número "no chute" como antes (não bloqueia envio).
       const targetNumber = (await resolveJid(INSTANCE, r.phone!)) || r.phone!;
       try {
         for (const key of API_KEYS) {
-          const resp = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": key },
-            body: JSON.stringify({
-              number: targetNumber,
-              text: textMessage,
-              delay: 1200,
-              linkPreview: false,
-            }),
-            signal: AbortSignal.timeout(15000),
-          });
-          if (resp.status === 401) continue; // chave rotacionada → tenta a próxima
-          ok = resp.ok;
+          const result = await sendEvolutionText(
+            endpoint,
+            key,
+            targetNumber,
+            textMessage,
+          );
+          if (result.providerStatus === 401) continue; // chave rotacionada → tenta a próxima
+          failureReason = result.providerFailure;
+          failureStatus = result.providerStatus;
+          failurePayload = result.providerPayload;
+          ok = result.success;
+          if (!ok) {
+            console.warn(
+              "[Broadcast] Falha ao enviar p/ professor",
+              r.id,
+              result.providerStatus,
+              result.providerFailure,
+            );
+            if (failurePayload) {
+              console.warn(
+                "[Broadcast] Payload bruto provider (professor):",
+                failurePayload,
+              );
+            }
+          }
           break;
         }
       } catch (err: any) {
@@ -610,20 +952,34 @@ serve(async (req) => {
           err?.message,
         );
         ok = false;
+        failureReason = "network error";
       }
       if (ok) sent++;
-      else failed.push(r.name || r.id);
+      else {
+        failed.push(
+          `${r.name || r.id} (${failureReason || "failed"}${
+            failureStatus ? `, status ${failureStatus}` : ""
+          })`,
+        );
+      }
     }
 
     if (sent === 0) {
-      return json({
-        success: false,
-        error: recipients.length === 0
-          ? "No active teacher recipient"
-          : "WhatsApp delivery failed",
-        id: oppData.id,
-        retryable: true,
-      }, 502);
+      return json(
+        {
+          success: false,
+          error: recipients.length === 0
+            ? "No active teacher recipient"
+            : "WhatsApp delivery failed",
+          error_code: recipients.length === 0
+            ? "no_active_teacher_recipient"
+            : "whatsapp_delivery_failed",
+          id: oppData.id,
+          failed: failed.slice(0, 20),
+          retryable: true,
+        },
+        502,
+      );
     }
 
     return new Response(
@@ -634,6 +990,10 @@ serve(async (req) => {
         recipients: sent,
         total_active_teachers: recipients.length,
         failed: failed.length,
+        warning: failed.length
+          ? `${failed.length} professor(es) não recebeu(ram) o convite no envio.`
+          : undefined,
+        failed_details: failed.slice(0, 10),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

@@ -4,7 +4,8 @@ import ClassLogForm from './ClassLogForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
 import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
-import { bookingsAindaNaoLancados } from '../lib/lessonMatching';
+import { bookingsAindaNaoLancados, uniqueBookingsById } from '../lib/lessonMatching';
+import { normalizeWeekdayToIndex } from '../lib/weekday';
 import ClassLogReward from './ClassLogReward';
 import { User as UserType } from '../types';
 
@@ -64,6 +65,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     setLoadError(null);
     try {
       const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
       const today = new Date();
       // localYMD (NUNCA toISOString): depois das 21h a data UTC pula pro dia seguinte
       // e a aula era listada com a data errada — gerava lançamento duplicado no fechamento.
@@ -99,16 +101,20 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const { data: allBookings } = await supabase
         .from('bookings')
         .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+        .eq('tenant_id', effectiveTenantId)
         .eq('teacher_id', user.id)
-        .eq('status', 'SCHEDULED')
+        .in('status', ['SCHEDULED', 'scheduled'])
         .not('day_of_week', 'is', null);
 
       // COBERTURAS confirmadas da janela: aula que este professor CEDEU sai da
       // lista dele (ele não deu, não pode lançar nem receber) e aula que ele
       // ASSUMIU entra — mesmo sendo agendamento de outro professor.
-      const { data: coverages } = await supabase.rpc('coverages_for_teacher', {
-        p_teacher: user.id, p_from: startStr, p_to: endStr,
+      const { data: coverages, error: coveragesError } = await supabase.rpc('coverages_for_teacher_in_tenant', {
+        p_tenant: effectiveTenantId, p_teacher: user.id, p_from: startStr, p_to: endStr,
       });
+      if (coveragesError) {
+        throw new Error('Não foi possível confirmar as coberturas desta agenda. Tente novamente antes de lançar aulas.');
+      }
       const covList = (coverages as any[]) || [];
       const cedidas = new Set(
         covList.filter(c => c.papel === 'cedida').map(c => `${c.booking_id}|${c.class_date}`)
@@ -124,8 +130,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           const { data } = await supabase
             .from('bookings')
             .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+            .eq('tenant_id', effectiveTenantId)
             .in('id', ids)
-            .eq('status', 'SCHEDULED');
+            .in('status', ['SCHEDULED', 'scheduled']);
           assumedBookings = (data as any[]) || [];
         }
       }
@@ -133,6 +140,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       const { data: allReschedules } = await supabase
         .from('reschedules')
         .select('id, time, date, fault_type, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+        .eq('tenant_id', effectiveTenantId)
         .eq('teacher_id', user.id)
         .gte('date', startStr);
 
@@ -142,7 +150,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       // para a lista. Medido no Flávio: 12 aulas de julho nessa situação.
       const { data: allLogs } = await supabase
         .from('class_logs')
-        .select('booking_id, reschedule_id, appointment_id, student_id, class_date')
+        .select('booking_id, reschedule_id, appointment_id, student_id, class_date, start_time')
+        .eq('tenant_id', effectiveTenantId)
         .eq('teacher_id', user.id)
         .gte('class_date', startStr);
 
@@ -158,7 +167,10 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         if (dayName === 'Domingo') continue;
 
-        const bookings = (allBookings || []).filter((b: any) => b.day_of_week === dayName);
+        const dayIdxOfDate = checkDate.getDay() - 1;
+        const bookings = dayIdxOfDate >= 0
+          ? (allBookings || []).filter((b: any) => normalizeWeekdayToIndex(b.day_of_week) === dayIdxOfDate)
+          : [];
         const reschedules = (allReschedules || []).filter((r: any) => r.date === dateStr);
 
         // Filtrar os trials deste professor para este dia específico
@@ -224,9 +236,6 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         // Bookings
         if (bookings) {
-          // Defesa contra agendamentos duplicados: no mesmo dia, só processa 1 aula
-          // por horário (evita que bookings redundantes virem várias aulas a lançar).
-          const slotSeen = new Set<string>();
           const candidatos: any[] = [];
           for (const b of bookings) {
             // Cedida por cobertura: quem dá a aula é outro professor.
@@ -250,18 +259,32 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             // Hoje: ocultar aulas que ainda não chegou o horário
             if (i === 0 && isStillFutureToday(b.time_slot)) continue;
             if (!b.time_slot) continue; // booking sem horário definido: ignorar
-            if (slotSeen.has(b.time_slot)) continue; // horário já coberto neste dia
-            slotSeen.add(b.time_slot);
+            // Um booking cujo aluno foi bloqueado pela RLS (como o antigo perfil
+            // NON_STUDENT "TREINAMENTO") não pode ocupar o slot de uma aula real.
+            if (!b.student) continue;
             candidatos.push(b);
           }
 
           // A regra de "esta aula já foi lançada?" vive em lib/lessonMatching.ts,
           // com teste. Ela cobre o agendamento trocado (log preso no booking
           // antigo, apagado) sem esconder a segunda metade de uma aula de 1h.
+          const candidatosOrdenados = uniqueBookingsById(candidatos).sort((a, b) => {
+            const aTime = (a.time_slot || '').substring(0, 5);
+            const bTime = (b.time_slot || '').substring(0, 5);
+            return aTime.localeCompare(bTime);
+          });
           const faltando = bookingsAindaNaoLancados(
-            candidatos.map(b => ({ id: b.id, studentId: (b.student as any)?.id ?? null, raw: b })),
+            candidatosOrdenados.map(b => ({
+              id: b.id,
+              studentId: (b.student as any)?.id ?? null,
+              timeSlot: b.time_slot || null,
+              raw: b,
+            })),
             (logs || []) as any[],
           );
+          // `candidatos` já está ordenado para garantir consistência no pareamento por
+          // horário (16:30 + 17:00 do mesmo aluno). Antes, sem ordem fixa, a
+          // aula lançada mudava conforme retorno de consulta e uma metade sumia.
           for (const item of faltando) {
             await processLesson(item.raw, 'REGULAR', item.raw.time_slot);
           }

@@ -15,6 +15,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 insert into public.tenants (id, name)
 values ('trial-reschedule-test', 'Trial Reschedule Test');

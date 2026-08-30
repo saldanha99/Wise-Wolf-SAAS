@@ -207,7 +207,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
                     targetId = funcData.user.id;
 
                     // Success!
-                    alert(`Professor cadastrado! Acesso: Senha 123456`);
+                    alert('Professor cadastrado! Um convite seguro para definir a senha foi enviado por e-mail.');
                 }
 
                 if (!targetId) throw new Error("Não foi possível processar o cadastro.");

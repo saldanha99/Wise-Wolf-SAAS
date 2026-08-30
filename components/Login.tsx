@@ -48,6 +48,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
 
       const user = await mapProfileToAppUser(profile);
+      if (!user) {
+        await supabase.auth.signOut();
+        throw new Error('Conta inativa ou sem acesso a uma instituição. Contate a secretaria.');
+      }
 
       // Check for Redirect (Priority)
       const params = new URLSearchParams(window.location.search);

@@ -15,6 +15,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<any>(null);
+    const [acceptedLegal, setAcceptedLegal] = useState(false);
     const [idempotencyKey] = useState(() => crypto.randomUUID());
     const dialogRef = useRef<HTMLDivElement>(null);
     const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +111,10 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
     };
 
     const submit = async () => {
+        if (!acceptedLegal) {
+            setError('Antes de gerar sua cobrança, confirme que leu e aceitou os termos e a política de privacidade.');
+            return;
+        }
         setLoading(true);
         setError(null);
         try {
@@ -180,7 +185,20 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                 {/* BODY */}
                 <div className="flex-1 overflow-y-auto px-6 py-6">
                     {step === 'INFO' && <StepInfo form={form} setForm={setForm} formatters={{ formatCpfCnpj, formatPhone, formatCep, lookupCep }} />}
-                    {step === 'PAYMENT' && <StepPayment form={form} setForm={setForm} error={error} loading={loading} price={price} monthly={monthly} yearly={yearly} plan={plan} />}
+                    {step === 'PAYMENT' && (
+                      <StepPayment
+                        form={form}
+                        setForm={setForm}
+                        error={error}
+                        loading={loading}
+                        price={price}
+                        monthly={monthly}
+                        yearly={yearly}
+                        plan={plan}
+                        acceptedLegal={acceptedLegal}
+                        onLegalChange={setAcceptedLegal}
+                      />
+                    )}
                     {step === 'SUCCESS' && <StepSuccess result={result} plan={plan} />}
                 </div>
 
@@ -197,7 +215,7 @@ const SaasCheckout: React.FC<Props> = ({ plan, yearly, onClose }) => {
                                 Continuar <ArrowRight size={14} />
                             </button>
                         ) : (
-                            <button onClick={submit} disabled={loading}
+                            <button onClick={submit} disabled={loading || !acceptedLegal}
                                 className="px-6 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
                                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
                                 Confirmar
@@ -247,7 +265,17 @@ const StepInfo: React.FC<any> = ({ form, setForm, formatters }) => (
 // ─────────────────────────────────────────────────────────────
 // STEP 2 — PAYMENT
 // ─────────────────────────────────────────────────────────────
-const StepPayment: React.FC<any> = ({ form, setForm, error, plan, monthly, yearly, price }) => {
+const StepPayment: React.FC<any> = ({
+  form,
+  setForm,
+  error,
+  plan,
+  monthly,
+  yearly,
+  price,
+  acceptedLegal,
+  onLegalChange,
+}) => {
     const opts: { id: 'PIX' | 'BOLETO'; label: string; sub: string; icon: any }[] = [
         { id: 'PIX', label: 'PIX', sub: 'Aprovação imediata', icon: Smartphone },
         { id: 'BOLETO', label: 'Boleto', sub: '3 dias úteis', icon: Barcode },
@@ -296,6 +324,18 @@ const StepPayment: React.FC<any> = ({ form, setForm, error, plan, monthly, yearl
                 </div>
             )}
 
+            <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-[11px] text-slate-300">
+                <input
+                    type="checkbox"
+                    checked={acceptedLegal}
+                    onChange={(event) => onLegalChange(event.target.checked)}
+                    className="mt-1 h-4 w-4 accent-violet-400"
+                />
+                <span>
+                    Declaro que li e aceito os <a href="/termos" target="_blank" rel="noreferrer" className="font-bold text-violet-300 underline underline-offset-2">termos de uso</a> e a <a href="/privacidade" target="_blank" rel="noreferrer" className="font-bold text-violet-300 underline underline-offset-2">política de privacidade</a>, e concordo com a criação da assinatura recorrente informada.
+                </span>
+            </label>
+
             {/* Resumo */}
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -315,7 +355,7 @@ const StepPayment: React.FC<any> = ({ form, setForm, error, plan, monthly, yearl
             </div>
 
             <p className="text-[10px] text-slate-500 text-center">
-                Ao confirmar você concorda com nossos termos. 14 dias de teste grátis a partir de hoje. Cancele sem multa.
+                A contratação inicia de forma segura pelo Asaas. Nenhum dado de cartão é solicitado nesta etapa e nenhum pagamento é confirmado até a compensação no provedor.
             </p>
         </div>
     );

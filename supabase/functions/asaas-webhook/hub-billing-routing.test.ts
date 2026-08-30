@@ -143,6 +143,49 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "every Hub subscription DELETE proves provider and local identity",
+  permissions: { read: true },
+  async fn() {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const shared = await Deno.readTextFile(
+      new URL("../_shared/hub-provider-operations.ts", import.meta.url),
+    );
+    const durableClaim = shared.indexOf(
+      '"hub_claim_webhook_provider_cancellation"',
+    );
+    const providerLookup = shared.indexOf(
+      "await exactProviderLookup(",
+      durableClaim,
+    );
+    const identityDecision = shared.indexOf(
+      "hubProviderCancellationDecision(",
+    );
+    const providerDelete = shared.lastIndexOf('method: "DELETE"');
+    assert(
+      durableClaim >= 0 && providerLookup > durableClaim &&
+        identityDecision >= 0 && providerDelete > providerLookup,
+      "provider customer and checkout reference must be proven before DELETE",
+    );
+    assert(
+      source.includes("cancelHubProviderSubscriptionForAccount(") &&
+        source.includes(
+          '.eq("asaas_subscription_id", providerSubscriptionId)',
+        ) &&
+        source.includes("matches.length !== 1"),
+      "replacement, reversal and billing-block deletion must use one exact local binding",
+    );
+    assert(
+      source.includes("cancelHubProviderSubscriptionOnce({") &&
+        shared.includes('action === "RECONCILE_ONLY"') &&
+        shared.includes('"hub_mark_provider_cancellation_submitting"'),
+      "all Hub deletes must share the durable GET-only retry transport",
+    );
+  },
+});
+
 Deno.test("provider event keys make exact webhook replays deterministic", () => {
   const first = providerWebhookEventKey(
     "saas",
@@ -175,8 +218,39 @@ Deno.test("provider event keys make exact webhook replays deterministic", () => 
 });
 
 Deno.test({
+  name: "refund reconciliation paginates and counts only completed refunds",
+  permissions: { read: true },
+  async fn() {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const helper = source.slice(
+      source.indexOf("async function listAllPaymentRefunds"),
+      source.indexOf("async function processWolfieTopupEvent"),
+    );
+    assert(helper.includes('limit: "100"'), "refund lookup is not paginated");
+    assert(
+      helper.includes("payload.hasMore !== true"),
+      "refund pagination may stop after the first page",
+    );
+    assert(
+      source.includes('status === "DONE"'),
+      "pending refunds must not reduce settled balance",
+    );
+    assert(
+      helper.includes("integration.baseUrl") &&
+        helper.includes("integration.apiKey") &&
+        !helper.includes("ASAAS_ACCESS_TOKEN") &&
+        source.includes("resolvePlatformAsaasIntegration(") &&
+        source.includes('"payment.read"'),
+      "top-up refund reads must use the purpose-scoped platform broker",
+    );
+  },
+});
+
+Deno.test({
   name:
-    "School OS billing is synchronous and never skips provisioned checkouts",
+    "School OS billing persists before ack and never skips provisioned checkouts",
   permissions: { read: true },
   async fn() {
     const source = await Deno.readTextFile(
@@ -184,7 +258,8 @@ Deno.test({
     );
     assert(
       source.includes("saas_billing_event_inbox") &&
-        source.includes("SAAS_RETRY_REQUIRED"),
+        source.includes('"enqueue_asaas_webhook_event"') &&
+        source.includes("PERSISTENCE_RETRY_REQUIRED"),
       "access-bearing School OS billing must persist before acknowledging",
     );
     assert(
@@ -197,8 +272,14 @@ Deno.test({
     );
     assert(
       source.includes('throw new Error("saas_checkout_not_found")') &&
-        source.includes("accessEvent ? 503 : 200"),
-      "an unresolved access event must request a provider retry, never ack 200",
+        source.includes('p_outcome: triage ? "TRIAGE" : "RETRY"'),
+      "an unresolved durable access event must remain observable and retryable",
+    );
+    const enqueue = source.indexOf('"enqueue_asaas_webhook_event"');
+    const acknowledgement = source.indexOf("received: true", enqueue);
+    assert(
+      enqueue >= 0 && acknowledgement > enqueue,
+      "provider acknowledgement must occur only after durable enqueue",
     );
   },
 });

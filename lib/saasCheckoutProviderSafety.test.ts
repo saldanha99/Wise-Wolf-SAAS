@@ -5,9 +5,9 @@ import {
   checkoutPayloadMatches,
   containsCardMaterial,
   parseSaasCheckoutBillingType,
-  requiresProviderReconciliation,
   resolveProviderCustomer,
   resolveProviderSubscription,
+  saasCheckoutNextDueDate,
   saasCheckoutProviderReference,
 } from '../supabase/functions/create-saas-checkout/provider-safety';
 
@@ -56,6 +56,11 @@ describe('segurança do checkout School OS', () => {
       billingType: 'PIX' as const,
       billingCycle: 'YEARLY' as const,
       amount: 1190,
+      description: 'Assinatura anual Wise Wolf',
+      maxPayments: null,
+      splitPolicy: { kind: 'NONE' as const },
+      nextDueDate: '2026-08-26',
+      status: 'ACTIVE' as const,
     };
     expect(resolveProviderSubscription([
       {
@@ -65,6 +70,9 @@ describe('segurança do checkout School OS', () => {
         billingType: 'PIX',
         cycle: 'YEARLY',
         value: 1190,
+        description: 'Assinatura anual Wise Wolf',
+        nextDueDate: '2026-08-26',
+        status: 'ACTIVE',
       },
     ], expected)).toEqual({ status: 'MATCH', id: 'sub_expected' });
     expect(resolveProviderSubscription([
@@ -75,6 +83,9 @@ describe('segurança do checkout School OS', () => {
         billingType: 'PIX',
         cycle: 'YEARLY',
         value: 1190,
+        description: 'Assinatura anual Wise Wolf',
+        nextDueDate: '2026-08-26',
+        status: 'ACTIVE',
       },
     ], expected)).toEqual({ status: 'CONFLICT' });
   });
@@ -86,6 +97,11 @@ describe('segurança do checkout School OS', () => {
       billingType: 'PIX' as const,
       billingCycle: 'MONTHLY' as const,
       amount: 397,
+      description: 'Assinatura mensal Wise Wolf',
+      maxPayments: null,
+      splitPolicy: { kind: 'NONE' as const },
+      nextDueDate: '2026-08-26',
+      status: 'ACTIVE' as const,
     };
     const duplicate = {
       externalReference: reference,
@@ -93,6 +109,9 @@ describe('segurança do checkout School OS', () => {
       billingType: 'PIX',
       cycle: 'MONTHLY',
       value: 397,
+      description: 'Assinatura mensal Wise Wolf',
+      nextDueDate: '2026-08-26',
+      status: 'ACTIVE',
     };
     expect(resolveProviderSubscription([
       { ...duplicate, id: 'sub_older', dateCreated: '2026-08-23' },
@@ -100,10 +119,9 @@ describe('segurança do checkout School OS', () => {
     ], expected)).toEqual({ status: 'CONFLICT' });
   });
 
-  it('preserva o estado ambíguo quando o lookup de reconciliação também falha', () => {
-    expect(requiresProviderReconciliation(true, false)).toBe(true);
-    expect(requiresProviderReconciliation(true, true)).toBe(false);
-    expect(requiresProviderReconciliation(false, false)).toBe(false);
+  it('congela o primeiro vencimento a partir da criação do checkout', () => {
+    expect(saasCheckoutNextDueDate('2026-08-25T23:59:59.000Z')).toBe('2026-08-26');
+    expect(saasCheckoutNextDueDate('invalid')).toBeNull();
   });
 
   it('recusa reutilizar a mesma chave com outro payload', () => {
@@ -134,24 +152,68 @@ describe('segurança do checkout School OS', () => {
     })).toBe(false);
   });
 
-  it('reconcilia antes de criar e compensa vínculos locais rejeitados', () => {
+  it('reconcilia por GET e cerca os dois únicos POSTs sem compensação destrutiva', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'supabase/functions/create-saas-checkout/index.ts'),
       'utf8',
     );
-    expect(source.indexOf('lookupProviderCustomer(')).toBeLessThan(
-      source.indexOf('asaasRequest("/customers"'),
+    const customerClaim = source.indexOf('operation: "CUSTOMER_CREATE"');
+    const customerLookup = source.indexOf(
+      'const customerLookup = await findUniqueAsaasEntity',
+      customerClaim,
     );
-    expect(source.indexOf('lookupProviderSubscription(')).toBeLessThan(
-      source.indexOf('asaasRequest("/subscriptions"'),
+    const customerFence = source.indexOf(
+      'await markAsaasCreationSubmitting(supabase, customerClaim)',
+      customerLookup,
     );
+    const customerCapabilityFence = source.indexOf(
+      'await revalidateAsaasMutationCapability(',
+      customerFence,
+    );
+    const customerPost = source.indexOf(
+      '`${freshCustomerCreateIntegration.baseUrl}/customers`',
+      customerCapabilityFence,
+    );
+    const subscriptionClaim = source.indexOf(
+      'operation: "SUBSCRIPTION_CREATE"',
+      customerPost,
+    );
+    const subscriptionLookup = source.indexOf(
+      'const subscriptionLookup = await findUniqueAsaasEntity',
+      subscriptionClaim,
+    );
+    const subscriptionFence = source.indexOf(
+      'await markAsaasCreationSubmitting(supabase, subscriptionClaim)',
+      subscriptionLookup,
+    );
+    const subscriptionCapabilityFence = source.indexOf(
+      'await revalidateAsaasMutationCapability(',
+      subscriptionFence,
+    );
+    const subscriptionPost = source.indexOf(
+      '`${freshSubscriptionCreateIntegration.baseUrl}/subscriptions`',
+      subscriptionCapabilityFence,
+    );
+    expect(customerClaim).toBeGreaterThanOrEqual(0);
+    expect(customerLookup).toBeGreaterThan(customerClaim);
+    expect(customerFence).toBeGreaterThan(customerLookup);
+    expect(customerCapabilityFence).toBeGreaterThan(customerFence);
+    expect(customerPost).toBeGreaterThan(customerCapabilityFence);
+    expect(subscriptionClaim).toBeGreaterThan(customerPost);
+    expect(subscriptionLookup).toBeGreaterThan(subscriptionClaim);
+    expect(subscriptionFence).toBeGreaterThan(subscriptionLookup);
+    expect(subscriptionCapabilityFence).toBeGreaterThan(subscriptionFence);
+    expect(subscriptionPost).toBeGreaterThan(subscriptionCapabilityFence);
+    expect(source.match(/method: "POST"/g)).toHaveLength(2);
+    expect(source).toContain('method !== "GET"');
+    expect(source).toContain('customerLookup.kind === "CONFLICT"');
+    expect(source).toContain('subscriptionLookup.kind === "CONFLICT"');
     expect(source).toContain('.is("asaas_customer_id", null)');
     expect(source).toContain('.is("asaas_subscription_id", null)');
     expect(source).toContain('.eq("status", "PENDING")');
     expect(source).toContain('code: "INVALID_IDEMPOTENCY_KEY"');
-    expect(source).toContain('reconcileAfterMutation(');
-    expect(source).toContain('`/customers/${encodeURIComponent(createdCustomerId)}`');
-    expect(source).toContain('`/subscriptions/${encodeURIComponent(createdSubscriptionId)}`');
+    expect(source).not.toContain('method: "DELETE"');
+    expect(source).not.toContain('reconcileAfterMutation(');
     expect(source).not.toContain('body.creditCard');
   });
 });

@@ -20,6 +20,7 @@ interface Conf {
   student_response: string | null;
   status: string;
   responded_at: string | null;
+  response_editable_until: string | null;
   created_at: string;
 }
 
@@ -32,6 +33,20 @@ const RESPONSE_LABEL: Record<string, string> = {
   STUDENT_PRESENT: 'Aluno diz: tive minha aula normalmente',
   TEACHER_NO_SHOW: 'Aluno diz: o professor NÃO apareceu',
   STUDENT_SELF_ABSENT: 'Aluno diz: eu que faltei',
+  CANCELLED_RESCHEDULED: 'Aluno diz: a aula foi cancelada ou remarcada',
+};
+
+const ATTENDANCE_MISMATCH_STATUSES = new Set(['ATTENDANCE_MISMATCH']);
+
+export const isAttendanceOnlyMismatch = (
+  confirmation: Pick<Conf, 'status' | 'teacher_reported' | 'student_response'>,
+) => {
+  if (ATTENDANCE_MISMATCH_STATUSES.has(confirmation.status)) return true;
+
+  return confirmation.status === 'CONFLICT' && (
+    (confirmation.teacher_reported === 'STUDENT_ABSENCE' && confirmation.student_response === 'STUDENT_PRESENT')
+    || (confirmation.teacher_reported === 'COMPLETED' && confirmation.student_response === 'STUDENT_SELF_ABSENT')
+  );
 };
 
 // Aula que o aluno confirmou e o professor NUNCA lançou. Sem lançamento não há
@@ -61,27 +76,34 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
   const [unloggedTotal, setUnloggedTotal] = useState({ aulas: 0, valor: 0 });
   const [expandedTeacher, setExpandedTeacher] = useState<string | null>(null);
   const [settling, setSettling] = useState<string | null>(null);
-  const [stats, setStats] = useState({ pending: 0, confirmed: 0, conflict: 0 });
+  const [stats, setStats] = useState({ pending: 0, confirmed: 0, mismatch: 0, conflict: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [resolving, setResolving] = useState<string | null>(null);
 
-  const SELECT_COLS = 'id, class_log_id, teacher_id, student_name, teacher_name, class_date, class_time, teacher_reported, student_response, status, responded_at, created_at';
+  const SELECT_COLS = 'id, class_log_id, teacher_id, student_name, teacher_name, class_date, class_time, teacher_reported, student_response, status, responded_at, response_editable_until, created_at';
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      // Conflitos confirmados (já têm lançamento + resposta divergente) → resolver pagamento
+      const since = new Date();
+      since.setDate(since.getDate() - 60);
+
+      // Separa divergência apenas de frequência de um conflito real sobre a
+      // presença do professor. Só o segundo deve reter pagamento.
       let q = supabase
         .from('attendance_confirmations')
         .select(SELECT_COLS)
-        .eq('status', 'CONFLICT')
+        .in('status', ['CONFLICT', 'ATTENDANCE_MISMATCH'])
         .order('responded_at', { ascending: false });
       if (tenantId) q = q.eq('tenant_id', tenantId);
-      const { data: conf } = await q;
+      const { data: conf, error: confError } = await q;
+      if (confError) throw confError;
       setConflicts((conf as Conf[]) || []);
 
       // Alertas: aluno disse que o PROFESSOR NÃO APARECEU e o professor ainda não lançou a aula.
-      // Sinal de fraude: professor pode estar adiando o lançamento para depois marcar "falta do aluno".
+      // Sem a segunda fonte ainda não existe conflito financeiro nem punição automática.
       let aq = supabase
         .from('attendance_confirmations')
         .select(SELECT_COLS)
@@ -89,27 +111,30 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
         .eq('student_response', 'TEACHER_NO_SHOW')
         .order('responded_at', { ascending: false });
       if (tenantId) aq = aq.eq('tenant_id', tenantId);
-      const { data: al } = await aq;
+      const { data: al, error: alertError } = await aq;
+      if (alertError) throw alertError;
       setAlerts((al as Conf[]) || []);
 
       // Estatísticas gerais (últimos 60 dias)
-      const since = new Date(); since.setDate(since.getDate() - 60);
       let sq = supabase
         .from('attendance_confirmations')
-        .select('status')
+        .select('status, teacher_reported, student_response')
         .gte('created_at', since.toISOString());
       if (tenantId) sq = sq.eq('tenant_id', tenantId);
-      const { data: all } = await sq;
-      const counts = { pending: 0, confirmed: 0, conflict: 0 };
+      const { data: all, error: statsError } = await sq;
+      if (statsError) throw statsError;
+      const counts = { pending: 0, confirmed: 0, mismatch: 0, conflict: 0 };
       (all || []).forEach((r: any) => {
         if (r.status === 'PENDING' || r.status === 'AWAITING_TEACHER') counts.pending++;
         else if (r.status === 'CONFIRMED' || r.status === 'RESOLVED_PAID') counts.confirmed++;
+        else if (isAttendanceOnlyMismatch(r)) counts.mismatch++;
         else if (r.status === 'CONFLICT') counts.conflict++;
       });
       setStats(counts);
 
       // Aulas que o aluno confirmou e ninguém lançou (por professor)
-      const { data: unl } = await supabase.rpc('list_unlogged_confirmed_classes', { p_days: 180 });
+      const { data: unl, error: unloggedError } = await supabase.rpc('list_unlogged_confirmed_classes', { p_days: 180 });
+      if (unloggedError) throw unloggedError;
       const payload = unl as any;
       if (payload?.ok) {
         setUnlogged((payload.teachers || []) as UnloggedTeacher[]);
@@ -117,6 +142,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
       }
     } catch (e) {
       console.error('Erro ao carregar disputas:', e);
+      setLoadError('Não foi possível carregar as verificações agora. Tente atualizar novamente.');
     } finally {
       setLoading(false);
     }
@@ -131,7 +157,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
     const acao = pay
       ? `LANÇAR e pagar ${items.length} aula(s) de ${teacherName} — ${money(total)}`
       : `DESCARTAR ${items.length} aula(s) de ${teacherName} (não serão pagas)`;
-    if (!confirm(`${acao}.\n\nIsso usa a confirmação que o próprio aluno deu. Confirmar?`)) return;
+    if (!confirm(`${acao}.\n\nA resposta do aluno é um indício, não uma prova isolada. Confirme somente após conferir agenda e demais evidências.`)) return;
 
     setSettling(items.length === 1 ? items[0].id : teacherName);
     try {
@@ -202,6 +228,8 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
   };
 
   const fmtDate = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '';
+  const attendanceMismatches = conflicts.filter(isAttendanceOnlyMismatch);
+  const presenceConflicts = conflicts.filter(c => !isAttendanceOnlyMismatch(c));
 
   return (
     <div className="space-y-6">
@@ -219,15 +247,25 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
         </button>
       </div>
 
+      {loadError && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-bold text-red-700 dark:border-red-900/40 dark:bg-red-900/10 dark:text-red-300">
+          {loadError}
+        </p>
+      )}
+
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
-          <div className="flex items-center gap-2 text-amber-600 mb-1"><Clock size={16} /><span className="text-xs font-bold uppercase">Aguardando aluno</span></div>
+          <div className="flex items-center gap-2 text-amber-600 mb-1"><Clock size={16} /><span className="text-xs font-bold uppercase">Em verificação</span></div>
           <p className="text-2xl font-black text-brand-text">{stats.pending}</p>
         </div>
         <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
           <div className="flex items-center gap-2 text-emerald-600 mb-1"><CheckCircle size={16} /><span className="text-xs font-bold uppercase">Confirmadas</span></div>
           <p className="text-2xl font-black text-brand-text">{stats.confirmed}</p>
+        </div>
+        <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
+          <div className="flex items-center gap-2 text-sky-600 mb-1"><AlertTriangle size={16} /><span className="text-xs font-bold uppercase">Divergência leve</span></div>
+          <p className="text-2xl font-black text-brand-text">{stats.mismatch}</p>
         </div>
         <div className="bg-brand-surface border border-brand-border rounded-2xl p-4">
           <div className="flex items-center gap-2 text-red-600 mb-1"><AlertTriangle size={16} /><span className="text-xs font-bold uppercase">Em conflito</span></div>
@@ -244,7 +282,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
           </h3>
           <p className="text-xs text-brand-muted mb-4">
             O aluno respondeu que a aula aconteceu, mas o professor nunca lançou — então <strong>ninguém foi pago por ela</strong>.
-            Depois de 45 dias a aula some da tela do professor; aqui você regulariza pela confirmação do aluno.
+            A resposta isolada do aluno não autoriza pagamento automático. Abra as aulas e confira agenda e demais evidências antes de regularizar.
             Passivo estimado: <strong>{money(unloggedTotal.valor)}</strong>.
           </p>
 
@@ -264,13 +302,9 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
                       <span className="underline">{expandedTeacher === t.teacher_id ? 'ocultar' : 'ver aulas'}</span>
                     </p>
                   </button>
-                  <button
-                    onClick={() => settle(t.classes, t.teacher_name, true)}
-                    disabled={settling !== null}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-50"
-                  >
-                    {settling === t.teacher_name ? 'Lançando…' : `Lançar todas e pagar (${money(t.valor)})`}
-                  </button>
+                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-3 py-1.5 rounded-full uppercase">
+                    Revisão individual
+                  </span>
                 </div>
 
                 {expandedTeacher === t.teacher_id && (
@@ -291,7 +325,7 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
                             disabled={settling !== null}
                             className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold disabled:opacity-50"
                           >
-                            {settling === c.id ? '…' : 'Lançar e pagar'}
+                            {settling === c.id ? '…' : 'Após revisar, pagar'}
                           </button>
                           <button
                             onClick={() => settle([c], t.teacher_name, false)}
@@ -311,24 +345,70 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
         </div>
       )}
 
+      {/* A divergência não demonstra, por si só, falta do professor e não deve
+          gerar punição financeira automática. */}
+      {attendanceMismatches.length > 0 && (
+        <div className="bg-sky-50/60 dark:bg-sky-900/10 border border-sky-200 dark:border-sky-900/40 rounded-2xl p-5">
+          <h3 className="text-sm font-bold text-sky-700 dark:text-sky-300 mb-1 flex items-center gap-2">
+            <AlertTriangle size={16} /> Divergências de frequência — sem penalidade ao professor
+            <span className="text-[10px] bg-sky-600 text-white px-2 py-0.5 rounded-full">{attendanceMismatches.length}</span>
+          </h3>
+          <p className="text-xs text-sky-800/80 dark:text-sky-200/70 mb-4">
+            Estes relatos não demonstram, por si só, que o professor faltou. Por isso, pagamento e Turbo não ficam pendentes automaticamente.
+            O registro continua preservado para a gestão analisar frequência, cancelamento ou remarcação quando necessário.
+          </p>
+          <div className="space-y-2">
+            {attendanceMismatches.map(c => (
+              <div key={c.id} className="bg-brand-surface border border-sky-200 dark:border-sky-900/30 rounded-xl p-4 flex items-start justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-bold text-brand-text">
+                    <UserIcon size={14} className="text-brand-muted" /> {c.teacher_name || 'Professor'} <span className="text-brand-muted font-normal">·</span> aluno {c.student_name || '—'}
+                  </div>
+                  <p className="text-xs text-brand-muted mt-0.5">Aula de {fmtDate(c.class_date)}{c.class_time ? ` às ${String(c.class_time).slice(0,5)}` : ''}</p>
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-xs flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />{REPORTED_LABEL[c.teacher_reported] || c.teacher_reported}</p>
+                    <p className="text-xs flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />{c.student_response ? RESPONSE_LABEL[c.student_response] : '—'}</p>
+                  </div>
+                </div>
+                {c.status === 'CONFLICT' ? (
+                  <button
+                    type="button"
+                    onClick={() => resolve(c, 'PAY')}
+                    disabled={resolving === c.id}
+                    className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                    title="Remover a pendência financeira sem alterar o registro de frequência"
+                  >
+                    <CheckCircle size={14} /> Liberar sem penalidade
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2.5 py-1.5 rounded-full uppercase">
+                    Pagamento liberado
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Lista de conflitos */}
       <div className="bg-brand-surface border border-brand-border rounded-2xl p-5">
         <h3 className="text-sm font-bold text-brand-text mb-4 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-red-600" /> Conflitos para resolver
-          {conflicts.length > 0 && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">{conflicts.length}</span>}
+          <AlertTriangle size={16} className="text-red-600" /> Conflitos de comparecimento para resolver
+          {presenceConflicts.length > 0 && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">{presenceConflicts.length}</span>}
         </h3>
 
         {loading ? (
           <div className="py-12 text-center text-brand-muted"><RefreshCw size={24} className="animate-spin mx-auto mb-2" />Carregando…</div>
-        ) : conflicts.length === 0 ? (
+        ) : presenceConflicts.length === 0 ? (
           <div className="py-12 flex flex-col items-center text-brand-muted opacity-70">
             <CheckCircle size={40} strokeWidth={1.5} className="mb-3 text-emerald-500" />
-            <p className="text-sm font-bold">Nenhum conflito pendente 🎉</p>
-            <p className="text-xs mt-1">As aulas com divergência aparecem aqui para sua decisão.</p>
+            <p className="text-sm font-bold">Nenhum conflito de comparecimento pendente 🎉</p>
+            <p className="text-xs mt-1">Somente relatos que colocam em dúvida a presença do professor exigem decisão.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {conflicts.map(c => (
+            {presenceConflicts.map(c => (
               <div key={c.id} className="border border-red-200 dark:border-red-900/40 bg-red-50/50 dark:bg-red-900/10 rounded-xl p-4">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="min-w-0">
@@ -375,44 +455,52 @@ const AttendanceDisputes: React.FC<Props> = ({ user, tenantId }) => {
           </h3>
           <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mb-4">
             O aluno disse que o professor não apareceu, mas o professor ainda <b>não lançou</b> esta aula.
-            O Turbo já está suspenso preventivamente. Confirme abaixo se o professor compareceu (restaura a ofensiva)
-            ou se faltou (reinicia a ofensiva em zero).
+            Sem o lançamento do professor, o relato fica aguardando a segunda fonte e <b>não suspende o Turbo nem bloqueia pagamento</b>.
+            Depois do prazo de correção do aluno, a direção pode decidir com base na agenda e nas demais evidências.
           </p>
           <div className="space-y-2">
-            {alerts.map(a => (
+            {alerts.map(a => {
+              const correctionOpen = Boolean(
+                a.response_editable_until
+                && new Date(a.response_editable_until).getTime() > Date.now(),
+              );
+              return (
               <div key={a.id} className="bg-brand-surface border border-amber-200 dark:border-amber-900/30 rounded-xl p-3 flex items-center gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
                   <UserIcon size={14} className="text-brand-muted shrink-0" />
                   <span className="text-sm font-bold text-brand-text">{a.teacher_name || 'Professor'}</span>
                   <span className="text-xs text-brand-muted">· aluno {a.student_name || '—'}</span>
                   <span className="text-xs text-brand-muted">· {fmtDate(a.class_date)}{a.class_time ? ` às ${String(a.class_time).slice(0,5)}` : ''}</span>
-                  <span className="text-[10px] font-bold bg-red-500/10 text-red-600 px-2 py-1 rounded-full uppercase">Turbo suspenso</span>
+                  <span className="text-[10px] font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-full uppercase">
+                    {correctionOpen ? 'Aluno ainda pode corrigir' : 'Aguardando lançamento'}
+                  </span>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button
                     onClick={() => resolve(a, 'TEACHER_PRESENT')}
-                    disabled={resolving === a.id}
+                    disabled={resolving === a.id || correctionOpen}
                     className="px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <CheckCircle size={14} /> Professor compareceu
                   </button>
                   <button
                     onClick={() => resolve(a, 'TEACHER_ABSENT')}
-                    disabled={resolving === a.id}
+                    disabled={resolving === a.id || correctionOpen}
                     className="px-3 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
                   >
                     <XCircle size={14} /> Confirmar falta
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
       <p className="text-[11px] text-brand-muted leading-relaxed px-1">
         💡 Como funciona: após cada aula, o aluno recebe no WhatsApp (pelo número central da escola) um link de 1 toque para confirmar se a aula aconteceu.
-        Se a resposta do aluno divergir do que o professor lançou, a aula entra em conflito e fica <b>retida do pagamento</b> até você decidir aqui.
+        Uma diferença apenas sobre a frequência do aluno fica registrada, mas <b>não penaliza o professor</b>. O pagamento só é retido quando há dúvida real sobre o comparecimento do professor.
       </p>
     </div>
   );

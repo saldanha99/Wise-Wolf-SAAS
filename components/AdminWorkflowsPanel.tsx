@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, CalendarOff, Loader2, AlertCircle, UserCheck, X, Check, ChevronRight, Sparkles, Repeat } from 'lucide-react';
+import { LogOut, CalendarOff, Loader2, UserCheck, X, Check, ChevronRight, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -8,17 +8,15 @@ interface Props {
 }
 
 const AdminWorkflowsPanel: React.FC<Props> = ({ user, tenantId }) => {
-    const [tab, setTab] = useState<'offboarding' | 'absences' | 'trials'>('offboarding');
+    const [tab, setTab] = useState<'offboarding' | 'trials'>('offboarding');
 
     return (
         <div className="space-y-4">
             <div className="flex flex-nowrap gap-2 overflow-x-auto pb-2" role="tablist" aria-label="Fluxos administrativos" aria-orientation="horizontal">
                 <TabBtn id="workflow-tab-offboarding" controls="workflow-panel-offboarding" active={tab === 'offboarding'} onClick={() => setTab('offboarding')} icon={LogOut} label="Saídas de professor" />
-                <TabBtn id="workflow-tab-absences" controls="workflow-panel-absences" active={tab === 'absences'} onClick={() => setTab('absences')} icon={CalendarOff} label="Ausências & Coberturas" />
                 <TabBtn id="workflow-tab-trials" controls="workflow-panel-trials" active={tab === 'trials'} onClick={() => setTab('trials')} icon={Sparkles} label="Trials pendentes" />
             </div>
             {tab === 'offboarding' && <div role="tabpanel" id="workflow-panel-offboarding" aria-labelledby="workflow-tab-offboarding"><OffboardingPanel tenantId={tenantId} /></div>}
-            {tab === 'absences' && <div role="tabpanel" id="workflow-panel-absences" aria-labelledby="workflow-tab-absences"><AbsencesPanel tenantId={tenantId} /></div>}
             {tab === 'trials' && <div role="tabpanel" id="workflow-panel-trials" aria-labelledby="workflow-tab-trials"><TrialsPanel tenantId={tenantId} /></div>}
         </div>
     );
@@ -206,15 +204,8 @@ const AbsencesPanel: React.FC<{ tenantId?: string }> = ({ tenantId }) => {
         setBookings(result);
     };
 
-    const assignCover = async (booking: any, coverTeacherId: string, absId: string) => {
-        try {
-            const { error } = await supabase.rpc('assign_class_coverage', {
-                p_absence_id: absId, p_booking_id: booking.id, p_class_date: booking.class_date,
-                p_cover_teacher_id: coverTeacherId
-            });
-            if (error) throw error;
-            alert('Cobertura atribuída!');
-        } catch (err: any) { alert('Erro: ' + err.message); }
+    const assignCover = async (_booking: any, _coverTeacherId: string, _absId: string) => {
+        alert('A atribuição direta antiga foi desativada. Use a Central de Coberturas, que valida disponibilidade e aceite do professor.');
     };
 
     if (loading) return <div className="p-12 flex items-center justify-center"><Loader2 className="animate-spin text-violet-500" size={24} /></div>;

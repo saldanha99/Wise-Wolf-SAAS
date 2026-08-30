@@ -100,11 +100,13 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                 .from('landing_page_configs')
                 .select('*')
                 .eq('tenant_id', tenantId)
-                .single();
+                .maybeSingle();
 
             if (data) {
                 setConfig({
                     ...data,
+                    heroImage: data.hero_image || '',
+                    ctaText: data.cta_text || 'Começar Agora',
                     template_type: data.template_type || 'high_conversion',
                     // Ensure arrays are initialized if null from DB
                     stats: data.stats || [{ label: 'Alunos Formados', value: '1000+' }],
@@ -138,7 +140,7 @@ const LandingPageEditor: React.FC<LandingPageEditorProps> = ({ tenantId }) => {
                 }));
             }
 
-            if (error && error.code !== 'PGRST116') {
+            if (error) {
                 console.error("Error fetching config:", error);
             }
         } finally {

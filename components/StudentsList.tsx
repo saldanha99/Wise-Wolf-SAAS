@@ -12,6 +12,7 @@ import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import StudentProfileEditor from './StudentProfileEditor';
 import TeacherStudentScheduleEditor from './TeacherStudentScheduleEditor';
 import { loadAuthorizedProfilePrivate } from '../lib/profilePrivacy';
+import { provisionStudentAccount } from '../lib/studentAccountProvisioning';
 
 interface StudentsListProps {
   tenantId?: string;
@@ -65,7 +66,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         .from('bookings')
         .select('student_id, teacher_id, start_date, day_of_week, time_slot, teacher:teacher_id(id, full_name)')
         .eq('tenant_id', tenantId)
-        .eq('status', 'SCHEDULED');
+        .in('status', ['SCHEDULED', 'scheduled']);
       if (user?.role === UserRole.TEACHER) {
         bookingsQuery = bookingsQuery.eq('teacher_id', user.id);
       }
@@ -179,43 +180,30 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
     if (!editingStudent?.id) {
       try {
         const targetTenantId = tenantId || user?.tenantId;
+        if (!targetTenantId) {
+          throw new Error('Selecione uma escola antes de criar o aluno.');
+        }
+        const normalizedEmail = String(formData.email || '').trim().toLowerCase();
+        if (!normalizedEmail) throw new Error('Informe o e-mail do aluno.');
 
         // 1. Verifica se já existe perfil com este email neste tenant
-        const { data: existingInTenant } = await supabase
+        const { data: existingInTenant, error: existingLookupError } = await supabase
           .from('profiles')
-          .select('id')
-          .eq('email', formData.email)
+          .select('id, role, lifecycle_status')
+          .eq('email', normalizedEmail)
           .eq('tenant_id', targetTenantId)
-          .single();
+          .maybeSingle();
+        if (existingLookupError) throw existingLookupError;
 
-        let finalStudentId = existingInTenant?.id;
-
-        if (!finalStudentId) {
-          // Cria o usuário na tabela Auth
-          const { data: authData, error: authError } = await supabase.auth.signUp({
-            email: formData.email,
-            password: '123456',
-          });
-
-          if (authError) {
-            if (authError.message.includes('already registered')) {
-              // Tenta recuperar ID via RPC se já existir
-              const { data: recoveredId, error: rpcError } = await supabase
-                .rpc('get_user_id_by_email', { email_input: formData.email });
-
-              if (rpcError || !recoveredId) {
-                throw new Error("E-mail já cadastrado e não foi possível recuperar o ID.");
-              }
-              finalStudentId = recoveredId;
-            } else {
-              throw authError;
-            }
-          } else if (authData.user) {
-            finalStudentId = authData.user.id;
-          }
+        if (existingInTenant && existingInTenant.role !== 'STUDENT') {
+          throw new Error('Este e-mail já pertence a outro tipo de acesso nesta escola.');
         }
-
-        if (!finalStudentId) throw new Error("Não foi possível gerar ID para o aluno.");
+        if (
+          existingInTenant &&
+          String(existingInTenant.lifecycle_status || '').trim().toLowerCase() !== 'active'
+        ) {
+          throw new Error('Este aluno está desativado. Reative o cadastro existente antes de matriculá-lo.');
+        }
 
         // Matrícula de dependente: cobrança no CPF do responsável (guardian).
         // O aluno tem perfil/login próprios; profiles.cpf fica NULL p/ não violar
@@ -227,20 +215,57 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           return;
         }
 
-        // Verifica consistência de CPF para evitar constraint duplicates.
-        // Dependente NUNCA reusa o perfil do responsável pelo CPF.
+        // Resolva identidades existentes antes de criar Auth. Assim, um CPF já
+        // cadastrado nunca deixa para trás um segundo usuário sem perfil.
         const studentCpf = isDependent ? null : (formData.cpf?.replace(/\D/g, '') || null);
-        if (!isDependent && studentCpf && targetTenantId && !existingInTenant) {
+
+        let finalStudentId = existingInTenant?.id;
+        let activationSent = false;
+
+        if (!finalStudentId && studentCpf) {
           const { data: existingByCpf, error: cpfLookupError } = await supabase.rpc(
             'find_authorized_profile_by_cpf',
             { p_tenant_id: targetTenantId, p_cpf: studentCpf },
           );
           if (cpfLookupError) throw cpfLookupError;
-
           if (existingByCpf) {
-            finalStudentId = existingByCpf;
+            const { data: cpfProfile, error: cpfProfileError } = await supabase
+              .from('profiles')
+              .select('id, role, lifecycle_status, email')
+              .eq('id', existingByCpf)
+              .maybeSingle();
+            if (cpfProfileError) throw cpfProfileError;
+            if (
+              !cpfProfile ||
+              cpfProfile.role !== 'STUDENT' ||
+              String(cpfProfile.lifecycle_status || '').trim().toLowerCase() !== 'active'
+            ) {
+              throw new Error('O CPF informado pertence a um cadastro que não pode ser reutilizado.');
+            }
+            if (String(cpfProfile.email || '').trim().toLowerCase() !== normalizedEmail) {
+              throw new Error('Este CPF já pertence a outro aluno. Edite o cadastro existente.');
+            }
+            finalStudentId = cpfProfile.id;
           }
         }
+
+        if (!finalStudentId) {
+          // Auth Admin roda exclusivamente na Edge Function. Assim, criar o
+          // aluno nunca substitui a sessão atual do diretor no navegador.
+          const provisioned = await provisionStudentAccount(supabase, {
+            name: formData.name,
+            email: normalizedEmail,
+            tenantId: targetTenantId,
+            phone: formData.phone,
+            professorId: nullableUuid(formData.professor_id),
+            monthlyFee: Number(formData.monthly_fee) || 0,
+            dueDay: Number(formData.due_day) || 10,
+          });
+          finalStudentId = provisioned.userId;
+          activationSent = provisioned.activationSent;
+        }
+
+        if (!finalStudentId) throw new Error("Não foi possível gerar ID para o aluno.");
 
         // Resolve o id do responsável: usa o que foi SELECIONADO no formulário
         // (responsável já cadastrado); senão tenta achar pelo CPF no tenant.
@@ -264,7 +289,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         const profilePayload: any = {
           id: finalStudentId,
           full_name: formData.name,
-          email: formData.email,
+          email: normalizedEmail,
           role: 'STUDENT',
           tenant_id: targetTenantId,
           module: formData.currentModuleStatus,
@@ -298,13 +323,15 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           profilePayload.monthly_fee = formData.monthly_fee;
           profilePayload.fidelity_plan = formData.planDuration;
           profilePayload.due_day = formData.due_day || 10;
-          profilePayload.status_financial = 'ACTIVE';
+          profilePayload.status_financial = 'PENDING';
         }
 
         const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
         if (profileError) throw profileError;
 
         // --- INJEÇÃO NO ASAAS (Idêntico ao Mapa de Aulas) ---
+        let billingConfirmed = !(formData.monthly_fee > 0);
+        let billingFailure = '';
         if (formData.monthly_fee > 0) {
           try {
             console.log("Injetando dados do aluno recém-criado no Asaas...");
@@ -341,19 +368,28 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               planDuration: durationEnum
             });
 
-            if (subResponse?.id || subResponse?.subscription_id) {
-              const confirmedSubId = subResponse.id || subResponse.subscription_id;
-              await supabase.from('profiles').update({
-                subscription_id: confirmedSubId
-              }).eq('id', finalStudentId);
-              console.log("✅ Asaas Injetado com Sucesso. ID da assinatura:", confirmedSubId);
-            }
+            const confirmedSubId = subResponse?.id || subResponse?.subscription_id;
+            if (!confirmedSubId) throw new Error('O Asaas não confirmou a assinatura.');
+            const { error: bindingError } = await supabase.from('profiles').update({
+              subscription_id: confirmedSubId,
+              status_financial: 'ACTIVE',
+            }).eq('id', finalStudentId);
+            if (bindingError) throw bindingError;
+            billingConfirmed = true;
+            console.log("✅ Asaas Injetado com Sucesso. ID da assinatura:", confirmedSubId);
           } catch (asaasErr) {
-            console.error("⚠️ Erro ao injetar no Asaas (não bloqueante):", asaasErr);
+            billingFailure = asaasErr instanceof Error ? asaasErr.message : 'falha não identificada';
+            console.error("⚠️ Erro ao injetar no Asaas; aluno mantido como pendente:", asaasErr);
           }
         }
 
-        alert('Aluno criado com sucesso! Integramos com o financeiro Asaas (se aplicável). Senha padrão: 123456');
+        const accessMessage = activationSent
+          ? 'Convite seguro enviado para o aluno definir a própria senha.'
+          : 'O acesso do aluno já existia nesta escola.';
+        const billingMessage = billingConfirmed
+          ? 'Financeiro confirmado.'
+          : `A cobrança ainda não foi ativada (${billingFailure || 'confirmação ausente'}). O aluno permanece pendente para revisão.`;
+        alert(`Aluno salvo com segurança. ${accessMessage} ${billingMessage}`);
         setEditingStudent(null);
         fetchStudents();
         return;

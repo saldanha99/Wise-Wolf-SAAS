@@ -66,7 +66,7 @@ const StudentPlanChangeModal: React.FC<StudentPlanChangeModalProps> = ({ tenantI
                     .from('bookings')
                     .select('id', { count: 'exact', head: true })
                     .eq('student_id', student.id)
-                    .eq('status', 'SCHEDULED'),
+                    .in('status', ['SCHEDULED', 'scheduled']),
             ]);
             setPlans((plansRes.data as PricingPlan[]) || []);
             setSlotsAtuais(bookingsRes.count ?? null);

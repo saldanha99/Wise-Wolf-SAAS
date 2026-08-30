@@ -12,15 +12,35 @@
 
 // deno-lint-ignore no-import-prefix
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  AsaasCapabilityFenceError,
+  revalidateAsaasMutationCapability,
+} from "../_shared/asaas-capability-fence.ts";
+import {
+  asaasCreationFingerprint,
+  asaasCreationHttpOutcome,
+  bindStudentAsaasCreationLifecycle,
+  claimAsaasCreation,
+  findUniqueAsaasEntity,
+  markStudentAsaasCreationSubmitting,
+  recordAsaasCreationState,
+  releaseStudentAsaasCreationLifecycle,
+} from "../_shared/asaas-creation-guard.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
+import {
+  resolvePlatformAsaasIntegration,
+  TenantIntegrationBrokerError,
+} from "../_shared/tenant-integration-broker.ts";
 import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
-
-let ASAAS_URL = Deno.env.get("ASAAS_API_URL") ||
-  "https://api-sandbox.asaas.com";
-ASAAS_URL = ASAAS_URL.replace(/\/+$/, "");
-const ASAAS_API_KEY =
-  (Deno.env.get("ASAAS_API_KEY") || Deno.env.get("ASAAS_ACCESS_TOKEN") || "")
-    .trim();
+import {
+  wolfieTopupCreationSnapshot,
+  wolfieTopupDescription,
+  wolfieTopupDueDate,
+  wolfieTopupMaySubmitProviderPayment,
+  wolfieTopupPaymentMatches,
+  wolfieTopupProviderReference,
+  wolfieTopupReferenceConflicts,
+} from "./provider-safety.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,22 +59,11 @@ const json = (body: unknown, status = 200) =>
     },
   });
 
-function asaasPathPrefix() {
-  return ASAAS_URL.includes("api-sandbox") ||
-      ASAAS_URL.includes("api.asaas.com")
-    ? "/v3"
-    : "";
-}
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const sameMoney = (left: unknown, right: unknown) => {
-  const a = Number(left);
-  const b = Number(right);
-  return Number.isFinite(a) && Number.isFinite(b) &&
-    Math.round(a * 100) === Math.round(b * 100);
-};
+const text = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -79,7 +88,18 @@ serve(async (req) => {
   if (!tenantId || !studentId) {
     return json({ error: "STUDENT_PROFILE_REQUIRED" }, 403);
   }
-  if (!ASAAS_API_KEY) return json({ error: "ASAAS_NOT_CONFIGURED" }, 503);
+  let readIntegration: Awaited<
+    ReturnType<typeof resolvePlatformAsaasIntegration>
+  >;
+  try {
+    readIntegration = await resolvePlatformAsaasIntegration(
+      auth.context.admin,
+      "payment.read",
+    );
+  } catch (error) {
+    if (!(error instanceof TenantIntegrationBrokerError)) throw error;
+    return json({ error: "ASAAS_NOT_CONFIGURED" }, 503);
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -96,18 +116,20 @@ serve(async (req) => {
   }
 
   let asaasCustomerId: string | null = null;
+  let hubAccountId: string | null = null;
   if (tenantId === "wolfie-direct") {
     const { data: membership, error: membershipError } = await auth.context
       .admin
       .from("hub_memberships")
       .select(
-        "hub_accounts!inner(asaas_customer_id, account_type, owner_user_id)",
+        "hub_accounts!inner(id,asaas_customer_id,account_type,owner_user_id,status)",
       )
       .eq("user_id", studentId)
       .eq("status", "ACTIVE")
       .eq("membership_role", "OWNER")
       .eq("hub_accounts.account_type", "PERSONAL")
       .eq("hub_accounts.owner_user_id", studentId)
+      .eq("hub_accounts.status", "ACTIVE")
       .order("created_at")
       .limit(1)
       .maybeSingle();
@@ -120,7 +142,8 @@ serve(async (req) => {
     const account = Array.isArray(membership?.hub_accounts)
       ? membership.hub_accounts[0]
       : membership?.hub_accounts;
-    asaasCustomerId = account?.asaas_customer_id || null;
+    hubAccountId = text(account?.id) || null;
+    asaasCustomerId = text(account?.asaas_customer_id) || null;
   } else {
     const { data: profile, error: profileError } = await auth.context.admin
       .from("profiles")
@@ -133,14 +156,14 @@ serve(async (req) => {
       });
       return json({ error: "CUSTOMER_NOT_READY" }, 409);
     }
-    asaasCustomerId = profile?.asaas_customer_id || null;
+    asaasCustomerId = text(profile?.asaas_customer_id) || null;
   }
-  if (!asaasCustomerId) {
+  if (!asaasCustomerId || (tenantId === "wolfie-direct" && !hubAccountId)) {
     return json({ error: "CUSTOMER_NOT_READY" }, 409);
   }
 
   const orderColumns =
-    "id,tenant_id,student_id,request_key,package_id,package_name,minutes,amount_brl,status,provider_payment_id,creation_lease_expires_at";
+    "id,tenant_id,student_id,request_key,package_id,package_name,minutes,amount_brl,status,provider_customer_id,provider_payment_id,reconciliation_required,creation_lease_expires_at,created_at";
   const loadOrder = async () =>
     await auth.context.admin.from("wolfie_topup_orders")
       .select(orderColumns)
@@ -183,6 +206,7 @@ serve(async (req) => {
         minutes: Number(pkg.minutes),
         amount_brl: Number(pkg.price_brl),
         status: "PENDING",
+        provider_customer_id: asaasCustomerId,
       })
       .select(orderColumns)
       .single();
@@ -204,49 +228,214 @@ serve(async (req) => {
     }
   }
 
-  // Asaas receives only a server-authored order UUID. Tenant, learner,
-  // quantity and price remain immutable snapshots in Postgres.
-  const reference = `wolfie-topup-order:${order.id}`;
-  const paymentMatchesOrder = (
-    payment: unknown,
-  ): payment is Record<string, unknown> =>
-    isRecord(payment) &&
-    typeof payment.id === "string" &&
-    payment.id.length >= 1 && payment.id.length <= 200 &&
-    payment.externalReference === reference &&
-    payment.customer === asaasCustomerId &&
-    payment.billingType === "PIX" &&
-    sameMoney(payment.value, order.amount_brl);
-
-  const respondWithPayment = async (payment: Record<string, unknown>) => {
-    const paymentId = String(payment.id);
-    const { error: paymentLinkError } = await auth.context.admin
-      .from("wolfie_topup_orders")
+  const snapshottedCustomerId = text(order.provider_customer_id);
+  if (snapshottedCustomerId && snapshottedCustomerId !== asaasCustomerId) {
+    return json({ error: "TOPUP_CUSTOMER_REQUIRES_REVIEW" }, 409);
+  }
+  if (!snapshottedCustomerId) {
+    // Legacy pending orders may acquire their canonical customer exactly once.
+    // An order already linked to a provider payment is never retroactively
+    // adopted from mutable profile/account state.
+    if (text(order.provider_payment_id)) {
+      return json({ error: "TOPUP_CUSTOMER_REQUIRES_REVIEW" }, 409);
+    }
+    const snapshot = await auth.context.admin.from("wolfie_topup_orders")
       .update({
-        status: "AWAITING_PAYMENT",
-        provider_payment_id: paymentId,
-        creation_lease_expires_at: null,
+        provider_customer_id: asaasCustomerId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", order.id)
       .eq("tenant_id", tenantId)
       .eq("student_id", studentId)
+      .is("provider_customer_id", null)
+      .is("provider_payment_id", null)
+      .select(orderColumns)
+      .maybeSingle();
+    if (snapshot.error || !snapshot.data) {
+      const raced = await loadOrder();
+      if (
+        raced.error || !raced.data ||
+        text(raced.data.provider_customer_id) !== asaasCustomerId ||
+        text(raced.data.provider_payment_id)
+      ) {
+        return json({ error: "TOPUP_CUSTOMER_REQUIRES_REVIEW" }, 409);
+      }
+      order = raced.data;
+    } else {
+      order = snapshot.data;
+    }
+  }
+
+  let activeOrder = order;
+  // Asaas receives only a server-authored order UUID. Tenant, learner,
+  // quantity and price remain immutable snapshots in Postgres.
+  const reference = wolfieTopupProviderReference(String(activeOrder.id));
+  const paymentDueDate = wolfieTopupDueDate(activeOrder.created_at);
+  const paymentDescription = wolfieTopupDescription(activeOrder.package_name);
+  const amountBrl = Number(activeOrder.amount_brl);
+  const minutes = Number(activeOrder.minutes);
+  if (
+    !paymentDueDate || !paymentDescription || !Number.isFinite(amountBrl) ||
+    amountBrl <= 0 || !Number.isSafeInteger(minutes) || minutes <= 0
+  ) {
+    console.error("Topup immutable snapshot is invalid", {
+      orderId: activeOrder.id,
+    });
+    return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+  }
+  const expectedPayment = {
+    reference,
+    customerId: asaasCustomerId,
+    value: amountBrl,
+    dueDate: paymentDueDate,
+    description: paymentDescription,
+    splitPolicy: { kind: "NONE" as const },
+  };
+  const paymentPayload = {
+    customer: asaasCustomerId,
+    billingType: "PIX",
+    value: amountBrl,
+    dueDate: paymentDueDate,
+    description: paymentDescription,
+    externalReference: reference,
+  };
+  const claimTopupCreation = async () =>
+    await claimAsaasCreation(auth.context.admin, {
+      tenantId,
+      operation: "PAYMENT_CREATE",
+      logicalKey: String(activeOrder.id),
+      externalReference: reference,
+      requestFingerprint: await asaasCreationFingerprint(
+        wolfieTopupCreationSnapshot({
+          tenantId,
+          studentId,
+          orderId: String(activeOrder.id),
+          packageId: String(activeOrder.package_id),
+          packageName: String(activeOrder.package_name),
+          minutes,
+          amountBrl,
+          customerId: asaasCustomerId,
+          dueDate: paymentDueDate,
+          description: paymentDescription,
+          externalReference: reference,
+        }),
+      ),
+    });
+
+  const markOrderForReview = async (reason: string): Promise<void> => {
+    const { error } = await auth.context.admin.from("wolfie_topup_orders")
+      .update({
+        status: "RECONCILIATION_REQUIRED",
+        reconciliation_required: true,
+        creation_lease_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", activeOrder.id)
+      .eq("tenant_id", tenantId)
+      .eq("student_id", studentId)
       .in("status", ["PENDING", "CREATING", "AWAITING_PAYMENT"]);
+    if (error) {
+      console.error("Topup review marker failed", {
+        code: error.code,
+        reason,
+      });
+    }
+  };
+
+  const markOrderAmbiguous = async (): Promise<void> => {
+    const { error } = await auth.context.admin.from("wolfie_topup_orders")
+      .update({
+        reconciliation_required: true,
+        creation_lease_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", activeOrder.id)
+      .eq("tenant_id", tenantId)
+      .eq("student_id", studentId)
+      .in("status", ["PENDING", "CREATING", "AWAITING_PAYMENT"]);
+    if (error) {
+      console.error("Topup ambiguity marker failed", { code: error.code });
+    }
+  };
+
+  const persistPaymentLink = async (paymentId: string): Promise<boolean> => {
+    const linkedPaymentId = text(activeOrder.provider_payment_id);
+    if (linkedPaymentId && linkedPaymentId !== paymentId) return false;
+
+    let update = auth.context.admin.from("wolfie_topup_orders").update({
+      status: "AWAITING_PAYMENT",
+      provider_payment_id: paymentId,
+      reconciliation_required: false,
+      creation_lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+      .eq("id", activeOrder.id)
+      .eq("tenant_id", tenantId)
+      .eq("student_id", studentId)
+      .in("status", ["PENDING", "CREATING", "AWAITING_PAYMENT"]);
+    update = linkedPaymentId
+      ? update.eq("provider_payment_id", paymentId)
+      : update.is("provider_payment_id", null);
+    const { error: paymentLinkError } = await update;
     if (paymentLinkError) {
       console.error("Topup payment link persistence failed", {
         code: paymentLinkError.code,
       });
+      return false;
+    }
+
+    const verified = await loadOrder();
+    if (verified.error || !verified.data) {
+      console.error("Topup payment link verification failed", {
+        code: verified.error?.code ?? "missing_order",
+      });
+      return false;
+    }
+    activeOrder = verified.data;
+    return text(activeOrder.provider_payment_id) === paymentId;
+  };
+
+  const loadExactProviderPayment = async (
+    paymentId: string,
+  ): Promise<
+    | { kind: "FOUND"; payment: Record<string, unknown> }
+    | { kind: "NOT_FOUND" }
+    | { kind: "UNAVAILABLE" }
+  > => {
+    try {
+      const response = await fetch(
+        `${readIntegration.baseUrl}/payments/${encodeURIComponent(paymentId)}`,
+        {
+          headers: { "access_token": readIntegration.apiKey },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      const payload: unknown = await response.json().catch(() => null);
+      if (response.status === 404) return { kind: "NOT_FOUND" };
+      if (!response.ok || !isRecord(payload)) return { kind: "UNAVAILABLE" };
+      return { kind: "FOUND", payment: payload };
+    } catch {
+      return { kind: "UNAVAILABLE" };
+    }
+  };
+
+  const respondWithPayment = async (payment: Record<string, unknown>) => {
+    const paymentId = text(payment.id);
+    if (
+      !wolfieTopupPaymentMatches(payment, expectedPayment) ||
+      !(await persistPaymentLink(paymentId))
+    ) {
       return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
     }
 
     let qr: Record<string, unknown> | null = null;
     try {
       const qrRes = await fetch(
-        `${ASAAS_URL}${asaasPathPrefix()}/payments/${
+        `${readIntegration.baseUrl}/payments/${
           encodeURIComponent(paymentId)
         }/pixQrCode`,
         {
-          headers: { "access_token": ASAAS_API_KEY },
+          headers: { "access_token": readIntegration.apiKey },
           signal: AbortSignal.timeout(15_000),
         },
       );
@@ -260,11 +449,11 @@ serve(async (req) => {
 
     return json({
       success: true,
-      orderId: order.id,
+      orderId: activeOrder.id,
       requestKey,
       paymentId,
-      minutes: order.minutes,
-      value: Number(order.amount_brl),
+      minutes,
+      value: amountBrl,
       invoiceUrl: typeof payment.invoiceUrl === "string"
         ? payment.invoiceUrl
         : null,
@@ -281,125 +470,535 @@ serve(async (req) => {
         "REVERSED",
         "FAILED",
         "RECONCILIATION_REQUIRED",
-      ].includes(String(order.status))
+      ].includes(String(activeOrder.status))
     ) {
       return json({ error: "TOPUP_ORDER_NOT_PAYABLE" }, 409);
     }
 
-    if (typeof order.provider_payment_id === "string") {
-      const existingRes = await fetch(
-        `${ASAAS_URL}${asaasPathPrefix()}/payments/${
-          encodeURIComponent(order.provider_payment_id)
-        }`,
+    const locallyLinkedPaymentId = text(activeOrder.provider_payment_id);
+    if (locallyLinkedPaymentId && tenantId !== "wolfie-direct") {
+      // A crash may happen after the exact payment id is persisted but before
+      // the student lifecycle binding is released. Reclaim the one immutable
+      // creation attempt first; a local id alone never proves completion.
+      const recoveryClaim = await claimTopupCreation();
+      if (recoveryClaim.action === "IN_PROGRESS") {
+        return json({
+          error: "TOPUP_CREATION_IN_PROGRESS",
+          retryAfter: recoveryClaim.retry_after_seconds ?? null,
+          requestKey,
+        }, 202);
+      }
+      if (recoveryClaim.action === "REVIEW_REQUIRED" || !recoveryClaim.ok) {
+        await markOrderForReview("linked_payment_creation_requires_review");
+        return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+      }
+
+      const existingLookup = await loadExactProviderPayment(
+        locallyLinkedPaymentId,
+      );
+      if (existingLookup.kind === "UNAVAILABLE") {
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
+      const existing = existingLookup.kind === "FOUND"
+        ? existingLookup.payment
+        : null;
+      const claimedPaymentId = text(recoveryClaim.provider_entity_id);
+      if (
+        !wolfieTopupPaymentMatches(existing, expectedPayment) ||
+        (claimedPaymentId && claimedPaymentId !== locallyLinkedPaymentId) ||
+        (recoveryClaim.action === "ALREADY_SUCCEEDED" &&
+          claimedPaymentId !== locallyLinkedPaymentId)
+      ) {
+        await markOrderForReview("local_provider_payment_identity_mismatch");
+        return json({ error: "TOPUP_RECONCILIATION_REQUIRED" }, 409);
+      }
+
+      // Every path that can persist a school top-up id first binds this exact
+      // durable attempt under the student advisory fence. If the process died
+      // before recording success, finish that claim from the exact provider
+      // GET; release then proves the pre-existing binding and local order CAS.
+      if (recoveryClaim.action !== "ALREADY_SUCCEEDED") {
+        await recordAsaasCreationState(auth.context.admin, recoveryClaim, {
+          status: "SUCCEEDED",
+          providerEntityId: locallyLinkedPaymentId,
+          providerStatus: text(existing?.status),
+        });
+      }
+      const released = await releaseStudentAsaasCreationLifecycle(
+        auth.context.admin,
+        recoveryClaim,
         {
-          headers: { "access_token": ASAAS_API_KEY },
-          signal: AbortSignal.timeout(15_000),
+          tenantId,
+          studentId,
+          providerEntityId: locallyLinkedPaymentId,
         },
       );
-      const existing: unknown = await existingRes.json().catch(() => null);
-      if (!existingRes.ok || !paymentMatchesOrder(existing)) {
+      if (!released) {
+        await markOrderForReview("student_lifecycle_release_failed");
         return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
       }
       return await respondWithPayment(existing);
     }
+    if (locallyLinkedPaymentId) {
+      const existingLookup = await loadExactProviderPayment(
+        locallyLinkedPaymentId,
+      );
+      if (existingLookup.kind === "UNAVAILABLE") {
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
+      const existing = existingLookup.kind === "FOUND"
+        ? existingLookup.payment
+        : null;
+      if (!wolfieTopupPaymentMatches(existing, expectedPayment)) {
+        await markOrderForReview("local_provider_payment_identity_mismatch");
+        return json({ error: "TOPUP_RECONCILIATION_REQUIRED" }, 409);
+      }
+      return await respondWithPayment(existing);
+    }
 
-    // A lost POST response is reconciled by the immutable external reference
-    // before any retry is allowed to create a new provider charge.
-    const lookupUrl = new URL(
-      `${ASAAS_URL}${asaasPathPrefix()}/payments`,
-    );
-    lookupUrl.searchParams.set("externalReference", reference);
-    lookupUrl.searchParams.set("customer", asaasCustomerId);
-    lookupUrl.searchParams.set("limit", "10");
-    const lookupRes = await fetch(lookupUrl, {
-      headers: { "access_token": ASAAS_API_KEY },
-      signal: AbortSignal.timeout(15_000),
+    const creationClaim = await claimTopupCreation();
+
+    const studentLifecycle = {
+      tenantId,
+      studentId,
+      bindingKind: "TOPUP_ORDER" as const,
+      expectedCustomerId: asaasCustomerId,
+    };
+    const bindSchoolLifecycle = async (): Promise<boolean> =>
+      tenantId === "wolfie-direct" ||
+      await bindStudentAsaasCreationLifecycle(
+        auth.context.admin,
+        creationClaim,
+        studentLifecycle,
+      );
+    const releaseSchoolLifecycle = async (
+      providerPaymentId: string,
+    ): Promise<boolean> =>
+      tenantId === "wolfie-direct" ||
+      await releaseStudentAsaasCreationLifecycle(
+        auth.context.admin,
+        creationClaim,
+        {
+          tenantId,
+          studentId,
+          providerEntityId: providerPaymentId,
+        },
+      );
+    const adoptDirectPayment = async (
+      providerPaymentId: string,
+      providerStatus: string,
+    ): Promise<boolean> => {
+      if (tenantId !== "wolfie-direct") return true;
+      if (!hubAccountId) return false;
+      const { data, error } = await auth.context.admin.rpc(
+        "hub_adopt_wolfie_topup_provider_binding",
+        {
+          p_attempt_id: creationClaim.attempt_id,
+          p_claim_token: creationClaim.claim_token || null,
+          p_account_id: hubAccountId,
+          p_order_id: activeOrder.id,
+          p_provider_entity_id: providerPaymentId,
+          p_provider_status: providerStatus || null,
+          p_provider_customer_id: asaasCustomerId,
+        },
+      );
+      if (error || data?.ok !== true) {
+        console.error("Wolfie direct provider adoption blocked", {
+          code: error?.code || data?.reason || "unknown",
+        });
+        return false;
+      }
+      const refreshed = await loadOrder();
+      if (refreshed.error || !refreshed.data) return false;
+      activeOrder = refreshed.data;
+      return text(activeOrder.provider_payment_id) === providerPaymentId;
+    };
+    const markLifecycleSubmitting = async (): Promise<void> => {
+      if (tenantId !== "wolfie-direct") {
+        await markStudentAsaasCreationSubmitting(
+          auth.context.admin,
+          creationClaim,
+          studentLifecycle,
+        );
+        return;
+      }
+      if (!hubAccountId) throw new Error("hub_account_scope_missing");
+      const { data, error } = await auth.context.admin.rpc(
+        "hub_mark_account_provider_creation_submitting",
+        {
+          p_attempt_id: creationClaim.attempt_id,
+          p_claim_token: creationClaim.claim_token || null,
+          p_account_id: hubAccountId,
+          p_entity_kind: "WOLFIE_TOPUP_ORDER",
+          p_entity_id: activeOrder.id,
+        },
+      );
+      if (error || data?.ok !== true) {
+        console.error("Wolfie direct submit lifecycle fenced", {
+          code: error?.code || data?.reason || "unknown",
+        });
+        throw new Error("hub_topup_lifecycle_blocked");
+      }
+    };
+
+    if (creationClaim.action === "ALREADY_SUCCEEDED") {
+      if (!await bindSchoolLifecycle()) {
+        await markOrderForReview("student_lifecycle_changed_before_recovery");
+        return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+      }
+      const claimedPaymentId = text(creationClaim.provider_entity_id);
+      const claimedLookup = claimedPaymentId
+        ? await loadExactProviderPayment(claimedPaymentId)
+        : { kind: "NOT_FOUND" as const };
+      if (claimedLookup.kind === "UNAVAILABLE") {
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
+      const claimedPayment = claimedLookup.kind === "FOUND"
+        ? claimedLookup.payment
+        : null;
+      if (!wolfieTopupPaymentMatches(claimedPayment, expectedPayment)) {
+        await markOrderForReview("claimed_provider_payment_identity_mismatch");
+        return json({ error: "TOPUP_RECONCILIATION_REQUIRED" }, 409);
+      }
+      if (
+        tenantId === "wolfie-direct"
+          ? !await adoptDirectPayment(
+            claimedPaymentId,
+            text(claimedPayment?.status),
+          )
+          : !(await persistPaymentLink(claimedPaymentId)) ||
+            !(await releaseSchoolLifecycle(claimedPaymentId))
+      ) {
+        await markOrderForReview("provider_payment_local_binding_failed");
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
+      return await respondWithPayment(claimedPayment);
+    }
+    if (creationClaim.action === "IN_PROGRESS") {
+      return json({
+        error: "TOPUP_CREATION_IN_PROGRESS",
+        retryAfter: creationClaim.retry_after_seconds ?? null,
+        requestKey,
+      }, 202);
+    }
+    if (creationClaim.action === "REVIEW_REQUIRED" || !creationClaim.ok) {
+      await markOrderForReview("provider_creation_requires_review");
+      return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+    }
+
+    // The shared lookup exhausts every Asaas page. Querying by reference only
+    // ensures a charge owned by a divergent customer cannot be hidden by a
+    // provider-side customer filter.
+    const providerLookup = await findUniqueAsaasEntity<
+      Record<string, unknown>
+    >({
+      baseUrl: readIntegration.baseUrl,
+      apiKey: readIntegration.apiKey,
+      path: "payments",
+      query: { externalReference: reference },
+      matches: (candidate) =>
+        wolfieTopupPaymentMatches(candidate, expectedPayment),
+      conflicts: (candidate) =>
+        wolfieTopupReferenceConflicts(candidate, reference),
     });
-    const lookupPayload: unknown = await lookupRes.json().catch(() => null);
-    if (!lookupRes.ok || !isRecord(lookupPayload)) {
+
+    if (
+      providerLookup.kind === "DUPLICATE" ||
+      providerLookup.kind === "CONFLICT"
+    ) {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "BLOCKED",
+        error: providerLookup.kind === "DUPLICATE"
+          ? "duplicate_wolfie_topup_payments"
+          : "wolfie_topup_provider_identity_conflict",
+      });
+      await markOrderForReview("provider_payment_identity_conflict");
+      return json({
+        error: providerLookup.kind === "DUPLICATE"
+          ? "DUPLICATE_PROVIDER_CHARGE"
+          : "PROVIDER_PAYMENT_IDENTITY_CONFLICT",
+      }, 409);
+    }
+    if (providerLookup.kind === "UNAVAILABLE") {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: creationClaim.action === "RECONCILE_REQUIRED"
+          ? "UNKNOWN"
+          : "RETRY",
+        httpStatus: providerLookup.httpStatus,
+        error: "wolfie_topup_recovery_lookup_unavailable",
+      });
+      if (creationClaim.action === "RECONCILE_REQUIRED") {
+        await markOrderAmbiguous();
+      }
       return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
     }
-    const matches = Array.isArray(lookupPayload.data)
-      ? lookupPayload.data.filter(paymentMatchesOrder)
-      : [];
-    if (matches.length > 1) {
-      await auth.context.admin.from("wolfie_topup_orders").update({
-        status: "RECONCILIATION_REQUIRED",
-        reconciliation_required: true,
-        updated_at: new Date().toISOString(),
-      }).eq("id", order.id);
-      return json({ error: "DUPLICATE_PROVIDER_CHARGE" }, 409);
-    }
-    if (matches.length === 1 && isRecord(matches[0])) {
-      return await respondWithPayment(matches[0]);
+    if (providerLookup.kind === "FOUND") {
+      const recoveredPaymentId = text(providerLookup.entity.id);
+      if (!recoveredPaymentId || !await bindSchoolLifecycle()) {
+        await recordAsaasCreationState(auth.context.admin, creationClaim, {
+          status: "BLOCKED",
+          providerEntityId: recoveredPaymentId,
+          error: "wolfie_topup_lifecycle_binding_failed",
+        });
+        await markOrderForReview("provider_payment_lifecycle_binding_failed");
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
+      if (tenantId === "wolfie-direct") {
+        if (
+          !await adoptDirectPayment(
+            recoveredPaymentId,
+            text(providerLookup.entity.status),
+          )
+        ) {
+          await markOrderForReview("provider_payment_local_binding_failed");
+          return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+        }
+      } else {
+        // The student lifecycle marker remains active across durable provider
+        // success and the exact local order CAS.
+        if (!(await persistPaymentLink(recoveredPaymentId))) {
+          await recordAsaasCreationState(auth.context.admin, creationClaim, {
+            status: "BLOCKED",
+            providerEntityId: recoveredPaymentId,
+            error: "wolfie_topup_local_binding_failed",
+          });
+          await markOrderForReview("provider_payment_local_binding_failed");
+          return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+        }
+        await recordAsaasCreationState(auth.context.admin, creationClaim, {
+          status: "SUCCEEDED",
+          providerEntityId: recoveredPaymentId,
+          providerStatus: text(providerLookup.entity.status),
+        });
+        if (!(await releaseSchoolLifecycle(recoveredPaymentId))) {
+          await markOrderForReview("student_lifecycle_release_failed");
+          return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+        }
+      }
+      return await respondWithPayment(providerLookup.entity);
     }
 
-    const { data: claim, error: claimError } = await auth.context.admin.rpc(
-      "claim_wolfie_topup_order_creation",
-      {
-        p_tenant_id: tenantId,
-        p_student_id: studentId,
-        p_order_id: order.id,
-      },
-    );
-    if (claimError || !isRecord(claim)) {
-      console.error("Topup creation claim failed", {
-        code: claimError?.code ?? "invalid_result",
+    if (creationClaim.action === "RECONCILE_REQUIRED") {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "UNKNOWN",
+        error: "wolfie_topup_payment_not_yet_observed",
+      });
+      await markOrderAmbiguous();
+      return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 409);
+    }
+
+    if (
+      !wolfieTopupMaySubmitProviderPayment({
+        claimAction: creationClaim.action,
+        lookupKind: providerLookup.kind,
+        localOrderStatus: activeOrder.status,
+      })
+    ) {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "BLOCKED",
+        error: "legacy_or_inconsistent_topup_creation_state",
+      });
+      await markOrderForReview("legacy_or_inconsistent_creation_state");
+      return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+    }
+
+    let submitIntegration: Awaited<
+      ReturnType<typeof resolvePlatformAsaasIntegration>
+    >;
+    try {
+      submitIntegration = await resolvePlatformAsaasIntegration(
+        auth.context.admin,
+        "payment.create",
+      );
+    } catch {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "RETRY",
+        error: "wolfie_topup_submit_capability_unavailable",
       });
       return json({ error: "TOPUP_UNAVAILABLE" }, 503);
     }
-    if (claim.claimed !== true) {
-      return json({
-        error: claim.reason === "creation_in_progress"
-          ? "TOPUP_CREATION_IN_PROGRESS"
-          : "TOPUP_ORDER_NOT_PAYABLE",
-        retryAfter: claim.retryAfter ?? null,
-        requestKey,
-      }, claim.reason === "creation_in_progress" ? 202 : 409);
+    if (
+      submitIntegration.integrationId !== readIntegration.integrationId ||
+      submitIntegration.tenantId !== readIntegration.tenantId ||
+      submitIntegration.provider !== readIntegration.provider ||
+      submitIntegration.version !== readIntegration.version ||
+      submitIntegration.mode !== readIntegration.mode ||
+      submitIntegration.environment !== readIntegration.environment ||
+      submitIntegration.baseUrl !== readIntegration.baseUrl ||
+      submitIntegration.apiKey !== readIntegration.apiKey
+    ) {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "RETRY",
+        error: "wolfie_topup_integration_changed_before_submit",
+      });
+      return json({ error: "TOPUP_UNAVAILABLE" }, 503);
     }
 
-    const paymentRes = await fetch(
-      `${ASAAS_URL}${asaasPathPrefix()}/payments`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "access_token": ASAAS_API_KEY,
+    const creatingUpdate = await auth.context.admin
+      .from("wolfie_topup_orders")
+      .update({
+        status: "CREATING",
+        creation_lease_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", activeOrder.id)
+      .eq("tenant_id", tenantId)
+      .eq("student_id", studentId)
+      .eq("status", "PENDING")
+      .is("provider_payment_id", null)
+      .select("id")
+      .maybeSingle();
+    if (creatingUpdate.error) {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "RETRY",
+        error: "wolfie_topup_local_fence_unavailable",
+      });
+      return json({ error: "TOPUP_UNAVAILABLE" }, 503);
+    }
+    if (!creatingUpdate.data) {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "BLOCKED",
+        error: "wolfie_topup_local_state_changed_before_submit",
+      });
+      await markOrderForReview("local_state_changed_before_submit");
+      return json({ error: "TOPUP_ORDER_REQUIRES_REVIEW" }, 409);
+    }
+
+    // The capability fence below is still before the provider boundary. Once
+    // it passes, every later failure is reconciled by GET only and this local
+    // transition permanently consumes the single allowed POST.
+    await markLifecycleSubmitting();
+    let freshSubmitIntegration: Awaited<
+      ReturnType<typeof resolvePlatformAsaasIntegration>
+    >;
+    try {
+      freshSubmitIntegration = await revalidateAsaasMutationCapability(
+        auth.context.admin,
+        {
+          tenantId: submitIntegration.tenantId,
+          purpose: "payment.create",
+          expected: submitIntegration,
         },
-        body: JSON.stringify({
-          customer: asaasCustomerId,
-          billingType: "PIX",
-          value: Number(order.amount_brl),
-          dueDate: new Date().toISOString().slice(0, 10),
-          description: `Wolfie — ${order.package_name}`,
-          externalReference: reference,
-        }),
-        signal: AbortSignal.timeout(20_000),
-      },
-    );
+      );
+    } catch (error) {
+      const unavailable = error instanceof AsaasCapabilityFenceError &&
+        error.failure === "UNAVAILABLE";
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "BLOCKED",
+        error: unavailable
+          ? "wolfie_topup_capability_unavailable_before_post"
+          : "wolfie_topup_capability_changed_before_post",
+      });
+      await markOrderForReview(
+        unavailable
+          ? "capability_unavailable_after_submit_mark"
+          : "capability_changed_before_post",
+      );
+      return json({
+        error: unavailable
+          ? "TOPUP_UNAVAILABLE"
+          : "TOPUP_ORDER_REQUIRES_REVIEW",
+      }, unavailable ? 503 : 409);
+    }
+    let paymentRes: Response;
+    try {
+      paymentRes = await fetch(
+        `${freshSubmitIntegration.baseUrl}/payments`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "access_token": freshSubmitIntegration.apiKey,
+          },
+          body: JSON.stringify(paymentPayload),
+          signal: AbortSignal.timeout(20_000),
+        },
+      );
+    } catch {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: "UNKNOWN",
+        error: "wolfie_topup_payment_post_outcome_unknown",
+      });
+      await markOrderAmbiguous();
+      return json({ error: "CHARGE_STATUS_UNCERTAIN", requestKey }, 503);
+    }
 
     const payment: unknown = await paymentRes.json().catch(() => null);
-    if (!paymentRes.ok || !paymentMatchesOrder(payment)) {
-      console.error("Topup charge creation failed", {
-        status: paymentRes.status,
-      });
-      if (paymentRes.status >= 400 && paymentRes.status < 500) {
-        await auth.context.admin.from("wolfie_topup_orders").update({
-          status: "FAILED",
-          creation_lease_expires_at: null,
-          updated_at: new Date().toISOString(),
-        }).eq("id", order.id).eq("status", "CREATING");
+    const submittedPaymentMatches = wolfieTopupPaymentMatches(
+      payment,
+      expectedPayment,
+    );
+    const providerPaymentId = submittedPaymentMatches && isRecord(payment)
+      ? text(payment.id)
+      : "";
+    const outcome = asaasCreationHttpOutcome(
+      paymentRes.ok,
+      paymentRes.status,
+      providerPaymentId,
+    );
+    const durableOutcome = paymentRes.ok && !submittedPaymentMatches
+      ? "BLOCKED"
+      : outcome;
+    const providerStatus = isRecord(payment) ? text(payment.status) : "";
+    if (durableOutcome === "SUCCEEDED" && tenantId === "wolfie-direct") {
+      if (
+        !await adoptDirectPayment(providerPaymentId, providerStatus)
+      ) {
+        await markOrderForReview("provider_payment_local_binding_failed");
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
       }
+    } else {
+      await recordAsaasCreationState(auth.context.admin, creationClaim, {
+        status: durableOutcome,
+        providerEntityId: providerPaymentId,
+        providerStatus,
+        httpStatus: paymentRes.status,
+        error: durableOutcome === "SUCCEEDED"
+          ? null
+          : durableOutcome === "BLOCKED"
+          ? "wolfie_topup_post_identity_mismatch"
+          : durableOutcome === "FAILED"
+          ? "wolfie_topup_payment_creation_rejected"
+          : "wolfie_topup_payment_post_outcome_unknown",
+      });
+    }
+
+    if (durableOutcome === "BLOCKED") {
+      await markOrderForReview("provider_post_identity_mismatch");
+      return json({ error: "PROVIDER_PAYMENT_IDENTITY_CONFLICT" }, 409);
+    }
+    if (durableOutcome === "FAILED") {
+      await auth.context.admin.from("wolfie_topup_orders").update({
+        status: "FAILED",
+        reconciliation_required: false,
+        creation_lease_expires_at: null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", activeOrder.id).eq("tenant_id", tenantId).eq(
+        "student_id",
+        studentId,
+      ).eq("status", "CREATING");
+      return json({ error: "CHARGE_CREATION_FAILED", requestKey }, 502);
+    }
+    if (durableOutcome === "UNKNOWN" || !isRecord(payment)) {
+      await markOrderAmbiguous();
       return json({ error: "CHARGE_STATUS_UNCERTAIN", requestKey }, 503);
+    }
+    if (tenantId !== "wolfie-direct") {
+      if (
+        !(await persistPaymentLink(providerPaymentId)) ||
+        !(await releaseSchoolLifecycle(providerPaymentId))
+      ) {
+        await markOrderForReview("student_lifecycle_release_failed");
+        return json({ error: "TOPUP_RECONCILIATION_PENDING" }, 503);
+      }
     }
     return await respondWithPayment(payment);
   } catch (error) {
-    console.error("Topup transport failed", {
+    console.error("Topup creation coordination failed", {
       name: error instanceof Error ? error.name : "unknown",
     });
-    // Network timeout is an uncertain result: keep CREATING and reconcile by
-    // externalReference on the same requestKey. Marking FAILED here would make
-    // a retry create a second PIX.
+    // A shared guard that has reached SUBMITTING can never authorize a second
+    // POST, even if this handler exits before persisting the final state.
     return json({ error: "CHARGE_STATUS_UNCERTAIN", requestKey }, 503);
   }
 });

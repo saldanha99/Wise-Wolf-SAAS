@@ -984,12 +984,12 @@ begin
     'concurrent AI replay must not acquire a second lease'
   );
   perform public.finish_wolfie_ai_request(
-    '00000000-0000-4000-8000-000000000101',
-    '30000000-0000-4000-8000-000000000001',
-    v_lease,
-    'COMPLETED',
-    '{"ok":true}',
-    null
+    p_student_id => '00000000-0000-4000-8000-000000000101'::uuid,
+    p_request_key => '30000000-0000-4000-8000-000000000001'::uuid,
+    p_lease_token => v_lease,
+    p_status => 'COMPLETED'::text,
+    p_response_payload => '{"ok":true}'::jsonb,
+    p_error_code => null::text
   );
 
   for i in 2 .. 20 loop

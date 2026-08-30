@@ -59,7 +59,7 @@ const TeacherStudentScheduleEditor: React.FC<TeacherStudentScheduleEditorProps> 
       .eq('student_id', studentId)
       .eq('teacher_id', teacherId)
       .eq('tenant_id', tenantId)
-      .eq('status', 'SCHEDULED')
+      .in('status', ['SCHEDULED', 'scheduled'])
       .order('day_of_week')
       .order('time_slot');
 

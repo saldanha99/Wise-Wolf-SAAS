@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { buildBroadcastErrorMessage, parseFunctionError } from '../../lib/functionInvokeErrors';
 import { Plus, Trash2, Video, FileText, Users, GraduationCap, Briefcase, Loader2, Save, X, Edit2, Eye, Link as LinkIcon, Zap, MessageCircle } from 'lucide-react';
 
 const AUDIENCE_OPTIONS = [
@@ -64,7 +65,17 @@ const TrainingAdmin: React.FC<Props> = ({ tenantId, currentUser }) => {
                     dispatch_mode: liveDispatchMode,
                 },
             });
-            if (error || data?.error) throw new Error(data?.error || error?.message || 'Falha ao disparar.');
+            const parsedError = parseFunctionError({
+                error,
+                data,
+                fallbackMessage: 'Falha ao disparar.',
+            });
+            if (parsedError.code || parsedError.status === 409 || parsedError.status === 502 || parsedError.status === 503) {
+                throw new Error(buildBroadcastErrorMessage(parsedError));
+            }
+            if (error || data?.error) {
+                throw new Error(data?.error || error?.message || 'Falha ao disparar.');
+            }
             const isGroupMode = data?.mode === 'group';
             if (data?.warning) {
                 const detail = isGroupMode

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
+import { normalizeWeekdayToIndex } from '../lib/weekday';
 import StudentProfileForm from './StudentProfileForm';
 
 const DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -23,7 +24,6 @@ const TIMES = Array.from({ length: 37 }, (_, i) => {
   if (hour === 24) return '00:00';
   return `${hour < 10 ? '0' + hour : hour}:${minutes}`;
 });
-
 interface TeacherAvailabilityEditorProps {
   teacherId?: string;
   tenantId?: string;
@@ -36,15 +36,23 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [editingProfile, setEditingProfile] = useState<any | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = async () => {
-    if (!teacherId || !tenantId) return;
+    if (!teacherId) return;
+    setLoadError(null);
+    const resolvedTenantId = (typeof tenantId === 'string' ? tenantId.trim() : '');
 
     // 1. Load Availability (New Table)
-    const { data: availData } = await supabase
+    const { data: availData, error: availError } = await supabase
       .from('teacher_availability')
       .select('*')
       .eq('teacher_id', teacherId);
+
+    if (availError) {
+      console.error('[TeacherAvailabilityEditor] Falha ao carregar disponibilidade:', availError);
+      setLoadError('Não foi possível carregar sua disponibilidade. Tente novamente.');
+    }
 
     if (availData) {
       const loaded = new Set<string>();
@@ -52,7 +60,7 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
         // DB uses Integer: 1=Mon, 6=Sat
         // Editor uses Index: 0=Mon, 5=Sat
         // So Editor Index = DB - 1
-        const dayIdx = item.day_of_week - 1;
+        const dayIdx = normalizeWeekdayToIndex(item.day_of_week);
 
         if (dayIdx >= 0 && dayIdx < DAYS.length) {
           if (typeof item.start_time === 'string') {
@@ -65,34 +73,48 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     }
 
     // 2. Load Bookings (Fixed Students)
-    const { data: bookingsData } = await supabase
+    let bookingsQuery = supabase
       .from('bookings')
       .select(`
           id, day_of_week, time_slot, type, module,
           student:student_id!inner(
             full_name, id, tenant_id, module, occupation, phone, meeting_link,
-            interests, private_notes, fixed_schedule, professor_id, avatar_url
+            interests, fixed_schedule, professor_id, avatar_url
           )
       `)
       .eq('teacher_id', teacherId)
-      .eq('status', 'SCHEDULED')
-      .eq('student.tenant_id', tenantId);
+      .in('status', ['SCHEDULED', 'scheduled']);
+
+    if (resolvedTenantId) {
+      bookingsQuery = bookingsQuery.eq('student.tenant_id', resolvedTenantId);
+    }
+
+    const { data: bookingsData, error: bookingsError } = await bookingsQuery;
+
+    if (bookingsError) {
+      console.error('[TeacherAvailabilityEditor] Falha ao carregar agendamentos:', bookingsError);
+      setLoadError('Não foi possível carregar os alunos agendados. Tente novamente.');
+    }
 
     // 3. Load Experimental Appointments (New)
     // We fetch future experimental/scheduled appointments for this professor
-    const { data: appointmentsData } = await supabase
+    const { data: appointmentsData, error: appointmentsError } = await supabase
       .from('appointments')
       .select('id, start_time, student_name, student_phone, type, status')
       .eq('professor_id', teacherId)
       .eq('type', 'experimental')
       .in('status', ['scheduled', 'confirmed']); // Adjust status as needed based on ClaimOpportunity
 
+    if (appointmentsError) {
+      console.warn('[TeacherAvailabilityEditor] Falha ao carregar aulas experimentais:', appointmentsError);
+    }
+
     const newBookings: Record<string, any> = {};
 
     // Process Fixed Bookings
     if (bookingsData) {
       bookingsData.forEach((b: any) => {
-        const dIdx = DAYS.indexOf(b.day_of_week);
+        const dIdx = normalizeWeekdayToIndex(b.day_of_week);
         if (typeof b.time_slot === 'string') {
           const timeKey = b.time_slot.substring(0, 5);
           if (dIdx !== -1) {
@@ -303,6 +325,20 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           </p>
         </div>
       </div>
+
+      {loadError && (
+        <div role="alert" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm font-semibold text-red-200">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-400/30 px-3 py-2 text-xs font-bold uppercase tracking-wide hover:bg-red-500/10"
+          >
+            <RefreshCw size={14} />
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 px-2">

@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 create or replace function pg_temp.meeting_feedback(
   overall_score integer,

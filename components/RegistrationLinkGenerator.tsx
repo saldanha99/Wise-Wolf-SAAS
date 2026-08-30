@@ -1,11 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Link as LinkIcon, Copy, Check, Calendar, Clock, BookOpen, Users,
-    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search
+    Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { APP_BASE_URL } from '../constants';
 import { pricingService, PricingMatrix } from '../services/pricingService';
+import { isValidBrazilianMobile, normalizeEnrollmentProRataTerms } from '../lib/enrollment';
+import EnrollmentProRataSwitch from './EnrollmentProRataSwitch';
+import {
+    calculateEnrollmentProRataPreview,
+    dateInSaoPaulo,
+    enrollmentOfferErrorMessage,
+    normalizeEnrollmentTime,
+    weekdayIndex,
+} from '../lib/enrollmentOffer';
 
 interface RegistrationLinkGeneratorProps {
     tenantId: string | undefined;
@@ -43,12 +52,12 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const selectedGuardian = guardianCandidates.find(g => g.id === selectedGuardianId) || null;
 
     // Schedule Array State
-    const [scheduleSlots, setScheduleSlots] = useState<{ day: string; time: string }[]>(
-        Array(2).fill({ day: '', time: '' })
+    const [scheduleSlots, setScheduleSlots] = useState<{ day: string; time: string; teacherId: string }[]>(
+        Array.from({ length: 2 }, () => ({ day: '', time: '', teacherId: '' }))
     );
 
     // Date State
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(dateInSaoPaulo());
 
     // Pro-rata & billing start month
     const [enableProRata, setEnableProRata] = useState(false);
@@ -57,10 +66,23 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
+    const proRataEnabled = normalizeEnrollmentProRataTerms({
+        enableProRata,
+        planDuration: duration,
+    }).enabled;
 
     // Link State
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [formError, setFormError] = useState('');
+    const [availabilityLoading, setAvailabilityLoading] = useState(false);
+    const [availabilityRows, setAvailabilityRows] = useState<Array<{
+        teacher_id: string; day_of_week: number; start_time: string; end_time?: string | null;
+    }>>([]);
+    const [busyRows, setBusyRows] = useState<Array<{
+        teacher_id: string; day_of_week: string; time_slot: string;
+    }>>([]);
 
     // Manual Price State
     const [isManualPrice, setIsManualPrice] = useState(false);
@@ -85,6 +107,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     useEffect(() => {
         setGeneratedLink('');
         setCopied(false);
+        setFormError('');
     }, [
         duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
         selectedProfessor, selectedProfessor2, isDependent, studentPhone,
@@ -97,18 +120,56 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             const newSlots = [...prev];
             if (frequency > prev.length) {
                 const toAdd = frequency - prev.length;
-                for (let i = 0; i < toAdd; i++) newSlots.push({ day: '', time: '' });
+                for (let i = 0; i < toAdd; i++) newSlots.push({ day: '', time: '', teacherId: selectedProfessor });
             } else if (frequency < prev.length) {
                 newSlots.splice(frequency);
             }
             return newSlots;
         });
-    }, [frequency]);
+    }, [frequency, selectedProfessor]);
+
+    useEffect(() => {
+        const teacherIds = [selectedProfessor, selectedProfessor2].filter(Boolean);
+        if (teacherIds.length === 0 || !tenantId) {
+            setAvailabilityRows([]);
+            setBusyRows([]);
+            return;
+        }
+        let cancelled = false;
+        setAvailabilityLoading(true);
+        (async () => {
+            const [availability, bookings] = await Promise.all([
+                supabase.from('teacher_availability')
+                    .select('teacher_id,day_of_week,start_time,end_time')
+                    .eq('tenant_id', tenantId)
+                    .in('teacher_id', teacherIds),
+                supabase.from('bookings')
+                    .select('teacher_id,day_of_week,time_slot')
+                    .eq('tenant_id', tenantId)
+                    .in('teacher_id', teacherIds)
+                    .in('status', ['SCHEDULED', 'scheduled']),
+            ]);
+            if (cancelled) return;
+            if (availability.error || bookings.error) {
+                setFormError('Não foi possível confirmar a agenda dos professores. Recarregue e tente novamente.');
+                setAvailabilityRows([]);
+                setBusyRows([]);
+            } else {
+                setAvailabilityRows((availability.data || []) as typeof availabilityRows);
+                setBusyRows((bookings.data || []) as typeof busyRows);
+            }
+            setAvailabilityLoading(false);
+        })();
+        return () => { cancelled = true; };
+    }, [tenantId, selectedProfessor, selectedProfessor2]);
 
     // Fetch Professors (or use prop)
     useEffect(() => {
         if (teachers && teachers.length > 0) {
-            setProfessors(teachers);
+            setProfessors(teachers.map(teacher => ({
+                ...teacher,
+                name: teacher.name || teacher.full_name || 'Professor',
+            })));
             return;
         }
 
@@ -117,11 +178,11 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         const fetchProfessors = async () => {
             const { data } = await supabase
                 .from('profiles')
-                .select('id, name')
+                .select('id, full_name')
                 .eq('tenant_id', tenantId)
                 .in('role', ['TEACHER', 'teacher']); // Fallback fetch
 
-            if (data) setProfessors(data);
+            if (data) setProfessors(data.map(teacher => ({ ...teacher, name: teacher.full_name })));
         };
         fetchProfessors();
     }, [tenantId, teachers]);
@@ -142,12 +203,16 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         })();
     }, [isDependent, tenantId]);
 
-    const updateSlot = (index: number, field: 'day' | 'time', value: string) => {
+    const updateSlot = (index: number, field: 'day' | 'time' | 'teacherId', value: string) => {
         setScheduleSlots(prev => {
             const newSlots = [...prev];
             const oldFirstTime = prev[0].time;
-            
-            newSlots[index] = { ...newSlots[index], [field]: value };
+
+            newSlots[index] = {
+                ...newSlots[index],
+                [field]: value,
+                ...((field === 'day' || field === 'teacherId') ? { time: '' } : {}),
+            };
             
             // Smart Auto-fill: Sync time changes from the first slot to downstream slots
             if (index === 0 && field === 'time') {
@@ -163,48 +228,73 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         });
     };
 
+    const isBusy = (teacherId: string, day: string, time: string) => busyRows.some(row =>
+        row.teacher_id === teacherId
+        && weekdayIndex(row.day_of_week) === weekdayIndex(day)
+        && normalizeEnrollmentTime(row.time_slot) === normalizeEnrollmentTime(time)
+    );
+
+    const availableTimes = (teacherId: string, day: string) => {
+        const targetDay = weekdayIndex(day);
+        if (!teacherId || targetDay === null) return [];
+        const times = availabilityRows
+            .filter(row => row.teacher_id === teacherId && Number(row.day_of_week) === targetDay)
+            .map(row => normalizeEnrollmentTime(row.start_time))
+            .filter((time): time is string => Boolean(time))
+            .filter(time => !isBusy(teacherId, day, time));
+        return [...new Set(times)].sort();
+    };
+
+    const proRataPreview = useMemo(() => calculateEnrollmentProRataPreview({
+        enabled: proRataEnabled,
+        monthlyFee,
+        classesPerWeek: frequency,
+        dueDay,
+        billingStartMonth,
+        startDate,
+        schedule: scheduleSlots,
+    }), [proRataEnabled, monthlyFee, frequency, dueDay, billingStartMonth, startDate, scheduleSlots]);
+
     const generateLink = async () => {
-        if (!tenantId) return alert("Erro: ID da unidade não encontrado.");
-        if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
-        if (isDependent && !selectedGuardian) return alert("Selecione o responsável financeiro (titular já cadastrado) para a matrícula de dependente.");
+        setFormError('');
+        if (!tenantId) return setFormError('A unidade ativa não foi identificada. Recarregue a página.');
+        if (monthlyFee <= 0) return setFormError('Informe um valor mensal válido.');
+        if (!selectedProfessor) return setFormError('Selecione o professor principal.');
+        if (selectedProfessor2 && selectedProfessor2 === selectedProfessor) {
+            return setFormError('O professor secundário precisa ser diferente do principal.');
+        }
+        if (scheduleSlots.length !== frequency || scheduleSlots.some(slot => !slot.day || !slot.time)) {
+            return setFormError(`Preencha exatamente ${frequency} horários para o plano ${frequency}x por semana.`);
+        }
+        const validTeachers = new Set([selectedProfessor, selectedProfessor2].filter(Boolean));
+        if (scheduleSlots.some(slot => !validTeachers.has(slot.teacherId || selectedProfessor))) {
+            return setFormError('Escolha um professor válido em cada horário.');
+        }
+        // O aluno tambem nao pode ter duas aulas simultaneas, ainda que sejam
+        // com professores diferentes.
+        const scheduleKeys = scheduleSlots.map(slot =>
+            `${weekdayIndex(slot.day)}|${normalizeEnrollmentTime(slot.time)}`
+        );
+        if (new Set(scheduleKeys).size !== scheduleKeys.length) {
+            return setFormError('A grade contém um horário repetido. Escolha slots distintos.');
+        }
+        if (scheduleSlots.some(slot =>
+            !availableTimes(slot.teacherId || selectedProfessor, slot.day).includes(slot.time)
+        )) {
+            return setFormError('Um dos horários não está mais disponível para o professor escolhido. Atualize a grade.');
+        }
+        if (isDependent && !selectedGuardian) {
+            return setFormError('Selecione o responsável financeiro para a matrícula de dependente.');
+        }
+        if (isDependent && !isValidBrazilianMobile(studentPhone)) {
+            return setFormError('Informe um WhatsApp válido do aluno, com DDD. A cobrança continuará no responsável.');
+        }
 
-        // Filter valid schedule slots
-        const validSchedule = scheduleSlots.filter(s => s.day && s.time);
-
-        // Calcular pro-rata baseado em aulas avulsas
-        // Fórmula: (mensalidade / frequência×4) × aulas restantes no mês
-        const todayPR = new Date();
-        const proRataValue = enableProRata ? (() => {
-            const totalClassesPerMonth = frequency * 4;
-            const pricePerClass = monthlyFee / totalClassesPerMonth;
-
-            // Mapear dias do horário para getDay() (0=Dom, 1=Seg, ..., 6=Sáb)
-            const DAY_MAP: Record<string, number> = {
-                'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
-                'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 0
-            };
-            const classDayNums = new Set(
-                validSchedule.map(s => DAY_MAP[s.day]).filter(d => d !== undefined)
-            );
-
-            let remainingClasses = 0;
-            if (classDayNums.size > 0) {
-                // Contar dias reais do horário de hoje até o fim do mês
-                const endOfMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0);
-                const cursor = new Date(todayPR);
-                while (cursor <= endOfMonth) {
-                    if (classDayNums.has(cursor.getDay())) remainingClasses++;
-                    cursor.setDate(cursor.getDate() + 1);
-                }
-            } else {
-                // Sem horário definido: estimar proporcionalmente
-                const daysInMonth = new Date(todayPR.getFullYear(), todayPR.getMonth() + 1, 0).getDate();
-                const remainingDays = daysInMonth - todayPR.getDate() + 1;
-                remainingClasses = Math.round((frequency / 7) * remainingDays);
-            }
-
-            return Math.round(pricePerClass * remainingClasses * 100) / 100;
-        })() : 0;
+        const validSchedule = scheduleSlots.map(slot => ({
+            day: slot.day,
+            time: slot.time,
+            teacherId: slot.teacherId || selectedProfessor,
+        }));
 
         const data = {
             unitId: tenantId,
@@ -219,8 +309,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             requiresEnrollment: duration !== 0,
             enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
             // Módulo 3 - Pro-rata + billing start month
-            enableProRata,
-            proRataValue: enableProRata ? proRataValue : undefined,
+            enableProRata: proRataEnabled,
             billingStartMonth,
             // Módulo 1 - Vendor commission tracking
             vendorId: vendorId || null,
@@ -243,14 +332,17 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // aluno não consegue editar o preço pelo link. Se a RPC falhar, nao geramos
         // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
+            setGenerating(true);
             const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', { p_payload: data });
             if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
         } catch (e) {
             console.error('create_enrollment_offer falhou:', e);
             setGeneratedLink('');
-            alert('Não foi possível gerar o link seguro de matrícula. Tente novamente.');
+            setFormError(enrollmentOfferErrorMessage(e));
             return;
+        } finally {
+            setGenerating(false);
         }
         setCopied(false);
     };
@@ -262,7 +354,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     };
 
     // Validation for Button Availability
-    const isFormValid = monthlyFee > 0;
+    const isFormValid = monthlyFee > 0 && Boolean(selectedProfessor) && !generating;
 
     return (
         <div className="bg-brand-surface rounded-[2.5rem] shadow-xl border border-brand-border overflow-hidden font-sans">
@@ -312,7 +404,10 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             ].map((plan) => (
                                 <button
                                     key={plan.val}
-                                    onClick={() => setDuration(plan.val)}
+                                    onClick={() => {
+                                        setDuration(plan.val);
+                                        if (plan.val === 0) setEnableProRata(false);
+                                    }}
                                     className={`relative p-4 rounded-2xl border-2 text-left transition-all duration-300 hover:scale-[1.02] ${duration === plan.val
                                         ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-600 ring-offset-2 dark:ring-offset-slate-900'
                                         : 'border-brand-border bg-brand-surface-2 text-brand-muted hover:border-brand-border'
@@ -373,6 +468,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                     <input
                                         type="date"
                                         value={startDate}
+                                        min={dateInSaoPaulo()}
                                         onChange={(e) => setStartDate(e.target.value)}
                                         className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                     />
@@ -449,7 +545,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                 {/* PRO-RATA & BILLING START */}
                 <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl p-6 border border-amber-100 dark:border-amber-800/30">
                     <h3 className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                        <Calendar size={14} /> Início de Cobrança (Opcional)
+                        <Calendar size={14} /> Início de Cobrança
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -457,51 +553,38 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             <input
                                 type="month"
                                 value={billingStartMonth}
+                                min={dateInSaoPaulo().slice(0, 7)}
                                 onChange={(e) => setBillingStartMonth(e.target.value)}
                                 className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl font-bold text-sm text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-amber-500"
                             />
                             <p className="text-[9px] text-slate-400 mt-1">Escolha um mês futuro para diferir o início da cobrança recorrente.</p>
                         </div>
                         <div className="flex flex-col justify-center gap-2">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <div className="relative flex-shrink-0">
-                                    <input type="checkbox" checked={enableProRata} onChange={(e) => setEnableProRata(e.target.checked)} className="sr-only" />
-                                    <div className={`w-10 h-6 rounded-full transition-colors ${enableProRata ? 'bg-amber-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
-                                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${enableProRata ? 'translate-x-4' : ''}`} />
-                                </div>
+                            <div className={`flex items-start gap-3 ${duration === 0 ? 'opacity-60' : ''}`}>
+                                <EnrollmentProRataSwitch
+                                    checked={proRataEnabled}
+                                    disabled={duration === 0}
+                                    label="Cobrar pró-rata nesta matrícula"
+                                    onCheckedChange={setEnableProRata}
+                                />
                                 <div>
-                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Cobrar Pro-Rata</p>
-                                    <p className="text-[9px] text-slate-400">Cobrança por aulas avulsas (mensalidade ÷ {frequency * 4} aulas)</p>
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Cobrar pró-rata</p>
+                                    <p className="text-[9px] text-slate-400">
+                                        {duration === 0
+                                            ? 'Não se aplica ao plano de aula avulsa.'
+                                            : proRataEnabled
+                                                ? `Ativado: as aulas anteriores à primeira mensalidade serão cobradas (mensalidade ÷ ${frequency * 4} aulas).`
+                                                : 'Desativado: não haverá cobrança proporcional antes da primeira mensalidade.'}
+                                    </p>
                                 </div>
-                            </label>
-                            {enableProRata && monthlyFee > 0 && (
+                            </div>
+                            {proRataEnabled && monthlyFee > 0 && (
                                 <div className="ml-13 pl-14 text-xs font-black text-amber-600 dark:text-amber-400">
-                                    {(() => {
-                                        const totalAulas = frequency * 4;
-                                        const valorAula = monthlyFee / totalAulas;
-                                        const DAY_MAP: Record<string, number> = {
-                                            'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
-                                            'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 0
-                                        };
-                                        const validDays = new Set(
-                                            scheduleSlots.filter(s => s.day).map(s => DAY_MAP[s.day]).filter(d => d !== undefined)
-                                        );
-                                        const today = new Date();
-                                        let aulasRestantes = 0;
-                                        if (validDays.size > 0) {
-                                            const fim = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                                            const c = new Date(today);
-                                            while (c <= fim) {
-                                                if (validDays.has(c.getDay())) aulasRestantes++;
-                                                c.setDate(c.getDate() + 1);
-                                            }
-                                        } else {
-                                            const dim = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                                            aulasRestantes = Math.round((frequency / 7) * (dim - today.getDate() + 1));
-                                        }
-                                        const total = (valorAula * aulasRestantes).toFixed(2);
-                                        return `R$ ${valorAula.toFixed(2)}/aula × ${aulasRestantes} aulas = R$ ${total}`;
-                                    })()}
+                                    R$ {proRataPreview.pricePerClass.toFixed(2)}/aula × {proRataPreview.classCount} aulas
+                                    {' = '}R$ {proRataPreview.value.toFixed(2)} até {proRataPreview.firstBillingDate.split('-').reverse().join('/')}
+                                    <p className="mt-1 text-[9px] font-semibold text-amber-700/70 dark:text-amber-300/70">
+                                        O banco recalcula e trava esse valor; a tela é apenas uma prévia.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -533,7 +616,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         value={selectedProfessor ? (professors.find(p => p.id === selectedProfessor)?.name || '') : professorSearch}
                                         onChange={(e) => {
                                             setProfessorSearch(e.target.value);
+                                            const previous = selectedProfessor;
                                             setSelectedProfessor(''); // Clear selection on type
+                                            setScheduleSlots(current => current.map(slot => ({
+                                                ...slot,
+                                                teacherId: slot.teacherId === previous ? '' : slot.teacherId,
+                                                time: slot.teacherId === previous ? '' : slot.time,
+                                            })));
                                             setShowProfessorList(true);
                                         }}
                                         onFocus={() => {
@@ -564,7 +653,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                                         <button
                                                             key={p.id}
                                                             onClick={() => {
+                                                                const previous = selectedProfessor;
                                                                 setSelectedProfessor(p.id);
+                                                                setScheduleSlots(current => current.map(slot => ({
+                                                                    ...slot,
+                                                                    teacherId: !slot.teacherId || slot.teacherId === previous ? p.id : slot.teacherId,
+                                                                    time: !slot.teacherId || slot.teacherId === previous ? '' : slot.time,
+                                                                })));
                                                                 setShowProfessorList(false);
                                                                 setProfessorSearch('');
                                                             }}
@@ -595,7 +690,13 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                         value={selectedProfessor2 ? (professors.find(p => p.id === selectedProfessor2)?.name || '') : professorSearch2}
                                         onChange={(e) => {
                                             setProfessorSearch2(e.target.value);
+                                            const previous = selectedProfessor2;
                                             setSelectedProfessor2('');
+                                            setScheduleSlots(current => current.map(slot => ({
+                                                ...slot,
+                                                teacherId: slot.teacherId === previous ? selectedProfessor : slot.teacherId,
+                                                time: slot.teacherId === previous ? '' : slot.time,
+                                            })));
                                             setShowProfessorList2(true);
                                         }}
                                         onFocus={() => {
@@ -652,13 +753,30 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                             <label className="text-[10px] font-bold uppercase text-brand-muted mb-2 block">
                                 Grade Horária ({frequency}x na Semana)
                             </label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {availabilityLoading && (
+                                <p className="mb-2 flex items-center gap-2 text-[10px] font-bold text-purple-600">
+                                    <Loader2 size={12} className="animate-spin" /> Confirmando a agenda publicada…
+                                </p>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {scheduleSlots.map((slot, index) => (
-                                    <div key={index} className="flex items-center gap-2 bg-brand-surface p-2 rounded-xl border border-brand-border shadow-sm group hover:border-purple-300 transition-colors">
+                                    <div key={index} className="flex flex-wrap items-center gap-2 bg-brand-surface p-3 rounded-xl border border-brand-border shadow-sm group hover:border-purple-300 transition-colors">
                                         <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-xs shrink-0">
                                             {index + 1}
                                         </div>
+                                        {selectedProfessor2 && (
+                                            <select
+                                                aria-label={`Professor do horário ${index + 1}`}
+                                                value={slot.teacherId || selectedProfessor}
+                                                onChange={event => updateSlot(index, 'teacherId', event.target.value)}
+                                                className="min-w-36 flex-1 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
+                                            >
+                                                <option value={selectedProfessor}>{professors.find(p => p.id === selectedProfessor)?.name || 'Professor principal'}</option>
+                                                <option value={selectedProfessor2}>{professors.find(p => p.id === selectedProfessor2)?.name || 'Professor secundário'}</option>
+                                            </select>
+                                        )}
                                         <select
+                                            aria-label={`Dia do horário ${index + 1}`}
                                             value={slot.day}
                                             onChange={e => updateSlot(index, 'day', e.target.value)}
                                             className="w-28 bg-transparent text-xs font-semibold text-brand-text dark:text-slate-200 outline-none"
@@ -672,12 +790,23 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                             <option value="Saturday">Sábado</option>
                                         </select>
                                         <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700" />
-                                        <input
-                                            type="time"
+                                        <select
+                                            aria-label={`Hora do horário ${index + 1}`}
                                             value={slot.time}
                                             onChange={e => updateSlot(index, 'time', e.target.value)}
-                                            className="w-full bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-none"
-                                        />
+                                            disabled={!slot.day || availabilityLoading}
+                                            className="min-w-24 flex-1 bg-transparent text-xs font-mono font-medium text-brand-text dark:text-slate-200 outline-none disabled:opacity-50"
+                                        >
+                                            <option value="">Horário livre</option>
+                                            {availableTimes(slot.teacherId || selectedProfessor, slot.day).map(time => (
+                                                <option key={time} value={time}>{time}</option>
+                                            ))}
+                                        </select>
+                                        {slot.day && !availabilityLoading && availableTimes(slot.teacherId || selectedProfessor, slot.day).length === 0 && (
+                                            <p className="basis-full pl-10 text-[9px] font-bold text-red-600">
+                                                Sem horário livre publicado neste dia.
+                                            </p>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -768,13 +897,21 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
                 {/* SECTION 3: MAGIC LINK AREA */}
                 <div className={`transition-all duration-500 ${generatedLink ? 'opacity-100 translate-y-0' : ''}`}>
+                    {formError && (
+                        <div role="alert" className="mb-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                            <span>{formError}</span>
+                        </div>
+                    )}
                     <button
                         onClick={generateLink}
                         disabled={!isFormValid}
                         className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
                     >
-                        <Sparkles size={18} className="group-hover:animate-spin-slow" />
-                        Gerar Link Mágico
+                        {generating
+                            ? <Loader2 size={18} className="animate-spin" />
+                            : <Sparkles size={18} className="group-hover:animate-spin-slow" />}
+                        {generating ? 'Validando grade e contrato…' : 'Gerar Link Seguro'}
                     </button>
 
                     {generatedLink && (

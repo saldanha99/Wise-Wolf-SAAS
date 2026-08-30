@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import {
+  hasExclusiveActiveTargetMembership,
   isEligibleForDunning,
   normalizeEnrollmentPlan,
   normalizeSchoolAdminAction,
@@ -83,6 +84,58 @@ Deno.test("school admin aceita somente IDs e estados normalizados", () => {
   );
 });
 
+Deno.test("lifecycle exige um unico vinculo ativo e coerente do alvo", () => {
+  const activeStudent = {
+    tenant_id: "school-a",
+    role: "STUDENT",
+    status: "ACTIVE",
+  };
+  assert(
+    hasExclusiveActiveTargetMembership(
+      [activeStudent],
+      "school-a",
+      "STUDENT",
+    ),
+    "um unico vinculo ativo e coerente deveria ser aceito",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership([], "school-a", "STUDENT"),
+    "alvo sem membership deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, status: "SUSPENDED" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "membership inativa deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, tenant_id: "school-b" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "membership de outro tenant deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [{ ...activeStudent, role: "TEACHER" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "papel incoerente deve falhar fechado",
+  );
+  assert(
+    !hasExclusiveActiveTargetMembership(
+      [activeStudent, { ...activeStudent, tenant_id: "school-b" }],
+      "school-a",
+      "STUDENT",
+    ),
+    "perfil global multitenant nunca deve sofrer lifecycle por um tenant",
+  );
+});
+
 Deno.test("negativacao exige cobranca marcada e realmente vencida", () => {
   assert(
     isEligibleForDunning("OVERDUE", "2026-08-20", "2026-08-21"),
@@ -116,6 +169,56 @@ Deno.test("oferta usa somente plano comercial valido", () => {
         classes_per_week: 3,
       }),
     "duracao nao suportada deveria ser rejeitada",
+  );
+});
+
+Deno.test("oferta de matricula exige grade completa e termos de cobranca", () => {
+  const action = normalizeSchoolAdminAction({
+    action: "createEnrollmentOffer",
+    leadId: "00000000-0000-4000-8000-000000000001",
+    planId: "00000000-0000-4000-8000-000000000002",
+    teacherId: "00000000-0000-4000-8000-000000000003",
+    schedule: [
+      { day: "Segunda-feira", time: "9:05" },
+      { day: "Wednesday", time: "19:00" },
+    ],
+    startDate: "2099-01-05",
+    billingStartMonth: "2099-02",
+    dueDay: 10,
+    enableProRata: true,
+  });
+  assert(action.action === "createEnrollmentOffer", "acao incorreta");
+  assert(action.schedule[0].day === "Monday", "dia nao normalizado");
+  assert(action.schedule[0].time === "09:05", "horario nao normalizado");
+  const disabledProRataAction = normalizeSchoolAdminAction({
+    ...action,
+    enableProRata: false,
+  });
+  assert(
+    disabledProRataAction.action === "createEnrollmentOffer" &&
+      disabledProRataAction.enableProRata === false,
+    "opt-out de pro-rata nao foi preservado",
+  );
+
+  rejects(
+    () =>
+      normalizeSchoolAdminAction({
+        ...action,
+        schedule: [
+          { day: "Monday", time: "09:05" },
+          { day: "Segunda", time: "09:05" },
+        ],
+      }),
+    "grade duplicada deveria ser rejeitada",
+  );
+  rejects(
+    () =>
+      normalizeSchoolAdminAction({
+        action: "createEnrollmentOffer",
+        leadId: action.leadId,
+        planId: action.planId,
+      }),
+    "oferta sem professor e grade deveria ser rejeitada",
   );
 });
 

@@ -11,8 +11,6 @@ const DEFAULT_REMINDER_TEMPLATE = `Oi {student_name}, tudo bem? 👋
 
 Lembrando que nossa aula começa em 30 minutos, às *{class_time}*.
 
-{class_link}
-
 Te espero! 🐺`;
 
 /**
@@ -67,10 +65,24 @@ serve(async (req) => {
 
         for (const cls of classes) {
             try {
+                if (String(cls.source_type || '').toLowerCase() === 'appointment') {
+                    const { data: appointment, error: appointmentError } = await supabaseClient
+                        .from('appointments')
+                        .select('status')
+                        .eq('id', cls.source_id)
+                        .eq('tenant_id', cls.tenant_id)
+                        .maybeSingle();
+                    if (appointmentError) throw appointmentError;
+                    if (String(appointment?.status || '').toLowerCase() !== 'scheduled') {
+                        skipped.push(`class ${cls.source_id}: appointment not scheduled`);
+                        continue;
+                    }
+                }
+
                 // Professor
                 const { data: teacher } = await supabaseClient
                     .from('profiles')
-                    .select('id, full_name, lesson_reminder_template, meeting_link, date_automation_enabled')
+                    .select('id, full_name, lesson_reminder_template, date_automation_enabled')
                     .eq('id', cls.teacher_id)
                     .single();
 
@@ -83,14 +95,14 @@ serve(async (req) => {
                 let studentName = cls.student_name_override;
                 let studentPhone = cls.student_phone_override;
                 let studentId: string | null = null;
-                let studentMeetLink: string | null = null;
+                let classLink = '';
 
                 if (cls.student_id) {
                     const { data: student } = await supabaseClient
-                        .from('profiles')
-                        .select('id, full_name, phone, meeting_link, lifecycle_status')
-                        .eq('id', cls.student_id)
-                        .single();
+                    .from('profiles')
+                    .select('id, full_name, phone, attendance_phone, meeting_link, lifecycle_status')
+                    .eq('id', cls.student_id)
+                    .single();
                     // Aluno suspenso/desligado não recebe lembrete (horário fixo pode continuar na grade)
                     if (student?.lifecycle_status === 'suspended' || student?.lifecycle_status === 'offboarded') {
                         skipped.push(`class ${cls.source_id}: student ${student.lifecycle_status}`);
@@ -98,9 +110,9 @@ serve(async (req) => {
                     }
                     if (student) {
                         studentName = student.full_name;
-                        studentPhone = student.phone;
+                        studentPhone = student.attendance_phone || student.phone;
                         studentId = student.id;
-                        studentMeetLink = student.meeting_link;
+                        classLink = student.meeting_link || '';
                     }
                 }
 
@@ -118,14 +130,13 @@ serve(async (req) => {
 
                 // Renderizar template
                 const template = teacher.lesson_reminder_template?.trim() || DEFAULT_REMINDER_TEMPLATE;
-                const classLink = teacher.meeting_link || studentMeetLink || '';
                 const classTime = cls.time_text || '';
                 const messageBody = renderTemplate(template, {
                     student_name: (studentName || '').split(' ')[0],
                     class_time: classTime,
                     teacher_name: teacher.full_name || '',
-                    class_link: classLink,
                     tenant_name: tenant?.name || '',
+                    class_link: classLink,
                 });
 
                 // 3. Enqueue (idempotente)

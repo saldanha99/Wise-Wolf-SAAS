@@ -26,7 +26,9 @@ cleanup() {
   unset \
     PGPASSWORD ASAAS_API_KEY ASAAS_WEBHOOK_TOKEN EVOLUTION_API_KEY \
     GEMINI_API_KEY RESEND_API_KEY WHATSAPP_INBOUND_TOKEN \
-    ASAAS_PAYLOAD PAYLOAD INBOUND_URL
+    WHATSAPP_INBOUND_PUBLIC_URL \
+    ASAAS_PAYLOAD PAYLOAD INBOUND_URL EVOLUTION_ROOT_JSON \
+    EVOLUTION_VERSION WEBHOOK_STATE
   exit "$exit_code"
 }
 
@@ -110,13 +112,14 @@ RESEND_API_KEY="$(runtime_env RESEND_API_KEY)"
 RESEND_FROM_EMAIL="$(runtime_env RESEND_FROM_EMAIL)"
 RESEND_REPLY_TO="$(runtime_env RESEND_REPLY_TO)"
 WHATSAPP_INBOUND_TOKEN="$(runtime_env WHATSAPP_INBOUND_TOKEN)"
+WHATSAPP_INBOUND_PUBLIC_URL="$(runtime_env WHATSAPP_INBOUND_PUBLIC_URL)"
 
 for required in \
   ASAAS_API_KEY ASAAS_API_URL ASAAS_WEBHOOK_TOKEN \
   EVOLUTION_API_KEY EVOLUTION_API_URL \
   GEMINI_API_KEY GEMINI_MODEL GEMINI_LIVE_MODEL \
   SYSTEM_URL RESEND_API_KEY RESEND_FROM_EMAIL \
-  WHATSAPP_INBOUND_TOKEN; do
+  WHATSAPP_INBOUND_TOKEN WHATSAPP_INBOUND_PUBLIC_URL; do
   [[ -n "${!required}" ]] ||
     { echo "ERRO: variavel $required ausente no runtime" >&2; exit 1; }
 done
@@ -126,6 +129,13 @@ done
   die "EVOLUTION_API_URL deve usar HTTPS"
 [[ "$SYSTEM_URL" =~ ^https://[^[:space:]]+$ ]] ||
   die "SYSTEM_URL deve ser uma URL HTTPS valida"
+[[ "$WHATSAPP_INBOUND_PUBLIC_URL" =~ ^https://[^[:space:]]+/functions/v1/whatsapp-inbound$ ]] ||
+  die "WHATSAPP_INBOUND_PUBLIC_URL deve apontar para a funcao publica whatsapp-inbound"
+[[ "$WHATSAPP_INBOUND_PUBLIC_URL" != *localhost* &&
+  "$WHATSAPP_INBOUND_PUBLIC_URL" != *"127.0.0.1"* &&
+  "$WHATSAPP_INBOUND_PUBLIC_URL" != *"kong:8000"* &&
+  "$WHATSAPP_INBOUND_PUBLIC_URL" != *"api-gw:8000"* ]] ||
+  die "WHATSAPP_INBOUND_PUBLIC_URL nao pode usar endereco interno"
 [[ ${#ASAAS_API_KEY} -ge 20 && ${#ASAAS_WEBHOOK_TOKEN} -ge 16 ]] ||
   die "credenciais Asaas parecem truncadas"
 [[ ${#GEMINI_API_KEY} -ge 20 ]] ||
@@ -156,14 +166,14 @@ EVOLUTION_CURL_HEADERS="$CURL_SECRET_DIR/evolution.headers"
 GEMINI_CURL_HEADERS="$CURL_SECRET_DIR/gemini.headers"
 RESEND_CURL_HEADERS="$CURL_SECRET_DIR/resend.headers"
 ASAAS_WEBHOOK_TOKEN_FILE="$CURL_SECRET_DIR/asaas-webhook-token"
-INBOUND_URL_FILE="$CURL_SECRET_DIR/evolution-inbound-url"
+INBOUND_TOKEN_FILE="$CURL_SECRET_DIR/evolution-inbound-token"
 CURL_SECRET_FILES=(
   "$ASAAS_CURL_HEADERS"
   "$EVOLUTION_CURL_HEADERS"
   "$GEMINI_CURL_HEADERS"
   "$RESEND_CURL_HEADERS"
   "$ASAAS_WEBHOOK_TOKEN_FILE"
-  "$INBOUND_URL_FILE"
+  "$INBOUND_TOKEN_FILE"
 )
 
 printf 'access_token: %s\nContent-Type: application/json\n' \
@@ -175,7 +185,7 @@ printf 'x-goog-api-key: %s\n' \
 printf 'Authorization: Bearer %s\nContent-Type: application/json\n' \
   "$RESEND_API_KEY" > "$RESEND_CURL_HEADERS"
 printf '%s' "$ASAAS_WEBHOOK_TOKEN" > "$ASAAS_WEBHOOK_TOKEN_FILE"
-: > "$INBOUND_URL_FILE"
+printf '%s' "$WHATSAPP_INBOUND_TOKEN" > "$INBOUND_TOKEN_FILE"
 chmod 0600 -- "${CURL_SECRET_FILES[@]}"
 
 echo "== PREFLIGHT: conectividade, credenciais e contagens =="
@@ -189,6 +199,19 @@ curl -fsS --max-time 20 \
 curl -fsS --max-time 20 \
   "$EVOLUTION_API_URL/instance/fetchInstances" \
   --header "@$EVOLUTION_CURL_HEADERS" >/dev/null
+EVOLUTION_ROOT_JSON="$(
+  curl -fsS --max-time 20 \
+    "$EVOLUTION_API_URL/" \
+    --header "@$EVOLUTION_CURL_HEADERS"
+)"
+EVOLUTION_VERSION="$(jq -er '.version | strings' <<< "$EVOLUTION_ROOT_JSON")"
+EVOLUTION_VERSION="${EVOLUTION_VERSION#v}"
+IFS='.' read -r EVOLUTION_MAJOR EVOLUTION_MINOR _ <<< "$EVOLUTION_VERSION"
+[[ "$EVOLUTION_MAJOR" =~ ^[0-9]+$ && "$EVOLUTION_MINOR" =~ ^[0-9]+$ ]] ||
+  die "nao foi possivel validar a versao da Evolution API"
+if ! (( EVOLUTION_MAJOR > 2 || (EVOLUTION_MAJOR == 2 && EVOLUTION_MINOR >= 2) )); then
+  die "Evolution API 2.2+ e obrigatoria para proteger o webhook por header"
+fi
 curl -fsS --max-time 20 \
   "https://generativelanguage.googleapis.com/v1beta/models/$GEMINI_MODEL" \
   --header "@$GEMINI_CURL_HEADERS" >/dev/null
@@ -361,16 +384,32 @@ jq '{id,name,url,enabled,interrupted,event_count:(.events|length)}' \
   <<< "$UPDATED_WEBHOOK"
 
 echo "== PASSO 5: webhook Evolution (whatsapp-inbound) =="
-INBOUND_URL="https://api.wisewolflanguage.com.br/functions/v1/whatsapp-inbound?token=$WHATSAPP_INBOUND_TOKEN"
-printf '%s' "$INBOUND_URL" > "$INBOUND_URL_FILE"
+INBOUND_URL="$WHATSAPP_INBOUND_PUBLIC_URL"
 PAYLOAD="$(
-  jq -nc --rawfile url "$INBOUND_URL_FILE" \
-    '{webhook:{enabled:true,url:$url,byEvents:false,base64:false,events:["MESSAGES_UPSERT"]}}'
+  jq -nc --arg url "$INBOUND_URL" --rawfile token "$INBOUND_TOKEN_FILE" \
+    '{webhook:{enabled:true,url:$url,headers:{"x-whatsapp-inbound-token":$token},byEvents:false,base64:false,events:["MESSAGES_SET","MESSAGES_UPSERT","MESSAGES_EDITED","MESSAGES_UPDATE","MESSAGES_DELETE","SEND_MESSAGE","CONTACTS_SET","CONTACTS_UPSERT","CONTACTS_UPDATE","CHATS_SET","CHATS_UPSERT","CHATS_UPDATE","CHATS_DELETE","CONNECTION_UPDATE","GROUPS_UPSERT","GROUP_UPDATE","GROUP_PARTICIPANTS_UPDATE"]}}'
 )"
 curl -fsS --max-time 30 -X POST \
   "$EVOLUTION_API_URL/webhook/set/prof-diretorww-d6bg" \
   --header "@$EVOLUTION_CURL_HEADERS" \
   --data-binary @- <<< "$PAYLOAD" >/dev/null
+WEBHOOK_STATE="$(
+  curl -fsS --max-time 30 \
+    "$EVOLUTION_API_URL/webhook/find/prof-diretorww-d6bg" \
+    --header "@$EVOLUTION_CURL_HEADERS"
+)"
+jq -e --arg url "$INBOUND_URL" --rawfile token "$INBOUND_TOKEN_FILE" '
+  [
+    .. | objects |
+    select(
+      .url? == $url and
+      .enabled? == true and
+      .headers?["x-whatsapp-inbound-token"]? == $token
+    )
+  ] | length > 0
+' <<< "$WEBHOOK_STATE" >/dev/null ||
+  die "webhook Evolution nao persistiu URL/header esperados"
+unset WEBHOOK_STATE PAYLOAD
 
 echo "== PASSO 6: ativar crons no VPS =="
 docker exec supabase-db psql -X -U supabase_admin -d postgres \

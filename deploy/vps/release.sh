@@ -158,7 +158,7 @@ close_release_ssh() {
 # shellcheck source=lib/release-preflight.sh
 source "$SCRIPT_DIR/lib/release-preflight.sh"
 assert_release_tree_is_publishable "$PROJECT_DIR"
-# Guardado para reconferir na hora de empacotar — ver assert_release_tree_unchanged.
+# Guardado para reconferir na hora de empacotar — ver assert_release_tree_still_publishable.
 RELEASE_HEAD_AT_PREFLIGHT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 
 # shellcheck source=lib/function-drift-guard.sh
@@ -199,7 +199,8 @@ echo "== Preflight da VPS =="
 ssh -o BatchMode=yes "$DEPLOY_SSH_HOST" bash -s -- \
   "$DEPLOY_HOST" "$DEPLOY_USER" "$DEPLOY_APP_DIR" \
   "$DEPLOY_COMPOSE_DIR" "$DEPLOY_FUNCTIONS_DIR" "$DEPLOY_SUPABASE_DIR" \
-  "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" <<'REMOTE'
+  "$DEPLOY_RELEASES_DIR" "$DEPLOY_BACKUPS_DIR" "$DEPLOY_PUBLIC_URL" \
+  "$DEPLOY_API_URL" <<'REMOTE'
 set -Eeuo pipefail
 expected_host=$1
 expected_user=$2
@@ -209,6 +210,8 @@ functions_dir=$5
 supabase_dir=$6
 releases_dir=$7
 backups_dir=$8
+public_url=$9
+expected_api_url=${10}
 
 ((BASH_VERSINFO[0] >= 4))
 
@@ -267,15 +270,59 @@ for required_command in awk base64 curl docker find flock grep sha256sum stat; d
 done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
 docker inspect supabase-edge-functions --format '{{.State.Running}}' | grep -qx true
+docker inspect supabase-auth --format '{{.State.Running}}' | grep -qx true
 docker exec supabase-edge-functions sh -lc \
   'test -n "${OPENAI_API_KEY:-}" &&
    test -n "${OPENROUTER_API_KEY:-}" &&
    test -n "${EVOLUTION_API_URL:-}" &&
    test -n "${EVOLUTION_API_KEY:-}" &&
-   test -n "${RESEND_API_KEY:-}"'
+   test -n "${WHATSAPP_INBOUND_TOKEN:-}" &&
+   test -n "${WHATSAPP_INBOUND_PUBLIC_URL:-}" &&
+   test -n "${RESEND_API_KEY:-}" &&
+   test -n "${ASAAS_WEBHOOK_TOKEN:-}" &&
+   { test -n "${ASAAS_ACCESS_TOKEN:-}" || test -n "${ASAAS_API_KEY:-}"; } &&
+   case "${ASAAS_API_URL:-}" in
+     https://api.asaas.com|https://api.asaas.com/|https://api.asaas.com/v3|https://api.asaas.com/v3/) ;;
+     *) exit 1 ;;
+   esac &&
+   test "${ASAAS_TEACHER_TRANSFER_ENABLED:-false}" != true'
+runtime_inbound_public_url="$(
+  docker exec supabase-edge-functions sh -lc \
+    'printf "%s" "${WHATSAPP_INBOUND_PUBLIC_URL:-}"'
+)"
+[[ "$runtime_inbound_public_url" = \
+  "$expected_api_url/functions/v1/whatsapp-inbound" ]]
 docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
   supabase-edge-functions |
   grep -Eq '^SUPABASE_URL=http://(kong|api-gw):8000$'
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  supabase-edge-functions |
+  grep -Fqx "SYSTEM_URL=$public_url"
+auth_environment="$(
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    supabase-auth
+)"
+auth_site_url="$(
+  printf '%s\n' "$auth_environment" |
+    awk -F= '$1 == "GOTRUE_SITE_URL" {sub(/^[^=]*=/, ""); print; exit}'
+)"
+auth_redirect_allow_list="$(
+  printf '%s\n' "$auth_environment" |
+    awk -F= '$1 == "GOTRUE_URI_ALLOW_LIST" {sub(/^[^=]*=/, ""); print; exit}'
+)"
+[[ "$auth_site_url" = "$public_url" ]]
+auth_redirect_ok=0
+IFS=',' read -r -a auth_redirect_items <<< "$auth_redirect_allow_list"
+for auth_redirect_item in "${auth_redirect_items[@]}"; do
+  if [[ "$auth_redirect_item" = "$public_url/*" ||
+    "$auth_redirect_item" = "$public_url/reset-password" ]]; then
+    auth_redirect_ok=1
+  fi
+done
+if [[ "$auth_redirect_ok" != "1" ]]; then
+  echo "ERRO: GoTrue não permite o redirect seguro de ativação/reset." >&2
+  exit 1
+fi
 docker exec -i supabase-db \
   psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
 do $preflight$
@@ -384,7 +431,7 @@ npm run typecheck
 npm test -- --maxWorkers=1 --minWorkers=1 --no-file-parallelism
 node --test scripts/generate-hub-static-html.test.mjs
 npm run wolfie:assets:verify
-npx --yes deno fmt --check \
+npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -393,12 +440,39 @@ npx --yes deno fmt --check \
   supabase/functions/_shared/opportunity-dispatch.test.ts \
   supabase/functions/_shared/payment-auth.ts \
   supabase/functions/_shared/payment-auth.test.ts \
+  supabase/functions/_shared/enrollment-progress.ts \
+  supabase/functions/_shared/enrollment-progress.test.ts \
+  supabase/functions/_shared/asaas-creation-guard.ts \
+  supabase/functions/_shared/asaas-creation-guard.test.ts \
+  supabase/functions/_shared/asaas-capability-fence.ts \
+  supabase/functions/_shared/asaas-capability-fence.test.ts \
+  supabase/functions/_shared/asaas-mutation-guard.ts \
+  supabase/functions/_shared/asaas-mutation-guard.test.ts \
+  supabase/functions/_shared/asaas-subscription-mutation.ts \
+  supabase/functions/_shared/asaas-subscription-mutation.test.ts \
+  supabase/functions/_shared/student-billing-period-guard.ts \
+  supabase/functions/_shared/student-billing-period-guard.test.ts \
   supabase/functions/_shared/evolution-send.ts \
   supabase/functions/_shared/evolution-send.test.ts \
+  supabase/functions/_shared/financial-report-message-fence.ts \
+  supabase/functions/_shared/financial-report-message-fence.test.ts \
   supabase/functions/_shared/tenant-integration-broker.ts \
   supabase/functions/_shared/tenant-integration-broker.test.ts \
+  supabase/functions/_shared/management-action-policy.ts \
+  supabase/functions/_shared/whatsapp-inbox.ts \
+  supabase/functions/_shared/whatsapp-inbox.test.ts \
   supabase/functions/_shared/hub-billing-safety.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/_shared/hub-provider-operations.ts \
+  supabase/functions/_shared/hub-provider-operations.test.ts \
+  supabase/functions/_shared/student-provider-lifecycle.ts \
+  supabase/functions/_shared/student-provider-lifecycle.test.ts \
+  supabase/functions/_shared/student-lifecycle-static.test.ts \
+  supabase/functions/_shared/saas-owner-activation.ts \
+  supabase/functions/_shared/saas-owner-activation.test.ts \
+  supabase/functions/_shared/account-invite.ts \
+  supabase/functions/_shared/request-auth.ts \
+  supabase/functions/_shared/request-auth.test.ts \
   supabase/functions/_shared/tenant-communication.ts \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
@@ -417,12 +491,18 @@ npx --yes deno fmt --check \
   supabase/functions/public-tenant-branding/index.test.ts \
   supabase/functions/school-admin/core.ts \
   supabase/functions/school-admin/core.test.ts \
+  supabase/functions/school-admin/tenant-asaas-isolation.test.ts \
+  supabase/functions/school-admin/asaas-safety-regressions.test.ts \
   supabase/functions/tenant-settings-admin/index.ts \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
   supabase/functions/student-context/index.ts \
+  supabase/functions/student-context/core.ts \
+  supabase/functions/student-context/core.test.ts \
   supabase/functions/student-context/profile-access.test.ts \
+  supabase/functions/create-student-account/index.ts \
+  supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
   supabase/functions/create-hub-checkout/legal.ts \
@@ -430,13 +510,65 @@ npx --yes deno fmt --check \
   supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
   supabase/functions/create-hub-checkout/index.ts \
   supabase/functions/create-hub-checkout/account-scope.test.ts \
+  supabase/functions/create-wolfie-topup/provider-safety.ts \
+  supabase/functions/create-wolfie-topup/provider-safety.test.ts \
+  supabase/functions/create-wolfie-topup/index.ts \
+  supabase/functions/create-saas-checkout/provider-safety.ts \
+  supabase/functions/create-saas-checkout/provider-safety.test.ts \
+  supabase/functions/create-saas-checkout/index.ts \
   supabase/functions/cancel-hub-subscription/core.ts \
   supabase/functions/cancel-hub-subscription/core.test.ts \
   supabase/functions/cancel-hub-subscription/index.ts \
   supabase/functions/cancel-hub-subscription/index.test.ts \
   supabase/functions/asaas-webhook/billing-safety.ts \
+  supabase/functions/asaas-webhook/event-contract.ts \
+  supabase/functions/asaas-webhook/event-contract.test.ts \
+  supabase/functions/asaas-webhook/enrollment-payment-completion.test.ts \
+  supabase/functions/asaas-webhook/payment-classification.test.ts \
+  supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
+  supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/asaas-reconcile/diff.ts \
+  supabase/functions/asaas-reconcile/diff.test.ts \
+  supabase/functions/asaas-reconcile/index.ts \
+  supabase/functions/transfer-teacher-pay/transfer-safety.ts \
+  supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
+  supabase/functions/transfer-teacher-pay/index.ts \
+  supabase/functions/reconcile-ledger/index.ts \
+  supabase/functions/sync-payments/index.ts \
+  supabase/functions/resolve-offer/index.ts \
+  supabase/functions/sync-student-asaas/index.ts \
+  supabase/functions/create-asaas-subscription/provider-identity.ts \
+  supabase/functions/create-asaas-subscription/provider-identity.test.ts \
+  supabase/functions/create-asaas-subscription/index.ts \
+  supabase/functions/create-asaas-subaccount/index.ts \
+  supabase/functions/create-enrollment-pix/index.ts \
+  supabase/functions/generate-student-manual-pix/core.ts \
+  supabase/functions/generate-student-manual-pix/core.test.ts \
+  supabase/functions/generate-student-manual-pix/index.ts \
+  supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/student-context/core.test.ts \
+  supabase/functions/notify-payment-due/safety.test.ts \
+  supabase/functions/notify-payment-due/index.ts \
+  supabase/functions/payment-split-notify/outbound-fence.ts \
+  supabase/functions/payment-split-notify/outbound-fence.test.ts \
+  supabase/functions/payment-split-notify/safety.test.ts \
+  supabase/functions/payment-split-notify/index.ts \
+  supabase/functions/dre-report/index.ts \
+  supabase/functions/dre-report/safety.test.ts \
+  supabase/functions/weekly-director-digest/index.ts \
+  supabase/functions/weekly-director-digest/safety.test.ts \
+  supabase/functions/monthly-teacher-closing/index.ts \
+  supabase/functions/monthly-teacher-closing/safety.test.ts \
+  supabase/functions/update-student-billing-method/index.ts \
+  supabase/functions/sync-plan-change-billing/index.ts \
+  supabase/functions/sync-plan-change-billing/claim-fencing.test.ts \
+  supabase/functions/sync-subscription-status/index.ts \
+  supabase/functions/admin-update-subscription/index.ts \
+  supabase/functions/delete-student-account/index.ts \
+  supabase/functions/school-admin/index.ts \
   supabase/functions/hub-library-access/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/process-hub-fulfillment/core.ts \
@@ -447,8 +579,24 @@ npx --yes deno fmt --check \
   supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
-  supabase/functions/whatsapp-inbound/trial-reschedule.test.ts
-npx --yes deno test --no-lock \
+  supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
+  supabase/functions/whatsapp-evolution-proxy/index.ts \
+  supabase/functions/whatsapp-evolution-proxy/index.test.ts \
+  supabase/functions/confirm-attendance/index.ts \
+  supabase/functions/process-notification-queue/core.ts \
+  supabase/functions/process-notification-queue/core.test.ts \
+  supabase/functions/process-notification-queue/index.ts \
+  supabase/functions/send-attendance-confirmations/core.ts \
+  supabase/functions/send-attendance-confirmations/core.test.ts \
+  supabase/functions/send-attendance-confirmations/index.ts \
+  supabase/functions/send-class-notification/core.ts \
+  supabase/functions/send-class-notification/core.test.ts \
+  supabase/functions/send-class-notification/index.ts
+npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
+  supabase/functions/_shared/asaas-creation-guard.test.ts \
+  supabase/functions/_shared/asaas-mutation-guard.test.ts \
+  supabase/functions/_shared/asaas-subscription-mutation.test.ts \
+  supabase/functions/_shared/enrollment-progress.test.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.test.ts \
   supabase/functions/_shared/opportunity-dispatch.test.ts \
@@ -456,6 +604,10 @@ npx --yes deno test --no-lock \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.test.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
+  supabase/functions/_shared/hub-provider-operations.test.ts \
+  supabase/functions/_shared/student-provider-lifecycle.test.ts \
+  supabase/functions/_shared/saas-owner-activation.test.ts \
+  supabase/functions/_shared/request-auth.test.ts \
   supabase/functions/create-hub-checkout/legal.test.ts \
   supabase/functions/cancel-hub-subscription/core.test.ts \
   supabase/functions/process-hub-fulfillment/core.test.ts \
@@ -468,13 +620,22 @@ npx --yes deno test --no-lock \
   supabase/functions/_shared/lead-contact.test.ts \
   supabase/functions/_shared/commercial-contact-policy.test.ts \
   supabase/functions/_shared/evolution-send.test.ts \
+  supabase/functions/_shared/financial-report-message-fence.test.ts \
   supabase/functions/_shared/tenant-integration-broker.test.ts \
+  supabase/functions/_shared/whatsapp-inbox.test.ts \
+  supabase/functions/asaas-reconcile/diff.test.ts \
+  supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
+  supabase/functions/notify-payment-due/core.test.ts \
+  supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
   supabase/functions/monthly-teacher-closing/tenant-closing.test.ts \
   supabase/functions/school-admin/core.test.ts \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
+  supabase/functions/process-notification-queue/core.test.ts \
+  supabase/functions/send-attendance-confirmations/core.test.ts \
+  supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/accept-opportunity/core.test.ts \
   supabase/functions/confirm-vendor-trial/core.test.ts \
   supabase/functions/public-tenant-branding/index.test.ts \
@@ -495,8 +656,26 @@ npx --yes deno test --no-lock \
   scripts/tests/meeting-link.test.ts \
   scripts/tests/wolfie-experience-catalog.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts
-npx --yes deno test --allow-read --no-lock \
+npx --yes deno@2.9.5 test --allow-read --frozen \
   scripts/tests/wolfie-voice-profile.test.ts \
+  supabase/functions/_shared/asaas-capability-fence.test.ts \
+  supabase/functions/asaas-webhook/event-contract.test.ts \
+  supabase/functions/asaas-webhook/enrollment-payment-completion.test.ts \
+  supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
+  supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
+  supabase/functions/_shared/student-billing-period-guard.test.ts \
+  supabase/functions/_shared/student-lifecycle-static.test.ts \
+  supabase/functions/create-student-account/safety.test.ts \
+  supabase/functions/notify-payment-due/safety.test.ts \
+  supabase/functions/payment-split-notify/safety.test.ts \
+  supabase/functions/dre-report/safety.test.ts \
+  supabase/functions/weekly-director-digest/safety.test.ts \
+  supabase/functions/monthly-teacher-closing/safety.test.ts \
+  supabase/functions/create-wolfie-topup/provider-safety.test.ts \
+  supabase/functions/create-saas-checkout/provider-safety.test.ts \
+  supabase/functions/create-asaas-subscription/provider-identity.test.ts \
+  supabase/functions/asaas-webhook/payment-classification.test.ts \
+  supabase/functions/sync-plan-change-billing/claim-fencing.test.ts \
   supabase/functions/wolf-tutor-api/conversation-scope.test.ts \
   supabase/functions/create-hub-checkout/account-scope.test.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.test.ts \
@@ -505,18 +684,40 @@ npx --yes deno test --allow-read --no-lock \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/manage-hub-account-status/index.test.ts \
-  supabase/functions/student-context/profile-access.test.ts
+  supabase/functions/student-context/profile-access.test.ts \
+  supabase/functions/school-admin/tenant-asaas-isolation.test.ts \
+  supabase/functions/school-admin/asaas-safety-regressions.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
-npx --yes deno check --no-lock \
+npx --yes deno@2.9.5 check --frozen \
+  supabase/functions/_shared/asaas-creation-guard.ts \
+  supabase/functions/_shared/asaas-capability-fence.ts \
+  supabase/functions/_shared/asaas-capability-fence.test.ts \
+  supabase/functions/_shared/asaas-mutation-guard.ts \
+  supabase/functions/_shared/asaas-subscription-mutation.ts \
+  supabase/functions/_shared/student-billing-period-guard.ts \
+  supabase/functions/_shared/financial-report-message-fence.ts \
+  supabase/functions/_shared/student-provider-lifecycle.ts \
+  supabase/functions/_shared/saas-owner-activation.ts \
+  supabase/functions/_shared/saas-owner-activation.test.ts \
+  supabase/functions/_shared/account-invite.ts \
+  supabase/functions/_shared/request-auth.ts \
+  supabase/functions/_shared/request-auth.test.ts \
+  supabase/functions/_shared/enrollment-progress.ts \
   supabase/functions/_shared/opportunity-dispatch.ts \
   supabase/functions/_shared/tenant-integration-broker.ts \
+  supabase/functions/_shared/management-action-policy.ts \
+  supabase/functions/_shared/whatsapp-inbox.ts \
+  supabase/functions/_shared/hub-provider-operations.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
   supabase/functions/wolfie-tts/index.ts \
+  supabase/functions/create-wolfie-topup/provider-safety.ts \
   supabase/functions/create-wolfie-topup/index.ts \
   supabase/functions/lesson-planner/index.ts \
+  supabase/functions/student-context/core.ts \
+  supabase/functions/student-context/core.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts \
   supabase/functions/hub-library-access/index.ts \
@@ -529,15 +730,23 @@ npx --yes deno check --no-lock \
   supabase/functions/process-hub-fulfillment/index.ts \
   supabase/functions/manage-hub-account-status/index.ts \
   supabase/functions/create-saas-checkout/index.ts \
+  supabase/functions/create-saas-checkout/provider-safety.ts \
   supabase/functions/sync-student-asaas/index.ts \
+  supabase/functions/create-asaas-subscription/provider-identity.ts \
   supabase/functions/create-asaas-subscription/index.ts \
   supabase/functions/update-student-billing-method/index.ts \
   supabase/functions/generate-student-manual-pix/index.ts \
+  supabase/functions/notify-payment-due/core.ts \
+  supabase/functions/payment-split-notify/outbound-fence.ts \
   supabase/functions/create-enrollment-pix/index.ts \
   supabase/functions/pedagogical-content/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
+  supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
+  supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
+  supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/create-student-account/index.ts \
+  supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/create-teacher-account/index.ts \
   supabase/functions/admin-update-subscription/index.ts \
   supabase/functions/create-asaas-subaccount/index.ts \
@@ -576,6 +785,7 @@ npx --yes deno check --no-lock \
   supabase/functions/register-user/index.ts \
   supabase/functions/reconcile-ledger/index.ts \
   supabase/functions/whatsapp-notificacao-wise/index.ts \
+  supabase/functions/process-notification-queue/core.ts \
   supabase/functions/process-notification-queue/index.ts \
   supabase/functions/daily-automations/index.ts \
   supabase/functions/monthly-teacher-closing/index.ts \
@@ -590,15 +800,23 @@ npx --yes deno check --no-lock \
   supabase/functions/accept-coverage/index.ts \
   supabase/functions/accept-opportunity/index.ts \
   supabase/functions/broadcast-opportunity/index.ts \
+  supabase/functions/confirm-attendance/index.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/coverage-admin/index.ts \
+  supabase/functions/create-public-resume-upload/index.ts \
+  supabase/functions/model-probe/index.ts \
   supabase/functions/oral-test-scan/index.ts \
   supabase/functions/prepare-daily-reminders/index.ts \
+  supabase/functions/resolve-offer/index.ts \
+  supabase/functions/send-attendance-confirmations/core.ts \
   supabase/functions/send-attendance-confirmations/index.ts \
+  supabase/functions/send-class-notification/core.ts \
   supabase/functions/send-class-notification/index.ts \
   supabase/functions/teacher-daily-agenda/index.ts \
+  supabase/functions/sign-offer/index.ts \
   supabase/functions/kiwify-webhook/index.ts \
-  supabase/functions/whatsapp-notificacao-matricula/index.ts
+  supabase/functions/whatsapp-notificacao-matricula/index.ts \
+  supabase/functions/wolfie-healthcheck/index.ts
 if [[ "$VITE_HUB_PUBLIC_VIDEOS" = "true" ]]; then
   npm run video:validate -- --public
 fi
@@ -702,6 +920,9 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260731170000_ai_usage_observability.sql"
   "supabase/migrations/20260731180000_student_plan_entitlements.sql"
   "supabase/migrations/20260731190000_wolfie_minute_topups.sql"
+  "supabase/migrations/20260731200000_wolfie_health_alerting.sql"
+  "supabase/migrations/20260731210000_wolfie_assignments.sql"
+  "supabase/migrations/20260731220000_meeting_link_verification.sql"
   "supabase/migrations/20260731230000_settle_unlogged_confirmed_classes.sql"
   "supabase/migrations/20260801190000_wolfie_realtime_analysis_atomicity.sql"
   "supabase/migrations/20260801200000_wolfie_tenant_quota_usage_hardening.sql"
@@ -721,6 +942,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260802100000_cobertura_funcional.sql"
   "supabase/migrations/20260802110000_remove_faixa_9_50.sql"
   "supabase/migrations/20260802120000_versiona_get_cashflow.sql"
+  "supabase/migrations/20260802174535_harden_crm_leads_public_intake_authorization.sql"
   "supabase/migrations/20260802130000_dre_gerencial_plano_de_contas.sql"
   "supabase/migrations/20260802140000_despesas_recorrentes.sql"
   "supabase/migrations/20260802150000_dre_categorizador.sql"
@@ -807,9 +1029,63 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260824230000_conciliacao_do_caixa_asaas.sql"
   "supabase/migrations/20260825040358_harden_teacher_activity_report_scope.sql"
   "supabase/migrations/20260825140000_estorno_reverte_o_caixa.sql"
+  "supabase/migrations/20260825150727_harden_security_definer_authorization.sql"
+  "supabase/migrations/20260825150734_enforce_financial_ledger_invariants.sql"
+  "supabase/migrations/20260825150740_durable_asaas_automation_inbox.sql"
+  "supabase/migrations/20260825151707_scope_asaas_integrations_by_tenant.sql"
+  "supabase/migrations/20260825152800_claim_asaas_creation_operations.sql"
+  "supabase/migrations/20260825153000_schedule_asaas_auxiliary_automations.sql"
+  "supabase/migrations/20260825154500_enforce_settled_payment_automations.sql"
+  "supabase/migrations/20260825155000_enforce_asaas_transfer_provider_identity.sql"
+  "supabase/migrations/20260825155500_observe_asaas_http_automations.sql"
+  "supabase/migrations/20260825160000_allow_historical_asaas_reversals.sql"
+  "supabase/migrations/20260825161000_claim_plan_change_billing.sql"
+  "supabase/migrations/20260825162000_harden_historical_asaas_reversal_binding.sql"
+  "supabase/migrations/20260825163000_fence_student_billing_periods_and_manual_pix_messages.sql"
+  "supabase/migrations/20260825164000_enforce_student_payment_provider_identity.sql"
+  "supabase/migrations/20260825194716_fence_student_lifecycle_mutations.sql"
+  "supabase/migrations/20260825195830_harden_hub_provider_operations.sql"
+  "supabase/migrations/20260825201000_aggregate_student_financial_status.sql"
+  "supabase/migrations/20260825201500_harden_wolfie_topup_webhook_identity.sql"
+  "supabase/migrations/20260825202000_serialize_subscription_mutations.sql"
+  "supabase/migrations/20260825202500_serialize_enrollment_payment_observations.sql"
+  "supabase/migrations/20260825203000_fence_payment_split_notifications.sql"
+  "supabase/migrations/20260825203500_ensure_hub_fulfillment_outbox_before_provider.sql"
+  "supabase/migrations/20260825204000_fence_saas_owner_activation_delivery.sql"
+  "supabase/migrations/20260825205000_fence_financial_report_notifications.sql"
+  "supabase/migrations/20260825205500_serialize_saas_provider_events.sql"
+  "supabase/migrations/20260826100000_turbo_status_client_permissions.sql"
   "supabase/migrations/20260827000000_reconcile_ledger_refund_reversal.sql"
   "supabase/migrations/20260827120000_compat_apply_saas_checkout_billing_event.sql"
   "supabase/migrations/20260827200000_fix_apply_saas_checkout_billing_event_compat.sql"
+  "supabase/migrations/20260828000000_fix_apply_wolfie_topup_event_parsing.sql"
+  "supabase/migrations/20260828010000_repair_hub_catalog_readiness_asset_integrity.sql"
+  "supabase/migrations/20260828020000_grant_turbo_business_date_to_authenticated.sql"
+  "supabase/migrations/20260828030000_grant_turbo_status_dependencies_to_authenticated.sql"
+  "supabase/migrations/20260828080819_harden_management_agent_actions.sql"
+  "supabase/migrations/20260828113818_whatsapp_inbox_sync.sql"
+  "supabase/migrations/20260828222217_harden_attendance_audit_delivery.sql"
+  "supabase/migrations/20260828233056_reschedule_notification_revision.sql"
+  "supabase/migrations/20260829000000_fix_teacher_turbo_status_auth_permissions.sql"
+  "supabase/migrations/20260829005935_harden_landing_page_configs.sql"
+  "supabase/migrations/20260829020000_repair_teacher_turbo_permissions_and_trial_reopen_dispatch.sql"
+  "supabase/migrations/20260829020718_repair_late_legacy_attendance_deliveries.sql"
+  "supabase/migrations/20260829030000_fix_reopen_trial_opportunity_broadcast_slots_regex.sql"
+  "supabase/migrations/20260829060000_authoritative_enrollment_schedule_reservations.sql"
+  "supabase/migrations/20260829070000_activate_enrollment_on_settled_prorata.sql"
+  "supabase/migrations/20260829165745_reconcile_legacy_payment_binding.sql"
+  "supabase/migrations/20260829165748_monthly_payment_closure.sql"
+  "supabase/migrations/20260829175620_include_operating_costs_in_monthly_close.sql"
+  "supabase/migrations/20260830000000_grant_vendor_trial_requests_to_service_role.sql"
+  "supabase/migrations/20260830010000_harden_asaas_billing_compat_wrapper_owner.sql"
+  "supabase/migrations/20260830020000_compose_tenant_integration_broker_capabilities.sql"
+  "supabase/migrations/20260830030000_restore_immutable_gross_ledger_refunds.sql"
+  "supabase/migrations/20260830040000_restore_ordered_saas_provider_event_boundary.sql"
+  "supabase/migrations/20260830050000_restore_private_trial_table_boundary.sql"
+  "supabase/migrations/20260830060000_cancel_directed_trial_request_on_reopen_retry.sql"
+  "supabase/migrations/20260830070000_restore_director_pending_counts_facade.sql"
+  "supabase/migrations/20260830080000_restore_settled_wolfie_topup_boundary.sql"
+  "supabase/migrations/20260830120102_harden_teacher_offboarding_and_legacy_coverage.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -826,14 +1102,25 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/student_manual_pix_claims.sql"
   "supabase/tests/student_overdue_card_charge_claims.sql"
   "supabase/tests/gestao_contas_pagar_whatsapp.sql"
+  "supabase/tests/gestao_management_agent_hardening.sql"
+  "supabase/tests/whatsapp_inbox_sync.sql"
+  "supabase/tests/attendance_audit_delivery_hardening.sql"
+  "supabase/tests/reschedule_notification_revision.sql"
+  "supabase/tests/landing_page_configs_hardening.sql"
+  "supabase/tests/authoritative_enrollment_schedule_reservations.sql"
+  "supabase/tests/legacy_payment_binding_repair.sql"
+  "supabase/tests/monthly_payment_closure.sql"
+  "supabase/tests/gestao_financial_context.sql"
   "supabase/tests/teacher_turbo_streak.sql"
   "supabase/tests/lesson_occurrence_and_schedule_hardening.sql"
+  "supabase/tests/public_intake_rls.sql"
   "supabase/tests/tenant_admin_security_center.sql"
   "supabase/tests/tenant_rls_p0.sql"
   "supabase/tests/invite_registration_security.sql"
   "supabase/tests/trial_broadcast_reopen_security.sql"
   "supabase/tests/atomic_opportunity_claim.sql"
   "supabase/tests/secure_trial_management_writes.sql"
+  "supabase/tests/tenant_membership_role_hardening.sql"
   "supabase/tests/private_tenant_legal_assets.sql"
   "supabase/tests/hub_content_isolation.sql"
   "supabase/tests/hub_account_usage_hardening.sql"
@@ -841,6 +1128,8 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/saas_leads_public_intake.sql"
   "supabase/tests/hub_wolfie_conversation_scope.sql"
   "supabase/tests/hub_educator_native_planner.sql"
+  "supabase/tests/wolfie_factual_memory_and_rag.sql"
+  "supabase/tests/wolfie_immersive_ecosystem.sql"
   "supabase/tests/hub_account_mutations.sql"
   "supabase/tests/hub_member_profiles_and_learner_crud.sql"
   "supabase/tests/saas_subscription_lifecycle.sql"
@@ -852,6 +1141,30 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/hub_catalog_readiness.sql"
   "supabase/tests/hub_core_legal_acceptances.sql"
   "supabase/tests/hub_core_self_service_cancellation.sql"
+  "supabase/tests/security_definer_authorization_hardening.sql"
+  "supabase/tests/financial_ledger_invariants.sql"
+  "supabase/tests/asaas_automation_integrity.sql"
+  "supabase/tests/asaas_tenant_integration_scope.sql"
+  "supabase/tests/asaas_creation_claims.sql"
+  "supabase/tests/asaas_auxiliary_automation_schedule.sql"
+  "supabase/tests/settled_payment_automation_guards.sql"
+  "supabase/tests/asaas_transfer_provider_identity.sql"
+  "supabase/tests/asaas_http_automation_observability.sql"
+  "supabase/tests/asaas_historical_reversal_scope.sql"
+  "supabase/tests/plan_change_billing_claim_fencing.sql"
+  "supabase/tests/student_billing_period_and_message_fencing.sql"
+  "supabase/tests/student_payment_provider_identity.sql"
+  "supabase/tests/student_lifecycle_mutation_fencing.sql"
+  "supabase/tests/hub_provider_operations.sql"
+  "supabase/tests/student_financial_status_aggregation.sql"
+  "supabase/tests/wolfie_topup_provider_identity.sql"
+  "supabase/tests/subscription_mutation_serialization.sql"
+  "supabase/tests/enrollment_payment_observation_fencing.sql"
+  "supabase/tests/payment_split_message_fencing.sql"
+  "supabase/tests/saas_owner_activation_fencing.sql"
+  "supabase/tests/financial_report_message_fencing.sql"
+  "supabase/tests/saas_provider_event_ordering.sql"
+  "supabase/tests/teacher_offboarding_security.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -875,6 +1188,16 @@ SHARED_AUTOMATION_AUTH_RELATIVE="supabase/functions/_shared/automation-auth.ts"
 SHARED_INVITE_REGISTRATION_RELATIVE="supabase/functions/_shared/invite-registration.ts"
 SHARED_OPPORTUNITY_DISPATCH_RELATIVE="supabase/functions/_shared/opportunity-dispatch.ts"
 SHARED_PAYMENT_AUTH_RELATIVE="supabase/functions/_shared/payment-auth.ts"
+SHARED_ENROLLMENT_PROGRESS_RELATIVE="supabase/functions/_shared/enrollment-progress.ts"
+SHARED_ASAAS_CREATION_GUARD_RELATIVE="supabase/functions/_shared/asaas-creation-guard.ts"
+SHARED_ASAAS_CAPABILITY_FENCE_RELATIVE="supabase/functions/_shared/asaas-capability-fence.ts"
+SHARED_ASAAS_CAPABILITY_FENCE_TEST_RELATIVE="supabase/functions/_shared/asaas-capability-fence.test.ts"
+SHARED_ASAAS_MUTATION_GUARD_RELATIVE="supabase/functions/_shared/asaas-mutation-guard.ts"
+SHARED_ASAAS_SUBSCRIPTION_MUTATION_RELATIVE="supabase/functions/_shared/asaas-subscription-mutation.ts"
+SHARED_ASAAS_SUBSCRIPTION_MUTATION_TEST_RELATIVE="supabase/functions/_shared/asaas-subscription-mutation.test.ts"
+SHARED_STUDENT_BILLING_PERIOD_GUARD_RELATIVE="supabase/functions/_shared/student-billing-period-guard.ts"
+SHARED_STUDENT_PROVIDER_LIFECYCLE_RELATIVE="supabase/functions/_shared/student-provider-lifecycle.ts"
+SHARED_SAAS_OWNER_ACTIVATION_RELATIVE="supabase/functions/_shared/saas-owner-activation.ts"
 SHARED_TENANT_COMMUNICATION_RELATIVE="supabase/functions/_shared/tenant-communication.ts"
 SHARED_TENANT_LEGAL_ASSETS_RELATIVE="supabase/functions/_shared/tenant-legal-assets.ts"
 SHARED_ACCOUNT_INVITE_RELATIVE="supabase/functions/_shared/account-invite.ts"
@@ -882,11 +1205,16 @@ SHARED_COMMERCIAL_POLICY_RELATIVE="supabase/functions/_shared/commercial-contact
 SHARED_AI_USAGE_RELATIVE="supabase/functions/_shared/ai-usage.ts"
 SHARED_GLOBAL_MEETING_POLICY_RELATIVE="supabase/functions/_shared/wolfie-global-meeting-policy.ts"
 SHARED_HUB_BILLING_SAFETY_RELATIVE="supabase/functions/_shared/hub-billing-safety.ts"
+SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE="supabase/functions/_shared/hub-provider-operations.ts"
 SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE="supabase/functions/_shared/wolfie-product-access.ts"
 SHARED_LEAD_CONTACT_RELATIVE="supabase/functions/_shared/lead-contact.ts"
 SHARED_EVOLUTION_SEND_RELATIVE="supabase/functions/_shared/evolution-send.ts"
+SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/financial-report-message-fence.ts"
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
+SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE="supabase/functions/_shared/management-action-policy.ts"
+SHARED_WHATSAPP_INBOX_RELATIVE="supabase/functions/_shared/whatsapp-inbox.ts"
 HARDENED_FUNCTIONS=(
+  asaas-reconcile
   sync-subscription-status
   notify-payment-due
   create-wolfie-topup
@@ -1006,6 +1334,17 @@ done
 [[ -s "$SHARED_INVITE_REGISTRATION_RELATIVE" ]] || die "guard de convites ausente"
 [[ -s "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" ]] || die "guard de disparo de oportunidades ausente"
 [[ -s "$SHARED_PAYMENT_AUTH_RELATIVE" ]] || die "guard de pagamentos ausente"
+[[ -s "$SHARED_ENROLLMENT_PROGRESS_RELATIVE" ]] || die "estado de matrícula ausente"
+[[ -s "$SHARED_ASAAS_CREATION_GUARD_RELATIVE" ]] || die "claim de criação Asaas ausente"
+[[ -s "$SHARED_ASAAS_CAPABILITY_FENCE_RELATIVE" ]] || die "fence final de capability Asaas ausente"
+[[ -s "$SHARED_ASAAS_CAPABILITY_FENCE_TEST_RELATIVE" ]] || die "teste do fence final de capability Asaas ausente"
+[[ -s "$SHARED_ASAAS_MUTATION_GUARD_RELATIVE" ]] || die "guard de mutação Asaas ausente"
+[[ -s "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_RELATIVE" ]] || die "serializador de assinatura Asaas ausente"
+[[ -s "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_TEST_RELATIVE" ]] || die "teste do serializador de assinatura Asaas ausente"
+[[ -s "$SHARED_STUDENT_BILLING_PERIOD_GUARD_RELATIVE" ]] || die "fence de competência financeira ausente"
+[[ -s "$SHARED_STUDENT_PROVIDER_LIFECYCLE_RELATIVE" ]] || die "regras de ciclo de vida financeiro do aluno ausentes"
+[[ -s "$SHARED_SAAS_OWNER_ACTIVATION_RELATIVE" ]] || die "fence de ativação do proprietário SaaS ausente"
+[[ -s "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" ]] || die "operações financeiras duráveis do Hub ausentes"
 [[ -s "$SHARED_TENANT_COMMUNICATION_RELATIVE" ]] || die "identidade de comunicação tenant-safe ausente"
 [[ -s "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" ]] || die "resolver privado de documentos legais ausente"
 [[ -s "$SHARED_ACCOUNT_INVITE_RELATIVE" ]] || die "helper de convite seguro ausente"
@@ -1015,13 +1354,18 @@ done
 [[ -s "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" ]] || die "gate comercial do Wolfie ausente"
 [[ -s "$SHARED_LEAD_CONTACT_RELATIVE" ]] || die "regras de contato com lead ausentes"
 [[ -s "$SHARED_EVOLUTION_SEND_RELATIVE" ]] || die "envio compartilhado da Evolution ausente"
+[[ -s "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" ]] || die "fence de relatórios financeiros ausente"
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
+[[ -s "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" ]] || die "política de ações de gestão ausente"
+[[ -s "$SHARED_WHATSAPP_INBOX_RELATIVE" ]] || die "contrato canônico da inbox WhatsApp ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
 done
 
-source_git_sha="$(git rev-parse --short=12 HEAD)"
+source_git_sha="$(git rev-parse HEAD)"
+[[ "$source_git_sha" =~ ^[a-f0-9]{40}$ ]] ||
+  die "não foi possível identificar o commit de origem completo"
 for migration_relative in "${MIGRATION_RELATIVES[@]}"; do
   migration_file="$(basename -- "$migration_relative")"
   migration_version="${migration_file%%_*}"
@@ -1036,6 +1380,15 @@ LOCAL_STAGE="$(mktemp -d "${TMPDIR:-/tmp}/wisewolf-release.XXXXXX")"
 hardened_functions_manifest="$LOCAL_STAGE/hardened-functions.txt"
 printf '%s\n' "${HARDENED_FUNCTIONS[@]}" > "$hardened_functions_manifest"
 [[ -s "$hardened_functions_manifest" ]]
+release_provenance_manifest="$LOCAL_STAGE/release-provenance.txt"
+printf '%s\n' \
+  "source_git_sha=$source_git_sha" \
+  "release_script_sha256=$(shasum -a 256 deploy/vps/release.sh | awk '{print $1}')" \
+  "deno_config_sha256=$(shasum -a 256 deno.json | awk '{print $1}')" \
+  "deno_lock_sha256=$(shasum -a 256 deno.lock | awk '{print $1}')" \
+  "package_lock_sha256=$(shasum -a 256 package-lock.json | awk '{print $1}')" \
+  > "$release_provenance_manifest"
+[[ -s "$release_provenance_manifest" ]]
 release_inputs_manifest="$LOCAL_STAGE/release-inputs.sha256"
 
 append_release_input_checksum() {
@@ -1053,6 +1406,9 @@ append_release_input_checksum() {
   append_release_input_checksum \
     "$hardened_functions_manifest" \
     "hardened-functions.txt"
+  append_release_input_checksum \
+    "$release_provenance_manifest" \
+    "release-provenance.txt"
   append_release_input_checksum \
     "$NGINX_CONFIG_RELATIVE" \
     "nginx.conf"
@@ -1094,6 +1450,16 @@ append_release_input_checksum() {
     "$SHARED_INVITE_REGISTRATION_RELATIVE" \
     "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
     "$SHARED_PAYMENT_AUTH_RELATIVE" \
+    "$SHARED_ENROLLMENT_PROGRESS_RELATIVE" \
+    "$SHARED_ASAAS_CREATION_GUARD_RELATIVE" \
+    "$SHARED_ASAAS_CAPABILITY_FENCE_RELATIVE" \
+    "$SHARED_ASAAS_CAPABILITY_FENCE_TEST_RELATIVE" \
+    "$SHARED_ASAAS_MUTATION_GUARD_RELATIVE" \
+    "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_RELATIVE" \
+    "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_TEST_RELATIVE" \
+    "$SHARED_STUDENT_BILLING_PERIOD_GUARD_RELATIVE" \
+    "$SHARED_STUDENT_PROVIDER_LIFECYCLE_RELATIVE" \
+    "$SHARED_SAAS_OWNER_ACTIVATION_RELATIVE" \
     "$SHARED_TENANT_COMMUNICATION_RELATIVE" \
     "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" \
     "$SHARED_ACCOUNT_INVITE_RELATIVE" \
@@ -1101,10 +1467,14 @@ append_release_input_checksum() {
     "$SHARED_AI_USAGE_RELATIVE" \
     "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
     "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
+    "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
     "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
     "$SHARED_LEAD_CONTACT_RELATIVE" \
     "$SHARED_EVOLUTION_SEND_RELATIVE" \
-    "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE"; do
+    "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
+    "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
+    "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
+    "$SHARED_WHATSAPP_INBOX_RELATIVE"; do
     append_release_input_checksum \
       "$shared_relative" \
       "functions/${shared_relative#supabase/functions/}"
@@ -1129,7 +1499,7 @@ duplicate_release_input="$(
 )"
 [[ -z "$duplicate_release_input" ]] ||
   die "entrada duplicada no manifesto da release: $duplicate_release_input"
-assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
+assert_release_tree_still_publishable "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
 artifact_hash="$(
   shasum -a 256 "$release_inputs_manifest" |
     awk '{print substr($1, 1, 12)}'
@@ -1188,6 +1558,8 @@ rsync -a -- "$NGINX_CONFIG_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/nginx.conf"
 rsync -a -- "$hardened_functions_manifest" \
   "$DEPLOY_SSH_HOST:$remote_release/hardened-functions.txt"
+rsync -a -- "$release_provenance_manifest" \
+  "$DEPLOY_SSH_HOST:$remote_release/release-provenance.txt"
 rsync -a -- "$release_inputs_manifest" \
   "$DEPLOY_SSH_HOST:$remote_release/release-inputs.sha256"
 if [[ "$DEPLOY_PRESERVE_REMOTE_FUNCTIONS" != "1" ]]; then
@@ -1227,6 +1599,26 @@ rsync -a -- "$SHARED_OPPORTUNITY_DISPATCH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/opportunity-dispatch.ts"
 rsync -a -- "$SHARED_PAYMENT_AUTH_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/payment-auth.ts"
+rsync -a -- "$SHARED_ENROLLMENT_PROGRESS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/enrollment-progress.ts"
+rsync -a -- "$SHARED_ASAAS_CREATION_GUARD_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-creation-guard.ts"
+rsync -a -- "$SHARED_ASAAS_CAPABILITY_FENCE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-capability-fence.ts"
+rsync -a -- "$SHARED_ASAAS_CAPABILITY_FENCE_TEST_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-capability-fence.test.ts"
+rsync -a -- "$SHARED_ASAAS_MUTATION_GUARD_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-mutation-guard.ts"
+rsync -a -- "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-subscription-mutation.ts"
+rsync -a -- "$SHARED_ASAAS_SUBSCRIPTION_MUTATION_TEST_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/asaas-subscription-mutation.test.ts"
+rsync -a -- "$SHARED_STUDENT_BILLING_PERIOD_GUARD_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/student-billing-period-guard.ts"
+rsync -a -- "$SHARED_STUDENT_PROVIDER_LIFECYCLE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/student-provider-lifecycle.ts"
+rsync -a -- "$SHARED_SAAS_OWNER_ACTIVATION_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/saas-owner-activation.ts"
 rsync -a -- "$SHARED_TENANT_COMMUNICATION_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tenant-communication.ts"
 rsync -a -- "$SHARED_TENANT_LEGAL_ASSETS_RELATIVE" \
@@ -1241,14 +1633,22 @@ rsync -a -- "$SHARED_GLOBAL_MEETING_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-global-meeting-policy.ts"
 rsync -a -- "$SHARED_HUB_BILLING_SAFETY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-billing-safety.ts"
+rsync -a -- "$SHARED_HUB_PROVIDER_OPERATIONS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/hub-provider-operations.ts"
 rsync -a -- "$SHARED_WOLFIE_PRODUCT_ACCESS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/wolfie-product-access.ts"
 rsync -a -- "$SHARED_LEAD_CONTACT_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lead-contact.ts"
 rsync -a -- "$SHARED_EVOLUTION_SEND_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/evolution-send.ts"
+rsync -a -- "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/financial-report-message-fence.ts"
 rsync -a -- "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/tenant-integration-broker.ts"
+rsync -a -- "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/management-action-policy.ts"
+rsync -a -- "$SHARED_WHATSAPP_INBOX_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/whatsapp-inbox.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"
@@ -1264,7 +1664,7 @@ for database_test_relative in "${DATABASE_TEST_RELATIVES[@]}"; do
   rsync -a -- "$database_test_relative" \
     "$DEPLOY_SSH_HOST:$remote_release/tests/$database_test_file"
 done
-assert_release_tree_unchanged "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
+assert_release_tree_still_publishable "$PROJECT_DIR" "$RELEASE_HEAD_AT_PREFLIGHT"
 
 echo "== Ativação transacional e smoke tests =="
 activation_status=0
@@ -1434,6 +1834,10 @@ HARDENED_FUNCTIONS=()
 declare -A hardened_function_names=()
 [[ -f "$release_dir/hardened-functions.txt" &&
   ! -L "$release_dir/hardened-functions.txt" ]]
+[[ -f "$release_dir/release-provenance.txt" &&
+  ! -L "$release_dir/release-provenance.txt" ]]
+grep -Eq '^source_git_sha=[a-f0-9]{40}$' \
+  "$release_dir/release-provenance.txt"
 while IFS= read -r function_name; do
   [[ "$function_name" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
   [[ -z "${hardened_function_names[$function_name]+x}" ]]
@@ -1572,6 +1976,16 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/invite-registration.ts" ]]
 [[ -s "$release_dir/functions/_shared/opportunity-dispatch.ts" ]]
 [[ -s "$release_dir/functions/_shared/payment-auth.ts" ]]
+[[ -s "$release_dir/functions/_shared/enrollment-progress.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-creation-guard.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-capability-fence.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-capability-fence.test.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-mutation-guard.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-subscription-mutation.ts" ]]
+[[ -s "$release_dir/functions/_shared/asaas-subscription-mutation.test.ts" ]]
+[[ -s "$release_dir/functions/_shared/student-billing-period-guard.ts" ]]
+[[ -s "$release_dir/functions/_shared/student-provider-lifecycle.ts" ]]
+[[ -s "$release_dir/functions/_shared/saas-owner-activation.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-communication.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-legal-assets.ts" ]]
 [[ -s "$release_dir/functions/_shared/account-invite.ts" ]]
@@ -1579,10 +1993,14 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/ai-usage.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-global-meeting-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/hub-billing-safety.ts" ]]
+[[ -s "$release_dir/functions/_shared/hub-provider-operations.ts" ]]
 [[ -s "$release_dir/functions/_shared/wolfie-product-access.ts" ]]
 [[ -s "$release_dir/functions/_shared/lead-contact.ts" ]]
 [[ -s "$release_dir/functions/_shared/evolution-send.ts" ]]
+[[ -s "$release_dir/functions/_shared/financial-report-message-fence.ts" ]]
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
+[[ -s "$release_dir/functions/_shared/management-action-policy.ts" ]]
+[[ -s "$release_dir/functions/_shared/whatsapp-inbox.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -2401,6 +2819,49 @@ if ((${#unapplied_migrations[@]} > 0)); then
     sha256sum "$release_dir/release-inputs.sha256" | awk '{print $1}'
   )"
   [[ "$database_release_manifest_checksum" =~ ^[a-f0-9]{64}$ ]]
+
+  # Exercise the exact pending migration sequence twice against the same
+  # transactional state. The second pass proves reentrancy; the final rollback
+  # prevents schema and business-data changes from being published. PostgreSQL
+  # sequence allocation may still advance, so this is intentionally described
+  # as a rollback preflight rather than as a zero-side-effect operation.
+  database_migration_dry_run_sql="$backup_dir/database-migration-double-dry-run.sql.tmp"
+  rm -f -- "$database_migration_dry_run_sql"
+  {
+    printf '\\set ON_ERROR_STOP on\n'
+    printf 'begin;\n'
+    printf "set local lock_timeout = '30s';\n"
+    printf "set local statement_timeout = '15min';\n"
+    printf "set local idle_in_transaction_session_timeout = '30min';\n"
+    printf 'select pg_advisory_xact_lock(982451653, 1431655765);\n\n'
+    for validation_round in 1 2; do
+      printf '\\echo migration_double_dry_run_round_%s_begin\n' \
+        "$validation_round"
+      printf "set local lock_timeout = '30s';\n"
+      printf "set local statement_timeout = '15min';\n"
+      for migration_path in "${unapplied_migrations[@]}"; do
+        emit_sql_payload "$migration_path" migration
+        printf '\n'
+      done
+      printf '\\echo migration_double_dry_run_round_%s_end\n\n' \
+        "$validation_round"
+    done
+    printf 'rollback;\n'
+    printf '\\echo migration_double_dry_run_rollback_complete\n'
+  } > "$database_migration_dry_run_sql"
+  [[ -s "$database_migration_dry_run_sql" ]]
+
+  echo "== Pré-validação das migrations: duas aplicações e rollback =="
+  if ! docker exec -i supabase-db \
+    psql -X -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+    < "$database_migration_dry_run_sql"; then
+    rm -f -- "$database_migration_dry_run_sql"
+    echo "ERRO: a pré-validação transacional das migrations falhou." >&2
+    return 1
+  fi
+  rm -f -- "$database_migration_dry_run_sql"
+  echo "== Pré-validação das migrations concluída com rollback =="
+
   if ! prepare_database_release_journal \
     "$database_release_manifest_checksum"; then
     prepare_database_release_journal "$database_release_manifest_checksum"
@@ -2647,8 +3108,322 @@ begin
      ) is null
      or to_regprocedure(
        'public.create_wolfie_activity_session(uuid,text,text,text,text,text,uuid,uuid,jsonb,jsonb,text[],text[])'
-     ) is null then
+  ) is null then
     raise exception 'wolfie_rollback_compatibility_wrapper_missing';
+  end if;
+
+  if to_regclass('public.asaas_webhook_inbox') is null
+     or to_regclass('public.asaas_reconciliation_runs') is null
+     or to_regclass('public.asaas_reconciliation_issues') is null
+     or to_regclass('public.asaas_teacher_transfer_attempts') is null
+     or to_regprocedure(
+       'public.enqueue_asaas_webhook_event(text,text,text,timestamptz,jsonb,text)'
+     ) is null
+     or to_regprocedure(
+       'public.reconcile_student_payment_ledger(integer,uuid)'
+     ) is null
+     or to_regprocedure(
+       'public.resolve_tenant_integration_for_service(text,text,text,text)'
+     ) is null
+     or to_regprocedure(
+       'public.record_tenant_integration_verified(text,text,bigint)'
+     ) is null
+  then
+    raise exception 'asaas_integrity_foundation_missing';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+     where payment.tenant_id is null
+  ) then
+    raise exception 'student_payment_without_tenant';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+      join public.financial_transactions as ledger
+        on ledger.student_payment_id = payment.id
+     where payment.status <> 'REFUNDED'
+       and (
+         payment.status not in (
+           'RECEIVED', 'RECEIVED_IN_CASH', 'NAO_RECEITA'
+         )
+         or payment.tenant_id is null
+         or coalesce(payment.value, 0) <= 0
+       )
+  ) then
+    raise exception 'non_cash_payment_has_ledger';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+     where (
+         payment.status in (
+           'RECEIVED', 'RECEIVED_IN_CASH', 'NAO_RECEITA'
+         )
+         or (payment.status = 'REFUNDED' and payment.credited_at is not null)
+       )
+       and payment.tenant_id is not null
+       and coalesce(payment.value, 0) > 0
+       and (
+         select count(*)
+           from public.financial_transactions as ledger
+          where ledger.student_payment_id = payment.id
+       ) <> 1
+  ) then
+    raise exception 'cash_payment_ledger_cardinality_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+      join public.financial_transactions as ledger
+        on ledger.student_payment_id = payment.id
+     where ledger.type <> 'ENTRADA'
+        or ledger.amount is distinct from round(payment.value, 2)
+        or ledger.amount_cents is distinct from
+           round(payment.value * 100)::integer
+        or (
+          payment.status = 'NAO_RECEITA'
+          and ledger.category is distinct from 'aporte_ou_movimentacao'
+        )
+        or (
+          payment.status <> 'NAO_RECEITA'
+          and ledger.category is distinct from 'MENSALIDADE'
+        )
+  ) then
+    raise exception 'student_payment_ledger_value_or_category_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from public.financial_transactions as refund
+      join public.student_payments as payment
+        on payment.id = refund.refund_student_payment_id
+     where refund.student_payment_id is not null
+        or refund.type <> 'SAIDA'
+        or refund.amount <= 0
+        or refund.provider_event_id is null
+        or length(trim(refund.provider_event_id)) not between 1 and 240
+        or refund.category is distinct from case
+          when payment.status = 'NAO_RECEITA'
+            then 'estorno_aporte_ou_movimentacao'
+          else 'ESTORNO_MENSALIDADE'
+        end
+        or not exists (
+          select 1
+            from public.financial_transactions as receipt
+           where receipt.student_payment_id = payment.id
+        )
+  ) then
+    raise exception 'refund_ledger_shape_or_cash_basis_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+      join lateral (
+        select coalesce(sum(refund.amount), 0) as total
+          from public.financial_transactions as refund
+         where refund.refund_student_payment_id = payment.id
+      ) as refunds on true
+     where refunds.total > coalesce(payment.refunded_amount, 0)
+        or (
+          refunds.total < coalesce(payment.refunded_amount, 0)
+          and exists (
+            select 1
+              from public.financial_transactions as receipt
+             where receipt.student_payment_id = payment.id
+          )
+          and not exists (
+            select 1
+              from public.reconciliation_issues as issue
+             where issue.student_payment_id = payment.id
+               and issue.kind in (
+                 'REFUND_LEDGER_EVENT_CONTEXT_MISSING',
+                 'HISTORICAL_REFUND_EVENT_CONTEXT_MISSING'
+               )
+               and not coalesce(issue.resolved, false)
+          )
+        )
+  ) then
+    raise exception 'refund_ledger_total_invalid_or_unexplained';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+     where payment.status = 'CONFIRMED'
+       and payment.paid_at is not null
+  ) then
+    raise exception 'confirmed_payment_marked_as_cash';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+     where payment.amount_cents is distinct from
+       case when payment.value is null then null
+            else round(payment.value * 100)::integer end
+  ) or exists (
+    select 1
+      from public.financial_transactions as ledger
+     where ledger.amount_cents is distinct from
+       round(ledger.amount * 100)::integer
+  ) then
+    raise exception 'financial_amount_equivalence_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from public.student_payments as payment
+     where payment.ledger_entry_created is distinct from exists (
+       select 1
+         from public.financial_transactions as ledger
+        where ledger.student_payment_id = payment.id
+     )
+  ) then
+    raise exception 'ledger_entry_created_flag_invalid';
+  end if;
+
+  if not exists (
+    select 1
+      from private.tenant_integration_connections as connection
+     where connection.tenant_id = 'school-wise-wolf'
+       and connection.provider = 'asaas'
+       and connection.mode = 'PLATFORM_MANAGED_ROOT'
+       and (
+         (
+           connection.mode = 'PLATFORM_MANAGED_ROOT'
+           and connection.status = 'configured'
+           and connection.last_verified_at is null
+         )
+         or
+         (connection.status = 'healthy' and connection.last_verified_at is not null)
+       )
+  ) or exists (
+    select 1
+      from private.tenant_integration_connections as connection
+     where connection.provider = 'asaas'
+       and connection.tenant_id <> 'school-wise-wolf'
+       and (
+         connection.mode <> 'DISABLED'
+         or connection.status <> 'disabled'
+       )
+  ) then
+    raise exception 'asaas_tenant_connection_scope_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from public.tenants as tenant
+     where not exists (
+       select 1
+         from private.tenant_integration_connections as connection
+        where connection.tenant_id = tenant.id
+          and connection.provider = 'asaas'
+     )
+  ) then
+    raise exception 'tenant_without_explicit_asaas_connection';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'public.resolve_tenant_integration_for_service(text,text,text,text)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'public.resolve_tenant_integration_for_service(text,text,text,text)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'service_role',
+       'public.resolve_tenant_integration_for_service(text,text,text,text)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.record_tenant_integration_verified(text,text,bigint)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'public.record_tenant_integration_verified(text,text,bigint)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'service_role',
+       'public.record_tenant_integration_verified(text,text,bigint)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.enqueue_asaas_webhook_event(text,text,text,timestamptz,jsonb,text)',
+       'EXECUTE'
+     )
+  then
+    raise exception 'asaas_service_rpc_acl_invalid';
+  end if;
+
+  if exists (
+    select 1
+      from (
+        values
+          (
+            'wisewolf-asaas-webhook-worker',
+            '* * * * *',
+            'select private.trigger_asaas_automation_worker();'
+          ),
+          (
+            'wisewolf-asaas-reconciliation',
+            '17 6 * * *',
+            'select private.trigger_asaas_reconciliation();'
+          ),
+          (
+            'wisewolf-asaas-health',
+            '*/15 * * * *',
+            'select private.notify_asaas_automation_health();'
+          ),
+          (
+            'wisewolf-sync-plan-change-billing',
+            '*/15 * * * *',
+            'select public.trigger_sync_plan_change_billing();'
+          ),
+          (
+            'wisewolf-reconcile-ledger',
+            '7 * * * *',
+            'select private.trigger_reconcile_ledger();'
+          ),
+          (
+            'wisewolf-sync-subscriptions',
+            '40 6 * * *',
+            'select public.trigger_sync_subscription_status();'
+          ),
+          (
+            'wisewolf-payment-split-sweep',
+            '*/15 * * * *',
+            'select public.trigger_payment_split_sweep();'
+          )
+      ) as expected(jobname, schedule, command)
+      left join lateral (
+        select
+          count(*) as total_count,
+          count(*) filter (
+            where job.active
+              and job.schedule = expected.schedule
+              and job.command = expected.command
+          ) as exact_count
+          from cron.job as job
+         where job.jobname = expected.jobname
+      ) as actual on true
+     where actual.total_count <> 1
+        or actual.exact_count <> 1
+  ) then
+    raise exception 'asaas_automation_cron_invalid';
   end if;
 end
 $verify$;
@@ -2781,7 +3556,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
@@ -3119,6 +3894,7 @@ wait_for_http_status 410 "desativação do webhook legado Kiwify" \
   --data '{}'
 for protected_function in \
   accept-opportunity \
+  asaas-reconcile \
   broadcast-opportunity \
   coverage-admin \
   create-wolfie-topup \
@@ -3126,6 +3902,11 @@ for protected_function in \
   create-teacher-account \
   admin-update-subscription \
   create-asaas-subaccount \
+  create-asaas-subscription \
+  create-enrollment-pix \
+  delete-student-account \
+  generate-student-manual-pix \
+  reconcile-ledger \
   send-whatsapp \
   whatsapp-wise-wolf \
   send-contract-confirmation \
@@ -3133,10 +3914,16 @@ for protected_function in \
   process-outbox \
   notify-claim \
   school-admin \
+  sync-payments \
+  sync-plan-change-billing \
+  sync-student-asaas \
+  sync-subscription-status \
   tenant-settings-admin \
   whatsapp-evolution-proxy \
   whatsapp-lead-notification \
-  whatsapp-hr-welcome; do
+  whatsapp-hr-welcome \
+  transfer-teacher-pay \
+  update-student-billing-method; do
   wait_for_http_status 401 "autenticação de $protected_function" \
     -X POST "$api_url/functions/v1/$protected_function" \
     -H 'Content-Type: application/json' \
@@ -3163,6 +3950,34 @@ for retired_service_function in \
     -H 'Content-Type: application/json' \
     --data '{}'
 done
+wait_for_service_http_status 200 "worker durável do webhook Asaas" \
+  -X POST "$api_url/functions/v1/asaas-webhook" \
+  -H 'Content-Type: application/json' \
+  --data '{"operation":"drain","maxEvents":1}'
+wait_for_service_http_status 200 "reconciliação idempotente do ledger" \
+  -X POST "$api_url/functions/v1/reconcile-ledger" \
+  -H 'Content-Type: application/json' \
+  --data '{"batchSize":100}'
+asaas_smoke_date="$(TZ=America/Sao_Paulo date +%F)"
+[[ "$asaas_smoke_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+wait_for_service_http_status 200 "auditoria somente leitura do Asaas" \
+  -X POST "$api_url/functions/v1/asaas-reconcile" \
+  -H 'Content-Type: application/json' \
+  --data "{\"windowStart\":\"$asaas_smoke_date\",\"windowEnd\":\"$asaas_smoke_date\"}"
+asaas_connection_verified="$(
+  docker exec -i supabase-db \
+    psql -X -qAt -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+select pg_catalog.count(*)
+  from private.tenant_integration_connections as connection
+ where connection.tenant_id = 'school-wise-wolf'
+   and connection.provider = 'asaas'
+   and connection.mode = 'PLATFORM_MANAGED_ROOT'
+   and connection.status = 'healthy'
+   and connection.last_verified_at >= now() - interval '15 minutes';
+SQL
+)"
+[[ "$asaas_connection_verified" = '1' ]]
+unset asaas_connection_verified
 wait_for_service_http_status 200 "fulfillment autenticado sem fixture existente" \
   -X POST "$api_url/functions/v1/process-hub-fulfillment" \
   -H 'Content-Type: application/json' \

@@ -523,6 +523,14 @@ export function SubscribePage() {
                 <span className="pb-1 text-sm font-bold text-[#858992]">/mês</span>
               </div>
               <p className="mt-4 leading-7 text-[#717680]">{plan.description}</p>
+              <div className="mt-6 rounded-[22px] border border-[#e7f6e8] bg-[#f2faf3] p-4 text-xs leading-5 text-[#235a3a]">
+                <p className="font-extrabold uppercase tracking-[0.15em] text-[#1b5f3c]">Compra segura</p>
+                <ul className="mt-2 space-y-1">
+                  <li>• Cobrança criada só após sua revisão.</li>
+                  <li>• Não solicitamos dados de cartão aqui — só PIX ou boleto.</li>
+                  <li>• Acesso liberado depois da confirmação do pagamento.</li>
+                </ul>
+              </div>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="rounded-[22px] bg-[#fff0ec] p-4"><Mic2 size={18} className="text-[#d1263a]" /><p className="mt-3 text-2xl font-extrabold">{plan.liveMinutes} min</p><p className="text-xs text-[#8c6267]">voz ao vivo / mês</p></div>
                 <div className="rounded-[22px] bg-[#f3f4f6] p-4"><Smartphone size={18} className="text-[#555a64]" /><p className="mt-3 text-2xl font-extrabold">Mensal</p><p className="text-xs text-[#777b84]">ciclo da assinatura</p></div>

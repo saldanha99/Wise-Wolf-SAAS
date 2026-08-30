@@ -1,10 +1,11 @@
 /// <reference lib="deno.ns" />
 
 import {
-  decideHubAsaasCustomerCompensation,
+  decideHubAsaasCustomerPreservation,
   hubAsaasCustomerReference,
   normalizeAsaasCustomerId,
   resolveHubAsaasCustomerCandidate,
+  resolveHubAsaasSubscriptionCandidate,
 } from "./customer-idempotency.ts";
 
 const assertEquals = (actual: unknown, expected: unknown, message: string) => {
@@ -92,59 +93,54 @@ Deno.test("chooses a stable canonical customer when a prior failure already left
   );
 });
 
-Deno.test("compensation deletes only a customer proven created by this attempt and still unlinked", () => {
+Deno.test("an unlinked claimed customer is preserved for explicit review", () => {
   assertEquals(
-    decideHubAsaasCustomerCompensation({
+    decideHubAsaasCustomerPreservation({
       createdCustomerId: "cus_attempt",
       linkedCustomerIds: [],
       linkStateConfirmed: true,
-      providerObjectsSafeToDelete: true,
     }),
-    "DELETE_CREATED_CUSTOMER",
-    "the unlinked customer created by this attempt should be compensated",
+    "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW",
+    "a succeeded creation claim must never point at a deleted customer",
   );
   assertEquals(
-    decideHubAsaasCustomerCompensation({
+    decideHubAsaasCustomerPreservation({
       createdCustomerId: null,
       linkedCustomerIds: [],
       linkStateConfirmed: true,
-      providerObjectsSafeToDelete: true,
     }),
     "NOT_CREATED_BY_ATTEMPT",
     "a recovered customer must never be deleted",
   );
 });
 
-Deno.test("compensation keeps linked customers and defers on ambiguous state", () => {
+Deno.test("customer preservation keeps linked ids and fails closed on uncertain state", () => {
   assertEquals(
-    decideHubAsaasCustomerCompensation({
+    decideHubAsaasCustomerPreservation({
       createdCustomerId: "cus_attempt",
       linkedCustomerIds: ["cus_attempt"],
       linkStateConfirmed: true,
-      providerObjectsSafeToDelete: true,
     }),
     "KEEP_LINKED_CUSTOMER",
     "a concurrently linked customer must not be deleted",
   );
   assertEquals(
-    decideHubAsaasCustomerCompensation({
+    decideHubAsaasCustomerPreservation({
       createdCustomerId: "cus_attempt",
       linkedCustomerIds: [],
       linkStateConfirmed: false,
-      providerObjectsSafeToDelete: true,
     }),
-    "DEFER_UNCONFIRMED_STATE",
+    "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW",
     "an unavailable database read must fail closed",
   );
   assertEquals(
-    decideHubAsaasCustomerCompensation({
+    decideHubAsaasCustomerPreservation({
       createdCustomerId: "cus_attempt",
-      linkedCustomerIds: [],
+      linkedCustomerIds: ["cus_other"],
       linkStateConfirmed: true,
-      providerObjectsSafeToDelete: false,
     }),
-    "DEFER_UNCONFIRMED_STATE",
-    "a provider subscription with unknown rollback state must protect its customer",
+    "PRESERVE_CREATED_CUSTOMER_FOR_REVIEW",
+    "a compare-and-set loser must preserve the claimed customer for triage",
   );
 });
 
@@ -158,38 +154,182 @@ Deno.test("rejects malformed provider customer identifiers", () => {
   assertEquals(normalizeAsaasCustomerId("customer id"), null, "spaced id");
 });
 
+Deno.test("reuses a subscription only when every immutable billing field matches", () => {
+  const expected = {
+    externalReference: "hub:00000000-0000-4000-8000-000000000123",
+    customerId: "cus_expected",
+    billingType: "PIX" as const,
+    billingCycle: "MONTHLY" as const,
+    amount: 99.9,
+    nextDueDate: "2026-08-25",
+    description: "Wise Wolf Hub - Pro (MONTHLY)",
+    maxPayments: null,
+    splitPolicy: { kind: "NONE" as const },
+  };
+  assertEquals(
+    resolveHubAsaasSubscriptionCandidate({
+      id: "sub_expected",
+      customer: "cus_expected",
+      billingType: "PIX",
+      cycle: "MONTHLY",
+      value: 99.90,
+      externalReference: expected.externalReference,
+      nextDueDate: expected.nextDueDate,
+      description: expected.description,
+      status: "ACTIVE",
+    }, expected),
+    {
+      status: "MATCH",
+      subscriptionId: "sub_expected",
+      providerStatus: "ACTIVE",
+    },
+    "an exact provider subscription should be recovered",
+  );
+
+  for (
+    const conflicting of [
+      { customer: "cus_other" },
+      { billingType: "BOLETO" },
+      { cycle: "YEARLY" },
+      { value: 100 },
+      { externalReference: "hub:other" },
+      { nextDueDate: "2026-08-26" },
+      { description: "Changed provider schedule" },
+      { status: "INACTIVE" },
+      { status: "EXPIRED" },
+      { maxPayments: 12 },
+      { split: [{ walletId: "wallet_other", percentualValue: 90 }] },
+      { split: {} },
+      { deleted: true },
+    ]
+  ) {
+    assertEquals(
+      resolveHubAsaasSubscriptionCandidate({
+        id: "sub_conflict",
+        customer: "cus_expected",
+        billingType: "PIX",
+        cycle: "MONTHLY",
+        value: 99.9,
+        externalReference: expected.externalReference,
+        nextDueDate: expected.nextDueDate,
+        description: expected.description,
+        status: "ACTIVE",
+        ...conflicting,
+      }, expected),
+      { status: "CONFLICT" },
+      "a changed immutable provider field must require review",
+    );
+  }
+
+  for (const noSplit of [undefined, null, []]) {
+    assertEquals(
+      resolveHubAsaasSubscriptionCandidate({
+        id: "sub_expected",
+        customer: "cus_expected",
+        billingType: "PIX",
+        cycle: "MONTHLY",
+        value: 99.9,
+        externalReference: expected.externalReference,
+        nextDueDate: expected.nextDueDate,
+        description: expected.description,
+        status: "ACTIVE",
+        maxPayments: null,
+        split: noSplit,
+      }, expected).status,
+      "MATCH",
+      "nullish/empty provider split representations must mean no split",
+    );
+  }
+});
+
 Deno.test({
-  name: "checkout reconciles before create and compare-and-sets the local link",
+  name:
+    "checkout durably claims customer creation and compare-and-sets the local link",
   permissions: { read: true },
   async fn() {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
     );
+    const claimPosition = source.indexOf('operation: "CUSTOMER_CREATE"');
     const lookupPosition = source.indexOf(
-      "const existingCustomers = await asaasRequest(",
+      "const customerLookup = await findUniqueAsaasEntity",
+      claimPosition,
+    );
+    const submitFencePosition = source.indexOf(
+      "await markHubProviderCreationSubmitting({",
+      lookupPosition,
     );
     const createPosition = source.indexOf(
-      'const customer = await asaasRequest("/customers", {',
+      "`${customerCreateIntegration.baseUrl}/customers`",
+      submitFencePosition,
     );
     if (
-      lookupPosition < 0 || createPosition < 0 ||
-      lookupPosition >= createPosition
+      claimPosition < 0 || lookupPosition < 0 || submitFencePosition < 0 ||
+      createPosition < 0 || claimPosition >= lookupPosition ||
+      lookupPosition >= submitFencePosition ||
+      submitFencePosition >= createPosition
     ) {
-      throw new Error("provider lookup must happen before customer creation");
+      throw new Error(
+        "durable claim, full lookup and submit fence must precede customer POST",
+      );
     }
-    if (!source.includes('.is("asaas_customer_id", null)')) {
-      throw new Error("customer binding must use a null compare-and-set guard");
+    if (
+      !source.includes("await adoptHubProviderCreationBinding({") ||
+      !source.includes("providerEntityId: customerId")
+    ) {
+      throw new Error(
+        "customer recovery must atomically adopt its provider claim and local link",
+      );
     }
-    if (!source.includes("!Array.isArray(existingCustomers?.data)")) {
-      throw new Error("a malformed provider lookup must fail closed");
+    if (
+      !source.includes("await assertProviderCustomerIdentity(customerId)") ||
+      !source.includes("ASAAS_CUSTOMER_PROVIDER_IDENTITY_CONFLICT")
+    ) {
+      throw new Error(
+        "linked and claimed customer ids must be reloaded and proven at the provider",
+      );
     }
-    if (!source.includes("createdProviderCustomerId = customerId;")) {
+    if (!source.includes('customerLookup.kind === "DUPLICATE"')) {
+      throw new Error("duplicate provider customers must enter triage");
+    }
+    if (!source.includes("createdProviderCustomerId = submittedCustomerId;")) {
       throw new Error(
         "compensation provenance must come from the POST response",
       );
     }
-    if (!source.includes("await compensateCreatedProviderCustomer(")) {
-      throw new Error("created customers need a guarded compensation path");
+    const postIdentityProof = source.indexOf(
+      "await assertProviderCustomerIdentity(submittedCustomerId)",
+      createPosition,
+    );
+    const succeededRecording = source.indexOf(
+      "await recordAsaasCreationState(auth.context.admin, customerClaim",
+      postIdentityProof,
+    );
+    if (
+      postIdentityProof < createPosition ||
+      succeededRecording < postIdentityProof
+    ) {
+      throw new Error(
+        "a 2xx customer POST must be GET-proven by id/reference/CPF before success is recorded",
+      );
+    }
+    if (
+      source.includes('method: "DELETE"') ||
+      source.includes("deleteAsaasCustomer") ||
+      source.includes("DELETE_CREATED_CUSTOMER") ||
+      source.includes("compensateCreatedProviderCustomer")
+    ) {
+      throw new Error(
+        "a succeeded customer creation claim must never be deleted by checkout compensation",
+      );
+    }
+    if (
+      source.includes('asaasRequest("/customers", {') ||
+      !source.includes('status: "UNKNOWN"')
+    ) {
+      throw new Error(
+        "customer creation must never bypass the durable ambiguous-outcome guard",
+      );
     }
   },
 });

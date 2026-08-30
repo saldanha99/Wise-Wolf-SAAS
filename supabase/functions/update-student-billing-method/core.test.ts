@@ -10,6 +10,7 @@ import {
   parseCreditCard,
   parseSubscriptionPayments,
   paymentNoLongerNeedsCharge,
+  providerSubscriptionCardMatchesLast4,
   safeProviderMessage,
 } from "./core.ts";
 
@@ -44,6 +45,31 @@ Deno.test("rejeita cartao incompleto", () => {
     parseCreditCard({ holderName: "A", number: "123", ccv: "1" }),
     null,
   );
+});
+
+Deno.test("confirma o cartão apenas por campo explícito e últimos quatro dígitos", () => {
+  assertEquals(
+    providerSubscriptionCardMatchesLast4(
+      { creditCard: { creditCardNumber: "**** **** **** 1111" } },
+      "1111",
+    ),
+    true,
+  );
+  assertEquals(
+    providerSubscriptionCardMatchesLast4(
+      { creditCardNumber: "4111111111112222" },
+      "2222",
+    ),
+    true,
+  );
+  assertEquals(
+    providerSubscriptionCardMatchesLast4(
+      { creditCard: { creditCardToken: "token-ending-1111" } },
+      "1111",
+    ),
+    false,
+  );
+  assertEquals(providerSubscriptionCardMatchesLast4({}, "1111"), false);
 });
 
 Deno.test("usa o primeiro IP encaminhado e rejeita texto arbitrario", () => {

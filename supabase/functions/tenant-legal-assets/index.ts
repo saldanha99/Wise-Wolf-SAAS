@@ -208,6 +208,7 @@ async function resolveOffer(body: Record<string, unknown>): Promise<Response> {
     admin,
     tenantId,
     schoolInfo,
+    { publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL") },
   );
   if (!materialized?.legalRepresentativeSignatureUrl) {
     throw new ApiError(
@@ -234,6 +235,7 @@ async function resolveCurrent(
     context.admin,
     tenant.tenantId,
     tenant.schoolInfo,
+    { publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL") },
   );
   return json({ tenantId: tenant.tenantId, schoolInfo });
 }
@@ -277,6 +279,7 @@ async function resolveContract(
     context.admin,
     tenant.tenantId,
     data.legal_snapshot,
+    { publicBaseUrl: Deno.env.get("SUPABASE_PUBLIC_URL") },
   );
   return json({
     full_name: party.fullName,

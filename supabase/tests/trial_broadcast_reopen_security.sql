@@ -110,7 +110,44 @@ values
     '00000000-0000-4000-8000-000000000981',
     '00000000-0000-4000-8000-000000000984',
     'NO_SHOW_TEACHER', 'OPEN', 'TRIAL'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000988',
+    'trial-broadcast-test', 'Aluno Retry Direcionado', '5511999999988',
+    jsonb_build_array(jsonb_build_object(
+      'day', extract(dow from (
+        (now() at time zone 'America/Sao_Paulo')::date + 31
+      ))::integer,
+      'date', to_char(
+        (now() at time zone 'America/Sao_Paulo')::date + 31,
+        'YYYY-MM-DD'
+      ),
+      'time', '19:00',
+      'formatted', to_char(
+        (now() at time zone 'America/Sao_Paulo')::date + 31,
+        'DD/MM/YYYY'
+      )
+    )),
+    'OPEN', null, null, null, null, 'OPEN', 'TRIAL'
   );
+
+insert into private.vendor_trial_teacher_requests (
+  id, tenant_id, opportunity_id, target_teacher_id,
+  requested_by, slot_start, status
+)
+values (
+  '00000000-0000-4000-8000-000000000989',
+  'trial-broadcast-test',
+  '00000000-0000-4000-8000-000000000988',
+  '00000000-0000-4000-8000-000000000981',
+  '00000000-0000-4000-8000-000000000981',
+  (
+    (
+      (now() at time zone 'America/Sao_Paulo')::date + 31
+    )::text || ' 19:00'
+  )::timestamp at time zone 'America/Sao_Paulo',
+  'AWAITING_TEACHER'
+);
 
 select pg_temp.assert_true(
   not has_function_privilege(
@@ -128,13 +165,42 @@ select pg_temp.assert_true(
   ),
   'authenticated consegue reabrir experimental'
 );
+select pg_temp.assert_true(
+  has_function_privilege(
+    'service_role',
+    'public.reopen_trial_opportunity_for_broadcast(text,uuid,jsonb,text,jsonb)',
+    'execute'
+  ),
+  'service_role não consegue reabrir experimental'
+);
+select pg_temp.assert_true(
+  (
+    select procedure.prosecdef
+       and pg_catalog.pg_get_userbyid(procedure.proowner) = 'postgres'
+       and exists (
+         select 1
+           from unnest(
+             coalesce(procedure.proconfig, array[]::text[])
+           ) setting
+          where setting = 'search_path=""'
+       )
+      from pg_catalog.pg_proc as procedure
+     where procedure.oid = to_regprocedure(
+       'public.reopen_trial_opportunity_for_broadcast(text,uuid,jsonb,text,jsonb)'
+     )
+  ),
+  'função de reabertura perdeu owner, SECURITY DEFINER ou search_path seguro'
+);
 
 set local role service_role;
 
 do $test$
 declare
   v_slot_date date := (now() at time zone 'America/Sao_Paulo')::date + 30;
+  v_directed_slot_date date :=
+    (now() at time zone 'America/Sao_Paulo')::date + 31;
   v_slots jsonb;
+  v_directed_slots jsonb;
   v_result jsonb;
 begin
   v_slots := jsonb_build_array(jsonb_build_object(
@@ -143,6 +209,26 @@ begin
     'time', '18:00',
     'formatted', to_char(v_slot_date, 'DD/MM/YYYY')
   ));
+  v_directed_slots := jsonb_build_array(jsonb_build_object(
+    'day', extract(dow from v_directed_slot_date)::integer,
+    'date', to_char(v_directed_slot_date, 'YYYY-MM-DD'),
+    'time', '19:00',
+    'formatted', to_char(v_directed_slot_date, 'DD/MM/YYYY')
+  ));
+
+  v_result := public.reopen_trial_opportunity_for_broadcast(
+    'trial-broadcast-test',
+    '00000000-0000-4000-8000-000000000988',
+    v_directed_slots,
+    null,
+    null
+  );
+  if not coalesce((v_result ->> 'ok')::boolean, false)
+     or not coalesce((v_result ->> 'idempotent')::boolean, false) then
+    raise exception
+      'assertion failed: retry direcionado não foi idempotente: %',
+      v_result;
+  end if;
 
   v_result := public.reopen_trial_opportunity_for_broadcast(
     'trial-broadcast-test',
@@ -261,4 +347,14 @@ end;
 $test$;
 
 reset role;
+
+select pg_temp.assert_true(
+  (
+    select request.status = 'CANCELED'
+      from private.vendor_trial_teacher_requests as request
+     where request.id = '00000000-0000-4000-8000-000000000989'
+  ),
+  'retry de oportunidade OPEN manteve solicitação direcionada pendente'
+);
+
 rollback;

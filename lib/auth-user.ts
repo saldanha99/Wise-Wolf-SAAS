@@ -11,25 +11,40 @@ type ProfileRecord = Record<string, any>;
  */
 export async function mapProfileToAppUser(
   profile: ProfileRecord,
-): Promise<User> {
+): Promise<User | null> {
   // Dados privados não fazem parte do diretório de profiles. O próprio usuário
   // recebe apenas o seu registro por RPC; professores não conseguem apontar a
   // chamada para um aluno.
-  const [{ data: myPay }, { data: accessContext }, privateProfile] = await Promise.all([
-    supabase.rpc("get_my_pay"),
-    supabase.rpc("get_my_access_context").maybeSingle(),
-    loadAuthorizedProfilePrivate(profile.id),
-  ]);
+  const { data: accessContext, error: accessContextError } = await supabase
+    .rpc("get_my_access_context")
+    .maybeSingle();
+  if (accessContextError) throw accessContextError;
+
   const activeAccess = accessContext as
     | { tenant_id?: string; role?: string }
     | null;
+  const tenantId = activeAccess?.tenant_id?.trim();
+  const role = activeAccess?.role?.trim();
+
+  // profiles.tenant_id/role são apenas compatibilidade de dados. Restaurar uma
+  // sessão a partir deles recriaria acesso depois de membership revogada.
+  // NON_STUDENT é o único contexto deliberadamente sem escola: o próprio RPC
+  // o resolve para o Hub, sem reaproveitar role/tenant_id do profile.
+  if (!role || (!tenantId && role !== UserRole.NON_STUDENT)) return null;
+
+  const [{ data: myPay }, privateProfile] = await Promise.all([
+    supabase.rpc("get_my_pay"),
+    loadAuthorizedProfilePrivate(profile.id),
+  ]);
 
   return {
     id: profile.id,
-    tenantId: activeAccess?.tenant_id || profile.tenant_id,
+    tenantId: tenantId || "",
     name: profile.full_name,
     email: profile.email,
-    role: (activeAccess?.role || profile.role) as UserRole,
+    role: role as UserRole,
+    status: profile.status || undefined,
+    lifecycleStatus: profile.lifecycle_status || undefined,
     avatar: profile.avatar_url ||
       `https://ui-avatars.com/api/?name=${
         encodeURIComponent(profile.full_name || "")

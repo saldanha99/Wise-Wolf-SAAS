@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ContractDocument, getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
-import { AlertTriangle, ShieldCheck, ArrowRight, Lock, Loader2, PenTool } from 'lucide-react';
+import {
+    AlertTriangle,
+    ArrowRight,
+    CheckCircle2,
+    Lock,
+    Loader2,
+    PenTool,
+    ShieldCheck,
+    Type,
+} from 'lucide-react';
 
 interface ContractModalProps {
     isOpen: boolean;
@@ -46,8 +55,9 @@ const ContractModal: React.FC<ContractModalProps> = ({
 }) => {
     const [accepted, setAccepted] = useState(false);
     const [typedName, setTypedName] = useState('');
-    const [isValidSignature, setIsValidSignature] = useState(false);
     const schoolIdentity = getSchoolContractIdentity(contractProps.school);
+    const isValidSignature = typedName.trim().toLowerCase()
+        === contractProps.studentName.trim().toLowerCase();
 
     // Floating Button State & Observer
     const signatureRef = useRef<HTMLDivElement>(null);
@@ -75,12 +85,9 @@ const ContractModal: React.FC<ContractModalProps> = ({
     }, [isOpen]);
 
     useEffect(() => {
-        if (!isOpen) {
-            setAccepted(false);
-            setTypedName('');
-            setIsValidSignature(false);
-        }
-    }, [isOpen]);
+        setAccepted(false);
+        setTypedName('');
+    }, [isOpen, contractProps.studentName]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -129,22 +136,15 @@ const ContractModal: React.FC<ContractModalProps> = ({
         signatureRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    useEffect(() => {
-        // Validation: Typed name must match studentName exactly (trimming whitespace is fair)
-        // Case insensitive as requested
-        if (typedName.trim().toLowerCase() === contractProps.studentName.trim().toLowerCase()) {
-            setIsValidSignature(true);
-        } else {
-            setIsValidSignature(false);
-        }
-    }, [typedName, contractProps.studentName]);
-
     if (!isOpen) return null;
 
+    const canSubmitSignature = schoolIdentity.isReady && accepted && isValidSignature;
+
     const handleConfirm = () => {
-        if (schoolIdentity.isReady && accepted && isValidSignature) {
-            onConfirm({ type: 'DIGITAL', typedName: typedName.trim() });
-        }
+        if (!canSubmitSignature) return;
+        const finalName = typedName.trim();
+        if (!finalName) return;
+        onConfirm({ type: 'DIGITAL', typedName: finalName });
     };
 
     const progressSteps = [
@@ -157,35 +157,42 @@ const ContractModal: React.FC<ContractModalProps> = ({
     const currentProgressIndex = progressSteps.findIndex(item => item.key === contractProps.processingStage);
 
     return createPortal(
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-0 animate-in fade-in duration-300 sm:p-4">
+        <div className="enrollment-contract-overlay fixed inset-0 z-[250] flex items-center justify-center backdrop-blur-md p-0 animate-in fade-in duration-300 sm:p-4">
             <div
                 ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="contract-dialog-title"
                 tabIndex={-1}
-                className="relative flex h-dvh max-h-dvh w-full max-w-5xl flex-col bg-brand-surface shadow-2xl animate-in slide-in-from-bottom-5 duration-500 sm:h-auto sm:max-h-[92dvh] sm:rounded-3xl lg:h-[90dvh]"
+                className="enrollment-contract-dialog relative flex h-dvh max-h-dvh w-full max-w-7xl flex-col animate-in slide-in-from-bottom-5 duration-500 sm:h-[94dvh] sm:max-h-[94dvh] sm:rounded-[1.75rem]"
             >
                 {/* Header */}
-                <div className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-brand-border bg-brand-surface-2 p-4 sm:rounded-t-3xl sm:p-6">
-                    <h3 id="contract-dialog-title" className="flex min-w-0 items-center gap-2 text-base font-black text-brand-text sm:text-lg">
-                        <ShieldCheck className="text-emerald-600" /> Assinatura Digital
-                    </h3>
+                <div className="enrollment-contract-header z-20 flex shrink-0 items-center justify-between gap-3 sm:rounded-t-[1.75rem]">
+                    <div className="min-w-0">
+                        <p className="text-[9px] font-extrabold uppercase tracking-[0.17em] text-blue-200/70">Etapa 3 de 4 · Contrato</p>
+                        <h3 id="contract-dialog-title" className="mt-1 flex min-w-0 items-center gap-2 text-base font-black text-white sm:text-lg">
+                            <ShieldCheck className="text-emerald-400" size={20} aria-hidden="true" /> Assinatura digital
+                        </h3>
+                    </div>
+                    <p className="hidden items-center gap-2 text-xs font-bold text-emerald-300 sm:flex">
+                        <CheckCircle2 size={14} />
+                        Contrato protegido e rastreável
+                    </p>
                     <button
                         type="button"
                         onClick={onClose}
                         disabled={loading}
                         aria-label="Voltar para o formulário de matrícula"
-                        className="shrink-0 text-brand-muted hover:text-brand-text disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-xl border border-white/10 px-3 text-xs font-bold text-white/70 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         <ArrowRight size={20} className="rotate-180" /> Voltar
                     </button>
                 </div>
 
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+                <div className="enrollment-contract-body">
 
                     {/* Left: Contract Viewer (Takes most width on lg) */}
-                    <div className="relative flex w-full flex-1 flex-col items-center bg-brand-surface-2/50 p-2 pb-24 sm:p-4 sm:pb-24 lg:p-6">
+                    <div className="enrollment-contract-document relative flex w-full flex-col items-center">
                         <div className="w-full max-w-[210mm] bg-white shadow-xl">
                             <div className="select-text">
                                 <ContractDocument
@@ -217,7 +224,17 @@ const ContractModal: React.FC<ContractModalProps> = ({
                     </div>
 
                     {/* Right: Signature Actions */}
-                    <div ref={signatureRef} className="relative z-10 flex w-full shrink-0 flex-col gap-6 overflow-visible border-t border-brand-border bg-brand-surface p-4 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] sm:p-6">
+                    <div ref={signatureRef} className="enrollment-contract-signature relative z-10 flex w-full shrink-0 flex-col gap-5">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                            <p className="flex items-center gap-2 font-black uppercase tracking-[0.15em] text-emerald-900">
+                                <CheckCircle2 size={14} />
+                                Assinatura com trilha de auditoria
+                            </p>
+                            <p className="mt-2 text-xs leading-6 text-emerald-800">
+                                Sua assinatura fica registrada com data, hora e origem do acesso. O histórico fica preservado para validação
+                                e consulta.
+                            </p>
+                        </div>
 
                         {!schoolIdentity.isReady && (
                             <div role="alert" className="flex max-w-3xl items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900 mx-auto w-full">
@@ -231,7 +248,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                             </div>
                         )}
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900 max-w-3xl mx-auto w-full">
+                        <div className="enrollment-contract-summary w-full text-xs">
                             <div>
                                 <p className="text-[9px] uppercase font-bold text-blue-600">Mensalidade</p>
                                 <p className="font-black">R$ {contractProps.planValue}</p>
@@ -249,7 +266,7 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                 <p className="font-black">{contractProps.firstDueDate || contractProps.startDate}</p>
                             </div>
                             {Number(contractProps.proRataValue || 0) > 0 && (
-                                <p className="col-span-2 sm:col-span-4 text-[10px] text-blue-700">
+                                <p className="col-span-2 text-[10px] text-blue-700">
                                     Inclui valor proporcional inicial de R$ {Number(contractProps.proRataValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.
                                 </p>
                             )}
@@ -261,19 +278,43 @@ const ContractModal: React.FC<ContractModalProps> = ({
                         </div>
 
                         <div className="space-y-4 max-w-3xl mx-auto w-full">
+                            <div className="rounded-xl border border-brand-border bg-brand-surface-2 p-4">
+                                <p className="flex items-center gap-2 text-xs font-black text-brand-muted uppercase tracking-widest mb-3">
+                                    <Type size={14} /> Assinatura pelo nome completo
+                                </p>
+                                <p className="text-[11px] leading-relaxed text-brand-muted">
+                                    Para preservar uma evidência verificável, confirme a assinatura digitando exatamente o nome do cadastro.
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${isValidSignature
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                        <CheckCircle2 size={12} />
+                                        {isValidSignature
+                                            ? 'Nome conferido com cadastro'
+                                            : 'Digite exatamente como no cadastro'}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div>
-                                <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">
+                                <label
+                                    htmlFor="contract-typed-signature"
+                                    className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2"
+                                >
                                     Digite seu nome completo (exatamente como no cadastro)
                                 </label>
                                 <button
                                     type="button"
                                     onClick={() => setTypedName(contractProps.studentName)}
                                     disabled={loading || !schoolIdentity.isReady}
-                                    className="mb-2 text-[10px] font-bold text-blue-700 hover:underline disabled:opacity-50"
+                                    className="enrollment-contract-use-name mb-2 inline-flex items-center rounded-lg text-xs font-bold text-blue-700 hover:underline disabled:opacity-50"
                                 >
                                     Usar o nome do cadastro
                                 </button>
                                 <input
+                                    id="contract-typed-signature"
                                     type="text"
                                     disabled={loading || !schoolIdentity.isReady}
                                     value={typedName}
@@ -294,11 +335,11 @@ const ContractModal: React.FC<ContractModalProps> = ({
                             {/* Live Preview */}
                             <div>
                                 <label className="block text-xs font-black text-brand-muted uppercase tracking-widest mb-2">
-                                    Preview da Assinatura
+                                    Preview da assinatura
                                 </label>
-                                <div className="h-24 border border-brand-border rounded-xl flex items-center justify-center bg-brand-surface relative overflow-hidden">
+                                <div className="enrollment-contract-signature-preview h-24 border border-brand-border rounded-xl flex items-center justify-center bg-brand-surface relative overflow-hidden">
                                     {typedName ? (
-                                        <span className="text-3xl text-brand-text transform -rotate-2" style={{ fontFamily: '"Dancing Script", cursive' }}>
+                                        <span className="enrollment-contract-signature-preview__name text-3xl text-brand-text transform -rotate-2" style={{ fontFamily: '"Dancing Script", cursive' }}>
                                             {typedName}
                                         </span>
                                     ) : (
@@ -359,17 +400,17 @@ const ContractModal: React.FC<ContractModalProps> = ({
                                     onChange={(e) => setAccepted(e.target.checked)}
                                 />
                                 <span className="text-xs text-brand-muted font-medium leading-relaxed">
-                                    Li e concordo com os termos do contrato e com a assinatura digital.
+                                    Li e concordo com os termos do contrato, incluindo a versão mais recente, e com o fluxo de assinatura digital.
                                 </span>
                             </label>
 
                             <button
                                 onClick={handleConfirm}
-                                disabled={loading || !schoolIdentity.isReady || !accepted || !isValidSignature}
-                                className="w-full py-4 bg-[#002366] disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-blue-900 text-white rounded-xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-blue-900/20 flex items-center justify-center gap-3"
+                                disabled={loading || !canSubmitSignature}
+                                className="enrollment-contract-primary flex w-full items-center justify-center gap-3 py-4 text-sm font-black text-white transition-all disabled:cursor-not-allowed"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <>
-                                    <ShieldCheck size={18} /> FINALIZAR MATRÍCULA
+                                    <ShieldCheck size={18} /> Finalizar matrícula
                                 </>}
                             </button>
                         </div>

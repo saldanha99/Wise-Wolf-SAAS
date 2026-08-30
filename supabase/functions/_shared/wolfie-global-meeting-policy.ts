@@ -204,6 +204,7 @@ function hasCanonicalGlobalMeetingAssessmentEvidence(
 
   return evidence.some((entry) => {
     if (!isGlobalMeetingMemoryRecord(entry)) return false;
+    const rubric = entry.rubric;
     if (
       entry.basis !== "session_assessment" ||
       entry.policyVersion !== 1 ||
@@ -212,13 +213,13 @@ function hasCanonicalGlobalMeetingAssessmentEvidence(
       !GLOBAL_MEETING_MEMORY_UUID_PATTERN.test(entry.attemptId) ||
       !isGlobalMeetingMemoryScore(entry.score) ||
       !isGlobalMeetingMemoryScore(entry.dimensionScore) ||
-      !isGlobalMeetingMemoryRecord(entry.rubric)
+      !isGlobalMeetingMemoryRecord(rubric)
     ) {
       return false;
     }
 
     return GLOBAL_MEETING_MEMORY_DIMENSIONS.every((rubricDimension) =>
-      isGlobalMeetingMemoryScore(entry.rubric?.[rubricDimension])
+      isGlobalMeetingMemoryScore(rubric[rubricDimension])
     );
   });
 }

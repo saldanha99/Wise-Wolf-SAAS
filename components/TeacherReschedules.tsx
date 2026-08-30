@@ -73,38 +73,33 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
         if (!confirm(`Enviar notificação de reposição para ${item.studentName}?`)) return;
 
         try {
-            // 1. Fetch Student Phone
-            const { data: stdProfile } = await supabase.from('profiles').select('phone').eq('full_name', item.studentName).single();
-            if (!stdProfile?.phone) { alert("Telefone do aluno não encontrado."); return; }
-
-            // 2. Fetch Teacher Details (for Meeting Link & Instance)
-            const { data: tchProfile } = await supabase.from('profiles').select('id, meeting_url').eq('full_name', item.teacherName).single();
-
-            const instanceName = tchProfile
-                ? `prof-${item.teacherName.toLowerCase().split(' ')[0]}-${tchProfile.id.substring(0, 4)}`
-                : 'wise-wolf';
-
-            const meetingLink = tchProfile?.meeting_url || "";
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Sessão expirada. Entre novamente.');
 
-            await fetch(`${FUNCTIONS_URL}/send-class-notification`, {
+            const response = await fetch(`${FUNCTIONS_URL}/send-class-notification`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({
-                    type: 'RESCHEDULE',
-                    student_name: item.studentName,
-                    student_phone: stdProfile.phone,
-                    teacher_name: item.teacherName,
-                    date: item.date,
-                    time: item.time,
-                    instanceName: instanceName,
-                    meeting_link: meetingLink
+                    action: 'RESCHEDULE_SCHEDULED',
+                    source_id: item.id,
+                    source_type: 'RESCHEDULE',
+                    class_date: item.date,
                 })
             });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result?.error) {
+                throw new Error(result?.error || `status_${response.status}`);
+            }
+            if (
+                result?.delivery !== 'accepted' ||
+                typeof result?.provider_message_id !== 'string' ||
+                !result.provider_message_id.trim()
+            ) {
+                throw new Error('delivery_not_confirmed');
+            }
             alert("Notificação enviada com sucesso!");
 
         } catch (error) {

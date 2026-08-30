@@ -12,6 +12,7 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.assert_true(boolean, text) to public;
 
 insert into public.saas_plans (
   id,
@@ -200,6 +201,8 @@ where id = 'saas-lifecycle-paid';
 select public.apply_saas_checkout_billing_event(
   p_checkout_id => '00000000-0000-4000-8000-000000000c02',
   p_event_name => 'PAYMENT_OVERDUE',
+  p_provider_event_id => 'evt_lifecycle_renewal_overdue',
+  p_event_created_at => now() - interval '50 minutes',
   p_payment_id => 'pay_renewal',
   p_payment_value => 197,
   p_billing_type => 'PIX',
@@ -221,12 +224,14 @@ select pg_temp.assert_true(
 select public.apply_saas_checkout_billing_event(
   p_checkout_id => '00000000-0000-4000-8000-000000000c02',
   p_event_name => 'PAYMENT_RECEIVED',
+  p_provider_event_id => 'evt_lifecycle_renewal_received',
+  p_event_created_at => now() - interval '40 minutes',
   p_payment_id => 'pay_renewal',
   p_payment_value => 197,
   p_billing_type => 'PIX',
   p_customer_id => 'cus_lifecycle',
   p_subscription_id => 'sub_lifecycle',
-  p_paid_at => now(),
+  p_paid_at => now() - interval '40 minutes',
   p_due_date => current_date
 );
 
@@ -250,12 +255,14 @@ select pg_temp.assert_true(
 select public.apply_saas_checkout_billing_event(
   p_checkout_id => '00000000-0000-4000-8000-000000000c02',
   p_event_name => 'PAYMENT_RECEIVED',
+  p_provider_event_id => 'evt_lifecycle_renewal_received',
+  p_event_created_at => now() - interval '40 minutes',
   p_payment_id => 'pay_renewal',
   p_payment_value => 197,
   p_billing_type => 'PIX',
   p_customer_id => 'cus_lifecycle',
   p_subscription_id => 'sub_lifecycle',
-  p_paid_at => now(),
+  p_paid_at => now() - interval '40 minutes',
   p_due_date => current_date
 );
 
@@ -272,6 +279,8 @@ select pg_temp.assert_true(
 select public.apply_saas_checkout_billing_event(
   p_checkout_id => '00000000-0000-4000-8000-000000000c02',
   p_event_name => 'PAYMENT_REFUNDED',
+  p_provider_event_id => 'evt_lifecycle_renewal_refunded',
+  p_event_created_at => now() - interval '30 minutes',
   p_payment_id => 'pay_renewal',
   p_payment_value => 197,
   p_billing_type => 'PIX',
@@ -291,27 +300,34 @@ select pg_temp.assert_true(
   'refund nao revogou o acesso e a fatura no mesmo passo'
 );
 
-select public.apply_saas_checkout_billing_event(
-  p_checkout_id => '00000000-0000-4000-8000-000000000c02',
-  p_event_name => 'PAYMENT_RECEIVED',
-  p_payment_id => 'pay_renewal',
-  p_payment_value => 197,
-  p_billing_type => 'PIX',
-  p_customer_id => 'cus_lifecycle',
-  p_subscription_id => 'sub_lifecycle',
-  p_paid_at => now()
+select pg_temp.assert_true(
+  (public.apply_saas_checkout_billing_event(
+    p_checkout_id => '00000000-0000-4000-8000-000000000c02',
+    p_event_name => 'PAYMENT_RECEIVED',
+    p_provider_event_id => 'evt_lifecycle_received_after_refund',
+    p_event_created_at => now() - interval '20 minutes',
+    p_payment_id => 'pay_renewal',
+    p_payment_value => 197,
+    p_billing_type => 'PIX',
+    p_customer_id => 'cus_lifecycle',
+    p_subscription_id => 'sub_lifecycle',
+    p_paid_at => now() - interval '20 minutes'
+  ) ->> 'action') = 'TERMINAL_IGNORED',
+  'evento pago posterior reabriu uma cobranca terminal'
 );
 
 select pg_temp.assert_true(
-  private.tenant_is_operational('saas-lifecycle-paid')
-  and (select status = 'PAID'
+  not private.tenant_is_operational('saas-lifecycle-paid')
+  and (select status = 'REFUNDED'
        from public.saas_invoices where asaas_payment_id = 'pay_renewal'),
-  'evento pago autoritativo nao restaurou o mesmo periodo revertido'
+  'replay pago alterou acesso ou fatura depois do estorno terminal'
 );
 
 select public.apply_saas_checkout_billing_event(
   p_checkout_id => '00000000-0000-4000-8000-000000000c02',
   p_event_name => 'SUBSCRIPTION_DELETED',
+  p_provider_event_id => 'evt_lifecycle_subscription_deleted',
+  p_event_created_at => now() - interval '10 minutes',
   p_payment_value => 197,
   p_billing_type => 'PIX',
   p_customer_id => 'cus_lifecycle',
@@ -329,28 +345,34 @@ select pg_temp.assert_true(
   'exclusao da assinatura no provedor nao bloqueou o tenant'
 );
 
-do $$
-begin
-  perform public.apply_saas_checkout_billing_event(
+select pg_temp.assert_true(
+  (public.apply_saas_checkout_billing_event(
     p_checkout_id => '00000000-0000-4000-8000-000000000c02',
     p_event_name => 'PAYMENT_RECEIVED',
+    p_provider_event_id => 'evt_lifecycle_payment_after_terminal',
+    p_event_created_at => now() - interval '5 minutes',
     p_payment_id => 'pay_after_terminal_cancel',
     p_payment_value => 197,
     p_billing_type => 'PIX',
     p_customer_id => 'cus_lifecycle',
     p_subscription_id => 'sub_lifecycle',
-    p_paid_at => now()
-  );
-  raise exception 'assertion failed: nova cobranca reativou assinatura removida';
-exception when object_not_in_prerequisite_state then null;
-end;
-$$;
+    p_paid_at => now() - interval '5 minutes'
+  ) ->> 'action') = 'REVIEW_REQUIRED',
+  'nova cobranca em assinatura terminal nao foi enviada para revisao'
+);
+
+select pg_temp.assert_true(
+  not private.tenant_is_operational('saas-lifecycle-paid'),
+  'nova cobranca reativou assinatura removida'
+);
 
 do $$
 begin
   perform public.apply_saas_checkout_billing_event(
     p_checkout_id => '00000000-0000-4000-8000-000000000c02',
     p_event_name => 'PAYMENT_RECEIVED',
+    p_provider_event_id => 'evt_lifecycle_wrong_amount',
+    p_event_created_at => now() - interval '4 minutes',
     p_payment_id => 'pay_wrong_amount',
     p_payment_value => 1,
     p_billing_type => 'PIX',
@@ -380,12 +402,12 @@ select pg_temp.assert_true(
   )
   and not has_function_privilege(
     'authenticated',
-    'public.apply_saas_checkout_billing_event(uuid,text,text,numeric,text,text,text,text,timestamptz,date,text,text)',
+    'public.apply_saas_checkout_billing_event(uuid,text,text,timestamptz,text,numeric,text,text,text,text,timestamptz,date,text,text)',
     'EXECUTE'
   )
   and has_function_privilege(
     'service_role',
-    'public.apply_saas_checkout_billing_event(uuid,text,text,numeric,text,text,text,text,timestamptz,date,text,text)',
+    'public.apply_saas_checkout_billing_event(uuid,text,text,timestamptz,text,numeric,text,text,text,text,timestamptz,date,text,text)',
     'EXECUTE'
   ),
   'inbox ou RPC financeira ficou exposta ao cliente'
