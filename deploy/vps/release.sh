@@ -265,7 +265,7 @@ if [[ -d "$backups_dir" ]]; then
     exit 1
   fi
 fi
-for required_command in awk base64 curl docker find flock grep sha256sum stat; do
+for required_command in awk base64 curl docker find flock grep jq sha256sum stat; do
   command -v "$required_command" >/dev/null
 done
 docker inspect supabase-db --format '{{.State.Running}}' | grep -qx true
@@ -3992,15 +3992,8 @@ for whatsapp_webhook_batch in {1..20}; do
       -H 'Content-Type: application/json' \
       --data '{"limit":100}'
   )"
-  printf '%s' "$whatsapp_webhook_reconcile_body" | node -e '
-  let body = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => body += chunk);
-  process.stdin.on("end", () => {
-    const result = JSON.parse(body);
-    if (result.ok !== true || Number(result.failed) !== 0) process.exit(1);
-  });
-  '
+  printf '%s' "$whatsapp_webhook_reconcile_body" |
+    jq -e '.ok == true and ((.failed | tonumber) == 0)' >/dev/null
   unset whatsapp_webhook_reconcile_body
   whatsapp_webhook_auth_remaining="$(
     docker exec -i supabase-db \
