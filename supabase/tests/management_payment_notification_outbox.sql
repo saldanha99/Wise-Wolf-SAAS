@@ -994,6 +994,47 @@ select pg_temp.assert_true(
   'testMode/test_fixture payment crossed the external-delivery suppression gate'
 );
 
+-- A fixture may settle while the management destination is disabled.  The
+-- suppression row must still carry a canonical kind instead of aborting the
+-- payment write on the outbox NOT NULL invariant.
+update public.dre_report_settings
+set is_active = false
+where tenant_id = 'management-payment-outbox-school';
+
+insert into public.student_payments (
+  id, student_id, tenant_id, asaas_payment_id, value, status, due_date,
+  provider_status, payment_date, paid_at, credited_at, raw_payload
+) values (
+  '71000000-0000-4000-8000-000000000015',
+  '71000000-0000-4000-8000-000000000002',
+  'management-payment-outbox-school',
+  'pay_management_outbox_disabled_fixture',
+  39,
+  'RECEIVED',
+  current_date,
+  'RECEIVED',
+  current_date,
+  pg_catalog.now(),
+  pg_catalog.now(),
+  '{"testMode":true}'::jsonb
+);
+
+select pg_temp.assert_true(
+  (
+    select status = 'SUPPRESSED'
+      and notification_kind = 'PAYMENT_RECEIVED'
+      and submit_attempt_count = 0
+      and last_error = 'test_fixture_suppressed'
+    from public.management_payment_notification_outbox
+    where payment_id = '71000000-0000-4000-8000-000000000015'
+  ),
+  'disabled management destination aborted or misclassified fixture suppression'
+);
+
+update public.dre_report_settings
+set is_active = true
+where tenant_id = 'management-payment-outbox-school';
+
 insert into management_payment_outbox_results values (
   'split-claim',
   public.claim_management_payment_notification(

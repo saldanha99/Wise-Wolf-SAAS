@@ -472,8 +472,13 @@ begin
   elsif v_notification_kind is null then
     v_status := 'SUPPRESSED';
     v_error := 'management_group_notification_disabled';
-    v_notification_kind := 'PAYMENT_RECEIVED';
   end if;
+
+  -- Test fixtures must remain suppressible even when the tenant has no active
+  -- management destination.  The durable row still needs a canonical kind to
+  -- satisfy its invariant; it will never be eligible for submission because
+  -- SUPPRESSED is terminal.
+  v_notification_kind := coalesce(v_notification_kind, 'PAYMENT_RECEIVED');
 
   insert into public.management_payment_notification_outbox (
     tenant_id,
