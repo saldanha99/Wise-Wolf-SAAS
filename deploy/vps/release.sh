@@ -1108,6 +1108,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830192223_durable_management_payment_notification_outbox.sql"
   "supabase/migrations/20260830192410_harden_conflict_alert_submission_recovery.sql"
   "supabase/migrations/20260830192430_surface_management_payment_notification_attention.sql"
+  "supabase/migrations/20260830221000_allow_legacy_recurring_subscription_repricing.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

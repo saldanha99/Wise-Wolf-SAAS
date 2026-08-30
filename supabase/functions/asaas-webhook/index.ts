@@ -2296,7 +2296,7 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
           });
           const { data: recurringBinding, error: recurringBindingError } =
             await supabase.rpc(
-              "bind_legacy_recurring_student_payment_from_webhook",
+              "bind_legacy_recurring_student_payment_from_webhook_v2",
               {
                 p_provider_event_id: body.id.trim(),
                 p_expected_local_payment_id: existingPayment.id,

@@ -17,10 +17,15 @@ select pg_temp.assert_true(
   ) is not null
   and not has_function_privilege(
     'authenticated',
-    'public.bind_legacy_recurring_student_payment_from_webhook(text,uuid,uuid,text,text,text,jsonb,jsonb)',
+    'public.bind_legacy_recurring_student_payment_from_webhook_v2(text,uuid,uuid,text,text,text,jsonb,jsonb)',
     'EXECUTE'
   )
   and has_function_privilege(
+    'service_role',
+    'public.bind_legacy_recurring_student_payment_from_webhook_v2(text,uuid,uuid,text,text,text,jsonb,jsonb)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
     'service_role',
     'public.bind_legacy_recurring_student_payment_from_webhook(text,uuid,uuid,text,text,text,jsonb,jsonb)',
     'EXECUTE'
@@ -216,9 +221,56 @@ create temporary table recurring_binding_results (
   payload jsonb not null
 );
 
+select pg_temp.assert_true(
+  (
+    public.bind_legacy_recurring_student_payment_from_webhook_v2(
+      'evt_legacy_active',
+      '58000000-0000-4000-8000-000000000011',
+      '58000000-0000-4000-8000-000000000001',
+      'legacy-recurring-repair-school',
+      'cus_legacy_active', 'sub_legacy_active',
+      jsonb_build_object(
+        'id', 'pay_legacy_active', 'customer', 'cus_legacy_active',
+        'subscription', 'sub_legacy_active', 'externalReference', null,
+        'value', 350.10, 'dueDate', '2026-08-30', 'status', 'RECEIVED',
+        'deleted', false
+      ),
+      jsonb_build_object(
+        'id', 'sub_other', 'customer', 'cus_legacy_active',
+        'externalReference', null, 'value', 389.00, 'status', 'ACTIVE'
+      )
+    ) ->> 'reason'
+  ) = 'legacy_recurring_provider_evidence_mismatch'
+  and (
+    public.bind_legacy_recurring_student_payment_from_webhook_v2(
+      'evt_legacy_active',
+      '58000000-0000-4000-8000-000000000011',
+      '58000000-0000-4000-8000-000000000001',
+      'legacy-recurring-repair-school',
+      'cus_legacy_active', 'sub_legacy_active',
+      jsonb_build_object(
+        'id', 'pay_legacy_active', 'customer', 'cus_legacy_active',
+        'subscription', 'sub_legacy_active', 'externalReference', null,
+        'value', 350.10, 'dueDate', '2026-08-30', 'status', 'RECEIVED',
+        'deleted', false
+      ),
+      jsonb_build_object(
+        'id', 'sub_legacy_active', 'customer', 'cus_other',
+        'externalReference', null, 'value', 389.00, 'status', 'ACTIVE'
+      )
+    ) ->> 'reason'
+  ) = 'legacy_recurring_provider_evidence_mismatch'
+  and (
+    select provider_customer_id is null
+      from public.student_payments
+     where id = '58000000-0000-4000-8000-000000000011'
+  ),
+  'repricing repair accepted a divergent parent subscription identity'
+);
+
 insert into recurring_binding_results values (
   'active',
-  public.bind_legacy_recurring_student_payment_from_webhook(
+  public.bind_legacy_recurring_student_payment_from_webhook_v2(
     'evt_legacy_active',
     '58000000-0000-4000-8000-000000000011',
     '58000000-0000-4000-8000-000000000001',
@@ -232,7 +284,7 @@ insert into recurring_binding_results values (
     ),
     jsonb_build_object(
       'id', 'sub_legacy_active', 'customer', 'cus_legacy_active',
-      'externalReference', null, 'value', 350.10, 'status', 'ACTIVE'
+      'externalReference', null, 'value', 389.00, 'status', 'ACTIVE'
     )
   )
 );
@@ -269,7 +321,7 @@ update public.asaas_webhook_inbox
 
 insert into recurring_binding_results values (
   'suspended',
-  public.bind_legacy_recurring_student_payment_from_webhook(
+  public.bind_legacy_recurring_student_payment_from_webhook_v2(
     'evt_legacy_suspended',
     '58000000-0000-4000-8000-000000000012',
     '58000000-0000-4000-8000-000000000002',
@@ -295,7 +347,7 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   (
-    public.bind_legacy_recurring_student_payment_from_webhook(
+    public.bind_legacy_recurring_student_payment_from_webhook_v2(
       'evt_legacy_offboarded',
       '58000000-0000-4000-8000-000000000013',
       '58000000-0000-4000-8000-000000000003',
@@ -324,7 +376,7 @@ select pg_temp.assert_true(
 
 insert into recurring_binding_results values (
   'offboarded',
-  public.bind_legacy_recurring_student_payment_from_webhook(
+  public.bind_legacy_recurring_student_payment_from_webhook_v2(
     'evt_legacy_offboarded',
     '58000000-0000-4000-8000-000000000013',
     '58000000-0000-4000-8000-000000000003',

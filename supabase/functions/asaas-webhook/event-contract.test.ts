@@ -419,6 +419,19 @@ Deno.test(
       throw new Error("exact legacy recurring evidence was rejected");
     }
 
+    if (
+      !legacyRecurringProviderEvidenceMatches(
+        webhook,
+        paymentGet,
+        { ...subscriptionGet, value: 389 },
+        expected,
+      )
+    ) {
+      throw new Error(
+        "a historical installment was rejected after its subscription was repriced",
+      );
+    }
+
     const divergentEvidence: Array<[string, unknown, unknown]> = [
       ["payment id", { ...paymentGet, id: "pay_other" }, subscriptionGet],
       [
@@ -445,9 +458,14 @@ Deno.test(
         { ...subscriptionGet, externalReference: "student-id" },
       ],
       [
-        "parent value",
+        "parent subscription id",
         paymentGet,
-        { ...subscriptionGet, value: 349.1 },
+        { ...subscriptionGet, id: "sub_other" },
+      ],
+      [
+        "parent customer",
+        paymentGet,
+        { ...subscriptionGet, customer: "cus_other" },
       ],
       ["deleted payment", { ...paymentGet, deleted: true }, subscriptionGet],
     ];
@@ -543,7 +561,7 @@ Deno.test({
       "await loadLegacyRecurringProviderEvidence(",
     );
     const recurringBinding = source.indexOf(
-      '"bind_legacy_recurring_student_payment_from_webhook"',
+      '"bind_legacy_recurring_student_payment_from_webhook_v2"',
     );
     const deletedLookup = source.indexOf(
       "await loadDeletedUnsettledProviderPayment(",

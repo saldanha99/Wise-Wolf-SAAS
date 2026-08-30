@@ -123,7 +123,9 @@ export function providerGeneratedSubscriptionPaymentMatches(
  * Legacy Asaas subscriptions may generate installments without any
  * externalReference. This is deliberately narrower than the canonical
  * reference path: it only corroborates an already-known local payment after
- * fresh GETs of both that payment and its exact parent subscription.
+ * fresh GETs of both that payment and its exact parent subscription. The
+ * parent price is intentionally not compared with the historical installment:
+ * Asaas keeps old charges immutable when a subscription is repriced.
  */
 export function legacyRecurringProviderEvidenceMatches(
   webhookPayment: {
@@ -185,8 +187,7 @@ export function legacyRecurringProviderEvidenceMatches(
     normalizedId(subscription.id) === expected.subscriptionId &&
     normalizedId(subscription.customer) === expected.customerId &&
     normalizedId(subscription.externalReference) === "" &&
-    normalizedId(subscription.status) !== "" &&
-    monetaryCents(subscription.value) === expectedCents;
+    normalizedId(subscription.status) !== "";
 }
 
 /**
