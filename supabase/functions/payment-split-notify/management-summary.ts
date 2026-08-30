@@ -42,6 +42,31 @@ export function paymentConfirmedManagementMessage(
   ].join("\n");
 }
 
+export function paymentReceivedManagementMessage(
+  payment: Record<string, unknown>,
+): string {
+  const billingType = String(payment.billing_type ?? "").trim().toUpperCase();
+  const method = billingType === "CREDIT_CARD"
+    ? "cartão"
+    : billingType === "PIX"
+    ? "PIX"
+    : billingType === "BOLETO"
+    ? "boleto"
+    : "pagamento";
+  return [
+    `💰 *Pagamento recebido via ${method}*`,
+    `Aluno: *${String(payment.student_name ?? "Aluno")}*`,
+    `Valor recebido: *${money(payment.value)}*`,
+    `Crédito confirmado em: ${
+      dataCurta(
+        payment.credited_at ?? payment.paid_at ?? payment.payment_date,
+      )
+    }`,
+    "",
+    "_O rateio detalhado está desativado. Esta é a confirmação simples da entrada no caixa._",
+  ].join("\n");
+}
+
 export function monthlyPaymentCloseMessage(
   snapshot: Record<string, unknown>,
 ): string {

@@ -3,22 +3,26 @@
 /**
  * Aviso de rateio no grupo da direção, no ato em que o pagamento entra.
  *
- * Dois caminhos, o mesmo código:
- *   { payment_id }  — trigger em student_payments (imediato, via pg_net)
- *   { sweep: true }  — cron a cada 15 min, pega o que o caminho imediato perdeu
+ * Dois caminhos, a mesma outbox transacional:
+ *   { management_notification_payment_id } — nudge imediato via pg_net
+ *   { sweep: true } — cron pega toda intenção pendente, sem janela de idade
  *
  * ⚠️ O destino é o grupo do relatório gerencial (dre_report_settings.destino).
  * Não existe segunda lista de grupos de propósito: duas listas saem de sincronia
  * e o aviso passa a ir para um grupo que o diretor achou que tinha desligado.
  *
- * O POST irreversível usa claim -> SUBMITTING -> resultado durável. A tabela
- * automation_sent permanece apenas como marcador legado do envio confirmado;
- * nunca mais é usada como trava temporária nem apagada após timeout.
+ * O POST irreversível usa claim -> PREPARED -> autorização SUBMITTING ->
+ * resultado durável. UNKNOWN e FAILED exigem revisão e jamais voltam à fila
+ * automática. Um HTTP 2xx fica apenas aceito; entrega exige receipt do grupo.
+ * automation_sent permanece apenas como marcador legado de compatibilidade.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeScopedAutomation } from "../_shared/automation-auth.ts";
-import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
+import {
+  sendWhatsTextDetailed,
+  sendWhatsTextToResolvedDestinationDetailed,
+} from "../_shared/evolution-send.ts";
 import {
   loadTenantWhatsAppRoute,
   resolveTenantConfiguredWhatsAppDestination,
@@ -29,10 +33,12 @@ import {
 } from "../_shared/tenant-integration-broker.ts";
 import { montarMensagem } from "./message.ts";
 import {
-  claimPaymentSplitMessage,
-  finishPaymentSplitMessage,
-  markPaymentSplitMessageSubmitting,
-  paymentSplitMessageFinish,
+  authorizeManagementPaymentNotificationSubmission,
+  beginManagementPaymentNotificationSubmission,
+  claimManagementPaymentNotification,
+  finishManagementPaymentNotification,
+  loadManagementPaymentNotificationSource,
+  managementPaymentNotificationFinish,
 } from "./outbound-fence.ts";
 import {
   applyMonthlyPaymentClosureDeliveryResult,
@@ -43,7 +49,7 @@ import {
 } from "./management-outbound-fence.ts";
 import {
   monthlyPaymentCloseMessage,
-  paymentConfirmedManagementMessage,
+  paymentReceivedManagementMessage,
 } from "./management-summary.ts";
 
 const corsHeaders = {
@@ -51,6 +57,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -63,31 +79,33 @@ serve(async (req) => {
   if (auth.ok === false) return auth.response;
   const supabase = auth.context.admin;
 
-  const resultado = { sent: 0, skipped: 0, failures: [] as string[] };
+  const resultado = {
+    accepted: 0,
+    sent: 0,
+    skipped: 0,
+    failures: [] as string[],
+  };
 
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
-    let alvos: string[] = [];
-    let managementTargets: string[] = [];
-    if (typeof body.payment_id === "string" && body.payment_id.trim()) {
-      alvos = [body.payment_id.trim()];
-    } else if (
-      typeof body.management_payment_id === "string" &&
-      body.management_payment_id.trim()
-    ) {
-      managementTargets = [body.management_payment_id.trim()];
+    let targets: Array<{ paymentId: string; tenantId?: string }> = [];
+    const explicitPaymentId = [
+      body.management_notification_payment_id,
+      body.payment_id,
+      body.management_payment_id,
+    ].find((value) => typeof value === "string" && value.trim());
+    if (typeof explicitPaymentId === "string") {
+      targets = [{ paymentId: explicitPaymentId.trim() }];
     } else if (body.sweep === true) {
-      const [splitPending, confirmedPending] = await Promise.all([
-        supabase.rpc("payment_split_pending"),
-        supabase.rpc("management_payment_confirmation_pending"),
-      ]);
-      if (splitPending.error || confirmedPending.error) {
-        console.error("payment split pending failed", {
+      const pending = await supabase.rpc(
+        "management_payment_notification_pending",
+        { p_limit: 100 },
+      );
+      if (pending.error) {
+        console.error("management payment notification pending failed", {
           code: String(
-            (splitPending.error as { code?: unknown } | null)?.code ??
-              (confirmedPending.error as { code?: unknown } | null)?.code ??
-              "unknown",
+            (pending.error as { code?: unknown } | null)?.code ?? "unknown",
           ),
         });
         return new Response(JSON.stringify({ error: "pending_unavailable" }), {
@@ -95,14 +113,12 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      alvos = ((splitPending.data ?? []) as Record<string, unknown>[])
-        .map((r) => String(r.payment_id ?? ""))
-        .filter(Boolean);
-      managementTargets = (
-        (confirmedPending.data ?? []) as Record<string, unknown>[]
-      )
-        .map((r) => String(r.payment_id ?? ""))
-        .filter(Boolean);
+      targets = ((pending.data ?? []) as Record<string, unknown>[])
+        .map((row) => ({
+          paymentId: String(row.payment_id ?? ""),
+          tenantId: String(row.tenant_id ?? ""),
+        }))
+        .filter((target) => target.paymentId && target.tenantId);
     } else {
       return new Response(JSON.stringify({ error: "payment_id_ou_sweep" }), {
         status: 400,
@@ -110,177 +126,13 @@ serve(async (req) => {
       });
     }
 
-    for (const paymentId of alvos) {
-      const { data: b, error: bError } = await supabase
-        .rpc("payment_split_breakdown", { p_payment_id: paymentId });
-
-      if (bError || !b || (b as Record<string, unknown>).error) {
-        resultado.failures.push(`${paymentId}: rateio indisponível`);
-        continue;
-      }
-      const dados = b as Record<string, unknown>;
-
-      if (!dados.is_active) {
-        resultado.skipped++;
-        continue;
-      }
-
-      const tenantId = String(dados.tenant_id ?? "");
-      if (!tenantId) {
-        resultado.skipped++;
-        continue;
-      }
-
-      const { data: cfg } = await supabase.from("dre_report_settings")
-        .select("destino").eq("tenant_id", tenantId).maybeSingle();
-      const route = await loadTenantWhatsAppRoute(
+    const uniqueTargets = [
+      ...new Map(targets.map((target) => [target.paymentId, target])).values(),
+    ];
+    for (const target of uniqueTargets) {
+      await processManagementPaymentNotification(
         supabase,
-        tenantId,
-        "general",
-      );
-      if (!route) {
-        resultado.failures.push(
-          `${paymentId}: canal institucional indisponível`,
-        );
-        continue;
-      }
-      const destino = resolveTenantConfiguredWhatsAppDestination(
-        route,
-        cfg?.destino,
-      );
-      if (!destino) {
-        // Recusa VISIVEL. Antes isto virava um item em  dentro do
-        // corpo de uma resposta HTTP que ninguém lê — foi assim que o aviso de
-        // rateio passou 9 dias mudo sem ninguém notar.
-        console.error("[whatsapp] destino recusado: nao pertence a escola", {
-          tenant: tenantId,
-        });
-        resultado.failures.push(`${paymentId}: destino não pertence à escola`);
-        continue;
-      }
-
-      // Compatibilidade com os envios anteriores ao fence durável. Uma marca
-      // legada já existente é tratada como entregue; criar um claim novo aqui
-      // reenviaria pagamentos históricos na primeira execução pós-release.
-      const refDate = legacyRefDate(dados);
-      const { data: legacySent, error: legacyError } = await supabase
-        .from("automation_sent")
-        .select("id")
-        .eq("kind", "PAYMENT_SPLIT")
-        .eq("subject_id", paymentId)
-        .eq("ref_date", refDate)
-        .maybeSingle();
-      if (legacyError) {
-        resultado.failures.push(`${paymentId}: marcador legado indisponível`);
-        continue;
-      }
-      if (legacySent) {
-        resultado.skipped++;
-        continue;
-      }
-
-      // Resolve credencial/base estritamente no tenant antes de tomar o claim.
-      // Falha de configuração permanece reexecutável porque nenhum POST começou.
-      let integration: ResolvedEvolutionIntegration;
-      try {
-        integration = await resolveEvolutionIntegration(
-          supabase,
-          tenantId,
-          "message.send_text",
-        );
-      } catch {
-        resultado.failures.push(`${paymentId}: integração indisponível`);
-        continue;
-      }
-
-      const claim = await claimPaymentSplitMessage(supabase, {
-        tenantId,
-        paymentId,
-      });
-      if (claim.action === "ALREADY_FINAL") {
-        if (String(claim.status || "").toUpperCase() === "SENT") {
-          try {
-            await recordLegacyMarker(supabase, paymentId, dados);
-          } catch {
-            resultado.failures.push(
-              `${paymentId}: marcador legado indisponível`,
-            );
-          }
-        } else if (
-          ["UNKNOWN", "SUBMITTING", "FAILED"].includes(
-            String(claim.status || "").toUpperCase(),
-          )
-        ) {
-          resultado.failures.push(
-            `${paymentId}: resultado durável ${claim.status} requer revisão`,
-          );
-        }
-        resultado.skipped++;
-        continue;
-      }
-      if (claim.action !== "SUBMIT_ONCE") {
-        if (claim.action === "REVIEW_REQUIRED") {
-          resultado.failures.push(
-            `${paymentId}: ${claim.reason || "escopo inválido"}`,
-          );
-        } else {
-          resultado.skipped++;
-        }
-        continue;
-      }
-
-      const mark = await markPaymentSplitMessageSubmitting(supabase, claim);
-      if (mark.ok !== true || mark.status !== "SUBMITTING") {
-        if (mark.status === "SUPPRESSED") {
-          resultado.skipped++;
-        } else {
-          resultado.failures.push(
-            `${paymentId}: ${mark.reason || "claim perdido antes do envio"}`,
-          );
-        }
-        continue;
-      }
-
-      const providerResult = await sendWhatsTextDetailed({
-        base: integration.baseUrl,
-        keys: [integration.apiKey],
-        instance: route.instanceName,
-        to: destino,
-        text: montarMensagem(dados),
-        delayMs: 800,
-      });
-      const finish = paymentSplitMessageFinish(providerResult);
-      try {
-        await finishPaymentSplitMessage(supabase, claim, finish);
-      } catch {
-        // SUBMITTING + submit_attempt_count=1 impede qualquer novo POST. Um
-        // resultado que não pôde ser persistido exige conciliação humana.
-        resultado.failures.push(
-          `${paymentId}: resultado do envio não pôde ser persistido`,
-        );
-        continue;
-      }
-
-      if (finish.status === "SENT") {
-        try {
-          await recordLegacyMarker(supabase, paymentId, dados);
-          resultado.sent++;
-        } catch {
-          // O claim durável SENT continua sendo a verdade. O próximo sweep
-          // apenas repara automation_sent; ele não volta a enviar.
-          resultado.failures.push(`${paymentId}: marcador legado indisponível`);
-        }
-      } else {
-        resultado.failures.push(
-          `${paymentId}: ${finish.error || finish.status.toLowerCase()}`,
-        );
-      }
-    }
-
-    for (const paymentId of managementTargets) {
-      await processPaymentConfirmation(
-        supabase,
-        paymentId,
+        target,
         resultado,
       );
     }
@@ -305,28 +157,48 @@ serve(async (req) => {
   }
 });
 
-async function recordLegacyMarker(
+async function resolveManagementRoute(
   supabase: any,
-  paymentId: string,
-  breakdown: Record<string, unknown>,
-) {
-  // ref_date vem da RPC e é o created_at do pagamento, NÃO a data em que ele
-  // foi pago. Eventos diferentes da mesma cobrança precisam colidir aqui.
-  const refDate = legacyRefDate(breakdown);
-  const { error } = await supabase.from("automation_sent").upsert({
-    kind: "PAYMENT_SPLIT",
-    subject_id: paymentId,
-    ref_date: refDate,
-  }, {
-    onConflict: "kind,subject_id,ref_date",
-    ignoreDuplicates: true,
-  });
-  if (error) throw new Error("payment_split_legacy_marker_failed");
-}
-
-function legacyRefDate(breakdown: Record<string, unknown>): string {
-  return String(breakdown.ref_date ?? "").slice(0, 10) ||
-    new Date().toISOString().slice(0, 10);
+  tenantId: string,
+): Promise<
+  {
+    route: NonNullable<Awaited<ReturnType<typeof loadTenantWhatsAppRoute>>>;
+    destination: string;
+    integrationId: string;
+    integrationVersion: number;
+  } | null
+> {
+  const { data: cfg, error: cfgError } = await supabase
+    .from("dre_report_settings")
+    .select("destino,is_active")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (cfgError || cfg?.is_active !== true) return null;
+  const route = await loadTenantWhatsAppRoute(
+    supabase,
+    tenantId,
+    "general",
+    { requireDeliveryReceipts: true },
+  );
+  if (!route) return null;
+  const destination = resolveTenantConfiguredWhatsAppDestination(
+    route,
+    cfg.destino,
+  );
+  if (!destination) return null;
+  const { data: instance, error: instanceError } = await supabase
+    .from("whatsapp_instances")
+    .select("integration_id,integration_version")
+    .eq("tenant_id", tenantId)
+    .eq("instance_name", route.instanceName)
+    .maybeSingle();
+  const integrationId = String(instance?.integration_id || "");
+  const integrationVersion = Number(instance?.integration_version || 0);
+  if (
+    instanceError || !integrationId ||
+    !Number.isSafeInteger(integrationVersion) || integrationVersion <= 0
+  ) return null;
+  return { route, destination, integrationId, integrationVersion };
 }
 
 async function resolveManagementDelivery(
@@ -339,123 +211,265 @@ async function resolveManagementDelivery(
     integration: ResolvedEvolutionIntegration;
   } | null
 > {
-  const { data: cfg, error: cfgError } = await supabase
-    .from("dre_report_settings")
-    .select("destino,is_active")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (cfgError || cfg?.is_active !== true) return null;
-  const route = await loadTenantWhatsAppRoute(supabase, tenantId, "general");
+  const route = await resolveManagementRoute(supabase, tenantId);
   if (!route) return null;
-  const destination = resolveTenantConfiguredWhatsAppDestination(
-    route,
-    cfg.destino,
-  );
-  if (!destination) return null;
   try {
     const integration = await resolveEvolutionIntegration(
       supabase,
       tenantId,
       "message.send_text",
     );
-    return { route, destination, integration };
+    if (
+      integration.integrationId !== route.integrationId ||
+      integration.version !== route.integrationVersion
+    ) return null;
+    return {
+      route: route.route,
+      destination: route.destination,
+      integration,
+    };
   } catch {
     return null;
   }
 }
 
-async function processPaymentConfirmation(
+async function processManagementPaymentNotification(
   supabase: any,
-  paymentId: string,
-  result: { sent: number; skipped: number; failures: string[] },
+  target: { paymentId: string; tenantId?: string },
+  result: {
+    accepted: number;
+    sent: number;
+    skipped: number;
+    failures: string[];
+  },
 ): Promise<void> {
-  const { data: payment, error: paymentError } = await supabase
-    .from("student_payments")
-    .select(
-      "id,tenant_id,student_id,value,status,billing_type,due_date,created_at",
-    )
-    .eq("id", paymentId)
-    .maybeSingle();
-  if (paymentError || !payment || payment.status !== "CONFIRMED") {
+  const paymentId = target.paymentId;
+  let tenantId = String(target.tenantId || "");
+  if (!tenantId) {
+    const { data: intent, error: intentError } = await supabase
+      .from("management_payment_notification_outbox")
+      .select("tenant_id")
+      .eq("payment_id", paymentId)
+      .maybeSingle();
+    if (intentError || !intent?.tenant_id) {
+      result.failures.push(
+        `${paymentId}: intenção financeira durável não encontrada`,
+      );
+      return;
+    }
+    tenantId = String(intent.tenant_id);
+  }
+
+  let claim;
+  try {
+    claim = await claimManagementPaymentNotification(supabase, {
+      tenantId,
+      paymentId,
+    });
+  } catch {
+    result.failures.push(`${paymentId}: trava financeira indisponível`);
+    return;
+  }
+  if (claim.action === "ALREADY_FINAL") {
+    const status = String(claim.status || "").toUpperCase();
+    if (["UNKNOWN", "FAILED", "SUBMITTING"].includes(status)) {
+      result.failures.push(
+        `${paymentId}: resultado durável ${status} requer revisão`,
+      );
+    }
     result.skipped++;
     return;
   }
-  const { data: student, error: studentError } = await supabase
-    .from("profiles")
-    .select("full_name,is_test_account,test_fixture_key")
-    .eq("id", payment.student_id)
-    .eq("tenant_id", payment.tenant_id)
-    .maybeSingle();
-  if (
-    studentError || !student || student.is_test_account === true ||
-    student.test_fixture_key
-  ) {
+  if (claim.action !== "SUBMIT_ONCE") {
+    if (claim.action === "REVIEW_REQUIRED") {
+      result.failures.push(
+        `${paymentId}: ${claim.reason || "escopo financeiro inválido"}`,
+      );
+    } else {
+      result.skipped++;
+    }
+    return;
+  }
+
+  const notificationKind = String(claim.notification_kind || "");
+  let messageBody = "";
+  let breakdown: Record<string, unknown> | null = null;
+  let sourceSnapshot: Record<string, unknown>;
+  try {
+    sourceSnapshot = await loadManagementPaymentNotificationSource(supabase, {
+      tenantId,
+      paymentId,
+      notificationKind: notificationKind as
+        | "PAYMENT_SPLIT"
+        | "PAYMENT_RECEIVED",
+    });
+  } catch {
+    result.failures.push(`${paymentId}: fonte financeira indisponível`);
+    return;
+  }
+  if (sourceSnapshot.is_test_fixture === true) {
     result.skipped++;
     return;
   }
 
-  const delivery = await resolveManagementDelivery(
-    supabase,
-    String(payment.tenant_id),
-  );
+  if (notificationKind === "PAYMENT_SPLIT") {
+    breakdown = sourceSnapshot;
+    if (breakdown.is_active !== true) {
+      result.failures.push(`${paymentId}: regra de rateio mudou`);
+      return;
+    }
+    messageBody = montarMensagem(breakdown);
+  } else if (notificationKind === "PAYMENT_RECEIVED") {
+    messageBody = paymentReceivedManagementMessage(sourceSnapshot);
+  } else {
+    result.failures.push(`${paymentId}: tipo de aviso financeiro inválido`);
+    return;
+  }
+
+  const delivery = await resolveManagementRoute(supabase, tenantId);
   if (!delivery) {
     result.failures.push(`${paymentId}: canal de gestão indisponível`);
     return;
   }
-  const refDate = String(payment.due_date ?? payment.created_at).slice(0, 10);
-  const claim = await claimManagementGroupMessage(supabase, {
-    tenantId: String(payment.tenant_id),
-    notificationKind: "PAYMENT_CONFIRMED",
-    subjectId: paymentId,
-    refDate,
-  });
-  if (claim.action === "ALREADY_FINAL") {
-    result.skipped++;
-    if (String(claim.status || "").toUpperCase() !== "SENT") {
+
+  let submission;
+  try {
+    submission = await beginManagementPaymentNotificationSubmission(
+      supabase,
+      claim,
+      {
+        expectedDestination: delivery.destination,
+        providerDestination: delivery.destination,
+        providerInstanceName: delivery.route.instanceName,
+        integrationId: delivery.integrationId,
+        integrationVersion: delivery.integrationVersion,
+        sourceSnapshot,
+        messageBody,
+      },
+    );
+  } catch {
+    result.failures.push(`${paymentId}: autorização final indisponível`);
+    return;
+  }
+  if (submission.action !== "PREPARED" || submission.ok !== true) {
+    if (submission.action === "SUPPRESSED") result.skipped++;
+    else {
       result.failures.push(
-        `${paymentId}: confirmação ${claim.status} requer revisão`,
+        `${paymentId}: ${submission.reason || "autorização final recusada"}`,
       );
     }
     return;
   }
-  if (claim.action !== "SUBMIT_ONCE") {
-    if (claim.action === "REVIEW_REQUIRED") result.skipped++;
-    else result.skipped++;
+
+  // Credentials/endpoints are resolved only after the business payload has
+  // been frozen as PREPARED. A second database fence validates their current
+  // integration binding and BYOK secret fingerprints, then returns the exact
+  // immutable payload for the sole provider POST.
+  let finalIntegration: ResolvedEvolutionIntegration;
+  try {
+    finalIntegration = await resolveEvolutionIntegration(
+      supabase,
+      tenantId,
+      "message.send_text",
+    );
+  } catch {
+    result.failures.push(`${paymentId}: integração final indisponível`);
     return;
   }
-  const mark = await markManagementGroupMessageSubmitting(supabase, claim);
-  if (mark.ok !== true || mark.status !== "SUBMITTING") {
-    if (mark.status === "SUPPRESSED") result.skipped++;
-    else result.failures.push(`${paymentId}: confirmação perdeu a trava`);
+
+  const [providerEndpointHash, providerCredentialHash] = await Promise.all([
+    sha256Hex(finalIntegration.baseUrl),
+    sha256Hex(finalIntegration.apiKey),
+  ]);
+
+  let authorization;
+  try {
+    authorization = await authorizeManagementPaymentNotificationSubmission(
+      supabase,
+      claim,
+      {
+        integrationId: finalIntegration.integrationId,
+        integrationVersion: finalIntegration.version,
+        providerEndpointHash,
+        providerCredentialHash,
+      },
+    );
+  } catch {
+    result.failures.push(`${paymentId}: autorização do provedor indisponível`);
     return;
   }
-  const providerResult = await sendWhatsTextDetailed({
-    base: delivery.integration.baseUrl,
-    keys: [delivery.integration.apiKey],
-    instance: delivery.route.instanceName,
-    to: delivery.destination,
-    text: paymentConfirmedManagementMessage({
-      ...payment,
-      student_name: student.full_name,
-    }),
+  if (authorization.action !== "SUBMITTING" || authorization.ok !== true) {
+    if (authorization.action === "SUPPRESSED") result.skipped++;
+    else {
+      result.failures.push(
+        `${paymentId}: ${
+          authorization.reason || "autorização do provedor recusada"
+        }`,
+      );
+    }
+    return;
+  }
+
+  // No lookup, RPC or mutable read may be inserted between this fence and the
+  // single POST. The provider receives exactly the sealed database snapshot.
+  const providerResult = await sendWhatsTextToResolvedDestinationDetailed({
+    base: finalIntegration.baseUrl,
+    keys: [finalIntegration.apiKey],
+    instance: String(authorization.provider_instance_name),
+    to: String(authorization.provider_destination),
+    text: String(authorization.message_body),
     delayMs: 800,
   });
-  const finish = managementGroupMessageFinish(providerResult);
+  const finish = managementPaymentNotificationFinish(providerResult);
+  let persistedFinish: Awaited<
+    ReturnType<typeof finishManagementPaymentNotification>
+  >;
   try {
-    await finishManagementGroupMessage(supabase, claim, finish);
+    persistedFinish = await finishManagementPaymentNotification(
+      supabase,
+      claim,
+      finish,
+    );
   } catch {
     result.failures.push(
-      `${paymentId}: resultado da confirmação não persistido`,
+      `${paymentId}: resultado do envio não pôde ser persistido`,
     );
     return;
   }
-  if (finish.status === "SENT") result.sent++;
-  else result.failures.push(`${paymentId}: ${finish.error || finish.status}`);
+
+  if (
+    persistedFinish.status === "SENT" &&
+    ["delivered", "read"].includes(
+      String(persistedFinish.providerDeliveryStatus || ""),
+    )
+  ) {
+    result.sent++;
+  } else if (
+    persistedFinish.status === "SUBMITTING" &&
+    ["accepted", "sent"].includes(
+      String(persistedFinish.providerDeliveryStatus || ""),
+    )
+  ) {
+    // HTTP acceptance and SERVER_ACK are observable, but neither proves that
+    // the management group received the message.
+    result.accepted++;
+  } else {
+    result.failures.push(
+      `${paymentId}: ${
+        finish.error || persistedFinish.status || finish.status
+      }`,
+    );
+  }
 }
 
 async function processMonthlyPaymentClosures(
   supabase: any,
-  result: { sent: number; skipped: number; failures: string[] },
+  result: {
+    accepted: number;
+    sent: number;
+    skipped: number;
+    failures: string[];
+  },
 ): Promise<void> {
   const { data: targets, error: targetsError } = await supabase.rpc(
     "monthly_payment_closure_targets",

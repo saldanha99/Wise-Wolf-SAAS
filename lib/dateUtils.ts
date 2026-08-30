@@ -58,6 +58,15 @@ export const parseLocalDate = (value: string | null | undefined): Date | null =>
     return null;
 };
 
+/** Formata datas de calendário sem interpretar `YYYY-MM-DD` como UTC. */
+export const formatLocalDateBr = (
+    value: string | null | undefined,
+    fallback = '—',
+): string => {
+    const parsed = parseLocalDate(value);
+    return parsed ? parsed.toLocaleDateString('pt-BR') : fallback;
+};
+
 export const isBusinessDay = (date: Date): boolean => {
     const day = date.getDay();
     // 0 = Sunday, 6 = Saturday

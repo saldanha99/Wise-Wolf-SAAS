@@ -37,6 +37,7 @@ const ITEMS: Item[] = [
   // cobrança que nunca foi criada não vence. Descoberto em 02/08/2026 com
   // R$ 4.663,05 já não faturados.
   { key: 'sem_assinatura', label: 'Alunos tendo aula sem cobrança ativa', tab: 'student-payments', icon: AlertTriangle, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/30' },
+  { key: 'avisos_pagamento', label: 'Avisos de pagamento sem entrega confirmada', tab: 'student-payments', icon: AlertTriangle, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
 ];
 
 type LoadState = 'loading' | 'success' | 'error';

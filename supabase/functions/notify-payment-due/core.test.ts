@@ -71,6 +71,18 @@ Deno.test("payment reminder maps an accepted provider response to SENT", () => {
     }),
     { status: "SENT", providerHttpStatus: 201, error: null },
   );
+  assertEquals(
+    paymentNotificationFinish({
+      outcome: "accepted",
+      messageId: null,
+      httpStatus: 200,
+    }),
+    {
+      status: "UNKNOWN",
+      providerHttpStatus: 200,
+      error: "provider_acceptance_without_message_id",
+    },
+  );
 });
 
 Deno.test("payment reminder never retries an ambiguous provider outcome", () => {

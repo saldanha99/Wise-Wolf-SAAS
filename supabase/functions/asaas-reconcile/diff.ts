@@ -520,7 +520,36 @@ export function buildReconciliationIssues(input: {
 
     const localProviderStatus = local.provider_status ||
       (local.status === "NAO_RECEITA" ? null : local.status);
-    if (provider.status && localProviderStatus !== provider.status) {
+    const localAccountingStatus = String(local.status || "").trim()
+      .toUpperCase();
+    if (
+      provider.deleted === true &&
+      ["PENDING", "OVERDUE", "CONFIRMED"].includes(localAccountingStatus)
+    ) {
+      addIssue(issues, {
+        tenant_id: local.tenant_id || null,
+        source: "PAYMENT",
+        kind: "PROVIDER_PAYMENT_DELETED_LOCAL_OPEN",
+        severity: "HIGH",
+        provider_entity_id: provider.id,
+        local_entity_id: local.id,
+        fingerprint: `provider-payment-deleted-local-open:${provider.id}`,
+        details: {
+          providerStatus: provider.status || null,
+          localProviderStatus,
+          localAccountingStatus: local.status || null,
+          value: local.value ?? null,
+          dueDate: local.due_date || null,
+        },
+      });
+    }
+    const providerDeletionConverged = provider.deleted === true &&
+      localAccountingStatus === "CANCELLED" &&
+      String(localProviderStatus || "").trim().toUpperCase() === "DELETED";
+    if (
+      !providerDeletionConverged && provider.status &&
+      localProviderStatus !== provider.status
+    ) {
       addIssue(issues, {
         tenant_id: local.tenant_id || null,
         source: "PAYMENT",

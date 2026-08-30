@@ -53,6 +53,7 @@ import {
     getPendingEnrollmentPaymentPresentation,
     type PendingEnrollmentPaymentKind,
 } from '../lib/enrollmentPaymentOutcome';
+import { addCalendarMonthsClamped } from '../lib/contractDates';
 
 type ProcessingStage =
     | 'IDLE'
@@ -321,8 +322,7 @@ const PublicRegistration: React.FC = () => {
             start = new Date(`${quote.firstDueDate}T12:00:00`);
         }
 
-        const end = new Date(start);
-        end.setMonth(start.getMonth() + duration);
+        const end = addCalendarMonthsClamped(start, duration);
 
         return {
             startDate: start.toLocaleDateString('pt-BR'),

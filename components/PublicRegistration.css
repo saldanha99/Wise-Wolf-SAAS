@@ -36,7 +36,8 @@
 
 .enrollment-topbar {
   width: min(1240px, calc(100% - 48px));
-  min-height: 82px;
+  min-height: calc(82px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -965,8 +966,8 @@
 }
 
 .enrollment-contract-header {
-  min-height: 76px;
-  padding: 0 clamp(18px, 3vw, 28px);
+  min-height: calc(76px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) clamp(18px, 3vw, 28px) 0;
   color: white;
   background:
     radial-gradient(circle at 15% 0%, rgba(36, 103, 255, 0.28), transparent 16rem),
@@ -1113,7 +1114,7 @@
   }
 
   .enrollment-topbar {
-    min-height: 70px;
+    min-height: calc(70px + env(safe-area-inset-top));
   }
 
   .enrollment-brand__name {
@@ -1261,7 +1262,7 @@
   }
 
   .enrollment-contract-header {
-    min-height: 68px;
+    min-height: calc(68px + env(safe-area-inset-top));
   }
 
   .enrollment-contract-signature {

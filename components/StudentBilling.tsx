@@ -18,6 +18,7 @@ import type { User as UserType } from '../types';
 import { getSchoolInfo } from '../lib/schoolInfo';
 import { buildSchoolSupportContact, type SupportContact } from '../lib/supportContact';
 import BillingMethodManager from './BillingMethodManager';
+import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
 
 interface StudentBillingProps {
   user: Pick<UserType, 'id' | 'tenantId'>;
@@ -418,7 +419,8 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         </div>
         <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
           {payments.length > 0 ? payments.map(payment => {
-            const isPaid = payment.status === 'RECEIVED' || payment.status === 'CONFIRMED';
+            const isPaid = isSettledStudentPayment(payment.status);
+            const isAwaitingCredit = isStudentPaymentAwaitingCredit(payment.status);
             const isOverdue = payment.status === 'OVERDUE';
             return (
               <article key={payment.id} className="p-5 space-y-4">
@@ -430,11 +432,13 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                   <span className={`shrink-0 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest whitespace-nowrap ${
                     isPaid
                       ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
+                      : isAwaitingCredit
+                        ? 'text-sky-600 bg-sky-50 dark:bg-sky-900/20'
                       : isOverdue
                         ? 'text-red-600 bg-red-50 dark:bg-red-900/20'
                         : 'text-amber-600 bg-amber-50 dark:bg-amber-900/20'
                   }`}>
-                    {isPaid ? 'Pago' : isOverdue ? 'Vencido' : 'Em aberto'}
+                    {isPaid ? 'Pago' : isAwaitingCredit ? 'Aguardando crédito' : isOverdue ? 'Vencido' : 'Em aberto'}
                   </span>
                 </div>
 
@@ -463,6 +467,10 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                 ) : isPaid ? (
                   <div className="w-full inline-flex items-center justify-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 rounded-xl font-bold text-xs">
                     <CheckCircle size={16} /> Pagamento confirmado
+                  </div>
+                ) : isAwaitingCredit ? (
+                  <div className="w-full inline-flex items-center justify-center gap-2 text-sky-600 bg-sky-50 dark:bg-sky-900/20 px-4 py-3 rounded-xl font-bold text-xs">
+                    <RefreshCw size={16} /> Confirmado · aguardando crédito
                   </div>
                 ) : (
                   <p className="text-center text-brand-muted text-xs">Nenhuma ação disponível.</p>
@@ -500,8 +508,10 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                     {payment.billing_type || '-'}
                   </td>
                   <td className="px-8 py-6">
-                    {payment.status === 'RECEIVED' || payment.status === 'CONFIRMED' ? (
+                    {isSettledStudentPayment(payment.status) ? (
                       <span className="text-emerald-500 font-black text-[10px] uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full">PAGO</span>
+                    ) : isStudentPaymentAwaitingCredit(payment.status) ? (
+                      <span className="text-sky-600 font-black text-[10px] uppercase tracking-widest bg-sky-50 dark:bg-sky-900/20 px-3 py-1 rounded-full">AGUARDANDO CRÉDITO</span>
                     ) : payment.status === 'OVERDUE' ? (
                       <span className="text-red-500 font-black text-[10px] uppercase tracking-widest bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full">VENCIDO</span>
                     ) : (
@@ -518,9 +528,13 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                       >
                         Pagar Agora <ExternalLink size={12} />
                       </a>
-                    ) : (payment.status === 'RECEIVED' || payment.status === 'CONFIRMED') ? (
+                    ) : isSettledStudentPayment(payment.status) ? (
                       <span className="inline-flex items-center gap-2 text-emerald-500 font-bold text-xs">
                         <CheckCircle size={16} /> Pago
+                      </span>
+                    ) : isStudentPaymentAwaitingCredit(payment.status) ? (
+                      <span className="inline-flex items-center gap-2 text-sky-600 font-bold text-xs">
+                        <RefreshCw size={16} /> Aguardando crédito do Asaas
                       </span>
                     ) : (
                       <span className="text-slate-300 text-xs">-</span>

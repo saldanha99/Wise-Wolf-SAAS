@@ -84,6 +84,55 @@ Deno.test("school admin aceita somente IDs e estados normalizados", () => {
   );
 });
 
+Deno.test("desligamento de aluno exige decisão explícita da competência atual", () => {
+  rejects(
+    () =>
+      normalizeSchoolAdminAction({
+        action: "setStudentLifecycle",
+        studentId: "00000000-0000-4000-8000-000000000001",
+        status: "suspended",
+      }),
+    "suspensão sem motivo deveria ser rejeitada",
+  );
+  rejects(
+    () =>
+      normalizeSchoolAdminAction({
+        action: "setStudentLifecycle",
+        studentId: "00000000-0000-4000-8000-000000000001",
+        status: "offboarded",
+        reason: "encerramento",
+      }),
+    "desligamento sem política financeira deveria ser rejeitado",
+  );
+
+  const waived = normalizeSchoolAdminAction({
+    action: "setStudentLifecycle",
+    studentId: "00000000-0000-4000-8000-000000000001",
+    status: "offboarded",
+    reason: "encerramento",
+    billingPolicy: "WAIVE_CURRENT_MONTH",
+    effectiveEndDate: "2026-08-17",
+  });
+  assert(
+    waived.action === "setStudentLifecycle" &&
+      waived.billingPolicy === "WAIVE_CURRENT_MONTH",
+    "política de isenção não foi preservada",
+  );
+
+  rejects(
+    () =>
+      normalizeSchoolAdminAction({
+        action: "setStudentLifecycle",
+        studentId: "00000000-0000-4000-8000-000000000001",
+        status: "suspended",
+        reason: "pausa",
+        billingPolicy: "WAIVE_CURRENT_MONTH",
+        effectiveEndDate: "2026-08-17",
+      }),
+    "suspensão não deve aceitar uma política de encerramento",
+  );
+});
+
 Deno.test("lifecycle exige um unico vinculo ativo e coerente do alvo", () => {
   const activeStudent = {
     tenant_id: "school-a",

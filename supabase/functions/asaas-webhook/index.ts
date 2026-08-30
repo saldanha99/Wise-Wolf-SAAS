@@ -31,9 +31,11 @@ import {
   actualCreditAt,
   asaasDateToIso,
   completedRefundAmount,
+  deletedUnsettledProviderPaymentMatches,
   financialReviewReason,
   isProvenHistoricalReversalEvent,
   isSettledPaymentEvent,
+  legacyRecurringProviderEvidenceMatches,
   paymentCustomerMatchesCanonicalBinding,
   providerEventRank,
   providerGeneratedSubscriptionPaymentMatches,
@@ -101,6 +103,7 @@ type AsaasWebhookPayment = {
   invoiceUrl?: string | null;
   refundedValue?: number | null;
   refunds?: Array<{ value?: number | null; status?: string | null }> | null;
+  deleted?: boolean | null;
 };
 
 type AsaasWebhookSubscription = {
@@ -1926,6 +1929,213 @@ async function loadExistingStudentPaymentByProviderId(
   return payment;
 }
 
+type LegacyRecurringProviderEvidence = {
+  payment: Record<string, unknown>;
+  subscription: Record<string, unknown>;
+};
+
+async function loadLegacyRecurringProviderEvidence(input: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  localPaymentId: string;
+  paymentId: string;
+  customerId: string;
+  subscriptionId: string;
+  value: number;
+  dueDate: string;
+  status: "RECEIVED" | "RECEIVED_IN_CASH";
+  webhookPayment: AsaasWebhookPayment;
+}): Promise<LegacyRecurringProviderEvidence> {
+  let paymentIntegration: ResolvedAsaasIntegration;
+  let subscriptionIntegration: ResolvedAsaasIntegration;
+  try {
+    [paymentIntegration, subscriptionIntegration] = await Promise.all([
+      resolveAsaasIntegration(input.supabase, input.tenantId, "payment.read"),
+      resolveAsaasIntegration(
+        input.supabase,
+        input.tenantId,
+        "subscription.read",
+      ),
+    ]);
+  } catch {
+    throw new Error("legacy_recurring_provider_lookup_unavailable");
+  }
+
+  let paymentResponse: Response;
+  let subscriptionResponse: Response;
+  try {
+    [paymentResponse, subscriptionResponse] = await Promise.all([
+      fetchComTimeout(
+        `${paymentIntegration.baseUrl}/payments/${
+          encodeURIComponent(input.paymentId)
+        }`,
+        {
+          method: "GET",
+          headers: {
+            accept: "application/json",
+            access_token: paymentIntegration.apiKey,
+          },
+        },
+        12_000,
+      ),
+      fetchComTimeout(
+        `${subscriptionIntegration.baseUrl}/subscriptions/${
+          encodeURIComponent(input.subscriptionId)
+        }`,
+        {
+          method: "GET",
+          headers: {
+            accept: "application/json",
+            access_token: subscriptionIntegration.apiKey,
+          },
+        },
+        12_000,
+      ),
+    ]);
+  } catch {
+    throw new Error("legacy_recurring_provider_lookup_unavailable");
+  }
+
+  if (paymentResponse.status === 404) {
+    throw new AsaasTriageError(
+      "legacy_recurring_authoritative_payment_not_found",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+  if (subscriptionResponse.status === 404) {
+    throw new AsaasTriageError(
+      "legacy_recurring_authoritative_subscription_not_found",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+  if (!paymentResponse.ok || !subscriptionResponse.ok) {
+    const retryable = paymentResponse.status === 429 ||
+      subscriptionResponse.status === 429 ||
+      paymentResponse.status >= 500 || subscriptionResponse.status >= 500;
+    if (retryable) {
+      throw new Error("legacy_recurring_provider_lookup_unavailable");
+    }
+    throw new AsaasTriageError(
+      "legacy_recurring_provider_lookup_rejected",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+
+  const [authoritativePayment, authoritativeSubscription] = await Promise.all([
+    paymentResponse.json().catch(() => null),
+    subscriptionResponse.json().catch(() => null),
+  ]);
+  if (
+    !legacyRecurringProviderEvidenceMatches(
+      input.webhookPayment,
+      authoritativePayment,
+      authoritativeSubscription,
+      {
+        paymentId: input.paymentId,
+        customerId: input.customerId,
+        subscriptionId: input.subscriptionId,
+        value: input.value,
+        dueDate: input.dueDate,
+        status: input.status,
+      },
+    )
+  ) {
+    throw new AsaasTriageError(
+      "legacy_recurring_provider_identity_mismatch",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+
+  return {
+    payment: authoritativePayment as Record<string, unknown>,
+    subscription: authoritativeSubscription as Record<string, unknown>,
+  };
+}
+
+async function loadDeletedUnsettledProviderPayment(input: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  localPaymentId: string;
+  paymentId: string;
+  customerId: string;
+  subscriptionId: string;
+  value: number;
+  dueDate: string;
+  providerStatus: string;
+  webhookPayment: AsaasWebhookPayment;
+}): Promise<Record<string, unknown>> {
+  let integration: ResolvedAsaasIntegration;
+  try {
+    integration = await resolveAsaasIntegration(
+      input.supabase,
+      input.tenantId,
+      "payment.read",
+    );
+  } catch {
+    throw new Error("deleted_payment_provider_lookup_unavailable");
+  }
+
+  let response: Response;
+  try {
+    response = await fetchComTimeout(
+      `${integration.baseUrl}/payments/${encodeURIComponent(input.paymentId)}`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          access_token: integration.apiKey,
+        },
+      },
+      12_000,
+    );
+  } catch {
+    throw new Error("deleted_payment_provider_lookup_unavailable");
+  }
+  if (response.status === 404) {
+    throw new AsaasTriageError(
+      "deleted_payment_authoritative_snapshot_not_found",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+  if (!response.ok) {
+    if (response.status === 429 || response.status >= 500) {
+      throw new Error("deleted_payment_provider_lookup_unavailable");
+    }
+    throw new AsaasTriageError(
+      "deleted_payment_provider_lookup_rejected",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+  const authoritativePayment = await response.json().catch(() => null);
+  if (
+    !deletedUnsettledProviderPaymentMatches(
+      input.webhookPayment,
+      authoritativePayment,
+      {
+        paymentId: input.paymentId,
+        customerId: input.customerId,
+        subscriptionId: input.subscriptionId,
+        value: input.value,
+        dueDate: input.dueDate,
+        providerStatus: input.providerStatus,
+      },
+    )
+  ) {
+    throw new AsaasTriageError(
+      "deleted_payment_provider_identity_mismatch",
+      input.tenantId,
+      input.localPaymentId,
+    );
+  }
+  return authoritativePayment as Record<string, unknown>;
+}
+
 // Processa uma cobrança escolar já persistida na inbox durável. Falhas
 // transitórias são relançadas para lease/retry; inconsistências de identidade
 // viram AsaasTriageError e nunca criam/adotam registros financeiros.
@@ -1994,6 +2204,11 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     // DONE refund and prevents it from recreating a missing payment.
     const isHistoricalReversal = isProvenHistoricalReversalEvent(event) ||
       historicalReversalAmount > 0;
+    const isUnsettledProviderDeletion = event === "PAYMENT_DELETED" &&
+      Boolean(existingPayment) &&
+      ["PENDING", "OVERDUE", "CONFIRMED"].includes(
+        String(existingPayment?.status || "").trim().toUpperCase(),
+      );
 
     if (isHistoricalReversal && !existingPayment) {
       throw new AsaasTriageError("historical_reversal_payment_missing");
@@ -2007,6 +2222,8 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     let creditedAt: string | null = null;
     let estimatedCreditAt: string | null = null;
     let inactiveSettlementUpdateOnly = false;
+    let legacyRecurringSettlementUpdateOnly = false;
+    let providerDeletionUpdateOnly = false;
     const refundedAmount = historicalReversalAmount;
     const paymentValue = Number(
       isHistoricalReversal ? existingPayment?.value : payment.value,
@@ -2021,28 +2238,112 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         existingPayment.provider_customer_id || "",
       ).trim();
       // Cobranças legadas podiam existir antes de provider_customer_id passar
-      // a ser capturado no INSERT. Adoção ampla pelo perfil seria insegura;
-      // esta RPC aceita somente o evento autenticado já persistido na inbox,
-      // com pagamento, cliente, valor, vencimento, assinatura e oferta
-      // corroborados exatamente. Depois do primeiro vínculo, o trigger o torna
-      // imutável como em qualquer cobrança nova.
+      // a ser capturado no INSERT. O caminho canônico continua exigindo nossa
+      // externalReference. Para parcelas recorrentes antigas que não possuem
+      // referência nem no pagamento nem na assinatura, uma rota separada exige
+      // GETs novos dos dois objetos no Asaas antes de autorizar somente esse
+      // vínculo local imutável.
       if (
         localStudentId && localTenantId && !localCustomerId &&
         typeof body.id === "string" && body.id.trim()
       ) {
-        const { data: legacyBinding, error: legacyBindingError } =
-          await supabase
-            .rpc("bind_legacy_student_payment_from_webhook", {
-              p_provider_event_id: body.id.trim(),
-              p_expected_local_payment_id: existingPayment.id,
-              p_expected_student_id: localStudentId,
-              p_expected_tenant_id: localTenantId,
-              p_expected_provider_customer_id: payment.customer.trim(),
-              p_payload: body,
+        const paymentReference = String(payment.externalReference || "")
+          .trim();
+        if (paymentReference) {
+          const { data: legacyBinding, error: legacyBindingError } =
+            await supabase
+              .rpc("bind_legacy_student_payment_from_webhook", {
+                p_provider_event_id: body.id.trim(),
+                p_expected_local_payment_id: existingPayment.id,
+                p_expected_student_id: localStudentId,
+                p_expected_tenant_id: localTenantId,
+                p_expected_provider_customer_id: payment.customer.trim(),
+                p_payload: body,
+              });
+          if (!legacyBindingError && legacyBinding?.ok === true) {
+            localCustomerId = payment.customer.trim();
+            existingPayment.provider_customer_id = localCustomerId;
+          }
+        } else {
+          const providerSubscriptionId = String(payment.subscription || "")
+            .trim();
+          const localValue = Number(existingPayment.value);
+          const localDueDate = String(existingPayment.due_date || "").trim();
+          if (
+            !providerSubscriptionId || !Number.isFinite(localValue) ||
+            localValue <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(localDueDate)
+          ) {
+            throw new AsaasTriageError(
+              "legacy_recurring_local_evidence_incomplete",
+              localTenantId,
+              existingPayment.id,
+            );
+          }
+          const settledStatus = event === "PAYMENT_RECEIVED_IN_CASH"
+            ? "RECEIVED_IN_CASH" as const
+            : "RECEIVED" as const;
+          const authoritative = await loadLegacyRecurringProviderEvidence({
+            supabase,
+            tenantId: localTenantId,
+            localPaymentId: existingPayment.id,
+            paymentId: payment.id.trim(),
+            customerId: payment.customer.trim(),
+            subscriptionId: providerSubscriptionId,
+            value: localValue,
+            dueDate: localDueDate,
+            status: settledStatus,
+            webhookPayment: payment,
+          });
+          const { data: recurringBinding, error: recurringBindingError } =
+            await supabase.rpc(
+              "bind_legacy_recurring_student_payment_from_webhook",
+              {
+                p_provider_event_id: body.id.trim(),
+                p_expected_local_payment_id: existingPayment.id,
+                p_expected_student_id: localStudentId,
+                p_expected_tenant_id: localTenantId,
+                p_expected_provider_customer_id: payment.customer.trim(),
+                p_expected_provider_subscription_id: providerSubscriptionId,
+                p_authoritative_payment: authoritative.payment,
+                p_authoritative_subscription: authoritative.subscription,
+              },
+            );
+          if (recurringBindingError) {
+            if (
+              ["22023", "23514"].includes(
+                String(recurringBindingError.code),
+              )
+            ) {
+              throw new AsaasTriageError(
+                "legacy_recurring_binding_database_rejected",
+                localTenantId,
+                existingPayment.id,
+              );
+            }
+            throw recurringBindingError;
+          }
+          if (recurringBinding?.ok !== true) {
+            const reason = String(
+              recurringBinding?.reason ||
+                "legacy_recurring_binding_not_applied",
+            );
+            console.warn("[Webhook] Legacy recurring binding rejected", {
+              reason,
+              paymentId: payment.id,
             });
-        if (!legacyBindingError && legacyBinding?.ok === true) {
+            throw new AsaasTriageError(
+              reason,
+              localTenantId,
+              existingPayment.id,
+            );
+          }
           localCustomerId = payment.customer.trim();
           existingPayment.provider_customer_id = localCustomerId;
+          // This exceptional proof only repairs and settles an already-known
+          // legacy installment. It must not flow into canonical enrollment or
+          // subscription-origin discovery, because those paths correctly keep
+          // requiring an externalReference.
+          legacyRecurringSettlementUpdateOnly = true;
         }
       }
       if (!localStudentId || !localTenantId || !localCustomerId) {
@@ -2105,13 +2406,102 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         memberships[0].tenant_id === localTenantId &&
         memberships[0].role === "STUDENT" &&
         memberships[0].status === "ACTIVE";
-      inactiveSettlementUpdateOnly = !currentProfile ||
+      inactiveSettlementUpdateOnly = legacyRecurringSettlementUpdateOnly ||
+        !currentProfile ||
         String(currentProfile.lifecycle_status || "").trim().toLowerCase() !==
           "active" ||
         !exclusivelyActive;
     }
 
-    if (isHistoricalReversal) {
+    if (isUnsettledProviderDeletion) {
+      const localPayment = existingPayment!;
+      const localStudentId = String(localPayment.student_id || "").trim();
+      const localTenantId = String(localPayment.tenant_id || "").trim();
+      const providerSubscriptionId = String(payment.subscription || "").trim();
+      const providerCustomerId = String(payment.customer || "").trim();
+      const localValue = Number(localPayment.value);
+      const localDueDate = String(localPayment.due_date || "").trim();
+      const explicitProviderStatus = String(payment.status || "").trim()
+        .toUpperCase();
+      if (
+        !localStudentId || !localTenantId || !providerCustomerId ||
+        !providerSubscriptionId || !Number.isFinite(localValue) ||
+        localValue <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(localDueDate) ||
+        !explicitProviderStatus || typeof body.id !== "string" ||
+        !body.id.trim()
+      ) {
+        throw new AsaasTriageError(
+          "deleted_payment_local_evidence_incomplete",
+          localTenantId || null,
+          localPayment.id,
+        );
+      }
+      const authoritativePayment = await loadDeletedUnsettledProviderPayment({
+        supabase,
+        tenantId: localTenantId,
+        localPaymentId: localPayment.id,
+        paymentId: payment.id.trim(),
+        customerId: providerCustomerId,
+        subscriptionId: providerSubscriptionId,
+        value: localValue,
+        dueDate: localDueDate,
+        providerStatus: explicitProviderStatus,
+        webhookPayment: payment,
+      });
+      const { data: deletionResult, error: deletionError } = await supabase.rpc(
+        "apply_verified_unsettled_asaas_payment_deletion",
+        {
+          p_provider_event_id: body.id.trim(),
+          p_expected_local_payment_id: localPayment.id,
+          p_expected_student_id: localStudentId,
+          p_expected_tenant_id: localTenantId,
+          p_expected_provider_customer_id: providerCustomerId,
+          p_expected_provider_subscription_id: providerSubscriptionId,
+          p_event_created_at: eventAt,
+          p_event_rank: eventRank,
+          p_payload: body,
+          p_authoritative_payment: authoritativePayment,
+        },
+      );
+      if (deletionError) {
+        if (["22023", "23514"].includes(String(deletionError.code))) {
+          throw new AsaasTriageError(
+            "deleted_payment_database_rejected",
+            localTenantId,
+            localPayment.id,
+          );
+        }
+        throw deletionError;
+      }
+      if (deletionResult?.ok !== true) {
+        const reason = String(
+          deletionResult?.reason || "deleted_payment_not_applied",
+        );
+        console.warn("[Webhook] Unsettled deletion rejected", {
+          reason,
+          paymentId: payment.id,
+        });
+        throw new AsaasTriageError(
+          reason,
+          localTenantId,
+          localPayment.id,
+        );
+      }
+      if (deletionResult.action === "IGNORED") return;
+      if (typeof deletionResult.id !== "string" || !deletionResult.id) {
+        throw new Error("deleted_payment_result_invalid");
+      }
+      studentId = localStudentId;
+      studentTenantId = localTenantId;
+      previousLocalStatus = typeof deletionResult.previous_status === "string"
+        ? deletionResult.previous_status
+        : localPayment.status;
+      providerDeletionUpdateOnly = true;
+      persistedPayment = {
+        id: deletionResult.id,
+        due_date: deletionResult.due_date || localDueDate,
+      };
+    } else if (isHistoricalReversal) {
       studentId = existingPayment!.student_id;
       studentTenantId = existingPayment!.tenant_id;
       const providerCustomerId = existingPayment!.provider_customer_id;
@@ -2761,6 +3151,7 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
     // whether the student is ACTIVE or OVERDUE.
     if (
       settledPayment || event === "PAYMENT_OVERDUE" ||
+      providerDeletionUpdateOnly ||
       enrollmentPaymentUnsettled
     ) {
       const { data: financialStatus, error: financialStatusError } =

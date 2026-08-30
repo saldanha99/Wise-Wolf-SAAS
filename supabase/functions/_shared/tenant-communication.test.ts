@@ -407,6 +407,50 @@ Deno.test("WhatsApp route is tenant-scoped and prefers a connected recent instan
   );
 });
 
+Deno.test("receipt-capable route filters before choosing the newest admin instance", async () => {
+  const calls: QueryCall[] = [];
+  const admin = {
+    from(table: string) {
+      return new FakeRouteQuery(table, calls);
+    },
+  };
+
+  const route = await loadTenantWhatsAppRoute(
+    admin,
+    "school-a",
+    "general",
+    { requireDeliveryReceipts: true },
+  );
+  assert(route?.instanceName === "school-a-central", "route was not resolved");
+  const instanceCalls = calls.filter((call) =>
+    call.table === "whatsapp_instances"
+  );
+  assert(
+    instanceCalls.some((call) =>
+      call.method === "eq" && call.args[0] === "inbox_enabled" &&
+      call.args[1] === true
+    ),
+    "newer instance without an inbox could win route selection",
+  );
+  assert(
+    instanceCalls.some((call) =>
+      call.method === "eq" && call.args[0] === "webhook_auth_version" &&
+      call.args[1] === 3
+    ),
+    "instance without authenticated v3 receipts could win route selection",
+  );
+  const receiptFilter = instanceCalls.findIndex((call) =>
+    call.method === "eq" && call.args[0] === "webhook_auth_version"
+  );
+  const newestOrder = instanceCalls.findIndex((call) =>
+    call.method === "order" && call.args[0] === "updated_at"
+  );
+  assert(
+    receiptFilter >= 0 && receiptFilter < newestOrder,
+    "route ordered all instances before excluding receipt-ineligible ones",
+  );
+});
+
 Deno.test("personal WhatsApp route requires an exact user inside the tenant", async () => {
   const calls: QueryCall[] = [];
   const admin = {

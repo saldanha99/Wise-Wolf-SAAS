@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { localMonth, monthRange } from '../lib/dateUtils';
+import { formatLocalDateBr, localMonth, monthRange } from '../lib/dateUtils';
 import { Download, Search, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
 
 const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const [payments, setPayments] = useState<any[]>([]);
@@ -35,7 +36,9 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 .gte('due_date', start)
                 .lt('due_date', endExclusive);
 
-            if (statusFilter !== 'ALL') {
+            if (statusFilter === 'SETTLED') {
+                query = query.in('status', ['RECEIVED', 'RECEIVED_IN_CASH']);
+            } else if (statusFilter !== 'ALL') {
                 query = query.eq('status', statusFilter);
             }
 
@@ -56,10 +59,13 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }, [tenantId, month, statusFilter]);
 
     const getStatusBadge = (status: string) => {
+        if (isSettledStudentPayment(status)) {
+            return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-600"><CheckCircle size={12} /> Pago</span>;
+        }
+        if (isStudentPaymentAwaitingCredit(status)) {
+            return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-sky-100 text-sky-700"><Clock size={12} /> Confirmado · aguardando crédito</span>;
+        }
         switch (status) {
-            case 'RECEIVED':
-            case 'CONFIRMED':
-                return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-600"><CheckCircle size={12} /> Pago</span>;
             case 'OVERDUE':
                 return <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-600"><AlertCircle size={12} /> Atrasado</span>;
             case 'PENDING':
@@ -74,7 +80,7 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
             <div className="p-8 border-b dark:border-brand-border flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
                     <h3 className="font-black text-brand-text text-lg tracking-tight">Fluxo de Caixa Detalhado</h3>
-                    <p className="text-sm text-brand-muted font-medium">Todas as transações do mês</p>
+                    <p className="text-sm text-brand-muted font-medium">Baixas confirmadas pelo Asaas; ajustes exigem conciliação auditada.</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -90,7 +96,8 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         className="px-4 py-2 bg-brand-surface-2 border border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200"
                     >
                         <option value="ALL">Todos os Status</option>
-                        <option value="RECEIVED">Pagos</option>
+                        <option value="SETTLED">Pagos</option>
+                        <option value="CONFIRMED">Confirmados, aguardando crédito</option>
                         <option value="PENDING">Pendentes</option>
                         <option value="OVERDUE">Atrasados</option>
                     </select>
@@ -128,10 +135,10 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                         </div>
                                     </td>
                                     <td className="px-8 py-4 text-xs font-bold text-brand-muted">
-                                        {new Date(p.due_date).toLocaleDateString('pt-BR')}
+                                        {formatLocalDateBr(p.due_date)}
                                     </td>
                                     <td className="px-8 py-4 text-xs font-bold text-brand-muted">
-                                        {p.payment_date ? new Date(p.payment_date).toLocaleDateString('pt-BR') : '-'}
+                                        {formatLocalDateBr(p.payment_date, '-')}
                                     </td>
                                     <td className="px-8 py-4 text-xs font-bold text-brand-muted">
                                         {p.billing_type || 'UNDEFINED'}
@@ -149,37 +156,10 @@ const AdminPaymentsList: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                                             </a>
                                         )}
 
-                                        {(p.status === 'PENDING' || p.status === 'OVERDUE') && (
-                                            <button
-                                                onClick={async () => {
-                                                    if (!confirm(`Confirmar recebimento manual de R$ ${p.value}?`)) return;
-                                                    try {
-                                                        // 1. Update Payment Status
-                                                        const { error: updateError } = await supabase
-                                                            .from('student_payments')
-                                                            .update({
-                                                                status: 'RECEIVED',
-                                                                payment_date: new Date().toISOString()
-                                                            })
-                                                            .eq('id', p.id);
-
-                                                        if (updateError) throw updateError;
-
-                                                        // O lançamento no caixa é criado pelo trigger ledger_on_payment_received
-                                                        // (dispara no update de status acima). Insert manual removido em 03/07/2026
-                                                        // — duplicava a linha do trigger (caixa dobrado).
-
-                                                        fetchPayments();
-                                                        alert('Pagamento confirmado e registrado no caixa!');
-                                                    } catch (err: any) {
-                                                        alert('Erro: ' + err.message);
-                                                    }
-                                                }}
-                                                className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
-                                                title="Confirmar Pagamento Manual"
-                                            >
-                                                <CheckCircle size={16} />
-                                            </button>
+                                        {!p.invoice_url && (p.status === 'PENDING' || p.status === 'OVERDUE') && (
+                                            <span className="text-[9px] font-black uppercase tracking-wider text-brand-muted" title="A baixa acontece pela conciliação auditada com o Asaas">
+                                                Conciliação automática
+                                            </span>
                                         )}
                                     </td>
                                 </tr>

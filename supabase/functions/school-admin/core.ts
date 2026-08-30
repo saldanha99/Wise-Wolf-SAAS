@@ -6,6 +6,14 @@ export const LIFECYCLE_STATUSES = [
 
 export type LifecycleStatus = typeof LIFECYCLE_STATUSES[number];
 
+export const STUDENT_OFFBOARDING_BILLING_POLICIES = [
+  "CHARGE_CURRENT_MONTH",
+  "WAIVE_CURRENT_MONTH",
+] as const;
+
+export type StudentOffboardingBillingPolicy =
+  typeof STUDENT_OFFBOARDING_BILLING_POLICIES[number];
+
 export type TargetMembershipSnapshot = {
   tenant_id?: unknown;
   role?: unknown;
@@ -30,6 +38,8 @@ export type SchoolAdminAction =
     targetId: string;
     status: LifecycleStatus;
     reason: string | null;
+    billingPolicy: StudentOffboardingBillingPolicy | null;
+    effectiveEndDate: string | null;
   }
   | {
     action: "setTeacherLifecycle";
@@ -115,6 +125,36 @@ function lifecycleReason(value: unknown): string | null {
   if (typeof value !== "string") throw new Error("INVALID_REASON");
   const normalized = value.trim();
   if (!normalized || normalized.length > 500) throw new Error("INVALID_REASON");
+  return normalized;
+}
+
+function studentOffboardingBillingPolicy(
+  value: unknown,
+): StudentOffboardingBillingPolicy {
+  if (
+    typeof value !== "string" ||
+    !STUDENT_OFFBOARDING_BILLING_POLICIES.includes(
+      value as StudentOffboardingBillingPolicy,
+    )
+  ) {
+    throw new Error("INVALID_BILLING_POLICY");
+  }
+  return value as StudentOffboardingBillingPolicy;
+}
+
+function calendarDate(value: unknown, field: string): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error(`INVALID_${field}`);
+  }
+  const [year, month, day] = normalized.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error(`INVALID_${field}`);
+  }
   return normalized;
 }
 
@@ -216,14 +256,56 @@ export function normalizeSchoolAdminAction(body: unknown): SchoolAdminAction {
     const idKey = body.action === "setStudentLifecycle"
       ? "studentId"
       : "teacherId";
-    if (!hasOnlyKeys(body, ["action", idKey, "status", "reason"])) {
+    const allowed = body.action === "setStudentLifecycle"
+      ? [
+        "action",
+        idKey,
+        "status",
+        "reason",
+        "billingPolicy",
+        "effectiveEndDate",
+      ]
+      : ["action", idKey, "status", "reason"];
+    if (!hasOnlyKeys(body, allowed)) {
       throw new Error("UNEXPECTED_FIELD");
     }
+    const status = lifecycleStatus(body.status);
+    const billingPolicy = body.action === "setStudentLifecycle" &&
+        status === "offboarded"
+      ? studentOffboardingBillingPolicy(body.billingPolicy)
+      : null;
+    const effectiveEndDate = body.action === "setStudentLifecycle" &&
+        status === "offboarded"
+      ? calendarDate(body.effectiveEndDate, "EFFECTIVE_END_DATE")
+      : null;
+    if (
+      body.action === "setStudentLifecycle" && status !== "offboarded" &&
+      (body.billingPolicy !== undefined || body.effectiveEndDate !== undefined)
+    ) {
+      throw new Error("UNEXPECTED_BILLING_POLICY");
+    }
+    const targetId = requiredUuid(body[idKey], idKey);
+    const reason = lifecycleReason(body.reason);
+    if (
+      body.action === "setStudentLifecycle" && status !== "active" && !reason
+    ) {
+      throw new Error("INVALID_REASON");
+    }
+    if (body.action === "setStudentLifecycle") {
+      return {
+        action: "setStudentLifecycle",
+        targetId,
+        status,
+        reason,
+        billingPolicy,
+        effectiveEndDate,
+      };
+    }
     return {
-      action: body.action,
-      targetId: requiredUuid(body[idKey], idKey),
-      status: lifecycleStatus(body.status),
-      reason: lifecycleReason(body.reason),
+      action: "setTeacherLifecycle",
+      targetId,
+      status,
+      reason,
     };
   }
 

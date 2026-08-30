@@ -49,6 +49,18 @@ const failedPaymentQuery = () => {
     return query;
 };
 
+const successfulPaymentQuery = (data: any[]) => {
+    const query = {
+        select: vi.fn(),
+        eq: vi.fn(),
+        order: vi.fn(),
+    };
+    query.select.mockReturnValue(query);
+    query.eq.mockReturnValue(query);
+    query.order.mockResolvedValue({ data, error: null });
+    return query;
+};
+
 beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -70,5 +82,24 @@ describe('erro do financeiro do aluno', () => {
 
         fireEvent.click(screen.getByRole('button', { name: /tentar novamente/i }));
         await waitFor(() => expect(mocks.from).toHaveBeenCalledTimes(2));
+    });
+
+    it('distingue CONFIRMED de pago e mantém a ação correta no cartão mobile', async () => {
+        mocks.from.mockImplementation(() => successfulPaymentQuery([{
+            id: 'payment-1',
+            asaas_payment_id: 'pay_1',
+            value: 169,
+            status: 'CONFIRMED',
+            due_date: '2026-08-30',
+            payment_date: '2026-08-29',
+            billing_type: 'PIX',
+        }]));
+
+        render(<StudentBilling user={{ id: 'student-1', tenantId: 'tenant-1' }} />);
+
+        const badges = await screen.findAllByText('Aguardando crédito');
+        expect(badges.some((badge) => badge.className.includes('text-sky-600'))).toBe(true);
+        expect(screen.getByText('Confirmado · aguardando crédito')).toBeInTheDocument();
+        expect(screen.queryByText('Nenhuma ação disponível.')).not.toBeInTheDocument();
     });
 });

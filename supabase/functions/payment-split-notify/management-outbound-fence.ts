@@ -136,9 +136,13 @@ export function managementGroupMessageFinish(result: EvolutionSendResult): {
 } {
   if (result.outcome === "accepted") {
     return {
-      status: "SENT",
+      // This legacy monthly ledger has no provider-message-id column and no
+      // receipt correlation. A 2xx therefore cannot prove group delivery.
+      status: "UNKNOWN",
       providerHttpStatus: result.httpStatus,
-      error: null,
+      error: result.messageId
+        ? "provider_acceptance_without_receipt_correlation"
+        : "provider_acceptance_without_message_id",
     };
   }
   if (result.outcome === "ambiguous") {

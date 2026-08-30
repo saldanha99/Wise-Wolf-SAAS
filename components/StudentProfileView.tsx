@@ -8,6 +8,7 @@ import { User as UserType } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
 import StudentManualPixManager from './StudentManualPixManager';
+import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
 
 interface Props {
   studentId: string;
@@ -100,7 +101,24 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
           supabase.rpc('get_authorized_profile_dependents', { p_guardian_id: studentId }),
         ]);
         setCreditBalance(Number(bal) || 0);
-        setDependents((deps as any[]) || []);
+        const dependentRows = (deps as any[]) || [];
+        let subscriptionTruth: any[] = [];
+        if (dependentRows.length > 0) {
+          const { data: truthRows, error: truthError } = await supabase
+            .from('profiles')
+            .select('id,asaas_subscription_status,lifecycle_status')
+            .in('id', dependentRows.map((dependent) => dependent.id));
+          if (truthError) {
+            console.error('Não foi possível conferir o status das assinaturas vinculadas:', truthError);
+          } else {
+            subscriptionTruth = truthRows || [];
+          }
+        }
+        const truthById = new Map(subscriptionTruth.map((row) => [String(row.id), row]));
+        setDependents(dependentRows.map((dependent) => ({
+          ...dependent,
+          ...(truthById.get(String(dependent.id)) || {}),
+        })));
       } else {
         setDependents([]);
       }
@@ -290,7 +308,11 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                             <div className="text-right shrink-0">
                               {isAdmin && <p className="text-sm font-bold text-brand-text dark:text-slate-200">{money(dep.monthly_fee)}</p>}
                               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">
-                                {dep.subscription_id ? 'Assinatura ativa' : 'Sem assinatura'}
+                                {hasActiveAsaasSubscription(dep)
+                                  ? 'Assinatura ativa'
+                                  : dep.subscription_id
+                                    ? 'Assinatura inativa'
+                                    : 'Sem assinatura'}
                               </p>
                             </div>
                           </div>

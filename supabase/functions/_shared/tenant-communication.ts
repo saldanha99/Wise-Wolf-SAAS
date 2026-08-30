@@ -19,6 +19,11 @@ export interface TenantCommunicationIdentity {
 
 export type TenantCommunicationAudience = "general" | "student" | "teacher";
 
+export interface TenantWhatsAppRouteOptions {
+  /** Require the v3 inbound webhook needed to correlate provider receipts. */
+  requireDeliveryReceipts?: boolean;
+}
+
 export interface TenantWhatsAppRoute {
   instanceName: string;
   ownerPhone: string | null;
@@ -306,14 +311,21 @@ async function loadTenantAdminWhatsAppInstance(
   admin: any,
   tenantId: string,
   adminUserIds: string[],
+  options: TenantWhatsAppRouteOptions = {},
 ): Promise<{ instanceName: string; ownerUserId: string } | null> {
   if (!adminUserIds.length) return null;
-  const { data: instance, error: instanceError } = await admin
+  let query = admin
     .from("whatsapp_instances")
     .select("instance_name,user_id")
     .eq("tenant_id", tenantId)
     .in("user_id", adminUserIds)
-    .in("status", ["connected", "open"])
+    .in("status", ["connected", "open"]);
+  if (options.requireDeliveryReceipts === true) {
+    query = query
+      .eq("inbox_enabled", true)
+      .eq("webhook_auth_version", 3);
+  }
+  const { data: instance, error: instanceError } = await query
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -342,6 +354,7 @@ export async function loadTenantCentralWhatsAppContext(
   admin: any,
   tenantId: string,
   audience: TenantCommunicationAudience = "general",
+  options: TenantWhatsAppRouteOptions = {},
 ): Promise<TenantCentralWhatsAppContext | null> {
   const normalizedTenantId = safeCommunicationText(tenantId, 100);
   if (!normalizedTenantId) return null;
@@ -359,6 +372,7 @@ export async function loadTenantCentralWhatsAppContext(
     admin,
     normalizedTenantId,
     adminUserIds,
+    options,
   );
   return route
     ? {
@@ -374,6 +388,7 @@ export async function loadTenantWhatsAppRoute(
   admin: any,
   tenantId: string,
   audience: TenantCommunicationAudience = "general",
+  options: TenantWhatsAppRouteOptions = {},
 ): Promise<TenantWhatsAppRoute | null> {
   const normalizedTenantId = safeCommunicationText(tenantId, 100);
   if (!normalizedTenantId) return null;
@@ -381,6 +396,7 @@ export async function loadTenantWhatsAppRoute(
     admin,
     normalizedTenantId,
     audience,
+    options,
   );
   if (!central) return null;
   const instanceRoute = {

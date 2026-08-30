@@ -127,8 +127,6 @@ insert into public.tenant_memberships (
 
 alter table public.student_payments
   disable trigger trg_notify_payment_split;
-alter table public.student_payments
-  disable trigger trg_notify_management_payment_confirmation;
 
 insert into public.student_payments (
   id, student_id, tenant_id, asaas_payment_id, value, amount_cents,

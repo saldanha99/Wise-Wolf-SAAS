@@ -94,6 +94,74 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "reconciliation raises a high issue when a deleted provider charge remains locally open",
+  () => {
+    const localId = "00000000-0000-4000-8000-000000000090";
+    const baseInput = {
+      ...empty,
+      providerPayments: [{
+        id: "pay_deleted_open",
+        customer: "cus_deleted_open",
+        status: "PENDING",
+        value: 279,
+        dueDate: "2026-08-15",
+        deleted: true,
+      }],
+      customerByStudentId: new Map([["student-deleted", "cus_deleted_open"]]),
+      studentByCustomerId: new Map([
+        [
+          "cus_deleted_open",
+          [{ id: "student-deleted", tenantId: "school" }],
+        ],
+      ]),
+    };
+    const issues = buildReconciliationIssues({
+      ...baseInput,
+      localPayments: [{
+        id: localId,
+        tenant_id: "school",
+        student_id: "student-deleted",
+        asaas_payment_id: "pay_deleted_open",
+        status: "PENDING",
+        provider_status: "PENDING",
+        value: 279,
+        due_date: "2026-08-15",
+        refunded_amount: 0,
+      }],
+    });
+    const issue = issues.find((candidate) =>
+      candidate.kind === "PROVIDER_PAYMENT_DELETED_LOCAL_OPEN"
+    );
+    if (!issue || issue.severity !== "HIGH") {
+      throw new Error("deleted provider charge remained invisible locally");
+    }
+
+    const converged = buildReconciliationIssues({
+      ...baseInput,
+      localPayments: [{
+        id: localId,
+        tenant_id: "school",
+        student_id: "student-deleted",
+        asaas_payment_id: "pay_deleted_open",
+        status: "CANCELLED",
+        provider_status: "DELETED",
+        value: 279,
+        due_date: "2026-08-15",
+        refunded_amount: 0,
+      }],
+    });
+    if (
+      converged.some((candidate) =>
+        candidate.kind === "PROVIDER_PAYMENT_DELETED_LOCAL_OPEN" ||
+        candidate.kind === "PAYMENT_STATUS_MISMATCH"
+      )
+    ) {
+      throw new Error("a converged provider deletion stayed falsely open");
+    }
+  },
+);
+
 Deno.test("identity collisions are critical instead of silently collapsed", () => {
   const providerId = "pay_collision";
   const customerId = "cus_collision";

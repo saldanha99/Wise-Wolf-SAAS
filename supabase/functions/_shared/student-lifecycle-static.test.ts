@@ -124,30 +124,70 @@ Deno.test({
     const [school, migration] = await Promise.all([
       source("../school-admin/index.ts"),
       source(
-        "../../migrations/20260825194716_fence_student_lifecycle_mutations.sql",
+        "../../migrations/20260830191843_add_student_offboarding_billing_policy.sql",
       ),
     ]);
-    assertStringIncludes(school, '"begin_student_offboarding"');
+    assertStringIncludes(
+      school,
+      '"begin_student_offboarding_with_billing_policy"',
+    );
     assertStringIncludes(school, '"record_student_offboarding_provider_state"');
     assertStringIncludes(school, '"bind_student_offboarding_integrations"');
-    assertStringIncludes(school, '"finalize_student_offboarding"');
+    assertStringIncludes(
+      school,
+      '"finalize_student_offboarding_with_billing_policy"',
+    );
     const providerComplete = school.indexOf(
       'recordOffboardingProviderState(admin, claim, "COMPLETE")',
     );
     const finalize = school.indexOf(
-      '"finalize_student_offboarding"',
+      '"finalize_student_offboarding_with_billing_policy"',
       providerComplete,
     );
     assert(providerComplete >= 0 && finalize > providerComplete);
     assertStringIncludes(
       migration,
-      "and upper(coalesce(payment.status, '')) = 'PENDING'",
+      "'PENDING', 'OVERDUE', 'CANCELLED'",
     );
     assertStringIncludes(
       migration,
-      "profile.subscription_id, '')), '') is not distinct from operation_row.subscription_id",
+      "is not distinct from operation_row.subscription_id",
     );
-    assertStringIncludes(migration, "integration_snapshot <> '{}'::jsonb");
+    assertStringIncludes(
+      migration,
+      "operation_row.integration_snapshot is distinct from expected_snapshot",
+    );
+    assertStringIncludes(
+      migration,
+      "status in ('PROVIDER_MUTATING', 'UNKNOWN')",
+    );
+    assertStringIncludes(
+      school,
+      "requireOffboardingProviderCancellationComplete(",
+    );
+    const reactivationStart = school.indexOf(
+      "const begun = await beginStudentReactivation",
+    );
+    const finalizeOnlyBranch = school.indexOf(
+      'if (claim.action !== "FINALIZE_REQUIRED")',
+      reactivationStart,
+    );
+    const reactivationBind = school.indexOf(
+      "await bindOffboardingIntegrations(admin, claim, integration, null)",
+      reactivationStart,
+    );
+    assert(
+      reactivationStart >= 0 && finalizeOnlyBranch > reactivationStart &&
+        reactivationBind > finalizeOnlyBranch,
+      "FINALIZE_REQUIRED retry must not rebind an already completed provider mutation",
+    );
+    assertStringIncludes(school, "claim.dueDay");
+    assertStringIncludes(
+      school,
+      "school_admin_student_reactivation_postcondition",
+    );
+    assertStringIncludes(migration, "'app.student_lifecycle_finalizer'");
+    assertStringIncludes(migration, "tenant_membership_user_id_immutable");
   },
 });
 

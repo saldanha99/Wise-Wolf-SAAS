@@ -120,6 +120,18 @@ Deno.test("financial report maps ambiguous delivery to terminal UNKNOWN", () => 
   );
   assertEquals(
     financialReportMessageFinish({
+      outcome: "accepted",
+      messageId: null,
+      httpStatus: 200,
+    }),
+    {
+      status: "UNKNOWN",
+      providerHttpStatus: 200,
+      error: "provider_acceptance_without_message_id",
+    },
+  );
+  assertEquals(
+    financialReportMessageFinish({
       outcome: "rejected",
       messageId: null,
       httpStatus: 400,

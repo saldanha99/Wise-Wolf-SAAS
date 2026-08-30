@@ -12,6 +12,8 @@ import ManualTrialScheduler from './ManualTrialScheduler';
 import DirectorPendingCenter from './DirectorPendingCenter';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
+import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
+import { formatLocalDateBr } from '../lib/dateUtils';
 
 interface SchoolAdminDashboardProps {
   teachers: Teacher[];
@@ -166,7 +168,7 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
           profiles ( full_name )
         `)
         .eq('tenant_id', tenantId)
-        .neq('status', 'PENDING')
+        .in('status', ['RECEIVED', 'RECEIVED_IN_CASH', 'CONFIRMED'])
         .order('payment_date', { ascending: false })
         .limit(5);
 
@@ -414,66 +416,19 @@ const SchoolAdminDashboard: React.FC<SchoolAdminDashboardProps> = ({ teachers, t
                             R$ {Number(pay.value).toFixed(2)}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${isSettledStudentPayment(pay.status) ? 'bg-emerald-400/10 text-emerald-500 border-emerald-400/30' :
+                              isStudentPaymentAwaitingCredit(pay.status) ? 'bg-sky-400/10 text-sky-500 border-sky-400/30' :
                               pay.status === 'OVERDUE' ? 'bg-red-400/10 text-red-500 border-red-400/30' :
                                 'bg-amber-400/10 text-amber-500 border-amber-400/30'
                               }`}>
-                              {pay.status === 'RECEIVED' || pay.status === 'CONFIRMED' ? 'PAGO' :
+                              {isSettledStudentPayment(pay.status) ? 'PAGO' :
+                                isStudentPaymentAwaitingCredit(pay.status) ? 'AGUARDANDO CRÉDITO' :
                                 pay.status === 'OVERDUE' ? 'ATRASADO' : 'PENDENTE'}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right text-brand-muted flex items-center justify-end gap-2">
-                            <span className="text-xs">{pay.payment_date ? new Date(pay.payment_date).toLocaleDateString('pt-BR') : '-'}</span>
+                            <span className="text-xs">{formatLocalDateBr(pay.payment_date, '-')}</span>
 
-                            {(pay.status === 'PENDING' || pay.status === 'OVERDUE') && (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  if (!confirm(`Confirmar recebimento manual de R$ ${pay.value}?`)) return;
-                                  try {
-                                    // 1. Update Payment Status
-                                    const { error: updateError } = await supabase
-                                      .from('student_payments')
-                                      .update({
-                                        status: 'RECEIVED',
-                                        payment_date: new Date().toISOString()
-                                      })
-                                      .eq('id', pay.id);
-
-                                    if (updateError) throw updateError;
-
-                                    const payload = {
-                                      tenant_id: pay.profiles?.tenant_id || tenantId,
-                                      type: 'ENTRADA',
-                                      category: 'student_tuition',
-                                      amount: pay.value,
-                                      amount_cents: Math.round(pay.value * 100),
-                                      description: `Mensalidade (Manual) - ${pay.profiles?.full_name || 'Aluno'}`,
-                                      reference_id: pay.student_id,
-                                      student_payment_id: pay.id,
-                                      occurred_at: new Date().toISOString(),
-                                      created_at: new Date().toISOString()
-                                    };
-                                    console.log("💰 Manually inserting transaction:", payload);
-
-                                    const { error: transError } = await supabase
-                                      .from('financial_transactions')
-                                      .insert(payload);
-
-                                    if (transError) throw transError;
-
-                                    fetchAnalytics(); // Refresh dashboard
-                                    alert('Pagamento confirmado e registrado no caixa!');
-                                  } catch (err: any) {
-                                    alert('Erro: ' + err.message);
-                                  }
-                                }}
-                                className="ml-2 p-1 text-emerald-500 hover:bg-emerald-400/10 rounded transition-colors"
-                                title="Confirmar Pagamento Manual"
-                              >
-                                <Clock size={14} className="text-emerald-500" />
-                              </button>
-                            )}
                           </td>
                         </tr>
                       )) : (

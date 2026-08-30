@@ -63,6 +63,30 @@ Deno.test("monthly delivery result refuses an unpersisted reconciliation", async
 Deno.test("management provider failures are terminal and explicit", () => {
   assertEquals(
     managementGroupMessageFinish({
+      outcome: "accepted",
+      messageId: "provider-monthly-1",
+      httpStatus: 200,
+    }),
+    {
+      status: "UNKNOWN",
+      providerHttpStatus: 200,
+      error: "provider_acceptance_without_receipt_correlation",
+    },
+  );
+  assertEquals(
+    managementGroupMessageFinish({
+      outcome: "accepted",
+      messageId: null,
+      httpStatus: 200,
+    }),
+    {
+      status: "UNKNOWN",
+      providerHttpStatus: 200,
+      error: "provider_acceptance_without_message_id",
+    },
+  );
+  assertEquals(
+    managementGroupMessageFinish({
       outcome: "ambiguous",
       messageId: null,
       httpStatus: 504,

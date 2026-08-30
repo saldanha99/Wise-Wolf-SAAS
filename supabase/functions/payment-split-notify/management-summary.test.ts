@@ -1,6 +1,7 @@
 import {
   monthlyPaymentCloseMessage,
   paymentConfirmedManagementMessage,
+  paymentReceivedManagementMessage,
 } from "./management-summary.ts";
 
 Deno.test("confirmation does not present authorized card as cash", () => {
@@ -15,6 +16,21 @@ Deno.test("confirmation does not present authorized card as cash", () => {
   }
   if (!message.includes("ainda não entrou no caixa")) throw new Error(message);
   if (!message.includes("R$ 229,00")) throw new Error(message);
+});
+
+Deno.test("received fallback is explicit cash and does not promise a split", () => {
+  const message = paymentReceivedManagementMessage({
+    student_name: "Aluno Teste",
+    value: 229,
+    billing_type: "PIX",
+    credited_at: "2026-08-30",
+  });
+  if (!message.includes("Pagamento recebido via PIX")) throw new Error(message);
+  if (!message.includes("R$ 229,00")) throw new Error(message);
+  if (!message.includes("rateio detalhado está desativado")) {
+    throw new Error(message);
+  }
+  if (message.includes("ainda não entrou no caixa")) throw new Error(message);
 });
 
 Deno.test("monthly close separates competence from cash and applies frozen totals", () => {

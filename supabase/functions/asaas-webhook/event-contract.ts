@@ -45,6 +45,18 @@ function normalizedId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function monetaryCents(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) && numeric > 0
+    ? Math.round(numeric * 100)
+    : null;
+}
+
+function normalizedAsaasDate(value: unknown): string {
+  const date = normalizedId(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -105,6 +117,137 @@ export function providerGeneratedSubscriptionPaymentMatches(
         "subscription",
       ) !== null &&
     (!paymentReference || paymentReference === parentReference);
+}
+
+/**
+ * Legacy Asaas subscriptions may generate installments without any
+ * externalReference. This is deliberately narrower than the canonical
+ * reference path: it only corroborates an already-known local payment after
+ * fresh GETs of both that payment and its exact parent subscription.
+ */
+export function legacyRecurringProviderEvidenceMatches(
+  webhookPayment: {
+    id?: unknown;
+    customer?: unknown;
+    subscription?: unknown;
+    externalReference?: unknown;
+    value?: unknown;
+    dueDate?: unknown;
+    status?: unknown;
+  },
+  authoritativePayment: unknown,
+  authoritativeSubscription: unknown,
+  expected: {
+    paymentId: string;
+    customerId: string;
+    subscriptionId: string;
+    value: number;
+    dueDate: string;
+    status: "RECEIVED" | "RECEIVED_IN_CASH";
+  },
+): boolean {
+  if (
+    !authoritativePayment || typeof authoritativePayment !== "object" ||
+    Array.isArray(authoritativePayment) ||
+    !authoritativeSubscription ||
+    typeof authoritativeSubscription !== "object" ||
+    Array.isArray(authoritativeSubscription)
+  ) {
+    return false;
+  }
+
+  const payment = authoritativePayment as Record<string, unknown>;
+  const subscription = authoritativeSubscription as Record<string, unknown>;
+  const expectedCents = monetaryCents(expected.value);
+  const expectedDueDate = normalizedAsaasDate(expected.dueDate);
+  if (
+    !expected.paymentId.trim() || !expected.customerId.trim() ||
+    !expected.subscriptionId.trim() || expectedCents === null ||
+    !expectedDueDate
+  ) {
+    return false;
+  }
+
+  const paymentEvidenceMatches = (
+    candidate: typeof webhookPayment | Record<string, unknown>,
+  ): boolean =>
+    normalizedId(candidate.id) === expected.paymentId &&
+    normalizedId(candidate.customer) === expected.customerId &&
+    normalizedId(candidate.subscription) === expected.subscriptionId &&
+    normalizedId(candidate.externalReference) === "" &&
+    monetaryCents(candidate.value) === expectedCents &&
+    normalizedAsaasDate(candidate.dueDate) === expectedDueDate &&
+    normalizedId(candidate.status).toUpperCase() === expected.status;
+
+  return payment.deleted !== true &&
+    paymentEvidenceMatches(webhookPayment) &&
+    paymentEvidenceMatches(payment) &&
+    normalizedId(subscription.id) === expected.subscriptionId &&
+    normalizedId(subscription.customer) === expected.customerId &&
+    normalizedId(subscription.externalReference) === "" &&
+    normalizedId(subscription.status) !== "" &&
+    monetaryCents(subscription.value) === expectedCents;
+}
+
+/**
+ * A PAYMENT_DELETED notification is not enough to erase money or debt. Only a
+ * fresh GET of the same, explicitly deleted provider object can cancel an
+ * already-known local payment that has never settled.
+ */
+export function deletedUnsettledProviderPaymentMatches(
+  webhookPayment: {
+    id?: unknown;
+    customer?: unknown;
+    subscription?: unknown;
+    externalReference?: unknown;
+    value?: unknown;
+    dueDate?: unknown;
+    status?: unknown;
+  },
+  authoritativePayment: unknown,
+  expected: {
+    paymentId: string;
+    customerId: string;
+    subscriptionId: string;
+    value: number;
+    dueDate: string;
+    providerStatus: string;
+  },
+): boolean {
+  if (
+    !authoritativePayment || typeof authoritativePayment !== "object" ||
+    Array.isArray(authoritativePayment)
+  ) {
+    return false;
+  }
+  const payment = authoritativePayment as Record<string, unknown>;
+  const expectedCents = monetaryCents(expected.value);
+  const expectedDueDate = normalizedAsaasDate(expected.dueDate);
+  const expectedProviderStatus = normalizedId(expected.providerStatus)
+    .toUpperCase();
+  if (
+    !expected.paymentId.trim() || !expected.customerId.trim() ||
+    !expected.subscriptionId.trim() || expectedCents === null ||
+    !expectedDueDate || !expectedProviderStatus
+  ) {
+    return false;
+  }
+  const exactCore = (
+    candidate: typeof webhookPayment | Record<string, unknown>,
+  ): boolean =>
+    normalizedId(candidate.id) === expected.paymentId &&
+    normalizedId(candidate.customer) === expected.customerId &&
+    normalizedId(candidate.subscription) === expected.subscriptionId &&
+    monetaryCents(candidate.value) === expectedCents &&
+    normalizedAsaasDate(candidate.dueDate) === expectedDueDate &&
+    normalizedId(candidate.status).toUpperCase() === expectedProviderStatus;
+
+  return payment.deleted === true &&
+    exactCore(webhookPayment) &&
+    exactCore(payment) &&
+    normalizedId(payment.externalReference) ===
+      normalizedId(webhookPayment.externalReference) &&
+    normalizedId(payment.creditDate) === "";
 }
 
 export function isSettledPaymentEvent(eventName: string): boolean {

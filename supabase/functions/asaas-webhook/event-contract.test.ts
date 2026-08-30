@@ -2,10 +2,12 @@ import {
   actualCreditAt,
   asaasDateToIso,
   completedRefundAmount,
+  deletedUnsettledProviderPaymentMatches,
   enrollmentPaymentKind,
   financialReviewReason,
   isProvenHistoricalReversalEvent,
   isSettledPaymentEvent,
+  legacyRecurringProviderEvidenceMatches,
   localStatusAfterProviderEvent,
   paymentCustomerMatchesCanonicalBinding,
   providerEventRank,
@@ -375,6 +377,194 @@ Deno.test("a new recurring payment requires the exact local and parent subscript
       );
     }
   }
+});
+
+Deno.test(
+  "legacy recurring evidence requires exact webhook plus fresh payment and subscription snapshots",
+  () => {
+    const expected = {
+      paymentId: "pay_legacy_monthly",
+      customerId: "cus_legacy_student",
+      subscriptionId: "sub_legacy_student",
+      value: 350.1,
+      dueDate: "2026-08-30",
+      status: "RECEIVED" as const,
+    };
+    const webhook = {
+      id: expected.paymentId,
+      customer: expected.customerId,
+      subscription: expected.subscriptionId,
+      externalReference: null,
+      value: 350.1,
+      dueDate: expected.dueDate,
+      status: expected.status,
+    };
+    const paymentGet = { ...webhook, deleted: false };
+    const subscriptionGet = {
+      id: expected.subscriptionId,
+      customer: expected.customerId,
+      externalReference: null,
+      value: 350.1,
+      status: "ACTIVE",
+    };
+
+    if (
+      !legacyRecurringProviderEvidenceMatches(
+        webhook,
+        paymentGet,
+        subscriptionGet,
+        expected,
+      )
+    ) {
+      throw new Error("exact legacy recurring evidence was rejected");
+    }
+
+    const divergentEvidence: Array<[string, unknown, unknown]> = [
+      ["payment id", { ...paymentGet, id: "pay_other" }, subscriptionGet],
+      [
+        "customer",
+        { ...paymentGet, customer: "cus_other" },
+        subscriptionGet,
+      ],
+      [
+        "subscription",
+        { ...paymentGet, subscription: "sub_other" },
+        subscriptionGet,
+      ],
+      ["value", { ...paymentGet, value: 350.11 }, subscriptionGet],
+      ["due date", { ...paymentGet, dueDate: "2026-09-30" }, subscriptionGet],
+      ["status", { ...paymentGet, status: "PENDING" }, subscriptionGet],
+      [
+        "payment reference",
+        { ...paymentGet, externalReference: "student-id" },
+        subscriptionGet,
+      ],
+      [
+        "parent reference",
+        paymentGet,
+        { ...subscriptionGet, externalReference: "student-id" },
+      ],
+      [
+        "parent value",
+        paymentGet,
+        { ...subscriptionGet, value: 349.1 },
+      ],
+      ["deleted payment", { ...paymentGet, deleted: true }, subscriptionGet],
+    ];
+    for (
+      const [label, authoritativePayment, authoritativeSubscription]
+        of divergentEvidence
+    ) {
+      if (
+        legacyRecurringProviderEvidenceMatches(
+          webhook,
+          authoritativePayment,
+          authoritativeSubscription,
+          expected,
+        )
+      ) {
+        throw new Error(`divergent ${label} evidence was accepted`);
+      }
+    }
+  },
+);
+
+Deno.test(
+  "an open payment is deleted only from an exact authoritative deleted snapshot",
+  () => {
+    const expected = {
+      paymentId: "pay_deleted_open",
+      customerId: "cus_deleted_open",
+      subscriptionId: "sub_deleted_open",
+      value: 279,
+      dueDate: "2026-08-15",
+      providerStatus: "PENDING",
+    };
+    const webhook = {
+      id: expected.paymentId,
+      customer: expected.customerId,
+      subscription: expected.subscriptionId,
+      externalReference: null,
+      value: expected.value,
+      dueDate: expected.dueDate,
+      status: expected.providerStatus,
+    };
+    const authoritative = {
+      ...webhook,
+      deleted: true,
+      creditDate: null,
+    };
+    if (
+      !deletedUnsettledProviderPaymentMatches(
+        webhook,
+        authoritative,
+        expected,
+      )
+    ) {
+      throw new Error("exact deleted provider payment was rejected");
+    }
+    for (
+      const unsafe of [
+        { ...authoritative, deleted: false },
+        { ...authoritative, customer: "cus_other" },
+        { ...authoritative, subscription: "sub_other" },
+        { ...authoritative, value: 278 },
+        { ...authoritative, dueDate: "2026-09-15" },
+        { ...authoritative, status: "RECEIVED" },
+        { ...authoritative, externalReference: "divergent" },
+        { ...authoritative, creditDate: "2026-08-16" },
+      ]
+    ) {
+      if (
+        deletedUnsettledProviderPaymentMatches(webhook, unsafe, expected)
+      ) {
+        throw new Error(
+          `unsafe deleted payment evidence was accepted: ${
+            JSON.stringify(unsafe)
+          }`,
+        );
+      }
+    }
+  },
+);
+
+Deno.test({
+  name:
+    "legacy repair and deletion RPCs follow their authoritative provider GETs",
+  permissions: { read: true },
+  async fn() {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const canonicalBinding = source.indexOf(
+      '.rpc("bind_legacy_student_payment_from_webhook"',
+    );
+    const recurringLookup = source.indexOf(
+      "await loadLegacyRecurringProviderEvidence(",
+    );
+    const recurringBinding = source.indexOf(
+      '"bind_legacy_recurring_student_payment_from_webhook"',
+    );
+    const deletedLookup = source.indexOf(
+      "await loadDeletedUnsettledProviderPayment(",
+    );
+    const deletedApply = source.indexOf(
+      '"apply_verified_unsettled_asaas_payment_deletion"',
+    );
+    if (
+      canonicalBinding < 0 || recurringLookup < 0 ||
+      recurringBinding <= recurringLookup || deletedLookup < 0 ||
+      deletedApply <= deletedLookup ||
+      !source.includes("legacyRecurringSettlementUpdateOnly = true") ||
+      !source.includes(
+        "inactiveSettlementUpdateOnly = legacyRecurringSettlementUpdateOnly ||",
+      )
+    ) {
+      throw new Error(
+        "a provider identity RPC can run before its authoritative GET",
+      );
+    }
+  },
 });
 
 Deno.test(

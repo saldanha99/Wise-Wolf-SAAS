@@ -417,6 +417,56 @@ Deno.test("normaliza mídia e atualização de status sem guardar URL", () => {
   assertEquals(update?.senderKind, "system", "autor outbound desconhecido");
 });
 
+Deno.test(
+  "correlaciona o envelope MESSAGES_UPDATE da Evolution 2.3.7 por keyId",
+  () => {
+    const serverAckEnvelope = {
+      event: "messages.update",
+      instance: "escola-central",
+      data: {
+        keyId: "wamid-management-payment-1",
+        remoteJid: "120363000000000701@g.us",
+        fromMe: true,
+        status: "SERVER_ACK",
+        instanceId: "evolution-instance-id",
+      },
+      date_time: "2026-08-30T12:00:00.000Z",
+    };
+    const deliveryAckEnvelope = {
+      ...serverAckEnvelope,
+      data: {
+        ...serverAckEnvelope.data,
+        status: "DELIVERY_ACK",
+      },
+    };
+
+    const serverAck = parseEvolutionMessage(
+      evolutionMessageItems(serverAckEnvelope.data)[0],
+    );
+    const deliveryAck = parseEvolutionMessage(
+      evolutionMessageItems(deliveryAckEnvelope.data)[0],
+    );
+
+    assertEquals(
+      serverAck?.providerMessageId,
+      "wamid-management-payment-1",
+      "identidade retornada pelo POST preservada no recibo",
+    );
+    assertEquals(
+      serverAck?.remoteJid,
+      "120363000000000701@g.us",
+      "grupo de gestão preservado",
+    );
+    assertEquals(serverAck?.direction, "out", "recibo outbound");
+    assertEquals(serverAck?.status, "sent", "SERVER_ACK não é entrega");
+    assertEquals(
+      deliveryAck?.status,
+      "delivered",
+      "DELIVERY_ACK prova entrega no provedor",
+    );
+  },
+);
+
 Deno.test("usa o JID telefônico alternativo quando a Evolution envia @lid", () => {
   const parsed = parseEvolutionMessage({
     key: {

@@ -33,12 +33,12 @@ select pg_temp.assert_true(
     'public.claim_asaas_payment_split_message(text,uuid,uuid,integer)',
     'EXECUTE'
   )
-  and has_function_privilege(
+  and not has_function_privilege(
     'service_role',
     'public.finish_asaas_payment_split_message(uuid,uuid,text,integer,text)',
     'EXECUTE'
   ),
-  'payment split outbound fence privileges are unsafe'
+  'retired payment split outbound fence remains executable by workers'
 );
 
 insert into public.tenants (id, name, slug, saas_status, whatsapp_enabled)

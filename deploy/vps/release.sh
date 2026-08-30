@@ -632,6 +632,8 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
+  supabase/functions/payment-split-notify/management-outbound-fence.test.ts \
+  supabase/functions/payment-split-notify/management-summary.test.ts \
   supabase/functions/monthly-teacher-closing/tenant-closing.test.ts \
   supabase/functions/school-admin/core.test.ts \
   supabase/functions/tenant-settings-admin/index.test.ts \
@@ -692,7 +694,8 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/manage-hub-account-status/index.test.ts \
   supabase/functions/student-context/profile-access.test.ts \
   supabase/functions/school-admin/tenant-asaas-isolation.test.ts \
-  supabase/functions/school-admin/asaas-safety-regressions.test.ts
+  supabase/functions/school-admin/asaas-safety-regressions.test.ts \
+  supabase/functions/school-admin/offboarding-provider-proof.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno@2.9.5 check --frozen \
   supabase/functions/_shared/asaas-creation-guard.ts \
@@ -1100,6 +1103,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830152214_harden_whatsapp_delivery_pipeline.sql"
   "supabase/migrations/20260830170000_fence_whatsapp_occurrence_receipts.sql"
   "supabase/migrations/20260830185030_repair_requested_enrollment_offer_prorata_opt_out.sql"
+  "supabase/migrations/20260830191843_add_student_offboarding_billing_policy.sql"
+  "supabase/migrations/20260830192055_repair_legacy_recurring_payment_binding.sql"
+  "supabase/migrations/20260830192223_durable_management_payment_notification_outbox.sql"
+  "supabase/migrations/20260830192410_harden_conflict_alert_submission_recovery.sql"
+  "supabase/migrations/20260830192430_surface_management_payment_notification_attention.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -1126,6 +1134,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/authoritative_enrollment_schedule_reservations.sql"
   "supabase/tests/legacy_payment_binding_repair.sql"
   "supabase/tests/monthly_payment_closure.sql"
+  "supabase/tests/management_payment_notification_outbox.sql"
   "supabase/tests/gestao_financial_context.sql"
   "supabase/tests/teacher_turbo_streak.sql"
   "supabase/tests/lesson_occurrence_and_schedule_hardening.sql"
@@ -1172,6 +1181,8 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/student_billing_period_reconciliation.sql"
   "supabase/tests/student_payment_provider_identity.sql"
   "supabase/tests/student_lifecycle_mutation_fencing.sql"
+  "supabase/tests/student_offboarding_billing_policy.sql"
+  "supabase/tests/legacy_recurring_payment_binding_repair.sql"
   "supabase/tests/hub_provider_operations.sql"
   "supabase/tests/student_financial_status_aggregation.sql"
   "supabase/tests/wolfie_topup_provider_identity.sql"

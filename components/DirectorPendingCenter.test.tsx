@@ -52,4 +52,20 @@ describe('<DirectorPendingCenter />', () => {
     fireEvent.click(pendingButton);
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('attendance-disputes'));
   });
+
+  it('não deixa uma entrega ambígua de pagamento silenciosa', async () => {
+    rpc.mockResolvedValue({ data: { avisos_pagamento: 1 }, error: null });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    const pendingButton = await screen.findByRole('button', {
+      name: /Avisos de pagamento sem entrega confirmada/i,
+    });
+    expect(pendingButton).toHaveTextContent('1');
+    expect(screen.queryByText(/Tudo em dia/i)).not.toBeInTheDocument();
+
+    fireEvent.click(pendingButton);
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('student-payments'));
+  });
 });

@@ -87,27 +87,52 @@ Deno.test({
       4,
       "read, card association and both subscription update branches must preflight",
     );
-    assertEquals(
-      schoolAdmin.match(/await requireAsaasMutationIdentity\(/g)?.length,
-      2,
-      "subscription and payment DELETE must each preflight",
-    );
+    assertStringIncludes(schoolAdmin, "requireAsaasOffboardingIdentity");
     assertStringIncludes(schoolAdmin, 'guard.code === "NOT_FOUND"');
     assertStringIncludes(
       schoolAdmin,
       'kind: "ASAAS_MUTATION_TARGET_ALREADY_ABSENT"',
     );
-    const lifecycleBlock = schoolAdmin.slice(
-      schoolAdmin.indexOf('if (isStudent && action.status !== "active")'),
-      schoolAdmin.indexOf("// Revalida imediatamente antes da escrita global"),
+    const lifecycleStart = schoolAdmin.indexOf(
+      "const paymentTargets = claim.payments.flatMap",
     );
-    const lastPreflight = lifecycleBlock.lastIndexOf(
-      "await requireAsaasMutationIdentity",
+    const lifecycleBlock = schoolAdmin.slice(
+      lifecycleStart,
+      schoolAdmin.indexOf(
+        "const begun = await beginStudentReactivation",
+        lifecycleStart,
+      ),
+    );
+    assertEquals(
+      lifecycleBlock.match(/await requireAsaasOffboardingIdentity\(/g)?.length,
+      4,
+      "subscription/payment mutations must preflight and both resources must satisfy postconditions",
+    );
+    assertStringIncludes(lifecycleBlock, "listAsaasSubscriptionPayments(");
+    assertStringIncludes(
+      lifecycleBlock,
+      "requireCompleteOffboardingPaymentSnapshot(",
+    );
+    assertStringIncludes(
+      lifecycleBlock,
+      "requireOffboardingProviderCancellationComplete(",
+    );
+    const firstPreflight = lifecycleBlock.indexOf(
+      "await requireAsaasOffboardingIdentity",
+    );
+    const secondPreflight = lifecycleBlock.indexOf(
+      "await requireAsaasOffboardingIdentity",
+      firstPreflight + 1,
+    );
+    const postcondition = lifecycleBlock.indexOf(
+      "await requireAsaasOffboardingIdentity",
+      secondPreflight + 1,
     );
     const firstDelete = lifecycleBlock.indexOf("await callAsaas(");
     assert(
-      lastPreflight >= 0 && firstDelete > lastPreflight,
-      "all provider identities must be preflighted before the first DELETE",
+      firstPreflight >= 0 && secondPreflight > firstPreflight &&
+        firstDelete > secondPreflight && postcondition > firstDelete,
+      "all provider identities must be preflighted before the first PUT/DELETE",
     );
     assert(
       adminUpdate.indexOf("const guard = await guardAsaasMutationTarget") <
@@ -152,8 +177,190 @@ Deno.test({
     assertEquals(
       schoolAdmin.match(/await requireExclusiveActiveTargetMembership\(/g)
         ?.length,
+      4,
+      "lifecycle must validate scope at request, immediately before provider mutations and before local fallback",
+    );
+  },
+});
+
+Deno.test({
+  name:
+    "offboarding accepts only exact deleted frozen charges and reactivation stays fail-closed",
+  permissions: { read: true },
+  async fn() {
+    const schoolAdmin = await source("./index.ts");
+    const proofStart = schoolAdmin.indexOf(
+      "async function proveFrozenDeletedOffboardingPayments(",
+    );
+    const proofEnd = schoolAdmin.indexOf(
+      "async function requireSynchronizedLiveSubscriptionPayments(",
+      proofStart,
+    );
+    const proof = schoolAdmin.slice(proofStart, proofEnd);
+    assert(proofStart >= 0 && proofEnd > proofStart);
+    assertStringIncludes(
+      proof,
+      'operation: "school_admin_offboarding_deleted_payment_inventory"',
+    );
+    assertStringIncludes(proof, 'identity.evidence === "DELETED"');
+    assertStringIncludes(
+      proof,
+      "classifyExactDeletedOffboardingPaymentProof({",
+    );
+    assertStringIncludes(proof, 'disposition === "OPEN_DELETABLE"');
+    assertEquals(
+      proof.match(/proven\.set\(frozen\.asaasPaymentId,/g)?.length,
+      1,
+      "only an exactly proven still-open deletable row may enter the exception map",
+    );
+    assertStringIncludes(proof, '"OFFBOARDING_DELETED_PAYMENT_NOT_PROVEN"');
+
+    const classifierStart = schoolAdmin.indexOf(
+      "export function classifyExactDeletedOffboardingPaymentProof(",
+    );
+    const classifierEnd = schoolAdmin.indexOf(
+      "export function isExactDeletedOffboardingPaymentProof(",
+      classifierStart,
+    );
+    const classifier = schoolAdmin.slice(classifierStart, classifierEnd);
+    assertStringIncludes(classifier, 'localAccountingStatus === "CANCELLED"');
+    assertStringIncludes(classifier, 'localProviderStatus === "DELETED"');
+    assertStringIncludes(classifier, 'return "ALREADY_RECONCILED"');
+    assertStringIncludes(
+      classifier,
+      "DELETABLE_PAYMENT_STATUSES.has(localAccountingStatus)",
+    );
+    assertStringIncludes(
+      classifier,
+      "localAccountingStatus === frozenAccountingStatus",
+    );
+    assertStringIncludes(classifier, "input.provider.deleted === true");
+    assertStringIncludes(classifier, "input.local.paidAt == null");
+
+    const syncStart = schoolAdmin.indexOf(
+      "async function requireSynchronizedLiveSubscriptionPayments(",
+    );
+    const syncEnd = schoolAdmin.indexOf(
+      "type OffboardingCustomerInventory =",
+      syncStart,
+    );
+    const sync = schoolAdmin.slice(syncStart, syncEnd);
+    assertStringIncludes(
+      sync,
+      "local.accountingStatus !== proof.accountingStatus",
+    );
+    assertStringIncludes(sync, "local.status !== proof.providerStatus");
+
+    const inventoryStart = schoolAdmin.indexOf(
+      "async function requireOffboardingCustomerInventory(",
+    );
+    const inventoryEnd = schoolAdmin.indexOf(
+      "function requireOffboardingCustomerPostcondition(",
+      inventoryStart,
+    );
+    const inventory = schoolAdmin.slice(inventoryStart, inventoryEnd);
+    assert(inventoryStart >= 0 && inventoryEnd > inventoryStart);
+    assertStringIncludes(inventory, "proveFrozenDeletedOffboardingPayments(");
+    assertStringIncludes(inventory, "provenDeletedOpenPayments,");
+
+    const claimParserStart = schoolAdmin.indexOf(
+      "async function beginStudentOffboarding(",
+    );
+    const claimParserEnd = schoolAdmin.indexOf(
+      "type ReactivationClaim =",
+      claimParserStart,
+    );
+    const claimParser = schoolAdmin.slice(claimParserStart, claimParserEnd);
+    assertStringIncludes(
+      claimParser,
+      "result.preserved_payment_snapshot",
+    );
+    assertStringIncludes(
+      claimParser,
+      "result.provider_subscription_final_status",
+    );
+    assertStringIncludes(
+      claimParser,
+      "preservedPayments.length !== 1",
+    );
+
+    const retainedInvoiceStart = schoolAdmin.indexOf(
+      "async function requireSinglePreservedCurrentInvoice(",
+    );
+    const retainedInvoiceEnd = schoolAdmin.indexOf(
+      "async function requireExclusiveActiveTargetMembership(",
+      retainedInvoiceStart,
+    );
+    const retainedInvoice = schoolAdmin.slice(
+      retainedInvoiceStart,
+      retainedInvoiceEnd,
+    );
+    assertStringIncludes(retainedInvoice, "claim.preservedPayments");
+    assertStringIncludes(
+      retainedInvoice,
+      "isExactPreservedOffboardingPaymentSnapshot(frozen",
+    );
+
+    const offboardingExecutionStart = schoolAdmin.indexOf(
+      "const preserveCurrentInvoices =",
+    );
+    const offboardingExecutionEnd = schoolAdmin.indexOf(
+      '"finalize_student_offboarding_with_billing_policy"',
+      offboardingExecutionStart,
+    );
+    const offboardingExecution = schoolAdmin.slice(
+      offboardingExecutionStart,
+      offboardingExecutionEnd,
+    );
+    assertStringIncludes(
+      offboardingExecution,
+      "claim.providerSubscriptionFinalStatus",
+    );
+    assert(
+      !offboardingExecution.includes(
+        "definitivePreservedSubscriptionIsSafe",
+      ),
+      "offboarding must not accept ABSENT/EXPIRED when the frozen final state is INACTIVE",
+    );
+
+    const reactivationStart = schoolAdmin.indexOf(
+      "const begun = await beginStudentReactivation",
+    );
+    const reactivationEnd = schoolAdmin.indexOf(
+      "const { data: finalized, error: finalizeError } = await admin.rpc(",
+      reactivationStart,
+    );
+    const reactivation = schoolAdmin.slice(
+      reactivationStart,
+      reactivationEnd,
+    );
+    assert(reactivationStart >= 0 && reactivationEnd > reactivationStart);
+    assertEquals(
+      reactivation.match(
+        /await requireSynchronizedLiveSubscriptionPayments\(/g,
+      )?.length,
       2,
-      "lifecycle must validate scope before side effects and before profile update",
+      "reactivation must reconcile both preflight and postcondition inventories",
+    );
+    assert(
+      !reactivation.includes("provenDeletedOpenPayments"),
+      "reactivation must never inherit the offboarding-only deleted-payment exception",
+    );
+    assertStringIncludes(
+      reactivation,
+      '"pre_provider_validation_failed"',
+    );
+    assertStringIncludes(
+      reactivation,
+      "verifiedStatus !== claim.providerSubscriptionFinalStatus",
+    );
+    assertStringIncludes(reactivation, "throw operationError;");
+    assert(
+      reactivation.indexOf(
+        'recordOffboardingProviderState(admin, claim, "MUTATING")',
+      ) <
+        reactivation.indexOf("catch (operationError)"),
+      "the outer catch must preserve pre-provider aborts and fail closed after the mutation fence",
     );
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, ExternalLink, Video, Star, MessageCircle, Info, RefreshCw, BookOpen, Briefcase, Phone, Copy, UserPlus, Edit3, Trash2, Users, ChevronRight, Calendar, Folder, CreditCard, AlertCircle, Brain, Eye, AlertTriangle, CalendarCheck, UserCheck, UserX } from 'lucide-react';
 import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
@@ -20,6 +20,19 @@ interface StudentsListProps {
   teachers?: Teacher[];
 }
 
+type OffboardingPolicy = 'CHARGE_CURRENT_MONTH' | 'WAIVE_CURRENT_MONTH';
+type OffboardingInvoicePreview = {
+  id: string;
+  value: number;
+  dueDate: string;
+  status: string;
+};
+
+const BRL_FORMATTER = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
+
 const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | 'ALL'>('ALL');
@@ -36,6 +49,18 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   const [pedagogicalStudent, setPedagogicalStudent] = useState<any | null>(null);
   const [wolfProfileStudent, setWolfProfileStudent] = useState<any | null>(null);
   const [scheduleStudent, setScheduleStudent] = useState<any | null>(null);
+  const [offboardingStudent, setOffboardingStudent] = useState<any | null>(null);
+  const [offboardingReason, setOffboardingReason] = useState('');
+  const [offboardingPolicy, setOffboardingPolicy] = useState<OffboardingPolicy | null>(null);
+  const [offboardingEffectiveDate, setOffboardingEffectiveDate] = useState('');
+  const [isOffboarding, setIsOffboarding] = useState(false);
+  const [offboardingInvoices, setOffboardingInvoices] = useState<OffboardingInvoicePreview[]>([]);
+  const [offboardingPreviewLoading, setOffboardingPreviewLoading] = useState(false);
+  const [offboardingPreviewError, setOffboardingPreviewError] = useState<string | null>(null);
+  const offboardingPreviewRequestId = useRef(0);
+  const offboardingDialogRef = useRef<HTMLDivElement>(null);
+  const offboardingPreviousFocusRef = useRef<HTMLElement | null>(null);
+  const isOffboardingRef = useRef(false);
 
   // Deletion Modal State
   const [studentToDelete, setStudentToDelete] = useState<any>(null);
@@ -44,6 +69,66 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   useEffect(() => {
     if (tenantId) fetchStudents();
   }, [tenantId, user?.id]);
+
+  useEffect(() => {
+    isOffboardingRef.current = isOffboarding;
+  }, [isOffboarding]);
+
+  useEffect(() => {
+    if (!offboardingStudent) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusFrame = window.requestAnimationFrame(() => offboardingDialogRef.current?.focus());
+
+    const dismiss = () => {
+      if (isOffboardingRef.current) return;
+      offboardingPreviewRequestId.current += 1;
+      setOffboardingStudent(null);
+      setOffboardingInvoices([]);
+      setOffboardingPreviewLoading(false);
+      setOffboardingPreviewError(null);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismiss();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const dialog = offboardingDialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )) as HTMLElement[];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      offboardingPreviousFocusRef.current?.focus();
+      offboardingPreviousFocusRef.current = null;
+    };
+  }, [offboardingStudent]);
 
   const fetchStudents = async () => {
     setLoading(true);
@@ -491,11 +576,12 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
   };
 
   // Suspender (adormecido) ↔ reativar — usa o eixo canônico lifecycle_status via school-admin.
-  // Ao suspender, a edge function cancela a assinatura no Asaas (para de gerar mensalidade).
+  // Ao suspender, a edge function pausa a assinatura no Asaas sem apagar as
+  // cobranças já existentes; isso permite uma reativação financeira segura.
   const handleToggleStatus = async (student: any) => {
     const makeInactive = !isInactive(student);
     const msg = makeInactive
-      ? `Suspender ${student.name}?\n\nO aluno entra em modo ADORMECIDO: para de receber mensagens automáticas (aniversário, cobrança, lembrete) e a assinatura no Asaas é cancelada (não gera mais mensalidade). A dívida já vencida é mantida. Você pode reativar quando quiser.`
+      ? `Suspender ${student.name}?\n\nO aluno entra em modo ADORMECIDO: para de receber mensagens automáticas e a assinatura no Asaas é pausada (sem apagar cobranças já existentes). Você pode reativar quando quiser.`
       : `Reativar ${student.name}?\n\nO aluno volta a receber as notificações automáticas normalmente.`;
     if (!window.confirm(msg)) return;
     try {
@@ -511,37 +597,126 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         throw new Error(error?.message || (data as any)?.error || 'falha');
       }
       const newLifecycle = makeInactive ? 'suspended' : 'active';
-      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, lifecycle_status: newLifecycle } : s));
+      setStudents(prev => prev.map(s => s.id === student.id ? {
+        ...s,
+        status: makeInactive ? 'Inativo' : 'Ativo',
+        lifecycle_status: newLifecycle,
+      } : s));
     } catch (err: any) {
       alert('Erro ao alterar status do aluno: ' + (err.message || 'tente novamente.'));
     }
   };
 
-  // Desligamento definitivo (offboard): tira do ecossistema, cancela assinatura Asaas e
-  // anula as faturas FUTURAS — a dívida já vencida fica para cobrança. Reativável depois.
+  const localToday = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+
+  // O encerramento exige uma decisão explícita para a competência da saída.
+  // A confirmação final é processada e auditada no servidor junto com o Asaas.
   const handleOffboard = async (student: any) => {
-    const reason = window.prompt(
-      `Desligar ${student.name} definitivamente?\n\nIsto cancela a assinatura no Asaas, anula as faturas FUTURAS (a dívida vencida é mantida) e remove o aluno de todas as automações. Pode ser reativado depois.\n\nMotivo do desligamento:`,
-      ''
-    );
-    if (reason === null) return;
+    const requestId = ++offboardingPreviewRequestId.current;
+    offboardingPreviousFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setOffboardingStudent(student);
+    setOffboardingReason('');
+    setOffboardingPolicy(null);
+    setOffboardingEffectiveDate(localToday());
+    setOffboardingInvoices([]);
+    setOffboardingPreviewError(null);
+    setOffboardingPreviewLoading(true);
+    try {
+      if (!tenantId) {
+        throw new Error('Escola não identificada para a conferência financeira.');
+      }
+      const { data, error } = await supabase
+        .from('student_payments')
+        .select('id,value,due_date,status')
+        .eq('tenant_id', tenantId)
+        .eq('student_id', student.id)
+        .eq('payment_type', 'SUBSCRIPTION')
+        .in('status', ['PENDING', 'OVERDUE', 'CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'])
+        .order('due_date', { ascending: true });
+      if (error) throw error;
+      if (requestId !== offboardingPreviewRequestId.current) return;
+      setOffboardingInvoices((data || []).map((payment: any) => ({
+        id: String(payment.id),
+        value: Number(payment.value || 0),
+        dueDate: String(payment.due_date || ''),
+        status: String(payment.status || '').toUpperCase(),
+      })));
+    } catch (error) {
+      if (requestId !== offboardingPreviewRequestId.current) return;
+      console.error('Erro ao preparar prévia do desligamento:', error);
+      setOffboardingPreviewError('Não foi possível conferir as cobranças. Tente novamente antes de encerrar.');
+    } finally {
+      if (requestId === offboardingPreviewRequestId.current) {
+        setOffboardingPreviewLoading(false);
+      }
+    }
+  };
+
+  const confirmOffboarding = async () => {
+    if (!offboardingStudent) return;
+    if (!offboardingReason.trim()) {
+      alert('Informe o motivo do encerramento.');
+      return;
+    }
+    if (!offboardingEffectiveDate) {
+      alert('Informe o último dia do aluno.');
+      return;
+    }
+    if (!offboardingPolicy) {
+      alert('Escolha conscientemente como tratar a mensalidade do mês da saída.');
+      return;
+    }
+    if (offboardingPolicy === 'WAIVE_CURRENT_MONTH' && hasNonWaivableCurrentInvoice) {
+      alert('Há uma cobrança confirmada ou recebida no mês da saída. Escolha cobrar o mês ou faça uma revisão financeira antes de continuar.');
+      return;
+    }
+    if (offboardingPreviewLoading || offboardingPreviewError) {
+      alert('Aguarde a conferência das cobranças antes de encerrar a matrícula.');
+      return;
+    }
+    isOffboardingRef.current = true;
+    setIsOffboarding(true);
     try {
       const { data, error } = await supabase.functions.invoke('school-admin', {
         body: {
           action: 'setStudentLifecycle',
-          studentId: student.id,
+          studentId: offboardingStudent.id,
           status: 'offboarded',
-          reason: reason || 'Desligado pela coordenação',
+          reason: offboardingReason.trim(),
+          billingPolicy: offboardingPolicy,
+          effectiveEndDate: offboardingEffectiveDate,
         },
       });
       if (error || (data && (data as any).ok === false)) {
         throw new Error(error?.message || (data as any)?.error || 'falha');
       }
-      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, lifecycle_status: 'offboarded' } : s));
-      alert('Aluno desligado. Assinatura cancelada e faturas futuras anuladas.');
+      const billing = (data as any)?.billing || {};
+      setStudents(prev => prev.map(s => s.id === offboardingStudent.id ? { ...s, status: 'Inativo', lifecycle_status: 'offboarded' } : s));
+      offboardingPreviewRequestId.current += 1;
+      setOffboardingStudent(null);
+      alert(
+        `Matrícula encerrada com segurança. ${Number(billing.paymentsCancelled || 0)} cobrança(s) anulada(s) e ${Number(billing.schedulesCancelled || 0)} agenda(s) encerrada(s).`,
+      );
     } catch (err: any) {
       alert('Erro ao desligar aluno: ' + (err.message || 'tente novamente.'));
+    } finally {
+      isOffboardingRef.current = false;
+      setIsOffboarding(false);
     }
+  };
+
+  const closeOffboarding = () => {
+    if (isOffboardingRef.current) return;
+    offboardingPreviewRequestId.current += 1;
+    setOffboardingStudent(null);
+    setOffboardingInvoices([]);
+    setOffboardingPreviewLoading(false);
+    setOffboardingPreviewError(null);
   };
 
   const handleDeleteStudentClick = () => {
@@ -619,6 +794,24 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       || (statusFilter === 'INACTIVE' && isInactive(s));
     return matchesSearch && matchesTeacher && matchesLevel && matchesFinancial && matchesStatus;
   });
+
+  const offboardingPeriodStart = /^\d{4}-\d{2}-\d{2}$/.test(offboardingEffectiveDate)
+    ? `${offboardingEffectiveDate.slice(0, 7)}-01`
+    : `${localToday().slice(0, 7)}-01`;
+  const [offboardingYear, offboardingMonth] = offboardingPeriodStart.split('-').map(Number);
+  const offboardingNextPeriodStart = new Date(Date.UTC(offboardingYear, offboardingMonth, 1))
+    .toISOString().slice(0, 10);
+  const offboardingCurrentInvoices = offboardingInvoices.filter(payment =>
+    payment.dueDate >= offboardingPeriodStart && payment.dueDate < offboardingNextPeriodStart
+  );
+  const offboardingFutureInvoices = offboardingInvoices.filter(payment =>
+    payment.dueDate >= offboardingNextPeriodStart
+  );
+  const offboardingCurrentTotal = offboardingCurrentInvoices.reduce((sum, payment) => sum + payment.value, 0);
+  const offboardingFutureTotal = offboardingFutureInvoices.reduce((sum, payment) => sum + payment.value, 0);
+  const hasNonWaivableCurrentInvoice = offboardingCurrentInvoices.some(payment =>
+    ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(payment.status)
+  );
 
   const showSidebar = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
 
@@ -938,11 +1131,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   >
                     <Eye size={14} /> Ver Ficha 360°
                   </button>
-                  {canEdit && (
+                  {canEdit && student.lifecycle_status !== 'offboarded' && (
                     <button
                       className={`flex items-center justify-center px-4 py-3 rounded-2xl border text-xs font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/40 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-600 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-900/20'}`}
                       onClick={() => handleToggleStatus(student)}
-                      title={inactive ? 'Reativar aluno (volta a receber notificações)' : 'Suspender aluno (adormecido: cancela Asaas, para notificações)'}
+                      title={inactive ? 'Reativar aluno e assinatura' : 'Suspender aluno (pausa Asaas e notificações)'}
                     >
                       {inactive ? <UserCheck size={14} /> : <UserX size={14} />}
                     </button>
@@ -1036,6 +1229,156 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           onClose={() => setScheduleStudent(null)}
           onChanged={fetchStudents}
         />
+      )}
+
+      {offboardingStudent && (
+        <div
+          className="fixed inset-0 z-[115] flex items-center justify-center px-3 py-[max(0.75rem,env(safe-area-inset-top))] sm:p-6 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div
+            ref={offboardingDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="offboarding-dialog-title"
+            aria-describedby="offboarding-dialog-description"
+            tabIndex={-1}
+            style={{ maxHeight: 'calc(100dvh - 1.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom))' }}
+            className="w-full max-w-2xl overflow-y-auto rounded-[1.5rem] sm:rounded-[2rem] border border-white/10 bg-brand-surface shadow-2xl outline-none"
+          >
+            <div className="p-6 sm:p-8 border-b border-brand-border bg-gradient-to-br from-slate-950 to-[#08245f] text-white">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center">
+                  <AlertTriangle size={23} className="text-amber-300" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.24em] font-black text-blue-200 mb-2">Encerramento auditado</p>
+                  <h3 id="offboarding-dialog-title" className="text-2xl font-black tracking-tight">Encerrar matrícula de {offboardingStudent.name}</h3>
+                  <p id="offboarding-dialog-description" className="mt-2 text-sm text-slate-300 leading-relaxed">A assinatura, as cobranças escolhidas, as previsões e as agendas serão sincronizadas em uma única operação.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <label className="space-y-2">
+                  <span className="text-[10px] uppercase tracking-widest font-black text-brand-muted">Último dia do aluno</span>
+                  <input
+                    type="date"
+                    value={offboardingEffectiveDate}
+                    min="2020-01-01"
+                    max={localToday()}
+                    onChange={(event) => setOffboardingEffectiveDate(event.target.value)}
+                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[10px] uppercase tracking-widest font-black text-brand-muted">Motivo obrigatório</span>
+                  <input
+                    value={offboardingReason}
+                    onChange={(event) => setOffboardingReason(event.target.value)}
+                    maxLength={500}
+                    placeholder="Ex.: encerramento solicitado pelo aluno"
+                    className="w-full rounded-2xl border border-brand-border bg-brand-surface-2 px-4 py-3 text-sm font-bold text-brand-text focus:outline-none focus:ring-2 focus:ring-tenant-primary/30"
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-brand-border bg-brand-surface-2 p-4 sm:p-5" aria-live="polite">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-black text-brand-muted">Conferência financeira</p>
+                    <p className="mt-1 text-sm font-bold text-brand-text">Valores que esta decisão pode afetar</p>
+                  </div>
+                  {offboardingPreviewLoading && <RefreshCw size={18} className="animate-spin text-tenant-primary" />}
+                </div>
+                {offboardingPreviewError ? (
+                  <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{offboardingPreviewError}</p>
+                ) : offboardingPreviewLoading ? (
+                  <p className="text-sm text-brand-muted">Consultando as cobranças registradas…</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-brand-border bg-brand-surface p-3">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-brand-muted">Mês da saída</p>
+                      <p className="mt-1 text-lg font-black text-brand-text">{BRL_FORMATTER.format(offboardingCurrentTotal)}</p>
+                      <p className="text-[11px] text-brand-muted">{offboardingCurrentInvoices.length} cobrança(s)</p>
+                    </div>
+                    <div className="rounded-xl border border-brand-border bg-brand-surface p-3">
+                      <p className="text-[9px] font-black uppercase tracking-wider text-brand-muted">Meses seguintes</p>
+                      <p className="mt-1 text-lg font-black text-brand-text">{BRL_FORMATTER.format(offboardingFutureTotal)}</p>
+                      <p className="text-[11px] text-brand-muted">{offboardingFutureInvoices.length} cobrança(s)</p>
+                    </div>
+                    {hasNonWaivableCurrentInvoice && (
+                      <p className="sm:col-span-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">
+                        Há pagamento confirmado ou recebido no mês da saída. Para proteger o caixa, “não cobrar” fica indisponível.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <fieldset className="space-y-3">
+                <legend className="text-[10px] uppercase tracking-widest font-black text-brand-muted mb-3">Como tratar a mensalidade do mês da saída?</legend>
+                <label className={`block rounded-2xl border p-5 cursor-pointer transition-all ${offboardingPolicy === 'WAIVE_CURRENT_MONTH' ? 'border-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/20 ring-2 ring-emerald-400/15' : 'border-brand-border hover:border-emerald-300'}`}>
+                  <div className="flex gap-3">
+                    <input
+                      type="radio"
+                      name="offboarding-policy"
+                      checked={offboardingPolicy === 'WAIVE_CURRENT_MONTH'}
+                      disabled={hasNonWaivableCurrentInvoice || offboardingPreviewLoading || !!offboardingPreviewError}
+                      onChange={() => setOffboardingPolicy('WAIVE_CURRENT_MONTH')}
+                      className="mt-1 accent-emerald-600"
+                    />
+                    <div>
+                      <p className="font-black text-brand-text">Não cobrar o mês da saída</p>
+                      <p className="mt-1 text-sm text-brand-muted leading-relaxed">Anula cobranças ainda não pagas deste mês e dos meses seguintes, remove esses valores da previsão e preserva o histórico.</p>
+                    </div>
+                  </div>
+                </label>
+                <label className={`block rounded-2xl border p-5 cursor-pointer transition-all ${offboardingPolicy === 'CHARGE_CURRENT_MONTH' ? 'border-blue-400 bg-blue-50/70 dark:bg-blue-950/20 ring-2 ring-blue-400/15' : 'border-brand-border hover:border-blue-300'}`}>
+                  <div className="flex gap-3">
+                    <input
+                      type="radio"
+                      name="offboarding-policy"
+                      checked={offboardingPolicy === 'CHARGE_CURRENT_MONTH'}
+                      disabled={offboardingPreviewLoading || !!offboardingPreviewError}
+                      onChange={() => setOffboardingPolicy('CHARGE_CURRENT_MONTH')}
+                      className="mt-1 accent-blue-600"
+                    />
+                    <div>
+                      <p className="font-black text-brand-text">Cobrar o mês da saída</p>
+                      <p className="mt-1 text-sm text-brand-muted leading-relaxed">Mantém a mensalidade deste mês, pausa a assinatura para não gerar novas cobranças e anula somente os meses seguintes.</p>
+                    </div>
+                  </div>
+                </label>
+              </fieldset>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 flex gap-3">
+                <Info size={18} className="shrink-0 mt-0.5" />
+                <p><strong>Não existe estorno automático.</strong> Se uma cobrança já tiver sido recebida ou confirmada pelo Asaas, a operação para e solicita revisão humana.</p>
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeOffboarding}
+                  disabled={isOffboarding}
+                  className="flex-1 rounded-2xl bg-brand-surface-2 px-5 py-3.5 text-sm font-black text-brand-muted hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmOffboarding}
+                  disabled={isOffboarding || offboardingPreviewLoading || !!offboardingPreviewError || !offboardingPolicy || (offboardingPolicy === 'WAIVE_CURRENT_MONTH' && hasNonWaivableCurrentInvoice) || !offboardingReason.trim() || !offboardingEffectiveDate}
+                  className="flex-[1.4] rounded-2xl bg-red-600 px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-red-600/20 hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isOffboarding ? <RefreshCw size={18} className="animate-spin" /> : <AlertTriangle size={18} />}
+                  {isOffboarding ? 'Sincronizando tudo…' : 'Confirmar encerramento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Exclusão permanente existe apenas para fixtures E2E marcadas. */}

@@ -29,6 +29,22 @@ export interface ContractPeriod {
 }
 
 /**
+ * Soma meses preservando o dia quando ele existe e usando o último dia do mês
+ * quando não existe (31/08 + 6 meses = 28/02, nunca 03/03).
+ */
+export function addCalendarMonthsClamped(date: Date, months: number): Date {
+  const result = new Date(date.getTime());
+  const originalDay = result.getDate();
+  const safeMonths = Math.max(0, Math.trunc(months) || 0);
+
+  result.setDate(1);
+  result.setMonth(result.getMonth() + safeMonths);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(originalDay, lastDay));
+  return result;
+}
+
+/**
  * Vigência a partir da data de referência: começa no próximo vencimento e
  * termina `months` meses depois. Se a matrícula caiu depois do dia de
  * vencimento no mês, o primeiro ciclo é o do mês seguinte.
@@ -48,11 +64,7 @@ export function contractPeriod(
     reference.getMonth() + startMonthOffset,
     safeDueDay,
   );
-  const end = new Date(
-    start.getFullYear(),
-    start.getMonth() + safeMonths,
-    safeDueDay,
-  );
+  const end = addCalendarMonthsClamped(start, safeMonths);
   return { start, end };
 }
 

@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   DollarSign,
-  CheckCircle,
   FileText,
   Target,
   TrendingUp,
@@ -14,8 +13,9 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { localMonth } from '../lib/dateUtils';
+import { formatLocalDateBr, localMonth } from '../lib/dateUtils';
 import { UserRole, PresenceStatus } from '../types';
+import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
 
 interface FinancialReportProps {
   role?: string;
@@ -153,8 +153,10 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         name: p.profiles?.full_name,
         amount: (p.amount_cents ? p.amount_cents / 100 : p.value),
         status: p.status,
-        date: new Date(p.due_date).toLocaleDateString('pt-BR'),
-        isPaid: p.status === 'RECEIVED' || p.status === 'CONFIRMED',
+        dueDate: formatLocalDateBr(p.due_date),
+        paymentDate: formatLocalDateBr(p.payment_date, 'data não informada'),
+        isPaid: isSettledStudentPayment(p.status),
+        isAwaitingCredit: isStudentPaymentAwaitingCredit(p.status),
         student_id: p.profiles?.id,
         tenant_id: p.profiles?.tenant_id
       }));
@@ -301,7 +303,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
             <div>
               <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Fluxo de Recebimentos</h3>
-              <p className="text-[10px] text-brand-muted font-bold mt-1 uppercase tracking-tighter">Últimos pagamentos de alunos ({selectedMonth})</p>
+              <p className="text-[10px] text-brand-muted font-bold mt-1 uppercase tracking-tighter">Baixas conciliadas pelo Asaas ({selectedMonth})</p>
             </div>
 
             {/* Botão legado 'Corrigir Lançamentos' removido em 03/07/2026: criava linhas sem vínculo/data no caixa; o trigger + reconcile-ledger cobrem a conciliação. */}
@@ -327,46 +329,20 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                     <td className="px-8 py-5">
                       {receipt.isPaid ? (
                         <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
-                          Recebido {receipt.date}
+                          Recebido {receipt.paymentDate}
+                        </span>
+                      ) : receipt.isAwaitingCredit ? (
+                        <span className="text-[10px] font-black bg-sky-500/10 text-sky-600 border border-sky-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
+                          Confirmado · aguardando crédito
                         </span>
                       ) : receipt.status === 'OVERDUE' ? (
                         <span className="text-[10px] font-black bg-rose-500/10 text-rose-500 border border-rose-500/30 px-3 py-1 rounded-full uppercase shadow-sm">
-                          Atrasado {receipt.date}
+                          Atrasado {receipt.dueDate}
                         </span>
                       ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black bg-amber-500/10 text-amber-500 px-3 py-1 rounded-full uppercase border border-amber-500/30 shadow-sm">
-                            Fatura Aberta
-                          </span>
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!confirm(`Confirmar recebimento manual de R$ ${receipt.amount.toLocaleString('pt-BR')}?`)) return;
-                              try {
-                                // 1. Update Payment Status
-                                const { error: updateError } = await supabase
-                                  .from('student_payments')
-                                  .update({
-                                    status: 'RECEIVED',
-                                    payment_date: new Date().toISOString()
-                                  })
-                                  .eq('id', receipt.id);
-
-                                if (updateError) throw updateError;
-
-                                // O lançamento no caixa é criado pelo trigger ledger_on_payment_received
-                                // (dispara no update de status acima). Insert manual removido em 03/07/2026.
-                              } catch (err: any) {
-                                alert('Erro: ' + err.message);
-                              }
-                              fetchFinancialData(); // Refresh
-                            }}
-                            className="p-1 text-emerald-500 hover:bg-emerald-500/20 rounded-full transition-colors"
-                            title="Confirmar Pagamento Manual"
-                          >
-                            <CheckCircle size={14} />
-                          </button>
-                        </div>
+                        <span className="text-[10px] font-black bg-amber-500/10 text-amber-600 px-3 py-1 rounded-full uppercase border border-amber-500/30 shadow-sm">
+                          {receipt.status === 'PENDING' ? 'Fatura aberta' : `Status: ${String(receipt.status || 'indisponível').replaceAll('_', ' ')}`}
+                        </span>
                       )}
                     </td>
                     <td className="px-8 py-5 text-right font-[family-name:var(--font-display)] font-extrabold text-brand-text">

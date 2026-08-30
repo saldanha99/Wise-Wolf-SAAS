@@ -121,6 +121,13 @@ export function financialReportMessageFinish(result: EvolutionSendResult): {
   error: string | null;
 } {
   if (result.outcome === "accepted") {
+    if (!result.messageId) {
+      return {
+        status: "UNKNOWN",
+        providerHttpStatus: result.httpStatus,
+        error: "provider_acceptance_without_message_id",
+      };
+    }
     return {
       status: "SENT",
       providerHttpStatus: result.httpStatus,
