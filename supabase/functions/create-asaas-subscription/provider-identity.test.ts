@@ -21,6 +21,10 @@ import {
 } from "./provider-identity.ts";
 import { asaasCreationFingerprint } from "../_shared/asaas-creation-guard.ts";
 
+const subscriptionSource = await Deno.readTextFile(
+  new URL("./index.ts", import.meta.url),
+);
+
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
@@ -94,6 +98,21 @@ const subscription = {
   status: subscriptionExpected.status,
   maxPayments: subscriptionExpected.maxPayments,
 };
+
+Deno.test("pro-rata requires an explicit boolean opt-in", () => {
+  assert(
+    subscriptionSource.includes("offerPayload.enableProRata === true"),
+    "an offer must not coerce string or numeric pro-rata flags",
+  );
+  assert(
+    subscriptionSource.includes("body.proRata === true"),
+    "a direct request must not coerce string or numeric pro-rata flags",
+  );
+  assert(
+    !subscriptionSource.includes("Boolean(offerPayload.enableProRata)"),
+    'the legacy string "false" must never authorize a pro-rata charge',
+  );
+});
 
 Deno.test("a local customer link requires one exact provider identity", () => {
   assertEquals(
