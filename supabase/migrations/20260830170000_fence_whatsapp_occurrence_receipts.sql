@@ -320,6 +320,81 @@ revoke all on function private.render_lesson_notification_message(
   text,text,text,text,text,text
 ) from public, anon, authenticated, service_role;
 
+-- Keep the database authorization snapshot byte-for-byte aligned with the
+-- message prepared by process-notification-queue. This renderer intentionally
+-- does not sanitize or truncate: the TypeScript renderer does neither.
+create or replace function private.render_conflict_teacher_alert_message(
+  p_teacher_name text,
+  p_student_name text,
+  p_class_date date,
+  p_class_time text
+)
+returns text
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $function$
+declare
+  v_teacher_name text := pg_catalog.regexp_replace(
+    coalesce(p_teacher_name, ''),
+    '^[[:space:]]+|[[:space:]]+$',
+    '',
+    'g'
+  );
+  v_teacher_first_name text;
+  v_student_name text := pg_catalog.regexp_replace(
+    coalesce(p_student_name, ''),
+    '^[[:space:]]+|[[:space:]]+$',
+    '',
+    'g'
+  );
+  v_class_date text := case
+    when p_class_date is null then 'data informada'
+    else pg_catalog.to_char(p_class_date, 'DD/MM')
+  end;
+  v_class_time text := pg_catalog.left(
+    pg_catalog.regexp_replace(
+      coalesce(p_class_time, ''),
+      '^[[:space:]]+|[[:space:]]+$',
+      '',
+      'g'
+    ),
+    5
+  );
+begin
+  v_teacher_first_name := nullif(pg_catalog.split_part(
+    pg_catalog.regexp_replace(
+      v_teacher_name,
+      '[[:space:]]+',
+      ' ',
+      'g'
+    ),
+    ' ',
+    1
+  ), '');
+
+  return
+    'Oi, ' || coalesce(v_teacher_first_name, 'professor') ||
+    '! Aqui é da coordenação da escola.' || E'\n\n' ||
+    'Recebemos uma divergência sobre a aula de ' || v_class_date ||
+    case
+      when v_class_time = '' then ''
+      else ' às ' || v_class_time
+    end ||
+    ' com ' || coalesce(nullif(v_student_name, ''), 'o(a) aluno(a)') ||
+    '.' || E'\n' ||
+    'Pode nos contar como foi essa aula? Enquanto analisamos, somente esta aula fica em revisão.';
+end;
+$function$;
+
+alter function private.render_conflict_teacher_alert_message(
+  text,text,date,text
+) owner to postgres;
+revoke all on function private.render_conflict_teacher_alert_message(
+  text,text,date,text
+) from public, anon, authenticated, service_role;
+
 drop function if exists public.begin_notification_delivery_submission(
   uuid,uuid,text,uuid,bigint
 );
@@ -346,7 +421,10 @@ declare
   v_booking public.bookings%rowtype;
   v_reschedule public.reschedules%rowtype;
   v_appointment public.appointments%rowtype;
+  v_conflict_requested public.attendance_confirmations%rowtype;
+  v_conflict_canonical public.attendance_confirmations%rowtype;
   v_teacher public.profiles%rowtype;
+  v_teacher_membership public.tenant_memberships%rowtype;
   v_student public.profiles%rowtype;
   v_tenant public.tenants%rowtype;
   v_instance_name text := pg_catalog.btrim(
@@ -369,6 +447,8 @@ declare
   v_student_name text;
   v_class_link text;
   v_subject_id text;
+  v_conflict_canonical_id uuid;
+  v_is_conflict_replay boolean := false;
   v_receipt_id uuid;
   v_queue_result jsonb;
 begin
@@ -414,6 +494,23 @@ begin
     );
   end if;
 
+  v_kind := upper(pg_catalog.btrim(coalesce(
+    v_notification.notification_kind,
+    ''
+  )));
+
+  -- Payment confirmations are always paired with the financial outbound
+  -- ledger. This guard must precede the idempotent generic replay too: a
+  -- payment already in SUBMITTING is still not a generic authorization.
+  if private.canonical_payment_notification_kind(v_kind) =
+      'PAYMENT_CONFIRMED_WHATSAPP' then
+    return pg_catalog.jsonb_build_object(
+      'ok', false,
+      'action', 'USE_PAYMENT_BRIDGE',
+      'reason', 'payment_confirmation_requires_paired_submission'
+    );
+  end if;
+
   -- Idempotent replay for a lost RPC response. The same claim and exact sealed
   -- snapshot may receive the same authorization again; no second receipt is
   -- created and no different destination/message can be substituted.
@@ -428,10 +525,7 @@ begin
        and v_notification.student_phone = v_expected_destination
        and v_notification.message_body = v_expected_message
        and (
-         upper(pg_catalog.btrim(coalesce(
-           v_notification.notification_kind,
-           ''
-         ))) <> 'LESSON_REMINDER'
+         v_kind <> 'LESSON_REMINDER'
          or exists (
            select 1
            from public.automation_sent as receipt
@@ -440,22 +534,30 @@ begin
              and receipt.receipt_state = 'SEALED'
          )
        ) then
+      if v_kind = 'CONFLICT_TEACHER_ALERT' then
+        -- A lost begin response is not authority to send a conflict that was
+        -- resolved before the replay. Re-run the locked source authorization.
+        v_is_conflict_replay := true;
+      else
+        return pg_catalog.jsonb_build_object(
+          'ok', true,
+          'action', 'SUBMIT_AUTHORIZED',
+          'notificationId', v_notification.id,
+          'providerDestination', v_notification.provider_destination,
+          'messageBody', v_notification.message_body
+        );
+      end if;
+    else
       return pg_catalog.jsonb_build_object(
-        'ok', true,
-        'action', 'SUBMIT_AUTHORIZED',
-        'notificationId', v_notification.id,
-        'providerDestination', v_notification.provider_destination,
-        'messageBody', v_notification.message_body
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'notification_submitting_snapshot_mismatch'
       );
     end if;
-    return pg_catalog.jsonb_build_object(
-      'ok', false,
-      'action', 'REVIEW_REQUIRED',
-      'reason', 'notification_submitting_snapshot_mismatch'
-    );
   end if;
 
-  if v_notification.delivery_status <> 'preparing' then
+  if not v_is_conflict_replay
+     and v_notification.delivery_status <> 'preparing' then
     return pg_catalog.jsonb_build_object(
       'ok', false,
       'action', 'RETRY',
@@ -463,24 +565,12 @@ begin
     );
   end if;
 
-  if v_notification.lease_expires_at <= now() then
+  if not v_is_conflict_replay
+     and v_notification.lease_expires_at <= now() then
     return pg_catalog.jsonb_build_object(
       'ok', false,
       'action', 'RETRY',
       'reason', 'notification_delivery_claim_expired'
-    );
-  end if;
-
-  v_kind := upper(pg_catalog.btrim(coalesce(
-    v_notification.notification_kind,
-    ''
-  )));
-  if private.canonical_payment_notification_kind(v_kind) =
-      'PAYMENT_CONFIRMED_WHATSAPP' then
-    return pg_catalog.jsonb_build_object(
-      'ok', false,
-      'action', 'USE_PAYMENT_BRIDGE',
-      'reason', 'payment_confirmation_requires_paired_submission'
     );
   end if;
 
@@ -844,11 +934,201 @@ begin
         'reason', 'occurrence_already_notified'
       );
     end if;
+  elsif v_kind = 'CONFLICT_TEACHER_ALERT' then
+    v_source_type := upper(pg_catalog.btrim(coalesce(
+      v_notification.source_type,
+      ''
+    )));
+    if v_notification.tenant_id is null
+       or v_notification.source_id is null
+       or v_notification.class_date is null
+       or v_source_type <> 'ATTENDANCE_CONFIRMATION' then
+      return pg_catalog.jsonb_build_object(
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'invalid_conflict_identity'
+      );
+    end if;
+
+    -- Discover the root without waiting while the queue row is locked. The
+    -- pointer is re-read and compared after every authoritative row is locked.
+    select coalesce(
+      confirmation.canonical_confirmation_id,
+      confirmation.id
+    )
+    into v_conflict_canonical_id
+    from public.attendance_confirmations as confirmation
+    where confirmation.id = v_notification.source_id;
+
+    if not found or v_conflict_canonical_id is null then
+      return pg_catalog.jsonb_build_object(
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'attendance_conflict_changed'
+      );
+    end if;
+
+    -- Conflict writers lock attendance rows before touching a pending queue.
+    -- NOWAIT makes this inverse queue->source authorization fail closed instead
+    -- of ever participating in a lock cycle; the worker retries from PREPARING.
+    begin
+      select confirmation.*
+      into v_conflict_canonical
+      from public.attendance_confirmations as confirmation
+      where confirmation.id = v_conflict_canonical_id
+      for share nowait;
+
+      select confirmation.*
+      into v_conflict_requested
+      from public.attendance_confirmations as confirmation
+      where confirmation.id = v_notification.source_id
+      for share nowait;
+
+      perform 1
+      from public.attendance_confirmations as confirmation
+      where coalesce(
+        confirmation.canonical_confirmation_id,
+        confirmation.id
+      ) = v_conflict_canonical_id
+      order by confirmation.id
+      for share nowait;
+
+      if v_conflict_canonical.teacher_id is not null then
+        select profile.*
+        into v_teacher
+        from public.profiles as profile
+        where profile.id = v_conflict_canonical.teacher_id
+        for share nowait;
+
+        select membership.*
+        into v_teacher_membership
+        from public.tenant_memberships as membership
+        where membership.user_id = v_conflict_canonical.teacher_id
+          and membership.tenant_id = v_notification.tenant_id
+        for share nowait;
+      end if;
+    exception
+      when lock_not_available then
+        return pg_catalog.jsonb_build_object(
+          'ok', false,
+          'action', 'RETRY',
+          'reason', 'attendance_conflict_revalidation_busy'
+        );
+    end;
+
+    if v_conflict_requested.id is null
+       or v_conflict_canonical.id is null
+       or coalesce(
+         v_conflict_requested.canonical_confirmation_id,
+         v_conflict_requested.id
+       ) is distinct from v_conflict_canonical_id
+       or coalesce(
+         v_conflict_canonical.canonical_confirmation_id,
+         v_conflict_canonical.id
+       ) is distinct from v_conflict_canonical.id
+       or v_conflict_requested.tenant_id is distinct from
+         v_notification.tenant_id
+       or v_conflict_canonical.tenant_id is distinct from
+         v_notification.tenant_id
+       or v_conflict_requested.class_date is distinct from
+         v_notification.class_date
+       or v_conflict_canonical.class_date is distinct from
+         v_notification.class_date
+       or v_conflict_requested.teacher_id is distinct from
+         v_conflict_canonical.teacher_id
+       or v_conflict_canonical.teacher_id is null
+       or exists (
+         select 1
+         from public.attendance_confirmations as member
+         where coalesce(member.canonical_confirmation_id, member.id) =
+             v_conflict_canonical_id
+           and (
+             member.tenant_id is distinct from v_conflict_canonical.tenant_id
+             or member.class_date is distinct from
+               v_conflict_canonical.class_date
+             or member.teacher_id is distinct from
+               v_conflict_canonical.teacher_id
+             or member.student_id is distinct from
+               v_conflict_canonical.student_id
+             or upper(pg_catalog.btrim(coalesce(member.status, ''))) <>
+               'CONFLICT'
+             or upper(pg_catalog.btrim(coalesce(
+               member.student_response,
+               ''
+             ))) <> 'TEACHER_NO_SHOW'
+             or member.resolved_at is not null
+             or member.resolution_verdict is not null
+             or member.response_editable_until is null
+             or member.response_editable_until > now()
+           )
+       ) then
+      return pg_catalog.jsonb_build_object(
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'attendance_conflict_changed'
+      );
+    end if;
+
+    if v_teacher.id is null
+       or v_teacher.id is distinct from v_conflict_canonical.teacher_id
+       or v_teacher.tenant_id is distinct from v_notification.tenant_id
+       or upper(pg_catalog.btrim(coalesce(v_teacher.role, ''))) <> 'TEACHER'
+       or lower(pg_catalog.btrim(coalesce(
+         v_teacher.lifecycle_status,
+         ''
+       ))) <> 'active'
+       or v_teacher.is_test_account is distinct from false
+       or v_teacher_membership.user_id is distinct from v_teacher.id
+       or v_teacher_membership.tenant_id is distinct from
+         v_notification.tenant_id
+       or v_teacher_membership.role is distinct from 'TEACHER'
+       or v_teacher_membership.status is distinct from 'ACTIVE' then
+      return pg_catalog.jsonb_build_object(
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'attendance_conflict_teacher_changed'
+      );
+    end if;
+
+    v_current_destination := coalesce(
+      private.normalize_notification_phone(v_teacher.phone),
+      private.normalize_notification_phone(v_teacher.attendance_phone)
+    );
+    v_current_message := private.render_conflict_teacher_alert_message(
+      v_teacher.full_name,
+      v_conflict_canonical.student_name,
+      v_conflict_canonical.class_date,
+      v_conflict_canonical.class_time
+    );
+
+    if v_current_destination is null
+       or v_current_destination <> v_expected_destination
+       or not private.notification_phones_same_recipient(
+         v_current_destination,
+         v_provider_destination
+       )
+       or v_current_message is distinct from v_expected_message then
+      return pg_catalog.jsonb_build_object(
+        'ok', false,
+        'action', 'REVIEW_REQUIRED',
+        'reason', 'attendance_conflict_authorized_snapshot_changed'
+      );
+    end if;
   else
     -- Other kinds already have purpose-specific TypeScript revalidation. Bind
     -- the exact prepared snapshot so response recovery cannot substitute it.
     v_current_destination := v_expected_destination;
     v_current_message := v_expected_message;
+  end if;
+
+  if v_is_conflict_replay then
+    return pg_catalog.jsonb_build_object(
+      'ok', true,
+      'action', 'SUBMIT_AUTHORIZED',
+      'notificationId', v_notification.id,
+      'providerDestination', v_notification.provider_destination,
+      'messageBody', v_notification.message_body
+    );
   end if;
 
   update public.notification_queue as notification
@@ -1076,6 +1356,25 @@ begin
       'ok', false,
       'action', 'REVIEW_REQUIRED',
       'reason', 'generic_submission_receipt_changed'
+    );
+  end if;
+
+  if upper(pg_catalog.btrim(coalesce(
+       v_notification.notification_kind,
+       ''
+     ))) = 'CONFLICT_TEACHER_ALERT' then
+    -- Reuse the exact locked authorization path. The begin RPC recognizes the
+    -- sealed snapshot as an idempotent replay and does not mutate it, but it
+    -- does re-lock and revalidate the conflict before authorizing the POST.
+    return public.begin_notification_delivery_submission(
+      v_notification.id,
+      p_notification_claim_token,
+      v_instance_name,
+      v_notification.student_phone,
+      v_notification.provider_destination,
+      v_notification.message_body,
+      p_integration_id,
+      p_integration_version
     );
   end if;
 

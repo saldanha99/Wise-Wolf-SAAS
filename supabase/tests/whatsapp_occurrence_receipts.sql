@@ -101,6 +101,16 @@ select pg_temp.assert_true(
   'schema/trigger do receipt fence esta incompleto'
 );
 
+select pg_temp.assert_true(
+  private.render_conflict_teacher_alert_message(
+    'Ana Paula',
+    'Bruno Souza',
+    date '2026-08-28',
+    '19:30:45'
+  ) = E'Oi, Ana! Aqui é da coordenação da escola.\n\nRecebemos uma divergência sobre a aula de 28/08 às 19:30 com Bruno Souza.\nPode nos contar como foi essa aula? Enquanto analisamos, somente esta aula fica em revisão.',
+  'renderer SQL do conflito divergiu do contrato TypeScript'
+);
+
 set local request.jwt.claims = '{"role":"service_role"}';
 
 insert into public.tenants (id, name, slug, saas_status, whatsapp_enabled)
@@ -684,8 +694,31 @@ begin
         select notification_kind = 'PAYMENT_CONFIRMED'
           and delivery_status = 'preparing'
         from public.notification_queue where id = v_claim.id
-      ),
+    ),
     'confirmacao financeira atravessou a RPC generica'
+  );
+
+  update public.notification_queue
+  set delivery_status = 'submitting',
+      provider_instance_name = 'wa-occurrence-instance',
+      provider_destination = '5511988880406',
+      provider_integration_id = v_integration_id,
+      provider_integration_version = v_integration_version,
+      lease_expires_at = now() + interval '5 minutes'
+  where id = v_claim.id;
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511988880406', '5511988880406', 'payment generic block',
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'USE_PAYMENT_BRIDGE'
+      and (
+        select delivery_status = 'submitting'
+        from public.notification_queue where id = v_claim.id
+      ),
+    'replay financeiro SUBMITTING atravessou a RPC generica'
   );
 end;
 $payment_generic_block$;
@@ -887,5 +920,351 @@ begin
   );
 end;
 $occurrence_snapshot_revalidation$;
+
+-- A conflict alert is authorized from the locked attendance/profile snapshot,
+-- never from the mutable payload prepared by the Edge worker. These fixtures
+-- model a resolver or editor committing after PREPARING was claimed but before
+-- the atomic begin RPC reaches the provider boundary.
+insert into public.attendance_confirmations (
+  id, tenant_id, teacher_id, student_id, student_name, student_phone,
+  teacher_name, class_date, class_time, token, token_expires_at,
+  status, student_response, responded_at, response_updated_at,
+  response_editable_until
+)
+values
+  (
+    '00000000-0000-4000-8000-00000000ad01',
+    'whatsapp-occurrence-test',
+    '00000000-0000-4000-8000-00000000aa02',
+    '00000000-0000-4000-8000-00000000aa03',
+    'Aluno Conflito Valido', '5511988880490', 'Occurrence Teacher',
+    current_date, '18:01', 'occurrence-conflict-token-01',
+    now() + interval '7 days', 'CONFLICT', 'TEACHER_NO_SHOW',
+    now() - interval '31 minutes', now() - interval '31 minutes',
+    now() - interval '1 minute'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ad02',
+    'whatsapp-occurrence-test',
+    '00000000-0000-4000-8000-00000000aa02',
+    '00000000-0000-4000-8000-00000000aa03',
+    'Aluno Conflito Resolvido', '5511988880490', 'Occurrence Teacher',
+    current_date, '18:02', 'occurrence-conflict-token-02',
+    now() + interval '7 days', 'CONFLICT', 'TEACHER_NO_SHOW',
+    now() - interval '31 minutes', now() - interval '31 minutes',
+    now() - interval '1 minute'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ad03',
+    'whatsapp-occurrence-test',
+    '00000000-0000-4000-8000-00000000aa02',
+    '00000000-0000-4000-8000-00000000aa03',
+    'Aluno Antes da Edicao', '5511988880490', 'Occurrence Teacher',
+    current_date, '18:03', 'occurrence-conflict-token-03',
+    now() + interval '7 days', 'CONFLICT', 'TEACHER_NO_SHOW',
+    now() - interval '31 minutes', now() - interval '31 minutes',
+    now() - interval '1 minute'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ad04',
+    'whatsapp-occurrence-test',
+    '00000000-0000-4000-8000-00000000aa02',
+    '00000000-0000-4000-8000-00000000aa03',
+    'Aluno Destino Alterado', '5511988880490', 'Occurrence Teacher',
+    current_date, '18:04', 'occurrence-conflict-token-04',
+    now() + interval '7 days', 'CONFLICT', 'TEACHER_NO_SHOW',
+    now() - interval '31 minutes', now() - interval '31 minutes',
+    now() - interval '1 minute'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ad05',
+    'whatsapp-occurrence-test',
+    '00000000-0000-4000-8000-00000000aa02',
+    '00000000-0000-4000-8000-00000000aa03',
+    'Aluno Janela Aberta', '5511988880490', 'Occurrence Teacher',
+    current_date, '18:05', 'occurrence-conflict-token-05',
+    now() + interval '7 days', 'CONFLICT', 'TEACHER_NO_SHOW',
+    now() - interval '1 minute', now() - interval '1 minute',
+    now() + interval '29 minutes'
+  );
+
+insert into public.notification_queue (
+  id, tenant_id, student_id, student_phone, message_body,
+  notification_kind, source_id, source_type, class_date,
+  scheduled_for, status, attempts, next_attempt_at, delivery_status,
+  max_attempts, idempotency_key
+)
+select
+  fixture.queue_id,
+  'whatsapp-occurrence-test',
+  '00000000-0000-4000-8000-00000000aa03',
+  '5511999990410',
+  private.render_conflict_teacher_alert_message(
+    'Occurrence Teacher',
+    confirmation.student_name,
+    confirmation.class_date,
+    confirmation.class_time
+  ),
+  'CONFLICT_TEACHER_ALERT', confirmation.id,
+  'attendance_confirmation', confirmation.class_date,
+  now() + interval '1 day', 'pending', 0, now() + interval '1 day',
+  'queued', 5, fixture.idempotency_key
+from (values
+  (
+    '00000000-0000-4000-8000-00000000ae01'::uuid,
+    '00000000-0000-4000-8000-00000000ad01'::uuid,
+    'occurrence-conflict-valid'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ae02'::uuid,
+    '00000000-0000-4000-8000-00000000ad02'::uuid,
+    'occurrence-conflict-resolved'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ae03'::uuid,
+    '00000000-0000-4000-8000-00000000ad03'::uuid,
+    'occurrence-conflict-message-edited'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ae04'::uuid,
+    '00000000-0000-4000-8000-00000000ad04'::uuid,
+    'occurrence-conflict-destination-edited'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000ae05'::uuid,
+    '00000000-0000-4000-8000-00000000ad05'::uuid,
+    'occurrence-conflict-window-open'
+  )
+) as fixture(queue_id, confirmation_id, idempotency_key)
+join public.attendance_confirmations as confirmation
+  on confirmation.id = fixture.confirmation_id;
+
+do $conflict_snapshot_revalidation$
+declare
+  v_claim public.notification_queue%rowtype;
+  v_integration_id uuid;
+  v_integration_version bigint;
+  v_message text;
+  v_result jsonb;
+begin
+  select integration_id, integration_version
+  into strict v_integration_id, v_integration_version
+  from public.whatsapp_instances
+  where tenant_id = 'whatsapp-occurrence-test'
+    and instance_name = 'wa-occurrence-instance';
+
+  -- A mature, unresolved canonical conflict proves the positive path and the
+  -- exact accented message shared with the TypeScript renderer.
+  update public.notification_queue
+  set scheduled_for = now(), next_attempt_at = now()
+  where id = '00000000-0000-4000-8000-00000000ae01';
+  select candidate.* into strict v_claim
+  from public.claim_notification_delivery_batch(200, 300) as candidate
+  where candidate.id = '00000000-0000-4000-8000-00000000ae01';
+  select message_body into strict v_message
+  from public.notification_queue where id = v_claim.id;
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean
+      and v_result ->> 'action' = 'SUBMIT_AUTHORIZED'
+      and v_result ->> 'messageBody' = v_message
+      and v_message like '%Aqui é da coordenação%'
+      and v_message like '% às 18:01%'
+      and (
+        select delivery_status = 'submitting'
+          and student_phone = '5511999990410'
+          and message_body = v_message
+        from public.notification_queue where id = v_claim.id
+      ),
+    'conflito valido nao preservou destino/mensagem canonicos'
+  );
+
+  -- If the first begin committed but its response was lost, an exact replay
+  -- must still observe a resolution committed before the provider POST.
+  update public.attendance_confirmations
+  set status = 'RESOLVED_PAID',
+      resolution_verdict = 'TEACHER_PRESENT',
+      resolved_at = now()
+  where id = '00000000-0000-4000-8000-00000000ad01';
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'REVIEW_REQUIRED'
+      and v_result ->> 'reason' = 'attendance_conflict_changed'
+      and (
+        select delivery_status = 'submitting'
+        from public.notification_queue where id = v_claim.id
+    ),
+    'replay do begin autorizou conflito resolvido apos resposta perdida'
+  );
+  v_result := public.recover_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, null, null,
+    'wa-occurrence-instance', v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'REVIEW_REQUIRED'
+      and v_result ->> 'reason' = 'attendance_conflict_changed',
+    'recovery autorizou conflito resolvido apos respostas perdidas'
+  );
+
+  -- Restoring the same authoritative state proves an unchanged exact replay
+  -- remains idempotent and does not create a second material authorization.
+  update public.attendance_confirmations
+  set status = 'CONFLICT', resolution_verdict = null, resolved_at = null
+  where id = '00000000-0000-4000-8000-00000000ad01';
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean
+      and v_result ->> 'action' = 'SUBMIT_AUTHORIZED'
+      and v_result ->> 'messageBody' = v_message,
+    'replay idempotente do conflito inalterado deixou de ser autorizado'
+  );
+  v_result := public.recover_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, null, null,
+    'wa-occurrence-instance', v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean
+      and v_result ->> 'action' = 'SUBMIT_AUTHORIZED'
+      and v_result ->> 'messageBody' = v_message,
+    'recovery do conflito inalterado deixou de ser autorizado'
+  );
+  v_result := public.finalize_notification_delivery(
+    v_claim.id, v_claim.claim_token, 'failed', null, 400,
+    'provider_rejected', 0
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean,
+    'fixture de conflito valido nao foi finalizada'
+  );
+
+  -- A resolver wins after PREPARING. The stale alert must remain before the
+  -- provider boundary even though pending-only cancellation can no longer see it.
+  update public.notification_queue
+  set scheduled_for = now(), next_attempt_at = now()
+  where id = '00000000-0000-4000-8000-00000000ae02';
+  select candidate.* into strict v_claim
+  from public.claim_notification_delivery_batch(200, 300) as candidate
+  where candidate.id = '00000000-0000-4000-8000-00000000ae02';
+  select message_body into strict v_message
+  from public.notification_queue where id = v_claim.id;
+  update public.attendance_confirmations
+  set status = 'RESOLVED_PAID',
+      resolution_verdict = 'TEACHER_PRESENT',
+      resolved_at = now()
+  where id = '00000000-0000-4000-8000-00000000ad02';
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'action' = 'REVIEW_REQUIRED'
+      and v_result ->> 'reason' = 'attendance_conflict_changed'
+      and (
+        select delivery_status = 'preparing'
+          and provider_instance_name is null
+          and provider_destination is null
+        from public.notification_queue where id = v_claim.id
+      ),
+    'conflito resolvido entre claim/begin atravessou a fronteira'
+  );
+
+  -- Mutable source text cannot make a stale, materially different message pass.
+  update public.notification_queue
+  set scheduled_for = now(), next_attempt_at = now()
+  where id = '00000000-0000-4000-8000-00000000ae03';
+  select candidate.* into strict v_claim
+  from public.claim_notification_delivery_batch(200, 300) as candidate
+  where candidate.id = '00000000-0000-4000-8000-00000000ae03';
+  select message_body into strict v_message
+  from public.notification_queue where id = v_claim.id;
+  update public.attendance_confirmations
+  set student_name = 'Aluno Depois da Edicao'
+  where id = '00000000-0000-4000-8000-00000000ad03';
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'reason' =
+        'attendance_conflict_authorized_snapshot_changed'
+      and (
+        select delivery_status = 'preparing'
+        from public.notification_queue where id = v_claim.id
+      ),
+    'mensagem de conflito alterada entre claim/begin foi autorizada'
+  );
+
+  -- The current teacher destination is authoritative, not the prepared copy.
+  update public.notification_queue
+  set scheduled_for = now(), next_attempt_at = now()
+  where id = '00000000-0000-4000-8000-00000000ae04';
+  select candidate.* into strict v_claim
+  from public.claim_notification_delivery_batch(200, 300) as candidate
+  where candidate.id = '00000000-0000-4000-8000-00000000ae04';
+  select message_body into strict v_message
+  from public.notification_queue where id = v_claim.id;
+  update public.profiles set phone = '5511999990499'
+  where id = '00000000-0000-4000-8000-00000000aa02';
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'reason' =
+        'attendance_conflict_authorized_snapshot_changed'
+      and (
+        select delivery_status = 'preparing'
+        from public.notification_queue where id = v_claim.id
+      ),
+    'destino do professor alterado entre claim/begin foi autorizado'
+  );
+  update public.profiles set phone = '5511999990410'
+  where id = '00000000-0000-4000-8000-00000000aa02';
+
+  -- An unresolved answer is still ineligible until its correction window ends.
+  update public.notification_queue
+  set scheduled_for = now(), next_attempt_at = now()
+  where id = '00000000-0000-4000-8000-00000000ae05';
+  select candidate.* into strict v_claim
+  from public.claim_notification_delivery_batch(200, 300) as candidate
+  where candidate.id = '00000000-0000-4000-8000-00000000ae05';
+  select message_body into strict v_message
+  from public.notification_queue where id = v_claim.id;
+  v_result := public.begin_notification_delivery_submission(
+    v_claim.id, v_claim.claim_token, 'wa-occurrence-instance',
+    '5511999990410', '5511999990410', v_message,
+    v_integration_id, v_integration_version
+  );
+  perform pg_temp.assert_true(
+    (v_result ->> 'ok')::boolean is false
+      and v_result ->> 'reason' = 'attendance_conflict_changed'
+      and (
+        select delivery_status = 'preparing'
+        from public.notification_queue where id = v_claim.id
+      ),
+    'conflito com janela de correcao aberta foi autorizado'
+  );
+end;
+$conflict_snapshot_revalidation$;
 
 rollback;
