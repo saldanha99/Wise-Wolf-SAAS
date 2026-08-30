@@ -26,8 +26,9 @@ remove o webhook da instância: os agentes da escola também dependem dele.
 
 ## Fluxo de dados
 
-1. Ao habilitar, o backend configura o único webhook permitido pela Evolution
-   para o receptor `whatsapp-inbound`, com segredo em header HTTP.
+1. Ao habilitar, o backend deriva um token HMAC exclusivo para a combinação
+   escola/instância/versão da integração e configura o único webhook permitido
+   pela Evolution para o receptor `whatsapp-inbound`, sempre em header HTTP.
 2. A sincronização inicial importa os chats recentes e, ao abrir uma conversa, o
    histórico disponível na Evolution.
 3. Cada webhook é sanitizado e gravado em um ledger durável antes de qualquer
@@ -45,6 +46,11 @@ remove o webhook da instância: os agentes da escola também dependem dele.
 - `failed`: rejeição conhecida; o usuário pode tentar novamente com um novo pedido.
 - `uncertain`: houve timeout depois do início do envio. O sistema não repete
   automaticamente, pois a mensagem pode ter sido aceita e a repetição a duplicaria.
+
+Nas automações da fila, `accepted` significa somente que a Evolution aceitou a
+requisição e devolveu um ID rastreável. `sent`, `delivered` e `read` dependem dos
+recibos posteriores do provedor; uma falha definitiva ainda pode corrigir um
+estado `accepted`, mas nunca rebaixa `sent`, `delivered` ou `read` já comprovados.
 
 O `client_request_id` impede que dois cliques ou a repetição da mesma requisição
 criem dois envios.
@@ -78,20 +84,27 @@ Variáveis obrigatórias nas Edge Functions:
   `/functions/v1/whatsapp-inbound` (na VPS, não use o `SUPABASE_URL` interno)
 - credenciais da Evolution resolvidas pelo broker de integração do tenant
 
+Cada instância fica vinculada ao ID e à versão da integração em que foi criada.
+Trocar de conta, endpoint ou modo gerenciado/BYOK invalida esse vínculo e bloqueia
+novos envios até a recriação explícita da instância; o sistema nunca combina o
+nome de uma instância antiga com credenciais novas.
+
 Ordem de publicação:
 
 1. aplicar a migration da inbox;
 2. publicar `whatsapp-inbound` e `whatsapp-evolution-proxy`;
-3. atualizar o webhook com a lista expandida de eventos;
+3. publicar `reconcile-whatsapp-webhooks` e executar a reconciliação autenticada;
 4. habilitar a instância institucional pela interface;
 5. executar **Sincronizar** e validar entrada, resposta, handoff e troca de tenant.
 
-Durante a primeira publicação, o receptor aceita tanto o novo header
-`x-whatsapp-inbound-token` quanto o parâmetro legado `?token=` para não interromper
-instâncias já conectadas. O parâmetro legado não é registrado. Depois de inventariar
-e reconfigurar todas as instâncias para o header, remova essa compatibilidade em uma
-segunda publicação e rotacione o token, pois URLs antigas podem existir em logs de
-infraestrutura.
+Instâncias ainda marcadas com `webhook_auth_version = 1` aceitam temporariamente o
+token global no header durante a rotação. A versão 2 preserva apenas o token HMAC
+antigo por escola/instância para uma atualização sem interrupção. O reconciliador,
+executado a cada quinze minutos, migra ambas para o token vinculado também ao ID e
+à versão da integração e só então grava a versão 3. Na versão 3, a conta anterior,
+o token global e o parâmetro legado `?token=` são recusados. A publicação falha se
+alguma instância institucional ativa continuar abaixo da versão 3 depois da
+reconciliação.
 
 Nunca registrar o campo `apikey`, URLs assinadas de mídia, tokens, headers ou o
 payload bruto não sanitizado. A consulta de configuração do webhook pode devolver

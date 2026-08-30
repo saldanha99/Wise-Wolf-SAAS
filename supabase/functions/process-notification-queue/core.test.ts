@@ -2,12 +2,26 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   lessonReminderFreshness,
+  normalizeNotificationKind,
   normalizeQueueDestination,
+  notificationRetryDelaySeconds,
   providerMessageId,
   queueAudience,
   queueDeliveryDecision,
   renderConflictTeacherAlert,
 } from "./core.ts";
+
+Deno.test("tipo da notificacao e canonico independentemente de casing", () => {
+  assertEquals(
+    normalizeNotificationKind(" payment_confirmed "),
+    "PAYMENT_CONFIRMED",
+  );
+  assertEquals(normalizeNotificationKind("lesson_reminder"), "LESSON_REMINDER");
+  assertEquals(queueAudience(" conflict_teacher_alert "), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+});
 
 Deno.test("CONFLICT_TEACHER_ALERT usa audiência professor e somente central", () => {
   assertEquals(queueAudience("CONFLICT_TEACHER_ALERT"), {
@@ -36,14 +50,14 @@ Deno.test("somente 2xx com messageId comprova envio", () => {
       httpStatus: 200,
     }),
     {
-      status: "failed",
+      status: "uncertain",
       reason: "provider_accepted_without_message_id",
       releaseOccurrenceReceipt: false,
     },
   );
 });
 
-Deno.test("timeout, rede, 429 e 5xx são terminais e preservam receipt", () => {
+Deno.test("timeout, rede, 429 e 5xx ficam incertos e preservam receipt", () => {
   for (
     const result of [
       { outcome: "ambiguous" as const, messageId: null, httpStatus: null },
@@ -52,9 +66,23 @@ Deno.test("timeout, rede, 429 e 5xx são terminais e preservam receipt", () => {
     ]
   ) {
     const decision = queueDeliveryDecision(result);
-    assertEquals(decision.status, "failed");
+    assertEquals(decision.status, "uncertain");
     assertEquals(decision.releaseOccurrenceReceipt, false);
   }
+});
+
+Deno.test("retry pré-envio usa backoff crescente e determinístico", () => {
+  const first = notificationRetryDelaySeconds(1, "queue-a");
+  const second = notificationRetryDelaySeconds(2, "queue-a");
+  const capped = notificationRetryDelaySeconds(20, "queue-a");
+  assertEquals(first >= 30 && first <= 36, true);
+  assertEquals(second >= 60 && second <= 72, true);
+  assertEquals(second > first, true);
+  assertEquals(capped >= 900 && capped <= 1080, true);
+  assertEquals(
+    notificationRetryDelaySeconds(2, "queue-a"),
+    second,
+  );
 });
 
 Deno.test("destino aceita telefone BR e JID de grupo estrito", () => {

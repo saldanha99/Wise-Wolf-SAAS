@@ -5,12 +5,11 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { authorizeAutomation } from "../_shared/automation-auth.ts";
-import { sendWhatsTextDetailed } from "../_shared/evolution-send.ts";
 import {
-  claimOutboundMessage,
-  finishOutboundMessage,
-  markOutboundMessageSubmittingDecision,
-} from "../_shared/student-billing-period-guard.ts";
+  resolveWhatsAppDestination,
+  sendWhatsTextToResolvedDestinationDetailed,
+} from "../_shared/evolution-send.ts";
+import { claimOutboundMessage } from "../_shared/student-billing-period-guard.ts";
 import { resolveEvolutionIntegration } from "../_shared/tenant-integration-broker.ts";
 import {
   loadTenantCentralWhatsAppInstance,
@@ -18,7 +17,6 @@ import {
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
-  classReminderReceiptFromQueue,
   dateInSaoPaulo,
   DEFAULT_CLASS_REMINDER_TEMPLATE,
   normalizeStudentPhone,
@@ -28,8 +26,9 @@ import {
 } from "../send-class-notification/core.ts";
 import {
   lessonReminderFreshness,
+  normalizeNotificationKind,
   normalizeQueueDestination,
-  providerMessageId,
+  notificationRetryDelaySeconds,
   queueAudience,
   queueDeliveryDecision,
   renderConflictTeacherAlert,
@@ -49,19 +48,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const EVOLUTION_API_URL = (Deno.env.get("EVOLUTION_API_URL") || "")
-  .trim()
-  .replace(/\/+$/, "");
-// Chave via env para permitir rotação sem novo deploy.
-const EVOLUTION_API_KEYS = Array.from(
-  new Set([
-    (Deno.env.get("EVOLUTION_API_KEY") || "").trim(),
-  ].filter(Boolean)),
-);
-const MAX_PAYMENT_CONFIRMATION_ATTEMPTS = 3;
-const PROCESSING_LEASE_MS = 5 * 60 * 1000;
-
 type QueueRelation<T> = T | T[] | null;
+
+type DeliveryIntegration = {
+  integrationId: string;
+  version: number;
+  baseUrl: string;
+  apiKey: string;
+};
 
 type TeacherRelation = {
   id: string;
@@ -90,6 +84,8 @@ type QueueItem = {
   source_type: string | null;
   class_date: string | null;
   scheduled_for: string;
+  claim_token: string;
+  max_attempts: number | null;
   teacher: QueueRelation<TeacherRelation>;
   student: QueueRelation<StudentRelation>;
 };
@@ -122,7 +118,7 @@ type ActiveMember = {
 
 class QueueRevalidationError extends Error {
   constructor(
-    readonly queueStatus: "failed" | "skipped",
+    readonly queueStatus: "pending" | "failed" | "skipped",
     readonly reason: string,
   ) {
     super(reason);
@@ -134,15 +130,11 @@ function invalid(reason: string): never {
 }
 
 function unavailable(reason: string): never {
-  throw new QueueRevalidationError("failed", reason);
+  throw new QueueRevalidationError("pending", reason);
 }
 
 function relationOne<T>(value: QueueRelation<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-function providerHttpOutcomeIsUnknown(status: number): boolean {
-  return [408, 409, 425, 429].includes(status) || status >= 500;
 }
 
 async function loadActiveMember(
@@ -474,25 +466,220 @@ async function resolvePersonalInstance(
   return cache[key];
 }
 
+async function resolveDeliveryIntegration(
+  supabase: SupabaseClient,
+  tenantId: string,
+  cache: Map<string, Promise<DeliveryIntegration>>,
+): Promise<DeliveryIntegration> {
+  let pending = cache.get(tenantId);
+  if (!pending) {
+    pending = resolveEvolutionIntegration(
+      supabase,
+      tenantId,
+      "message.send_text",
+    ).then((integration) => ({
+      integrationId: integration.integrationId,
+      version: integration.version,
+      baseUrl: integration.baseUrl,
+      apiKey: integration.apiKey,
+    }));
+    cache.set(tenantId, pending);
+  }
+  try {
+    return await pending;
+  } catch (error) {
+    // Uma indisponibilidade não deve ficar memorizada entre futuras execuções.
+    cache.delete(tenantId);
+    throw error;
+  }
+}
+
 async function markClaim(
   supabase: SupabaseClient,
-  id: string,
-  status: "pending" | "sent" | "failed" | "skipped",
+  item: Pick<QueueItem, "id" | "claim_token" | "attempts">,
+  status: "pending" | "sent" | "failed" | "uncertain" | "skipped",
   lastError: string | null,
+  provider?: {
+    messageId?: string | null;
+    httpStatus?: number | null;
+  },
 ): Promise<boolean> {
+  const outcome = status === "sent"
+    ? "ACCEPTED"
+    : status === "uncertain"
+    ? "UNCERTAIN"
+    : status === "skipped"
+    ? "SKIPPED"
+    : "FAILED";
+  const retryDelay = status === "pending"
+    ? notificationRetryDelaySeconds(Number(item.attempts || 1), item.id)
+    : null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { data, error } = await supabase
-      .from("notification_queue")
-      .update({
-        status,
-        last_error: lastError,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("status", "processing")
-      .select("id")
-      .maybeSingle();
-    if (!error) return Boolean(data);
+    const { data, error } = await supabase.rpc(
+      "finalize_notification_delivery",
+      {
+        p_notification_id: item.id,
+        p_claim_token: item.claim_token,
+        p_outcome: outcome,
+        p_provider_message_id: provider?.messageId || null,
+        p_provider_http_status: provider?.httpStatus ?? null,
+        p_error: lastError,
+        p_retry_delay_seconds: retryDelay,
+      },
+    );
+    if (!error) {
+      const result = Array.isArray(data) ? data[0] : data;
+      return Boolean(
+        result && typeof result === "object" && result.ok === true,
+      );
+    }
+  }
+  return false;
+}
+
+type SubmissionDecision = {
+  ok: boolean;
+  action: string;
+  reason?: string;
+  providerDestination?: string;
+  messageBody?: string;
+};
+
+function submissionDecision(value: unknown): SubmissionDecision | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || typeof candidate !== "object") return null;
+  const record = candidate as Record<string, unknown>;
+  return typeof record.ok === "boolean" && typeof record.action === "string"
+    ? {
+      ok: record.ok,
+      action: record.action,
+      ...(typeof record.reason === "string" ? { reason: record.reason } : {}),
+      ...(typeof record.providerDestination === "string"
+        ? { providerDestination: record.providerDestination }
+        : {}),
+      ...(typeof record.messageBody === "string"
+        ? { messageBody: record.messageBody }
+        : {}),
+    }
+    : null;
+}
+
+async function beginNotificationSubmission(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  instanceName: string,
+  expectedDestination: string,
+  providerDestination: string,
+  expectedMessage: string,
+  integration: Pick<DeliveryIntegration, "integrationId" | "version">,
+): Promise<SubmissionDecision | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase.rpc(
+      "begin_notification_delivery_submission",
+      {
+        p_notification_id: item.id,
+        p_claim_token: item.claim_token,
+        p_provider_instance_name: instanceName,
+        p_expected_destination: expectedDestination,
+        p_provider_destination: providerDestination,
+        p_expected_message_body: expectedMessage,
+        p_integration_id: integration.integrationId,
+        p_integration_version: integration.version,
+      },
+    );
+    if (!error) {
+      const decision = submissionDecision(data);
+      if (decision) return decision;
+    }
+  }
+  return null;
+}
+
+async function beginPaymentConfirmationSubmission(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  outbound: Awaited<ReturnType<typeof claimOutboundMessage>>,
+  instanceName: string,
+  destination: string,
+  providerDestination: string,
+  integration: Pick<DeliveryIntegration, "integrationId" | "version">,
+): Promise<SubmissionDecision | null> {
+  if (!outbound.attempt_id || !outbound.claim_token) return null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase.rpc(
+      "begin_payment_confirmation_delivery_submission",
+      {
+        p_notification_id: item.id,
+        p_notification_claim_token: item.claim_token,
+        p_outbound_attempt_id: outbound.attempt_id,
+        p_outbound_claim_token: outbound.claim_token,
+        p_provider_instance_name: instanceName,
+        p_expected_destination: destination,
+        p_provider_destination: providerDestination,
+        p_integration_id: integration.integrationId,
+        p_integration_version: integration.version,
+      },
+    );
+    if (!error) {
+      const decision = submissionDecision(data);
+      if (decision) return decision;
+    }
+  }
+  return null;
+}
+
+async function recoverNotificationSubmission(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  outbound: Awaited<ReturnType<typeof claimOutboundMessage>> | null,
+  instanceName: string,
+  integration: Pick<DeliveryIntegration, "integrationId" | "version">,
+): Promise<SubmissionDecision | null> {
+  const { data, error } = await supabase.rpc(
+    "recover_notification_delivery_submission",
+    {
+      p_notification_id: item.id,
+      p_notification_claim_token: item.claim_token,
+      p_outbound_attempt_id: outbound?.attempt_id || null,
+      p_outbound_claim_token: outbound?.claim_token || null,
+      p_provider_instance_name: instanceName,
+      p_integration_id: integration.integrationId,
+      p_integration_version: integration.version,
+    },
+  );
+  return error ? null : submissionDecision(data);
+}
+
+async function finalizePaymentConfirmationSubmission(
+  supabase: SupabaseClient,
+  item: Pick<QueueItem, "id" | "claim_token">,
+  outbound: Awaited<ReturnType<typeof claimOutboundMessage>>,
+  outcome: "accepted" | "failed" | "uncertain",
+  provider: {
+    messageId: string | null;
+    httpStatus: number | null;
+    error: string | null;
+  },
+): Promise<boolean> {
+  if (!outbound.attempt_id || !outbound.claim_token) return false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase.rpc(
+      "finalize_payment_confirmation_delivery",
+      {
+        p_notification_id: item.id,
+        p_notification_claim_token: item.claim_token,
+        p_outbound_attempt_id: outbound.attempt_id,
+        p_outbound_claim_token: outbound.claim_token,
+        p_outcome: outcome,
+        p_provider_message_id: provider.messageId,
+        p_provider_http_status: provider.httpStatus,
+        p_error: provider.error,
+      },
+    );
+    if (!error) {
+      const result = submissionDecision(data);
+      return result?.ok === true;
+    }
   }
   return false;
 }
@@ -510,159 +697,99 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Recupera claims abandonados por timeout/restart do worker.
-    const staleBefore = new Date(Date.now() - PROCESSING_LEASE_MS)
-      .toISOString();
-    const { data: staleClaims, error: staleClaimsError } = await supabaseClient
-      .from("notification_queue")
-      .select(
-        "id, attempts, notification_kind, tenant_id, student_id, source_id",
-      )
-      .eq("status", "processing")
-      .lt("updated_at", staleBefore)
-      .limit(100);
-    if (staleClaimsError) throw staleClaimsError;
-    for (const stale of (staleClaims || [])) {
-      let recoveredStatus: "pending" | "sent" | "failed" | "skipped" = "failed";
-      let recoveredError = "worker_lease_expired_ambiguous";
-      if (
-        stale.notification_kind === "PAYMENT_CONFIRMED" &&
-        stale.tenant_id && stale.student_id && stale.source_id
-      ) {
-        const { data: outbound, error: outboundError } = await supabaseClient
-          .from("asaas_outbound_message_attempts")
-          .select("status, submit_attempt_count")
-          .eq("tenant_id", stale.tenant_id)
-          .eq("student_id", stale.student_id)
-          .eq("provider_entity_id", stale.source_id)
-          .eq("notification_kind", "PAYMENT_CONFIRMED_WHATSAPP")
-          .maybeSingle();
-        if (outboundError) throw outboundError;
-        const outboundStatus = String(outbound?.status || "").toUpperCase();
-        if (outboundStatus === "SENT") {
-          recoveredStatus = "sent";
-          recoveredError = "";
-        } else if (outboundStatus === "SUPPRESSED") {
-          recoveredStatus = "skipped";
-          recoveredError = "payment_confirmation_suppressed";
-        } else if (
-          ["FAILED", "UNKNOWN", "SUBMITTING"].includes(outboundStatus) ||
-          Number(outbound?.submit_attempt_count || 0) > 0
-        ) {
-          recoveredStatus = "failed";
-          recoveredError = "payment_confirmation_terminal";
-        } else if (outboundStatus === "CLAIMED") {
-          recoveredStatus = "pending";
-          recoveredError = "payment_confirmation_claim_recoverable";
-        } else {
-          recoveredStatus = Number(stale.attempts || 0) >=
-              MAX_PAYMENT_CONFIRMATION_ATTEMPTS
-            ? "failed"
-            : "pending";
-          recoveredError = recoveredStatus === "failed"
-            ? "payment_confirmation_terminal"
-            : "payment_confirmation_claim_recoverable";
-        }
-      } else if (stale.notification_kind === "PAYMENT_CONFIRMED") {
-        recoveredStatus = "failed";
-        recoveredError = "payment_confirmation_binding_missing";
-      }
-      const { error: staleRecoveryError } = await supabaseClient
-        .from("notification_queue")
-        .update({
-          status: recoveredStatus,
-          last_error: recoveredError || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", stale.id)
-        .eq("status", "processing");
-      if (staleRecoveryError) throw staleRecoveryError;
-    }
+    // Claim, lease e recuperação de execução interrompida ficam na mesma
+    // transação. PREPARING expirado volta para a fila; SUBMITTING expirado fica
+    // UNCERTAIN e nunca cruza o provedor uma segunda vez no escuro.
+    const { data: claimed, error: claimError } = await supabaseClient.rpc(
+      "claim_notification_delivery_batch",
+      // Um item pode consumir até 10 s para resolver o JID e 15 s no POST.
+      // Cinco itens mantêm a cauda confortavelmente dentro do lease de 5 min.
+      { p_limit: 5, p_lease_seconds: 300 },
+    );
+    if (claimError) throw claimError;
 
-    // 1. Busca notificações pendentes e vencidas
-    const { data: pending, error: fetchError } = await supabaseClient
-      .from("notification_queue")
-      .select(`
-                id,
-                student_phone,
-                message_body,
-                tenant_id,
-                attempts,
-                notification_kind,
-                source_id,
-                student_id,
-                source_type,
-                class_date,
-                scheduled_for,
-                teacher:teacher_id ( id, tenant_id ),
-                student:student_id (
-                  id,
-                  is_test_account,
-                  tenant_id,
-                  phone,
-                  guardian_id,
-                  guardian_cpf,
-                  guardian_phone
-                )
-            `)
-      .eq("status", "pending")
-      .lte("scheduled_for", new Date().toISOString())
-      .limit(50);
-
-    if (fetchError) throw fetchError;
-    if (!pending || pending.length === 0) {
+    const claimRows = (Array.isArray(claimed) ? claimed : []).filter((row) =>
+      row && typeof row === "object" && typeof row.id === "string" &&
+      typeof row.claim_token === "string"
+    ) as Array<{ id: string; claim_token: string }>;
+    if (claimRows.length === 0) {
       return new Response(
         JSON.stringify({ message: "No pending notifications due." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const queueItems = pending as unknown as QueueItem[];
+    const { data: hydrated, error: hydrateError } = await supabaseClient
+      .from("notification_queue")
+      .select(`
+        id,
+        student_phone,
+        message_body,
+        tenant_id,
+        attempts,
+        notification_kind,
+        source_id,
+        student_id,
+        source_type,
+        class_date,
+        scheduled_for,
+        claim_token,
+        max_attempts,
+        teacher:teacher_id ( id, tenant_id ),
+        student:student_id (
+          id,
+          is_test_account,
+          tenant_id,
+          phone,
+          guardian_id,
+          guardian_cpf,
+          guardian_phone
+        )
+      `)
+      .in("id", claimRows.map((row) => row.id))
+      .eq("status", "processing")
+      .eq("delivery_status", "preparing");
+    if (hydrateError) throw hydrateError;
+
+    const hydratedById = new Map(
+      ((hydrated || []) as unknown as QueueItem[]).map((
+        item,
+      ) => [item.id, item]),
+    );
+    const queueItems = claimRows.flatMap((claim) => {
+      const item = hydratedById.get(claim.id);
+      return item?.claim_token === claim.claim_token ? [item] : [];
+    });
+
     const results: Array<Record<string, unknown>> = [];
     const centralCache: Record<string, string | null> = {};
     const personalCache: Record<string, string | null> = {};
-    let persistenceFailed = false;
+    const integrationCache = new Map<string, Promise<DeliveryIntegration>>();
+    let persistenceFailed = queueItems.length !== claimRows.length;
 
-    // 2. Processa o lote
     for (const item of queueItems) {
-      const { id, student_phone, message_body, tenant_id, attempts } = item;
+      const { id, student_phone, message_body, tenant_id } = item;
       const teacher = relationOne(item.teacher);
       const student = relationOne(item.student);
-      const nextAttempts = (attempts || 0) + 1;
-      const { data: claim, error: claimError } = await supabaseClient
-        .from("notification_queue")
-        .update({
-          status: "processing",
-          attempts: nextAttempts,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .eq("status", "pending")
-        .select("id")
-        .maybeSingle();
-      if (claimError || !claim) {
-        results.push({ id, status: "skipped" });
-        continue;
-      }
+      const notificationKind = normalizeNotificationKind(
+        item.notification_kind,
+      );
 
       if (student?.is_test_account === true) {
         const marked = await markClaim(
           supabaseClient,
-          id,
+          item,
           "skipped",
           "test_fixture_suppressed",
         );
         persistenceFailed ||= !marked;
-        results.push({
-          id,
-          status: marked ? "skipped" : "marker_failed",
-        });
+        results.push({ id, status: marked ? "skipped" : "marker_failed" });
         continue;
       }
       if (student?.tenant_id && student.tenant_id !== tenant_id) {
         const marked = await markClaim(
           supabaseClient,
-          id,
+          item,
           "failed",
           "student_tenant_mismatch",
         );
@@ -674,8 +801,11 @@ serve(async (req) => {
         });
         continue;
       }
-      const isPaymentConfirmation =
-        item.notification_kind === "PAYMENT_CONFIRMED";
+
+      const isPaymentConfirmation = [
+        "PAYMENT_CONFIRMED",
+        "PAYMENT_CONFIRMED_WHATSAPP",
+      ].includes(notificationKind);
       if (
         isPaymentConfirmation &&
         (!tenant_id || !item.student_id || !item.source_id || !student ||
@@ -683,7 +813,7 @@ serve(async (req) => {
       ) {
         const marked = await markClaim(
           supabaseClient,
-          id,
+          item,
           "failed",
           "payment_confirmation_binding_missing",
         );
@@ -699,8 +829,7 @@ serve(async (req) => {
       };
       try {
         if (
-          String(item.notification_kind || "").toUpperCase() ===
-            "LESSON_REMINDER"
+          notificationKind === "LESSON_REMINDER"
         ) {
           prepared = await prepareLessonReminder(
             supabaseClient,
@@ -708,8 +837,7 @@ serve(async (req) => {
             new Date(),
           );
         } else if (
-          String(item.notification_kind || "").toUpperCase() ===
-            "CONFLICT_TEACHER_ALERT"
+          notificationKind === "CONFLICT_TEACHER_ALERT"
         ) {
           prepared = await prepareConflictTeacherAlert(
             supabaseClient,
@@ -721,7 +849,7 @@ serve(async (req) => {
         if (!(error instanceof QueueRevalidationError)) throw error;
         const marked = await markClaim(
           supabaseClient,
-          id,
+          item,
           error.queueStatus,
           error.reason,
         );
@@ -734,10 +862,7 @@ serve(async (req) => {
         continue;
       }
 
-      // Aviso em grupo sempre sai da conexão central, que é a participante
-      // configurada no grupo da escola. Mensagem individual mantém o fluxo
-      // professor → fallback central.
-      const route = queueAudience(item.notification_kind);
+      const route = queueAudience(notificationKind);
       let instanceId: string | null =
         !route.centralOnly && tenant_id && prepared.teacherId
           ? await resolvePersonalInstance(
@@ -756,18 +881,17 @@ serve(async (req) => {
           centralCache,
         );
       }
-
       if (!instanceId) {
         const marked = await markClaim(
           supabaseClient,
-          id,
-          "failed",
+          item,
+          "pending",
           "no_whatsapp_instance",
         );
         persistenceFailed ||= !marked;
         results.push({
           id,
-          status: marked ? "failed" : "marker_failed",
+          status: marked ? "pending" : "marker_failed",
           error: "no_instance",
         });
         continue;
@@ -777,7 +901,7 @@ serve(async (req) => {
       if (!destination) {
         const marked = await markClaim(
           supabaseClient,
-          id,
+          item,
           "failed",
           "invalid_phone",
         );
@@ -790,43 +914,35 @@ serve(async (req) => {
         continue;
       }
 
-      // Confirmações financeiras usam exclusivamente a integração Evolution
-      // resolvida para a escola. Elas nunca herdam a chave global de outro
-      // tenant e só atravessam o provedor após um claim submit-once durável.
-      let deliveryBaseUrl = EVOLUTION_API_URL;
-      let deliveryApiKeys = EVOLUTION_API_KEYS;
-      if (isPaymentConfirmation) {
-        try {
-          const integration = await resolveEvolutionIntegration(
-            supabaseClient,
-            tenant_id!,
-            "message.send_text",
-          );
-          deliveryBaseUrl = integration.baseUrl;
-          deliveryApiKeys = [integration.apiKey];
-        } catch {
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "pending",
-            "payment_confirmation_integration_unavailable",
-          );
-          persistenceFailed ||= !marked;
-          results.push({ id, status: marked ? "pending" : "marker_failed" });
-          continue;
-        }
-      }
-      if (!deliveryBaseUrl || deliveryApiKeys.length === 0) {
+      let integration: DeliveryIntegration;
+      try {
+        if (!tenant_id) throw new Error("notification_tenant_missing");
+        integration = await resolveDeliveryIntegration(
+          supabaseClient,
+          tenant_id,
+          integrationCache,
+        );
+      } catch {
         const marked = await markClaim(
           supabaseClient,
-          id,
-          "failed",
-          "notification_provider_unavailable",
+          item,
+          "pending",
+          "notification_provider_integration_unavailable",
         );
         persistenceFailed ||= !marked;
-        results.push({ id, status: marked ? "failed" : "marker_failed" });
+        results.push({ id, status: marked ? "pending" : "marker_failed" });
         continue;
       }
+
+      // A resolução do JID é uma consulta sem efeito de envio e precisa ocorrer
+      // antes do fence SUBMITTING. Depois do begin, a primeira chamada externa
+      // será exclusivamente o POST de mensagem, reduzindo a janela ambígua.
+      const providerDestination = await resolveWhatsAppDestination({
+        base: integration.baseUrl,
+        keys: [integration.apiKey],
+        instance: instanceId,
+        to: destination,
+      });
 
       let paymentOutboundClaim:
         | Awaited<ReturnType<typeof claimOutboundMessage>>
@@ -848,8 +964,18 @@ serve(async (req) => {
             .eq("student_id", item.student_id!)
             .limit(2),
         ]);
-        if (currentProfileResult.error) throw currentProfileResult.error;
-        if (sourcePaymentResult.error) throw sourcePaymentResult.error;
+        if (currentProfileResult.error || sourcePaymentResult.error) {
+          const marked = await markClaim(
+            supabaseClient,
+            item,
+            "pending",
+            "payment_confirmation_revalidation_unavailable",
+          );
+          persistenceFailed ||= !marked;
+          results.push({ id, status: marked ? "pending" : "marker_failed" });
+          continue;
+        }
+
         const currentProfile = currentProfileResult.data;
         const hasFinancialGuardian = Boolean(
           currentProfile?.guardian_id || currentProfile?.guardian_cpf,
@@ -869,29 +995,43 @@ serve(async (req) => {
           currentDestination !== destination || sourcePayments.length !== 1 ||
           !["RECEIVED", "RECEIVED_IN_CASH", "PAGO"].includes(sourceStatus)
         ) {
+          const reason = currentDestination !== destination
+            ? "payment_confirmation_destination_changed"
+            : "payment_confirmation_source_unsettled";
           const marked = await markClaim(
             supabaseClient,
-            id,
+            item,
             "failed",
-            currentDestination !== destination
-              ? "payment_confirmation_destination_changed"
-              : "payment_confirmation_source_unsettled",
+            reason,
           );
           persistenceFailed ||= !marked;
           results.push({ id, status: marked ? "failed" : "marker_failed" });
           continue;
         }
 
-        paymentOutboundClaim = await claimOutboundMessage(supabaseClient, {
-          tenantId: tenant_id!,
-          studentId: item.student_id!,
-          providerEntityId: item.source_id!,
-          notificationKind: "PAYMENT_CONFIRMED_WHATSAPP",
-        });
+        try {
+          paymentOutboundClaim = await claimOutboundMessage(supabaseClient, {
+            tenantId: tenant_id!,
+            studentId: item.student_id!,
+            providerEntityId: item.source_id!,
+            notificationKind: "PAYMENT_CONFIRMED_WHATSAPP",
+          });
+        } catch {
+          const marked = await markClaim(
+            supabaseClient,
+            item,
+            "pending",
+            "payment_confirmation_claim_unavailable",
+          );
+          persistenceFailed ||= !marked;
+          results.push({ id, status: marked ? "pending" : "marker_failed" });
+          continue;
+        }
+
         if (paymentOutboundClaim.action === "REVIEW_REQUIRED") {
           const marked = await markClaim(
             supabaseClient,
-            id,
+            item,
             "skipped",
             paymentOutboundClaim.reason || "payment_confirmation_suppressed",
           );
@@ -902,7 +1042,7 @@ serve(async (req) => {
         if (paymentOutboundClaim.action === "IN_PROGRESS") {
           const marked = await markClaim(
             supabaseClient,
-            id,
+            item,
             "pending",
             "payment_confirmation_claim_in_progress",
           );
@@ -913,247 +1053,175 @@ serve(async (req) => {
         if (paymentOutboundClaim.action === "ALREADY_FINAL") {
           const outboundStatus = String(paymentOutboundClaim.status || "")
             .toUpperCase();
-          const queueStatus = outboundStatus === "SENT"
-            ? "sent"
-            : outboundStatus === "SUPPRESSED"
-            ? "skipped"
-            : "failed";
+          const queueStatus: "failed" | "uncertain" | "skipped" =
+            outboundStatus === "SENT" || outboundStatus === "SUPPRESSED"
+              ? "skipped"
+              : ["UNKNOWN", "SUBMITTING"].includes(outboundStatus)
+              ? "uncertain"
+              : "failed";
           const marked = await markClaim(
             supabaseClient,
-            id,
+            item,
             queueStatus,
-            queueStatus === "sent"
-              ? null
-              : `payment_confirmation_${
-                outboundStatus.toLowerCase() || "terminal"
-              }`,
+            `payment_confirmation_${
+              outboundStatus.toLowerCase() || "terminal"
+            }`,
           );
           persistenceFailed ||= !marked;
           results.push({ id, status: marked ? queueStatus : "marker_failed" });
           continue;
         }
-        const submit = await markOutboundMessageSubmittingDecision(
-          supabaseClient,
-          paymentOutboundClaim,
-        );
-        if (submit.ok !== true || submit.status !== "SUBMITTING") {
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "skipped",
-            submit.reason || "payment_confirmation_suppressed_before_send",
-          );
-          persistenceFailed ||= !marked;
-          results.push({ id, status: marked ? "skipped" : "marker_failed" });
-          continue;
-        }
       }
 
-      const occurrenceReceipt = item.notification_kind === "LESSON_REMINDER"
-        ? classReminderReceiptFromQueue(prepared.occurrenceIdentity || item)
-        : null;
-      if (item.notification_kind === "LESSON_REMINDER" && !occurrenceReceipt) {
-        const marked = await markClaim(
+      // The receipt fence, queue marker, provider binding and (for payment
+      // confirmations) financial ledger transition happen in one DB
+      // transaction. A failed marker means no provider POST is allowed.
+      const submission = paymentOutboundClaim
+        ? await beginPaymentConfirmationSubmission(
           supabaseClient,
-          id,
-          "failed",
-          "invalid_occurrence_identity",
+          item,
+          paymentOutboundClaim,
+          instanceId,
+          destination,
+          providerDestination,
+          integration,
+        )
+        : await beginNotificationSubmission(
+          supabaseClient,
+          item,
+          instanceId,
+          destination,
+          providerDestination,
+          prepared.message,
+          integration,
         );
-        persistenceFailed ||= !marked;
-        results.push({ id, status: marked ? "failed" : "marker_failed" });
+
+      // Uma resposta perdida do begin não significa rollback. Consulte o estado
+      // selado pelo mesmo claim; nunca finalize genericamente um SUBMITTING que
+      // pode já ter sido commitado.
+      const recoveredSubmission = submission ||
+        await recoverNotificationSubmission(
+          supabaseClient,
+          item,
+          paymentOutboundClaim,
+          instanceId,
+          integration,
+        );
+
+      if (!recoveredSubmission) {
+        persistenceFailed = true;
+        results.push({ id, status: "submission_state_unavailable" });
         continue;
       }
-      if (occurrenceReceipt) {
-        const { error: receiptError } = await supabaseClient
-          .from("automation_sent").insert(occurrenceReceipt);
-        if (receiptError?.code === "23505") {
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "skipped",
-            "occurrence_already_notified",
-          );
-          persistenceFailed ||= !marked;
-          results.push({ id, status: marked ? "skipped" : "marker_failed" });
-          continue;
-        }
-        if (receiptError) {
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "failed",
-            "occurrence_receipt_unavailable",
-          );
-          persistenceFailed ||= !marked;
-          results.push({ id, status: marked ? "failed" : "marker_failed" });
-          continue;
-        }
-      }
 
-      if (paymentOutboundClaim) {
-        const url = `${deliveryBaseUrl}/message/sendText/${
-          encodeURIComponent(instanceId)
-        }`;
-        let response: Response | null = null;
-        try {
-          for (const key of deliveryApiKeys) {
-            response = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", apikey: key },
-              body: JSON.stringify({
-                number: destination,
-                text: prepared.message,
-                delay: 1000,
-                linkPreview: false,
-              }),
-              signal: AbortSignal.timeout(15_000),
-            });
-            if (response.status !== 401) break;
-          }
-        } catch (error) {
-          const safeReason = error instanceof DOMException &&
-              (error.name === "TimeoutError" || error.name === "AbortError")
-            ? "provider_timeout"
-            : "provider_network_error";
-          try {
-            await finishOutboundMessage(supabaseClient, paymentOutboundClaim, {
-              status: "UNKNOWN",
-              error: safeReason,
-            });
-          } catch {
-            persistenceFailed = true;
-          }
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "failed",
-            safeReason,
-          );
-          persistenceFailed ||= !marked;
-          results.push({
-            id,
-            status: marked ? "failed" : "marker_failed",
-            error: safeReason,
-          });
-          continue;
-        }
+      const effectiveSubmission = recoveredSubmission;
 
-        if (!response || !response.ok) {
-          const unknown = response
-            ? providerHttpOutcomeIsUnknown(response.status)
-            : true;
-          const safeReason = unknown
-            ? "provider_delivery_outcome_unknown"
-            : `provider_http_${response?.status ?? "unavailable"}`;
-          try {
-            await finishOutboundMessage(supabaseClient, paymentOutboundClaim, {
-              status: unknown ? "UNKNOWN" : "FAILED",
-              providerHttpStatus: response?.status ?? null,
-              error: safeReason,
-            });
-          } catch {
-            persistenceFailed = true;
-          }
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "failed",
-            safeReason,
-          );
-          persistenceFailed ||= !marked;
-          results.push({
-            id,
-            status: marked ? "failed" : "marker_failed",
-            error: safeReason,
-          });
-          continue;
-        }
-
-        const payload = await response.json().catch(() => null);
-        const messageId = providerMessageId(payload);
-        if (!messageId) {
-          const safeReason = "provider_accepted_without_message_id";
-          try {
-            await finishOutboundMessage(supabaseClient, paymentOutboundClaim, {
-              status: "UNKNOWN",
-              providerHttpStatus: response.status,
-              error: safeReason,
-            });
-          } catch {
-            persistenceFailed = true;
-          }
-          const marked = await markClaim(
-            supabaseClient,
-            id,
-            "failed",
-            safeReason,
-          );
-          persistenceFailed ||= !marked;
-          results.push({
-            id,
-            status: marked ? "failed" : "marker_failed",
-            error: safeReason,
-          });
-          continue;
-        }
-
-        try {
-          await finishOutboundMessage(supabaseClient, paymentOutboundClaim, {
-            status: "SENT",
-            providerHttpStatus: response.status,
-          });
-        } catch {
-          // O provedor aceitou; sem marker durável, a recuperação do lease
-          // encerra a fila usando o claim e nunca envia novamente.
-          persistenceFailed = true;
-          results.push({ id, status: "marker_failed" });
-          continue;
-        }
-        const marked = await markClaim(supabaseClient, id, "sent", null);
-        persistenceFailed ||= !marked;
+      if (
+        effectiveSubmission.action === "ALREADY_NOTIFIED" ||
+        effectiveSubmission.action === "SUPPRESSED"
+      ) {
+        // These actions finalize the queue inside the same RPC transaction.
         results.push({
           id,
-          status: marked ? "sent" : "marker_failed",
-          provider_message_id: messageId,
+          status: "skipped",
+          error: effectiveSubmission.reason ||
+            "notification_suppressed_before_send",
         });
         continue;
       }
 
-      const providerResult = await sendWhatsTextDetailed({
-        base: EVOLUTION_API_URL,
-        keys: EVOLUTION_API_KEYS,
+      const submissionAuthorized = paymentOutboundClaim
+        ? effectiveSubmission.ok === true &&
+          effectiveSubmission.action === "SUBMITTING"
+        : effectiveSubmission.ok === true &&
+          effectiveSubmission.action === "SUBMIT_AUTHORIZED";
+      if (!submissionAuthorized) {
+        if (effectiveSubmission.action === "RETRY_BEGIN") {
+          // O begin não foi comprovado. Deixe o lease expirar e ser recuperado
+          // como PREPARING; uma finalização aqui poderia correr contra o commit.
+          persistenceFailed = true;
+          results.push({
+            id,
+            status: "submission_begin_unconfirmed",
+            error: effectiveSubmission.reason,
+          });
+          continue;
+        }
+        const retryable = effectiveSubmission.action === "RETRY" ||
+          effectiveSubmission.action === "USE_PAYMENT_BRIDGE";
+        const marked = await markClaim(
+          supabaseClient,
+          item,
+          retryable ? "pending" : "skipped",
+          effectiveSubmission.reason ||
+            "notification_submission_not_authorized",
+        );
+        persistenceFailed ||= !marked;
+        results.push({
+          id,
+          status: marked
+            ? (retryable ? "pending" : "skipped")
+            : "marker_failed",
+          error: effectiveSubmission.reason,
+        });
+        continue;
+      }
+
+      const authorizedProviderDestination =
+        effectiveSubmission.providerDestination;
+      const authorizedMessage = effectiveSubmission.messageBody ||
+        prepared.message;
+      if (!authorizedProviderDestination || !authorizedMessage) {
+        // O fence existe, mas sem snapshot completo não há autorização segura
+        // para cruzar o provedor. O lease será reconciliado como incerto.
+        persistenceFailed = true;
+        results.push({ id, status: "authorized_snapshot_missing" });
+        continue;
+      }
+
+      const providerResult = await sendWhatsTextToResolvedDestinationDetailed({
+        base: integration.baseUrl,
+        keys: [integration.apiKey],
         instance: instanceId,
-        to: destination,
-        text: prepared.message,
+        to: authorizedProviderDestination,
+        text: authorizedMessage,
         delayMs: 1000,
       });
       const decision = queueDeliveryDecision(providerResult);
 
-      if (decision.releaseOccurrenceReceipt && occurrenceReceipt) {
-        const { error: releaseError } = await supabaseClient
-          .from("automation_sent").delete()
-          .eq("kind", occurrenceReceipt.kind)
-          .eq("subject_id", occurrenceReceipt.subject_id)
-          .eq("ref_date", occurrenceReceipt.ref_date);
-        if (releaseError) {
-          console.error("Occurrence receipt release failed", { id });
-        }
-      }
-
-      const marked = await markClaim(
-        supabaseClient,
-        id,
-        decision.status,
-        decision.reason,
-      );
-      // Depois de 2xx o receipt já está preservado e um marker failure
-      // deixa PROCESSING; a recuperação do lease o torna FAILED, sem envio.
+      const marked = paymentOutboundClaim
+        ? await finalizePaymentConfirmationSubmission(
+          supabaseClient,
+          item,
+          paymentOutboundClaim,
+          decision.status === "sent"
+            ? "accepted"
+            : decision.status === "uncertain"
+            ? "uncertain"
+            : "failed",
+          {
+            messageId: providerResult.messageId,
+            httpStatus: providerResult.httpStatus,
+            error: decision.reason,
+          },
+        )
+        : await markClaim(
+          supabaseClient,
+          item,
+          decision.status,
+          decision.reason,
+          {
+            messageId: providerResult.messageId,
+            httpStatus: providerResult.httpStatus,
+          },
+        );
       persistenceFailed ||= !marked;
       results.push({
         id,
         status: marked ? decision.status : "marker_failed",
         error: decision.reason,
         provider_message_id: providerResult.messageId,
+        provider_http_status: providerResult.httpStatus,
       });
     }
 

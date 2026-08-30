@@ -1,7 +1,7 @@
 import type { EvolutionSendResult } from "../_shared/evolution-send.ts";
 
 export type QueueDeliveryDecision = {
-  status: "sent" | "failed";
+  status: "sent" | "failed" | "uncertain";
   reason: string | null;
   releaseOccurrenceReceipt: boolean;
 };
@@ -100,7 +100,7 @@ export function queueDeliveryDecision(
   }
   if (result.outcome === "accepted") {
     return {
-      status: "failed",
+      status: "uncertain",
       reason: "provider_accepted_without_message_id",
       releaseOccurrenceReceipt: false,
     };
@@ -113,7 +113,7 @@ export function queueDeliveryDecision(
     };
   }
   return {
-    status: "failed",
+    status: "uncertain",
     reason: result.httpStatus == null
       ? "provider_network_or_timeout_ambiguous"
       : `provider_http_${result.httpStatus}_ambiguous`,
@@ -121,11 +121,34 @@ export function queueDeliveryDecision(
   };
 }
 
+/**
+ * Backoff determinístico com jitter estável. Só é usado antes do POST ao
+ * provedor; resultados ambíguos nunca entram nesta função.
+ */
+export function notificationRetryDelaySeconds(
+  attempt: number,
+  queueId: string,
+): number {
+  const safeAttempt = Math.max(1, Math.min(Math.trunc(attempt || 1), 10));
+  const base = Math.min(30 * 2 ** (safeAttempt - 1), 15 * 60);
+  let hash = 0;
+  for (const character of queueId) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  // 0–20% de dispersão evita que a volta da integração solte o lote inteiro
+  // no mesmo segundo, sem tornar o teste ou o agendamento não determinístico.
+  return Math.round(base * (1 + (hash % 21) / 100));
+}
+
+export function normalizeNotificationKind(kind: unknown): string {
+  return String(kind || "").trim().toUpperCase();
+}
+
 export function queueAudience(kind: unknown): {
   audience: "student" | "teacher";
   centralOnly: boolean;
 } {
-  const normalized = String(kind || "").toUpperCase();
+  const normalized = normalizeNotificationKind(kind);
   if (
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT"

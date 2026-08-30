@@ -35,6 +35,13 @@ export type EvolutionSendResult = {
   httpStatus: number | null;
 };
 
+export type EvolutionDestinationOptions =
+  & Pick<
+    EnvioEvolution,
+    "base" | "keys" | "instance" | "to"
+  >
+  & Partial<Pick<EnvioEvolution, "text" | "delayMs">>;
+
 /**
  * Vale a pena perguntar o JID deste destino?
  *
@@ -64,6 +71,7 @@ export async function resolveJid(
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: key },
           body: JSON.stringify({ numbers: [phone] }),
+          redirect: "error",
           signal: AbortSignal.timeout(10000),
         },
       );
@@ -78,6 +86,20 @@ export async function resolveJid(
     }
   }
   return null;
+}
+
+/**
+ * Resolve o destino que deve ser persistido/autorizado pelo fence.
+ *
+ * A indisponibilidade do lookup preserva a compatibilidade histórica: o
+ * destino original continua sendo usado. Separar esta etapa permite que o
+ * chamador resolva o JID antes da transação que sela a submissão.
+ */
+export async function resolveWhatsAppDestination(
+  opts: EvolutionDestinationOptions,
+): Promise<string> {
+  return (await resolveJid(opts.base, opts.keys, opts.instance, opts.to)) ||
+    opts.to;
 }
 
 function evolutionMessageId(payload: unknown): string | null {
@@ -98,8 +120,24 @@ function evolutionMessageId(payload: unknown): string | null {
 export async function sendWhatsTextDetailed(
   opts: EnvioEvolution,
 ): Promise<EvolutionSendResult> {
-  const alvo =
-    (await resolveJid(opts.base, opts.keys, opts.instance, opts.to)) || opts.to;
+  const destination = await resolveWhatsAppDestination(opts);
+  return await sendWhatsTextToResolvedDestinationDetailed({
+    ...opts,
+    to: destination,
+  });
+}
+
+/**
+ * Executa somente o POST de envio para um destino já resolvido e autorizado.
+ *
+ * Esta função nunca consulta `chat/whatsappNumbers`. Use-a depois que o fence
+ * persistente autorizar exatamente `opts.to`, evitando qualquer lookup ou
+ * mudança de destino entre o marker SUBMITTING e o POST ao provedor.
+ */
+export async function sendWhatsTextToResolvedDestinationDetailed(
+  opts: EnvioEvolution,
+): Promise<EvolutionSendResult> {
+  const alvo = opts.to;
   const destinationLastFour = String(alvo).replace(/\D/g, "").slice(-4) ||
     "group";
   for (const key of opts.keys) {
@@ -118,6 +156,7 @@ export async function sendWhatsTextDetailed(
             delay: opts.delayMs ?? 1200,
             linkPreview: false,
           }),
+          redirect: "error",
           signal: AbortSignal.timeout(15000),
         },
       );

@@ -24,6 +24,10 @@ import {
   resolveCommercialPolicy,
 } from "./commercial-response-policy.ts";
 import { sendWhatsText } from "../_shared/evolution-send.ts";
+import {
+  type ResolvedEvolutionIntegration,
+  resolveEvolutionIntegration,
+} from "../_shared/tenant-integration-broker.ts";
 import { handoffAtivo, pickAlternatives } from "../_shared/lead-contact.ts";
 import {
   evaluateOpportunityReuseCandidate,
@@ -54,6 +58,7 @@ import {
   shortManagementActionCode,
 } from "../_shared/management-action-policy.ts";
 import {
+  authenticateWhatsAppInboundBoundRequest,
   authenticateWhatsAppInboundRequest,
   evolutionMessageItems,
   evolutionWebhookEventKey,
@@ -63,6 +68,8 @@ import {
   parseEvolutionMessage,
   sanitizeEvolutionWebhook,
   storeEvolutionInboxMessage,
+  whatsappInboundIntegrationBindingMatches,
+  whatsappInboundMethodIsAllowed,
 } from "../_shared/whatsapp-inbox.ts";
 
 // WHATSAPP-INBOUND — recepção de mensagens de instâncias vinculadas a tenants.
@@ -75,10 +82,6 @@ import {
 
 const INBOUND_TOKEN = Deno.env.get("WHATSAPP_INBOUND_TOKEN") || "";
 const MANAGEMENT_EXECUTION_LEASE_MS = 2 * 60_000;
-const EVOLUTION_BASE = Deno.env.get("EVOLUTION_API_URL") ||
-  "https://api.2b.app.br";
-const EVOLUTION_KEYS = [(Deno.env.get("EVOLUTION_API_KEY") || "").trim()]
-  .filter(Boolean);
 const APP_BASE_URL = (Deno.env.get("APP_BASE_URL") ||
   "https://system.wisewolflanguage.com.br").replace(/\/+$/, "");
 
@@ -168,6 +171,41 @@ interface InboundTenantContext {
   identity: TenantIdentity;
 }
 
+interface InboundInstanceRoute {
+  tenantId: string;
+  instanceName: string;
+  ownerUserId: string;
+  inboxEnabled: boolean;
+  webhookAuthVersion: 1 | 2 | 3;
+  integrationId: string;
+  integrationVersion: number;
+}
+
+type InboundEvolutionTransport = {
+  tenantId: string;
+  instanceName: string;
+  integration: ResolvedEvolutionIntegration;
+  expiresAt: number;
+};
+
+const INBOUND_EVOLUTION_CACHE_TTL_MS = 5_000;
+const INBOUND_EVOLUTION_CACHE_MAX_ENTRIES = 64;
+const inboundEvolutionTransportCache = new Map<
+  string,
+  InboundEvolutionTransport
+>();
+let inboundServiceClient: any = null;
+
+function getInboundServiceClient(): any {
+  if (!inboundServiceClient) {
+    inboundServiceClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+  }
+  return inboundServiceClient;
+}
+
 function safeIdentityPart(value: unknown, fallback = ""): string {
   const normalized = String(value || "")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
@@ -196,16 +234,18 @@ function resolveTenantIdentity(
   };
 }
 
-async function resolveInboundTenant(
+async function resolveInboundInstanceRoute(
   sb: any,
   rawInstance: string,
-): Promise<InboundTenantContext | null> {
+): Promise<InboundInstanceRoute | null> {
   const requestedInstance = rawInstance.trim();
   if (!/^[A-Za-z0-9._-]{1,120}$/.test(requestedInstance)) return null;
 
   const { data: instances, error: instanceError } = await sb
     .from("whatsapp_instances")
-    .select("tenant_id, instance_name, user_id, inbox_enabled")
+    .select(
+      "tenant_id, instance_name, user_id, inbox_enabled, webhook_auth_version, integration_id, integration_version",
+    )
     .ilike("instance_name", escapePostgresLikePattern(requestedInstance))
     .in("status", ["connected", "open"])
     .limit(2);
@@ -213,7 +253,112 @@ async function resolveInboundTenant(
 
   const tenantId = String(instances[0].tenant_id || "").trim();
   const ownerUserId = String(instances[0].user_id || "").trim();
-  if (!tenantId || !ownerUserId) return null;
+  const integrationId = String(instances[0].integration_id || "").trim();
+  const integrationVersion = Number(instances[0].integration_version);
+  if (
+    !tenantId || !ownerUserId || !integrationId ||
+    !Number.isSafeInteger(integrationVersion) || integrationVersion < 1
+  ) return null;
+  return {
+    tenantId,
+    instanceName: String(instances[0].instance_name || "").trim(),
+    ownerUserId,
+    inboxEnabled: instances[0].inbox_enabled === true,
+    webhookAuthVersion: Number(instances[0].webhook_auth_version) === 3
+      ? 3
+      : Number(instances[0].webhook_auth_version) === 2
+      ? 2
+      : 1,
+    integrationId,
+    integrationVersion,
+  };
+}
+
+function inboundEvolutionCacheKey(
+  tenantId: string,
+  instanceName: string,
+): string {
+  return JSON.stringify([tenantId.trim(), instanceName.trim().toLowerCase()]);
+}
+
+function pruneInboundEvolutionTransportCache(now: number): void {
+  for (const [key, cached] of inboundEvolutionTransportCache) {
+    if (cached.expiresAt <= now) inboundEvolutionTransportCache.delete(key);
+  }
+  while (
+    inboundEvolutionTransportCache.size >=
+      INBOUND_EVOLUTION_CACHE_MAX_ENTRIES
+  ) {
+    const oldestKey = inboundEvolutionTransportCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    inboundEvolutionTransportCache.delete(oldestKey);
+  }
+}
+
+async function resolveInboundEvolutionTransport(
+  rawInstance: string,
+): Promise<InboundEvolutionTransport | null> {
+  const serviceClient = getInboundServiceClient();
+  const route = await resolveInboundInstanceRoute(serviceClient, rawInstance);
+  if (!route) return null;
+
+  const now = Date.now();
+  const cacheKey = inboundEvolutionCacheKey(
+    route.tenantId,
+    route.instanceName,
+  );
+  const cached = inboundEvolutionTransportCache.get(cacheKey);
+  if (
+    cached && cached.expiresAt > now &&
+    cached.tenantId === route.tenantId &&
+    cached.instanceName.toLowerCase() === route.instanceName.toLowerCase() &&
+    whatsappInboundIntegrationBindingMatches(route, cached.integration)
+  ) {
+    return cached;
+  }
+  inboundEvolutionTransportCache.delete(cacheKey);
+
+  try {
+    const integration = await resolveEvolutionIntegration(
+      serviceClient,
+      route.tenantId,
+      "message.send_text",
+    );
+    if (!whatsappInboundIntegrationBindingMatches(route, integration)) {
+      return null;
+    }
+
+    const resolved: InboundEvolutionTransport = {
+      tenantId: route.tenantId,
+      instanceName: route.instanceName,
+      integration,
+      expiresAt: now + INBOUND_EVOLUTION_CACHE_TTL_MS,
+    };
+    pruneInboundEvolutionTransportCache(now);
+    inboundEvolutionTransportCache.set(cacheKey, resolved);
+    return resolved;
+  } catch (error) {
+    console.warn("[WA Inbound] Integração Evolution indisponível", {
+      tenantId: route.tenantId,
+      instance: route.instanceName,
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+    return null;
+  }
+}
+
+async function resolveInboundTenant(
+  sb: any,
+  rawInstance: string,
+  resolvedRoute?: InboundInstanceRoute | null,
+): Promise<InboundTenantContext | null> {
+  const route = resolvedRoute || await resolveInboundInstanceRoute(
+    sb,
+    rawInstance,
+  );
+  if (!route) return null;
+  const tenantId = route.tenantId;
+  const ownerUserId = route.ownerUserId;
   const { data: ownerMembership, error: ownerMembershipError } = await sb
     .from("tenant_memberships")
     .select("user_id")
@@ -242,8 +387,8 @@ async function resolveInboundTenant(
 
   return {
     tenantId,
-    instanceName: String(instances[0].instance_name),
-    inboxEnabled: instances[0].inbox_enabled === true,
+    instanceName: route.instanceName,
+    inboxEnabled: route.inboxEnabled,
     aiTeamConfig:
       tenant.ai_team_config && typeof tenant.ai_team_config === "object"
         ? tenant.ai_team_config as Record<string, unknown>
@@ -293,13 +438,15 @@ async function sendWhats(
   number: string,
   text: string,
 ): Promise<boolean> {
+  const transport = await resolveInboundEvolutionTransport(instance);
+  if (!transport) return false;
   // Resolve o JID antes de enviar (DDD antigo sem o 9º dígito) — a Evolution
   // responde 200/PENDING para número que não bate, então o envio "no chute"
   // falha em silêncio. Grupo e JID pronto pulam a consulta.
   return await sendWhatsText({
-    base: EVOLUTION_BASE,
-    keys: EVOLUTION_KEYS,
-    instance,
+    base: transport.integration.baseUrl,
+    keys: [transport.integration.apiKey],
+    instance: transport.instanceName,
     to: number,
     text,
   });
@@ -542,33 +689,36 @@ async function transcreverAudio(
   const apiKey = (Deno.env.get("OPENAI_API_KEY") ?? "").trim();
   if (!msgId) return null;
 
+  const transport = await resolveInboundEvolutionTransport(instance);
+  if (!transport) return null;
+
   let base64 = "";
   let mimetype = "audio/ogg";
-  for (const key of EVOLUTION_KEYS) {
-    try {
-      const r = await fetch(
-        `${EVOLUTION_BASE}/chat/getBase64FromMediaMessage/${
-          encodeURIComponent(instance)
-        }`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: key },
-          body: JSON.stringify({
-            message: { key: { id: msgId } },
-            convertToMp4: false,
-          }),
-          signal: AbortSignal.timeout(20000),
+  try {
+    const r = await fetch(
+      `${transport.integration.baseUrl}/chat/getBase64FromMediaMessage/${
+        encodeURIComponent(transport.instanceName)
+      }`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: transport.integration.apiKey,
         },
-      );
-      if (r.status === 401) continue;
-      if (!r.ok) return null;
-      const d = await r.json().catch(() => null);
-      base64 = String(d?.base64 || "");
-      mimetype = String(d?.mimetype || "audio/ogg").split(";")[0];
-      break;
-    } catch {
-      return null;
-    }
+        body: JSON.stringify({
+          message: { key: { id: msgId } },
+          convertToMp4: false,
+        }),
+        redirect: "error",
+        signal: AbortSignal.timeout(20000),
+      },
+    );
+    if (!r.ok) return null;
+    const d = await r.json().catch(() => null);
+    base64 = String(d?.base64 || "");
+    mimetype = String(d?.mimetype || "audio/ogg").split(";")[0];
+  } catch {
+    return null;
   }
   if (!base64) return null;
 
@@ -4747,22 +4897,25 @@ serve(async (req) => {
   let webhookLedgerId = "";
   let inboxDatabase: any = null;
   if (req.method === "OPTIONS") return new Response("ok", { status: 200 });
+  if (!whatsappInboundMethodIsAllowed(req.method)) {
+    return new Response("method not allowed", {
+      status: 405,
+      headers: { "Allow": "POST, OPTIONS" },
+    });
+  }
   try {
     const reqUrl = new URL(req.url);
-    // Compatibilidade transitória: webhooks antigos ainda podem conter ?token=.
-    // A URL nunca é registrada aqui. A habilitação da inbox migra a instância para
-    // o header; remova este ramo somente após inventariar e migrar todas elas.
-    const inboundAuthentication = await authenticateWhatsAppInboundRequest(
-      req.headers,
-      reqUrl,
-      INBOUND_TOKEN,
-    );
-    if (!inboundAuthentication) {
-      return new Response("forbidden", { status: 403 });
-    }
-
     const selftest = reqUrl.searchParams.get("selftest");
     if (selftest === "ai" || selftest === "or") {
+      const selftestAuthentication = await authenticateWhatsAppInboundRequest(
+        req.headers,
+        reqUrl,
+        INBOUND_TOKEN,
+        INBOUND_TOKEN,
+      );
+      if (!selftestAuthentication) {
+        return new Response("forbidden", { status: 403 });
+      }
       const diag: string[] = [];
       const out = await callAI(
         'Responda SOMENTE com JSON válido: {"ok": true, "msg": "cadeia funcionando"}',
@@ -4776,16 +4929,102 @@ serve(async (req) => {
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const event = normalizeEvolutionEventName(body?.event) || "messages.upsert";
+    const declaredLength = Number(req.headers.get("content-length") || "0");
+    if (Number.isFinite(declaredLength) && declaredLength > 1_048_576) {
+      return new Response("payload too large", { status: 413 });
+    }
+    const rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).length > 1_048_576) {
+      return new Response("payload too large", { status: 413 });
+    }
+    let body: any;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      const legacyAuthentication = await authenticateWhatsAppInboundRequest(
+        req.headers,
+        reqUrl,
+        INBOUND_TOKEN,
+        INBOUND_TOKEN,
+      );
+      return new Response(
+        legacyAuthentication ? "invalid json" : "forbidden",
+        { status: legacyAuthentication ? 400 : 403 },
+      );
+    }
 
-    const url = Deno.env.get("SUPABASE_URL") ?? "";
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const sb = createClient(url, serviceKey);
+    const sb = getInboundServiceClient();
     inboxDatabase = sb;
+    const route = await resolveInboundInstanceRoute(
+      sb,
+      String(body?.instance || ""),
+    );
+    if (!route) {
+      // Uma instância removida ainda pode emitir eventos por alguns segundos.
+      // Só a credencial raiz de transição recebe o no-op; desconhecidos não
+      // conseguem usar a resposta para enumerar conexões válidas.
+      const legacyAuthentication = await authenticateWhatsAppInboundRequest(
+        req.headers,
+        reqUrl,
+        INBOUND_TOKEN,
+        INBOUND_TOKEN,
+      );
+      if (!legacyAuthentication) {
+        return new Response("forbidden", { status: 403 });
+      }
+      return new Response(
+        JSON.stringify({ ok: true, skipped: "unknown_instance" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    let currentIntegration: ResolvedEvolutionIntegration | null = null;
+    const inboundAuthentication = await authenticateWhatsAppInboundBoundRequest(
+      req.headers,
+      reqUrl,
+      INBOUND_TOKEN,
+      route.webhookAuthVersion,
+      route,
+      async () => {
+        currentIntegration = await resolveEvolutionIntegration(
+          sb,
+          route.tenantId,
+          "message.send_text",
+        );
+        return currentIntegration;
+      },
+    );
+    if (!inboundAuthentication || !currentIntegration) {
+      return new Response("forbidden", { status: 403 });
+    }
+    const now = Date.now();
+    const currentTransport: InboundEvolutionTransport = {
+      tenantId: route.tenantId,
+      instanceName: route.instanceName,
+      integration: currentIntegration,
+      expiresAt: now + INBOUND_EVOLUTION_CACHE_TTL_MS,
+    };
+    pruneInboundEvolutionTransportCache(now);
+    inboundEvolutionTransportCache.set(
+      inboundEvolutionCacheKey(route.tenantId, route.instanceName),
+      currentTransport,
+    );
+    if (inboundAuthentication !== "instance-header") {
+      console.warn("[WA Inbound] Credencial legada aceita", {
+        tenantId: route.tenantId,
+        instance: route.instanceName,
+        mode: inboundAuthentication,
+      });
+    }
+
+    const event = normalizeEvolutionEventName(body?.event) || "messages.upsert";
     const inboundTenant = await resolveInboundTenant(
       sb,
       String(body?.instance || ""),
+      route,
     );
     if (!inboundTenant) {
       return new Response(

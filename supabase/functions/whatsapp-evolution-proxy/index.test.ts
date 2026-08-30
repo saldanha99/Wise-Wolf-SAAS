@@ -1,4 +1,5 @@
 import { handleRequest } from "./index.ts";
+import { deriveWhatsAppInboundInstanceTokenV3 } from "../_shared/whatsapp-inbox.ts";
 
 function assertEquals(
   actual: unknown,
@@ -75,6 +76,8 @@ function inboxAdmin(options: InboxAdminOptions = {}) {
                 id: "10000000-0000-4000-8000-000000000001",
                 user_id: userId,
                 inbox_enabled: options.inboxEnabled ?? true,
+                integration_id: "00000000-0000-4000-8000-0000000000e1",
+                integration_version: 1,
               },
               error: null,
             };
@@ -496,7 +499,12 @@ Deno.test("falha do broker é sanitizada e não alcança a Evolution", async () 
           }
           if (table === "whatsapp_instances") {
             return {
-              data: { id: "instance-row-a", user_id: userId },
+              data: {
+                id: "instance-row-a",
+                user_id: userId,
+                integration_id: "00000000-0000-4000-8000-0000000000e1",
+                integration_version: 1,
+              },
               error: null,
             };
           }
@@ -571,7 +579,12 @@ Deno.test("professor envia somente pela instância canônica do próprio tenant"
           }
           if (table === "whatsapp_instances") {
             return {
-              data: { id: "instance-row-a", user_id: userId },
+              data: {
+                id: "instance-row-a",
+                user_id: userId,
+                integration_id: "00000000-0000-4000-8000-0000000000e1",
+                integration_version: 1,
+              },
               error: null,
             };
           }
@@ -646,6 +659,128 @@ Deno.test("professor envia somente pela instância canônica do próprio tenant"
     brokerScope,
     { tenantId: "tenant-a", purpose: "message.send_text" },
     "broker deve receber apenas o tenant canônico e a finalidade",
+  );
+});
+
+Deno.test("bloqueia envio quando a integração mudou após criar a instância", async () => {
+  let upstreamCalled = false;
+  const admin = inboxAdmin();
+  const response = await handleRequest(
+    request({
+      action: "message/sendText",
+      instanceName: "instance-abc",
+      payload: { number: "5511999999999", text: "Não pode cruzar contas" },
+    }),
+    {
+      authorize: async () => authorizedContext(admin, "TEACHER", "tenant-a"),
+      resolveIntegration: async (_admin, tenantId) => ({
+        integrationId: "00000000-0000-4000-8000-0000000000e1",
+        tenantId,
+        provider: "evolution",
+        mode: "TENANT_BYOK",
+        version: 2,
+        baseUrl: "https://outra-conta.invalid",
+        apiKey: "outra-chave-de-teste",
+      }),
+      fetchUpstream: async () => {
+        upstreamCalled = true;
+        return new Response("{}", { status: 200 });
+      },
+    },
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 409, "binding obsoleto falha fechado");
+  assertEquals(body.code, "INTEGRATION_BINDING_STALE", "código do binding");
+  assertEquals(upstreamCalled, false, "nenhum POST para a conta nova");
+});
+
+Deno.test("recriação reseta autenticação do webhook para reconciliação v3", async () => {
+  const userId = "00000000-0000-4000-8000-000000000001";
+  let persisted: Record<string, unknown> = {};
+  const admin = {
+    from(table: string) {
+      const builder: any = {
+        error: null,
+        select() {
+          return builder;
+        },
+        eq() {
+          return builder;
+        },
+        limit() {
+          return builder;
+        },
+        update(value: Record<string, unknown>) {
+          persisted = value;
+          return builder;
+        },
+        async maybeSingle() {
+          if (table === "tenants") {
+            return {
+              data: { id: "tenant-a", saas_status: "active" },
+              error: null,
+            };
+          }
+          if (table === "tenant_memberships") {
+            return {
+              data: { user_id: userId, role: "SCHOOL_ADMIN" },
+              error: null,
+            };
+          }
+          if (table === "whatsapp_instances") {
+            return {
+              data: {
+                id: "10000000-0000-4000-8000-000000000001",
+                instance_name: "instance-abc",
+              },
+              error: null,
+            };
+          }
+          throw new Error(`Tabela inesperada: ${table}`);
+        },
+      };
+      return builder;
+    },
+  };
+
+  const response = await handleRequest(
+    request({
+      action: "instance/create",
+      tenantId: "tenant-a",
+      instanceName: "instance-abc",
+      payload: { recreate: true },
+    }),
+    {
+      authorize: async () =>
+        authorizedContext(admin, "SCHOOL_ADMIN", "tenant-a", userId),
+      resolveIntegration: async (_admin, tenantId) => ({
+        integrationId: "00000000-0000-4000-8000-0000000000e1",
+        tenantId,
+        provider: "evolution",
+        mode: "TENANT_BYOK",
+        version: 2,
+        baseUrl: "https://evolution.invalid",
+        apiKey: "chave-ultrassecreta",
+      }),
+      fetchUpstream: async () =>
+        new Response(JSON.stringify({
+          instance: { instanceId: "provider-instance", status: "created" },
+        })),
+    },
+  );
+
+  assertEquals(response.status, 200, "recriação aceita");
+  assertEquals(
+    persisted.integration_id,
+    "00000000-0000-4000-8000-0000000000e1",
+    "binding ID",
+  );
+  assertEquals(persisted.integration_version, 2, "binding version");
+  assertEquals(
+    persisted.webhook_auth_version,
+    1,
+    "cron precisa reconfigurar o webhook novo",
   );
 });
 
@@ -874,6 +1009,8 @@ Deno.test("gestor multi-escola usa contexto e associação, não tenant legado d
                   id: instanceId,
                   user_id: ownerId,
                   inbox_enabled: true,
+                  integration_id: "00000000-0000-4000-8000-0000000000e1",
+                  integration_version: 1,
                 }
                 : null,
               error: null,
@@ -1254,12 +1391,23 @@ Deno.test("desabilita inbox localmente sem substituir o webhook", async () => {
 
 Deno.test("habilita inbox institucional somente após configurar webhook seguro", async () => {
   const inboundToken = "token-inbound-ultrassecreto";
+  const expectedInstanceToken = await deriveWhatsAppInboundInstanceTokenV3(
+    inboundToken,
+    "tenant-a",
+    "instance-abc",
+    "00000000-0000-4000-8000-0000000000e1",
+    1,
+  );
   let webhookRequest: Record<string, unknown> = {};
+  let markerArgs: Record<string, unknown> = {};
   const callOrder: string[] = [];
   const admin = inboxAdmin({
     ownerIsSchoolAdmin: true,
-    rpc: async (functionName) => {
+    rpc: async (functionName, args) => {
       callOrder.push(functionName);
+      if (functionName === "set_whatsapp_webhook_auth_version") {
+        markerArgs = args;
+      }
       return {
         data: {
           ok: true,
@@ -1319,9 +1467,20 @@ Deno.test("habilita inbox institucional somente após configurar webhook seguro"
   assertEquals(response.status, 200, "status ao habilitar");
   assertEquals(
     callOrder,
-    ["webhook.upstream", "enable_whatsapp_inbox"],
+    [
+      "webhook.upstream",
+      "set_whatsapp_webhook_auth_version",
+      "enable_whatsapp_inbox",
+    ],
     "ordem segura",
   );
+  assertEquals(markerArgs, {
+    p_tenant_id: "tenant-a",
+    p_instance_name: "instance-abc",
+    p_version: 3,
+    p_integration_id: "00000000-0000-4000-8000-0000000000e1",
+    p_integration_version: 1,
+  }, "marker CAS inclui binding exato");
   assertEquals(
     webhookRequest.url,
     "https://evolution.invalid/webhook/set/instance-abc",
@@ -1338,8 +1497,15 @@ Deno.test("habilita inbox institucional somente após configurar webhook seguro"
     (webhook.headers as Record<string, string>)[
       "x-whatsapp-inbound-token"
     ],
-    inboundToken,
-    "token enviado no header configurado",
+    expectedInstanceToken,
+    "token isolado enviado no header configurado",
+  );
+  assertEquals(
+    (webhook.headers as Record<string, string>)[
+      "x-whatsapp-inbound-token"
+    ] === inboundToken,
+    false,
+    "token raiz nunca é entregue ao tenant BYOK",
   );
   assertEquals(
     (webhook.events as unknown[]).includes("MESSAGES_UPSERT"),

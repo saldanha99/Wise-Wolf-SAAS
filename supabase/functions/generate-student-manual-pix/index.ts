@@ -186,6 +186,7 @@ async function sendWhatsapp(
           delay: 1200,
           linkPreview: false,
         }),
+        redirect: "error",
         signal: controller.signal,
       },
     );

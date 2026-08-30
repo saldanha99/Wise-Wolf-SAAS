@@ -3,8 +3,10 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   precisaResolverJid,
   resolveJid,
+  resolveWhatsAppDestination,
   sendWhatsText,
   sendWhatsTextDetailed,
+  sendWhatsTextToResolvedDestinationDetailed,
 } from "./evolution-send.ts";
 
 const BASE = "https://evolution.test";
@@ -24,6 +26,56 @@ function comFetchFalso(
     });
     return Promise.resolve(handler(String(url), init || {}));
   }) as typeof fetch;
+  return fn(chamadas).finally(() => {
+    globalThis.fetch = original;
+  });
+}
+
+type ChamadaFetch = {
+  url: string;
+  body: any;
+  apikey: string | null;
+  redirect: RequestRedirect | undefined;
+};
+
+/**
+ * Simula o comportamento automático de redirects do fetch para 307/308, que
+ * preservam POST, headers e corpo. Com `redirect: "error"`, a resposta 30x
+ * vira erro e o segundo request nunca acontece.
+ */
+function comRedirectPreservandoPostFalso(
+  status: 307 | 308,
+  fn: (chamadas: ChamadaFetch[]) => Promise<void>,
+) {
+  const original = globalThis.fetch;
+  const captura = "https://destino-nao-confiavel.test/captura";
+  const chamadas: ChamadaFetch[] = [];
+
+  globalThis.fetch = (async (url: any, init: RequestInit = {}) => {
+    const alvo = String(url);
+    const headers = new Headers(init.headers);
+    chamadas.push({
+      url: alvo,
+      body: init.body ? JSON.parse(String(init.body)) : null,
+      apikey: headers.get("apikey"),
+      redirect: init.redirect,
+    });
+
+    if (alvo === captura) {
+      return ok({ key: { id: "capturado" } });
+    }
+
+    const resposta = new Response(null, {
+      status,
+      headers: { location: captura },
+    });
+    if (init.redirect === "error") {
+      throw new TypeError("redirect bloqueado");
+    }
+
+    return await globalThis.fetch(captura, init);
+  }) as typeof fetch;
+
   return fn(chamadas).finally(() => {
     globalThis.fetch = original;
   });
@@ -59,6 +111,87 @@ Deno.test("REGRESSÃO: número sem o 9º dígito é enviado ao JID real", async 
     },
   );
 });
+
+Deno.test("resolve destino antes do fence com um único lookup", async () => {
+  await comFetchFalso(
+    (url) => {
+      assertEquals(url.includes("whatsappNumbers"), true);
+      return ok([{ exists: true, jid: "5533999975104@s.whatsapp.net" }]);
+    },
+    async (chamadas) => {
+      const destination = await resolveWhatsAppDestination({
+        base: BASE,
+        keys: KEYS,
+        instance: "i",
+        to: "553399975104",
+      });
+
+      assertEquals(destination, "5533999975104");
+      assertEquals(chamadas.length, 1);
+      assertEquals(chamadas[0].url.includes("whatsappNumbers"), true);
+    },
+  );
+});
+
+Deno.test(
+  "envio a destino resolvido faz só um sendText e preserva timeout",
+  async () => {
+    const timeoutOriginal = Object.getOwnPropertyDescriptor(
+      AbortSignal,
+      "timeout",
+    );
+    const timeouts: number[] = [];
+    Object.defineProperty(AbortSignal, "timeout", {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: (milliseconds: number) => {
+        timeouts.push(milliseconds);
+        return new AbortController().signal;
+      },
+    });
+
+    try {
+      await comFetchFalso(
+        (url, init) => {
+          assertEquals(url.includes("/message/sendText/"), true);
+          assertEquals(url.includes("whatsappNumbers"), false);
+          assertEquals(init.method, "POST");
+          assertEquals(init.redirect, "error");
+          assertEquals(init.signal instanceof AbortSignal, true);
+          return ok({ key: { id: "resolved-message" } });
+        },
+        async (chamadas) => {
+          const result = await sendWhatsTextToResolvedDestinationDetailed({
+            base: BASE,
+            keys: KEYS,
+            instance: "i",
+            to: "5533999975104",
+            text: "oi",
+          });
+
+          assertEquals(result, {
+            outcome: "accepted",
+            messageId: "resolved-message",
+            httpStatus: 200,
+          });
+          assertEquals(chamadas.length, 1);
+          assertEquals(chamadas[0].url.includes("/message/sendText/"), true);
+          assertEquals(
+            chamadas.some((chamada) => chamada.url.includes("whatsappNumbers")),
+            false,
+          );
+          assertEquals(chamadas[0].body.number, "5533999975104");
+          assertEquals(timeouts, [15000]);
+        },
+      );
+    } finally {
+      if (timeoutOriginal) {
+        Object.defineProperty(AbortSignal, "timeout", timeoutOriginal);
+      }
+    }
+  },
+);
 
 Deno.test("quando o número não existe no WhatsApp, envia para o original", async () => {
   await comFetchFalso(
@@ -227,4 +360,58 @@ Deno.test("resolveJid devolve null para grupo, sem chamar a API", async () => {
       assertEquals(chamadas.length, 0);
     },
   );
+});
+
+Deno.test("307 na resolução não encaminha apikey nem corpo", async () => {
+  await comRedirectPreservandoPostFalso(307, async (chamadas) => {
+    const resolved = await resolveJid(
+      BASE,
+      ["chave-secreta"],
+      "i",
+      "5511999999999",
+    );
+
+    assertEquals(resolved, null);
+    assertEquals(chamadas.length, 1);
+    assertEquals(chamadas[0].redirect, "error");
+    assertEquals(chamadas[0].apikey, "chave-secreta");
+    assertEquals(chamadas[0].body, { numbers: ["5511999999999"] });
+    assertEquals(
+      chamadas.some((chamada) =>
+        chamada.url === "https://destino-nao-confiavel.test/captura"
+      ),
+      false,
+    );
+  });
+});
+
+Deno.test("308 no envio resolvido não encaminha apikey nem corpo", async () => {
+  await comRedirectPreservandoPostFalso(308, async (chamadas) => {
+    const result = await sendWhatsTextToResolvedDestinationDetailed({
+      base: BASE,
+      keys: ["chave-secreta"],
+      instance: "i",
+      to: "120363403699904869@g.us",
+      text: "conteúdo confidencial",
+    });
+
+    assertEquals(result.outcome, "ambiguous");
+    assertEquals(result.messageId, null);
+    assertEquals(result.httpStatus, null);
+    assertEquals(chamadas.length, 1);
+    assertEquals(chamadas[0].redirect, "error");
+    assertEquals(chamadas[0].apikey, "chave-secreta");
+    assertEquals(chamadas[0].body, {
+      number: "120363403699904869@g.us",
+      text: "conteúdo confidencial",
+      delay: 1200,
+      linkPreview: false,
+    });
+    assertEquals(
+      chamadas.some((chamada) =>
+        chamada.url === "https://destino-nao-confiavel.test/captura"
+      ),
+      false,
+    );
+  });
 });

@@ -104,24 +104,197 @@ export async function authenticateWhatsAppInboundRequest(
   headers: Headers,
   requestUrl: URL,
   expectedToken: string,
-): Promise<"header" | "legacy-query" | null> {
+  legacyToken = "",
+): Promise<"instance-header" | "legacy-header" | "legacy-query" | null> {
+  const suppliedHeader = headers.get("x-whatsapp-inbound-token") || "";
   if (
     await constantTimeTokenMatches(
-      headers.get("x-whatsapp-inbound-token") || "",
+      suppliedHeader,
       expectedToken,
     )
   ) {
-    return "header";
+    return "instance-header";
   }
   if (
+    legacyToken &&
+    await constantTimeTokenMatches(suppliedHeader, legacyToken)
+  ) {
+    return "legacy-header";
+  }
+  if (
+    legacyToken &&
     await constantTimeTokenMatches(
       requestUrl.searchParams.get("token") || "",
-      expectedToken,
+      legacyToken,
     )
   ) {
     return "legacy-query";
   }
   return null;
+}
+
+export type WhatsAppInboundAuthVersion = 1 | 2 | 3;
+
+export type WhatsAppInboundIntegrationBinding = {
+  tenantId: string;
+  instanceName: string;
+  integrationId: string;
+  integrationVersion: number;
+};
+
+export type WhatsAppInboundCurrentIntegration = {
+  tenantId: string;
+  integrationId: string;
+  version: number;
+};
+
+const integrationIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function signWhatsAppInboundScope(
+  rootToken: string,
+  scope: string,
+): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(rootToken),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, encoder.encode(scope)),
+  );
+  let binary = "";
+  for (const byte of signature) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/,
+    "",
+  );
+}
+
+/**
+ * Deriva uma credencial diferente para cada instância sem persistir o segredo
+ * em texto puro no banco. O tenant faz parte do domínio para que o nome de uma
+ * instância antiga não possa ser reutilizado por outra escola com o mesmo
+ * token. A raiz continua somente no ambiente do servidor.
+ */
+export async function deriveWhatsAppInboundInstanceToken(
+  rootToken: string,
+  tenantId: string,
+  instanceName: string,
+): Promise<string> {
+  const tenant = tenantId.trim();
+  const instance = instanceName.trim().toLowerCase();
+  if (
+    rootToken.length < 16 || rootToken.length > 4096 ||
+    !/^[A-Za-z0-9._-]{1,120}$/.test(tenant) ||
+    !/^[A-Za-z0-9._-]{1,120}$/.test(instance)
+  ) {
+    throw new Error("invalid_whatsapp_inbound_token_scope");
+  }
+  return await signWhatsAppInboundScope(
+    rootToken,
+    `wisewolf:whatsapp-webhook:v2:${tenant}:${instance}`,
+  );
+}
+
+/**
+ * Token v3: além de tenant/instância, inclui o recibo exato da integração.
+ * Recriar o mesmo nome em outra conta ou versão invalida o segredo anterior.
+ */
+export async function deriveWhatsAppInboundInstanceTokenV3(
+  rootToken: string,
+  tenantId: string,
+  instanceName: string,
+  integrationId: string,
+  integrationVersion: number,
+): Promise<string> {
+  const tenant = tenantId.trim();
+  const instance = instanceName.trim().toLowerCase();
+  const integration = integrationId.trim().toLowerCase();
+  if (
+    rootToken.length < 16 || rootToken.length > 4096 ||
+    !/^[A-Za-z0-9._-]{1,120}$/.test(tenant) ||
+    !/^[A-Za-z0-9._-]{1,120}$/.test(instance) ||
+    !integrationIdPattern.test(integration) ||
+    !Number.isSafeInteger(integrationVersion) || integrationVersion < 1
+  ) {
+    throw new Error("invalid_whatsapp_inbound_token_scope");
+  }
+  return await signWhatsAppInboundScope(
+    rootToken,
+    `wisewolf:whatsapp-webhook:v3:${tenant}:${instance}:${integration}:${integrationVersion}`,
+  );
+}
+
+export function whatsappInboundIntegrationBindingMatches(
+  binding: WhatsAppInboundIntegrationBinding,
+  integration: WhatsAppInboundCurrentIntegration,
+): boolean {
+  return binding.tenantId.trim() === integration.tenantId.trim() &&
+    binding.integrationId.trim().toLowerCase() ===
+      integration.integrationId.trim().toLowerCase() &&
+    Number.isSafeInteger(binding.integrationVersion) &&
+    binding.integrationVersion > 0 &&
+    binding.integrationVersion === integration.version;
+}
+
+/**
+ * Autentica a versão registrada e, só depois de validar o segredo, confirma no
+ * broker que a instância ainda pertence ao mesmo recibo da integração.
+ */
+export async function authenticateWhatsAppInboundBoundRequest(
+  headers: Headers,
+  requestUrl: URL,
+  rootToken: string,
+  authVersion: WhatsAppInboundAuthVersion,
+  binding: WhatsAppInboundIntegrationBinding,
+  resolveCurrentIntegration: () => Promise<WhatsAppInboundCurrentIntegration>,
+): Promise<"instance-header" | "legacy-header" | "legacy-query" | null> {
+  let expectedToken: string;
+  try {
+    expectedToken = authVersion === 3
+      ? await deriveWhatsAppInboundInstanceTokenV3(
+        rootToken,
+        binding.tenantId,
+        binding.instanceName,
+        binding.integrationId,
+        binding.integrationVersion,
+      )
+      : await deriveWhatsAppInboundInstanceToken(
+        rootToken,
+        binding.tenantId,
+        binding.instanceName,
+      );
+  } catch {
+    return null;
+  }
+
+  const authentication = await authenticateWhatsAppInboundRequest(
+    headers,
+    requestUrl,
+    expectedToken,
+    authVersion === 1 ? rootToken : "",
+  );
+  if (!authentication) return null;
+
+  try {
+    const currentIntegration = await resolveCurrentIntegration();
+    return whatsappInboundIntegrationBindingMatches(
+        binding,
+        currentIntegration,
+      )
+      ? authentication
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function whatsappInboundMethodIsAllowed(method: string): boolean {
+  return method === "POST" || method === "OPTIONS";
 }
 
 export function normalizeEvolutionEventName(value: unknown): string {
@@ -259,7 +432,12 @@ export function parseEvolutionMessage(
       remoteJidAlt.endsWith("@s.whatsapp.net")
     ? remoteJidAlt
     : originalRemoteJid;
-  const providerMessageId = bounded(key.id || value.id, 220);
+  // Baileys envia key.id. Evolution v2.4 também emite MESSAGES_UPDATE com
+  // keyId no topo; sem este fallback, recibos DELIVERED/READ eram descartados.
+  const providerMessageId = bounded(
+    key.id || value.keyId || value.messageId || value.id,
+    220,
+  );
   if (!remoteJid || !providerMessageId) return null;
 
   const fromMe = key.fromMe === true || value.fromMe === true;
@@ -344,6 +522,19 @@ export function sanitizeEvolutionWebhook(
   };
 }
 
+function canonicalizeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeJsonValue(item));
+  }
+  if (!isObject(value)) return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [
+      key,
+      canonicalizeJsonValue(value[key]),
+    ]),
+  );
+}
+
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -361,7 +552,7 @@ export async function evolutionWebhookEventKey(
   // A Evolution não fornece event-id. O hash do envelope sanitizado distingue,
   // por exemplo, DELIVERY_ACK de READ para a mesma mensagem, mas permanece
   // estável quando o provedor reentrega exatamente o mesmo webhook.
-  return await sha256(JSON.stringify(sanitized));
+  return await sha256(JSON.stringify(canonicalizeJsonValue(sanitized)));
 }
 
 export async function storeEvolutionInboxMessage(
@@ -371,7 +562,7 @@ export async function storeEvolutionInboxMessage(
   message: EvolutionInboxMessage,
   source: "webhook" | "sync",
 ): Promise<{ data: unknown; error: { code?: string } | null }> {
-  return await client.rpc("store_whatsapp_provider_message", {
+  const stored = await client.rpc("store_whatsapp_provider_message", {
     p_tenant_id: tenantId,
     p_instance_name: instanceName,
     p_remote_jid: message.remoteJid,
@@ -386,4 +577,20 @@ export async function storeEvolutionInboxMessage(
     p_status: message.status,
     p_metadata: { ...message.metadata, source },
   });
+  if (stored.error || message.direction !== "out") return stored;
+  if (!["sent", "delivered", "read", "failed"].includes(message.status)) {
+    return stored;
+  }
+
+  // A inbox canônica e as automações possuem ledgers diferentes. O recibo do
+  // provedor baixa ambos pela mesma identidade externa, sem transformar um
+  // retry de webhook em um novo envio.
+  const receipt = await client.rpc("reconcile_whatsapp_provider_delivery", {
+    p_tenant_id: tenantId,
+    p_instance_name: instanceName,
+    p_provider_message_id: message.providerMessageId,
+    p_provider_status: message.status,
+    p_occurred_at: message.occurredAt,
+  });
+  return receipt.error ? receipt : stored;
 }

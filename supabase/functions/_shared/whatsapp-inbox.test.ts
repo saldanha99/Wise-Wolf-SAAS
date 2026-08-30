@@ -1,7 +1,10 @@
 /// <reference lib="deno.ns" />
 
 import {
+  authenticateWhatsAppInboundBoundRequest,
   authenticateWhatsAppInboundRequest,
+  deriveWhatsAppInboundInstanceToken,
+  deriveWhatsAppInboundInstanceTokenV3,
   evolutionMessageItems,
   evolutionWebhookEventKey,
   findActiveProfileById,
@@ -10,6 +13,8 @@ import {
   parseEvolutionMessage,
   sanitizeEvolutionWebhook,
   storeEvolutionInboxMessage,
+  whatsappInboundIntegrationBindingMatches,
+  whatsappInboundMethodIsAllowed,
 } from "./whatsapp-inbox.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message: string) {
@@ -22,8 +27,13 @@ function assertEquals(actual: unknown, expected: unknown, message: string) {
   }
 }
 
-Deno.test("autentica header novo e mantém query legada durante a transição", async () => {
-  const expected = "token-de-transicao-seguro";
+Deno.test("autentica segredo por instância e limita o legado à transição", async () => {
+  const legacy = "token-raiz-de-transicao-seguro";
+  const expected = await deriveWhatsAppInboundInstanceToken(
+    legacy,
+    "tenant-a",
+    "escola-central",
+  );
   const headerUrl = new URL(
     "https://api.example/functions/v1/whatsapp-inbound",
   );
@@ -31,24 +41,221 @@ Deno.test("autentica header novo e mantém query legada durante a transição", 
     new Headers({ "x-whatsapp-inbound-token": expected }),
     headerUrl,
     expected,
+    legacy,
   );
   const legacyUrl = new URL(
-    `https://api.example/functions/v1/whatsapp-inbound?token=${expected}`,
+    `https://api.example/functions/v1/whatsapp-inbound?token=${legacy}`,
   );
   const legacyMode = await authenticateWhatsAppInboundRequest(
     new Headers(),
     legacyUrl,
     expected,
+    legacy,
+  );
+  const legacyHeaderMode = await authenticateWhatsAppInboundRequest(
+    new Headers({ "x-whatsapp-inbound-token": legacy }),
+    headerUrl,
+    expected,
+    legacy,
   );
   const deniedMode = await authenticateWhatsAppInboundRequest(
     new Headers({ "x-whatsapp-inbound-token": "incorreto" }),
     new URL("https://api.example/functions/v1/whatsapp-inbound?token=errado"),
     expected,
+    legacy,
+  );
+  const v2QueryMode = await authenticateWhatsAppInboundRequest(
+    new Headers(),
+    new URL(
+      `https://api.example/functions/v1/whatsapp-inbound?token=${expected}`,
+    ),
+    expected,
   );
 
-  assertEquals(headerMode, "header", "header atual");
+  assertEquals(headerMode, "instance-header", "header por instância");
+  assertEquals(legacyHeaderMode, "legacy-header", "header legado");
   assertEquals(legacyMode, "legacy-query", "query de transição");
+  assertEquals(v2QueryMode, null, "v2 não aceita segredo pela URL");
   assertEquals(deniedMode, null, "credencial inválida");
+});
+
+Deno.test("segredo derivado isola tenant e instância", async () => {
+  const root = "token-raiz-com-entropia-suficiente";
+  const first = await deriveWhatsAppInboundInstanceToken(
+    root,
+    "tenant-a",
+    "central-a",
+  );
+  const same = await deriveWhatsAppInboundInstanceToken(
+    root,
+    "tenant-a",
+    "CENTRAL-A",
+  );
+  const otherTenant = await deriveWhatsAppInboundInstanceToken(
+    root,
+    "tenant-b",
+    "central-a",
+  );
+  const otherInstance = await deriveWhatsAppInboundInstanceToken(
+    root,
+    "tenant-a",
+    "central-b",
+  );
+
+  assertEquals(first, same, "nome canônico estável");
+  assertEquals(first === otherTenant, false, "tenant isolado");
+  assertEquals(first === otherInstance, false, "instância isolada");
+  assertEquals(/^[A-Za-z0-9_-]{43}$/.test(first), true, "base64url");
+  assertEquals(
+    first,
+    "bZYMFbkYLzm4r-n6s5jsdu-I5Ap6FPG_1BPPmlIwRXQ",
+    "vetor v2 permanece byte a byte compatível",
+  );
+});
+
+Deno.test("token v3 isola o recibo exato da integração", async () => {
+  const root = "token-raiz-com-entropia-suficiente";
+  const integrationId = "00000000-0000-4000-8000-0000000000e1";
+  const first = await deriveWhatsAppInboundInstanceTokenV3(
+    root,
+    "tenant-a",
+    "central-a",
+    integrationId,
+    1,
+  );
+  const same = await deriveWhatsAppInboundInstanceTokenV3(
+    root,
+    "tenant-a",
+    "CENTRAL-A",
+    integrationId.toUpperCase(),
+    1,
+  );
+  const otherIntegration = await deriveWhatsAppInboundInstanceTokenV3(
+    root,
+    "tenant-a",
+    "central-a",
+    "00000000-0000-4000-8000-0000000000e2",
+    1,
+  );
+  const otherVersion = await deriveWhatsAppInboundInstanceTokenV3(
+    root,
+    "tenant-a",
+    "central-a",
+    integrationId,
+    2,
+  );
+  const v2 = await deriveWhatsAppInboundInstanceToken(
+    root,
+    "tenant-a",
+    "central-a",
+  );
+
+  assertEquals(first, same, "escopo canônico v3");
+  assertEquals(first === otherIntegration, false, "ID da integração isolado");
+  assertEquals(first === otherVersion, false, "versão da integração isolada");
+  assertEquals(first === v2, false, "domínio v3 separado do v2");
+  assertEquals(
+    first,
+    "QJEj9ySFQIi8w04LiB0Y7jDbVkYv5THarVAHtaGjYVk",
+    "vetor v3 estável",
+  );
+});
+
+Deno.test("rollout autentica v1/v2/v3 sem reabrir credencial antiga", async () => {
+  const rootToken = "token-raiz-com-entropia-suficiente";
+  const binding = {
+    tenantId: "tenant-a",
+    instanceName: "central-a",
+    integrationId: "00000000-0000-4000-8000-0000000000e1",
+    integrationVersion: 1,
+  };
+  const current = () =>
+    Promise.resolve({
+      tenantId: "tenant-a",
+      integrationId: binding.integrationId,
+      version: 1,
+    });
+  const url = new URL("https://api.example/functions/v1/whatsapp-inbound");
+  const v2 = await deriveWhatsAppInboundInstanceToken(
+    rootToken,
+    binding.tenantId,
+    binding.instanceName,
+  );
+  const v3 = await deriveWhatsAppInboundInstanceTokenV3(
+    rootToken,
+    binding.tenantId,
+    binding.instanceName,
+    binding.integrationId,
+    binding.integrationVersion,
+  );
+  const authenticate = (version: 1 | 2 | 3, token: string) =>
+    authenticateWhatsAppInboundBoundRequest(
+      new Headers({ "x-whatsapp-inbound-token": token }),
+      url,
+      rootToken,
+      version,
+      binding,
+      current,
+    );
+
+  assertEquals(await authenticate(1, rootToken), "legacy-header", "ponte v1");
+  assertEquals(await authenticate(1, v2), "instance-header", "v1 aceita v2");
+  assertEquals(await authenticate(1, v3), null, "v1 ainda não afirma v3");
+  assertEquals(await authenticate(2, v2), "instance-header", "v2 preservado");
+  assertEquals(await authenticate(2, rootToken), null, "v2 fecha raiz");
+  assertEquals(await authenticate(3, v3), "instance-header", "v3 vinculado");
+  assertEquals(await authenticate(3, v2), null, "v3 revoga v2");
+});
+
+Deno.test("binding stale falha antes de qualquer efeito", async () => {
+  const rootToken = "token-raiz-com-entropia-suficiente";
+  const binding = {
+    tenantId: "tenant-a",
+    instanceName: "central-a",
+    integrationId: "00000000-0000-4000-8000-0000000000e1",
+    integrationVersion: 1,
+  };
+  const token = await deriveWhatsAppInboundInstanceTokenV3(
+    rootToken,
+    binding.tenantId,
+    binding.instanceName,
+    binding.integrationId,
+    binding.integrationVersion,
+  );
+  let effects = 0;
+  const authenticated = await authenticateWhatsAppInboundBoundRequest(
+    new Headers({ "x-whatsapp-inbound-token": token }),
+    new URL("https://api.example/functions/v1/whatsapp-inbound"),
+    rootToken,
+    3,
+    binding,
+    () =>
+      Promise.resolve({
+        tenantId: "tenant-a",
+        integrationId: binding.integrationId,
+        version: 2,
+      }),
+  );
+  if (authenticated) effects += 1;
+
+  assertEquals(authenticated, null, "binding obsoleto recusado");
+  assertEquals(effects, 0, "nenhum efeito depois do gate");
+  assertEquals(
+    whatsappInboundIntegrationBindingMatches(binding, {
+      tenantId: "tenant-a",
+      integrationId: binding.integrationId,
+      version: 2,
+    }),
+    false,
+    "cache também distingue versão",
+  );
+});
+
+Deno.test("webhook aceita somente POST e preflight OPTIONS", () => {
+  assertEquals(whatsappInboundMethodIsAllowed("POST"), true, "POST");
+  assertEquals(whatsappInboundMethodIsAllowed("OPTIONS"), true, "OPTIONS");
+  assertEquals(whatsappInboundMethodIsAllowed("GET"), false, "GET");
+  assertEquals(whatsappInboundMethodIsAllowed("PUT"), false, "PUT");
 });
 
 Deno.test("perfil ativo multi-escola não depende do tenant legado", async () => {
@@ -139,11 +346,27 @@ Deno.test("normaliza mídia e atualização de status sem guardar URL", () => {
     },
     update: { status: 4 },
   });
+  const evolutionV24Update = parseEvolutionMessage({
+    keyId: "wamid-out-v24",
+    remoteJid: "5511777777777@s.whatsapp.net",
+    fromMe: true,
+    status: "DELIVERED",
+  });
 
   assertEquals(audio?.messageType, "audio", "tipo de áudio");
   assertEquals(audio?.body, "[Áudio]", "placeholder de áudio");
   assertEquals(update?.status, "delivered", "status entregue");
   assertEquals(numericUpdate?.status, "read", "status numérico lido");
+  assertEquals(
+    evolutionV24Update?.providerMessageId,
+    "wamid-out-v24",
+    "id top-level da Evolution v2.4",
+  );
+  assertEquals(
+    evolutionV24Update?.status,
+    "delivered",
+    "recibo top-level da Evolution v2.4",
+  );
   assertEquals(update?.senderKind, "system", "autor outbound desconhecido");
 });
 
@@ -266,6 +489,47 @@ Deno.test("redige credenciais do webhook e gera chave estável", async () => {
   assertEquals(firstKey.length, 64, "sha-256 hexadecimal");
 });
 
+Deno.test("chave do webhook ignora ordem recursiva, mas distingue status", async () => {
+  const first = {
+    event: "MESSAGES_UPDATE",
+    instance: "escola-central",
+    data: [{
+      key: {
+        id: "wamid-status-1",
+        remoteJid: "5511999999999@s.whatsapp.net",
+        fromMe: true,
+      },
+      update: { status: "DELIVERY_ACK", timestamp: 1_725_000_000 },
+    }],
+  };
+  const reordered = {
+    data: [{
+      update: { timestamp: 1_725_000_000, status: "DELIVERY_ACK" },
+      key: {
+        fromMe: true,
+        remoteJid: "5511999999999@s.whatsapp.net",
+        id: "wamid-status-1",
+      },
+    }],
+    instance: "escola-central",
+    event: "MESSAGES_UPDATE",
+  };
+  const read = {
+    ...reordered,
+    data: [{
+      ...reordered.data[0],
+      update: { timestamp: 1_725_000_000, status: "READ" },
+    }],
+  };
+
+  const firstKey = await evolutionWebhookEventKey(first);
+  const reorderedKey = await evolutionWebhookEventKey(reordered);
+  const readKey = await evolutionWebhookEventKey(read);
+
+  assertEquals(firstKey, reorderedKey, "ordem de campos irrelevante");
+  assertEquals(firstKey === readKey, false, "status integra a identidade");
+});
+
 Deno.test("persiste somente o contrato canônico da mensagem", async () => {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const client = {
@@ -303,4 +567,51 @@ Deno.test("persiste somente o contrato canônico da mensagem", async () => {
     source: "webhook",
     fromMe: false,
   }, "metadados mínimos");
+});
+
+Deno.test("recibo outbound reconcilia automações pelo id do provedor", async () => {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args });
+      return Promise.resolve({ data: { ok: true }, error: null });
+    },
+  };
+  const parsed = parseEvolutionMessage({
+    keyId: "wamid-delivery-1",
+    remoteJid: "5511666666666@s.whatsapp.net",
+    fromMe: true,
+    status: "DELIVERY_ACK",
+    timestamp: 1_725_000_000,
+  });
+  if (!parsed) throw new Error("recibo deveria ser válido");
+
+  const result = await storeEvolutionInboxMessage(
+    client,
+    "tenant-a",
+    "escola-central",
+    parsed,
+    "sync",
+  );
+
+  assertEquals(result.error, null, "recibo persistido");
+  assertEquals(
+    calls.map((call) => call.name),
+    [
+      "store_whatsapp_provider_message",
+      "reconcile_whatsapp_provider_delivery",
+    ],
+    "ordem de persistência e reconciliação",
+  );
+  assertEquals(
+    calls[1]?.args,
+    {
+      p_tenant_id: "tenant-a",
+      p_instance_name: "escola-central",
+      p_provider_message_id: "wamid-delivery-1",
+      p_provider_status: "delivered",
+      p_occurred_at: parsed.occurredAt,
+    },
+    "contrato do recibo",
+  );
 });

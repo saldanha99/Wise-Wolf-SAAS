@@ -582,9 +582,13 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/core.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/core.test.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/index.ts \
   supabase/functions/confirm-attendance/index.ts \
   supabase/functions/process-notification-queue/core.ts \
   supabase/functions/process-notification-queue/core.test.ts \
+  supabase/functions/process-notification-queue/safety.test.ts \
   supabase/functions/process-notification-queue/index.ts \
   supabase/functions/send-attendance-confirmations/core.ts \
   supabase/functions/send-attendance-confirmations/core.test.ts \
@@ -633,6 +637,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/tenant-settings-admin/index.test.ts \
   supabase/functions/tenant-legal-assets/index.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/core.test.ts \
   supabase/functions/process-notification-queue/core.test.ts \
   supabase/functions/send-attendance-confirmations/core.test.ts \
   supabase/functions/send-class-notification/core.test.ts \
@@ -665,6 +670,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/_shared/student-billing-period-guard.test.ts \
   supabase/functions/_shared/student-lifecycle-static.test.ts \
+  supabase/functions/process-notification-queue/safety.test.ts \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
   supabase/functions/payment-split-notify/safety.test.ts \
@@ -796,6 +802,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/tenant-legal-assets/index.ts \
   supabase/functions/weekly-director-digest/index.ts \
   supabase/functions/whatsapp-evolution-proxy/index.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/core.ts \
+  supabase/functions/reconcile-whatsapp-webhooks/index.ts \
   supabase/functions/book-interview/index.ts \
   supabase/functions/accept-coverage/index.ts \
   supabase/functions/accept-opportunity/index.ts \
@@ -1089,6 +1097,8 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830080000_restore_settled_wolfie_topup_boundary.sql"
   "supabase/migrations/20260830120102_harden_teacher_offboarding_and_legacy_coverage.sql"
   "supabase/migrations/20260830132000_harden_payment_split_report_empty_claims.sql"
+  "supabase/migrations/20260830152214_harden_whatsapp_delivery_pipeline.sql"
+  "supabase/migrations/20260830170000_fence_whatsapp_occurrence_receipts.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -1107,6 +1117,8 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/gestao_contas_pagar_whatsapp.sql"
   "supabase/tests/gestao_management_agent_hardening.sql"
   "supabase/tests/whatsapp_inbox_sync.sql"
+  "supabase/tests/whatsapp_delivery_pipeline.sql"
+  "supabase/tests/whatsapp_occurrence_receipts.sql"
   "supabase/tests/attendance_audit_delivery_hardening.sql"
   "supabase/tests/reschedule_notification_revision.sql"
   "supabase/tests/landing_page_configs_hardening.sql"
@@ -1237,6 +1249,7 @@ HARDENED_FUNCTIONS=(
   whatsapp-wise-wolf
   send-contract-confirmation
   process-notification-queue
+  reconcile-whatsapp-webhooks
   process-outbox
   notify-claim
   whatsapp-lead-notification
@@ -3924,6 +3937,7 @@ for protected_function in \
   sync-subscription-status \
   tenant-settings-admin \
   whatsapp-evolution-proxy \
+  reconcile-whatsapp-webhooks \
   whatsapp-lead-notification \
   whatsapp-hr-welcome \
   transfer-teacher-pay \
@@ -3962,6 +3976,50 @@ wait_for_service_http_status 200 "reconciliação idempotente do ledger" \
   -X POST "$api_url/functions/v1/reconcile-ledger" \
   -H 'Content-Type: application/json' \
   --data '{"batchSize":100}'
+wait_for_service_http_status 200 "rotação segura dos webhooks WhatsApp" \
+  -X POST "$api_url/functions/v1/reconcile-whatsapp-webhooks" \
+  -H 'Content-Type: application/json' \
+  --data '{"limit":100}'
+whatsapp_webhook_auth_remaining='1'
+for whatsapp_webhook_batch in {1..20}; do
+  whatsapp_webhook_reconcile_body="$(
+    curl -fsS --connect-timeout 5 --max-time 125 \
+      --config <(
+        printf 'header = "Authorization: Bearer %s"\nheader = "apikey: %s"\n' \
+          "$service_role_key" "$service_role_key"
+      ) \
+      -X POST "$api_url/functions/v1/reconcile-whatsapp-webhooks" \
+      -H 'Content-Type: application/json' \
+      --data '{"limit":100}'
+  )"
+  printf '%s' "$whatsapp_webhook_reconcile_body" | node -e '
+  let body = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => body += chunk);
+  process.stdin.on("end", () => {
+    const result = JSON.parse(body);
+    if (result.ok !== true || Number(result.failed) !== 0) process.exit(1);
+  });
+  '
+  unset whatsapp_webhook_reconcile_body
+  whatsapp_webhook_auth_remaining="$(
+    docker exec -i supabase-db \
+      psql -X -qAt -U supabase_admin -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+select pg_catalog.count(*)
+  from public.whatsapp_instances as instance
+ where instance.inbox_enabled is true
+   and lower(pg_catalog.btrim(coalesce(instance.status, '')))
+       in ('connected', 'open')
+   and instance.webhook_auth_version < 3;
+SQL
+  )"
+  [[ "$whatsapp_webhook_auth_remaining" =~ ^[0-9]+$ ]]
+  if [[ "$whatsapp_webhook_auth_remaining" = '0' ]]; then
+    break
+  fi
+done
+[[ "$whatsapp_webhook_auth_remaining" = '0' ]]
+unset whatsapp_webhook_auth_remaining whatsapp_webhook_batch
 asaas_smoke_date="$(TZ=America/Sao_Paulo date +%F)"
 [[ "$asaas_smoke_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
 wait_for_service_http_status 200 "auditoria somente leitura do Asaas" \

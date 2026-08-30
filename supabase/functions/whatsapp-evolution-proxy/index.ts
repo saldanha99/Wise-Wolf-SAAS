@@ -10,6 +10,7 @@ import {
   type TenantIntegrationRpcClient,
 } from "../_shared/tenant-integration-broker.ts";
 import {
+  deriveWhatsAppInboundInstanceTokenV3,
   type EvolutionInboxMessage,
   evolutionMessageItems,
   findActiveProfileById,
@@ -391,6 +392,8 @@ async function handleInboxSendText(input: {
   admin: TenantIntegrationRpcClient;
   tenantId: string;
   instanceName: string;
+  integrationId: string;
+  integrationVersion: number;
   actorId: string;
   payload: JsonObject;
   getEnv: (name: string) => string | undefined;
@@ -431,6 +434,15 @@ async function handleInboxSendText(input: {
       error: "Integração indisponível",
       code: "INTEGRATION_UNAVAILABLE",
     }, 503);
+  }
+  if (
+    integration.integrationId !== input.integrationId ||
+    integration.version !== input.integrationVersion
+  ) {
+    return json({
+      error: "A instância precisa ser recriada após a troca da integração",
+      code: "INTEGRATION_BINDING_STALE",
+    }, 409);
   }
 
   const prepared = await rpcObject(input.admin, "prepare_whatsapp_outbound", {
@@ -883,11 +895,15 @@ export async function handleRequest(
       id: string;
       user_id: string;
       inbox_enabled: boolean;
+      integration_id: string;
+      integration_version: number;
     } | null
   > => {
     let query = supabaseAdmin
       .from("whatsapp_instances")
-      .select("id, user_id, inbox_enabled")
+      .select(
+        "id, user_id, inbox_enabled, integration_id, integration_version",
+      )
       .eq("tenant_id", effectiveTenantId)
       .eq("instance_name", instanceName)
       .limit(1);
@@ -904,11 +920,16 @@ export async function handleRequest(
       );
       return null;
     }
-    return data?.id && data?.user_id
+    const integrationId = asString(data?.integration_id).trim();
+    const integrationVersion = Number(data?.integration_version);
+    return data?.id && data?.user_id && integrationId &&
+        Number.isSafeInteger(integrationVersion) && integrationVersion > 0
       ? {
         id: String(data.id),
         user_id: String(data.user_id),
         inbox_enabled: data.inbox_enabled === true,
+        integration_id: integrationId,
+        integration_version: integrationVersion,
       }
       : null;
   };
@@ -916,6 +937,8 @@ export async function handleRequest(
   let ownerUserId = userId;
   let instanceRowId = "";
   let inboxEnabled = false;
+  let instanceIntegrationId = "";
+  let instanceIntegrationVersion = 0;
   if (action === "instance/create") {
     const recreate = payload.recreate === true;
     const requestedOwnerId = asString(payload.ownerUserId).trim() || userId;
@@ -1015,6 +1038,8 @@ export async function handleRequest(
     instanceRowId = owner.id;
     ownerUserId = owner.user_id;
     inboxEnabled = owner.inbox_enabled;
+    instanceIntegrationId = owner.integration_id;
+    instanceIntegrationVersion = owner.integration_version;
   }
 
   const validateInstitutionalInboxOwner = async (): Promise<
@@ -1191,6 +1216,31 @@ export async function handleRequest(
           code: "INTEGRATION_UNAVAILABLE",
         }, 503);
       }
+      if (
+        integration.integrationId !== instanceIntegrationId ||
+        integration.version !== instanceIntegrationVersion
+      ) {
+        return json({
+          error: "A instância precisa ser recriada após a troca da integração",
+          code: "INTEGRATION_BINDING_STALE",
+        }, 409);
+      }
+
+      let instanceWebhookToken: string;
+      try {
+        instanceWebhookToken = await deriveWhatsAppInboundInstanceTokenV3(
+          webhook.token,
+          effectiveTenantId,
+          instanceName,
+          integration.integrationId,
+          integration.version,
+        );
+      } catch {
+        return json({
+          error: "Configura\u00e7\u00e3o da inbox indispon\u00edvel",
+          code: "INBOX_WEBHOOK_UNAVAILABLE",
+        }, 503);
+      }
 
       const webhookController = new AbortController();
       const webhookTimeout = setTimeout(
@@ -1214,7 +1264,7 @@ export async function handleRequest(
                 enabled: true,
                 url: webhook.url,
                 headers: {
-                  "x-whatsapp-inbound-token": webhook.token,
+                  "x-whatsapp-inbound-token": instanceWebhookToken,
                 },
                 byEvents: false,
                 base64: false,
@@ -1246,6 +1296,31 @@ export async function handleRequest(
             "N\u00e3o foi poss\u00edvel preparar a sincroniza\u00e7\u00e3o",
           code: "INBOX_WEBHOOK_CONFIG_FAILED",
         }, 502);
+      }
+
+      const authVersion = await rpcObject(
+        rpcAdmin,
+        "set_whatsapp_webhook_auth_version",
+        {
+          p_tenant_id: effectiveTenantId,
+          p_instance_name: instanceName,
+          p_version: 3,
+          p_integration_id: integration.integrationId,
+          p_integration_version: integration.version,
+        },
+      );
+      if (
+        !authVersion.data || authVersion.errorCode ||
+        rpcBoolean(authVersion.data, "ok") !== true
+      ) {
+        console.error("[WA Proxy] Webhook seguro sem marker local", {
+          code: authVersion.errorCode || "invalid_result",
+        });
+        return json({
+          error:
+            "N\u00e3o foi poss\u00edvel concluir a prote\u00e7\u00e3o do webhook",
+          code: "INBOX_WEBHOOK_AUTH_MARKER_FAILED",
+        }, 503);
       }
     }
 
@@ -1399,6 +1474,8 @@ export async function handleRequest(
       admin: rpcAdmin,
       tenantId: effectiveTenantId,
       instanceName,
+      integrationId: instanceIntegrationId,
+      integrationVersion: instanceIntegrationVersion,
       actorId: userId,
       payload,
       getEnv,
@@ -1549,6 +1626,16 @@ export async function handleRequest(
       code: "INTEGRATION_UNAVAILABLE",
     }, 503);
   }
+  if (
+    action !== "instance/create" &&
+    (integration.integrationId !== instanceIntegrationId ||
+      integration.version !== instanceIntegrationVersion)
+  ) {
+    return json({
+      error: "A instância precisa ser recriada após a troca da integração",
+      code: "INTEGRATION_BINDING_STALE",
+    }, 409);
+  }
   const endpoint = `${integration.baseUrl}${relativeEndpoint}`;
 
   const controller = new AbortController();
@@ -1626,6 +1713,9 @@ export async function handleRequest(
         instance_id: instanceId,
         status: state,
         api_key: null,
+        integration_id: integration.integrationId,
+        integration_version: integration.version,
+        webhook_auth_version: 1,
         updated_at: new Date().toISOString(),
       };
       const persistence = instanceRowId

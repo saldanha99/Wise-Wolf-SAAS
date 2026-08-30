@@ -406,6 +406,7 @@ _Guarde essas informações com segurança!_`;
             textMessage: { text: message },
             text: message,
           }),
+          redirect: "error",
           signal: AbortSignal.timeout(15_000),
         },
       );
