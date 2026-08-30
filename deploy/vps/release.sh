@@ -1088,6 +1088,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830070000_restore_director_pending_counts_facade.sql"
   "supabase/migrations/20260830080000_restore_settled_wolfie_topup_boundary.sql"
   "supabase/migrations/20260830120102_harden_teacher_offboarding_and_legacy_coverage.sql"
+  "supabase/migrations/20260830132000_harden_payment_split_report_empty_claims.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
