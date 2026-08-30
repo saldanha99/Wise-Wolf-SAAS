@@ -248,6 +248,7 @@ insert into observation_results values (
   )
 );
 
+set local request.jwt.claims = '{"role":"service_role"}';
 update public.profiles
    set subscription_id = 'sub_disabled_prorata',
        enrollment_payment_id = null
@@ -273,6 +274,7 @@ update public.profiles
    set subscription_id = null,
        enrollment_payment_id = 'pay_enrollment_fee_observation'
  where id = '00000000-0000-4000-8000-00000000e501';
+reset request.jwt.claims;
 
 select pg_temp.assert_true(
   (select payload ->> 'reason' = 'pro_rata_scope_invalid'
@@ -287,10 +289,12 @@ select pg_temp.assert_true(
   and (select payload ->> 'reason' = 'payment_not_bound'
      from observation_results
     where label = 'disabled-prorata-reopen')
-  and (select payload ->> 'error' = 'PAYMENT_EVENT_NOT_SETTLED'
+  and (select payload ->> 'error' = 'SCHEDULE_UNAVAILABLE'
+      and payload ->> 'reason' = 'enrollment_schedule_changed'
      from observation_results
     where label = 'disabled-prorata-complete-with-stale-binding')
-  and (select payload ->> 'error' = 'PAYMENT_EVENT_NOT_SETTLED'
+  and (select payload ->> 'error' = 'SCHEDULE_UNAVAILABLE'
+      and payload ->> 'reason' = 'enrollment_schedule_changed'
      from observation_results
     where label = 'disabled-prorata-complete-without-binding'),
   'opt-out legado foi reinterpretado como obrigacao ou pagamento pro-rata'
