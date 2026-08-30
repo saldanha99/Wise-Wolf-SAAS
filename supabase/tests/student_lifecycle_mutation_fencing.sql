@@ -43,9 +43,24 @@ select pg_temp.assert_true(
     'public.begin_student_offboarding(text,uuid,uuid,text,text,uuid,integer)',
     'EXECUTE'
   )
-  and has_function_privilege(
+  and not has_function_privilege(
+    'service_role',
+    'public.begin_student_offboarding(text,uuid,uuid,text,text,uuid,integer)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
     'service_role',
     'public.finalize_student_offboarding(uuid,uuid)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.begin_student_offboarding_with_billing_policy(text,uuid,uuid,text,text,text,date,uuid,integer)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.finalize_student_offboarding_with_billing_policy(uuid,uuid)',
     'EXECUTE'
   )
   and not has_function_privilege(
@@ -1441,8 +1456,14 @@ begin
      or not exists (
        select 1 from public.student_offboarding_operations
         where id = (select (payload->>'operation_id')::uuid from lifecycle_results where label = 'offboard-begin')
-          and status = 'BLOCKED'
+          and status = 'ABORTED'
           and last_error = 'integration_context_changed'
+          and provider_started_at is null
+          and completed_at is not null
+          and integration_snapshot #>> '{subscription,integration_id}' =
+            'integration_subscription_v1'
+          and integration_snapshot #>> '{payment,integration_id}' =
+            'integration_payment_v1'
      )
   then
     raise exception 'offboarding accepted a rotated Asaas integration';
@@ -1464,6 +1485,34 @@ insert into lifecycle_results values (
     'MUTATING', null
   )
 );
+savepoint offboarding_rotation_after_provider_start;
+do $offboarding_rotation_after_provider_start$
+declare
+  result jsonb;
+begin
+  result := public.bind_student_offboarding_integrations(
+    (select (payload->>'operation_id')::uuid from lifecycle_results where label = 'offboard-begin'),
+    '30000000-0000-4000-8000-00000000d501',
+    'integration_subscription_v2', 2, 'production', 'TENANT_BYOK',
+    'integration_payment_v2', 2, 'production', 'TENANT_BYOK'
+  );
+  if coalesce((result->>'ok')::boolean, false)
+     or result->>'reason' <> 'integration_context_changed'
+     or not exists (
+       select 1 from public.student_offboarding_operations
+        where id = (select (payload->>'operation_id')::uuid from lifecycle_results where label = 'offboard-begin')
+          and status = 'BLOCKED'
+          and last_error = 'integration_context_changed'
+          and provider_started_at is not null
+          and completed_at is null
+     )
+  then
+    raise exception 'offboarding accepted a rotated Asaas integration after provider start';
+  end if;
+end;
+$offboarding_rotation_after_provider_start$;
+rollback to savepoint offboarding_rotation_after_provider_start;
+release savepoint offboarding_rotation_after_provider_start;
 insert into lifecycle_results values (
   'offboard-provider-complete',
   public.record_student_offboarding_provider_state(
@@ -1486,6 +1535,19 @@ insert into lifecycle_results values (
     '30000000-0000-4000-8000-00000000d501',
     'UNKNOWN', 'late replay'
   )
+);
+-- The policy migration removes service-role access to the legacy finalizer.
+-- This owner-only compatibility fixture sets the exact operation fence so the
+-- historical primitive can still be regression-tested without exposing a
+-- billing-policy bypass to runtime callers.
+select pg_catalog.set_config(
+  'app.student_lifecycle_finalizer',
+  (
+    select payload->>'operation_id'
+      from lifecycle_results
+     where label = 'offboard-begin'
+  ),
+  true
 );
 insert into lifecycle_results values (
   'offboard-stale-finalize',

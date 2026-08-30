@@ -459,6 +459,12 @@ begin
      or coalesce(new.value, 0) <= 0 then
     return new;
   end if;
+  -- Legacy/unbound payments have no school and therefore no truthful
+  -- management-group route.  They must remain reconcilable without either
+  -- inventing a tenant or aborting the settlement on the outbox invariant.
+  if nullif(pg_catalog.btrim(coalesce(new.tenant_id, '')), '') is null then
+    return new;
+  end if;
   if tg_op = 'UPDATE' and old.status is not distinct from new.status then
     return new;
   end if;

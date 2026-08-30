@@ -1035,6 +1035,44 @@ update public.dre_report_settings
 set is_active = true
 where tenant_id = 'management-payment-outbox-school';
 
+-- A legacy payment without tenant cannot truthfully target any management
+-- group.  Its settlement must succeed without creating an orphan outbox row.
+insert into public.student_payments (
+  id, student_id, tenant_id, asaas_payment_id, value, status, due_date,
+  raw_payload
+) values (
+  '71000000-0000-4000-8000-000000000021',
+  '71000000-0000-4000-8000-000000000002',
+  null,
+  'pay_management_outbox_unbound_legacy',
+  29,
+  'PENDING',
+  current_date,
+  '{"testMode":true}'::jsonb
+);
+
+update public.student_payments
+set status = 'RECEIVED',
+    provider_status = 'RECEIVED',
+    payment_date = current_date,
+    paid_at = pg_catalog.now(),
+    credited_at = pg_catalog.now()
+where id = '71000000-0000-4000-8000-000000000021';
+
+select pg_temp.assert_true(
+  (
+    select status = 'RECEIVED'
+    from public.student_payments
+    where id = '71000000-0000-4000-8000-000000000021'
+  )
+  and not exists (
+    select 1
+    from public.management_payment_notification_outbox
+    where payment_id = '71000000-0000-4000-8000-000000000021'
+  ),
+  'unbound legacy settlement was aborted or produced an orphan notification'
+);
+
 insert into management_payment_outbox_results values (
   'split-claim',
   public.claim_management_payment_notification(

@@ -1433,6 +1433,17 @@ grant execute on function public.finalize_student_offboarding_with_billing_polic
   uuid, uuid
 ) to service_role;
 
+-- The legacy public entry points do not carry a monthly billing decision.
+-- Keep them as private implementation details for the policy-aware begin RPC,
+-- but prevent service clients from creating or finalizing an operation that
+-- can bypass CHARGE_CURRENT_MONTH versus WAIVE_CURRENT_MONTH.
+revoke all on function public.begin_student_offboarding(
+  text, uuid, uuid, text, text, uuid, integer
+) from public, anon, authenticated, service_role;
+revoke all on function public.finalize_student_offboarding(
+  uuid, uuid
+) from public, anon, authenticated, service_role;
+
 -- Reactivation is also provider-first and uses the same unique active
 -- operation index.  An offboarding and a reactivation therefore cannot cross
 -- each other between the Asaas PUT and the local lifecycle update.
