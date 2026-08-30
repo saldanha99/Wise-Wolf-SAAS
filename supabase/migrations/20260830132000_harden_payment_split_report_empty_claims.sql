@@ -293,10 +293,10 @@ begin
   v_month := coalesce(p_month, to_char(current_date,'YYYY-MM'));
   if v_month !~ '^\d{4}-\d{2}$' then raise exception 'Mês inválido (use YYYY-MM)'; end if;
 
-  select coalesce(sum(value),0) into v_receita
-  from student_payments
-  where tenant_id = v_tenant and status in ('RECEIVED','RECEIVED_IN_CASH')
-    and to_char(coalesce(paid_at, payment_date, due_date),'YYYY-MM') = v_month;
+  SELECT COALESCE(sum(greatest(round(coalesce(value, 0) - coalesce(refunded_amount, 0), 2), 0)),0) INTO v_receita
+  FROM student_payments
+  WHERE tenant_id = v_tenant AND status IN ('RECEIVED','RECEIVED_IN_CASH')
+    AND to_char(COALESCE(credited_at, paid_at, payment_date, due_date),'YYYY-MM') = v_month;
 
   select coalesce(sum(custo_aulas),0), coalesce(sum(aulas),0)
     into v_custo_aulas, v_aulas
@@ -342,8 +342,10 @@ begin
     from financial_transactions ft
     left join dre_category_map m on m.tenant_id = ft.tenant_id and m.category = ft.category
     left join dre_accounts a on a.code = coalesce(ft.account_code, m.account_code)
-    where ft.tenant_id = v_tenant and ft.type = 'SAIDA'
-      and to_char(coalesce(ft.occurred_at, ft.created_at),'YYYY-MM') = v_month
+    WHERE ft.tenant_id = v_tenant AND ft.type = 'SAIDA'
+      AND ft.category IS DISTINCT FROM 'teacher_payout'
+      AND ft.refund_student_payment_id IS NULL
+      AND to_char(COALESCE(ft.occurred_at, ft.created_at),'YYYY-MM') = v_month
     group by 1,2,3,4,5
   ) t;
 
@@ -416,7 +418,7 @@ end;
 $function$;
 
 comment on function public.dre_gerencial(text, text) is
-  'Resultado gerencial mensal por competência. Aceita workers internos sem claims e preserva a fonte única financeira do DRE.';
+  'DRE por competência: recebimentos líquidos de refunded_amount; custos pela aula. Aceita workers internos sem claims; CONFIRMED não é receita.';
 
 revoke all on function public.dre_gerencial(text, text) from public;
 grant execute on function public.dre_gerencial(text, text) to authenticated, service_role;
