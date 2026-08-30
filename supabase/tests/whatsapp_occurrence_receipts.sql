@@ -145,7 +145,11 @@ insert into public.tenant_memberships (
 ) values (
   '00000000-0000-4000-8000-00000000aa01',
   'whatsapp-occurrence-test', 'SCHOOL_ADMIN', 'ACTIVE', true
-);
+)
+on conflict (user_id, tenant_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    is_primary = excluded.is_primary;
 
 insert into public.tenant_user_contexts (user_id, tenant_id)
 values (
@@ -210,7 +214,11 @@ insert into public.tenant_memberships (
   (
     '00000000-0000-4000-8000-00000000aa03',
     'whatsapp-occurrence-test', 'STUDENT', 'ACTIVE', true
-  );
+  )
+on conflict (user_id, tenant_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    is_primary = excluded.is_primary;
 
 insert into public.appointments (
   id, professor_id, teacher_id, student_name, student_phone,

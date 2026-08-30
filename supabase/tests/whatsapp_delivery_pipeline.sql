@@ -726,7 +726,11 @@ insert into public.tenant_memberships (
 ) values (
   '00000000-0000-4000-8000-00000000ec11',
   'whatsapp-delivery-test-a', 'STUDENT', 'ACTIVE', true
-);
+)
+on conflict (user_id, tenant_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    is_primary = excluded.is_primary;
 
 update public.tenant_admin_settings
 set student_notifications_enabled = true,
