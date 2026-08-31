@@ -1002,6 +1002,21 @@ end;
 $teacher_acceptance$;
 
 reset role;
+set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
+
+-- Simula a passagem real do tempo: o feedback somente pode ser salvo depois
+-- que a janela da experimental terminou e o lançamento autoritativo existe.
+update public.appointments
+   set start_time = now() - interval '1 hour'
+ where id = (
+   select opportunity.trial_appointment_id
+     from public.opportunities as opportunity
+    where opportunity.id =
+      current_setting('app.secure_vendor_opportunity_id')::uuid
+ );
+
+reset role;
 set local role authenticated;
 set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
