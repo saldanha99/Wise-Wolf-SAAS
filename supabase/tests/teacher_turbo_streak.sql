@@ -173,6 +173,9 @@ from generate_series(1, 10) g;
 
 -- Um booking corrompido entre escolas ainda aparece na carteira financeira
 -- antiga, mas nao pode inflar a elegibilidade tenant-safe do Turbo.
+-- A protecao atual bloqueia essa corrupcao na escrita. Ignore os triggers
+-- ordinarios apenas neste insert rollback-only, sem bloquear a tabela no deploy.
+set local session_replication_role = replica;
 insert into public.bookings (
   id, tenant_id, teacher_id, student_id,
   day_of_week, time_slot, status, start_date
@@ -184,6 +187,7 @@ values (
   md5('turbo-streak-student-b-1')::uuid,
   'Quarta', '10:00', 'SCHEDULED', date '2026-06-01'
 );
+set local session_replication_role = origin;
 
 select pg_temp.assert_true(
   public.teacher_turbo_student_count('00000000-0000-4000-8000-000000000973') = 10,

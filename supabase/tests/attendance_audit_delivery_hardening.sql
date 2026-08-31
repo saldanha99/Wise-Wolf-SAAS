@@ -887,6 +887,11 @@ delete from public.bookings
 
 -- A real source row still cannot be borrowed across schools, even when there is
 -- no class_log_id to expose the mismatch through the financial record.
+-- The lifecycle booking guard now rejects this deliberately corrupt fixture at
+-- write time. Bypass ordinary triggers for this single rollback-only fixture so
+-- the attendance RPC still proves it fails closed against historical
+-- corruption, without taking an ACCESS EXCLUSIVE table lock during deploy.
+set local session_replication_role = replica;
 insert into public.bookings (
   id, tenant_id, teacher_id, student_id,
   day_of_week, time_slot, status, start_date
@@ -904,6 +909,7 @@ values (
   '18:00', 'SCHEDULED',
   (now() at time zone 'America/Sao_Paulo')::date
 );
+set local session_replication_role = origin;
 
 insert into public.attendance_confirmations (
   id, tenant_id, source_id, source_type, class_log_id,

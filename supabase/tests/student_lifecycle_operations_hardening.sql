@@ -16,6 +16,9 @@ begin
 end;
 $$;
 
+grant execute on function pg_temp.assert_true(boolean, text)
+  to authenticated, service_role;
+
 select pg_catalog.set_config(
   'request.jwt.claims',
   '{"role":"service_role"}',

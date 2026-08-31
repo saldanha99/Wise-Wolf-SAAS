@@ -560,6 +560,13 @@ on conflict (user_id) do update
 set tenant_id = excluded.tenant_id,
     updated_at = now();
 
+-- This rollback-only RLS fixture deliberately represents one user in two
+-- tenants while profiles keeps a single canonical tenant_id.  Production
+-- writes keep all lifecycle guards enabled. Bypass ordinary triggers only for
+-- this fixture insert, without taking an ACCESS EXCLUSIVE lock during deploy,
+-- so this test can exercise read isolation rather than lifecycle validation.
+set local session_replication_role = replica;
+
 insert into public.bookings (
   id, tenant_id, teacher_id, student_id,
   day_of_week, time_slot, status
@@ -578,6 +585,8 @@ insert into public.bookings (
     '00000000-0000-4000-8000-00000000a003',
     'Friday', '23:55', 'SCHEDULED'
   );
+
+set local session_replication_role = origin;
 
 insert into public.student_evaluations (
   id, student_id, teacher_id, book_part, score, total_questions, tenant_id

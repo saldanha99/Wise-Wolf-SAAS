@@ -713,6 +713,11 @@ select pg_temp.assert_true(
   'grade normalizada nao foi persistida relacionalmente'
 );
 
+-- This fixture predates enrollment on purpose: it simulates a historical row
+-- that must still block a newly offered slot. Bypass ordinary triggers only for
+-- this insert; session_replication_role avoids an ACCESS EXCLUSIVE table lock
+-- while the rollback-only compatibility test is running during deploy.
+set local session_replication_role = replica;
 insert into public.bookings (
   tenant_id, teacher_id, student_id, day_of_week,
   time_slot, date, start_date, status
@@ -728,6 +733,7 @@ values (
   'SCHEDULED'
 )
 returning id as blocking_booking_id \gset
+set local session_replication_role = origin;
 
 set local role authenticated;
 set local request.jwt.claims =
@@ -808,6 +814,14 @@ select pg_temp.assert_true(
 
 reset role;
 
+-- Exercise the reservation exclusion itself with the same historical-style
+-- pre-enrollment fixture. Disable only the lifecycle guard inside a short
+-- savepoint: the exclusion constraint remains active, and rolling back the
+-- savepoint immediately releases the ACCESS EXCLUSIVE lock and restores the
+-- trigger before this test continues.
+savepoint reservation_exclusion_lifecycle_guard;
+alter table public.bookings
+  disable trigger guard_active_student_scheduled_booking;
 do $$
 begin
   insert into public.bookings (
@@ -828,6 +842,8 @@ exception when exclusion_violation then
   if sqlerrm <> 'booking_conflicts_with_enrollment_reservation' then raise; end if;
 end;
 $$;
+rollback to savepoint reservation_exclusion_lifecycle_guard;
+release savepoint reservation_exclusion_lifecycle_guard;
 
 set local role service_role;
 set local request.jwt.claims = '{"role":"service_role"}';
