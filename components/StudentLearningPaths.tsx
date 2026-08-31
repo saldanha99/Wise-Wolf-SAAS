@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, Star, Target, Briefcase, Plane, GraduationCap, Cpu, Heart, Globe, Crown, Flame, Gem, Medal } from 'lucide-react';
+import { AlertCircle, BookOpen, Trophy, Lock, Check, ChevronRight, Loader2, Sparkles, Play, Star, Target, Briefcase, Plane, GraduationCap, Cpu, Heart, Globe, Crown, Flame, Gem, Medal, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ActivityPlayer from './ActivityPlayer';
 import StreakModal from './StreakModal';
@@ -67,43 +67,43 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     const [progress, setProgress] = useState<Record<string, { status: string; score: number | null }>>({});
     const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
     // Gamificação
-    const [gami, setGami] = useState<{ xp: number; streak: number; hearts: number; dailyXp: number; dailyGoal: number }>({ xp: 0, streak: 0, hearts: 5, dailyXp: 0, dailyGoal: 30 });
+    const [gami, setGami] = useState<{ xp: number; streak: number; hearts: number; dailyXp: number; dailyGoal: number; practicedToday: boolean }>({ xp: 0, streak: 0, hearts: 5, dailyXp: 0, dailyGoal: 30, practicedToday: false });
     const [leaderboard, setLeaderboard] = useState<{ full_name: string; xp: number }[]>([]);
+    const [operationError, setOperationError] = useState('');
+    const [retryPath, setRetryPath] = useState<LearningPath | null>(null);
+    const [enrollingPathId, setEnrollingPathId] = useState<string | null>(null);
+    const [switchRequired, setSwitchRequired] = useState(false);
 
     useEffect(() => {
         if (userId) { loadPaths(); loadGamification(); }
-    }, [userId]);
+    }, [userId, tenantId]);
 
     const loadGamification = async () => {
         try {
-            // Stats do aluno
-            const { data: prof } = await supabase
-                .from('profiles')
-                .select('xp, streak_count, hearts, daily_xp, daily_xp_date, daily_xp_goal')
-                .eq('id', userId)
-                .maybeSingle();
-            if (prof) {
-                const hojeStr = new Date().toISOString().slice(0, 10);
-                const dailyHoje = prof.daily_xp_date && String(prof.daily_xp_date).slice(0, 10) === hojeStr ? (prof.daily_xp ?? 0) : 0;
+            // O servidor regenera vidas e calcula o dia em America/Sao_Paulo.
+            const { data: status, error: statusError } = await supabase.rpc('get_student_practice_status');
+            if (statusError) throw statusError;
+            if (status) {
                 setGami({
-                    xp: prof.xp ?? 0,
-                    streak: prof.streak_count ?? 0,
-                    hearts: prof.hearts ?? 5,
-                    dailyXp: dailyHoje,
-                    dailyGoal: prof.daily_xp_goal ?? 30,
+                    xp: Number(status.xp ?? 0),
+                    streak: Number(status.streakCount ?? 0),
+                    hearts: Number(status.hearts ?? 5),
+                    dailyXp: Number(status.dailyXp ?? 0),
+                    dailyGoal: Number(status.dailyXpGoal ?? 30),
+                    practicedToday: status.practicedToday === true,
                 });
             }
-            // Ranking da liga (top 5 alunos por XP no tenant)
-            if (tenantId) {
-                const { data: lb } = await supabase
-                    .from('profiles')
-                    .select('full_name, xp')
-                    .eq('role', 'STUDENT')
-                    .eq('tenant_id', tenantId)
-                    .order('xp', { ascending: false })
-                    .limit(5);
-                setLeaderboard(lb || []);
-            }
+            // Ranking voluntário e pseudônimo, filtrado no servidor. O aluno não
+            // consulta o diretório de perfis nem enxerga colegas sem opt-in.
+            const { data: lb, error: leaderboardError } = await supabase.rpc(
+                'get_student_opt_in_leaderboard',
+                { p_limit: 5 },
+            );
+            if (leaderboardError) throw leaderboardError;
+            setLeaderboard((Array.isArray(lb) ? lb : []).map((entry: any, index: number) => ({
+                full_name: entry.displayName || `Lobo ${index + 1}`,
+                xp: Number(entry.xp ?? 0),
+            })));
         } catch (err) {
             console.error('loadGamification error:', err);
         }
@@ -111,107 +111,138 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
     const loadPaths = async () => {
         setLoading(true);
+        setOperationError('');
         try {
-            const { data: pathsData } = await supabase
+            const { data: pathsData, error: pathsError } = await supabase
                 .from('learning_paths')
                 .select('*')
                 .eq('active', true)
                 .or(`tenant_id.is.null,tenant_id.eq.${tenantId || 'none'}`)
                 .order('created_at', { ascending: true });
+            if (pathsError) throw pathsError;
 
             setPaths(pathsData || []);
 
             // Pega a matrícula ATIVA mais recente. Alunos com mais de uma trilha ativa quebravam
             // o .maybeSingle() (PGRST116) e a trilha não abria — order+limit resolve sem erro.
-            const { data: enrollRows } = await supabase
+            const { data: enrollRows, error: enrollmentError } = await supabase
                 .from('student_path_enrollments')
                 .select('path_id, current_unit_id')
                 .eq('student_id', userId)
                 .is('completed_at', null)
                 .order('started_at', { ascending: false })
                 .limit(1);
+            if (enrollmentError) throw enrollmentError;
             const enrollData = enrollRows?.[0] || null;
 
             if (enrollData) {
                 setEnrolledPathId(enrollData.path_id);
                 const path = pathsData?.find(p => p.id === enrollData.path_id);
                 if (path) {
-                    setSelectedPath(path);
                     await loadPathDetails(path.id);
+                    setSelectedPath(path);
                 }
             }
         } catch (err) {
             console.error('loadPaths error:', err);
+            setSelectedPath(null);
+            setOperationError('Não foi possível carregar suas trilhas. Tente novamente.');
         } finally {
             setLoading(false);
         }
     };
 
     const loadPathDetails = async (pathId: string) => {
-        const { data: unitsData } = await supabase
-            .from('learning_units')
-            .select('*')
-            .eq('path_id', pathId)
-            .order('order_index', { ascending: true });
+        // O servidor entrega somente a versão pedagógica do conteúdo. Gabaritos de
+        // quiz/gramática nunca atravessam esta fronteira nem ficam inspecionáveis
+        // no navegador do aluno. O runtime anterior permanece visível durante a
+        // recarga: se a rede falhar após uma conclusão, a trilha não desaparece nem
+        // libera um nó sem conteúdo.
+        const { data: runtime, error: runtimeError } = await supabase.rpc(
+            'get_student_learning_path_runtime',
+            { p_path_id: pathId },
+        );
+        if (runtimeError) throw runtimeError;
 
-        setUnits(unitsData || []);
+        const unitsData = Array.isArray(runtime?.units) ? runtime.units as LearningUnit[] : [];
+        const activitiesData = Array.isArray(runtime?.activities) ? runtime.activities as Activity[] : [];
+        const progressData = Array.isArray(runtime?.progress)
+            ? runtime.progress as { activity_id: string; status: string; score: number | null }[]
+            : [];
 
-        if (unitsData && unitsData.length > 0) {
-            const unitIds = unitsData.map(u => u.id);
-            const { data: actData } = await supabase
-                .from('unit_activities')
-                .select('*')
-                .in('unit_id', unitIds)
-                .order('order_index', { ascending: true });
+        setUnits(unitsData);
 
-            const grouped: Record<string, Activity[]> = {};
-            (actData || []).forEach(a => {
-                if (!grouped[a.unit_id]) grouped[a.unit_id] = [];
-                grouped[a.unit_id].push(a);
-            });
-            setActivitiesByUnit(grouped);
+        const grouped: Record<string, Activity[]> = {};
+        activitiesData.forEach((activity) => {
+            if (!grouped[activity.unit_id]) grouped[activity.unit_id] = [];
+            grouped[activity.unit_id].push(activity);
+        });
+        setActivitiesByUnit(grouped);
 
-            const activityIds = (actData || []).map(a => a.id);
-            if (activityIds.length > 0) {
-                const { data: progressData } = await supabase
-                    .from('student_activity_progress')
-                    .select('activity_id, status, score')
-                    .eq('student_id', userId)
-                    .in('activity_id', activityIds);
+        const progMap: Record<string, { status: string; score: number | null }> = {};
+        progressData.forEach((item) => {
+            progMap[item.activity_id] = { status: item.status, score: item.score };
+        });
+        setProgress(progMap);
+    };
 
-                const progMap: Record<string, { status: string; score: number | null }> = {};
-                (progressData || []).forEach(p => {
-                    progMap[p.activity_id] = { status: p.status, score: p.score };
-                });
-                setProgress(progMap);
-            }
+    const openEnrolledPath = async (path: LearningPath) => {
+        setOperationError('');
+        try {
+            await loadPathDetails(path.id);
+            setSelectedPath(path);
+        } catch (err) {
+            console.error('openEnrolledPath error:', err);
+            setSelectedPath(null);
+            setOperationError('Não foi possível abrir esta trilha. Tente novamente.');
         }
     };
 
-    const enrollInPath = async (path: LearningPath) => {
+    const enrollInPath = async (path: LearningPath, switchCurrent = false) => {
+        if (enrollingPathId) return;
+        setEnrollingPathId(path.id);
+        setOperationError('');
+        setRetryPath(null);
+        setSwitchRequired(false);
         try {
-            await supabase.from('student_path_enrollments').upsert({
-                student_id: userId,
-                path_id: path.id,
-                tenant_id: tenantId,
-                current_unit_id: null,
-                started_at: new Date().toISOString(),
-            }, { onConflict: 'student_id, path_id' });
+            const { error } = await supabase.rpc('enroll_student_learning_path', {
+                p_path_id: path.id,
+                p_switch_current: switchCurrent,
+                p_reason: switchCurrent ? 'STUDENT_REQUESTED_SWITCH' : null,
+                p_student_id: null,
+            });
+            if (error) throw error;
+            await loadPathDetails(path.id);
             setEnrolledPathId(path.id);
             setSelectedPath(path);
-            await loadPathDetails(path.id);
         } catch (err) {
             console.error('enrollInPath error:', err);
+            const requiresSwitch = String((err as any)?.message || '').toLowerCase().includes('active_path_switch_required');
+            setOperationError(requiresSwitch
+                ? 'Você já está em outra trilha. A troca preserva todo o histórico já conquistado.'
+                : 'Não foi possível iniciar esta trilha. Nenhuma matrícula foi alterada.');
+            setRetryPath(path);
+            setSwitchRequired(requiresSwitch);
+        } finally {
+            setEnrollingPathId(null);
         }
     };
 
-    const handleActivityComplete = async (score: number) => {
-        if (activeActivity) {
-            setProgress(prev => ({ ...prev, [activeActivity.id]: { status: 'COMPLETED', score } }));
-        }
+    const handleActivityComplete = async (_score: number) => {
         setActiveActivity(null);
-        // Recarrega XP, ofensiva, vidas e ranking da liga (barra de status ao vivo)
-        loadGamification();
+        // A próxima atividade estava deliberadamente sem conteúdo enquanto
+        // bloqueada. Recarregue o runtime sanitizado antes de liberar o novo nó;
+        // uma atualização apenas visual abriria a etapa seguinte com content=null.
+        if (selectedPath) {
+            try {
+                await loadPathDetails(selectedPath.id);
+                setOperationError('');
+            } catch (error) {
+                console.error('learning path refresh after completion failed:', error);
+                setOperationError('A atividade foi registrada, mas a próxima etapa ainda não pôde ser carregada. Atualize a trilha para continuar.');
+            }
+        }
+        await loadGamification();
     };
 
     if (loading) {
@@ -247,7 +278,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
 
         return (
             <div className="bg-gradient-to-b from-violet-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
-                <StreakModal userId={userId} streak={gami.streak} />
+                <StreakModal userId={userId} streak={gami.streak} practicedToday={gami.practicedToday} />
                 {/* Barra de status estilo Duolingo: ofensiva · XP · vidas */}
                 <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-6 px-3 sm:px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm">
                     {/* Ofensiva */}
@@ -306,7 +337,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     <div className="mt-5 relative">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-bold uppercase tracking-widest opacity-80 flex items-center gap-1">
-                                <Trophy size={12} /> {completedCount * 10} XP
+                                <Trophy size={12} /> {completedCount} atividade{completedCount === 1 ? '' : 's'} concluída{completedCount === 1 ? '' : 's'}
                             </span>
                             <span className="text-xs font-black">{completedCount}/{totalCount} · {overallProgress}%</span>
                         </div>
@@ -320,6 +351,30 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         </div>
                     </div>
                 </div>
+
+                {operationError && (
+                    <div role="alert" className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100 sm:mx-6">
+                        <div className="flex items-start gap-3">
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-black">{operationError}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOperationError('');
+                                        void loadPathDetails(selectedPath.id).catch((error) => {
+                                            console.error('learning path manual refresh failed:', error);
+                                            setOperationError('A trilha ainda não pôde ser atualizada. Sua conclusão continua salva; tente novamente em instantes.');
+                                        });
+                                    }}
+                                    className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
+                                >
+                                    <RefreshCw size={13} /> Atualizar trilha
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* TRILHA */}
                 <div className="px-4 py-5 sm:py-8 sm:px-8 max-w-sm sm:max-w-md mx-auto">
@@ -392,6 +447,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                                             : `0 5px 0 ${meta.solid}cc, 0 5px 0 rgba(0,0,0,0.15)`,
                                                     }}
                                                     title={a.title}
+                                                    aria-label={done ? `Revisar ${a.title}` : locked ? `${a.title} bloqueada` : `Abrir ${a.title}`}
                                                 >
                                                     {done ? (
                                                         <Check size={28} className="text-white" strokeWidth={3.5} />
@@ -492,6 +548,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         userId={userId}
                         wolfieConfig={wolfieConfig}
                         hearts={gami.hearts}
+                        reviewOnly={progress[activeActivity.id]?.status === 'COMPLETED'}
                         onHeartsChange={(h) => setGami(g => ({ ...g, hearts: h }))}
                         onComplete={handleActivityComplete}
                         onClose={() => setActiveActivity(null)}
@@ -506,7 +563,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     // ════════════════════════════════════════════════════════════
     return (
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
-            <StreakModal userId={userId} streak={gami.streak} />
+            <StreakModal userId={userId} streak={gami.streak} practicedToday={gami.practicedToday} />
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
                 <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
                     <Target size={20} className="text-violet-600 dark:text-violet-400" />
@@ -516,6 +573,37 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     <p className="text-[10px] text-slate-400 uppercase tracking-widest">{paths.length} trilhas disponíveis</p>
                 </div>
             </div>
+
+            {operationError && (
+                <div role="alert" className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100 sm:mx-6">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-black">{operationError}</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {retryPath && !switchRequired && (
+                                    <button type="button" onClick={() => void enrollInPath(retryPath)} disabled={!!enrollingPathId} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700 disabled:opacity-50">
+                                        <RefreshCw size={13} className={enrollingPathId ? 'animate-spin' : ''} /> Tentar novamente
+                                    </button>
+                                )}
+                                {!retryPath && (
+                                    <button type="button" onClick={() => void loadPaths()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700 disabled:opacity-50">
+                                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Tentar novamente
+                                    </button>
+                                )}
+                                {retryPath && switchRequired && (
+                                    <button type="button" onClick={() => void enrollInPath(retryPath, true)} disabled={!!enrollingPathId} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:opacity-50">
+                                        <RefreshCw size={13} className={enrollingPathId ? 'animate-spin' : ''} /> Trocar de trilha
+                                    </button>
+                                )}
+                                <button type="button" onClick={() => { setOperationError(''); setRetryPath(null); setSwitchRequired(false); }} className="rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/30">
+                                    Agora não
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {paths.length === 0 ? (
@@ -533,12 +621,14 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         return (
                             <button
                                 key={path.id}
-                                onClick={() => isEnrolled ? (setSelectedPath(path), loadPathDetails(path.id)) : enrollInPath(path)}
+                                onClick={() => isEnrolled ? void openEnrolledPath(path) : void enrollInPath(path)}
+                                disabled={!!enrollingPathId}
+                                aria-busy={enrollingPathId === path.id}
                                 className={`text-left rounded-2xl border-2 transition-all p-4 sm:p-5 hover:shadow-lg hover:-translate-y-0.5 ${
                                     isEnrolled
                                         ? 'border-violet-500 dark:border-violet-400'
                                         : 'border-slate-100 dark:border-slate-800 hover:border-violet-200 dark:hover:border-violet-700'
-                                }`}
+                                } disabled:cursor-wait disabled:opacity-60`}
                             >
                                 <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${meta.color} text-white flex items-center justify-center mb-3`} style={{ boxShadow: `0 4px 0 ${meta.solid}99` }}>
                                     <Icon size={20} />
@@ -555,7 +645,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                 <div className="flex items-center justify-between mt-3 text-[10px] text-slate-400">
                                     <span>~{path.estimated_hours}h totais</span>
                                     <span className="text-violet-500 font-bold flex items-center gap-1">
-                                        {isEnrolled ? 'Continuar' : 'Iniciar'} <ChevronRight size={12} />
+                                        {enrollingPathId === path.id ? 'Iniciando...' : isEnrolled ? 'Continuar' : 'Iniciar'} <ChevronRight size={12} />
                                     </span>
                                 </div>
                             </button>

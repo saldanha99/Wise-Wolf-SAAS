@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Brain, Check, X, RefreshCw, Loader2, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle, Brain, Check, X, RefreshCw, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -17,19 +17,6 @@ interface ReviewItem {
     next_review_at: string;
 }
 
-// Spaced Repetition: intervalos progressivos quando o aluno acerta
-// 1d → 3d → 7d → 14d → 30d → 60d → 120d
-const NEXT_INTERVAL = (currentDays: number, correct: boolean): number => {
-    if (!correct) return 1; // reseta
-    if (currentDays >= 60) return 120;
-    if (currentDays >= 30) return 60;
-    if (currentDays >= 14) return 30;
-    if (currentDays >= 7) return 14;
-    if (currentDays >= 3) return 7;
-    if (currentDays >= 1) return 3;
-    return 1;
-};
-
 const VocabReviewCard: React.FC<Props> = ({ userId }) => {
     const [loading, setLoading] = useState(true);
     const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -37,6 +24,10 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
     const [flipped, setFlipped] = useState(false);
     const [sessionDone, setSessionDone] = useState(false);
     const [stats, setStats] = useState({ correct: 0, wrong: 0 });
+    const [reviewing, setReviewing] = useState(false);
+    const [actionError, setActionError] = useState('');
+    const [loadError, setLoadError] = useState('');
+    const requestKeys = useRef(new Map<string, string>());
 
     useEffect(() => {
         if (userId) load();
@@ -44,17 +35,20 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
 
     const load = async () => {
         setLoading(true);
+        setLoadError('');
         try {
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from('student_vocab_reviews')
                 .select('*')
                 .eq('student_id', userId)
                 .lte('next_review_at', new Date().toISOString())
                 .order('next_review_at', { ascending: true })
                 .limit(15);
+            if (error) throw error;
             setReviews(data || []);
         } catch (err) {
             console.error('VocabReview load:', err);
+            setLoadError('Não foi possível carregar sua revisão espaçada agora.');
         } finally {
             setLoading(false);
         }
@@ -62,22 +56,32 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
 
     const review = async (correct: boolean) => {
         const item = reviews[idx];
-        if (!item) return;
-
-        const newInterval = NEXT_INTERVAL(item.interval_days, correct);
-        const nextDate = new Date(Date.now() + newInterval * 24 * 60 * 60 * 1000);
+        if (!item || reviewing) return;
+        setReviewing(true);
+        setActionError('');
+        let stableRequestKey = requestKeys.current.get(item.id);
+        if (!stableRequestKey) {
+            stableRequestKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `vocab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            requestKeys.current.set(item.id, stableRequestKey);
+        }
 
         try {
-            await supabase.from('student_vocab_reviews').update({
-                interval_days: newInterval,
-                consecutive_correct: correct ? item.consecutive_correct + 1 : 0,
-                total_reviews: item.total_reviews + 1,
-                last_reviewed_at: new Date().toISOString(),
-                next_review_at: nextDate.toISOString(),
-            }).eq('id', item.id);
+            const { error } = await supabase.rpc('submit_student_vocab_review', {
+                p_review_id: item.id,
+                p_correct: correct,
+                p_request_key: stableRequestKey,
+            });
+            if (error) throw error;
         } catch (err) {
             console.error('Review update error:', err);
+            setActionError('Não foi possível salvar esta revisão. Sua resposta continua aqui; tente novamente.');
+            setReviewing(false);
+            return;
         }
+        requestKeys.current.delete(item.id);
+        setReviewing(false);
 
         setStats(s => ({ ...s, [correct ? 'correct' : 'wrong']: s[correct ? 'correct' : 'wrong'] + 1 }));
 
@@ -90,7 +94,35 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
     };
 
     if (loading) {
-        return null; // silenciosamente nada
+        return (
+            <div role="status" aria-live="polite" className="overflow-hidden rounded-[2rem] border border-amber-200 bg-brand-surface shadow-sm dark:border-amber-800/30">
+                <div className="flex items-center gap-3 border-b border-brand-border bg-amber-50 p-5 dark:bg-amber-900/10">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300"><Loader2 className="animate-spin" size={19} /></span>
+                    <div>
+                        <p className="text-sm font-black text-brand-text">Preparando sua revisão</p>
+                        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-brand-muted">Buscando palavras no momento certo</p>
+                    </div>
+                </div>
+                <span className="sr-only">Carregando revisão de vocabulário</span>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div role="alert" className="flex flex-col gap-3 rounded-[2rem] border border-amber-200 bg-amber-50 p-5 text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                    <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <div>
+                        <p className="text-sm font-black">Sua revisão está segura.</p>
+                        <p className="mt-1 text-xs font-medium">{loadError}</p>
+                    </div>
+                </div>
+                <button type="button" onClick={() => void load()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700">
+                    <RefreshCw size={13} /> Tentar novamente
+                </button>
+            </div>
+        );
     }
 
     if (reviews.length === 0) {
@@ -143,9 +175,11 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
             </div>
 
             <div className="p-6">
-                <div
+                <button
+                    type="button"
                     onClick={() => setFlipped(f => !f)}
-                    className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-100 dark:border-amber-800/30 rounded-2xl p-8 min-h-[200px] flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
+                    aria-pressed={flipped}
+                    className="flex min-h-[200px] w-full items-center justify-center rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50 to-orange-50 p-8 text-center transition-all hover:shadow-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-200 motion-reduce:transition-none dark:border-amber-800/30 dark:from-amber-900/20 dark:to-orange-900/20"
                 >
                     {!flipped ? (
                         <div className="text-center">
@@ -162,28 +196,33 @@ const VocabReviewCard: React.FC<Props> = ({ userId }) => {
                             )}
                         </div>
                     )}
-                </div>
+                </button>
 
                 {flipped && (
-                    <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div className="mt-4">
+                        {actionError && <p role="alert" className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{actionError}</p>}
+                        <div className="grid grid-cols-2 gap-3">
                         <button
-                            onClick={() => review(false)}
+                            onClick={() => void review(false)}
+                            disabled={reviewing}
                             className="py-3 rounded-xl font-bold text-sm border-2 border-rose-200 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors flex items-center justify-center gap-2"
                         >
-                            <X size={14} /> Errei
+                            {reviewing ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />} Errei
                         </button>
                         <button
-                            onClick={() => review(true)}
+                            onClick={() => void review(true)}
+                            disabled={reviewing}
                             className="py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
                         >
-                            <Check size={14} /> Acertei
+                            {reviewing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Acertei
                         </button>
+                        </div>
                     </div>
                 )}
 
                 {!flipped && (
                     <p className="text-center text-xs text-slate-400 mt-4">
-                        Próximo intervalo se acertar: {NEXT_INTERVAL(item.interval_days, true)}d
+                        O próximo intervalo será calculado com segurança após sua resposta.
                     </p>
                 )}
             </div>

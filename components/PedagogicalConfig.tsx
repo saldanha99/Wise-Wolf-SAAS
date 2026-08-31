@@ -3,7 +3,7 @@ import { Search, RefreshCw, Upload, FileText, Trash2, Users, ChevronRight, BookO
 import { supabase } from '../lib/supabase';
 import { User, UserRole } from '../types';
 import confetti from 'canvas-confetti';
-import { PEDAGOGICAL_BOOKS, PROFILE_SAFE_COLS } from '../constants';
+import { PROFILE_SAFE_COLS } from '../constants';
 import TeacherPedagogicalModal from './TeacherPedagogicalModal';
 import MaterialsLibrary from './MaterialsLibrary';
 

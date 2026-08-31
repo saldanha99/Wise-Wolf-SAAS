@@ -7,6 +7,7 @@ import {
 import {
   type BillingStatus,
   type OpenStudentPaymentRow,
+  resolveDisplayedStreak,
   resolveStudentAccess,
   resolveStudentBilling,
   type StudentAccess,
@@ -35,6 +36,7 @@ const profileColumns = [
   "xp",
   "level",
   "streak_count",
+  "last_streak_date",
   "last_activity",
   "wolfie_settings",
   "english_for",
@@ -59,6 +61,7 @@ interface StudentProfile {
   xp: number | null;
   level: number | null;
   streak_count: number | null;
+  last_streak_date: string | null;
   last_activity: string | null;
   monthly_fee: number | null;
   due_day: number | null;
@@ -365,52 +368,12 @@ Deno.serve(async (req: Request) => {
     const access = resolveStudentAccess(enrollmentOffers ?? [], user.id);
 
     const now = new Date();
-    let streak = profile.streak_count ?? 0;
-    let lastActivity = profile.last_activity;
-
-    // Test fixtures remain read-only so routine QA cannot create durable activity.
-    if (!profile.is_test_account && access.status === "ACTIVE") {
-      const persistedStreak = streak;
-      const previousActivity = profile.last_activity
-        ? new Date(profile.last_activity)
-        : null;
-      const today = dateInSaoPaulo(now);
-      const previousDay = previousActivity
-        ? dateInSaoPaulo(previousActivity)
-        : null;
-
-      if (previousDay !== today) {
-        if (previousDay) {
-          const todayUtc = new Date(`${today}T12:00:00.000Z`);
-          const previousUtc = new Date(`${previousDay}T12:00:00.000Z`);
-          const dayDifference = Math.round(
-            (todayUtc.getTime() - previousUtc.getTime()) / 86_400_000,
-          );
-          streak = dayDifference === 1 ? streak + 1 : 1;
-        } else {
-          streak = 1;
-        }
-      }
-
-      const activityTimestamp = now.toISOString();
-      const { error: activityError } = await supabase
-        .from("profiles")
-        .update({
-          streak_count: streak,
-          last_activity: activityTimestamp,
-        })
-        .eq("id", user.id)
-        .eq("tenant_id", tenantId)
-        .eq("role", "STUDENT");
-
-      if (activityError) {
-        streak = persistedStreak;
-      } else {
-        lastActivity = activityTimestamp;
-      }
-    }
-
     const businessDate = dateInSaoPaulo(now);
+    const streak = resolveDisplayedStreak(
+      profile.streak_count ?? 0,
+      profile.last_streak_date,
+      businessDate,
+    );
     const { data: paymentData, error: paymentError } = await supabase
       .from("student_payments")
       .select("due_date, status")
@@ -448,7 +411,7 @@ Deno.serve(async (req: Request) => {
       profile: {
         ...publicProfile,
         streak_count: streak,
-        last_activity: lastActivity,
+        last_activity: profile.last_activity,
       },
       gamification: {
         xp: profile.xp ?? 0,

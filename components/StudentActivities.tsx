@@ -1,18 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, MessageSquare, HelpCircle, Mic, Sparkles, CheckCircle, RefreshCw, Lock, AlertCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    AlertCircle,
+    BookOpen,
+    CheckCircle,
+    ChevronRight,
+    HelpCircle,
+    Lock,
+    Mic,
+    RefreshCw,
+    Sparkles,
+} from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ActivityGenerationError, generateActivities } from '../services/geminiService';
+import ComplementaryActivityPlayer, {
+    type ComplementaryActivity,
+    type ComplementaryActivityEvidence,
+    type ComplementaryActivitySubmissionResult,
+} from './ComplementaryActivityPlayer';
 
 interface StudentActivitiesProps {
     userId: string;
     tenantId?: string;
 }
 
+interface StudentActivity extends ComplementaryActivity {
+    student_id: string;
+    tenant_id: string;
+    difficulty?: string | null;
+    status: 'PENDING' | 'COMPLETED';
+    completed_at?: string | null;
+    created_at?: string;
+    generated_by_ai?: boolean;
+}
+
+interface PendingGenerationRequest {
+    requestKey: string;
+}
+
 const TYPE_CONFIG = {
-    reading: { icon: BookOpen, label: 'Leitura', color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-100 dark:border-blue-800/30', badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-    grammar: { icon: BookOpen, label: 'Gramática', color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-100 dark:border-emerald-800/30', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
-    quiz: { icon: HelpCircle, label: 'Quiz', color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-100 dark:border-amber-800/30', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
-    conversation: { icon: Mic, label: 'Conversação', color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-900/20', border: 'border-violet-100 dark:border-violet-800/30', badge: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
+    reading: { icon: BookOpen, label: 'Leitura', color: 'text-sky-700', bg: 'bg-sky-50 dark:bg-sky-950/25', border: 'border-sky-200 dark:border-sky-900/40', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200' },
+    grammar: { icon: Sparkles, label: 'Gramática', color: 'text-emerald-700', bg: 'bg-emerald-50 dark:bg-emerald-950/25', border: 'border-emerald-200 dark:border-emerald-900/40', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' },
+    quiz: { icon: HelpCircle, label: 'Múltipla escolha', color: 'text-amber-700', bg: 'bg-amber-50 dark:bg-amber-950/25', border: 'border-amber-200 dark:border-amber-900/40', badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' },
+    conversation: { icon: Mic, label: 'Conversação', color: 'text-violet-700', bg: 'bg-violet-50 dark:bg-violet-950/25', border: 'border-violet-200 dark:border-violet-900/40', badge: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200' },
 };
 
 const DIFF_LABEL: Record<string, string> = {
@@ -21,188 +50,210 @@ const DIFF_LABEL: Record<string, string> = {
     ADVANCED: 'Avançado',
 };
 
-const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId }) => {
-    const [activities, setActivities] = useState<any[]>([]);
+const requestKey = (): string => {
+    if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') {
+        const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+    throw new ActivityGenerationError(
+        'Este navegador não oferece a segurança necessária para criar um pacote. Atualize-o e tente novamente.',
+        { code: 'SECURE_REQUEST_KEY_UNAVAILABLE', retryable: false },
+    );
+};
+
+const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
+    const [activities, setActivities] = useState<StudentActivity[]>([]);
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
-    const [expanded, setExpanded] = useState<string | null>(null);
-    const [completing, setCompleting] = useState<string | null>(null);
+    const [activeActivity, setActiveActivity] = useState<StudentActivity | null>(null);
     const [generationError, setGenerationError] = useState('');
+    const [loadError, setLoadError] = useState('');
+    const completionKeys = useRef(new Map<string, string>());
+    const pendingGeneration = useRef<PendingGenerationRequest | null>(null);
+    const generationInFlight = useRef(false);
 
-    useEffect(() => {
-        if (userId) fetchActivities();
-    }, [userId]);
-
-    const fetchActivities = async () => {
-        setLoading(true);
-        try {
-            const { data } = await supabase
-                .from('student_activities')
-                .select('*')
-                .eq('student_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(8);
-
-            const existing = data || [];
-            setActivities(existing);
-
-            // Auto-generate if fewer than 3 pending
-            const pending = existing.filter(a => a.status === 'PENDING');
-            if (pending.length < 3) {
-                await generateNew();
-            }
-        } catch (err) {
-            console.error('fetchActivities error:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const generateNew = async () => {
-        if (generating) return;
+    const generateNew = useCallback(async () => {
+        if (generationInFlight.current) return;
+        generationInFlight.current = true;
         setGenerating(true);
         setGenerationError('');
         try {
-            // Fetch profile + wolf intelligence
-            const [profileRes, wolfRes] = await Promise.all([
-                supabase.from('profiles').select('english_for, student_category, personality, preferred_topics, avoided_topics, short_term_goal, module').eq('id', userId).single(),
-                supabase.from('wolf_intelligence').select('accumulated_context, weak_points, recommended_approach').eq('student_id', userId).single(),
-            ]);
-
-            const profile: Record<string, any> = profileRes.data || {};
-            const wolf = wolfRes.data || undefined;
-
-            const generatedResult = await generateActivities(profile, wolf);
-            const generated = generatedResult.activities;
-
-            if (generated.length > 0) {
-                const toInsert = generated.map(a => ({
-                    student_id: userId,
-                    tenant_id: tenantId || '',
-                    type: a.type,
-                    title: a.title,
-                    description: a.description,
-                    content: a.content,
-                    difficulty: a.difficulty,
-                    xp_reward: a.xp_reward,
-                    status: 'PENDING',
-                    generated_by_ai: generatedResult.source === 'ai',
-                    category: profile.english_for || null,
-                }));
-
-                const { data: inserted, error: insertError } = await supabase
-                    .from('student_activities')
-                    .insert(toInsert)
-                    .select();
-                if (insertError) throw insertError;
-
-                if (inserted) {
-                    setActivities(prev => [...inserted, ...prev].slice(0, 8));
-                }
+            const generationRequest = pendingGeneration.current || {
+                requestKey: requestKey(),
+            };
+            pendingGeneration.current = generationRequest;
+            const generatedResult = await generateActivities(generationRequest.requestKey);
+            const saved = generatedResult.activities as StudentActivity[];
+            if (saved.length > 0) {
+                setActivities(previous => {
+                    const byId = new Map<string, StudentActivity>(previous.map(activity => [activity.id, activity]));
+                    saved.forEach(activity => byId.set(activity.id, activity));
+                    return Array.from(byId.values())
+                        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+                        .slice(0, 12);
+                });
             }
-        } catch (err) {
-            const activityError = err instanceof ActivityGenerationError ? err : null;
+            pendingGeneration.current = null;
+        } catch (error) {
+            const activityError = error instanceof ActivityGenerationError ? error : null;
+            if (!activityError?.retryable) {
+                pendingGeneration.current = null;
+            }
             setGenerationError(
                 activityError?.message
-                || 'Não foi possível salvar as novas atividades. Tente novamente.',
+                || 'Não foi possível criar seu próximo pacote. Tente novamente em instantes.',
             );
-            console.error('generateNew error', {
+            console.error('Complementary activity generation failed:', {
                 code: activityError?.code || 'ACTIVITY_SAVE_FAILED',
             });
         } finally {
+            generationInFlight.current = false;
             setGenerating(false);
         }
-    };
+    }, []);
 
-    const handleComplete = async (activity: any) => {
-        if (activity.status === 'COMPLETED' || completing) return;
-        setCompleting(activity.id);
+    const fetchActivities = useCallback(async () => {
+        setLoading(true);
+        setLoadError('');
         try {
-            await supabase
-                .from('student_activities')
-                .update({ status: 'COMPLETED', completed_at: new Date().toISOString() })
-                .eq('id', activity.id);
-
-            setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, status: 'COMPLETED' } : a));
-            setExpanded(null);
-        } catch (err) {
-            console.error('handleComplete error:', err);
+            // O runtime do servidor remove gabaritos e explicações antes de
+            // entregar o conteúdo objetivo ao navegador do aluno.
+            const { data, error } = await supabase.rpc(
+                'get_student_complementary_activities',
+                { p_limit: 12 },
+            );
+            if (error) throw error;
+            setActivities((Array.isArray(data) ? data : []) as StudentActivity[]);
+        } catch (error) {
+            console.error('Complementary activities fetch failed:', error);
+            setLoadError('Não foi possível carregar suas atividades complementares.');
         } finally {
-            setCompleting(null);
+            setLoading(false);
         }
+    }, [userId]);
+
+    useEffect(() => {
+        if (userId) void fetchActivities();
+    }, [fetchActivities, userId]);
+
+    const submitCompletion = async (evidence: ComplementaryActivityEvidence) => {
+        const activityId = evidence.activityId;
+        let stableRequestKey = completionKeys.current.get(activityId);
+        if (!stableRequestKey) {
+            stableRequestKey = requestKey();
+            completionKeys.current.set(activityId, stableRequestKey);
+        }
+
+        const { data, error } = await supabase.rpc('complete_student_complementary_activity', {
+            p_activity_id: activityId,
+            p_evidence: evidence,
+            p_request_key: stableRequestKey,
+        });
+        if (error) throw new Error('Não foi possível registrar sua atividade. Tente novamente.');
+        if (
+            !data
+            || typeof data !== 'object'
+            || data.activityId !== activityId
+            || typeof data.passed !== 'boolean'
+            || (data.status !== 'PENDING' && data.status !== 'COMPLETED')
+            || (data.passed === true && data.status !== 'COMPLETED')
+            || (data.passed === false && data.status !== 'PENDING')
+            || !Array.isArray(data.questionResults)
+        ) {
+            throw new Error('Resposta inválida ao registrar a atividade.');
+        }
+
+        const result = data as ComplementaryActivitySubmissionResult;
+        // Uma resposta pedagógica definitiva (aprovada ou não) encerra esta
+        // tentativa. Falha de rede conserva a chave para replay idempotente.
+        completionKeys.current.delete(activityId);
+        if (result.passed && result.status === 'COMPLETED') {
+            setActivities(previous => previous.map(activity => (
+                activity.id === activityId
+                    ? { ...activity, status: 'COMPLETED', completed_at: result.completedAt || evidence.completedAt }
+                    : activity
+            )));
+        }
+        return result;
     };
 
-    const pending = activities.filter(a => a.status === 'PENDING');
-    const completed = activities.filter(a => a.status === 'COMPLETED');
+    const pending = activities.filter(activity => activity.status === 'PENDING');
+    const completed = activities.filter(activity => activity.status === 'COMPLETED');
+    const canGenerate = pending.length === 0;
 
     if (loading) {
         return (
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-5 sm:p-8">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center">
-                        <Sparkles size={20} className="text-violet-600 dark:text-violet-400" />
-                    </div>
+            <div className="rounded-[2.5rem] border border-brand-border bg-brand-surface p-5 sm:p-8">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-900/30"><Sparkles size={20} /></div>
                     <div>
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm">Atividades Complementares</h3>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">Personalizadas para seu perfil</p>
+                        <h3 className="text-sm font-black text-brand-text">Atividades complementares</h3>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-brand-muted">Preparando sua prática personalizada</p>
                     </div>
                 </div>
-                <div className="flex items-center justify-center py-12 gap-3 text-slate-400">
+                <div className="flex items-center justify-center gap-3 py-12 text-brand-muted" role="status">
                     <RefreshCw className="animate-spin" size={20} />
-                    <span className="text-sm font-bold">Carregando atividades...</span>
+                    <span className="text-sm font-bold">Carregando desafios...</span>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 overflow-hidden">
-            {/* Header */}
-            <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center shrink-0">
-                        <Sparkles size={20} className="text-violet-600 dark:text-violet-400" />
-                    </div>
-                    <div className="min-w-0">
-                        <h3 className="font-black text-slate-800 dark:text-white text-sm">Atividades Complementares</h3>
-                        <p className="text-[10px] text-slate-400 uppercase tracking-widest">
-                            {pending.length} pendentes · {completed.length} concluídas
-                        </p>
-                    </div>
-                </div>
-                <button
-                    onClick={generateNew}
-                    disabled={generating}
-                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-violet-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap shrink-0"
-                >
-                    {generating ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                    {generating ? 'Gerando...' : 'Gerar Novas'}
-                </button>
-            </div>
+        <section className="overflow-hidden rounded-[2.5rem] border border-brand-border bg-brand-surface shadow-xl shadow-slate-950/5">
+            {activeActivity && (
+                <ComplementaryActivityPlayer
+                    activity={activeActivity}
+                    onClose={() => setActiveActivity(null)}
+                    onSubmit={submitCompletion}
+                />
+            )}
 
-            {/* Activities List */}
-            <div className="p-6 space-y-4">
-                {generating && activities.length === 0 && (
-                    <div className="text-center py-8">
-                        <div className="inline-flex items-center gap-3 px-6 py-3 bg-violet-50 dark:bg-violet-900/20 rounded-2xl border border-violet-100 dark:border-violet-800/30">
-                            <RefreshCw size={16} className="animate-spin text-violet-500" />
-                            <span className="text-sm font-bold text-violet-600 dark:text-violet-400">A IA está criando atividades personalizadas para você...</span>
+            <header className="border-b border-brand-border bg-gradient-to-r from-violet-50 via-brand-surface to-indigo-50 p-5 dark:from-violet-950/30 dark:via-brand-surface dark:to-indigo-950/30 sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-500/20">
+                            <Sparkles size={21} aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="text-base font-black text-brand-text">Laboratório de prática</h3>
+                            <p className="mt-0.5 text-xs font-medium text-brand-muted">
+                                Desafios personalizados com execução, reflexão e feedback — não apenas um botão de concluir.
+                            </p>
                         </div>
                     </div>
-                )}
+                    <button
+                        type="button"
+                        onClick={() => void generateNew()}
+                        disabled={generating || !canGenerate}
+                        title={!canGenerate ? 'Conclua as atividades do pacote atual antes de criar outro.' : undefined}
+                        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                        {generating ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                        {generating ? 'Criando...' : canGenerate ? 'Criar novo pacote' : 'Pacote em andamento'}
+                    </button>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wider">
+                    <span className="rounded-full bg-violet-100 px-3 py-1.5 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">{pending.length} pendentes</span>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">{completed.length} concluídas</span>
+                </div>
+            </header>
 
-                {generationError && !generating && (
-                    <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-200">
+            <div className="space-y-4 p-4 sm:p-6">
+                {(loadError || generationError) && (
+                    <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-100">
                         <div className="flex items-start gap-3">
-                            <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-                            <div className="min-w-0">
-                                <p className="text-sm font-black">As atividades não carregaram desta vez.</p>
-                                <p className="mt-1 text-xs font-medium">{generationError}</p>
-                                <button
-                                    type="button"
-                                    onClick={() => void generateNew()}
-                                    className="mt-3 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700"
-                                >
+                            <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                            <div>
+                                <p className="text-sm font-black">A prática não carregou como esperado.</p>
+                                <p className="mt-1 text-xs font-medium">{loadError || generationError}</p>
+                                <button type="button" onClick={() => void (loadError ? fetchActivities() : generateNew())} className="mt-3 rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-amber-700">
                                     Tentar novamente
                                 </button>
                             </div>
@@ -210,100 +261,72 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId, tenantId 
                     </div>
                 )}
 
-                {pending.length === 0 && !generating && !generationError && (
-                    <div className="text-center py-8 text-slate-400">
-                        <CheckCircle size={32} className="mx-auto mb-3 text-emerald-400" />
-                        <p className="text-sm font-bold">Todas as atividades concluídas!</p>
-                        <p className="text-xs mt-1">Clique em "Gerar Novas" para receber mais desafios.</p>
+                {generating && activities.length === 0 && (
+                    <div className="flex items-center justify-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-8 text-center text-violet-800 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-200" role="status">
+                        <RefreshCw size={17} className="animate-spin" />
+                        <span className="text-sm font-bold">Criando desafios alinhados ao seu momento...</span>
                     </div>
                 )}
 
-                {/* Pending activities */}
-                {pending.map(activity => {
-                    const cfg = TYPE_CONFIG[activity.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.reading;
-                    const Icon = cfg.icon;
-                    const isOpen = expanded === activity.id;
+                {pending.length === 0 && !generating && !loadError && (
+                    <div className="rounded-3xl border border-dashed border-emerald-300 bg-emerald-50 px-5 py-10 text-center dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                        <CheckCircle size={34} className="mx-auto text-emerald-600" />
+                        <p className="mt-3 text-sm font-black text-brand-text">Pacote concluído!</p>
+                        <p className="mt-1 text-xs text-brand-muted">Crie um novo pacote quando quiser continuar praticando.</p>
+                    </div>
+                )}
 
-                    return (
-                        <div
-                            key={activity.id}
-                            className={`rounded-2xl border ${cfg.border} ${cfg.bg} transition-all duration-300`}
-                        >
+                <div className="grid gap-3 lg:grid-cols-2">
+                    {pending.map(activity => {
+                        const cfg = TYPE_CONFIG[activity.type] || TYPE_CONFIG.reading;
+                        const Icon = cfg.icon;
+                        return (
                             <button
-                                onClick={() => setExpanded(isOpen ? null : activity.id)}
-                                className="w-full p-4 flex items-center gap-4 text-left"
+                                key={activity.id}
+                                type="button"
+                                onClick={() => setActiveActivity(activity)}
+                                className={`group flex min-h-32 w-full items-center gap-4 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg motion-reduce:transform-none ${cfg.border} ${cfg.bg}`}
                             >
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-white dark:bg-slate-800 shadow-sm shrink-0`}>
-                                    <Icon size={18} className={cfg.color} />
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand-surface shadow-sm">
+                                    <Icon size={20} className={cfg.color} aria-hidden="true" />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${cfg.badge}`}>
-                                            {cfg.label}
-                                        </span>
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">{DIFF_LABEL[activity.difficulty] || activity.difficulty}</span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                                        <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${cfg.badge}`}>{cfg.label}</span>
+                                        {activity.difficulty && <span className="text-[9px] font-bold uppercase text-brand-muted">{DIFF_LABEL[activity.difficulty] || activity.difficulty}</span>}
                                     </div>
-                                    <p className="text-sm font-black text-slate-800 dark:text-white truncate">{activity.title}</p>
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">{activity.description}</p>
+                                    <p className="text-sm font-black text-brand-text">{activity.title}</p>
+                                    <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-relaxed text-brand-muted">{activity.description}</p>
                                 </div>
-                                <div className="shrink-0 flex items-center gap-2">
-                                    <div className="flex items-center gap-1 px-2 py-1 bg-white/70 dark:bg-slate-800/70 rounded-lg">
-                                        <span className="text-[10px] font-black text-slate-500">Prática livre</span>
-                                    </div>
+                                <div className="flex shrink-0 items-center gap-1 text-[10px] font-black uppercase tracking-wider text-violet-600">
+                                    Começar <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
                                 </div>
                             </button>
+                        );
+                    })}
+                </div>
 
-                            {isOpen && (
-                                <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-200">
-                                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 mb-3">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Como fazer</p>
-                                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{activity.content}</p>
-                                    </div>
-                                    <button
-                                        onClick={() => handleComplete(activity)}
-                                        disabled={!!completing}
-                                        className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-sm ${cfg.color} bg-white dark:bg-slate-800 border ${cfg.border} hover:opacity-80 disabled:opacity-50`}
-                                    >
-                                        {completing === activity.id ? (
-                                            <><RefreshCw size={14} className="animate-spin" /> Registrando...</>
-                                        ) : (
-                                            <><CheckCircle size={14} /> Marcar como concluída</>
-                                        )}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-
-                {/* Completed section */}
                 {completed.length > 0 && (
-                    <div className="mt-6">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                            <CheckCircle size={12} className="text-emerald-500" /> Concluídas
+                    <div className="pt-3">
+                        <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-muted">
+                            <CheckCircle size={13} className="text-emerald-500" /> Histórico recente
                         </p>
                         <div className="space-y-2">
-                            {completed.slice(0, 3).map(activity => {
-                                const cfg = TYPE_CONFIG[activity.type as keyof typeof TYPE_CONFIG] || TYPE_CONFIG.reading;
-                                const Icon = cfg.icon;
-                                return (
-                                    <div key={activity.id} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl opacity-60">
-                                        <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                                            <CheckCircle size={14} className="text-emerald-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 truncate">{activity.title}</p>
-                                            <p className="text-[9px] text-slate-400">Prática registrada</p>
-                                        </div>
-                                        <Lock size={12} className="text-slate-300 shrink-0" />
+                            {completed.slice(0, 4).map(activity => (
+                                <div key={activity.id} className="flex items-center gap-3 rounded-xl border border-brand-border bg-brand-surface-2/60 p-3">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30"><CheckCircle size={14} /></div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-xs font-bold text-brand-text">{activity.title}</p>
+                                        <p className="text-[9px] font-bold uppercase tracking-wider text-brand-muted">Prática com evidência registrada</p>
                                     </div>
-                                );
-                            })}
+                                    <Lock size={12} className="shrink-0 text-brand-muted" aria-label="Registro concluído" />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
             </div>
-        </div>
+        </section>
     );
 };
 

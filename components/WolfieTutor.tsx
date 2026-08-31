@@ -79,6 +79,14 @@ import { resolveScene } from "../src/components/wolfie/visuals/resolveScene";
 import { WolfieScenarioStage } from "../src/components/wolfie/visuals/WolfieScenarioStage";
 import { WolfieSessionHUD } from "../src/components/wolfie/visuals/WolfieSessionHUD";
 import { resolveMeetingVisualState } from "../src/components/wolfie/visuals/visualStateResolver";
+import {
+  isWolfieTutorCloseBlocked,
+  registerConfirmedWolfieTurn,
+  resolveWolfieTutorSessionSummary,
+  type WolfieTutorSessionSummary,
+} from "./wolfieTutorSession";
+
+export type { WolfieTutorSessionSummary } from "./wolfieTutorSession";
 
 // ============================================================
 // TYPES
@@ -103,7 +111,7 @@ interface WolfieTutorProps {
   experienceUniverse?: string;
   experienceAudiences?: string[];
   hubContext?: WolfieHubContext;
-  onClose?: () => void;
+  onClose?: (summary: WolfieTutorSessionSummary) => void;
 }
 
 interface CorrectionData {
@@ -710,6 +718,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   const audioStreamRequestVersionRef = useRef(0);
   const isMountedRef = useRef(true);
   const realtimeTurnIdsRef = useRef(new Set<string>());
+  const confirmedSessionTurnIdsRef = useRef(new Set<string>());
+  const confirmedSessionTurnsRef = useRef(0);
   const realtimeConversationIdRef = useRef<string | null>(null);
   const realtimePersistenceRef = useRef<Promise<void>>(Promise.resolve());
   const realtimePostTurnGateRef = useRef(
@@ -733,6 +743,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     topic,
     targetSkill,
   ].filter(Boolean).join("\n");
+
+  const recordConfirmedSessionTurn = useCallback((
+    turnId: string,
+    substantive: boolean,
+  ) => {
+    if (
+      !registerConfirmedWolfieTurn(
+        confirmedSessionTurnIdsRef.current,
+        turnId,
+        substantive,
+      )
+    ) return;
+
+    confirmedSessionTurnsRef.current += 1;
+    setTurnCount((current) => current + 1);
+  }, []);
 
   const publishRealtimePostTurnGate = useCallback(
     (unmuteWhenOpen = true) => {
@@ -921,6 +947,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       // deste turno atualizar a sessão Realtime. Isso evita que o aluno fale
       // sobre um checkpoint antigo enquanto o backend ainda decide retry/etapa.
       const timestamp = new Date(turn.completedAt);
+      const realtimeTurnIsSubstantive = isPedagogicallySubstantiveTurn(
+        classifyWolfieLearnerTurn(
+          turn.userTranscript,
+          turn.inputMethod === "audio_transcription",
+        ),
+        activePedagogicalTask,
+      );
       setMessages((current) => [
         ...current,
         {
@@ -936,17 +969,6 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           timestamp,
         },
       ]);
-      if (
-        isPedagogicallySubstantiveTurn(
-          classifyWolfieLearnerTurn(
-            turn.userTranscript,
-            turn.inputMethod === "audio_transcription",
-          ),
-          activePedagogicalTask,
-        )
-      ) {
-        setTurnCount((current) => current + 1);
-      }
       setAssistantLanguage(
         detectSpeechLanguage(turn.assistantTranscript, "en"),
       );
@@ -1042,6 +1064,12 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           const guidanceApplied = await applyRealtimeGuidance(payload);
           if (!guidanceApplied) {
             throw new Error("REALTIME_GUIDANCE_ACK_FAILED");
+          }
+          if (analysisStatus === "completed") {
+            recordConfirmedSessionTurn(
+              `realtime:${turn.id}`,
+              realtimeTurnIsSubstantive,
+            );
           }
           const currentStage = firstString(
             payload,
@@ -1139,6 +1167,7 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       detachTransportSession,
       finishRealtimePostTurnGate,
       markRealtimeConfirmationPending,
+      recordConfirmedSessionTurn,
       resetRealtimeGate,
     ],
   );
@@ -1276,6 +1305,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
         if (analysisStatus === "unavailable") {
           throw new Error("REALTIME_ANALYSIS_UNAVAILABLE");
         }
+        if (analysisStatus !== "completed") {
+          throw new Error("REALTIME_ANALYSIS_RETRY_REQUIRED");
+        }
         const guidanceApplied = await applyRealtimeGuidance(payload);
         if (!guidanceApplied && isRealtimeMode) {
           throw new Error("REALTIME_GUIDANCE_ACK_FAILED");
@@ -1290,6 +1322,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
           payload,
           "scenarioStatus",
           "scenario_status",
+        );
+        recordConfirmedSessionTurn(
+          `realtime:${clientTurnId}`,
+          isPedagogicallySubstantiveTurn(
+            classifyWolfieLearnerTurn(confirmedTranscript, true),
+            activePedagogicalTask,
+          ),
         );
         setPendingTranscriptReview(null);
         if (currentStage === "completed" || scenarioStatus === "completed") {
@@ -1353,9 +1392,11 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
     },
     [
       applyRealtimeGuidance,
+      activePedagogicalTask,
       detachTransportSession,
       isRealtimeMode,
       markRealtimeConfirmationPending,
+      recordConfirmedSessionTurn,
       realtime.disconnect,
       resetRealtimeGate,
     ],
@@ -3490,20 +3531,22 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-      if (
+      recordConfirmedSessionTurn(
+        `classic:${classicClientTurnId}`,
         isPedagogicallySubstantiveTurn(
           learnerTurnKind,
           activePedagogicalTask,
-        )
-      ) {
-        setTurnCount((prev) => prev + 1);
-      }
+        ),
+      );
       const nextConversationId = firstString(
         responsePayload,
         "conversationId",
         "conversation_id",
       );
-      if (nextConversationId) setConversationId(nextConversationId);
+      if (nextConversationId) {
+        realtimeConversationIdRef.current = nextConversationId;
+        setConversationId(nextConversationId);
+      }
       if (hubModeRequested) {
         void Promise.resolve(hubContext?.onUsageCommitted?.()).catch((cause) => {
           console.warn("[WolfieTutor] Falha ao atualizar o consumo do Hub:", cause);
@@ -3714,13 +3757,42 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
   };
 
   const handleClose = () => {
+    const processingPending = isWolfieTutorCloseBlocked({
+      callState: state,
+      classicRequestPending: isProcessingRef.current,
+      realtimePersistencePending:
+        realtimePostTurnGateIsBlocked(realtimePostTurnGateRef.current) ||
+        isRealtimePostTurnPending,
+      confirmationPending:
+        isConfirmingRealtimeTranscriptRef.current ||
+        isConfirmingRealtimeTranscript,
+      transcriptReviewPending: pendingTranscriptReview !== null,
+    });
+
+    if (processingPending) {
+      setError(
+        "Aguarde o Wolfie confirmar este turno antes de fechar a conversa.",
+      );
+      window.setTimeout(() => {
+        if (isMountedRef.current) setError(null);
+      }, 3500);
+      return;
+    }
+
+    const summary = resolveWolfieTutorSessionSummary({
+      confirmedLearnerTurns: confirmedSessionTurnsRef.current,
+      processingPending,
+      retryRequired: turnGuidance.retryRequired,
+      sessionScore: turnGuidance.sessionScore,
+      conversationId: realtimeConversationIdRef.current || conversationId,
+    });
     invalidatePendingRequest();
     resetRealtimeGate();
     realtime.disconnect(false);
     stopSpeaking();
     abortRecognition();
     setPendingTranscriptReview(null);
-    onClose?.();
+    onClose?.(summary);
   };
 
   const disputePendingCorrection = async () => {
@@ -3830,6 +3902,8 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       setConversationId(hubModeRequested ? crypto.randomUUID() : null);
       realtimeConversationIdRef.current = null;
       realtimeTurnIdsRef.current.clear();
+      confirmedSessionTurnIdsRef.current.clear();
+      confirmedSessionTurnsRef.current = 0;
       setTurnCount(0);
       setCorrection(null);
       setTranslation(null);

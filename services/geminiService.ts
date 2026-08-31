@@ -6,17 +6,24 @@ import {
 import { supabase } from '../lib/supabase';
 
 export interface GeneratedActivity {
+    id: string;
     type: 'reading' | 'grammar' | 'quiz' | 'conversation';
     title: string;
-    description: string;
-    content: string;
+    description: string | null;
+    content: Record<string, unknown>;
     difficulty: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
-    xp_reward: number;
+    status: 'PENDING' | 'COMPLETED';
+    student_id?: string;
+    tenant_id?: string;
+    completed_at?: string | null;
+    created_at?: string;
+    generated_by_ai?: boolean;
 }
 
 export interface GeneratedActivitiesResult {
     activities: GeneratedActivity[];
-    source: 'ai' | 'test_fixture_fallback';
+    source: 'server' | 'replay';
+    requestKey: string;
 }
 
 export class ActivityGenerationError extends Error {
@@ -49,8 +56,17 @@ const ACTIVITY_DIFFICULTIES = new Set<GeneratedActivity['difficulty']>([
     'INTERMEDIATE',
     'ADVANCED',
 ]);
-const RETRYABLE_FUNCTION_STATUSES = new Set([408, 425, 429]);
-const ACTIVITY_GENERATION_ATTEMPTS = 2;
+const RETRYABLE_FUNCTION_STATUSES = new Set([408, 425]);
+const STUDENT_COMPLEMENTARY_ACTION = 'student_complementary_pack';
+const FORBIDDEN_STUDENT_CONTENT_KEYS = new Set([
+    'correct',
+    'correctindex',
+    'correct_option_index',
+    'exp',
+    'explanation',
+    'explanation_pt',
+    'feedback',
+]);
 
 const asRecord = (value: unknown): UnknownRecord | null => (
     typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -58,18 +74,27 @@ const asRecord = (value: unknown): UnknownRecord | null => (
         : null
 );
 
-const extractActivityArray = (value: unknown): GeneratedActivity[] | null => {
+const containsForbiddenStudentContent = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(containsForbiddenStudentContent);
     const record = asRecord(value);
-    const candidate = Array.isArray(value)
-        ? value
-        : Array.isArray(record?.activities)
-            ? record.activities
-            : null;
-    if (!candidate || candidate.length < 4) return null;
+    if (!record) return false;
+    return Object.entries(record).some(([key, child]) => (
+        FORBIDDEN_STUDENT_CONTENT_KEYS.has(key.toLowerCase())
+        || containsForbiddenStudentContent(child)
+    ));
+};
+
+const extractSavedActivityArray = (payload: unknown): GeneratedActivity[] | null => {
+    const response = asRecord(payload);
+    const candidate = Array.isArray(response?.activities) ? response.activities : null;
+    if (!candidate || candidate.length < 1 || candidate.length > 4) return null;
 
     const parsed: GeneratedActivity[] = [];
-    for (const item of candidate.slice(0, 4)) {
+    const seenIds = new Set<string>();
+    const seenTypes = new Set<GeneratedActivity['type']>();
+    for (const item of candidate) {
         const activity = asRecord(item);
+        const id = typeof activity?.id === 'string' ? activity.id.trim() : '';
         const type = typeof activity?.type === 'string'
             ? activity.type as GeneratedActivity['type']
             : null;
@@ -77,59 +102,61 @@ const extractActivityArray = (value: unknown): GeneratedActivity[] | null => {
             ? activity.difficulty as GeneratedActivity['difficulty']
             : null;
         const title = typeof activity?.title === 'string' ? activity.title.trim() : '';
-        const description = typeof activity?.description === 'string' ? activity.description.trim() : '';
-        const content = typeof activity?.content === 'string' ? activity.content.trim() : '';
-        const xpReward = typeof activity?.xp_reward === 'number' ? activity.xp_reward : Number.NaN;
+        const description = activity?.description === null
+            ? null
+            : typeof activity?.description === 'string'
+                ? activity.description.trim()
+                : null;
+        const content = asRecord(activity?.content);
+        const status = activity?.status === 'PENDING' || activity?.status === 'COMPLETED'
+            ? activity.status
+            : null;
 
         if (
-            !type
+            !id
+            || seenIds.has(id)
+            || !type
             || !ACTIVITY_TYPES.has(type)
+            || seenTypes.has(type)
             || !difficulty
             || !ACTIVITY_DIFFICULTIES.has(difficulty)
             || !title
-            || !description
             || !content
-            || !Number.isFinite(xpReward)
+            || !status
+            || containsForbiddenStudentContent(content)
         ) {
             return null;
         }
 
+        if (typeof content === 'object') {
+            const serialized = JSON.stringify(content);
+            if (serialized.length < 20 || serialized.length > 18_000) return null;
+        }
+
         parsed.push({
+            id,
             type,
             title,
             description,
             content,
             difficulty,
-            xp_reward: Math.min(150, Math.max(30, Math.round(xpReward))),
+            status,
+            student_id: typeof activity.student_id === 'string' ? activity.student_id : undefined,
+            tenant_id: typeof activity.tenant_id === 'string' ? activity.tenant_id : undefined,
+            completed_at: typeof activity.completed_at === 'string'
+                ? activity.completed_at
+                : activity.completed_at === null
+                    ? null
+                    : undefined,
+            created_at: typeof activity.created_at === 'string' ? activity.created_at : undefined,
+            generated_by_ai: typeof activity.generated_by_ai === 'boolean'
+                ? activity.generated_by_ai
+                : undefined,
         });
+        seenIds.add(id);
+        seenTypes.add(type);
     }
     return parsed;
-};
-
-const parseActivitiesResponse = (payload: unknown): GeneratedActivity[] | null => {
-    const response = asRecord(payload);
-    const directResult = extractActivityArray(response?.result);
-    if (directResult) return directResult;
-
-    for (const rawCandidate of [response?.result, response?.raw, response?.aiText, payload]) {
-        if (typeof rawCandidate !== 'string') {
-            const parsedCandidate = extractActivityArray(rawCandidate);
-            if (parsedCandidate) return parsedCandidate;
-            continue;
-        }
-
-        const firstBracket = rawCandidate.indexOf('[');
-        const lastBracket = rawCandidate.lastIndexOf(']');
-        if (firstBracket < 0 || lastBracket <= firstBracket) continue;
-        try {
-            const parsedJson: unknown = JSON.parse(rawCandidate.slice(firstBracket, lastBracket + 1));
-            const parsedCandidate = extractActivityArray(parsedJson);
-            if (parsedCandidate) return parsedCandidate;
-        } catch {
-            // Uma resposta truncada ou com JSON inválido pode ser transitória.
-        }
-    }
-    return null;
 };
 
 const functionErrorStatus = (error: FunctionsHttpError): number | undefined => {
@@ -137,7 +164,19 @@ const functionErrorStatus = (error: FunctionsHttpError): number | undefined => {
     return typeof context?.status === 'number' ? context.status : undefined;
 };
 
-const normalizeActivityGenerationError = (error: unknown): ActivityGenerationError => {
+const functionErrorCode = async (error: FunctionsHttpError): Promise<string | null> => {
+    const context = error.context;
+    if (!(context instanceof Response)) return null;
+    try {
+        const payload = asRecord(await context.clone().json());
+        const code = payload?.code ?? payload?.error;
+        return typeof code === 'string' && code.trim() ? code.trim() : null;
+    } catch {
+        return null;
+    }
+};
+
+const normalizeActivityGenerationError = async (error: unknown): Promise<ActivityGenerationError> => {
     if (error instanceof ActivityGenerationError) return error;
     if (error instanceof FunctionsFetchError || error instanceof FunctionsRelayError) {
         return new ActivityGenerationError(
@@ -147,15 +186,27 @@ const normalizeActivityGenerationError = (error: unknown): ActivityGenerationErr
     }
     if (error instanceof FunctionsHttpError) {
         const status = functionErrorStatus(error);
-        const retryable = status === undefined
+        const providerCode = await functionErrorCode(error);
+        const retryable = providerCode === 'GENERATION_IN_PROGRESS'
+            || status === undefined
             || RETRYABLE_FUNCTION_STATUSES.has(status)
-            || status >= 500;
+            || (status >= 500 && status <= 599);
+        const message = providerCode === 'DAILY_LIMIT_REACHED'
+            ? 'Você já criou o limite de pacotes de hoje. Continue amanhã com uma nova prática.'
+            : providerCode === 'PAYMENT_REQUIRED'
+                ? 'A geração de novas atividades está pausada enquanto há uma mensalidade em atraso.'
+                : providerCode === 'GENERATION_IN_PROGRESS'
+                    ? 'Seu pacote já está sendo criado. Aguarde alguns instantes e tente novamente.'
+                    : providerCode === 'AI_DISABLED_FOR_TEST_FIXTURE'
+                        ? 'A geração por IA está desativada nesta conta de teste.'
+                        : retryable
+                            ? 'O gerador de atividades está temporariamente indisponível. Tente novamente.'
+                            : 'Não foi possível gerar atividades para esta conta.';
         return new ActivityGenerationError(
-            retryable
-                ? 'O gerador de atividades está temporariamente indisponível. Tente novamente.'
-                : 'Não foi possível gerar atividades para esta conta.',
+            message,
             {
-                code: retryable ? 'ACTIVITY_GENERATOR_UNAVAILABLE' : 'ACTIVITY_GENERATION_REJECTED',
+                code: providerCode
+                    || (retryable ? 'ACTIVITY_GENERATOR_UNAVAILABLE' : 'ACTIVITY_GENERATION_REJECTED'),
                 retryable,
                 status,
             },
@@ -167,166 +218,49 @@ const normalizeActivityGenerationError = (error: unknown): ActivityGenerationErr
     );
 };
 
-const waitBeforeActivityRetry = (): Promise<void> => (
-    new Promise(resolve => window.setTimeout(resolve, 350))
-);
-
-export const generateActivities = async (profile: {
-    english_for?: string;
-    student_category?: string;
-    personality?: string;
-    preferred_topics?: string[];
-    avoided_topics?: string[];
-    short_term_goal?: string;
-    module?: string;
-}, wolfIntelligence?: {
-    accumulated_context?: string;
-    weak_points?: string[];
-    recommended_approach?: string;
-}): Promise<GeneratedActivitiesResult> => {
-    const profileSummary = [
-        profile.english_for && `Objetivo: ${profile.english_for}`,
-        profile.student_category && `Perfil: ${profile.student_category}`,
-        profile.personality && `Estilo: ${profile.personality}`,
-        profile.preferred_topics?.length && `Tópicos preferidos: ${profile.preferred_topics.join(', ')}`,
-        profile.avoided_topics?.length && `Evitar: ${profile.avoided_topics.join(', ')}`,
-        profile.short_term_goal && `Meta curto prazo: ${profile.short_term_goal}`,
-        profile.module && `Nível atual: ${profile.module}`,
-    ].filter(Boolean).join('\n');
-
-    const wolfSummary = wolfIntelligence ? [
-        wolfIntelligence.accumulated_context && `Contexto acumulado: ${wolfIntelligence.accumulated_context}`,
-        wolfIntelligence.weak_points?.length && `Pontos a melhorar: ${wolfIntelligence.weak_points.join(', ')}`,
-        wolfIntelligence.recommended_approach && `Abordagem recomendada: ${wolfIntelligence.recommended_approach}`,
-    ].filter(Boolean).join('\n') : '';
-
-    const prompt = `Você é um especialista em pedagogia de inglês. Com base no perfil do aluno abaixo, gere EXATAMENTE 4 atividades complementares personalizadas em formato JSON.
-
-PERFIL DO ALUNO:
-${profileSummary}
-
-${wolfSummary ? `INTELIGÊNCIA WOLF (histórico das aulas):\n${wolfSummary}` : ''}
-
-Retorne APENAS um array JSON válido com 4 objetos, cada um com os campos:
-- type: "reading" | "grammar" | "quiz" | "conversation"
-- title: título curto da atividade (máx 60 chars)
-- description: o que o aluno vai praticar (máx 120 chars)
-- content: instruções detalhadas da atividade para o aluno executar (3-5 frases claras)
-- difficulty: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
-- xp_reward: número entre 30 e 150 (proporcional à dificuldade)
-
-As atividades devem ser 100% alinhadas com o perfil, variadas nos tipos e práticas para fazer sozinho.
-Responda APENAS com o JSON, sem markdown, sem explicação.`;
-
-    let lastError: ActivityGenerationError | null = null;
-    for (let attempt = 0; attempt < ACTIVITY_GENERATION_ATTEMPTS; attempt += 1) {
+export const generateActivities = async (requestKey: string): Promise<GeneratedActivitiesResult> => {
+    try {
         const { data, error } = await supabase.functions.invoke('pedagogical-content', {
-            body: { prompt, studentLevel: profile.module || 'B1' }
+            body: {
+                action: STUDENT_COMPLEMENTARY_ACTION,
+                requestKey,
+            },
         });
 
-        if (!error && asRecord(data)?.skipped === 'test_fixture') {
-            return {
-                activities: getFallbackActivities(
-                    profile.english_for || 'Inglês Geral / Conversação',
-                    profile.module || 'B1',
-                ),
-                source: 'test_fixture_fallback',
-            };
+        if (error) throw error;
+        const activities = extractSavedActivityArray(data);
+        if (!activities) {
+            throw new ActivityGenerationError(
+                'O servidor não confirmou um pacote seguro de atividades. Tente novamente.',
+                { code: 'INVALID_ACTIVITY_RESPONSE', retryable: false },
+            );
         }
-
-        try {
-            if (error) throw error;
-            const activities = parseActivitiesResponse(data);
-            if (!activities) {
-                throw new ActivityGenerationError(
-                    'O gerador devolveu uma resposta incompleta. Tente novamente.',
-                    { code: 'INVALID_ACTIVITY_RESPONSE', retryable: true },
-                );
-            }
-            return { activities, source: 'ai' };
-        } catch (generationError) {
-            lastError = normalizeActivityGenerationError(generationError);
-            const hasAnotherAttempt = attempt + 1 < ACTIVITY_GENERATION_ATTEMPTS;
-            if (!lastError.retryable || !hasAnotherAttempt) throw lastError;
-            await waitBeforeActivityRetry();
-        }
+        const response = asRecord(data);
+        return {
+            activities,
+            source: response?.replay === true || response?.idempotent === true
+                ? 'replay'
+                : 'server',
+            requestKey,
+        };
+    } catch (generationError) {
+        throw await normalizeActivityGenerationError(generationError);
     }
-
-    throw lastError || new ActivityGenerationError(
-        'Não foi possível gerar atividades agora. Tente novamente.',
-        { code: 'ACTIVITY_GENERATION_FAILED', retryable: false },
-    );
 };
 
-const getFallbackActivities = (englishFor: string, level: string): GeneratedActivity[] => {
-    const isBusiness = englishFor.includes('Business') || englishFor.includes('Empresar');
-    const isToefl = englishFor.includes('TOEFL') || englishFor.includes('IELTS');
-
-    return [
-        {
-            type: 'reading',
-            title: isBusiness ? 'Leitura: E-mail Profissional' : isToefl ? 'Leitura: Texto Acadêmico' : 'Leitura: Artigo do Dia',
-            description: 'Pratique leitura e compreensão em contexto real',
-            content: isBusiness
-                ? 'Leia um e-mail profissional em inglês e identifique: 1) O objetivo do e-mail, 2) O tom usado (formal/informal), 3) Três expressões que você pode reutilizar. Escreva uma resposta curta usando essas expressões.'
-                : 'Leia um artigo curto em inglês sobre um tema de seu interesse. Identifique 5 palavras novas, pesquise seus significados e escreva uma frase com cada uma.',
-            difficulty: level >= 'B2' ? 'ADVANCED' : 'INTERMEDIATE',
-            xp_reward: 60
-        },
-        {
-            type: 'grammar',
-            title: 'Gramática em Contexto',
-            description: 'Pratique estruturas gramaticais do seu nível',
-            content: 'Escreva 10 frases usando tempos verbais variados (presente simples, passado simples e futuro). O tema das frases deve ser relacionado ao seu dia a dia profissional ou pessoal. Revise cada frase verificando: sujeito, verbo e complemento.',
-            difficulty: 'INTERMEDIATE',
-            xp_reward: 50
-        },
-        {
-            type: 'conversation',
-            title: isBusiness ? 'Simulação: Reunião em Inglês' : 'Prática: Conversa do Cotidiano',
-            description: 'Pratique speaking com situações reais',
-            content: isBusiness
-                ? 'Grave um áudio de 2 minutos simulando a abertura de uma reunião em inglês: apresente-se, apresente a pauta e faça uma pergunta ao "cliente". Ouça e identifique pontos de melhoria.'
-                : 'Escolha um tema que você gosta (viagem, tecnologia, esporte) e grave um áudio de 1-2 minutos falando sobre ele em inglês. Foque em falar sem parar e sem traduzir mentalmente.',
-            difficulty: level >= 'B2' ? 'ADVANCED' : 'INTERMEDIATE',
-            xp_reward: 80
-        },
-        {
-            type: 'quiz',
-            title: 'Quiz: Vocabulário Temático',
-            description: 'Teste e expanda seu vocabulário',
-            content: isToefl
-                ? 'Pesquise 10 palavras acadêmicas (Academic Word List) que você ainda não domina. Para cada uma: escreva a definição em inglês, um sinônimo e uma frase de exemplo. Depois se teste: cubra as definições e tente lembrar.'
-                : 'Escolha uma área de vocabulário (cores, profissões, alimentos, viagens) e liste 15 palavras. Para cada palavra, escreva a tradução e uma frase curta. Repita em voz alta 3 vezes.',
-            difficulty: 'BEGINNER',
-            xp_reward: 40
-        }
-    ];
-};
-
-export const getPedagogicalSuggestion = async (module: string, lastContent: string) => {
-  try {
-    const prompt = `O aluno está no módulo ${module}. O último conteúdo aplicado foi: "${lastContent}".
-Retorne exatamente este JSON, sem campos adicionais:
-{"suggestion":"uma sugestão curta, em português do Brasil, com um tópico para a próxima aula e uma dica pedagógica prática"}`;
-
-    const { data, error } = await supabase.functions.invoke('pedagogical-content', {
-      body: {
-        prompt,
-        studentLevel: module,
-      }
-    });
-
-    if (error) throw error;
-    if (typeof data?.result?.suggestion === 'string' && data.result.suggestion.trim()) {
-      return data.result.suggestion.trim();
-    }
-
-    return "Dica não disponível no momento.";
-  } catch (error) {
-    console.error("Pedagogical suggestion failed:", error instanceof Error ? error.name : "UnknownError");
-    return "Sugestão indisponível no momento.";
-  }
+export const getPedagogicalSuggestion = async (module: string, _lastContent: string) => {
+  const level = module.trim().toUpperCase().match(/\b(A1|A2|B1|B2|C1|C2)\b/)?.[1]
+    || 'DEFAULT';
+  const suggestions: Record<string, string> = {
+    A1: 'Hoje, escolha cinco frases úteis da sua rotina, diga cada uma em voz alta e troque uma palavra para criar uma nova versão.',
+    A2: 'Conte em inglês algo que aconteceu ontem usando cinco frases. Depois, revise os verbos e repita a história sem ler.',
+    B1: 'Pratique explicar uma opinião em três partes: ideia principal, exemplo real e conclusão. Grave um minuto e refaça com mais clareza.',
+    B2: 'Escolha um tema do seu interesse, defenda dois pontos de vista opostos e anote conectores que deixem sua fala mais natural.',
+    C1: 'Resuma uma ideia complexa em linguagem simples e depois reconstrua o argumento com nuances, exemplos e conectores avançados.',
+    C2: 'Reformule a mesma mensagem para três contextos — informal, profissional e persuasivo — observando precisão, tom e naturalidade.',
+    DEFAULT: 'Faça uma prática curta e completa: leia algo em inglês, separe três expressões úteis e use cada uma em uma frase dita em voz alta.',
+  };
+  return suggestions[level];
 };
 
 // =============================================================

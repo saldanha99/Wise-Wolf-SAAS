@@ -10,7 +10,6 @@ import SkillsRadar from './SkillsRadar';
 import VocabReviewCard from './VocabReviewCard';
 import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
-import { PEDAGOGICAL_BOOKS } from '../constants';
 import { useStudentContext } from './contexts/StudentContext';
 import StudentAuditPanel from './StudentAuditPanel';
 import StudentAuditReminder from './StudentAuditReminder';
@@ -34,13 +33,12 @@ const safeHttpUrl = (value?: string | null): string | null => {
   }
 };
 
-const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) => {
+const StudentDashboard: React.FC<StudentDashboardProps> = ({ user }) => {
   const { data: studentContext, loading: contextLoading, refresh } = useStudentContext();
 
   // Local state for non-critical dashboard extras
   const [suggestion, setSuggestion] = useState<string>('Carregando sua dica personalizada...');
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [assignedTeacher, setAssignedTeacher] = useState<any>(null);
   const [showContract, setShowContract] = useState(false);
   const [contractDownloadFn, setContractDownloadFn] = useState<(() => Promise<void>) | null>(null);
@@ -91,8 +89,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   useEffect(() => {
     if (user && studentContext) {
       const fetchExtras = async () => {
-        const effectiveTenantId = tenantId || profile?.tenant_id;
-
         // 1. Teacher Name (if next class exists and unknown)
         if (studentContext.nextClass?.teacher_id && !assignedTeacher) {
           const { data } = await supabase.rpc('get_my_teacher_directory');
@@ -100,13 +96,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           if (teacher) setAssignedTeacher(teacher);
         }
 
-        // 2. Leaderboard
-        if (effectiveTenantId && leaderboard.length === 0) {
-          const { data: lb } = await supabase.rpc('get_my_tenant_leaderboard', { p_limit: 5 });
-          if (lb) setLeaderboard(lb);
-        }
-
-        // 3. Tip
+        // 2. Tip
         if (suggestion === 'Carregando sua dica personalizada...') {
           try {
             const tip = await getPedagogicalSuggestion(profile?.module || 'Estudante', 'Foco em evolução contínua');
@@ -116,7 +106,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           }
         }
 
-        // 4. Logs
+        // 3. Logs
         if (recentLogs.length === 0) {
           const { data: logs } = await supabase.from('class_logs')
             .select(`id, class_date, start_time, created_at, presence, student_confirmed, content, teacher:teacher_id(full_name)`)
@@ -129,7 +119,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
       };
       fetchExtras();
     }
-  }, [user, studentContext, tenantId, profile]);
+  }, [user, studentContext, profile]);
 
   useEffect(() => {
     if (nextClass && nextClass.rawDate) {
@@ -221,10 +211,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
   );
 
   const isUrgentClass = minutesToClass !== null && minutesToClass <= 30 && minutesToClass >= -10;
-  const currentModule = profile?.module || 'A1';
-  const currentPartKey = profile?.current_book_part || `${currentModule}-1`;
-  const currentPartIndex = parseInt(currentPartKey.split('-')[1]) || 1;
-  const currentPartData = ((PEDAGOGICAL_BOOKS as any)[currentModule] || []).find((p: any) => p.part === currentPartIndex);
   const teacherPhoneDigits = assignedTeacher?.phone?.replace(/\D/g, '') || '';
   const teacherWhatsApp = teacherPhoneDigits.length === 10 || teacherPhoneDigits.length === 11
     ? `55${teacherPhoneDigits}`
@@ -526,7 +512,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-400/10 border border-orange-400/20 rounded-full text-orange-500 text-[10px] font-bold uppercase tracking-widest mb-4">
               <Sparkles size={12} />
-              <span>Dica do Coach IA</span>
+              <span>Dica do Coach</span>
             </div>
             <p className="text-lg font-bold text-brand-text italic mb-6">"{suggestion}"</p>
 

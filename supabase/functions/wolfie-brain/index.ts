@@ -7,7 +7,12 @@ import {
   recordAiUsage,
 } from "../_shared/ai-usage.ts";
 import { authorizeRequest } from "../_shared/request-auth.ts";
-import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
+import {
+  OPEN_STUDENT_PAYMENT_STATUSES,
+  requireWolfieProductAccess,
+  studentBillingDateInSaoPaulo,
+  studentPaymentIsBeyondTolerance,
+} from "../_shared/wolfie-product-access.ts";
 import {
   correctionLocksRetry,
   correctionPreservesFactualIntegrity,
@@ -551,7 +556,6 @@ const CONFIDENCE_LEVELS = new Set([
   "high",
   "very_high",
 ]);
-const DELINQUENT_PAYMENT_STATUSES = ["PENDING", "OVERDUE"];
 const REALTIME_PREPARE_HOURLY_LIMIT = 20;
 
 const jsonResponse = (status: number, payload: JsonObject): Response =>
@@ -567,42 +571,32 @@ async function checkWolfieBillingAccess(
   studentId: string,
   tenantId: string,
 ): Promise<WolfieBillingAccess> {
-  const now = new Date();
-  const billingDateParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const billingDatePart = (type: Intl.DateTimeFormatPartTypes) =>
-    billingDateParts.find((part) => part.type === type)?.value ?? "";
-  const billingToday = [
-    billingDatePart("year"),
-    billingDatePart("month"),
-    billingDatePart("day"),
-  ].join("-");
-  const billingTodayAtNoon = Date.parse(`${billingToday}T12:00:00.000Z`);
-  if (!Number.isFinite(billingTodayAtNoon)) return "unavailable";
+  let billingToday: string;
+  try {
+    billingToday = studentBillingDateInSaoPaulo();
+  } catch {
+    return "unavailable";
+  }
 
   const { data: payments, error } = await supabase
     .from("student_payments")
     .select("due_date")
     .eq("student_id", studentId)
     .eq("tenant_id", tenantId)
-    .in("status", DELINQUENT_PAYMENT_STATUSES)
+    .in("status", OPEN_STUDENT_PAYMENT_STATUSES)
     .lt("due_date", billingToday);
   if (error) {
     logDatabaseError("billing_lookup", error);
     return "unavailable";
   }
   for (const payment of payments ?? []) {
-    const dueDate = boundedString(payment.due_date, 10);
-    const dueTimestamp = Date.parse(`${dueDate}T12:00:00.000Z`);
-    if (!Number.isFinite(dueTimestamp)) return "unavailable";
-    const daysLate = Math.ceil(
-      (billingTodayAtNoon - dueTimestamp) / 86_400_000,
-    );
-    if (daysLate > 7) return "payment_required";
+    try {
+      if (studentPaymentIsBeyondTolerance(payment.due_date, billingToday)) {
+        return "payment_required";
+      }
+    } catch {
+      return "unavailable";
+    }
   }
   return "allowed";
 }

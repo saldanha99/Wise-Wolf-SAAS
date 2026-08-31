@@ -6,7 +6,12 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
-import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
+import {
+  OPEN_STUDENT_PAYMENT_STATUSES,
+  requireWolfieProductAccess,
+  studentBillingDateInSaoPaulo,
+  studentPaymentIsBeyondTolerance,
+} from "../_shared/wolfie-product-access.ts";
 import {
   buildGlobalMeetingPolicyBlock,
   GLOBAL_MEETING_MEMORY_KINDS,
@@ -54,8 +59,6 @@ const EMBEDDING_STEP_TIMEOUT_MS = 5_000;
 const REALTIME_CALL_MIN_BUDGET_MS = 2_500;
 const REALTIME_CALL_MAX_TIMEOUT_MS = 18_000;
 const MAX_REALTIME_GRANT_SECONDS = 10 * 60;
-const DELINQUENT_PAYMENT_STATUSES = ["PENDING", "OVERDUE"];
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -636,25 +639,17 @@ async function checkRealtimeAccess(
   tenantId: string,
   studentId: string,
 ): Promise<"allowed" | "payment_required" | "unavailable"> {
-  const now = new Date();
-  const billingDateParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const billingDatePart = (type: Intl.DateTimeFormatPartTypes) =>
-    billingDateParts.find((part) => part.type === type)?.value ?? "";
-  const billingToday = `${billingDatePart("year")}-${
-    billingDatePart("month")
-  }-${billingDatePart("day")}`;
-  const billingTodayAtNoon = Date.parse(`${billingToday}T12:00:00.000Z`);
-
+  let billingToday: string;
+  try {
+    billingToday = studentBillingDateInSaoPaulo();
+  } catch {
+    return "unavailable";
+  }
   const { data, error } = await db.from("student_payments")
     .select("due_date")
     .eq("tenant_id", tenantId)
     .eq("student_id", studentId)
-    .in("status", DELINQUENT_PAYMENT_STATUSES)
+    .in("status", OPEN_STUDENT_PAYMENT_STATUSES)
     .lt("due_date", billingToday);
   if (error) {
     console.error("Wolfie Realtime account access lookup failed", {
@@ -664,14 +659,12 @@ async function checkRealtimeAccess(
   }
 
   for (const payment of data ?? []) {
-    const dueDate = boundedText(payment.due_date, 10);
-    const dueTime = Date.parse(`${dueDate}T12:00:00.000Z`);
-    if (!Number.isFinite(dueTime)) return "unavailable";
-    const daysLate = Math.ceil(
-      (billingTodayAtNoon - dueTime) / 86_400_000,
-    );
-    if (daysLate > 7) {
-      return "payment_required";
+    try {
+      if (studentPaymentIsBeyondTolerance(payment.due_date, billingToday)) {
+        return "payment_required";
+      }
+    } catch {
+      return "unavailable";
     }
   }
   return "allowed";

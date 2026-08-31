@@ -43,7 +43,7 @@ const StudentPracticeHub: React.FC<StudentPracticeHubProps> = ({ userId, tenantI
                     {/* Stat pill */}
                     <div className="ml-auto hidden md:flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl shrink-0">
                         <Zap size={14} className="text-amber-300" />
-                        <span className="text-xs font-black text-white/90 uppercase tracking-wider">Ganhe XP completando</span>
+                        <span className="text-xs font-black text-white/90 uppercase tracking-wider">Progresso real e feedback imediato</span>
                     </div>
                 </div>
             </div>

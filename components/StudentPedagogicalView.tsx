@@ -1,43 +1,44 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import MaterialsLibrary from './MaterialsLibrary';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
-import { BookOpen, CheckCircle, Clock, Zap } from 'lucide-react';
-import StudentQuizModal from './StudentQuizModal';
+import { AlertCircle, BookOpen, RefreshCw, Zap } from 'lucide-react';
+import StudentMaterials from './StudentMaterials';
 
 interface StudentPedagogicalViewProps {
     user: User;
     tenantId?: string;
 }
 
-const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, tenantId }) => {
+const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [assignedMaterials, setAssignedMaterials] = useState<any[]>([]);
-    const [unlockedTests, setUnlockedTests] = useState<string[]>([]);
     const [wolfieSessions, setWolfieSessions] = useState<any[]>([]);
-    const [activeQuiz, setActiveQuiz] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState('');
 
-    useEffect(() => {
-        if (user && tenantId) {
-            fetchStudentPedagogicalData();
-        }
-    }, [user, tenantId]);
-
-    const fetchStudentPedagogicalData = async () => {
+    const fetchStudentPedagogicalData = useCallback(async () => {
         setLoading(true);
+        setLoadError('');
         try {
-            // 1. Fetch Assigned Materials
-            const { data: assignments, error: assignError } = await supabase
-                .from('student_assignments')
-                .select('*, material:material_id(*)')
-                .eq('student_id', user.id)
-                .order('assigned_at', { ascending: false });
+            const [assignmentResult, sessionResult] = await Promise.all([
+                supabase
+                    .from('student_assignments')
+                    .select('*, material:material_id(*)')
+                    .eq('student_id', user.id)
+                    .order('assigned_at', { ascending: false }),
+                supabase
+                    .from('wolfie_sessions')
+                    .select('*')
+                    .eq('student_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(5),
+            ]);
 
-            if (assignError) console.error('Error fetching assignments:', assignError);
+            if (assignmentResult.error) throw assignmentResult.error;
 
-            if (assignments) {
-                const clean = assignments.map(a => ({
+            if (assignmentResult.data) {
+                const clean = assignmentResult.data.map(a => ({
                     assignment_id: a.id,
                     ...a.material,
                     assigned_at: a.assigned_at
@@ -45,72 +46,37 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                 setAssignedMaterials(clean);
             }
 
-            // 2. Fetch Unlocked Tests
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('unlocked_tests')
-                .eq('id', user.id)
-                .single();
-
-            if (profile?.unlocked_tests) {
-                setUnlockedTests(Array.isArray(profile.unlocked_tests) ? profile.unlocked_tests : []);
+            // O histórico do Wolfie é complementar; uma indisponibilidade dele
+            // não deve esconder os materiais nem a avaliação do aluno.
+            if (!sessionResult.error && sessionResult.data) {
+                setWolfieSessions(sessionResult.data);
             }
-
-            // 3. Fetch Wolfie History (Safe Fetch - table might not exist in dev yet)
-            const { data: sessions, error: sessionError } = await supabase
-                .from('wolfie_sessions')
-                .select('*')
-                .eq('student_id', user.id)
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            if (!sessionError && sessions) {
-                setWolfieSessions(sessions);
-            }
-
         } catch (err) {
-            console.error(err);
+            console.error('Student pedagogical data failed:', err);
+            setLoadError('Não foi possível carregar seus materiais agora. Tente novamente.');
         } finally {
             setLoading(false);
         }
-    };
+    }, [user.id]);
+
+    useEffect(() => {
+        if (user?.id) void fetchStudentPedagogicalData();
+    }, [fetchStudentPedagogicalData, user?.id]);
 
     return (
         <div className="space-y-4 sm:space-y-8 animate-in fade-in duration-500">
+            {/* Jornada e avaliação progressiva validadas no servidor. */}
+            <StudentMaterials user={user} />
 
-            {activeQuiz && (
-                <StudentQuizModal
-                    quizTag={activeQuiz}
-                    studentId={user.id}
-                    onClose={() => setActiveQuiz(null)}
-                />
-            )}
-
-            {/* Quizzes Section (If any unlocked) */}
-            {unlockedTests.length > 0 && (
-                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 dark:from-indigo-600 dark:to-indigo-900 rounded-[2.5rem] p-5 sm:p-8 text-white shadow-lg relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-brand-surface/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
-
-                    <h3 className="text-xl font-black mb-6 flex items-center gap-2 relative z-10">
-                        <CheckCircle className="text-white" /> Avaliações Liberadas
-                    </h3>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 relative z-10">
-                        {unlockedTests.map(test => (
-                            <div key={test} className="bg-brand-surface/20 backdrop-blur-sm border border-white/20 p-5 rounded-2xl flex items-center justify-between hover:bg-brand-surface/30 transition-all cursor-pointer">
-                                <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Prova Final</p>
-                                    <h4 className="text-2xl font-black">{test}</h4>
-                                </div>
-                                <button
-                                    onClick={() => setActiveQuiz(test)}
-                                    className="px-4 py-2 bg-brand-surface text-indigo-600 rounded-xl text-xs font-black uppercase shadow-sm hover:scale-105 transition-transform"
-                                >
-                                    INICIAR
-                                </button>
-                            </div>
-                        ))}
+            {loadError && (
+                <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-100">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <p className="text-sm font-bold">{loadError}</p>
                     </div>
+                    <button type="button" onClick={() => void fetchStudentPedagogicalData()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-amber-700">
+                        <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+                    </button>
                 </div>
             )}
 
@@ -159,15 +125,23 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user, t
                 </div>
             )}
 
-            {/* My Assignments Library */}
+            {/* Biblioteca real: somente materiais atribuídos e existentes. */}
             <div className="bg-brand-surface border border-brand-border rounded-[2.5rem] p-5 sm:p-8">
-                <h3 className="text-xl font-black text-brand-text mb-6 flex items-center gap-2">
-                    <BookOpen className="text-indigo-500" /> Meus Materiais
-                </h3>
+                <div className="mb-6 flex items-start justify-between gap-4">
+                    <div>
+                        <h3 className="text-xl font-black text-brand-text flex items-center gap-2">
+                            <BookOpen className="text-indigo-500" aria-hidden="true" /> Minha biblioteca
+                        </h3>
+                        <p className="mt-1 text-xs font-medium text-brand-muted">
+                            Conteúdos selecionados e enviados pela sua equipe pedagógica.
+                        </p>
+                    </div>
+                    {loading && <RefreshCw size={18} className="animate-spin text-indigo-500" aria-label="Carregando materiais" />}
+                </div>
 
                 <MaterialsLibrary
                     materials={assignedMaterials}
-                    emptyText="Nenhum material atribuído pelo professor ainda."
+                    emptyText={loading ? 'Carregando seus materiais...' : 'Sua próxima recomendação aparecerá aqui assim que o professor enviar.'}
                 />
             </div>
 

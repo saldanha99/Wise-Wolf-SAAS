@@ -479,6 +479,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/tenant-legal-assets.test.ts \
   supabase/functions/_shared/interview-notifications.ts \
   supabase/functions/_shared/interview-notifications.test.ts \
+  supabase/functions/_shared/wolfie-product-access.ts \
+  supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/accept-opportunity/core.ts \
   supabase/functions/accept-opportunity/core.test.ts \
   supabase/functions/accept-opportunity/index.ts \
@@ -585,6 +587,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/process-hub-fulfillment/index.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/pedagogical-content/index.ts \
+  supabase/functions/pedagogical-content/safety.test.ts \
+  supabase/functions/wolfie-activity/index.ts \
+  supabase/functions/wolfie-brain/index.ts \
+  supabase/functions/wolfie-realtime-session/index.ts \
+  supabase/functions/wolfie-live-proxy/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
@@ -684,6 +691,9 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   scripts/tests/wolfie-experience-catalog.test.ts \
   scripts/tests/wolfie-global-meeting-policy.test.ts
 npx --yes deno@2.9.5 test --allow-read --frozen \
+  supabase/functions/_shared/wolfie-product-access.test.ts \
+  supabase/functions/submit-quiz/safety.test.ts \
+  supabase/functions/pedagogical-content/safety.test.ts \
   scripts/tests/wolfie-voice-profile.test.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
   supabase/functions/asaas-webhook/event-contract.test.ts \
@@ -740,6 +750,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/_shared/hub-provider-operations.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
   supabase/functions/_shared/interview-notifications.ts \
+  supabase/functions/_shared/wolfie-product-access.ts \
+  supabase/functions/_shared/wolfie-product-access.test.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -751,6 +763,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/student-context/core.test.ts \
   supabase/functions/student-context/index.ts \
   supabase/functions/submit-quiz/index.ts \
+  supabase/functions/submit-quiz/safety.test.ts \
   supabase/functions/hub-library-access/index.ts \
   supabase/functions/sync-hub-material/index.ts \
   supabase/functions/create-hub-checkout/customer-idempotency.ts \
@@ -935,6 +948,7 @@ unset wolfie_asset_lock_tsv wolfie_asset_lock_count
   die "lock HTTP dos assets Wolfie inválido"
 
 MIGRATION_RELATIVES=(
+  "supabase/migrations/20260725022831_learning_paths_baseline.sql"
   "supabase/migrations/20260725022832_wolfie_immersive_ecosystem.sql"
   "supabase/migrations/20260725030016_verified_legacy_xp_awards.sql"
   "supabase/migrations/20260725162301_wolfie_pedagogical_conversation_sessions.sql"
@@ -1145,8 +1159,12 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260831071000_harden_reschedule_financial_authority.sql"
   "supabase/migrations/20260831072000_harden_interview_notification_delivery.sql"
   "supabase/migrations/20260831073000_atomic_teacher_availability_replacement.sql"
+  "supabase/migrations/20260831143000_student_learning_runtime_hardening.sql"
+  "supabase/migrations/20260831150000_pedagogical_evaluation_catalog.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/student_learning_runtime_hardening.sql"
+  "supabase/tests/pedagogical_evaluation_catalog.sql"
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
   "supabase/tests/wolfie_classic_exchange_atomicity.sql"
   "supabase/tests/wolfie_meeting_memory_lifecycle.sql"

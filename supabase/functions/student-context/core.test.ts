@@ -6,6 +6,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   businessDaysAfter,
+  resolveDisplayedStreak,
   resolveStudentAccess,
   resolveStudentBilling,
 } from "./core.ts";
@@ -121,4 +122,11 @@ Deno.test("invalid calendar input fails closed instead of shifting dates", () =>
     RangeError,
     "invalid_calendar_date",
   );
+});
+
+Deno.test("opening the portal does not invent practice and expired streak displays zero", () => {
+  assertEquals(resolveDisplayedStreak(8, "2026-08-31", "2026-08-31"), 8);
+  assertEquals(resolveDisplayedStreak(8, "2026-08-30", "2026-08-31"), 8);
+  assertEquals(resolveDisplayedStreak(8, "2026-08-29", "2026-08-31"), 0);
+  assertEquals(resolveDisplayedStreak(8, null, "2026-08-31"), 0);
 });

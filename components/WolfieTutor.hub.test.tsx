@@ -59,7 +59,11 @@ import WolfieTutor from './WolfieTutor';
 
 const accountId = '11111111-1111-4111-8111-111111111111';
 
-const renderHubTutor = (account = accountId, onUsageCommitted = vi.fn()) => {
+const renderHubTutor = (
+  account = accountId,
+  onUsageCommitted = vi.fn(),
+  onClose?: (summary: any) => void,
+) => {
   render(
     <WolfieTutor
       user={{ name: 'Marina', levelBadge: 'B2' }}
@@ -79,6 +83,7 @@ const renderHubTutor = (account = accountId, onUsageCommitted = vi.fn()) => {
         accountId: account,
         onUsageCommitted,
       }}
+      onClose={onClose}
     />,
   );
   return { onUsageCommitted };
@@ -153,5 +158,44 @@ describe('Transporte do Wolfie no Hub', () => {
     expect(supabaseMocks.invoke).not.toHaveBeenCalled();
     expect(supabaseMocks.rpc).not.toHaveBeenCalled();
     expect(supabaseMocks.from).not.toHaveBeenCalled();
+  });
+
+  it('não fecha nem conclui a sessão enquanto um turno ainda está sendo processado', async () => {
+    let resolveRequest: ((value: {
+      data: Record<string, unknown>;
+      error: null;
+    }) => void) | undefined;
+    supabaseMocks.invoke.mockReturnValue(new Promise(resolve => {
+      resolveRequest = resolve;
+    }));
+    const onClose = vi.fn();
+    const onUsageCommitted = vi.fn();
+    renderHubTutor(accountId, onUsageCommitted, onClose);
+
+    const input = screen.getByPlaceholderText('Type in English...');
+    fireEvent.change(input, { target: { value: 'I led a complex migration.' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(supabaseMocks.invoke).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /fechar wolfie tutor/i }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(await screen.findByText(/aguarde o wolfie confirmar este turno/i)).toBeTruthy();
+
+    resolveRequest?.({
+      data: {
+        aiText: 'That is a strong example.',
+        conversationId: '22222222-2222-4222-8222-222222222222',
+      },
+      error: null,
+    });
+    await waitFor(() => expect(onUsageCommitted).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: /fechar wolfie tutor/i }));
+    expect(onClose).toHaveBeenCalledWith(expect.objectContaining({
+      learnerTurns: 1,
+      sessionCompleted: false,
+      conversationId: '22222222-2222-4222-8222-222222222222',
+    }));
   });
 });

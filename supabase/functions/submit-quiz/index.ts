@@ -85,7 +85,7 @@ async function readJsonObject(req: Request): Promise<Record<string, unknown>> {
 }
 
 // --- DATA: PEDAGOGICAL EVALUATIONS (Server-Side Source of Truth) ---
-// Copied from constants.tsx to ensure backend validation
+// The answer key intentionally exists only in this authenticated Edge Function.
 const PEDAGOGICAL_EVALUATIONS: Record<
   string,
   { question: string; options: string[]; correct: number }[]
@@ -179,7 +179,7 @@ const PEDAGOGICAL_EVALUATIONS: Record<
       correct: 2,
     },
     {
-      question: "Which verb describes eating in the morning?",
+      question: "Which word names the morning meal?",
       options: ["Dinner", "Lunch", "Breakfast", "Snack"],
       correct: 2,
     },
@@ -199,7 +199,7 @@ const PEDAGOGICAL_EVALUATIONS: Record<
       correct: 1,
     },
     {
-      question: "Opposite of 'Old'?",
+      question: "What is the opposite of 'old' in 'an old person'?",
       options: ["New", "Fast", "Rich", "Young"],
       correct: 3,
     },
@@ -211,12 +211,17 @@ const PEDAGOGICAL_EVALUATIONS: Record<
       correct: 1,
     },
     {
-      question: "How do you say 'Viajou'?",
-      options: ["Travel", "Traveled", "Traveling", "Travelled"],
+      question: "Choose the best translation for 'Ela viajou ontem.'",
+      options: [
+        "She travels yesterday.",
+        "She traveled yesterday.",
+        "She is traveling yesterday.",
+        "She will travel yesterday.",
+      ],
       correct: 1,
     },
     {
-      question: "Which describes a 'Trip'?",
+      question: "What does 'trip' mean in Portuguese?",
       options: ["Viagem", "Trabalho", "Estudo", "Dormir"],
       correct: 0,
     },
@@ -246,7 +251,7 @@ const PEDAGOGICAL_EVALUATIONS: Record<
       correct: 2,
     },
     {
-      question: "Which is a transport?",
+      question: "Which is a means of transportation?",
       options: ["Apple", "Book", "Train", "Pen"],
       correct: 2,
     },
@@ -345,7 +350,7 @@ const PEDAGOGICAL_EVALUATIONS: Record<
       correct: 2,
     },
     {
-      question: "Passive Voice: 'The cake ___ eaten by Jim.'",
+      question: "Passive Voice: 'The cake ___ eaten by Jim yesterday.'",
       options: ["was", "is", "were", "been"],
       correct: 0,
     },
@@ -376,11 +381,62 @@ serve(async (req) => {
     if (auth.ok === false) return auth.response;
 
     const body = await readJsonObject(req);
+    const action = typeof body.action === "string"
+      ? body.action.trim().toLowerCase()
+      : "submit";
+    if (action !== "load" && action !== "submit") {
+      throw new HttpError(400, "INVALID_QUIZ_ACTION");
+    }
     const bookPart = typeof body.bookPart === "string"
       ? body.bookPart.trim()
       : "";
     const quiz = PEDAGOGICAL_EVALUATIONS[bookPart];
     if (!quiz) throw new HttpError(404, "QUIZ_NOT_FOUND");
+
+    // A interface recebe somente enunciados e alternativas. O gabarito fica
+    // dentro desta função e nunca é enviado ao navegador.
+    if (action === "load") {
+      const [
+        { data: profile, error: profileError },
+        { data: catalog, error: catalogError },
+      ] = await Promise.all([
+        auth.context.admin
+          .from("profiles")
+          .select("current_book_part,evaluation_unlocked")
+          .eq("id", auth.context.userId)
+          .maybeSingle(),
+        auth.context.admin
+          .from("pedagogical_evaluation_catalog")
+          .select("book_part")
+          .eq("book_part", bookPart)
+          .eq("active", true)
+          .maybeSingle(),
+      ]);
+      if (profileError || catalogError) {
+        console.error("[submit-quiz] secure quiz load failed", {
+          profileCode: profileError?.code ?? null,
+          catalogCode: catalogError?.code ?? null,
+        });
+        throw new HttpError(503, "QUIZ_LOAD_FAILED");
+      }
+      if (!catalog) throw new HttpError(404, "QUIZ_NOT_FOUND");
+      if (
+        !profile || profile.current_book_part !== bookPart ||
+        profile.evaluation_unlocked !== true
+      ) {
+        throw new HttpError(409, "QUIZ_NOT_UNLOCKED");
+      }
+      return jsonResponse(200, {
+        success: true,
+        bookPart,
+        questions: quiz.map((question, index) => ({
+          id: `${bookPart}-${index + 1}`,
+          question: question.question,
+          options: question.options,
+        })),
+      });
+    }
+
     if (!Array.isArray(body.answers) || body.answers.length !== quiz.length) {
       throw new HttpError(400, "INVALID_ANSWERS");
     }
@@ -396,6 +452,12 @@ serve(async (req) => {
       }
       return Number(answer);
     });
+    const requestKey = typeof body.requestKey === "string" &&
+        body.requestKey.trim().length >= 8 &&
+        body.requestKey.trim().length <= 180
+      ? body.requestKey.trim()
+      // Compatibilidade com uma aba antiga já aberta durante a publicação.
+      : crypto.randomUUID();
     const correctCount = quiz.reduce(
       (total, question, index) =>
         total + (answers[index] === question.correct ? 1 : 0),
@@ -403,18 +465,22 @@ serve(async (req) => {
     );
 
     const { data, error } = await auth.context.admin.rpc(
-      "record_verified_pedagogical_quiz",
+      "record_verified_pedagogical_quiz_v2",
       {
         p_student_id: auth.context.userId,
         p_book_part: bookPart,
         p_score: correctCount,
         p_total_questions: quiz.length,
         p_answers: answers,
+        p_request_key: requestKey,
       },
     );
     if (error || !data || typeof data !== "object") {
       const message = String(error?.message ?? "").toLowerCase();
-      if (message.includes("quiz_not_unlocked")) {
+      if (
+        message.includes("quiz_not_unlocked") ||
+        message.includes("pedagogical_quiz_already_completed")
+      ) {
         throw new HttpError(409, "QUIZ_NOT_UNLOCKED");
       }
       if (message.includes("student_profile_required")) {

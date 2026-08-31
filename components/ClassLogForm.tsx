@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Save, X, Search, RefreshCw, BookOpen, MessageCircle } from 'lucide-react';
-import { PEDAGOGICAL_BOOKS } from '../constants';
 
 export interface ClassLogItem {
     id: string | number;
@@ -51,11 +50,6 @@ const ClassLogForm: React.FC<ClassLogFormProps> = ({ items, onSave, onCancel, ti
                 [field]: value
             }
         }));
-    };
-
-    const getBookOptions = (level: string) => {
-        const books = (PEDAGOGICAL_BOOKS as any)[level.split(' ')[0]] || [];
-        return books;
     };
 
     const getFieldValue = (id: string | number, field: string) => {

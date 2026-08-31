@@ -2,7 +2,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { authorizeRequest, methodNotAllowed } from "../_shared/request-auth.ts";
-import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
+import {
+  OPEN_STUDENT_PAYMENT_STATUSES,
+  requireWolfieProductAccess,
+  studentBillingDateInSaoPaulo,
+  studentPaymentIsBeyondTolerance,
+} from "../_shared/wolfie-product-access.ts";
 import { parseAiUsage, recordAiUsage } from "../_shared/ai-usage.ts";
 import {
   GLOBAL_MEETING_MEMORY_KINDS,
@@ -2937,32 +2942,30 @@ async function assertBillingAccess(
   admin: any,
   profile: StudentProfile,
 ): Promise<void> {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const datePart = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  const today = `${datePart("year")}-${datePart("month")}-${datePart("day")}`;
-  const todayAtNoon = new Date(`${today}T12:00:00.000Z`).getTime();
+  let today: string;
+  try {
+    today = studentBillingDateInSaoPaulo();
+  } catch {
+    throw new HttpError(503, "BILLING_CHECK_UNAVAILABLE");
+  }
   const { data, error } = await admin
     .from("student_payments")
     .select("due_date")
     .eq("student_id", profile.id)
     .eq("tenant_id", profile.tenant_id)
-    .in("status", ["PENDING", "OVERDUE"])
+    .in("status", OPEN_STUDENT_PAYMENT_STATUSES)
     .lt("due_date", today);
   if (error) throw new HttpError(503, "BILLING_CHECK_UNAVAILABLE");
-  const blocked = (data ?? []).some((payment: JsonObject) => {
-    const dueDate = boundedString(payment.due_date, 10);
-    const dueAtNoon = new Date(`${dueDate}T12:00:00.000Z`).getTime();
-    return Number.isFinite(dueAtNoon) &&
-      Math.round((todayAtNoon - dueAtNoon) / 86_400_000) > 7;
-  });
-  if (blocked) throw new HttpError(402, "PAYMENT_REQUIRED");
+  for (const payment of data ?? []) {
+    try {
+      if (studentPaymentIsBeyondTolerance(payment.due_date, today)) {
+        throw new HttpError(402, "PAYMENT_REQUIRED");
+      }
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(503, "BILLING_CHECK_UNAVAILABLE");
+    }
+  }
 }
 
 async function loadOwnedSession(

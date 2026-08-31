@@ -1,10 +1,10 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, Heart, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
-import { gamificationService } from '../services/gamificationService';
 import confetti from 'canvas-confetti';
+import type { WolfieTutorSessionSummary } from './wolfieTutorSession';
 
 // WolfieTutor usa wolfie-brain (edge function estável) — substituindo WolfieLiveCallV3
 // que dependia de Gemini Live API via WebSocket (instável/não configurado)
@@ -26,53 +26,129 @@ interface ActivityPlayerProps {
     onClose: () => void;
     hearts?: number;
     onHeartsChange?: (hearts: number) => void;
+    reviewOnly?: boolean;
 }
 
-const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose, hearts: heartsProp = 5, onHeartsChange }) => {
+interface LearningQuestionFeedback {
+    questionId: string;
+    questionIndex: number;
+    selectedIndex: number;
+    correct: boolean;
+    correctIndex: number;
+    explanation?: string | null;
+}
+
+interface LearningActivityResult {
+    score: number;
+    xpEarned: number;
+    leveledUp: boolean;
+    newLevel: number;
+    passed: boolean;
+    questionResults: LearningQuestionFeedback[];
+}
+
+const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose, hearts: heartsProp = 5, onHeartsChange, reviewOnly = false }) => {
     const [saving, setSaving] = useState(false);
     const [hearts, setHearts] = useState(heartsProp);
-    const [result, setResult] = useState<{ score: number; xpEarned: number; leveledUp: boolean; newLevel: number } | null>(null);
+    const [result, setResult] = useState<LearningActivityResult | null>(null);
+    const [actionError, setActionError] = useState('');
+    const [attemptKey, setAttemptKey] = useState(0);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const heartsRef = useRef(heartsProp);
+    const savingRef = useRef(false);
+    const completionRequestKey = useRef(
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `learning-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
 
-    // Sincroniza vidas reais (com regeneração) ao abrir
+    const closePlayer = useCallback(() => {
+        if (savingRef.current) return;
+        // Depois de uma tentativa autoritativa, qualquer forma de saída precisa
+        // atualizar a trilha. Caso contrário, o servidor avança mas o próximo nó
+        // permanece visualmente bloqueado até um refresh manual.
+        if (result) {
+            onComplete(result.score);
+            return;
+        }
+        onClose();
+    }, [onClose, onComplete, result]);
+
     useEffect(() => {
-        gamificationService.getHearts(userId).then((h) => {
-            setHearts(h);
-            onHeartsChange?.(h);
-        }).catch(() => {});
-    }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const dialog = dialogRef.current;
+        const focusable = dialog?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+        focusable?.focus();
 
-    // Perde 1 vida ao errar
-    const handleWrongAnswer = async () => {
-        const novo = await gamificationService.loseHeart(userId);
-        setHearts(novo);
-        onHeartsChange?.(novo);
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                // Enquanto o servidor registra a tentativa, mantenha o player
+                // montado para que a resposta autoritativa sempre atualize a
+                // trilha. Isso evita reabrir uma atividade que já avançou.
+                closePlayer();
+                return;
+            }
+            if (event.key !== 'Tab' || !dialog) return;
+            const items = Array.from(dialog.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')) as HTMLElement[];
+            if (items.length === 0) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [closePlayer]);
+
+    const consumeServerGradedMistakes = async (wrongAnswers: number) => {
+        const boundedWrongAnswers = Math.max(0, Math.min(5, wrongAnswers));
+        for (let index = 0; index < boundedWrongAnswers; index += 1) {
+            try {
+                const { data, error } = await supabase.rpc('consume_student_heart', {
+                    // Derivada da tentativa: um replay após resposta HTTP perdida não
+                    // desconta a mesma vida duas vezes.
+                    p_request_key: `${completionRequestKey.current}-wrong-${index + 1}`,
+                    p_reason: 'WRONG_ANSWER',
+                });
+                if (error) throw error;
+                const nextHearts = Math.min(heartsRef.current, Number(data?.hearts ?? heartsRef.current));
+                heartsRef.current = nextHearts;
+                setHearts(nextHearts);
+                onHeartsChange?.(nextHearts);
+            } catch (error) {
+                console.error('consume_student_heart error:', error);
+            }
+        }
     };
 
     // Anti-burla: envia só as respostas; o SERVIDOR recalcula score + XP (RPC grade_quiz)
     const handleQuizSubmit = async (answers: number[]) => {
-        if (saving) return;
+        if (savingRef.current) return;
+        savingRef.current = true;
         setSaving(true);
+        setActionError('');
         try {
             const { data, error } = await supabase.rpc('grade_quiz', {
                 p_activity_id: activity.id,
                 p_answers: answers,
+                p_request_key: completionRequestKey.current,
             });
             if (error) throw error;
 
             const score = Number(data?.score ?? 0);
-
-            // Skills scores (não afetam XP, podem ficar no cliente)
-            try {
-                const { data: unitData } = await supabase
-                    .from('learning_units').select('skill_focus').eq('id', activity.unit_id).maybeSingle();
-                const skillsToUpdate = new Set<string>([
-                    ...(unitData?.skill_focus || []),
-                    ...(skillsForActivityType[activity.type] || []),
-                ]);
-                for (const skill of skillsToUpdate) await updateSkillScore(skill, score);
-            } catch (e) { console.error('skill score (non-blocking):', e); }
-
-            await gamificationService.updateStreak(userId).catch(() => {});
+            const passed = data?.passed === true || (data?.passed !== false && score >= 60);
+            const totalQuestions = Number(data?.totalQuestions ?? answers.length);
+            const correctAnswers = Number(data?.correctAnswers ?? Math.round((score / 100) * totalQuestions));
+            await consumeServerGradedMistakes(totalQuestions - correctAnswers);
 
             if (data?.leveledUp) {
                 confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
@@ -85,164 +161,137 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 xpEarned: Number(data?.xpEarned ?? 0),
                 leveledUp: !!data?.leveledUp,
                 newLevel: Number(data?.newLevel ?? 0),
+                passed,
+                questionResults: Array.isArray(data?.questionResults)
+                    ? data.questionResults as LearningQuestionFeedback[]
+                    : [],
             });
         } catch (err) {
             console.error('handleQuizSubmit error:', err);
+            setActionError('Não foi possível corrigir esta atividade agora. Suas respostas continuam abertas; tente novamente.');
         } finally {
+            savingRef.current = false;
             setSaving(false);
         }
     };
 
-    // Mapeia o tipo de atividade para a skill primaria (alem de unit.skill_focus se houver)
-    const skillsForActivityType: Record<string, string[]> = {
-        vocab_cards: ['vocabulary'],
-        quiz: ['grammar', 'vocabulary'],
-        grammar_drill: ['grammar'],
-        reading: ['reading'],
-        speaking_wolfie: ['speaking', 'pronunciation'],
-        listening: ['listening'],
-        writing: ['writing'],
-    };
-
-    const updateSkillScore = async (skill: string, newScore: number) => {
-        // EMA (exponential moving average) alpha=0.4 para responder rapido a tendencias recentes
-        const { data: existing } = await supabase
-            .from('student_skill_scores')
-            .select('current_score, total_activities')
-            .eq('student_id', userId)
-            .eq('skill', skill)
-            .maybeSingle();
-
-        const alpha = 0.4;
-        const prevScore = Number(existing?.current_score) || 0;
-        const ema = existing ? Math.round((alpha * newScore + (1 - alpha) * prevScore) * 10) / 10 : newScore;
-        const total = (existing?.total_activities || 0) + 1;
-
-        await supabase.from('student_skill_scores').upsert({
-            student_id: userId,
-            skill,
-            current_score: ema,
-            total_activities: total,
-            last_updated: new Date().toISOString(),
-        }, { onConflict: 'student_id, skill' });
-    };
-
-    const handleSubmit = async (score: number) => {
-        if (saving) return;
+    const handleSubmit = async (score: number, additionalEvidence: Record<string, unknown> = {}) => {
+        if (savingRef.current) return;
+        savingRef.current = true;
         setSaving(true);
+        setActionError('');
         try {
-            // Conta tentativas reais (incrementa em vez de fixar 1)
-            const { data: prev } = await supabase
-                .from('student_activity_progress')
-                .select('attempts')
-                .eq('student_id', userId)
-                .eq('activity_id', activity.id)
-                .maybeSingle();
-            const novasTentativas = (prev?.attempts || 0) + 1;
-
-            // Upsert progress
-            await supabase.from('student_activity_progress').upsert({
-                student_id: userId,
-                activity_id: activity.id,
-                unit_id: activity.unit_id,
-                status: 'COMPLETED',
+            const evidence = {
+                activityType: activity.type,
                 score,
-                attempts: novasTentativas,
-                completed_at: new Date().toISOString(),
-                last_attempt_at: new Date().toISOString(),
-            }, { onConflict: 'student_id, activity_id' });
-
-            // Atualizar skill scores (skills da unit + skill primaria do tipo)
-            try {
-                const { data: unitData } = await supabase
-                    .from('learning_units')
-                    .select('skill_focus')
-                    .eq('id', activity.unit_id)
-                    .maybeSingle();
-
-                const skillsToUpdate = new Set<string>([
-                    ...(unitData?.skill_focus || []),
-                    ...(skillsForActivityType[activity.type] || []),
-                ]);
-                for (const skill of skillsToUpdate) {
-                    await updateSkillScore(skill, score);
-                }
-            } catch (skillErr) {
-                console.error('Skill score update failed (non-blocking):', skillErr);
-            }
-
-            // Award XP proporcional ao score
-            let xpEarned = 0;
-            let leveledUp = false;
-            let newLevel = 0;
-
-            // Atualiza a ofensiva (streak) — conta o dia de prática
-            await gamificationService.updateStreak(userId).catch(() => {});
+                completedAt: new Date().toISOString(),
+                ...additionalEvidence,
+            };
+            const { data, error } = await supabase.rpc('complete_learning_activity', {
+                p_activity_id: activity.id,
+                p_score: score,
+                p_evidence: evidence,
+                p_request_key: completionRequestKey.current,
+            });
+            if (error) throw error;
+            const passed = data?.passed !== false && String(data?.status || 'COMPLETED') === 'COMPLETED';
 
             // Celebração
-            if (leveledUp) {
+            if (data?.leveledUp) {
                 confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
             } else if (score >= 80) {
                 confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
             }
 
             // Mostra a tela de vitória (onComplete só ao clicar Continuar)
-            setResult({ score, xpEarned, leveledUp, newLevel });
+            setResult({
+                score: Number(data?.score ?? score),
+                xpEarned: Number(data?.xpEarned ?? 0),
+                leveledUp: data?.leveledUp === true,
+                newLevel: Number(data?.newLevel ?? 0),
+                passed,
+                questionResults: [],
+            });
         } catch (err) {
             console.error('handleSubmit error:', err);
+            setActionError('Não foi possível finalizar e registrar esta atividade. Seu progresso continua aberto; tente novamente.');
         } finally {
+            savingRef.current = false;
             setSaving(false);
         }
     };
 
+    const retryActivity = () => {
+        setResult(null);
+        setActionError('');
+        setAttemptKey(key => key + 1);
+        completionRequestKey.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `learning-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    };
+
     return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-3xl w-full max-h-[95dvh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col safe-bottom">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4" onMouseDown={(event) => event.target === event.currentTarget && closePlayer()}>
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-busy={saving}
+                aria-labelledby={`activity-title-${activity.id}`}
+                className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl max-w-3xl w-full max-h-[95dvh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col safe-bottom"
+            >
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
                     <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{activity.type.replace(/_/g, ' ')}</p>
-                        <h2 className="text-lg font-black text-slate-800 dark:text-white truncate">{activity.title}</h2>
+                        <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">{reviewOnly ? 'Modo revisão' : activity.type.replace(/_/g, ' ')}</p>
+                        <h2 id={`activity-title-${activity.id}`} className="text-lg font-black text-slate-800 dark:text-white truncate">{activity.title}</h2>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                         {/* Vidas */}
-                        <div className="flex items-center gap-0.5" title={`${hearts} vidas`}>
-                            {[0, 1, 2, 3, 4].map((i) => (
-                                <Heart key={i} size={16} className={i < hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < hearts ? '#f43f5e' : 'none'} />
-                            ))}
-                        </div>
-                        <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">
-                            <X size={20} />
+                        {!reviewOnly && (
+                            <div className="flex items-center gap-0.5" title={`${hearts} vidas`}>
+                                {[0, 1, 2, 3, 4].map((i) => (
+                                    <Heart key={i} size={16} className={i < hearts ? 'text-rose-500' : 'text-slate-200 dark:text-slate-700'} fill={i < hearts ? '#f43f5e' : 'none'} />
+                                ))}
+                            </div>
+                        )}
+                        <button type="button" onClick={closePlayer} disabled={saving} aria-label={saving ? 'Salvando atividade' : 'Fechar atividade'} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl disabled:cursor-wait disabled:opacity-40">
+                            {saving ? <Loader2 size={20} className="animate-spin" /> : <X size={20} />}
                         </button>
                     </div>
                 </div>
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                    {result ? (
-                        <VictoryScreen result={result} onContinue={() => onComplete(result.score)} />
-                    ) : hearts <= 0 ? (
-                        <div className="text-center py-12">
-                            <div className="w-20 h-20 mx-auto rounded-full bg-rose-100 dark:bg-rose-900/20 flex items-center justify-center mb-4">
-                                <Heart size={36} className="text-rose-400" />
-                            </div>
-                            <h3 className="text-xl font-black text-slate-800 dark:text-white">Você ficou sem vidas!</h3>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto">
-                                As vidas regeneram com o tempo (1 a cada 30 min). Volte mais tarde para continuar praticando.
-                            </p>
-                            <button onClick={onClose} className="mt-6 px-6 py-3 rounded-xl bg-violet-500 text-white font-black text-sm hover:bg-violet-600 transition-colors">
-                                Voltar à trilha
-                            </button>
-                        </div>
+                    {reviewOnly ? (
+                        <ReviewActivityContent activity={activity} />
                     ) : (
                     <>
-                    {activity.type === 'vocab_cards' && <VocabCardsRunner content={activity.content} activityId={activity.id} userId={userId} onFinish={handleSubmit} saving={saving} />}
-                    {activity.type === 'quiz' && <QuizRunner content={activity.content} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} onSubmitAnswers={handleQuizSubmit} />}
-                    {activity.type === 'grammar_drill' && <QuizRunner content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options, correct: e.correct, exp: e.exp })) }} rulePt={activity.content.rule_pt} onFinish={handleSubmit} saving={saving} onWrongAnswer={handleWrongAnswer} onSubmitAnswers={handleQuizSubmit} />}
-                    {activity.type === 'reading' && <ReadingRunner content={activity.content} onFinish={handleSubmit} saving={saving} />}
+                    {actionError && (
+                        <div role="alert" className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+                            {actionError}
+                        </div>
+                    )}
+                    {!result && hearts <= 0 && (
+                        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-medium leading-relaxed text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                            Suas vidas acabaram por enquanto, mas seu aprendizado não para: você pode terminar esta prática. As vidas regeneram automaticamente.
+                        </div>
+                    )}
+                    {result ? (
+                        <VictoryScreen
+                            result={result}
+                            onContinue={() => onComplete(result.score)}
+                            onRetry={retryActivity}
+                        />
+                    ) : (
+                    <>
+                    {activity.type === 'vocab_cards' && <VocabCardsRunner key={attemptKey} content={activity.content} activityId={activity.id} onFinish={handleSubmit} saving={saving} />}
+                    {activity.type === 'quiz' && <QuizRunner key={attemptKey} content={activity.content} saving={saving} onSubmitAnswers={handleQuizSubmit} />}
+                    {activity.type === 'grammar_drill' && <QuizRunner key={attemptKey} content={{ questions: activity.content.exercises?.map((e: any) => ({ q: e.sentence, options: e.options })) }} rulePt={activity.content.rule_pt} saving={saving} onSubmitAnswers={handleQuizSubmit} />}
+                    {activity.type === 'reading' && <ReadingRunner key={attemptKey} content={activity.content} onSubmitAnswers={handleQuizSubmit} saving={saving} />}
                     {activity.type === 'speaking_wolfie' && (
                         <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="animate-spin text-violet-500" /></div>}>
-                            <SpeakingWolfieRunner activity={activity} userId={userId} wolfieConfig={wolfieConfig} onFinish={handleSubmit} />
+                            <SpeakingWolfieRunner key={attemptKey} activity={activity} userId={userId} wolfieConfig={wolfieConfig} onFinish={handleSubmit} />
                         </Suspense>
                     )}
                     {!['vocab_cards', 'quiz', 'grammar_drill', 'reading', 'speaking_wolfie'].includes(activity.type) && (
@@ -252,9 +301,111 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                     )}
                     </>
                     )}
+                    </>
+                    )}
                 </div>
             </div>
         </div>
+    );
+};
+
+const displayReviewText = (value: unknown): string => (
+    typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
+);
+
+const ReviewActivityContent: React.FC<{ activity: ActivityPlayerProps['activity'] }> = ({ activity }) => {
+    const content = activity.content && typeof activity.content === 'object' ? activity.content : {};
+    const questions = activity.type === 'grammar_drill'
+        ? (Array.isArray(content.exercises) ? content.exercises : [])
+        : (Array.isArray(content.questions) ? content.questions : []);
+    const readingText = displayReviewText(content.text || content.passage || content.reading_text);
+    const instructions = displayReviewText(content.instructions_pt || activity.description);
+
+    return (
+        <section aria-labelledby={`review-heading-${activity.id}`} className="space-y-5">
+            <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-violet-950 dark:border-violet-800/60 dark:bg-violet-950/30 dark:text-violet-100">
+                <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-600 text-white" aria-hidden="true">
+                        <BookOpen size={19} />
+                    </span>
+                    <div>
+                        <h3 id={`review-heading-${activity.id}`} className="text-sm font-black">Revisão sem alterar seu progresso</h3>
+                        <p className="mt-1 text-xs leading-5 text-violet-800 dark:text-violet-200">
+                            Esta etapa já foi concluída. Você pode consultar o conteúdo com calma; nenhuma resposta, nota, vida ou XP será enviado novamente.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {activity.type === 'vocab_cards' && (
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Vocabulário da atividade">
+                    {(Array.isArray(content.cards) ? content.cards : []).map((card: any, index: number) => (
+                        <li key={`${displayReviewText(card?.term)}-${index}`} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+                            <p className="text-base font-black text-slate-900 dark:text-white">{displayReviewText(card?.term) || `Card ${index + 1}`}</p>
+                            <p className="mt-1 text-sm font-bold text-violet-600 dark:text-violet-300">{displayReviewText(card?.translation)}</p>
+                            {displayReviewText(card?.example) && <p className="mt-3 text-xs italic leading-5 text-slate-600 dark:text-slate-300">“{displayReviewText(card.example)}”</p>}
+                        </li>
+                    ))}
+                </ul>
+            )}
+
+            {activity.type === 'grammar_drill' && displayReviewText(content.rule_pt) && (
+                <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+                    <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-violet-500">Regra</p>
+                    {displayReviewText(content.rule_pt)}
+                </div>
+            )}
+
+            {activity.type === 'reading' && readingText && (
+                <div className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200 whitespace-pre-line">
+                    {readingText}
+                </div>
+            )}
+
+            {questions.length > 0 && (
+                <ol className="space-y-4" aria-label="Questões para revisão">
+                    {questions.map((question: any, questionIndex: number) => {
+                        const prompt = displayReviewText(question?.q || question?.sentence || question?.question);
+                        const options = Array.isArray(question?.options) ? question.options : [];
+                        return (
+                            <li key={displayReviewText(question?.id) || questionIndex} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+                                <p className="text-sm font-black text-slate-800 dark:text-slate-100">{questionIndex + 1}. {prompt}</p>
+                                {options.length > 0 && (
+                                    <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                                        {options.map((option: unknown, optionIndex: number) => (
+                                            <li key={optionIndex} className="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
+                                                {String.fromCharCode(65 + optionIndex)}. {displayReviewText(option)}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </li>
+                        );
+                    })}
+                </ol>
+            )}
+
+            {activity.type === 'speaking_wolfie' && (
+                <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+                    {instructions && <p className="text-sm leading-6 text-slate-700 dark:text-slate-200">{instructions}</p>}
+                    {Array.isArray(content.target_phrases) && content.target_phrases.length > 0 && (
+                        <ul className="mt-4 flex flex-wrap gap-2" aria-label="Frases sugeridas">
+                            {content.target_phrases.map((phrase: unknown, index: number) => (
+                                <li key={index} className="rounded-full bg-violet-100 px-3 py-1.5 text-xs font-bold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                                    {displayReviewText(phrase)}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            )}
+
+            {!['vocab_cards', 'quiz', 'grammar_drill', 'reading', 'speaking_wolfie'].includes(activity.type) && (
+                <p className="rounded-2xl bg-slate-50 p-5 text-sm leading-6 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                    {instructions || 'O conteúdo desta atividade não está disponível para revisão.'}
+                </p>
+            )}
+        </section>
     );
 };
 
@@ -262,15 +413,15 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 // TELA DE VITÓRIA (celebração ao concluir lição)
 // ─────────────────────────────────────────────────────────────
 const VictoryScreen: React.FC<{
-    result: { score: number; xpEarned: number; leveledUp: boolean; newLevel: number };
+    result: LearningActivityResult;
     onContinue: () => void;
-}> = ({ result, onContinue }) => {
-    const { score, xpEarned, leveledUp, newLevel } = result;
-    const aprovado = score >= 60;
-    const perfeito = score >= 95;
+    onRetry: () => void;
+}> = ({ result, onContinue, onRetry }) => {
+    const { score, xpEarned, leveledUp, newLevel, passed, questionResults } = result;
+    const perfeito = passed && score >= 95;
 
-    const titulo = leveledUp ? 'Subiu de nível!' : perfeito ? 'Perfeito!' : aprovado ? 'Muito bem!' : 'Concluído!';
-    const emoji = leveledUp ? '👑' : perfeito ? '🌟' : aprovado ? '🎉' : '💪';
+    const titulo = !passed ? 'Você está quase lá' : leveledUp ? 'Subiu de nível!' : perfeito ? 'Perfeito!' : 'Muito bem!';
+    const emoji = !passed ? '💪' : leveledUp ? '👑' : perfeito ? '🌟' : '🎉';
 
     return (
         <motion.div
@@ -288,8 +439,10 @@ const VictoryScreen: React.FC<{
                 style={{
                     background: leveledUp
                         ? 'linear-gradient(135deg,#fbbf24,#f59e0b)'
-                        : 'linear-gradient(135deg,#8b5cf6,#6366f1)',
-                    boxShadow: leveledUp ? '0 8px 0 #d97706' : '0 8px 0 #4f46e5',
+                        : passed
+                            ? 'linear-gradient(135deg,#8b5cf6,#6366f1)'
+                            : 'linear-gradient(135deg,#fb923c,#f97316)',
+                    boxShadow: leveledUp ? '0 8px 0 #d97706' : passed ? '0 8px 0 #4f46e5' : '0 8px 0 #c2410c',
                 }}
             >
                 <span className="text-5xl">{emoji}</span>
@@ -303,6 +456,7 @@ const VictoryScreen: React.FC<{
             </motion.div>
 
             <h2 className="text-2xl font-black text-slate-800 dark:text-white">{titulo}</h2>
+            {!passed && <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-400">Revise o feedback e tente novamente. Sua trilha só avança quando o aprendizado estiver consolidado.</p>}
             {leveledUp && (
                 <p className="text-sm font-bold text-amber-500 mt-1 uppercase tracking-widest">Nível {newLevel}</p>
             )}
@@ -310,9 +464,9 @@ const VictoryScreen: React.FC<{
             {/* Cartões de recompensa */}
             <div className="flex items-center justify-center gap-3 mt-6">
                 {/* Score */}
-                <div className="rounded-2xl border-2 border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10 px-5 py-3 min-w-[96px]">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Acertos</p>
-                    <p className="text-2xl font-black text-emerald-600">{score}%</p>
+                <div className={`rounded-2xl border-2 px-5 py-3 min-w-[96px] ${passed ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-900/10' : 'border-orange-200 bg-orange-50 dark:border-orange-900/40 dark:bg-orange-900/10'}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${passed ? 'text-emerald-600' : 'text-orange-600'}`}>Acertos</p>
+                    <p className={`text-2xl font-black ${passed ? 'text-emerald-600' : 'text-orange-600'}`}>{score}%</p>
                 </div>
                 {xpEarned > 0 ? (
                     <div className="rounded-2xl border-2 border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/10 px-5 py-3 min-w-[96px]">
@@ -321,20 +475,45 @@ const VictoryScreen: React.FC<{
                         </p>
                         <p className="text-2xl font-black text-amber-600">+{xpEarned}</p>
                     </div>
-                ) : (
+                ) : passed ? (
                     <div className="rounded-2xl border-2 border-violet-200 dark:border-violet-900/40 bg-violet-50 dark:bg-violet-900/10 px-5 py-3 min-w-[112px]">
                         <p className="text-[10px] font-black text-violet-600 uppercase tracking-widest">Prática</p>
                         <p className="text-sm font-black text-violet-600 mt-1">Concluída</p>
                     </div>
-                )}
+                ) : null}
             </div>
 
+            {questionResults.length > 0 && (
+                <div className="mx-auto mt-6 max-w-lg rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left dark:border-slate-700 dark:bg-slate-800/60">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Feedback da correção</p>
+                    <ul className="mt-3 space-y-3">
+                        {questionResults.map((feedback, index) => (
+                            <li key={feedback.questionId || index} className="flex items-start gap-3 text-sm">
+                                <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-black text-white ${feedback.correct ? 'bg-emerald-500' : 'bg-amber-500'}`} aria-hidden="true">
+                                    {feedback.correct ? '✓' : '!'}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-black text-slate-800 dark:text-slate-100">
+                                        Questão {Number.isInteger(feedback.questionIndex) ? feedback.questionIndex + 1 : index + 1}
+                                        {' · '}sua resposta {String.fromCharCode(65 + feedback.selectedIndex)}
+                                        {!feedback.correct && <> · correta {String.fromCharCode(65 + feedback.correctIndex)}</>}
+                                    </p>
+                                    {feedback.explanation && (
+                                        <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{feedback.explanation}</p>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
             <button
-                onClick={onContinue}
+                onClick={passed ? onContinue : onRetry}
                 className="mt-8 w-full max-w-xs mx-auto block px-6 py-3.5 rounded-2xl bg-violet-500 text-white font-black text-sm uppercase tracking-wider hover:bg-violet-600 transition-colors"
                 style={{ boxShadow: '0 5px 0 #6d28d9' }}
             >
-                Continuar
+                {passed ? 'Continuar' : 'Tentar novamente'}
             </button>
         </motion.div>
     );
@@ -343,11 +522,20 @@ const VictoryScreen: React.FC<{
 // ─────────────────────────────────────────────────────────────
 // VOCAB CARDS
 // ─────────────────────────────────────────────────────────────
-const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: string; onFinish: (score: number) => void; saving: boolean }> = ({ content, activityId, userId, onFinish, saving }) => {
+const VocabCardsRunner: React.FC<{ content: any; activityId: string; onFinish: (score: number) => void; saving: boolean }> = ({ content, activityId, onFinish, saving }) => {
     const cards = content.cards || [];
     const [idx, setIdx] = useState(0);
     const [flipped, setFlipped] = useState(false);
     const [knownCount, setKnownCount] = useState(0);
+    const [reviewSaving, setReviewSaving] = useState(false);
+    const [reviewError, setReviewError] = useState('');
+    const [pendingFinalScore, setPendingFinalScore] = useState<number | null>(null);
+    const pendingFinalScoreRef = useRef<number | null>(null);
+    const answeringRef = useRef(false);
+
+    useEffect(() => {
+        answeringRef.current = false;
+    }, [idx]);
 
     if (cards.length === 0) return <p className="text-slate-400">Sem cards configurados.</p>;
 
@@ -356,27 +544,42 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
 
     // SRS: agenda revisao para cards "nao sei ainda" (1 dia depois)
     const scheduleReview = async (card: any) => {
-        try {
-            await supabase.from('student_vocab_reviews').upsert({
-                student_id: userId,
-                term: card.term,
-                translation: card.translation,
-                example: card.example,
-                source_activity_id: activityId,
-                interval_days: 1,
-                consecutive_correct: 0,
-                next_review_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            }, { onConflict: 'student_id, term', ignoreDuplicates: false });
-        } catch (err) {
-            console.error('scheduleReview error:', err);
-        }
+        const { error } = await supabase.rpc('schedule_student_vocab_review', {
+            p_activity_id: activityId,
+            p_term: card.term,
+            p_translation: card.translation,
+            p_example: card.example || null,
+        });
+        if (error) throw error;
     };
 
-    const markKnown = (known: boolean) => {
-        if (known) setKnownCount(k => k + 1);
-        else scheduleReview(card); // marca para revisar amanha
+    const markKnown = async (known: boolean) => {
+        if (answeringRef.current || reviewSaving || saving || pendingFinalScoreRef.current !== null) return;
+        answeringRef.current = true;
+        setReviewError('');
+        if (!known) {
+            setReviewSaving(true);
+            try {
+                await scheduleReview(card);
+            } catch (error) {
+                console.error('scheduleReview error:', error);
+                setReviewError('Não foi possível agendar esta palavra para revisão. Tente novamente.');
+                setReviewSaving(false);
+                answeringRef.current = false;
+                return;
+            }
+            setReviewSaving(false);
+        }
+        const nextKnownCount = known ? knownCount + 1 : knownCount;
+        if (known) setKnownCount(nextKnownCount);
         if (isLast) {
-            const finalScore = Math.round(((knownCount + (known ? 1 : 0)) / cards.length) * 100);
+            const finalScore = Math.round((nextKnownCount / cards.length) * 100);
+            // Congela o resultado antes de chamar o servidor. Em uma falha de
+            // rede, o botão de retry reapresenta exatamente a mesma nota com a
+            // mesma chave idempotente do ActivityPlayer, sem contar o card final
+            // uma segunda vez.
+            pendingFinalScoreRef.current = finalScore;
+            setPendingFinalScore(finalScore);
             onFinish(finalScore);
         } else {
             setIdx(i => i + 1);
@@ -408,22 +611,40 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
                 )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-6">
+            {reviewError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{reviewError}</p>}
+
+            {pendingFinalScore !== null ? (
                 <button
-                    onClick={() => markKnown(false)}
+                    type="button"
+                    onClick={() => {
+                        if (saving || pendingFinalScoreRef.current === null) return;
+                        onFinish(pendingFinalScoreRef.current);
+                    }}
                     disabled={saving}
+                    className="mt-6 w-full rounded-xl bg-violet-600 py-3 text-sm font-bold text-white transition-colors hover:bg-violet-700 disabled:cursor-wait disabled:opacity-60"
+                >
+                    {saving ? 'Registrando resultado...' : 'Tentar registrar novamente'}
+                </button>
+            ) : (
+            <div className="grid grid-cols-1 gap-3 mt-6 sm:grid-cols-2">
+                <button
+                    type="button"
+                    onClick={() => void markKnown(false)}
+                    disabled={saving || reviewSaving}
                     className="py-3 rounded-xl font-bold text-sm border-2 border-rose-200 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-50"
                 >
                     Não sei ainda
                 </button>
                 <button
-                    onClick={() => markKnown(true)}
-                    disabled={saving}
+                    type="button"
+                    onClick={() => void markKnown(true)}
+                    disabled={saving || reviewSaving}
                     className="py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
                 >
                     Sei essa! <Check size={14} className="inline ml-1" />
                 </button>
             </div>
+            )}
         </div>
     );
 };
@@ -431,11 +652,10 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; userId: str
 // ─────────────────────────────────────────────────────────────
 // QUIZ / GRAMMAR DRILL
 // ─────────────────────────────────────────────────────────────
-const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: number) => void; saving: boolean; onWrongAnswer?: () => void; onSubmitAnswers?: (answers: number[]) => void }> = ({ content, rulePt, onFinish, saving, onWrongAnswer, onSubmitAnswers }) => {
+const QuizRunner: React.FC<{ content: any; rulePt?: string; saving: boolean; onSubmitAnswers: (answers: number[]) => void }> = ({ content, rulePt, saving, onSubmitAnswers }) => {
     const questions = content.questions || [];
     const [idx, setIdx] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
-    const [correctCount, setCorrectCount] = useState(0);
     const [showExp, setShowExp] = useState(false);
     const [answers, setAnswers] = useState<number[]>([]); // respostas para validação no servidor
 
@@ -443,27 +663,19 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
 
     const q = questions[idx];
     const isLast = idx === questions.length - 1;
-    const isCorrect = selected === q.correct;
 
     const submit = () => {
         if (selected === null) return;
         setShowExp(true);
         setAnswers(prev => { const cp = [...prev]; cp[idx] = selected; return cp; });
-        if (isCorrect) setCorrectCount(c => c + 1);
-        else onWrongAnswer?.(); // perde uma vida ao errar
     };
 
     const next = () => {
         if (isLast) {
             const finais = [...answers]; finais[idx] = selected ?? -1;
-            if (onSubmitAnswers) {
-                // Anti-burla: servidor recalcula o score a partir do gabarito
-                onSubmitAnswers(finais);
-            } else {
-                const finalCorrect = correctCount + (isCorrect ? (showExp ? 0 : 1) : 0);
-                const score = Math.round((finalCorrect / questions.length) * 100);
-                onFinish(score);
-            }
+            // Anti-burla: servidor recalcula o score a partir do gabarito que
+            // nunca é enviado ao navegador.
+            onSubmitAnswers(finais);
         } else {
             setIdx(i => i + 1);
             setSelected(null);
@@ -484,7 +696,6 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
             <div className="space-y-2">
                 {q.options.map((opt: string, i: number) => {
                     const isSel = selected === i;
-                    const isCorrectOpt = i === q.correct;
                     const showResult = showExp;
                     return (
                         <button
@@ -492,12 +703,8 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
                             onClick={() => !showExp && setSelected(i)}
                             disabled={showExp}
                             className={`w-full text-left p-3 rounded-xl border-2 transition-all text-sm font-medium ${
-                                showResult
-                                    ? isCorrectOpt
-                                        ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
-                                        : isSel
-                                            ? 'border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300'
-                                            : 'border-slate-200 dark:border-slate-700 text-slate-500'
+                                showResult && isSel
+                                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'
                                     : isSel
                                         ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'
                                         : 'border-slate-200 dark:border-slate-700 hover:border-violet-300 text-slate-700 dark:text-slate-300'
@@ -509,12 +716,10 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
                 })}
             </div>
 
-            {showExp && q.exp && (
-                <div className={`mt-4 p-4 rounded-xl ${isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-rose-50 dark:bg-rose-900/20'}`}>
-                    <p className={`text-xs font-bold uppercase tracking-widest mb-1 ${isCorrect ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {isCorrect ? '✓ Correto' : '✗ Não foi dessa vez'}
-                    </p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">{q.exp}</p>
+            {showExp && (
+                <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50 p-4 dark:border-violet-800/40 dark:bg-violet-900/20">
+                    <p className="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-300">Resposta registrada</p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">A correção segura aparece ao concluir a atividade.</p>
                 </div>
             )}
 
@@ -544,7 +749,7 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; onFinish: (score: nu
 // ─────────────────────────────────────────────────────────────
 // READING
 // ─────────────────────────────────────────────────────────────
-const ReadingRunner: React.FC<{ content: any; onFinish: (score: number) => void; saving: boolean }> = ({ content, onFinish, saving }) => {
+const ReadingRunner: React.FC<{ content: any; onSubmitAnswers: (answers: number[]) => void; saving: boolean }> = ({ content, onSubmitAnswers, saving }) => {
     const [readStage, setReadStage] = useState<'text' | 'questions'>('text');
 
     return (
@@ -563,7 +768,7 @@ const ReadingRunner: React.FC<{ content: any; onFinish: (score: number) => void;
                     </button>
                 </div>
             ) : (
-                <QuizRunner content={{ questions: content.questions }} onFinish={onFinish} saving={saving} />
+                <QuizRunner content={{ questions: content.questions }} onSubmitAnswers={onSubmitAnswers} saving={saving} />
             )}
         </div>
     );
@@ -572,8 +777,9 @@ const ReadingRunner: React.FC<{ content: any; onFinish: (score: number) => void;
 // ─────────────────────────────────────────────────────────────
 // SPEAKING WOLFIE
 // ─────────────────────────────────────────────────────────────
-const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConfig: any; onFinish: (score: number) => void }> = ({ activity, userId, wolfieConfig, onFinish }) => {
+const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConfig: any; onFinish: (score: number, evidence?: Record<string, unknown>) => void }> = ({ activity, userId, wolfieConfig, onFinish }) => {
     const [launched, setLaunched] = useState(false);
+    const [practiceNotice, setPracticeNotice] = useState('');
 
     if (launched) {
         // Monta objeto user compatível com WolfieTutor
@@ -605,9 +811,22 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
                     user={userForWolfie}
                     voiceMode={true}
                     topic={topicForWolfie}
-                    onClose={() => {
+                    onClose={(summary: WolfieTutorSessionSummary) => {
                         setLaunched(false);
-                        onFinish(100);
+                        if (!summary.sessionCompleted) {
+                            setPracticeNotice('Conclua pelo menos duas participações substantivas e aguarde a confirmação do Wolfie. Fechar antes disso não registra progresso.');
+                            return;
+                        }
+                        setPracticeNotice('');
+                        const score = summary.sessionScore === null
+                            ? 60
+                            : Math.max(60, Math.min(100, summary.sessionScore));
+                        onFinish(score, {
+                            learnerTurns: summary.learnerTurns,
+                            sessionCompleted: true,
+                            wolfieSessionScore: summary.sessionScore,
+                            wolfieConversationId: summary.conversationId,
+                        });
                     }}
                 />
             </Suspense>,
@@ -617,6 +836,11 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
 
     return (
         <div>
+            {practiceNotice && (
+                <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-relaxed text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                    {practiceNotice}
+                </p>
+            )}
             <div className="bg-gradient-to-br from-violet-50 to-pink-50 dark:from-violet-900/20 dark:to-pink-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-6 mb-4">
                 <Mic size={24} className="text-violet-500 mb-3" />
                 <p className="text-[10px] uppercase tracking-widest text-violet-400 font-bold mb-2">Tarefa</p>
@@ -633,7 +857,7 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
                 )}
             </div>
             <button
-                onClick={() => setLaunched(true)}
+                onClick={() => { setPracticeNotice(''); setLaunched(true); }}
                 className="w-full py-3 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
             >
                 <Mic size={14} /> Começar com Wolfie

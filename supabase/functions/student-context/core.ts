@@ -79,6 +79,26 @@ export function businessDaysAfter(
 }
 
 /**
+ * A leitura do portal nunca cria prática. A ofensiva permanece visível no dia
+ * praticado e no dia seguinte; depois disso expira para zero até uma nova
+ * atividade autoritativa ser registrada.
+ */
+export function resolveDisplayedStreak(
+  storedStreak: number,
+  lastPracticeDate: string | null | undefined,
+  businessDate: string,
+): number {
+  const today = calendarDayUtc(businessDate);
+  if (!text(lastPracticeDate)) return 0;
+  const lastPractice = calendarDayUtc(lastPracticeDate);
+  const elapsedDays = Math.round((today - lastPractice) / DAY_MS);
+  if (elapsedDays < 0 || elapsedDays > 1) return 0;
+  return Number.isFinite(storedStreak)
+    ? Math.max(0, Math.trunc(storedStreak))
+    : 0;
+}
+
+/**
  * Resolves the financial access status from open, past-due payments. Access is
  * suspended only after the seventh weekday following the oldest due date.
  */

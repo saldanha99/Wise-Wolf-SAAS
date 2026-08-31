@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.93.3";
-import { requireWolfieProductAccess } from "../_shared/wolfie-product-access.ts";
+import {
+  OPEN_STUDENT_PAYMENT_STATUSES,
+  requireWolfieProductAccess,
+  studentBillingDateInSaoPaulo,
+  studentPaymentIsBeyondTolerance,
+} from "../_shared/wolfie-product-access.ts";
 
 // ============================================================
 // wolfie-live-proxy — Secure WebSocket bridge
@@ -18,15 +23,6 @@ const ALLOWED_TOPICS = new Set([
   "tech_job_interview",
   "grammar_workout",
 ]);
-const SETTLED_PAYMENT_STATUSES = new Set([
-  "RECEIVED",
-  "CONFIRMED",
-  "RECEIVED_IN_CASH",
-  "PAGO",
-  "PAYMENT_RECEIVED",
-  "PAYMENT_CONFIRMED",
-]);
-
 serve(async (req) => {
   // Only accept WebSocket upgrades
   if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") {
@@ -139,17 +135,23 @@ serve(async (req) => {
   );
   if (accessError) return accessError;
 
-  // ── Payment check (block if > 7 days overdue) ──
-  const now = new Date();
+  // ── Payment check (block after 7 business days) ──
+  let billingToday: string;
+  try {
+    billingToday = studentBillingDateInSaoPaulo();
+  } catch {
+    return new Response("Could not validate account access", { status: 503 });
+  }
   const { data: overduePayments, error: paymentError } =
     profile.tenant_id === "wolfie-direct"
       ? { data: [], error: null }
       : await supabase
         .from("student_payments")
-        .select("due_date, status")
+        .select("due_date")
         .eq("student_id", user.id)
         .eq("tenant_id", profile.tenant_id)
-        .lt("due_date", now.toISOString());
+        .in("status", OPEN_STUDENT_PAYMENT_STATUSES)
+        .lt("due_date", billingToday);
 
   if (paymentError) {
     console.error("[WolfieLive] payment check failed", {
@@ -159,15 +161,16 @@ serve(async (req) => {
   }
 
   for (const payment of overduePayments ?? []) {
-    const status = typeof payment.status === "string"
-      ? payment.status.toUpperCase()
-      : "";
-    if (SETTLED_PAYMENT_STATUSES.has(status)) continue;
-    const dueTime = new Date(payment.due_date).getTime();
-    if (!Number.isFinite(dueTime)) {
+    let blocked: boolean;
+    try {
+      blocked = studentPaymentIsBeyondTolerance(
+        payment.due_date,
+        billingToday,
+      );
+    } catch {
       return new Response("Could not validate account access", { status: 503 });
     }
-    if (now.getTime() - dueTime > 7 * 86_400_000) {
+    if (blocked) {
       return new Response(
         JSON.stringify({ error: "PAYMENT_REQUIRED" }),
         {
