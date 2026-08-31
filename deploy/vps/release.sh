@@ -2078,6 +2078,7 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
 [[ -s "$release_dir/functions/_shared/management-action-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/whatsapp-inbox.ts" ]]
+[[ -s "$release_dir/functions/_shared/interview-notifications.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
 done
@@ -3633,7 +3634,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts interview-notifications.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
@@ -3714,6 +3715,22 @@ for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   hardened_functions_swapped+=("$function_name")
   cp -a -- "$release_dir/functions/$function_name" \
     "$functions_dir/$function_name"
+done
+
+# Every runtime helper staged in the release must also be byte-for-byte present
+# in the active function tree before the database transaction can start. This
+# catches a newly added shared import that was packaged but accidentally omitted
+# from the activation/rollback list (which would otherwise surface only as a
+# worker boot error after commit).
+for release_shared_file in "$release_dir/functions/_shared/"*.ts; do
+  shared_name="$(basename -- "$release_shared_file")"
+  case "$shared_name" in
+    *.test.ts) continue ;;
+  esac
+  [[ -f "$release_shared_file" && ! -L "$release_shared_file" ]]
+  [[ -f "$functions_dir/_shared/$shared_name" &&
+    ! -L "$functions_dir/_shared/$shared_name" ]]
+  cmp -s -- "$release_shared_file" "$functions_dir/_shared/$shared_name"
 done
 fi
 
