@@ -176,6 +176,31 @@ async function activeTeacherPhones(
   return phones;
 }
 
+async function expireTrialOpportunity(
+  sb: any,
+  tenantId: string,
+  opportunityId: string,
+): Promise<{ expired: boolean; error: string | null }> {
+  const { data, error } = await sb.rpc("expire_trial_opportunity_atomic", {
+    p_tenant_id: tenantId,
+    p_opportunity_id: opportunityId,
+  });
+  if (error) return { expired: false, error: error.message };
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { expired: false, error: "invalid_expiration_response" };
+  }
+  const result = data as Record<string, unknown>;
+  if (result.ok !== true) {
+    return {
+      expired: false,
+      error: typeof result.error === "string"
+        ? result.error
+        : "expiration_not_authorized",
+    };
+  }
+  return { expired: result.expired === true, error: null };
+}
+
 serve(async (req) => {
   try {
     const url = Deno.env.get("SUPABASE_URL") ?? "";
@@ -493,45 +518,31 @@ serve(async (req) => {
       "opportunities",
     )
       .select("id,tenant_id")
-      .eq("status", "OPEN").lt("opened_at", cutoff48h);
+      .eq("status", "OPEN")
+      .eq("conversion_status", "OPEN")
+      .eq("kind", "TRIAL")
+      .lt("opened_at", cutoff48h);
     if (expErr) result.failures.push(`expire_bulk: ${expErr.message}`);
     for (const candidate of (expiredCandidates || [])) {
-      const dispatchGuard = await loadOpportunityDispatchGuard(
+      const expiration = await expireTrialOpportunity(
         sb,
         candidate.tenant_id,
         candidate.id,
       );
-      if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
-        continue;
-      }
-      const { data: expired, error: expireError } = await sb.from(
-        "opportunities",
-      )
-        .update({ status: "EXPIRED", conversion_status: "LOST" })
-        .eq("id", candidate.id).eq("status", "OPEN").select("id");
-      if (expireError) {
-        result.failures.push(`expire ${candidate.id}: ${expireError.message}`);
-      } else {
-        result.expired += (expired || []).length;
-      }
+      if (expiration.error) {
+        result.failures.push(`expire ${candidate.id}: ${expiration.error}`);
+      } else if (expiration.expired) result.expired++;
     }
 
     const { data: opps } = await sb.from("opportunities")
       .select(
         "id, tenant_id, student_name, student_phone, interests, kind, opened_at, claim_generation, slots_proposed",
       )
-      .eq("status", "OPEN").eq("kind", "TRIAL")
+      .eq("status", "OPEN").eq("conversion_status", "OPEN")
+      .eq("kind", "TRIAL")
       .gte("opened_at", cutoff48h).lt("opened_at", cutoff20m);
 
     for (const opp of (opps || [])) {
-      const dispatchGuard = await loadOpportunityDispatchGuard(
-        sb,
-        opp.tenant_id,
-        opp.id,
-      );
-      if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
-        continue;
-      }
       const slot = Array.isArray(opp.slots_proposed)
         ? opp.slots_proposed[0]
         : null;
@@ -540,14 +551,23 @@ serve(async (req) => {
       const slotPast = slot.date < todayBRT() ||
         (slot.date === todayBRT() && slot.time <= hhmmBRT());
       if (slotPast) {
-        const { error: pastErr } = await sb.from("opportunities")
-          .update({ status: "EXPIRED", conversion_status: "LOST" }).eq(
-            "id",
-            opp.id,
-          ).eq("status", "OPEN");
-        if (pastErr) {
-          result.failures.push(`expire_past ${opp.id}: ${pastErr.message}`);
-        } else result.expired++;
+        const expiration = await expireTrialOpportunity(
+          sb,
+          opp.tenant_id,
+          opp.id,
+        );
+        if (expiration.error) {
+          result.failures.push(`expire_past ${opp.id}: ${expiration.error}`);
+        } else if (expiration.expired) result.expired++;
+        continue;
+      }
+
+      const dispatchGuard = await loadOpportunityDispatchGuard(
+        sb,
+        opp.tenant_id,
+        opp.id,
+      );
+      if (!dispatchGuard.ok || dispatchGuard.dispatchMode !== "GENERIC") {
         continue;
       }
 

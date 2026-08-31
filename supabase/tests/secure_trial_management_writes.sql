@@ -128,8 +128,11 @@ begin
     'public.schedule_manual_trial_secure(jsonb)',
     'public.create_vendor_trial_link_secure(jsonb)',
     'public.update_trial_outcome_secure(jsonb)',
+    'public.get_teacher_pending_trial_feedback_secure()',
     'public.get_opportunity_teacher_dispatch_secure(text,uuid)',
-    'public.confirm_vendor_trial_interest_atomic(text,uuid,boolean)'
+    'public.confirm_vendor_trial_interest_atomic(text,uuid,boolean)',
+    'public.get_trial_notification_delivery_snapshot(text,uuid,text)',
+    'public.expire_trial_opportunity_atomic(text,uuid)'
   ] loop
     function_oid := to_regprocedure(signature);
     perform pg_temp.assert_true(
@@ -192,6 +195,41 @@ begin
     ),
     'public confirmation RPC is not service-only'
   );
+
+  perform pg_temp.assert_true(
+    not pg_catalog.has_function_privilege(
+      'anon',
+      'public.get_teacher_pending_trial_feedback_secure()',
+      'EXECUTE'
+    )
+    and pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.get_teacher_pending_trial_feedback_secure()',
+      'EXECUTE'
+    )
+    and not pg_catalog.has_function_privilege(
+      'service_role',
+      'public.get_teacher_pending_trial_feedback_secure()',
+      'EXECUTE'
+    ),
+    'teacher pending-feedback projection has unsafe execute privileges'
+  );
+
+  foreach signature in array array[
+    'public.get_trial_notification_delivery_snapshot(text,uuid,text)',
+    'public.expire_trial_opportunity_atomic(text,uuid)'
+  ] loop
+    perform pg_temp.assert_true(
+      not pg_catalog.has_function_privilege('anon', signature, 'EXECUTE')
+      and not pg_catalog.has_function_privilege(
+        'authenticated', signature, 'EXECUTE'
+      )
+      and pg_catalog.has_function_privilege(
+        'service_role', signature, 'EXECUTE'
+      ),
+      format('%s is not service-only', signature)
+    );
+  end loop;
 
   foreach signature in array array[
     'private.secure_trial_payload_fingerprint(jsonb)',
@@ -700,6 +738,7 @@ $vendor_link$;
 
 reset role;
 set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
 
 select pg_catalog.set_config(
   'app.secure_manual_opportunity_id',
@@ -782,6 +821,7 @@ select pg_temp.assert_true(
 
 reset role;
 set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
 
 do $public_confirmation$
 declare
@@ -824,7 +864,20 @@ begin
     and public.get_opportunity_teacher_dispatch_secure(
       'secure-trial-a',
       current_setting('app.secure_vendor_opportunity_id')::uuid
-    ) ->> 'targetTeacherId' = '00000000-0000-4000-8000-00000000e002',
+    ) ->> 'targetTeacherId' = '00000000-0000-4000-8000-00000000e002'
+    and (
+      select count(*)
+      from public.notification_queue as notification
+      where notification.tenant_id = 'secure-trial-a'
+        and notification.source_id =
+          current_setting('app.secure_vendor_opportunity_id')::uuid
+        and notification.source_type = 'TRIAL_OPPORTUNITY'
+        and notification.notification_kind = 'TRIAL_TEACHER_REQUESTED'
+        and notification.teacher_id =
+          '00000000-0000-4000-8000-00000000e002'
+        and notification.status = 'pending'
+        and notification.delivery_status = 'queued'
+    ) = 1,
     format('public confirmation booked or was not idempotent: %s / %s', result, retry_result)
   );
 end;
@@ -880,6 +933,7 @@ $safe_preview$;
 
 reset role;
 set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
 
 do $teacher_acceptance$
 declare
@@ -913,7 +967,19 @@ begin
          and appointment.tenant_id = 'secure-trial-a'
          and appointment.teacher_id = '00000000-0000-4000-8000-00000000e002'
          and appointment.professor_id = '00000000-0000-4000-8000-00000000e002'
-    ),
+    )
+    and (
+      select count(*)
+      from public.notification_queue as notification
+      where notification.tenant_id = 'secure-trial-a'
+        and notification.source_id =
+          current_setting('app.secure_vendor_opportunity_id')::uuid
+        and notification.source_type = 'TRIAL_OPPORTUNITY'
+        and notification.notification_kind = 'TRIAL_MANAGEMENT_ACCEPTED'
+        and notification.teacher_id is null
+        and notification.status = 'pending'
+        and notification.delivery_status = 'queued'
+    ) = 1,
     format(
       'authenticated teacher acceptance was not atomic: %s / %s / %s',
       result,
@@ -999,7 +1065,35 @@ $outcomes$;
 reset role;
 set local role authenticated;
 set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e102","role":"authenticated"}';
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.get_teacher_pending_trial_feedback_secure() as pending
+    where pending.opportunity_id =
+      current_setting('app.secure_vendor_opportunity_id')::uuid
+  ),
+  'teacher from another tenant read pending trial feedback'
+);
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-00000000e002","role":"authenticated"}';
+
+select pg_temp.assert_true(
+  exists (
+    select 1
+    from public.get_teacher_pending_trial_feedback_secure() as pending
+    where pending.opportunity_id =
+      current_setting('app.secure_vendor_opportunity_id')::uuid
+      and pending.appointment_id is not null
+      and pending.student_name = 'Secure Vendor Trial'
+      and pending.completed_at is not null
+  ),
+  'completed assigned trial did not enter the teacher feedback queue'
+);
 
 select pg_temp.assert_true(
   coalesce((public.update_trial_outcome_secure(jsonb_build_object(
@@ -1012,6 +1106,16 @@ select pg_temp.assert_true(
     'notes', 'Feedback seguro'
   )) ->> 'ok')::boolean, false),
   'assigned teacher could not save secure feedback'
+);
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+    from public.get_teacher_pending_trial_feedback_secure() as pending
+    where pending.opportunity_id =
+      current_setting('app.secure_vendor_opportunity_id')::uuid
+  ),
+  'saved feedback remained in the teacher pending queue'
 );
 
 reset role;
@@ -1034,6 +1138,7 @@ select pg_temp.assert_true(
 
 reset role;
 set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
 
 select pg_temp.assert_true(
   exists (

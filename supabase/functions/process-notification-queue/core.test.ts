@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  isTrialLifecycleNotificationKind,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -31,6 +32,26 @@ Deno.test("CONFLICT_TEACHER_ALERT usa audiência professor e somente central", (
   assertEquals(queueAudience("LESSON_REMINDER"), {
     audience: "student",
     centralOnly: false,
+  });
+});
+
+Deno.test("notificações do funil experimental usam a rota e classificação corretas", () => {
+  assertEquals(
+    isTrialLifecycleNotificationKind("trial_teacher_requested"),
+    true,
+  );
+  assertEquals(
+    isTrialLifecycleNotificationKind("TRIAL_MANAGEMENT_ACCEPTED"),
+    true,
+  );
+  assertEquals(isTrialLifecycleNotificationKind("LESSON_REMINDER"), false);
+  assertEquals(queueAudience("TRIAL_TEACHER_REQUESTED"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience("TRIAL_MANAGEMENT_ACCEPTED"), {
+    audience: "teacher",
+    centralOnly: true,
   });
 });
 

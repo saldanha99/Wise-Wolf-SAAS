@@ -143,6 +143,7 @@ values (
 );
 
 set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
 
 do $test$
 declare

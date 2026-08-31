@@ -51,4 +51,23 @@ describe('ProtectedRoute administrative access guard', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Sair da Conta' }));
         expect(onLogout).toHaveBeenCalledOnce();
     });
+
+    it('delegates every student financial decision to the authoritative StudentProvider', () => {
+        render(
+            <ProtectedRoute
+                user={{
+                    ...activeTeacher,
+                    role: UserRole.STUDENT,
+                    status_financial: 'OVERDUE',
+                    due_day: 10,
+                }}
+                onLogout={vi.fn()}
+            >
+                <div>provider autoritativo</div>
+            </ProtectedRoute>,
+        );
+
+        expect(screen.getByText('provider autoritativo')).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: /acesso bloqueado/i })).not.toBeInTheDocument();
+    });
 });

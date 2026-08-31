@@ -144,6 +144,12 @@ export function normalizeNotificationKind(kind: unknown): string {
   return String(kind || "").trim().toUpperCase();
 }
 
+export function isTrialLifecycleNotificationKind(kind: unknown): boolean {
+  const normalized = normalizeNotificationKind(kind);
+  return normalized === "TRIAL_TEACHER_REQUESTED" ||
+    normalized === "TRIAL_MANAGEMENT_ACCEPTED";
+}
+
 export function queueAudience(kind: unknown): {
   audience: "student" | "teacher";
   centralOnly: boolean;
@@ -151,7 +157,9 @@ export function queueAudience(kind: unknown): {
   const normalized = normalizeNotificationKind(kind);
   if (
     normalized === "SCHEDULE_CHANGE_GROUP" ||
-    normalized === "CONFLICT_TEACHER_ALERT"
+    normalized === "CONFLICT_TEACHER_ALERT" ||
+    normalized === "TRIAL_TEACHER_REQUESTED" ||
+    normalized === "TRIAL_MANAGEMENT_ACCEPTED"
   ) return { audience: "teacher", centralOnly: true };
   return { audience: "student", centralOnly: false };
 }

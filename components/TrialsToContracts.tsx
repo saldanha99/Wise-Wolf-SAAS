@@ -45,17 +45,21 @@ interface Opportunity {
     trial_status: string;
     conversion_status: string;
     winner_teacher_id: string;
+    professor_id?: string | null;
     trial_appointment_id: string;
     student_id: string | null;
     lost_reason: string | null;
     created_at: string;
     slots_proposed: any;
     accepted_slot: any;
+    feedback_required?: boolean | null;
 }
 
 interface Feedback {
     id: string;
+    tenant_id: string;
     opportunity_id: string;
+    booking_id: string;
     recommended_level: string;
     recommended_plan: string;
     interest_score: number;
@@ -70,10 +74,24 @@ interface Teacher {
 
 interface EnrollmentLink {
     id: string;
+    tenant_id: string;
     opportunity_id: string;
     link_url: string;
     status: string;
     created_at: string;
+    expires_at: string;
+    offer_id: string;
+    offer?: EnrollmentOfferRelation | EnrollmentOfferRelation[] | null;
+}
+
+interface EnrollmentOfferRelation {
+    id: string;
+    kind: string;
+    tenant_id: string;
+    opportunity_id: string | null;
+    expires_at: string;
+    revoked_at: string | null;
+    consumed_at: string | null;
 }
 
 interface TrialsToContractsProps {
@@ -94,6 +112,58 @@ const planToFrequency = (plan: string): number => {
     if (lower.includes('4x')) return 4;
     if (lower.includes('5x') || lower.includes('intensivo')) return 5;
     return 2;
+};
+
+const relationOne = <T,>(value: T | T[] | null | undefined): T | null =>
+    Array.isArray(value) ? value[0] ?? null : value ?? null;
+
+const isFutureInstant = (value: string | null | undefined, nowMs: number): boolean => {
+    if (!value) return false;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) && timestamp > nowMs;
+};
+
+const isUsableEnrollmentLink = (link: EnrollmentLink, opportunity: Opportunity, nowMs: number): boolean => {
+    const offer = relationOne(link.offer);
+    return link.status === 'PENDING'
+        && link.offer_id === offer?.id
+        && link.opportunity_id === opportunity.id
+        && link.tenant_id === opportunity.tenant_id
+        && isFutureInstant(link.expires_at, nowMs)
+        && offer?.kind === 'ENROLLMENT'
+        && offer.tenant_id === opportunity.tenant_id
+        && offer.opportunity_id === opportunity.id
+        && offer.revoked_at === null
+        && offer.consumed_at === null
+        && isFutureInstant(offer.expires_at, nowMs);
+};
+
+const isCompleteTrialFeedback = (opportunity: Opportunity, feedback: Feedback | undefined): boolean => {
+    const teacherId = opportunity.winner_teacher_id || opportunity.professor_id;
+    return Boolean(
+        feedback
+        && teacherId
+        && opportunity.trial_appointment_id
+        && feedback.tenant_id === opportunity.tenant_id
+        && feedback.booking_id === opportunity.trial_appointment_id
+        && feedback.teacher_id === teacherId
+    );
+};
+
+const enrollmentCreationErrorMessage = (error: unknown): string => {
+    const raw = error instanceof Error
+        ? `${error.name} ${error.message}`
+        : typeof error === 'object' && error !== null
+            ? JSON.stringify(error)
+            : String(error || '');
+    const normalized = raw.toLowerCase();
+    if (normalized.includes('trial_feedback_required')) {
+        return 'O feedback da aula experimental é obrigatório antes de gerar a matrícula. Peça ao professor para concluir a avaliação e tente novamente.';
+    }
+    if (normalized.includes('enrollment_in_progress')) {
+        return 'Já existe uma matrícula em andamento para esta oportunidade. Aguarde a conclusão ou revise o link atual antes de gerar outro.';
+    }
+    return enrollmentOfferErrorMessage(error);
 };
 
 // Converte um slot da oportunidade (preferred_slots) para o weekday em inglês minúsculo
@@ -121,6 +191,7 @@ const slotToEnWeekday = (s: any): string | null => {
 // =============================================================
 const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user }) => {
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
     const [feedbacks, setFeedbacks] = useState<Record<string, Feedback>>({});
     const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -251,71 +322,108 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const fetchData = async () => {
         if (!tenantId) return;
         setLoading(true);
+        setLoadError(null);
+        try {
+            const [opportunitiesResult, teachersResult] = await Promise.all([
+                supabase
+                    .from('opportunities')
+                    .select('*')
+                    .eq('tenant_id', tenantId)
+                    .in('status', ['CLAIMED'])
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('profiles')
+                    .select('id, full_name')
+                    .eq('tenant_id', tenantId)
+                    .eq('role', 'TEACHER'),
+            ]);
 
-        // 1. All opportunities with trial data
-        const { data: opps } = await supabase
-            .from('opportunities')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .in('status', ['CLAIMED'])
-            .order('created_at', { ascending: false });
+            if (opportunitiesResult.error) throw opportunitiesResult.error;
+            if (teachersResult.error) throw teachersResult.error;
+            const opportunityRows = (opportunitiesResult.data || []) as Opportunity[];
+            setOpportunities(opportunityRows);
+            setTeachers((teachersResult.data || []) as Teacher[]);
 
-        setOpportunities(opps || []);
+            const oppIds = opportunityRows.map(opportunity => opportunity.id);
+            if (oppIds.length === 0) {
+                setFeedbacks({});
+                setEnrollmentLinks({});
+                setAppointments({});
+                return;
+            }
 
-        // 2. Feedbacks for those opportunities
-        const oppIds = (opps || []).map(o => o.id);
-        if (oppIds.length > 0) {
-            const { data: fbs } = await supabase
-                .from('trial_feedback')
-                .select('*')
-                .in('opportunity_id', oppIds);
+            const appointmentIds = opportunityRows
+                .map(opportunity => opportunity.trial_appointment_id)
+                .filter((id): id is string => Boolean(id));
+            const nowIso = new Date().toISOString();
+            const [feedbackResult, linksResult, appointmentsResult] = await Promise.all([
+                supabase
+                    .from('trial_feedback')
+                    .select('*')
+                    .in('opportunity_id', oppIds),
+                supabase
+                    .from('enrollment_links')
+                    .select(`
+                        id, tenant_id, opportunity_id, link_url, status,
+                        created_at, expires_at, offer_id,
+                        offer:offers!enrollment_links_offer_id_fkey(
+                            id, kind, tenant_id, opportunity_id, expires_at,
+                            revoked_at, consumed_at
+                        )
+                    `)
+                    .in('opportunity_id', oppIds)
+                    .eq('status', 'PENDING')
+                    .gt('expires_at', nowIso)
+                    .order('created_at', { ascending: false }),
+                appointmentIds.length > 0
+                    ? supabase
+                        .from('appointments')
+                        .select('id, start_time')
+                        .in('id', appointmentIds)
+                    : Promise.resolve({ data: [], error: null }),
+            ]);
 
-            const fbMap: Record<string, Feedback> = {};
-            (fbs || []).forEach(f => { fbMap[f.opportunity_id] = f; });
-            setFeedbacks(fbMap);
+            if (feedbackResult.error) throw feedbackResult.error;
+            if (linksResult.error) throw linksResult.error;
+            if (appointmentsResult.error) throw appointmentsResult.error;
 
-            // 3. Enrollment links for those opportunities
-            const { data: links } = await supabase
-                .from('enrollment_links')
-                .select('*')
-                .in('opportunity_id', oppIds)
-                .eq('status', 'PENDING')
-                .order('created_at', { ascending: false });
+            const feedbackMap: Record<string, Feedback> = {};
+            ((feedbackResult.data || []) as Feedback[]).forEach(feedback => {
+                feedbackMap[feedback.opportunity_id] = feedback;
+            });
+            setFeedbacks(feedbackMap);
 
+            const opportunityById = new Map(opportunityRows.map(opportunity => [opportunity.id, opportunity]));
+            const nowMs = Date.now();
             const linkMap: Record<string, EnrollmentLink> = {};
-            (links || []).forEach(l => {
-                if (!linkMap[l.opportunity_id]) {
-                    linkMap[l.opportunity_id] = l;
+            ((linksResult.data || []) as unknown as EnrollmentLink[]).forEach(link => {
+                const opportunity = opportunityById.get(link.opportunity_id);
+                if (
+                    opportunity
+                    && !linkMap[link.opportunity_id]
+                    && isUsableEnrollmentLink(link, opportunity, nowMs)
+                ) {
+                    linkMap[link.opportunity_id] = link;
                 }
             });
             setEnrollmentLinks(linkMap);
 
-            // 4. Fetch appointment start_time for exact trial time
-            const appointmentIds = (opps || []).map(o => o.trial_appointment_id).filter(Boolean);
-            if (appointmentIds.length > 0) {
-                const { data: appts } = await supabase
-                    .from('appointments')
-                    .select('id, start_time')
-                    .in('id', appointmentIds);
-
-                const apptMap: Record<string, { start_time: string }> = {};
-                (appts || []).forEach(a => {
-                    // Map by opportunity's trial_appointment_id
-                    apptMap[a.id] = { start_time: a.start_time };
-                });
-                setAppointments(apptMap);
-            }
+            const appointmentMap: Record<string, { start_time: string }> = {};
+            (appointmentsResult.data || []).forEach(appointment => {
+                appointmentMap[appointment.id] = { start_time: appointment.start_time };
+            });
+            setAppointments(appointmentMap);
+        } catch (error) {
+            console.error('Error loading trial conversion pipeline:', error);
+            setOpportunities([]);
+            setFeedbacks({});
+            setEnrollmentLinks({});
+            setAppointments({});
+            setTeachers([]);
+            setLoadError('Não foi possível carregar o fluxo autoritativo de experimentais. Nenhuma matrícula foi liberada com dados incompletos.');
+        } finally {
+            setLoading(false);
         }
-
-        // 4. Teachers
-        const { data: tchrs } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .eq('tenant_id', tenantId)
-            .eq('role', 'TEACHER');
-
-        setTeachers(tchrs || []);
-        setLoading(false);
     };
 
     useEffect(() => { fetchData(); }, [tenantId]);
@@ -475,6 +583,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     // OPEN ENROLLMENT LINK WIZARD
     // =============================================================
     const openWizard = (opp: Opportunity) => {
+        if (opp.feedback_required === true && !isCompleteTrialFeedback(opp, feedbacks[opp.id])) {
+            alert('O feedback da aula experimental precisa ser preenchido pelo professor antes de gerar a matrícula.');
+            return;
+        }
         const fb = feedbacks[opp.id];
         setWizardOpp(opp);
         setGeneratedLink('');
@@ -518,6 +630,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const handleGenerateLink = async () => {
         if (!wizardOpp || !tenantId) return;
         if (monthlyFee <= 0) return alert("Erro: Valor inválido.");
+        if (
+            wizardOpp.feedback_required === true
+            && !isCompleteTrialFeedback(wizardOpp, feedbacks[wizardOpp.id])
+        ) {
+            alert('O feedback da aula experimental ainda está pendente. Atualize a tela após o professor concluir a avaliação.');
+            return;
+        }
 
         setWizardSaving(true);
 
@@ -605,7 +724,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             const localMessage = err instanceof Error && /^(Selecione|Preencha|A grade)/.test(err.message)
                 ? err.message
                 : '';
-            alert(localMessage || enrollmentOfferErrorMessage(err));
+            alert(localMessage || enrollmentCreationErrorMessage(err));
         } finally {
             setWizardSaving(false);
         }
@@ -700,6 +819,25 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         );
     }
 
+    if (loadError) {
+        return (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-red-200 bg-red-50 p-6 text-center" role="alert">
+                <AlertCircle className="text-red-600" size={32} />
+                <div>
+                    <h2 className="text-lg font-black text-brand-text">Experimentais indisponíveis</h2>
+                    <p className="mt-2 max-w-xl text-sm font-medium text-red-700">{loadError}</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => void fetchData()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-red-700"
+                >
+                    <RefreshCw size={15} /> Tentar novamente
+                </button>
+            </div>
+        );
+    }
+
     // =============================================================
     // MAIN RENDER
     // =============================================================
@@ -740,7 +878,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                     </button>
                 ))}
 
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
                     <label htmlFor="trial-teacher-filter" className="text-xs font-bold uppercase tracking-widest text-brand-muted">
                         Professor
                     </label>
@@ -748,7 +886,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         id="trial-teacher-filter"
                         value={teacherFilter}
                         onChange={(e) => setTeacherFilter(e.target.value)}
-                        className="rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        className="min-w-0 flex-1 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-indigo-500/30 sm:flex-none"
                     >
                         <option value="all">Todos os professores ({opportunities.length})</option>
                         {teachers
@@ -780,10 +918,12 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                         const sBadge = getStatusBadge(opp);
                         const tBadge = getTrialBadge(opp.trial_status);
                         const interest = fb ? getInterestBadge(fb.interest_score) : null;
+                        const feedbackPending = opp.feedback_required === true
+                            && !isCompleteTrialFeedback(opp, fb);
 
                         return (
                             <div key={opp.id} className="bg-brand-surface rounded-2xl border border-brand-border p-5 hover:shadow-lg transition-shadow">
-                                <div className="flex items-start justify-between gap-4">
+                                <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                                             <h3 className="text-lg font-bold text-brand-text truncate">{opp.student_name}</h3>
@@ -832,16 +972,23 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             </div>
                                         )}
 
+                                        {feedbackPending && opp.trial_status === 'DONE' && (
+                                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                                                <span>Feedback obrigatório pendente. O professor precisa concluir a avaliação antes da matrícula.</span>
+                                            </div>
+                                        )}
+
                                         {/* Enrollment Link Status */}
                                         {link && opp.conversion_status === 'OPEN' && (
-                                            <div className="mt-3 flex items-center gap-2">
+                                            <div className="mt-3 flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
                                                 <div className="flex-1 bg-brand-surface rounded-xl px-3 py-2 flex items-center gap-2 overflow-hidden">
                                                     <LinkIcon size={12} className="text-emerald-400 shrink-0" />
                                                     <span className="text-[10px] font-mono text-emerald-400 truncate">{link.link_url}</span>
                                                 </div>
                                                 <button
                                                     onClick={() => { navigator.clipboard.writeText(link.link_url); }}
-                                                    className="px-3 py-2 bg-brand-surface-2 rounded-xl text-xs font-bold text-brand-muted hover:bg-slate-200 transition-all flex items-center gap-1"
+                                                    className="flex w-full items-center justify-center gap-1 rounded-xl bg-brand-surface-2 px-3 py-2 text-xs font-bold text-brand-muted transition-all hover:bg-slate-200 sm:w-auto"
                                                 >
                                                     <Copy size={12} /> Copiar
                                                 </button>
@@ -855,13 +1002,13 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
                                     {/* Action Buttons */}
                                     {opp.conversion_status === 'OPEN' && (
-                                        <div className="flex flex-col gap-2 shrink-0">
+                                        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto">
                                             {/* Trial status actions: when NOT yet DONE */}
                                             {opp.trial_status !== 'DONE' && (
                                                 <>
                                                     <button
                                                         onClick={() => markTrialRealized(opp)}
-                                                        className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-200 hover:shadow-emerald-300 active:scale-95 transition-all flex items-center gap-2"
+                                                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition-all hover:shadow-emerald-300 active:scale-95"
                                                     >
                                                         <Check size={16} />
                                                         Aula Realizada
@@ -900,17 +1047,23 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             {opp.trial_status === 'DONE' && (
                                                 <button
                                                     onClick={() => openWizard(opp)}
-                                                    className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 hover:shadow-blue-300 active:scale-95 transition-all flex items-center gap-2"
+                                                    disabled={feedbackPending}
+                                                    title={feedbackPending ? 'Aguardando o feedback obrigatório do professor' : undefined}
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-400 disabled:shadow-none"
                                                 >
-                                                    <LinkIcon size={16} />
-                                                    {enrollmentLinks[opp.id] ? 'Reenviar Link' : 'Gerar Link Matrícula'}
+                                                    {feedbackPending ? <AlertCircle size={16} /> : <LinkIcon size={16} />}
+                                                    {feedbackPending
+                                                        ? 'Aguardando feedback'
+                                                        : enrollmentLinks[opp.id]
+                                                            ? 'Reenviar Link'
+                                                            : 'Gerar Link Matrícula'}
                                                 </button>
                                             )}
                                             {/* Reagendar: aparece quando houve falta (aluno ou professor) */}
                                             {(opp.trial_status === 'NO_SHOW_STUDENT' || opp.trial_status === 'NO_SHOW_TEACHER') && (
                                                 <button
                                                     onClick={() => openReschedule(opp)}
-                                                    className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-amber-200 hover:shadow-amber-300 active:scale-95 transition-all flex items-center gap-2"
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-200 transition-all hover:shadow-amber-300 active:scale-95"
                                                 >
                                                     <RefreshCw size={16} />
                                                     Reagendar Experimental
@@ -919,7 +1072,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                             {/* Perdido: always visible when OPEN */}
                                             <button
                                                 onClick={() => { setLostOpp(opp); setLostReason(''); }}
-                                                className="px-4 py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center gap-2 border border-red-100"
+                                                className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 transition-all hover:bg-red-100"
                                             >
                                                 <XCircle size={16} />
                                                 Perdido

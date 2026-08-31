@@ -2,20 +2,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   DollarSign,
-  FileText,
   Target,
   TrendingUp,
   RefreshCw,
   Users,
-  Download,
   Wallet,
-  ArrowUpRight,
-  ChevronRight,
   AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { formatLocalDateBr, localMonth } from '../lib/dateUtils';
-import { UserRole, PresenceStatus } from '../types';
+import { formatLocalDateBr, localMonth, monthRange } from '../lib/dateUtils';
 import { isSettledStudentPayment, isStudentPaymentAwaitingCredit } from '../lib/studentPaymentStatus';
 
 interface FinancialReportProps {
@@ -23,16 +18,14 @@ interface FinancialReportProps {
   tenantId?: string;
 }
 
-const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => {
-  const isAdmin = role === 'SCHOOL_ADMIN';
+const FinancialReport: React.FC<FinancialReportProps> = ({ tenantId }) => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     totalCosts: 0,
     forecastRevenue: 0,
     activeStudents: 0,
-    activeTeachers: 0,
-    pendingPayouts: 0
+    activeTeachers: 0
   });
   const [teachersFinancials, setTeachersFinancials] = useState<any[]>([]);
   const [studentReceipts, setStudentReceipts] = useState<any[]>([]);
@@ -52,12 +45,9 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
     setTeachersFinancials([]);
     setStudentReceipts([]);
     try {
-      const startOfMonth = `${selectedMonth}-01`;
-      const startDate = new Date(`${startOfMonth}T00:00:00`);
-      const nextMonth = new Date(startDate);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      const endDateStr = nextMonth.toISOString();
-      const startDateStr = startDate.toISOString();
+      const { start: monthStart, endExclusive: nextMonthStart } = monthRange(selectedMonth);
+      const startDateStr = new Date(`${monthStart}T00:00:00`).toISOString();
+      const endDateStr = new Date(`${nextMonthStart}T00:00:00`).toISOString();
 
       // 1. REAL Revenue from FINANCIAL TRANSACTIONS (Official Ledger) - Matches Dashboard
       const { data: transactions, error: transactionsError } = await supabase
@@ -72,10 +62,6 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         .filter(t => t.type === 'ENTRADA')
         .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
 
-      const totalCostsFromTrans = (transactions || [])
-        .filter(t => t.type === 'SAIDA')
-        .reduce((acc, t) => acc + (Number(t.amount) || Number(t.amount_cents) / 100 || 0), 0);
-
       // 2. Teacher Payroll — hourly_rate via RPC (coluna não é mais legível direto em profiles)
       const { data: teachersData, error: teachersError } = await supabase.rpc('get_tenant_teacher_pay');
       if (teachersError) throw teachersError;
@@ -86,8 +72,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         .from('class_logs')
         .select('teacher_id, presence, subtype')
         .eq('tenant_id', tenantId)
-        .gte('created_at', startDateStr)
-        .lt('created_at', endDateStr);
+        .gte('class_date', monthStart)
+        .lt('class_date', nextMonthStart);
       if (logsError) throw logsError;
 
       // Calculate Payroll per Teacher
@@ -121,8 +107,8 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           profiles (id, full_name, tenant_id)
         `)
         .eq('tenant_id', tenantId)
-        .gte('due_date', startDateStr)
-        .lt('due_date', endDateStr)
+        .gte('due_date', monthStart)
+        .lt('due_date', nextMonthStart)
         .order('due_date', { ascending: true });
       if (paymentsError) throw paymentsError;
 
@@ -146,8 +132,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
         totalCosts: estimatedPayroll, // Use Estimated for "Custo Folha" to match Dashboard
         forecastRevenue: forecast,
         activeStudents: activeStudentCount || 0,
-        activeTeachers: teachersData?.length || 0,
-        pendingPayouts: 0 // TODO: Check actual payouts if needed, or just use 0 for now
+        activeTeachers: teachersData?.length || 0
       });
 
       // UI Mapping for Teachers (Combined Static Data + Dynamic Logs)
@@ -159,7 +144,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           avatar_url: t.avatar_url,
           paidCount: stat.lessons,
           totalOwed: stat.owed,
-          status: 'PENDING' // Default to pending as we are calculating from logs
+          status: 'ESTIMATE'
         };
       });
       setTeachersFinancials(mappedTeachers);
@@ -215,7 +200,10 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
     );
   }
 
-  const netBalance = stats.totalRevenue - stats.totalCosts;
+  // Este número não consulta saldo bancário: é somente receita realizada menos
+  // a folha reconstruída nesta tela. O nome explicita essa limitação para não
+  // induzir decisão de saque ou conciliação com um valor estimado.
+  const estimatedMarginAfterPayroll = stats.totalRevenue - stats.totalCosts;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -225,7 +213,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight flex items-center gap-3">
             <DollarSign className="text-brand-accent drop-shadow-[0_0_8px_rgba(var(--brand-accent),0.6)]" size={32} /> Financeiro Unidade
           </h2>
-          <p className="text-brand-muted text-sm font-medium">Gestão consolidada de receitas e repasses a professores.</p>
+          <p className="text-brand-muted text-sm font-medium">Receitas realizadas e estimativas operacionais de repasse.</p>
         </div>
         <div className="flex bg-brand-surface p-1.5 rounded-2xl border border-brand-border shadow-sm">
           <input
@@ -265,7 +253,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
             </div>
             <div className="mt-4 flex gap-4">
               <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full uppercase tracking-widest border border-emerald-500/30 shadow-sm">
-                Líquido Real: R$ {netBalance.toLocaleString('pt-BR')}
+                Margem após folha estimada: R$ {estimatedMarginAfterPayroll.toLocaleString('pt-BR')}
               </span>
             </div>
           </div>
@@ -295,31 +283,28 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
               <div className="p-2 bg-blue-500/10 rounded-xl border border-blue-500/20">
                 <Wallet size={18} className="text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
               </div>
-              <h4 className="font-black text-brand-text uppercase tracking-widest text-[10px]">Conciliação Bancária</h4>
+              <h4 className="font-black text-brand-text uppercase tracking-widest text-[10px]">Resultado operacional estimado</h4>
             </div>
             <div className="space-y-1">
-              <p className="text-3xl font-[family-name:var(--font-display)] font-black text-brand-text tracking-tight">R$ {netBalance.toLocaleString('pt-BR')}</p>
-              <p className="text-[10px] text-brand-muted font-bold uppercase">Saldo em Conta Asaas</p>
+              <p className="text-3xl font-[family-name:var(--font-display)] font-black text-brand-text tracking-tight">R$ {estimatedMarginAfterPayroll.toLocaleString('pt-BR')}</p>
+              <p className="text-[10px] text-brand-muted font-bold uppercase">Receita realizada menos folha estimada</p>
             </div>
           </div>
 
           <div className="mt-8 pt-6 border-t border-brand-border/50">
-            <button
-              className="w-full py-4 bg-brand-surface-2 text-brand-text rounded-2xl text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-brand-accent hover:text-brand-accent transition-all shadow-sm flex items-center justify-center gap-2"
-            >
-              Solicitar Saque (Cash-out) <ArrowUpRight size={14} />
-            </button>
+            <p className="rounded-2xl bg-brand-surface-2 px-4 py-3 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-brand-muted">
+              Não representa saldo bancário nem saldo disponível no Asaas.
+            </p>
           </div>
         </div>
       </div>
 
       {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
           { label: 'Professores', value: stats.activeTeachers, icon: <Users size={20} />, color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' },
           { label: 'Alunos Ativos', value: stats.activeStudents, icon: <Target size={20} />, color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
-          { label: 'Custo Folha', value: `R$ ${stats.totalCosts.toLocaleString('pt-BR')}`, icon: <DollarSign size={20} />, color: 'bg-rose-500/10 text-rose-500 border-rose-500/20' },
-          { label: 'Pendentes', value: stats.pendingPayouts, icon: <RefreshCw size={20} />, color: 'bg-amber-500/10 text-amber-500 border-amber-500/20' },
+          { label: 'Folha estimada', value: `R$ ${stats.totalCosts.toLocaleString('pt-BR')}`, icon: <DollarSign size={20} />, color: 'bg-rose-500/10 text-rose-500 border-rose-500/20' },
         ].map((stat, i) => (
           <div key={i} className="bg-brand-surface p-6 rounded-[2rem] border border-brand-border shadow-sm flex items-center gap-4 hover:bg-brand-surface-2 transition-colors">
             <div className={`p-3 rounded-2xl border ${stat.color}`}>{stat.icon}</div>
@@ -396,11 +381,11 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
           <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
             <div>
               <h3 className="font-black text-brand-text text-xs uppercase tracking-widest">Repasse Professores</h3>
-              <p className="text-[10px] text-brand-muted font-bold mt-1 uppercase tracking-tighter">Custos operacionais de aula</p>
+              <p className="text-[10px] text-brand-muted font-bold mt-1 uppercase tracking-tighter">Estimativa local; confirme o valor no fechamento oficial</p>
             </div>
-            <button className="p-2 bg-brand-surface-2 border border-brand-border rounded-lg text-brand-muted hover:border-brand-accent hover:text-brand-accent transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-2 px-4 shadow-sm">
-              Audit <FileText size={16} className="text-brand-accent" />
-            </button>
+            <span className="rounded-lg border border-brand-border bg-brand-surface-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-brand-muted">
+              Somente estimativa
+            </span>
           </div>
           <div className="max-h-[400px] overflow-auto custom-scrollbar">
             <table className="w-full min-w-[600px]">
@@ -408,7 +393,7 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                 <tr>
                   <th className="px-8 py-4 text-left">Professor</th>
                   <th className="px-8 py-4 text-left">Aulas</th>
-                  <th className="px-8 py-4 text-left">Fatura</th>
+                  <th className="px-8 py-4 text-left">Valor estimado</th>
                   <th className="px-8 py-4 text-right">Status</th>
                 </tr>
               </thead>
@@ -428,47 +413,9 @@ const FinancialReport: React.FC<FinancialReportProps> = ({ role, tenantId }) => 
                       R$ {teacher.totalOwed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-8 py-5 text-right">
-                      {teacher.status === 'PAID' ? (
-                        <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 px-3 py-1 rounded-full uppercase shadow-sm">Pago</span>
-                      ) : teacher.status === 'CONFIRMED_TEACHER' ? (
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Confirmar pagamento de R$ ${teacher.totalOwed} para ${teacher.full_name}?`)) return;
-                            try {
-                              // 1. Create Transaction (Exit)
-                              const { error: tErr } = await supabase.from('financial_transactions').insert({
-                                tenant_id: tenantId,
-                                type: 'SAIDA',
-                                category: 'teacher_payout',
-                                amount_cents: Math.round(teacher.totalOwed * 100),
-                                description: `Pagamento Professor - ${teacher.full_name}`,
-                                reference_id: teacher.id
-                              });
-                              if (tErr) throw tErr;
-
-                              // 2. Update Closing (schema unificado — month_year + status PAGO)
-                              const { error: cErr } = await supabase.from('teacher_closings')
-                                .update({ status: 'PAGO', paid_at: new Date().toISOString() })
-                                .eq('teacher_id', teacher.id)
-                                .eq('month_year', selectedMonth);
-
-                              if (cErr) throw cErr;
-
-                              alert('Pagamento registrado!');
-                              fetchFinancialData();
-                            } catch (e: any) {
-                              alert('Erro: ' + e.message);
-                            }
-                          }}
-                          className="text-[10px] font-black bg-brand-accent text-white px-3 py-1 rounded-full uppercase hover:bg-brand-accent-hover transition-colors shadow-[0_0_10px_rgba(var(--brand-accent),0.4)]"
-                        >
-                          Pagar
-                        </button>
-                      ) : (
-                        <span className="text-[10px] font-black text-brand-muted uppercase">
-                          {teacher.status || 'Pendente'}
-                        </span>
-                      )}
+                      <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase text-blue-600 shadow-sm">
+                        {teacher.status === 'ESTIMATE' ? 'Estimativa' : 'Indisponível'}
+                      </span>
                     </td>
                   </tr>
                 ))}

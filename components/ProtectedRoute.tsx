@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, UserRole } from '../types';
+import { User } from '../types';
 import SuspensionPage from './SuspensionPage';
 
 interface ProtectedRouteProps {
@@ -36,25 +36,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, user, onLogou
         return <SuspensionPage user={user} onLogout={onLogout} mode="access" />;
     }
 
-    // 2. Financial Lock Logic (Only for Students)
-    if (user.role === UserRole.STUDENT) {
-        const today = new Date();
-        const currentDay = today.getDate();
-
-        // HARDCODED RULE: Due Date is always the 10th
-        const DUE_DAY = 10;
-        const TOLERANCE_DAYS = 7;
-        const LOCK_DAY = DUE_DAY + TOLERANCE_DAYS; // Day 17
-
-        // If today is past the tolerance period (e.g. 18th onwards)
-        // AND the user is not actively paid/regular
-        const isLate = currentDay > LOCK_DAY;
-        const isNotActive = user.status_financial && user.status_financial !== 'ACTIVE';
-
-        if (isLate && isNotActive) {
-            return <SuspensionPage user={user} onLogout={onLogout} />;
-        }
-    }
+    // A restrição financeira do aluno pertence ao StudentProvider. Ele consulta
+    // `student-context`, que valida a dívida no servidor e falha fechado quando o
+    // estado autoritativo não pode ser obtido. Este guard conserva somente o
+    // bloqueio administrativo comum a todos os papéis.
 
     return <>{children}</>;
 };

@@ -48,7 +48,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
   // Derived from Context
   const billingInfo = studentContext?.profile; // Contains monthly_fee, due_day, status_financial
-  // const contextBillingStatus = studentContext?.billing?.status; // OK, OVERDUE, SUSPENDED
+  const contextBillingStatus = studentContext?.billing?.status; // OK, OVERDUE, SUSPENDED
 
   // Fallback: derive billing summary from actual payments if profile data is empty
   const derivedMonthlyFee = (() => {
@@ -139,37 +139,25 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
     return `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
   };
 
-  // Logic for Alert Status
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  let alertStatus = 'NORMAL'; // NORMAL, OVERDUE, BLOCKED
-  let daysLate = 0;
-  let oldestOverduePayment: Payment | null = null;
-
-  const overduePayments = payments.filter(p => p.status === 'OVERDUE');
-
-  if (overduePayments.length > 0) {
-    // Find oldest due date to calculate block status
-    const sortedOverdue = [...overduePayments].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
-    oldestOverduePayment = sortedOverdue[0];
-
-    const dueDate = new Date(oldestOverduePayment.due_date);
-    // Normalize due date to midnight for correct diff
-    dueDate.setHours(0, 0, 0, 0); // Ensure we compare dates only
-
-    // If dueDate is indeed in the past relative to today
-    if (dueDate < today) {
-      const diffTime = Math.abs(today.getTime() - dueDate.getTime());
-      daysLate = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (daysLate > 7) {
-        alertStatus = 'BLOCKED';
-      } else {
-        alertStatus = 'OVERDUE';
-      }
-    }
-  }
+  // A decisão de acesso vem exclusivamente do student-context. A lista local de
+  // cobranças serve apenas para exibir fatura/PIX e nunca recalcula a tolerância.
+  const alertStatus = contextBillingStatus === 'SUSPENDED'
+    ? 'BLOCKED'
+    : contextBillingStatus === 'OVERDUE'
+      ? 'OVERDUE'
+      : 'NORMAL';
+  const authoritativeOldestDue = studentContext?.billing?.oldestDue?.slice(0, 10) || null;
+  const overduePayments = payments.filter((payment) =>
+    payment.status === 'OVERDUE' ||
+    (
+      authoritativeOldestDue !== null &&
+      payment.status === 'PENDING' &&
+      payment.due_date.slice(0, 10) === authoritativeOldestDue
+    )
+  );
+  const oldestOverduePayment = [...overduePayments]
+    .sort((first, second) => first.due_date.localeCompare(second.due_date))[0] || null;
+  const oldestDueLabel = oldestOverduePayment?.due_date || authoritativeOldestDue;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 pb-20 relative font-sans">
@@ -212,7 +200,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
 
       {/* ALERT STATUS CARDS */}
 
-      {/* 1. BLOCKED STATUS (> 7 days late) */}
+      {/* 1. BLOCKED STATUS (authoritative student-context decision) */}
       {alertStatus === 'BLOCKED' && (
         <div className="bg-slate-950 text-white rounded-2xl p-5 sm:p-8 flex flex-col sm:flex-row items-start gap-4 sm:gap-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 p-12 opacity-10">
@@ -224,14 +212,14 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
           <div className="flex-1 relative z-10">
             <h3 className="text-2xl font-black uppercase tracking-tight text-white mb-2">ACESSO BLOQUEADO</h3>
             <p className="text-slate-300 font-medium text-sm leading-relaxed mb-6">
-              Consta uma pendência financeira superior a 7 dias ({daysLate} dias de atraso).
-              Seu acesso às aulas e materiais foi suspenso temporariamente.
+              A tolerância contratual de 7 dias úteis após o vencimento foi encerrada.
+              Seu acesso às aulas e materiais foi suspenso temporariamente pelo estado financeiro validado no servidor.
             </p>
             <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
               <p className="text-red-300 text-xs font-bold uppercase tracking-widest mb-2">Fatura Crítica</p>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <span className="text-white font-black text-lg">
-                  {oldestOverduePayment && formatDate(oldestOverduePayment.due_date)}
+                  {oldestDueLabel ? formatDate(oldestDueLabel) : 'Data indisponível'}
                 </span>
                 {oldestOverduePayment?.invoice_url && (
                   <a
@@ -249,7 +237,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
         </div>
       )}
 
-      {/* 2. OVERDUE STATUS (1-7 days late) */}
+      {/* 2. OVERDUE STATUS (within the authoritative business-day tolerance) */}
       {alertStatus === 'OVERDUE' && (
         <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-100 dark:border-red-900 rounded-2xl p-6 flex items-start gap-4 shadow-xl shadow-red-100/50 animate-pulse">
           <div className="p-3 bg-red-100 dark:bg-red-800 text-red-600 dark:text-red-200 rounded-xl">
@@ -258,7 +246,7 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
           <div className="flex-1">
             <h3 className="text-lg font-black text-red-800 dark:text-red-200 uppercase tracking-tight">FATURA VENCIDA!</h3>
             <p className="text-sm text-red-700 dark:text-red-300 font-medium mt-1">
-              Você tem <strong>{daysLate} dia(s)</strong> de atraso. Evite o bloqueio do seu acesso regularizando antes de 7 dias.
+              A cobrança está vencida, mas ainda dentro da tolerância contratual de 7 dias úteis. Regularize para evitar a suspensão do acesso.
             </p>
 
             <div className="mt-4 flex flex-col gap-3">
@@ -284,6 +272,11 @@ const StudentBilling: React.FC<StudentBillingProps> = ({ user }) => {
                   )}
                 </div>
               ))}
+              {overduePayments.length === 0 && authoritativeOldestDue && (
+                <div className="rounded-xl border border-red-100 bg-brand-surface p-4 text-sm font-bold text-red-700 dark:border-red-900/50 dark:text-red-300">
+                  Vencimento mais antigo: {formatDate(authoritativeOldestDue)}. Atualize o histórico para carregar o link de pagamento.
+                </div>
+              )}
             </div>
           </div>
         </div>

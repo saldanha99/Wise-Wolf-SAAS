@@ -49,6 +49,51 @@ describe('verdade e segurança da UI financeira', () => {
     expect(report).toContain('Movimentação sem classificação');
   });
 
+  it('delega o bloqueio financeiro do aluno ao contexto autoritativo', () => {
+    const route = read('components/ProtectedRoute.tsx');
+    expect(route).not.toContain('LOCK_DAY');
+    expect(route).not.toContain('status_financial');
+
+    const billing = read('components/StudentBilling.tsx');
+    expect(billing).toContain("contextBillingStatus === 'SUSPENDED'");
+    expect(billing).not.toContain('daysLate > 7');
+    expect(billing).not.toContain('diffTime /');
+  });
+
+  it('não reconstrói valores de fechamento do professor no navegador', () => {
+    const financials = read('components/TeacherFinancials.tsx');
+    expect(financials).toContain("error: officialReportError");
+    expect(financials).toContain('Nenhum valor estimado foi exibido');
+    expect(financials).not.toContain('lessons.filter(isLessonPaid)');
+    expect(financials).not.toContain("supabase.rpc('get_my_pay')");
+
+    const modal = read('components/FinancialClosingModal.tsx');
+    expect(modal).toContain('official_closing_report_invalid');
+    expect(modal).toContain('Tentar novamente');
+    expect(modal).not.toContain(".from('class_logs')");
+    expect(modal).not.toContain("supabase.rpc('get_my_pay')");
+  });
+
+  it('não apresenta margem estimada como saldo bancário ou saldo Asaas', () => {
+    const report = read('components/FinancialReport.tsx');
+    expect(report).not.toContain('Saldo em Conta Asaas');
+    expect(report).not.toContain('Solicitar Saque (Cash-out)');
+    expect(report).toContain('Resultado operacional estimado');
+    expect(report).toContain('Não representa saldo bancário nem saldo disponível no Asaas');
+  });
+
+  it('mantém a folha estimada na competência da aula e sem ação de pagamento', () => {
+    const report = read('components/FinancialReport.tsx');
+    expect(report).toContain(".gte('class_date', monthStart)");
+    expect(report).toContain(".lt('class_date', nextMonthStart)");
+    expect(report).not.toContain(".gte('created_at', startDateStr)");
+    expect(report).toContain("status: 'ESTIMATE'");
+    expect(report).toContain("teacher.status === 'ESTIMATE' ? 'Estimativa'");
+    expect(report).toContain('Somente estimativa');
+    expect(report).not.toContain("category: 'teacher_payout'");
+    expect(report).not.toContain("teacher.status === 'CONFIRMED_TEACHER'");
+  });
+
   it('mantém o desligamento navegável e legível em 320px', () => {
     const students = read('components/StudentsList.tsx');
     expect(students).toContain("event.key === 'Escape'");

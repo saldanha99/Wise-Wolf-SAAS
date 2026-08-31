@@ -25,6 +25,7 @@ import {
   timeInSaoPaulo,
 } from "../send-class-notification/core.ts";
 import {
+  isTrialLifecycleNotificationKind,
   lessonReminderFreshness,
   normalizeNotificationKind,
   normalizeQueueDestination,
@@ -100,6 +101,14 @@ type PreparedQueueMessage = {
     source_type: string;
     class_date: string;
   };
+};
+
+type TrialNotificationSnapshot = {
+  ok?: unknown;
+  retryable?: unknown;
+  reason?: unknown;
+  teacherId?: unknown;
+  destination?: unknown;
 };
 
 type ActiveMember = {
@@ -425,6 +434,60 @@ async function prepareConflictTeacherAlert(
       classTime: canonical.class_time,
     }),
   };
+}
+
+async function prepareTrialLifecycleNotification(
+  supabase: SupabaseClient,
+  item: QueueItem,
+): Promise<PreparedQueueMessage> {
+  const tenantId = String(item.tenant_id || "");
+  const opportunityId = String(item.source_id || "");
+  const notificationKind = normalizeNotificationKind(item.notification_kind);
+  if (
+    !tenantId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(opportunityId) ||
+    String(item.source_type || "").trim().toUpperCase() !==
+      "TRIAL_OPPORTUNITY" ||
+    !isTrialLifecycleNotificationKind(notificationKind)
+  ) invalid("invalid_trial_notification_identity");
+
+  const { data, error } = await supabase.rpc(
+    "get_trial_notification_delivery_snapshot",
+    {
+      p_tenant_id: tenantId,
+      p_opportunity_id: opportunityId,
+      p_notification_kind: notificationKind,
+    },
+  );
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) {
+    unavailable("trial_notification_revalidation_unavailable");
+  }
+  const snapshot = data as TrialNotificationSnapshot;
+  if (snapshot.ok !== true) {
+    const reason = safeCommunicationText(snapshot.reason, 160) ||
+      "trial_notification_no_longer_valid";
+    if (snapshot.retryable === true) unavailable(reason);
+    invalid(reason);
+  }
+
+  const destination = normalizeQueueDestination(snapshot.destination);
+  const message = String(item.message_body || "").trim();
+  const teacherId = typeof snapshot.teacherId === "string"
+    ? snapshot.teacherId
+    : null;
+  if (!destination || !message || message.length > 4096) {
+    unavailable("trial_notification_canonical_payload_unavailable");
+  }
+  if (
+    notificationKind === "TRIAL_TEACHER_REQUESTED" &&
+    (!teacherId || teacherId !== relationOne(item.teacher)?.id)
+  ) invalid("trial_notification_teacher_binding_changed");
+  if (notificationKind === "TRIAL_MANAGEMENT_ACCEPTED" && teacherId) {
+    invalid("trial_management_route_binding_changed");
+  }
+
+  return { teacherId, destination, message };
 }
 
 // Resolve a instância central da escola (admin do tenant com WhatsApp conectado).
@@ -844,6 +907,11 @@ serve(async (req) => {
             item,
             new Date(),
           );
+        } else if (isTrialLifecycleNotificationKind(notificationKind)) {
+          prepared = await prepareTrialLifecycleNotification(
+            supabaseClient,
+            item,
+          );
         }
       } catch (error) {
         if (!(error instanceof QueueRevalidationError)) throw error;
@@ -1177,6 +1245,37 @@ serve(async (req) => {
         persistenceFailed = true;
         results.push({ id, status: "authorized_snapshot_missing" });
         continue;
+      }
+
+      // JID resolution and the transactional SUBMITTING fence can take long
+      // enough for a trial to be canceled, converted or marked as a fixture.
+      // Revalidate once more before the only provider POST in this worker.
+      if (isTrialLifecycleNotificationKind(notificationKind)) {
+        try {
+          const current = await prepareTrialLifecycleNotification(
+            supabaseClient,
+            item,
+          );
+          if (
+            normalizeQueueDestination(current.destination) !== destination ||
+            current.message !== authorizedMessage
+          ) invalid("trial_notification_changed_before_send");
+        } catch (error) {
+          if (!(error instanceof QueueRevalidationError)) throw error;
+          const marked = await markClaim(
+            supabaseClient,
+            item,
+            error.queueStatus,
+            error.reason,
+          );
+          persistenceFailed ||= !marked;
+          results.push({
+            id,
+            status: marked ? error.queueStatus : "marker_failed",
+            error: error.reason,
+          });
+          continue;
+        }
       }
 
       const providerResult = await sendWhatsTextToResolvedDestinationDetailed({

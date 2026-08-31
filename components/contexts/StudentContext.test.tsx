@@ -95,6 +95,18 @@ describe('restrição segura do portal do aluno', () => {
         expect(screen.queryByText('Conteúdo pedagógico')).not.toBeInTheDocument();
     });
 
+    it('mantém a pedagogia disponível enquanto a dívida está na tolerância autoritativa', async () => {
+        mocks.invoke.mockResolvedValue({
+            data: context({ billing: { status: 'OVERDUE', oldestDue: '2026-08-28T00:00:00.000Z' } }),
+            error: null,
+        });
+
+        renderProvider();
+
+        expect(await screen.findByText('Conteúdo pedagógico')).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: /acesso pedagógico temporariamente suspenso/i })).not.toBeInTheDocument();
+    });
+
     it('mostra erro explícito se o logout falhar no modo restrito', async () => {
         const onLogout = vi.fn().mockRejectedValue(new Error('logout unavailable'));
         mocks.invoke.mockResolvedValue({

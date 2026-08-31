@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, Clock, Calendar } from 'lucide-react';
+import { AlertCircle, RefreshCw, Clock, Calendar, ClipboardCheck } from 'lucide-react';
 import ClassLogForm from './ClassLogForm';
+import TrialFeedbackForm from './TrialFeedbackForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
 import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
@@ -32,6 +33,43 @@ interface NotStartedRow {
   startsOn: string;
 }
 
+interface PendingTrialFeedback {
+  opportunityId: string;
+  appointmentId: string;
+  studentName: string;
+  completedAt: string;
+}
+
+async function loadPendingTrialFeedback(): Promise<PendingTrialFeedback[]> {
+  const { data, error } = await supabase.rpc(
+    'get_teacher_pending_trial_feedback_secure',
+  );
+  if (error) throw error;
+
+  const payload = Array.isArray(data)
+    ? data
+    : data && typeof data === 'object' && Array.isArray((data as any).items)
+      ? (data as any).items
+      : null;
+  if (!payload) throw new Error('Resposta inválida ao carregar feedbacks pendentes.');
+
+  return payload.map((raw: any): PendingTrialFeedback => {
+    const opportunityId = String(raw?.opportunityId ?? raw?.opportunity_id ?? '').trim();
+    const appointmentId = String(raw?.appointmentId ?? raw?.appointment_id ?? '').trim();
+    const studentName = String(raw?.studentName ?? raw?.student_name ?? '').trim();
+    const completedAt = String(raw?.completedAt ?? raw?.completed_at ?? '').trim();
+    if (!opportunityId || !appointmentId || !completedAt) {
+      throw new Error('Item inválido ao carregar feedbacks pendentes.');
+    }
+    return {
+      opportunityId,
+      appointmentId,
+      studentName: studentName || 'Lead da experimental',
+      completedAt,
+    };
+  });
+}
+
 const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefresh }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -41,6 +79,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const [notStarted, setNotStarted] = useState<NotStartedRow[]>([]);
   const [launchedTodayCount, setLaunchedTodayCount] = useState(0); // aulas de hoje já lançadas (confirmação visual)
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pendingTrialFeedback, setPendingTrialFeedback] = useState<PendingTrialFeedback[]>([]);
+  const [feedbackLoadError, setFeedbackLoadError] = useState<string | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<PendingTrialFeedback | null>(null);
   // Recompensa do lançamento: caixa real (servidor) + XP (arcade). Substitui o
   // antigo toast "Aulas registradas com perfeição", que não dizia número nenhum.
   const [reward, setReward] = useState<{ result: ClassLogResult; xp: XpBreakdown } | null>(null);
@@ -63,6 +104,13 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
   const fetchTodaySchedule = async () => {
     setLoading(true);
     setLoadError(null);
+    setFeedbackLoadError(null);
+    const pendingFeedbackPromise = loadPendingTrialFeedback()
+      .then(data => ({ data, error: null as Error | null }))
+      .catch(error => ({
+        data: [] as PendingTrialFeedback[],
+        error: error instanceof Error ? error : new Error('Falha ao carregar feedbacks pendentes.'),
+      }));
     try {
       const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -359,6 +407,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
       // achava que não tinha nada para lançar.
       setLoadError(err?.message || 'Não foi possível carregar sua agenda agora.');
     } finally {
+      // A fila pedagógica é independente da agenda diária. Mesmo que uma busca
+      // de aulas falhe, o professor ainda precisa conseguir concluir feedbacks
+      // já persistidos no servidor.
+      const pendingFeedbackResult = await pendingFeedbackPromise;
+      setPendingTrialFeedback(pendingFeedbackResult.data);
+      setFeedbackLoadError(
+        pendingFeedbackResult.error
+          ? 'Não foi possível verificar os feedbacks pendentes. Atualize a tela antes de encerrar o trabalho.'
+          : null,
+      );
       setLoading(false);
     }
   };
@@ -445,6 +503,76 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           xp={reward.xp}
           onClose={() => setReward(null)}
         />
+      )}
+
+      {feedbackTarget && effectiveTenantId && (
+        <TrialFeedbackForm
+          opportunityId={feedbackTarget.opportunityId}
+          studentName={feedbackTarget.studentName}
+          onClose={() => setFeedbackTarget(null)}
+          onSaved={async () => {
+            setPendingTrialFeedback(current =>
+              current.filter(item => item.opportunityId !== feedbackTarget.opportunityId)
+            );
+            await fetchTodaySchedule();
+          }}
+        />
+      )}
+
+      {!loading && (feedbackLoadError || pendingTrialFeedback.length > 0) && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/15" aria-labelledby="pending-trial-feedback-title">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              <ClipboardCheck size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 id="pending-trial-feedback-title" className="text-sm font-black uppercase tracking-wider text-amber-900 dark:text-amber-100">
+                Feedbacks de experimental pendentes
+              </h3>
+              <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+                A aula já foi lançada. Conclua a avaliação para liberar a proposta de matrícula à gestão.
+              </p>
+            </div>
+            {pendingTrialFeedback.length > 0 && (
+              <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-900 dark:bg-amber-800 dark:text-amber-100">
+                {pendingTrialFeedback.length}
+              </span>
+            )}
+          </div>
+
+          {feedbackLoadError ? (
+            <div className="mt-3 flex flex-col items-stretch gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between" role="status">
+              <span className="text-xs font-semibold text-red-700">{feedbackLoadError}</span>
+              <button
+                type="button"
+                onClick={fetchTodaySchedule}
+                className="w-full shrink-0 rounded-lg bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-200 sm:w-auto"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {pendingTrialFeedback.map(item => (
+                <div key={item.opportunityId} className="flex flex-col items-stretch gap-3 rounded-xl border border-amber-200 bg-white/80 px-3 py-3 dark:bg-brand-surface sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-brand-text">{item.studentName}</p>
+                    <p className="text-[11px] font-medium text-brand-muted">
+                      Aula concluída em {new Date(item.completedAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackTarget(item)}
+                    className="w-full shrink-0 rounded-lg bg-amber-500 px-3 py-2 text-xs font-black text-white shadow-sm hover:bg-amber-600 sm:w-auto"
+                  >
+                    Preencher
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* Bulk Form */}
@@ -541,7 +669,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
                         <span className="text-[10px] font-black uppercase bg-tenant-primary/10 text-tenant-primary px-3 py-1 rounded-full">{repos.length}</span>
                       </div>
                       <p className="text-xs text-brand-muted">
-                        Reposições agendadas e realizadas. Confirme o que aconteceu — presença, falta do aluno ou falta do professor. Reposição feita é sempre paga a quem deu a aula; só não é paga se a aula tiver sido coberta provisoriamente por outro professor.
+                        Confirme o que aconteceu — presença, falta do aluno ou falta do professor. A reposição gerada por falta do professor é remunerada quando realizada; a reposição concedida por falta do aluno não entra na folha. Em coberturas, recebe quem efetivamente deu a aula.
                       </p>
                       <ClassLogForm
                         items={repos}

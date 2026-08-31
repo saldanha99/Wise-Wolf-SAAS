@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import { MOCK_ACCOUNTS, MOCK_TENANTS, LESSON_RATE } from '../constants';
 import {
     DollarSign,
     Calendar,
@@ -66,12 +65,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
     const [isConfirming, setIsConfirming] = useState(false);
     const [showReport, setShowReport] = useState(false);
     const [showPayroll, setShowPayroll] = useState(false);
-    // Rate real do professor (fonte da verdade = banco), evita cair no default R$8
-    const [rate, setRate] = useState<number>(user.hourlyRate || LESSON_RATE);
     // Relatório oficial do fechamento (get_teacher_closing_report) — MESMA fonte que o admin
-    // usa no painel Pagamentos. Antes o painel calculava aqui (rate flat × aulas, excluindo
-    // reposição) e divergia do RPC (tiers por aluno, reposição paga) → contestações em série.
+    // usa no painel Pagamentos. Nenhum valor monetário é reconstruído no navegador.
     const [report, setReport] = useState<any>(null);
+    const [reportError, setReportError] = useState<string | null>(null);
     // Resumo por aluno: linhas abertas e edição do diretor (valor base / duração).
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [editingRow, setEditingRow] = useState<string | null>(null);
@@ -129,6 +126,10 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
 
     const fetchFinancials = async () => {
         setLoading(true);
+        setReport(null);
+        setReportError(null);
+        setAdjustments([]);
+        setClosing(null);
         try {
             // Janela [dia 1, dia 1 do mês seguinte). O cálculo antigo com new Date()+
             // setMonth() escorregava no fuso e trazia o dia 1º do mês SEGUINTE para dentro
@@ -156,21 +157,38 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             if (logsError) throw logsError;
             setLessons(logs || []);
 
-            // hourly_rate via RPC (a coluna não é mais legível direto em profiles)
-            const { data: myPay } = await supabase.rpc('get_my_pay');
-            if ((myPay as any)?.hourly_rate) setRate(Number((myPay as any).hourly_rate));
-
-            // Valores oficiais do mês (tiers por aluno, reposição paga, alunos não-faturáveis fora)
-            const { data: reportData } = await supabase.rpc('get_teacher_closing_report', {
+            // Valores oficiais do mês (tiers, vínculos faturáveis e retenções no servidor).
+            const { data: reportData, error: officialReportError } = await supabase.rpc('get_teacher_closing_report', {
                 p_teacher_id: user.id,
                 p_month: selectedMonth,
             });
-            setReport(reportData || null);
+            if (officialReportError) throw officialReportError;
+            const officialSummary = (reportData as any)?.resumo;
+            const rawOfficialTotal = officialSummary?.valor_total;
+            const rawOfficialLessons = officialSummary?.total_aulas;
+            const officialTotalValue = Number(rawOfficialTotal);
+            const officialLessonCount = Number(rawOfficialLessons);
+            if (
+                !reportData ||
+                rawOfficialTotal == null ||
+                rawOfficialLessons == null ||
+                !Number.isFinite(officialTotalValue) ||
+                !Number.isFinite(officialLessonCount)
+            ) {
+                throw new Error('official_closing_report_invalid');
+            }
+            setReport(reportData);
 
-            const { data: adj } = await supabase.rpc('teacher_closing_adjustments', {
+            const { data: adj, error: adjustmentsError } = await supabase.rpc('teacher_closing_adjustments', {
                 p_teacher_id: user.id, p_month: selectedMonth,
             });
-            setAdjustments(((adj as any[]) || []).map(a => ({ ...a, amount: Number(a.amount) })));
+            if (adjustmentsError) throw adjustmentsError;
+            if (!Array.isArray(adj)) throw new Error('official_closing_adjustments_invalid');
+            const officialAdjustments = adj.map(a => ({ ...a, amount: Number(a.amount) }));
+            if (officialAdjustments.some((adjustment) => !Number.isFinite(adjustment.amount))) {
+                throw new Error('official_closing_adjustments_invalid');
+            }
+            setAdjustments(officialAdjustments);
 
             // 2. Fetch Closing Status (schema unificado — month_year)
             const { data: closingData, error: closingError } = await supabase
@@ -180,39 +198,25 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
                 .eq('month_year', selectedMonth)
                 .maybeSingle();
 
-            if (closingError) console.error("Error fetching closing", closingError);
+            if (closingError) throw closingError;
             setClosing(closingData);
 
         } catch (error) {
-            console.error(error);
+            console.error('Error fetching authoritative teacher financials:', error);
+            setReport(null);
+            setAdjustments([]);
+            setReportError('Não foi possível carregar o fechamento oficial deste mês. Nenhum valor estimado foi exibido.');
         } finally {
             setLoading(false);
         }
     };
 
-    const isLessonPaid = (log: any) => {
-        // Regra CANÔNICA de pagamento (a mesma do fechamento/RPC — run_monthly_teacher_closing
-        // e get_teacher_closing_report). O painel exibia regra própria (reposição = R$0) e o
-        // professor via um valor diferente do que o admin pagava.
-        // - TEACHER_ABSENCE: professor faltou → não recebe
-        // - Teste Oral: avaliação periódica, fora do cômputo de hora-aula regular
-        // - payment_hold: conflito de presença retido até o admin resolver
-        // - REPOSIÇÃO e falta do aluno: PAGAS (professor estava disponível/entregou a aula)
-        const isTeacherAbsence = log.presence === 'TEACHER_ABSENCE' || log.presence === 'Falta do Professor';
-        const isOralTestOnly = log.subtype === 'Teste Oral';
-        const isOnHold = log.payment_hold === true;
-        return !isTeacherAbsence && !isOralTestOnly && !isOnHold;
-    };
-
-    // Totais oficiais do RPC; fallback local só enquanto o relatório carrega.
-    // (O RPC também exclui alunos não-faturáveis, que o cálculo local não conhece.)
+    // Estes acessores só são alcançados depois da validação do relatório oficial.
     const officialTotal = (): number => {
-        const v = report?.resumo?.valor_total;
-        return v != null ? Number(v) : lessons.filter(isLessonPaid).length * rate;
+        return Number(report.resumo.valor_total);
     };
     const officialLessons = (): number => {
-        const v = report?.resumo?.total_aulas;
-        return v != null ? Number(v) : lessons.filter(isLessonPaid).length;
+        return Number(report.resumo.total_aulas);
     };
     // Resumo por aluno — é como a escola sempre conferiu a folha (e o que o
     // professor consegue ler). O extrato aula-a-aula vira o detalhe da linha.
@@ -406,6 +410,36 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
         link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 0);
     };
+
+    if (loading) {
+        return (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-brand-muted" role="status">
+                <Loader2 className="animate-spin text-tenant-primary" size={30} />
+                <p className="text-xs font-black uppercase tracking-widest">Carregando fechamento oficial...</p>
+            </div>
+        );
+    }
+
+    if (reportError || !report) {
+        return (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[2rem] border border-red-200 bg-red-50/70 p-8 text-center dark:border-red-900/40 dark:bg-red-950/20" role="alert">
+                <AlertCircle className="text-red-600" size={32} />
+                <div>
+                    <h2 className="text-xl font-black text-brand-text">Fechamento indisponível</h2>
+                    <p className="mt-2 max-w-xl text-sm font-medium text-brand-muted">
+                        {reportError || 'O servidor não retornou um fechamento financeiro válido.'}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => void fetchFinancials()}
+                    className="inline-flex items-center gap-2 rounded-xl bg-tenant-primary px-5 py-3 text-xs font-black uppercase tracking-widest text-white"
+                >
+                    <RotateCcw size={15} /> Tentar novamente
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">

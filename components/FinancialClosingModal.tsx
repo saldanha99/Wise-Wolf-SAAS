@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, AlertCircle, DollarSign, TrendingUp, MessageSquare } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, TrendingUp, MessageSquare, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { monthRange } from '../lib/dateUtils';
 import { User } from '../types';
 
 interface FinancialClosingModalProps {
@@ -30,55 +29,33 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
     const fetchFinancialData = async () => {
         setLoading(true);
         setLoadError(null);
+        setTotalLessons(0);
+        setTotalEarned(0);
         try {
-            // Fonte da verdade: MESMO RPC que o admin usa para pagar (tiers por aluno,
-            // rate_override, aluno não-faturável fora, reposição paga). O cálculo local
-            // que existia aqui divergia do valor pago e virava contestação.
+            // Fonte da verdade: MESMO RPC que o admin usa para pagar. Se ele falhar,
+            // a tela bloqueia a confirmação em vez de reconstruir dinheiro localmente.
             const { data: report, error: reportError } = await supabase.rpc('get_teacher_closing_report', {
                 p_teacher_id: user.id,
                 p_month: month,
             });
 
             const totalAulas = (report as any)?.resumo?.total_aulas;
-            if (!reportError && totalAulas != null) {
-                setTotalLessons(Number(totalAulas));
-                setTotalEarned(Number((report as any).resumo.valor_total) || 0);
-                return;
+            const valorTotal = (report as any)?.resumo?.valor_total;
+            if (reportError) throw reportError;
+            if (
+                totalAulas == null ||
+                valorTotal == null ||
+                !Number.isFinite(Number(totalAulas)) ||
+                !Number.isFinite(Number(valorTotal))
+            ) {
+                throw new Error('official_closing_report_invalid');
             }
-
-            // Fallback (só se o relatório oficial falhar): contagem local pela regra canônica.
-            // monthRange: janela [dia 1, dia 1 do mês seguinte) — o cálculo antigo com
-            // new Date(month) cortava o ÚLTIMO dia do mês (as aulas do dia 31 sumiam do
-            // fechamento) e em meses de 30 dias ainda puxava o dia 1º do mês seguinte.
-            const { start, endExclusive } = monthRange(month);
-
-            const { data: logs, error } = await supabase
-                .from('class_logs')
-                .select('id, created_at, class_date, presence, subtype, payment_hold')
-                .eq('teacher_id', user.id)
-                .gte('class_date', start)
-                .lt('class_date', endExclusive);
-
-            if (error) throw error;
-
-            const { data: myPay } = await supabase.rpc('get_my_pay');
-            const rate = Number((myPay as any)?.hourly_rate) || user.hourlyRate || 8.00;
-
-            // Regra canônica de pagamento (idêntica a isLessonPaid / run_monthly_teacher_closing):
-            // não paga só falta do PROFESSOR, Teste Oral e aula retida por conflito.
-            const paidLessons = (logs || []).filter(l =>
-                l.presence !== 'TEACHER_ABSENCE' &&
-                l.presence !== 'Falta do Professor' &&
-                l.subtype !== 'Teste Oral' &&
-                l.payment_hold !== true
-            );
-
-            setTotalLessons(paidLessons.length);
-            setTotalEarned(paidLessons.length * rate);
+            setTotalLessons(Number(totalAulas));
+            setTotalEarned(Number(valorTotal));
 
         } catch (err: any) {
             console.error('Error fetching modal data:', err);
-            setLoadError(err?.message || 'Não foi possível carregar os valores do mês.');
+            setLoadError('Não foi possível carregar o fechamento oficial deste mês. Nenhum valor estimado foi exibido.');
         } finally {
             setLoading(false);
         }
@@ -92,10 +69,8 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
         if (isSubmitting || loadError) return;
         setIsSubmitting(true);
         try {
-            // Só o "confiro" vai para o servidor. O valor exibido aqui é uma conta
-            // local (aulas × hourly_rate), que não conhece faixa por aluno, ajuste
-            // nem carry-over — gravá-lo sobrescreveria a folha oficial com um número
-            // menor. Quem calcula é a RPC, pela mesma regra do fechamento mensal.
+            // Só o "confiro" vai para o servidor. O valor exibido veio do relatório
+            // oficial, e a RPC recalcula tudo ao registrar a confirmação.
             const { error } = await supabase.rpc('teacher_submit_closing', {
                 p_month: month,
                 p_confirmation: 'OK',
@@ -137,6 +112,34 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
 
     const monthName = new Date(month + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
+    if (loadError) {
+        return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-surface/80 p-6 backdrop-blur-sm">
+                <div className="w-full max-w-lg rounded-[2.5rem] border border-red-200 bg-brand-surface p-8 text-center shadow-2xl dark:border-red-900/40" role="alert">
+                    <AlertCircle className="mx-auto text-red-500" size={34} />
+                    <h3 className="mt-4 text-xl font-black text-brand-text">Fechamento indisponível</h3>
+                    <p className="mt-2 text-sm font-medium leading-relaxed text-brand-muted">{loadError}</p>
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                        <button
+                            type="button"
+                            onClick={() => void fetchFinancialData()}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-tenant-primary px-5 py-3 text-xs font-black uppercase tracking-widest text-white"
+                        >
+                            <RefreshCw size={15} /> Tentar novamente
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-xl px-5 py-3 text-xs font-black uppercase tracking-widest text-brand-muted"
+                        >
+                            Fechar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-brand-surface/80 backdrop-blur-sm animate-in fade-in duration-300">
             <div className="bg-brand-surface p-6 sm:p-8 rounded-[2.5rem] w-full max-w-lg border border-brand-border dark:border-brand-border shadow-2xl relative max-h-[90dvh] overflow-y-auto">
@@ -167,21 +170,10 @@ const FinancialClosingModal: React.FC<FinancialClosingModalProps> = ({ user, mon
                                 <p className="text-4xl font-black text-brand-text tracking-tighter">R$ {totalEarned.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                             </div>
 
-                            {loadError && (
-                                <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-50 dark:bg-red-900/15 border border-red-200 dark:border-red-800/40 mb-6">
-                                    <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
-                                    <p className="text-xs text-red-700 dark:text-red-300 font-medium leading-relaxed">
-                                        Não conseguimos carregar seus valores deste mês, então a confirmação está bloqueada
-                                        (confirmar agora registraria um valor errado). Recarregue a página e tente de novo —
-                                        se persistir, avise a direção. Detalhe técnico: {loadError}
-                                    </p>
-                                </div>
-                            )}
-
                             <div className="flex flex-col gap-3">
                                 <button
                                     onClick={handleConfirm}
-                                    disabled={isSubmitting || !!loadError}
+                                    disabled={isSubmitting}
                                     className="w-full py-4 bg-tenant-primary text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-tenant-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:scale-100"
                                 >
                                     <CheckCircle2 size={18} /> Confirmar e Autorizar

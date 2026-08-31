@@ -4,7 +4,13 @@ import {
   createClient,
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.93.3";
-import { resolveStudentAccess, type StudentAccess } from "./core.ts";
+import {
+  type BillingStatus,
+  type OpenStudentPaymentRow,
+  resolveStudentAccess,
+  resolveStudentBilling,
+  type StudentAccess,
+} from "./core.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,8 +42,6 @@ const profileColumns = [
   "short_term_goal",
   "is_test_account",
 ].join(",");
-
-type BillingStatus = "OK" | "OVERDUE" | "SUSPENDED";
 
 interface StudentProfile {
   id: string;
@@ -76,11 +80,6 @@ interface AuthorizedStudentFinancialProfile {
   status_financial: string | null;
   paid_through: string | null;
   prepaid_months: number | null;
-}
-
-interface PaymentRow {
-  due_date: string;
-  status: string;
 }
 
 interface BookingRow {
@@ -411,35 +410,28 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const businessDate = dateInSaoPaulo(now);
     const { data: paymentData, error: paymentError } = await supabase
       .from("student_payments")
       .select("due_date, status")
       .eq("student_id", user.id)
       .eq("tenant_id", tenantId)
       .in("status", ["PENDING", "OVERDUE"])
-      .lt("due_date", dateInSaoPaulo(now))
+      .lt("due_date", businessDate)
       .order("due_date", { ascending: true });
 
     if (paymentError) {
       return jsonResponse(unavailableResponse("BILLING_UNAVAILABLE"), 503);
     }
 
-    const overduePayments = (paymentData ?? []) as PaymentRow[];
-    let billingStatus: BillingStatus = "OK";
-    let oldestDue: string | null = null;
-    if (overduePayments.length > 0) {
-      oldestDue = new Date(overduePayments[0].due_date).toISOString();
-      const todayAtNoonUtc = new Date(
-        `${dateInSaoPaulo(now)}T12:00:00.000Z`,
-      );
-      const oldestDueAtNoonUtc = new Date(
-        `${overduePayments[0].due_date.slice(0, 10)}T12:00:00.000Z`,
-      );
-      const daysLate = Math.round(
-        (todayAtNoonUtc.getTime() - oldestDueAtNoonUtc.getTime()) / 86_400_000,
-      );
-      billingStatus = daysLate > 7 ? "SUSPENDED" : "OVERDUE";
-    }
+    const billingDecision = resolveStudentBilling(
+      (paymentData ?? []) as OpenStudentPaymentRow[],
+      businessDate,
+    );
+    const billingStatus: BillingStatus = billingDecision.status;
+    const oldestDue = billingDecision.oldestDue
+      ? `${billingDecision.oldestDue}T00:00:00.000Z`
+      : null;
 
     const nextClass = access.status === "ACTIVE"
       ? await fetchNextClass(

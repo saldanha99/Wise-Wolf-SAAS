@@ -485,6 +485,9 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/confirm-vendor-trial/core.test.ts \
   supabase/functions/confirm-vendor-trial/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/post-trial-pipeline/core.ts \
+  supabase/functions/post-trial-pipeline/core.test.ts \
+  supabase/functions/post-trial-pipeline/index.ts \
   supabase/functions/kiwify-webhook/index.ts \
   supabase/functions/notify-claim/index.ts \
   supabase/functions/public-tenant-branding/index.ts \
@@ -541,6 +544,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/transfer-teacher-pay/index.ts \
   supabase/functions/reconcile-ledger/index.ts \
   supabase/functions/sync-payments/index.ts \
+  supabase/functions/sync-payments/safety.test.ts \
   supabase/functions/resolve-offer/index.ts \
   supabase/functions/sync-student-asaas/index.ts \
   supabase/functions/create-asaas-subscription/provider-identity.ts \
@@ -553,7 +557,6 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/generate-student-manual-pix/index.ts \
   supabase/functions/notify-payment-due/core.ts \
   supabase/functions/notify-payment-due/core.test.ts \
-  supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
   supabase/functions/notify-payment-due/index.ts \
   supabase/functions/payment-split-notify/outbound-fence.ts \
@@ -635,6 +638,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/asaas-reconcile/provider-http.test.ts \
   supabase/functions/asaas-reconcile/unlinked-repair.test.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
+  supabase/functions/student-context/core.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
   supabase/functions/payment-split-notify/message.test.ts \
@@ -651,6 +655,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/accept-opportunity/core.test.ts \
   supabase/functions/confirm-vendor-trial/core.test.ts \
+  supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/public-tenant-branding/index.test.ts \
   supabase/functions/lesson-planner/core.test.ts \
   supabase/functions/wolfie-activity/answer-key-audit.test.ts \
@@ -678,6 +683,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/_shared/student-billing-period-guard.test.ts \
   supabase/functions/_shared/student-lifecycle-static.test.ts \
+  supabase/functions/sync-payments/safety.test.ts \
   supabase/functions/process-notification-queue/safety.test.ts \
   supabase/functions/create-student-account/safety.test.ts \
   supabase/functions/notify-payment-due/safety.test.ts \
@@ -776,6 +782,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/referral-welcome/index.ts \
   supabase/functions/sdr-followups/index.ts \
   supabase/functions/funnel-sweeper/index.ts \
+  supabase/functions/post-trial-pipeline/core.ts \
+  supabase/functions/post-trial-pipeline/core.test.ts \
   supabase/functions/post-trial-pipeline/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
   supabase/functions/whatsapp-crm-lead-notif/index.ts \
@@ -793,6 +801,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/sync-plan-change-billing/index.ts \
   supabase/functions/search-slots/index.ts \
   supabase/functions/sync-payments/index.ts \
+  supabase/functions/sync-payments/safety.test.ts \
   supabase/functions/whatsapp-hr-welcome/index.ts \
   supabase/functions/generate-student-insights/index.ts \
   supabase/functions/send-rejection-email/index.ts \
@@ -1119,6 +1128,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830223100_surface_asaas_reconciliation_attention.sql"
   "supabase/migrations/20260831002000_fence_authoritative_unlinked_payment_integration.sql"
   "supabase/migrations/20260831013000_exclude_offboarded_students_from_financial_forecasts.sql"
+  "supabase/migrations/20260831054448_harden_trial_conversion_lifecycle.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -4010,7 +4020,8 @@ for retired_service_function in \
   send-whatsapp \
   whatsapp-wise-wolf \
   send-contract-confirmation \
-  process-outbox; do
+  process-outbox \
+  sync-payments; do
   wait_for_service_http_status 410 "desativação de $retired_service_function" \
     -X POST "$api_url/functions/v1/$retired_service_function" \
     -H 'Content-Type: application/json' \
