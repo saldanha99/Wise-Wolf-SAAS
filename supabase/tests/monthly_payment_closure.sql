@@ -172,17 +172,6 @@ insert into public.student_payments (
     null, 'SUBSCRIPTION', 'PIX'
   );
 
--- Simulate a legacy frozen obligation created before the student was
--- offboarded. A cancelled invoice must converge to EXCLUDED, not MISSING_BILL.
-insert into public.monthly_payment_obligations (
-  tenant_id, period_start, student_id, roster_source,
-  expected_amount, billed_amount, settled_amount, status, payment_ids
-) values (
-  'monthly-close-school', '2026-07-01',
-  '58000000-0000-4000-8000-000000000004', 'RECORDED_INVOICE',
-  100, 0, 0, 'MISSING_BILL', '{}'
-);
-
 insert into public.financial_transactions (
   id, tenant_id, type, category, amount, amount_cents, description,
   occurred_at, account_code
@@ -208,8 +197,8 @@ select public.refresh_monthly_payment_closure_financial(
 );
 select pg_temp.assert_true(
   (
-    select expected_students = 4
-       and settled_students = 2
+    select expected_students = 3
+       and settled_students = 1
        and blocked_students = 2
        and status = 'BLOCKED'
       from public.monthly_payment_closures
@@ -217,6 +206,64 @@ select pg_temp.assert_true(
        and period_start = '2026-07-01'
   ),
   'missing invoice or CONFIRMED card did not block close'
+);
+select pg_temp.assert_true(
+  not exists (
+    select 1
+      from public.monthly_payment_obligations
+     where tenant_id = 'monthly-close-school'
+       and period_start = '2026-07-01'
+       and student_id = '58000000-0000-4000-8000-000000000004'
+  ),
+  'cancelled offboarded invoice created a false monthly blocker'
+);
+
+-- A specifically reconciled legacy exclusion is reversible if a live invoice
+-- later appears. This closes the payment-writer race without making ordinary
+-- policy exclusions reopenable.
+insert into public.monthly_payment_obligations (
+  tenant_id, period_start, student_id, roster_source,
+  expected_amount, billed_amount, settled_amount, status, payment_ids, details
+) values (
+  'monthly-close-school', '2026-07-01',
+  '58000000-0000-4000-8000-000000000004', 'RECORDED_INVOICE',
+  100, 0, 0, 'EXCLUDED', '{}',
+  '{"excluded_reason":"LEGACY_POST_OFFBOARDING_NO_LIVE_INVOICE"}'::jsonb
+);
+insert into public.student_payments (
+  id, student_id, tenant_id, asaas_payment_id, value, amount_cents,
+  status, provider_status, due_date, payment_date, paid_at,
+  payment_type, billing_type
+) values (
+  '58000000-0000-4000-8000-000000000018',
+  '58000000-0000-4000-8000-000000000004',
+  'monthly-close-school', 'pay_monthly_offboarded_reopened', 100, 10000,
+  'PENDING', 'PENDING', '2026-07-10', null,
+  null, 'SUBSCRIPTION', 'PIX'
+);
+select public.refresh_monthly_payment_closure_financial(
+  'monthly-close-school', '2026-07-01'
+);
+select pg_temp.assert_true(
+  (
+    select status = 'OPEN'
+       and billed_amount = 100
+       and settled_amount = 0
+       and payment_ids = array[
+         '58000000-0000-4000-8000-000000000018'::uuid
+       ]
+      from public.monthly_payment_obligations
+     where tenant_id = 'monthly-close-school'
+       and period_start = '2026-07-01'
+       and student_id = '58000000-0000-4000-8000-000000000004'
+  ),
+  'a live invoice did not reopen the exact legacy exclusion'
+);
+update public.student_payments
+   set status = 'CANCELLED', provider_status = 'DELETED'
+ where id = '58000000-0000-4000-8000-000000000018';
+select public.refresh_monthly_payment_closure_financial(
+  'monthly-close-school', '2026-07-01'
 );
 select pg_temp.assert_true(
   (
@@ -229,8 +276,14 @@ select pg_temp.assert_true(
        and period_start = '2026-07-01'
        and student_id = '58000000-0000-4000-8000-000000000004'
   ),
-  'cancelled offboarded invoice became a false monthly blocker'
+  'the exact legacy exclusion did not close after invoice cancellation'
 );
+delete from public.monthly_payment_obligations
+ where tenant_id = 'monthly-close-school'
+   and period_start = '2026-07-01'
+   and student_id = '58000000-0000-4000-8000-000000000004';
+delete from public.student_payments
+ where id = '58000000-0000-4000-8000-000000000018';
 
 insert into public.student_payments (
   id, student_id, tenant_id, asaas_payment_id, value, amount_cents,

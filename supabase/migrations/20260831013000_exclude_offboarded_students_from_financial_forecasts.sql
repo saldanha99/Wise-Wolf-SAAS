@@ -118,19 +118,20 @@ begin
      and payment.due_date >= v_period_start$new$
         ),
         (
-          $old$           when invoice.live_count = 0 then 'MISSING_BILL'$old$,
-          $new$           when invoice.live_count = 0
-             and exists (
-               select 1
-                 from public.profiles as offboarded_profile
-                where offboarded_profile.id = obligation.student_id
-                  and offboarded_profile.tenant_id = obligation.tenant_id
-                  and offboarded_profile.role = 'STUDENT'
-                  and pg_catalog.lower(pg_catalog.btrim(coalesce(
-                    offboarded_profile.lifecycle_status,
-                    ''
-                  ))) = 'offboarded'
-             ) then 'EXCLUDED'
+          $old$           when obligation.status = 'EXCLUDED' then 'EXCLUDED'
+           when invoice.live_count = 0 then 'MISSING_BILL'$old$,
+          $new$           when coalesce(
+               obligation.details ->> 'excluded_reason',
+               ''
+             ) = 'LEGACY_POST_OFFBOARDING_NO_LIVE_INVOICE'
+             and invoice.live_count = 0
+             then 'EXCLUDED'
+           when obligation.status = 'EXCLUDED'
+             and coalesce(
+               obligation.details ->> 'excluded_reason',
+               ''
+             ) <> 'LEGACY_POST_OFFBOARDING_NO_LIVE_INVOICE'
+             then 'EXCLUDED'
            when invoice.live_count = 0 then 'MISSING_BILL'$new$
         ),
         (
@@ -180,6 +181,42 @@ begin
   end loop;
 end;
 $harden_offboarded_monthly_closure$;
+
+-- Take the canonical lifecycle locks before this transaction locks any of the
+-- exact production profiles below. Lifecycle writers use advisory -> profile;
+-- preserving that order prevents a row-lock/advisory-lock deadlock at deploy.
+do $lock_exact_legacy_student_lifecycles$
+declare
+  target record;
+begin
+  for target in
+    select *
+      from (values
+        (
+          'school-wise-wolf'::text,
+          '2195b230-ca3d-45af-adaa-e4c3a9dd5f06'::uuid
+        ),
+        (
+          'school-wise-wolf'::text,
+          '53a103ff-d540-4b96-abe6-fff0a5632bf6'::uuid
+        ),
+        (
+          'school-wise-wolf'::text,
+          '8dfbe3c6-0b45-4881-9c57-6254287ddb78'::uuid
+        )
+      ) as targets(tenant_id, student_id)
+     order by tenant_id, student_id
+  loop
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        'student-billing-lifecycle:' || target.tenant_id || ':' ||
+          target.student_id::text,
+        0
+      )
+    );
+  end loop;
+end;
+$lock_exact_legacy_student_lifecycles$;
 
 -- Repair only the contradictory legacy state. Historical debt remains intact;
 -- this update merely removes definitively offboarded students from recurring
@@ -418,160 +455,222 @@ begin
 end;
 $repair_legacy_post_offboarding_payments$;
 
--- Exclude every already-frozen competence of an offboarded student that has
--- no live invoice. Historical OVERDUE/RECEIVED facts remain untouched.
-do $lock_legacy_offboarded_months$
+-- Repair only the three proven post-offboarding forecast rows observed in the
+-- production audit. The completed offboarding predates each competence, every
+-- retained invoice is cancelled (or was reconciled to DELETED above), and no
+-- cash fact exists. Never infer forgiveness for an arbitrary historical month.
+do $repair_exact_legacy_post_offboarding_months$
 declare
-  scope record;
+  target record;
+  profile_row public.profiles%rowtype;
+  obligation_row public.monthly_payment_obligations%rowtype;
+  changed_count integer;
 begin
-  for scope in
-    select distinct obligation.tenant_id, obligation.period_start
-      from public.monthly_payment_obligations as obligation
-      join public.profiles as profile
-        on profile.id = obligation.student_id
-       and profile.tenant_id = obligation.tenant_id
-     where profile.role = 'STUDENT'
-       and pg_catalog.lower(pg_catalog.btrim(coalesce(
-         profile.lifecycle_status,
-         ''
-       ))) = 'offboarded'
-       and obligation.status <> 'EXCLUDED'
+  for target in
+    select *
+      from (values
+        (
+          'school-wise-wolf'::text,
+          '2195b230-ca3d-45af-adaa-e4c3a9dd5f06'::uuid,
+          date '2026-07-01',
+          'MISSING_BILL'::text,
+          188.00::numeric,
+          0.00::numeric,
+          0.00::numeric,
+          '{}'::uuid[]
+        ),
+        (
+          'school-wise-wolf'::text,
+          '8dfbe3c6-0b45-4881-9c57-6254287ddb78'::uuid,
+          date '2026-07-01',
+          'MISSING_BILL'::text,
+          149.00::numeric,
+          0.00::numeric,
+          0.00::numeric,
+          '{}'::uuid[]
+        ),
+        (
+          'school-wise-wolf'::text,
+          '8dfbe3c6-0b45-4881-9c57-6254287ddb78'::uuid,
+          date '2026-08-01',
+          'OPEN'::text,
+          149.00::numeric,
+          149.00::numeric,
+          0.00::numeric,
+          array['71466e23-ce20-41fb-912f-24060c0bc99c'::uuid]
+        )
+      ) as targets(
+        tenant_id,
+        student_id,
+        period_start,
+        expected_status,
+        expected_amount,
+        expected_billed_amount,
+        expected_settled_amount,
+        expected_payment_ids
+      )
+     order by period_start, student_id
   loop
+    -- Follow the lifecycle writer's lock order before fencing the monthly
+    -- refresher. A later live invoice still reopens this exact legacy reason.
     perform pg_catalog.pg_advisory_xact_lock(
       pg_catalog.hashtextextended(
-        'monthly-payment-closure:' || scope.tenant_id || ':' ||
-          scope.period_start::text,
+        'student-billing-lifecycle:' || target.tenant_id || ':' ||
+          target.student_id::text,
         0
       )
     );
-  end loop;
-end;
-$lock_legacy_offboarded_months$;
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        'monthly-payment-closure:' || target.tenant_id || ':' ||
+          target.period_start::text,
+        0
+      )
+    );
 
-with candidates as materialized (
-  select
-    obligation.tenant_id,
-    obligation.period_start,
-    obligation.student_id,
-    obligation.status as previous_status,
-    obligation.billed_amount as previous_billed_amount,
-    obligation.settled_amount as previous_settled_amount,
-    obligation.payment_ids as previous_payment_ids
-  from public.monthly_payment_obligations as obligation
-  join public.profiles as profile
-    on profile.id = obligation.student_id
-   and profile.tenant_id = obligation.tenant_id
-  where profile.role = 'STUDENT'
-    and pg_catalog.lower(pg_catalog.btrim(coalesce(
-      profile.lifecycle_status,
-      ''
-    ))) = 'offboarded'
-    and obligation.status <> 'EXCLUDED'
-    and not exists (
+    select profile.*
+      into profile_row
+      from public.profiles as profile
+     where profile.id = target.student_id
+     for update;
+    if not found then
+      continue;
+    end if;
+    if profile_row.tenant_id is distinct from target.tenant_id
+       or profile_row.role is distinct from 'STUDENT'
+       or pg_catalog.lower(pg_catalog.btrim(coalesce(
+            profile_row.lifecycle_status,
+            ''
+          ))) <> 'offboarded'
+       or profile_row.offboarding_status is distinct from 'COMPLETED'
+       or profile_row.offboarding_completed_at is null
+       or profile_row.offboarding_completed_at::date >= target.period_start
+       or pg_catalog.upper(pg_catalog.btrim(coalesce(
+            profile_row.status_financial,
+            ''
+          ))) = 'ACTIVE'
+    then
+      raise exception 'target post-offboarding profile snapshot mismatch';
+    end if;
+
+    -- FOR UPDATE on the referenced profile blocks new payment inserts through
+    -- the FK. Locking every existing row for this student also blocks status,
+    -- due-date, reassignment and deletion races before the live-invoice check.
+    perform 1
+      from public.student_payments as payment
+     where payment.student_id = target.student_id
+     order by payment.id
+     for update;
+
+    select obligation.*
+      into obligation_row
+      from public.monthly_payment_obligations as obligation
+     where obligation.tenant_id = target.tenant_id
+       and obligation.period_start = target.period_start
+       and obligation.student_id = target.student_id
+     for update;
+    if not found then
+      raise exception 'target post-offboarding obligation is missing';
+    end if;
+
+    if obligation_row.status = 'EXCLUDED'
+       and obligation_row.billed_amount = 0
+       and obligation_row.settled_amount = 0
+       and obligation_row.payment_ids = '{}'::uuid[]
+       and obligation_row.details ->> 'excluded_reason' =
+         'LEGACY_POST_OFFBOARDING_NO_LIVE_INVOICE'
+    then
+      continue;
+    end if;
+
+    if obligation_row.roster_source is distinct from 'RECORDED_INVOICE'
+       or obligation_row.status is distinct from target.expected_status
+       or obligation_row.expected_amount is distinct from target.expected_amount
+       or obligation_row.billed_amount is distinct from
+         target.expected_billed_amount
+       or obligation_row.settled_amount is distinct from
+         target.expected_settled_amount
+       or obligation_row.payment_ids is distinct from
+         target.expected_payment_ids
+    then
+      raise exception 'target post-offboarding obligation snapshot mismatch';
+    end if;
+
+    if exists (
       select 1
         from public.student_payments as payment
-       where payment.tenant_id = obligation.tenant_id
-         and payment.student_id = obligation.student_id
+       where payment.tenant_id = target.tenant_id
+         and payment.student_id = target.student_id
          and payment.payment_type = 'SUBSCRIPTION'
-         and payment.due_date >= obligation.period_start
+         and payment.due_date >= target.period_start
          and payment.due_date <
-           (obligation.period_start + interval '1 month')::date
+           (target.period_start + interval '1 month')::date
          and pg_catalog.upper(pg_catalog.btrim(coalesce(
            payment.status,
            ''
          ))) not in ('CANCELLED', 'NAO_RECEITA')
-    )
-  for update of obligation
-), repaired as (
-  update public.monthly_payment_obligations as obligation
-     set status = 'EXCLUDED',
-         payment_ids = '{}',
-         billed_amount = 0,
-         settled_amount = 0,
-         details = coalesce(obligation.details, '{}'::jsonb) ||
-           pg_catalog.jsonb_build_object(
-             'excluded_reason', 'OFFBOARDED_WITHOUT_LIVE_INVOICE',
-             'legacy_reconciled_at', pg_catalog.now()
-           ),
-         updated_at = pg_catalog.now()
-    from candidates
-   where obligation.tenant_id = candidates.tenant_id
-     and obligation.period_start = candidates.period_start
-     and obligation.student_id = candidates.student_id
-     and obligation.status = candidates.previous_status
-     and obligation.billed_amount = candidates.previous_billed_amount
-     and obligation.settled_amount = candidates.previous_settled_amount
-     and obligation.payment_ids = candidates.previous_payment_ids
-  returning
-    obligation.tenant_id,
-    obligation.period_start,
-    obligation.student_id,
-    candidates.previous_status,
-    candidates.previous_billed_amount,
-    candidates.previous_settled_amount,
-    candidates.previous_payment_ids
-)
-insert into public.audit_logs (
-  tenant_id, user_id, user_role, action, resource_type, resource_id,
-  old_values, new_values, diff
-)
-select
-  repaired.tenant_id,
-  null,
-  'SYSTEM',
-  'legacy_offboarded_monthly_obligation_excluded',
-  'monthly_payment_obligation',
-  repaired.student_id::text || ':' || repaired.period_start::text,
-  pg_catalog.jsonb_build_object(
-    'status', repaired.previous_status,
-    'billed_amount', repaired.previous_billed_amount,
-    'settled_amount', repaired.previous_settled_amount,
-    'payment_ids', repaired.previous_payment_ids
-  ),
-  pg_catalog.jsonb_build_object(
-    'status', 'EXCLUDED',
-    'billed_amount', 0,
-    'settled_amount', 0,
-    'payment_ids', pg_catalog.jsonb_build_array()
-  ),
-  pg_catalog.jsonb_build_object(
-    'reason', 'offboarded_without_live_invoice'
-  )
-from repaired;
+    ) then
+      raise exception 'target post-offboarding obligation has a live invoice';
+    end if;
 
-do $verify_legacy_offboarded_months$
-begin
-  if exists (
-    select 1
-      from public.monthly_payment_obligations as obligation
-      join public.profiles as profile
-        on profile.id = obligation.student_id
-       and profile.tenant_id = obligation.tenant_id
-     where profile.role = 'STUDENT'
-       and pg_catalog.lower(pg_catalog.btrim(coalesce(
-         profile.lifecycle_status,
-         ''
-       ))) = 'offboarded'
-       and obligation.status <> 'EXCLUDED'
-       and not exists (
-         select 1
-           from public.student_payments as payment
-          where payment.tenant_id = obligation.tenant_id
-            and payment.student_id = obligation.student_id
-            and payment.payment_type = 'SUBSCRIPTION'
-            and payment.due_date >= obligation.period_start
-            and payment.due_date <
-              (obligation.period_start + interval '1 month')::date
-            and pg_catalog.upper(pg_catalog.btrim(coalesce(
-              payment.status,
-              ''
-            ))) not in ('CANCELLED', 'NAO_RECEITA')
-       )
-  ) then
-    raise exception 'offboarded monthly obligation repair incomplete';
-  end if;
+    update public.monthly_payment_obligations as obligation
+       set status = 'EXCLUDED',
+           payment_ids = '{}',
+           billed_amount = 0,
+           settled_amount = 0,
+           details = coalesce(obligation.details, '{}'::jsonb) ||
+             pg_catalog.jsonb_build_object(
+               'excluded_reason',
+                 'LEGACY_POST_OFFBOARDING_NO_LIVE_INVOICE',
+               'legacy_reconciled_at', pg_catalog.now()
+             ),
+           updated_at = pg_catalog.now()
+     where obligation.tenant_id = target.tenant_id
+       and obligation.period_start = target.period_start
+       and obligation.student_id = target.student_id
+       and obligation.roster_source = obligation_row.roster_source
+       and obligation.status = obligation_row.status
+       and obligation.expected_amount = obligation_row.expected_amount
+       and obligation.billed_amount = obligation_row.billed_amount
+       and obligation.settled_amount = obligation_row.settled_amount
+       and obligation.payment_ids = obligation_row.payment_ids;
+    get diagnostics changed_count = row_count;
+    if changed_count <> 1 then
+      raise exception 'target post-offboarding obligation changed concurrently';
+    end if;
+
+    insert into public.audit_logs (
+      tenant_id, user_id, user_role, action, resource_type, resource_id,
+      old_values, new_values, diff
+    ) values (
+      target.tenant_id,
+      null,
+      'SYSTEM',
+      'legacy_post_offboarding_monthly_obligation_excluded',
+      'monthly_payment_obligation',
+      target.student_id::text || ':' || target.period_start::text,
+      pg_catalog.jsonb_build_object(
+        'status', obligation_row.status,
+        'expected_amount', obligation_row.expected_amount,
+        'billed_amount', obligation_row.billed_amount,
+        'settled_amount', obligation_row.settled_amount,
+        'payment_ids', obligation_row.payment_ids
+      ),
+      pg_catalog.jsonb_build_object(
+        'status', 'EXCLUDED',
+        'expected_amount', obligation_row.expected_amount,
+        'billed_amount', 0,
+        'settled_amount', 0,
+        'payment_ids', pg_catalog.jsonb_build_array()
+      ),
+      pg_catalog.jsonb_build_object(
+        'reason', 'completed_offboarding_before_period_without_live_invoice',
+        'offboarding_completed_at', profile_row.offboarding_completed_at
+      )
+    );
+  end loop;
 end;
-$verify_legacy_offboarded_months$;
+$repair_exact_legacy_post_offboarding_months$;
 
 -- Both remaining subscription identifiers are local orphans. Exact GETs on
 -- the authoritative tenant integration returned 404, while local status was
