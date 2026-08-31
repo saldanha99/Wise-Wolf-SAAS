@@ -49,6 +49,8 @@ describe('Hub email confirmation checkout intent', () => {
     expect(redirect.searchParams.get('hub_plan')).toBe('HUB_COMPLETE');
     expect(redirect.searchParams.get('hub_cycle')).toBe('YEARLY');
     expect(Number(redirect.searchParams.get('hub_expires'))).toBeGreaterThan(Date.now());
-    expect(screen.getByText(/A confirmação do e-mail, sozinha, não ativa plano nem cria cobrança/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/A confirmação do e-mail, sozinha, não ativa plano nem cria cobrança/),
+    ).toBeInTheDocument();
   });
 });
