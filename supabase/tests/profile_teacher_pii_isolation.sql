@@ -155,7 +155,8 @@ where id = 'f1000000-0000-4000-8000-000000000003';
 update public.profiles
 set tenant_id = 'profile-pii-a', role = 'STUDENT',
     full_name = 'Aluno Nao Vinculado A', cpf = '00000000004',
-    address = 'Outra Rua Privada'
+    address = 'Outra Rua Privada', lifecycle_status = 'offboarded',
+    status_financial = 'SUSPENDED'
 where id = 'f1000000-0000-4000-8000-000000000004';
 update public.profiles
 set tenant_id = 'profile-pii-b', role = 'SCHOOL_ADMIN',
@@ -166,6 +167,18 @@ set tenant_id = 'profile-pii-b', role = 'STUDENT',
     full_name = 'Aluno PII B', cpf = '00000000006'
 where id = 'f1000000-0000-4000-8000-000000000006';
 set local app.enrollment_claim = '';
+
+update public.profiles
+   set status_financial = 'ACTIVE'
+ where id = 'f1000000-0000-4000-8000-000000000004';
+select pg_temp.assert_true(
+  (
+    select status_financial = 'SUSPENDED'
+      from public.profiles
+     where id = 'f1000000-0000-4000-8000-000000000004'
+  ),
+  'offboarded student became financially active'
+);
 
 insert into public.tenant_memberships (
   user_id, tenant_id, role, status, is_primary
@@ -302,8 +315,8 @@ select pg_temp.assert_true(
   (
     select count(*)
     from public.get_authorized_student_billing_summary('profile-pii-a')
-  ) = 2,
-  'tenant billing summary is missing rows or crossed tenants'
+  ) = 1,
+  'tenant billing summary included an offboarded or cross-tenant student'
 );
 
 select pg_temp.assert_denied(

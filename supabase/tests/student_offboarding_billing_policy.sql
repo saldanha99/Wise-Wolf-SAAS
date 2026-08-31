@@ -294,6 +294,7 @@ select pg_temp.assert_true(
   (
     select lifecycle_status = 'offboarded'
        and status = 'Inativo'
+       and status_financial = 'SUSPENDED'
        and subscription_id is null
        and asaas_subscription_status = 'NOT_FOUND'
        and asaas_subscription_synced_at is not null
@@ -535,6 +536,7 @@ select pg_temp.assert_true(
   )
   and (
     select lifecycle_status = 'offboarded'
+       and status_financial = 'SUSPENDED'
        and subscription_id = 'sub_policy_charge'
        and asaas_subscription_status = 'INACTIVE'
        and asaas_subscription_synced_at is not null

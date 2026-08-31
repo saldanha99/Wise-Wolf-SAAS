@@ -1118,6 +1118,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830223000_repair_authoritative_unlinked_student_payments.sql"
   "supabase/migrations/20260830223100_surface_asaas_reconciliation_attention.sql"
   "supabase/migrations/20260831002000_fence_authoritative_unlinked_payment_integration.sql"
+  "supabase/migrations/20260831013000_exclude_offboarded_students_from_financial_forecasts.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

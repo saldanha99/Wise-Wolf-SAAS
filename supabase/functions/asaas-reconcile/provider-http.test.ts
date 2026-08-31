@@ -1,5 +1,6 @@
 import {
   HISTORICAL_REPAIR_BUDGET_MS,
+  isProviderRepairRuntimeTimeout,
   providerRetryDelayMs,
 } from "./provider-http.ts";
 
@@ -78,13 +79,31 @@ Deno.test("transient provider failures use short exponential retries only", () =
 
 Deno.test("historical repair budget finishes before the production gateway", () => {
   assertEquals(
-    HISTORICAL_REPAIR_BUDGET_MS < 30_000,
+    HISTORICAL_REPAIR_BUDGET_MS < 20_000,
     true,
     "edge supervisor reserve",
   );
   assertEquals(
-    HISTORICAL_REPAIR_BUDGET_MS >= 20_000,
+    HISTORICAL_REPAIR_BUDGET_MS >= 12_000,
     true,
     "useful repair window",
+  );
+});
+
+Deno.test("production supervisor timeout is retryable only for its exact signal", () => {
+  assertEquals(
+    isProviderRepairRuntimeTimeout(new Error("Signal timed out.")),
+    true,
+    "known supervisor signal",
+  );
+  assertEquals(
+    isProviderRepairRuntimeTimeout(new Error("database statement timed out")),
+    false,
+    "unrelated timeout",
+  );
+  assertEquals(
+    isProviderRepairRuntimeTimeout("Signal timed out."),
+    false,
+    "non-error value",
   );
 });

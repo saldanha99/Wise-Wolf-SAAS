@@ -92,14 +92,28 @@ insert into auth.users (
     'authenticated', 'authenticated', 'monthly-three@example.invalid',
     '{"provider":"email","providers":["email"]}',
     '{"full_name":"Monthly Three"}', now(), now()
+  ),
+  (
+    '58000000-0000-4000-8000-000000000004',
+    'authenticated', 'authenticated', 'monthly-offboarded@example.invalid',
+    '{"provider":"email","providers":["email"]}',
+    '{"full_name":"Monthly Offboarded"}', now(), now()
   );
 
 set local app.enrollment_claim = '1';
 update public.profiles
    set tenant_id = 'monthly-close-school',
        role = 'STUDENT',
-       status = 'Ativo',
-       lifecycle_status = 'active',
+       status = case
+         when id = '58000000-0000-4000-8000-000000000004'::uuid
+           then 'Inativo'
+         else 'Ativo'
+       end,
+       lifecycle_status = case
+         when id = '58000000-0000-4000-8000-000000000004'::uuid
+           then 'offboarded'
+         else 'active'
+       end,
        is_test_account = false,
        test_fixture_key = null,
        monthly_fee = 100,
@@ -108,7 +122,8 @@ update public.profiles
  where id in (
    '58000000-0000-4000-8000-000000000001',
    '58000000-0000-4000-8000-000000000002',
-   '58000000-0000-4000-8000-000000000003'
+   '58000000-0000-4000-8000-000000000003',
+   '58000000-0000-4000-8000-000000000004'
  );
 set local app.enrollment_claim = '';
 
@@ -116,14 +131,16 @@ delete from public.tenant_memberships
  where user_id in (
    '58000000-0000-4000-8000-000000000001',
    '58000000-0000-4000-8000-000000000002',
-   '58000000-0000-4000-8000-000000000003'
+   '58000000-0000-4000-8000-000000000003',
+   '58000000-0000-4000-8000-000000000004'
  );
 insert into public.tenant_memberships (
   user_id, tenant_id, role, status, is_primary
 ) values
   ('58000000-0000-4000-8000-000000000001', 'monthly-close-school', 'STUDENT', 'ACTIVE', true),
   ('58000000-0000-4000-8000-000000000002', 'monthly-close-school', 'STUDENT', 'ACTIVE', true),
-  ('58000000-0000-4000-8000-000000000003', 'monthly-close-school', 'STUDENT', 'ACTIVE', true);
+  ('58000000-0000-4000-8000-000000000003', 'monthly-close-school', 'STUDENT', 'ACTIVE', true),
+  ('58000000-0000-4000-8000-000000000004', 'monthly-close-school', 'STUDENT', 'ACTIVE', true);
 
 alter table public.student_payments
   disable trigger trg_notify_payment_split;
@@ -146,7 +163,25 @@ insert into public.student_payments (
     'monthly-close-school', 'pay_monthly_two', 100, 10000,
     'CONFIRMED', 'CONFIRMED', '2026-07-10', null,
     null, 'SUBSCRIPTION', 'CREDIT_CARD'
+  ),
+  (
+    '58000000-0000-4000-8000-000000000017',
+    '58000000-0000-4000-8000-000000000004',
+    'monthly-close-school', 'pay_monthly_offboarded', 100, 10000,
+    'CANCELLED', 'DELETED', '2026-07-10', null,
+    null, 'SUBSCRIPTION', 'PIX'
   );
+
+-- Simulate a legacy frozen obligation created before the student was
+-- offboarded. A cancelled invoice must converge to EXCLUDED, not MISSING_BILL.
+insert into public.monthly_payment_obligations (
+  tenant_id, period_start, student_id, roster_source,
+  expected_amount, billed_amount, settled_amount, status, payment_ids
+) values (
+  'monthly-close-school', '2026-07-01',
+  '58000000-0000-4000-8000-000000000004', 'RECORDED_INVOICE',
+  100, 0, 0, 'MISSING_BILL', '{}'
+);
 
 insert into public.financial_transactions (
   id, tenant_id, type, category, amount, amount_cents, description,
@@ -173,8 +208,8 @@ select public.refresh_monthly_payment_closure_financial(
 );
 select pg_temp.assert_true(
   (
-    select expected_students = 3
-       and settled_students = 1
+    select expected_students = 4
+       and settled_students = 2
        and blocked_students = 2
        and status = 'BLOCKED'
       from public.monthly_payment_closures
@@ -182,6 +217,19 @@ select pg_temp.assert_true(
        and period_start = '2026-07-01'
   ),
   'missing invoice or CONFIRMED card did not block close'
+);
+select pg_temp.assert_true(
+  (
+    select status = 'EXCLUDED'
+       and billed_amount = 0
+       and settled_amount = 0
+       and cardinality(payment_ids) = 0
+      from public.monthly_payment_obligations
+     where tenant_id = 'monthly-close-school'
+       and period_start = '2026-07-01'
+       and student_id = '58000000-0000-4000-8000-000000000004'
+  ),
+  'cancelled offboarded invoice became a false monthly blocker'
 );
 
 insert into public.student_payments (

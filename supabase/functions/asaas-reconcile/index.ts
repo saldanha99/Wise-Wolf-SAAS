@@ -22,6 +22,7 @@ import {
 } from "./diff.ts";
 import {
   HISTORICAL_REPAIR_BUDGET_MS,
+  isProviderRepairRuntimeTimeout,
   providerRetryDelayMs,
   waitForProvider,
 } from "./provider-http.ts";
@@ -1628,7 +1629,8 @@ serve(async (req) => {
     const rateLimited = error instanceof ProviderGetError &&
       error.status === 429;
     const repairDeadlineExhausted = error instanceof
-      ProviderRepairDeadlineError;
+        ProviderRepairDeadlineError ||
+      (repairHistoricalFacts && isProviderRepairRuntimeTimeout(error));
     const retryable = rateLimited || repairDeadlineExhausted;
     return new Response(
       JSON.stringify({
