@@ -41,6 +41,18 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  (
+    select not constraint_row.condeferrable
+       and not constraint_row.condeferred
+      from pg_catalog.pg_constraint as constraint_row
+     where constraint_row.conname = 'pedagogical_evaluation_catalog_next_fkey'
+       and constraint_row.conrelid =
+         'public.pedagogical_evaluation_catalog'::regclass
+  ),
+  'catalog self-reference must stay immediate for double-apply releases'
+);
+
+select pg_temp.assert_true(
   has_function_privilege(
     'service_role',
     'public.record_verified_pedagogical_quiz_v2(uuid,text,integer,integer,jsonb,text)',

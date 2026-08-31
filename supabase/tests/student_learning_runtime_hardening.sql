@@ -562,6 +562,68 @@ update public.profiles
 
 set local app.enrollment_claim = '';
 
+-- A autoridade atual de tenant vem da associação ACTIVE, não do campo legado
+-- profiles.tenant_id. As fixtures precisam atravessar a mesma fronteira usada
+-- em produção para que o teste de isolamento não passe por contexto nulo.
+insert into public.tenant_memberships (
+  user_id,
+  tenant_id,
+  role,
+  status,
+  is_primary
+)
+values
+  (
+    '00000000-0000-4000-8000-00000000e101',
+    'learning-runtime-a',
+    'STUDENT',
+    'ACTIVE',
+    true
+  ),
+  (
+    '00000000-0000-4000-8000-00000000e102',
+    'learning-runtime-a',
+    'STUDENT',
+    'ACTIVE',
+    true
+  ),
+  (
+    '00000000-0000-4000-8000-00000000e103',
+    'learning-runtime-a',
+    'STUDENT',
+    'ACTIVE',
+    true
+  ),
+  (
+    '00000000-0000-4000-8000-00000000e201',
+    'learning-runtime-b',
+    'STUDENT',
+    'ACTIVE',
+    true
+  ),
+  (
+    '00000000-0000-4000-8000-00000000e301',
+    'learning-runtime-a',
+    'SCHOOL_ADMIN',
+    'ACTIVE',
+    true
+  )
+on conflict (user_id, tenant_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    is_primary = excluded.is_primary;
+
+insert into public.tenant_user_contexts (user_id, tenant_id)
+values
+  ('00000000-0000-4000-8000-00000000e101', 'learning-runtime-a'),
+  ('00000000-0000-4000-8000-00000000e102', 'learning-runtime-a'),
+  ('00000000-0000-4000-8000-00000000e103', 'learning-runtime-a'),
+  ('00000000-0000-4000-8000-00000000e201', 'learning-runtime-b'),
+  ('00000000-0000-4000-8000-00000000e301', 'learning-runtime-a')
+on conflict (user_id) do update
+set tenant_id = excluded.tenant_id,
+    updated_at = pg_catalog.now();
+
 insert into public.learning_paths (
   id,
   tenant_id,
@@ -730,11 +792,19 @@ set local request.jwt.claims =
   '{"role":"authenticated","sub":"00000000-0000-4000-8000-00000000e301"}';
 
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.learning_paths)
+  (
+    select count(*) = 2
+      from public.learning_paths
+     where id in (
+       '10000000-0000-4000-8000-00000000e001',
+       '10000000-0000-4000-8000-00000000e002',
+       '10000000-0000-4000-8000-00000000e003'
+     )
+  )
   and not exists (
     select 1
       from public.learning_paths
-     where tenant_id = 'learning-runtime-b'
+     where id = '10000000-0000-4000-8000-00000000e003'
   ),
   'school admin can read another tenant curriculum'
 );
@@ -1415,11 +1485,19 @@ set local request.jwt.claims =
   '{"role":"authenticated","sub":"00000000-0000-4000-8000-00000000e101"}';
 
 select pg_temp.assert_true(
-  (select count(*) = 2 from public.learning_paths)
+  (
+    select count(*) = 2
+      from public.learning_paths
+     where id in (
+       '10000000-0000-4000-8000-00000000e001',
+       '10000000-0000-4000-8000-00000000e002',
+       '10000000-0000-4000-8000-00000000e003'
+     )
+  )
   and not exists (
     select 1
       from public.learning_paths
-     where tenant_id = 'learning-runtime-b'
+     where id = '10000000-0000-4000-8000-00000000e003'
   ),
   'student can read another tenant curriculum'
 );

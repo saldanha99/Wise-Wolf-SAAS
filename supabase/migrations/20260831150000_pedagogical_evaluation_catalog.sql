@@ -27,6 +27,46 @@ create table if not exists public.pedagogical_evaluation_catalog (
     )
 );
 
+create unique index if not exists idx_pedagogical_evaluation_catalog_active_order
+  on public.pedagogical_evaluation_catalog (module, part)
+  where active is true;
+
+do $$
+begin
+  -- A versão diferida deixava eventos de gatilho pendentes depois do upsert e
+  -- impedia a segunda aplicação transacional usada pelo release. Esta FK pode
+  -- ser imediata: o INSERT é uma única instrução e todos os destinos já fazem
+  -- parte do mesmo conjunto canônico.
+  if exists (
+    select 1
+      from pg_catalog.pg_constraint
+     where conname = 'pedagogical_evaluation_catalog_next_fkey'
+       and conrelid = 'public.pedagogical_evaluation_catalog'::regclass
+       and condeferrable is true
+  ) then
+    alter table public.pedagogical_evaluation_catalog
+      drop constraint pedagogical_evaluation_catalog_next_fkey;
+  end if;
+
+  if not exists (
+    select 1
+      from pg_catalog.pg_constraint
+     where conname = 'pedagogical_evaluation_catalog_next_fkey'
+       and conrelid = 'public.pedagogical_evaluation_catalog'::regclass
+  ) then
+    alter table public.pedagogical_evaluation_catalog
+      add constraint pedagogical_evaluation_catalog_next_fkey
+      foreign key (next_book_part)
+      references public.pedagogical_evaluation_catalog(book_part);
+  end if;
+end;
+$$;
+
+alter table public.pedagogical_evaluation_catalog enable row level security;
+revoke all on table public.pedagogical_evaluation_catalog
+  from public, anon, authenticated;
+grant select on table public.pedagogical_evaluation_catalog to service_role;
+
 insert into public.pedagogical_evaluation_catalog (
   book_part,
   module,
@@ -48,32 +88,6 @@ set module = excluded.module,
     next_book_part = excluded.next_book_part,
     active = excluded.active,
     updated_at = pg_catalog.now();
-
-do $$
-begin
-  if not exists (
-    select 1
-      from pg_catalog.pg_constraint
-     where conname = 'pedagogical_evaluation_catalog_next_fkey'
-       and conrelid = 'public.pedagogical_evaluation_catalog'::regclass
-  ) then
-    alter table public.pedagogical_evaluation_catalog
-      add constraint pedagogical_evaluation_catalog_next_fkey
-      foreign key (next_book_part)
-      references public.pedagogical_evaluation_catalog(book_part)
-      deferrable initially deferred;
-  end if;
-end;
-$$;
-
-create unique index if not exists idx_pedagogical_evaluation_catalog_active_order
-  on public.pedagogical_evaluation_catalog (module, part)
-  where active is true;
-
-alter table public.pedagogical_evaluation_catalog enable row level security;
-revoke all on table public.pedagogical_evaluation_catalog
-  from public, anon, authenticated;
-grant select on table public.pedagogical_evaluation_catalog to service_role;
 
 create table if not exists public.pedagogical_evaluation_access_audit (
   id uuid primary key default gen_random_uuid(),
