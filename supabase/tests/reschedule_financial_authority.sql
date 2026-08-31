@@ -212,6 +212,15 @@ values
       'YYYY-MM-DD'
     ),
     '12:00', 'STUDENT'
+  ),
+  (
+    'a4000000-0000-4000-8000-000000000005',
+    'reschedule-authority-school',
+    'a1000000-0000-4000-8000-000000000001',
+    'a1000000-0000-4000-8000-000000000002',
+    null,
+    'Pendente',
+    'Pendente', 'STUDENT'
   );
 
 select pg_temp.assert_true(
@@ -279,7 +288,7 @@ set local request.jwt.claims =
   '{"sub":"a1000000-0000-4000-8000-000000000001","role":"authenticated"}';
 
 select pg_temp.assert_true(
-  (select count(*) = 4 from public.reschedules),
+  (select count(*) = 5 from public.reschedules),
   'professor perdeu a leitura das proprias reposicoes'
 );
 
@@ -329,11 +338,11 @@ $teacher_cannot_schedule_in_the_past$;
 
 select pg_temp.assert_true(
   public.schedule_reschedule(
-    'a4000000-0000-4000-8000-000000000004',
+    'a4000000-0000-4000-8000-000000000005',
     (now() at time zone 'America/Sao_Paulo')::date + 2,
     '09:00'::time
   ) @> pg_catalog.jsonb_build_object(
-    'id', 'a4000000-0000-4000-8000-000000000004'::uuid,
+    'id', 'a4000000-0000-4000-8000-000000000005'::uuid,
     'date', pg_catalog.to_char(
       (now() at time zone 'America/Sao_Paulo')::date + 2,
       'YYYY-MM-DD'
@@ -350,7 +359,7 @@ select pg_temp.assert_true(
        and student_id = 'a1000000-0000-4000-8000-000000000002'
        and original_booking_id is null
       from public.reschedules
-     where id = 'a4000000-0000-4000-8000-000000000004'
+     where id = 'a4000000-0000-4000-8000-000000000005'
   ),
   'RPC estreita alterou origem ou participantes da reposicao'
 );
