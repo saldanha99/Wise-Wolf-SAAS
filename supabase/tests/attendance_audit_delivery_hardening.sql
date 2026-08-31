@@ -2014,18 +2014,12 @@ select pg_temp.assert_true(
 rollback to savepoint before_test_account_claim;
 
 -- Atomic delivery and terminal ambiguity ------------------------------------
--- Use two contiguous, already-finished slots on one Sao Paulo civil date.
--- Fixed 01:00/01:30 fixtures became future sessions while the suite ran in
--- the first hours of the day, and refresh correctly made them ineligible.
-with local_clock as (
-  select now() at time zone 'America/Sao_Paulo' as local_now
-), delivery_anchor as (
-  select case
-    when local_now::time < time '01:10'
-      then date_trunc('day', local_now) - interval '100 minutes'
-    else date_trunc('minute', local_now) - interval '70 minutes'
-  end as first_start
-  from local_clock
+-- Use the earliest valid slots in the claim window, with an explicit minimum
+-- creation timestamp. The delivery RPC is intentionally global, so a live
+-- eligible row must never outrank this isolated fixture during a release test.
+with delivery_anchor as (
+  select date_trunc('day', now() at time zone 'America/Sao_Paulo')
+           - interval '1 day' as first_start
 ), delivery_slots(id, start_at, token) as (
   select fixture.id, delivery_anchor.first_start + fixture.slot_offset,
          fixture.token
@@ -2046,7 +2040,7 @@ with local_clock as (
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name, student_phone,
   teacher_name, class_date, class_time, token, token_expires_at,
-  session_end_at, status, delivery_status
+  session_end_at, status, delivery_status, created_at
 )
 select
   delivery_slot.id,
@@ -2062,7 +2056,8 @@ select
   now() + interval '7 days',
   now() - interval '20 minutes',
   'PENDING',
-  'PENDING'
+  'PENDING',
+  '-infinity'::timestamptz
 from delivery_slots as delivery_slot;
 
 -- Simulates a row repaired after the legacy Edge sender attempted delivery but
@@ -2116,6 +2111,8 @@ reset role;
 
 select pg_temp.assert_true(
   (select count(*) = 1 from claimed_delivery)
+  and (select id = '50000000-0000-4000-8000-000000000001'
+         from claimed_delivery)
   and (select count(distinct canonical_confirmation_id) = 1
          from public.attendance_confirmations
         where id in (
