@@ -531,6 +531,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
   supabase/functions/asaas-reconcile/diff.ts \
   supabase/functions/asaas-reconcile/diff.test.ts \
+  supabase/functions/asaas-reconcile/provider-http.ts \
+  supabase/functions/asaas-reconcile/provider-http.test.ts \
   supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
@@ -628,6 +630,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/_shared/tenant-integration-broker.test.ts \
   supabase/functions/_shared/whatsapp-inbox.test.ts \
   supabase/functions/asaas-reconcile/diff.test.ts \
+  supabase/functions/asaas-reconcile/provider-http.test.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
@@ -3741,6 +3744,30 @@ wait_for_service_http_status() {
   return 1
 }
 
+service_http_status_once() {
+  local expected_status=$1
+  local check_name=$2
+  local actual_status=
+  shift 2
+
+  [[ "$service_role_key" =~ ^[A-Za-z0-9._-]{20,}$ ]]
+  actual_status="$(
+    curl -s -o /dev/null -w '%{http_code}' \
+      --connect-timeout 5 --max-time 15 \
+      --config <(
+        printf 'header = "Authorization: Bearer %s"\nheader = "apikey: %s"\n' \
+          "$service_role_key" "$service_role_key"
+      ) \
+      "$@" || true
+  )"
+  if [[ "$actual_status" = "$expected_status" ]]; then
+    return 0
+  fi
+
+  echo "ERRO: $check_name retornou ${actual_status:-sem resposta}; esperado $expected_status." >&2
+  return 1
+}
+
 wait_for_http_status 200 "frontend público" "$public_url/"
 wait_for_http_status 200 "landing Professor Negócio" "$public_url/seja-professor"
 wait_for_http_status 200 "landing de diagnóstico escolar" "$public_url/new-saas"
@@ -4031,7 +4058,7 @@ done
 unset whatsapp_webhook_auth_remaining whatsapp_webhook_batch
 asaas_smoke_date="$(TZ=America/Sao_Paulo date +%F)"
 [[ "$asaas_smoke_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
-wait_for_service_http_status 200 "auditoria somente leitura do Asaas" \
+service_http_status_once 200 "auditoria somente leitura do Asaas" \
   -X POST "$api_url/functions/v1/asaas-reconcile" \
   -H 'Content-Type: application/json' \
   --data "{\"windowStart\":\"$asaas_smoke_date\",\"windowEnd\":\"$asaas_smoke_date\"}"

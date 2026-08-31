@@ -20,6 +20,7 @@ import {
   runTransferAudit,
   statementPaymentId,
 } from "./diff.ts";
+import { providerRetryDelayMs, waitForProvider } from "./provider-http.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +55,13 @@ class ProviderGetError extends Error {
   constructor(readonly status: number) {
     super(`asaas_get_${status}`);
     this.name = "ProviderGetError";
+  }
+}
+
+class ProviderRepairDeadlineError extends Error {
+  constructor() {
+    super("asaas_repair_deadline_exhausted");
+    this.name = "ProviderRepairDeadlineError";
   }
 }
 
@@ -97,6 +105,18 @@ type HistoricalRepairMetrics = {
   skipped: number;
 };
 
+type ProviderGetOptions = {
+  retryRateLimit?: boolean;
+  retryTransient?: boolean;
+  deadlineAt?: number;
+  beforeAttempt?: () => Promise<void>;
+  onRetryWait?: (input: {
+    status: number;
+    attempt: number;
+    delayMs: number;
+  }) => Promise<void>;
+};
+
 async function applyHistoricalFactRepairs(input: {
   admin: SupabaseClient;
   paymentIntegration: ResolvedAsaasIntegration;
@@ -107,6 +127,7 @@ async function applyHistoricalFactRepairs(input: {
   refundLedgerByPaymentId: Map<string, LocalLedgerEntry[]>;
   repairCreditDates: boolean;
   repairDeletedPayments: boolean;
+  providerGetOptions: ProviderGetOptions;
   onProgress: (metrics: HistoricalRepairMetrics) => Promise<void>;
 }): Promise<HistoricalRepairMetrics> {
   const metrics: HistoricalRepairMetrics = {
@@ -146,6 +167,7 @@ async function applyHistoricalFactRepairs(input: {
     const provider = await providerGet<ProviderPayment>(
       input.paymentIntegration,
       `/payments/${encodeURIComponent(providerId)}`,
+      input.providerGetOptions,
     );
     if (
       provider.id !== providerId || provider.status !== "RECEIVED" ||
@@ -224,6 +246,7 @@ async function applyHistoricalFactRepairs(input: {
     const provider = await providerGet<ProviderPayment>(
       input.paymentIntegration,
       `/payments/${encodeURIComponent(providerId)}`,
+      input.providerGetOptions,
     );
     if (
       provider.id !== providerId || provider.deleted !== true ||
@@ -238,6 +261,7 @@ async function applyHistoricalFactRepairs(input: {
       parent = await providerGet<Record<string, unknown>>(
         subscriptionIntegration!,
         `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        input.providerGetOptions,
       );
       parentById.set(subscriptionId, parent);
     }
@@ -269,15 +293,65 @@ async function applyHistoricalFactRepairs(input: {
 async function providerGet<T>(
   integration: ResolvedAsaasIntegration,
   path: string,
+  options: ProviderGetOptions = {},
 ): Promise<T> {
-  const response = await fetch(`${integration.baseUrl}${path}`, {
-    method: "GET",
-    headers: { accept: "application/json", access_token: integration.apiKey },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const body = (await response.json().catch(() => ({}))) as T;
-  if (!response.ok) throw new ProviderGetError(response.status);
-  return body;
+  for (let attempt = 0;; attempt += 1) {
+    await options.beforeAttempt?.();
+    const deadlineRemainingMs = options.deadlineAt
+      ? options.deadlineAt - Date.now()
+      : Number.POSITIVE_INFINITY;
+    if (deadlineRemainingMs <= 5_000) {
+      throw new ProviderRepairDeadlineError();
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${integration.baseUrl}${path}`, {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          access_token: integration.apiKey,
+        },
+        signal: AbortSignal.timeout(
+          Math.max(1, Math.min(20_000, deadlineRemainingMs - 5_000)),
+        ),
+      });
+    } catch (error) {
+      if (options.retryTransient !== true) throw error;
+      const retryDelay = providerRetryDelayMs(
+        0,
+        null,
+        attempt,
+        Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 25_000),
+      );
+      if (retryDelay === null) throw error;
+      await options.onRetryWait?.({
+        status: 0,
+        attempt,
+        delayMs: retryDelay,
+      });
+      await waitForProvider(retryDelay);
+      continue;
+    }
+    const body = (await response.json().catch(() => ({}))) as T;
+    if (response.ok) return body;
+    const canRetry = response.status === 429
+      ? options.retryRateLimit === true
+      : options.retryTransient === true;
+    if (!canRetry) throw new ProviderGetError(response.status);
+    const retryDelay = providerRetryDelayMs(
+      response.status,
+      response.headers.get("retry-after"),
+      attempt,
+      Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 25_000),
+    );
+    if (retryDelay === null) throw new ProviderGetError(response.status);
+    await options.onRetryWait?.({
+      status: response.status,
+      attempt,
+      delayMs: retryDelay,
+    });
+    await waitForProvider(retryDelay);
+  }
 }
 
 async function providerListAll<T>(
@@ -287,6 +361,7 @@ async function providerListAll<T>(
   cursorKey: string,
   cursorState: CursorState,
   onCursor: (next: CursorState) => Promise<void>,
+  providerGetOptions?: ProviderGetOptions,
 ): Promise<T[]> {
   const rows: T[] = [];
   for (let offset = 0, pages = 0; pages < 1_000; offset += 100, pages++) {
@@ -296,6 +371,7 @@ async function providerListAll<T>(
     const page = await providerGet<ProviderList<T>>(
       integration,
       `${path}?${pageParams}`,
+      providerGetOptions,
     );
     const data = Array.isArray(page.data) ? page.data : [];
     rows.push(...data);
@@ -717,6 +793,11 @@ serve(async (req) => {
       },
     );
   }
+  // Repair requests are intentionally bounded. Normal reconciliation and
+  // deploy smoke checks never enter provider retry waits.
+  const repairProviderDeadlineAt = repairHistoricalFacts
+    ? Date.now() + 180_000
+    : undefined;
 
   let runId: string | null = null;
   try {
@@ -758,6 +839,37 @@ serve(async (req) => {
         .eq("id", runId);
       if (error) throw error;
     };
+    let previousRepairProviderReadAt = 0;
+    const beforeProviderRead = async () => {
+      if (!repairHistoricalFacts) return;
+      const delayMs = Math.max(
+        0,
+        previousRepairProviderReadAt + 1_100 - Date.now(),
+      );
+      if (
+        delayMs > 0 &&
+        Date.now() + delayMs >= Number(repairProviderDeadlineAt || 0) - 5_000
+      ) {
+        throw new ProviderRepairDeadlineError();
+      }
+      if (delayMs > 0) await waitForProvider(delayMs);
+      previousRepairProviderReadAt = Date.now();
+    };
+    const repairProviderGetOptions: ProviderGetOptions = repairHistoricalFacts
+      ? {
+        retryRateLimit: true,
+        retryTransient: true,
+        deadlineAt: repairProviderDeadlineAt,
+        beforeAttempt: beforeProviderRead,
+        onRetryWait: async ({ status, delayMs }) => {
+          cursorState.provider_retry_waits =
+            (cursorState.provider_retry_waits || 0) + 1;
+          cursorState.provider_retry_status = status;
+          cursorState.provider_retry_delay_ms = delayMs;
+          await saveCursor({ ...cursorState });
+        },
+      }
+      : {};
 
     const paymentParams = new URLSearchParams({ includeDeleted: "true" });
     paymentParams.set("dateCreated[ge]", windowStart);
@@ -769,6 +881,7 @@ serve(async (req) => {
       "payments_offset",
       cursorState,
       saveCursor,
+      repairProviderGetOptions,
     );
 
     const statementParams = new URLSearchParams({
@@ -783,6 +896,7 @@ serve(async (req) => {
       "statement_offset",
       cursorState,
       saveCursor,
+      repairProviderGetOptions,
     );
 
     const localTransfers = await fetchTransferAttempts(
@@ -817,6 +931,7 @@ serve(async (req) => {
           "transfers_offset",
           cursorState,
           saveCursor,
+          repairProviderGetOptions,
         );
       },
     );
@@ -847,6 +962,7 @@ serve(async (req) => {
         const payment = await providerGet<ProviderPayment>(
           integration,
           `/payments/${encodeURIComponent(paymentId)}`,
+          repairProviderGetOptions,
         );
         if (payment?.id) {
           providerPayments.push(payment);
@@ -895,6 +1011,7 @@ serve(async (req) => {
         const payment = await providerGet<ProviderPayment>(
           integration,
           `/payments/${encodeURIComponent(paymentId)}`,
+          repairProviderGetOptions,
         );
         if (payment?.id) {
           providerPayments.push(payment);
@@ -932,6 +1049,7 @@ serve(async (req) => {
           const transfer = await providerGet<ProviderTransfer>(
             transferIntegration,
             `/transfers/${encodeURIComponent(transferId)}`,
+            repairProviderGetOptions,
           );
           if (transfer?.id) {
             providerTransfers.push(transfer);
@@ -993,6 +1111,7 @@ serve(async (req) => {
         refundLedgerByPaymentId: ledgerState.refundByPaymentId,
         repairCreditDates: repairHistoricalCredits,
         repairDeletedPayments: repairHistoricalDeletedPayments,
+        providerGetOptions: repairProviderGetOptions,
         onProgress: async (progress) => {
           const { error } = await auth.context.admin
             .from("asaas_reconciliation_runs")
@@ -1106,10 +1225,23 @@ serve(async (req) => {
         })
         .eq("id", runId);
     }
+    const rateLimited = error instanceof ProviderGetError &&
+      error.status === 429;
+    const repairDeadlineExhausted = error instanceof
+      ProviderRepairDeadlineError;
+    const retryable = rateLimited || repairDeadlineExhausted;
     return new Response(
-      JSON.stringify({ error: "ASAAS_RECONCILIATION_FAILED", runId }),
+      JSON.stringify({
+        error: rateLimited
+          ? "ASAAS_RATE_LIMITED_RETRY_LATER"
+          : repairDeadlineExhausted
+          ? "ASAAS_REPAIR_WINDOW_EXHAUSTED"
+          : "ASAAS_RECONCILIATION_FAILED",
+        retryable,
+        runId,
+      }),
       {
-        status: 500,
+        status: rateLimited ? 429 : repairDeadlineExhausted ? 503 : 500,
         headers: corsHeaders,
       },
     );
