@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Link as LinkIcon, Copy, Check, Calendar, Clock, BookOpen, Users,
     Rocket, Sparkles, GraduationCap, ChevronDown, Wallet, Search, AlertCircle, Loader2
@@ -75,6 +75,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const offerRequestIds = useRef<Record<string, string>>({});
     const [formError, setFormError] = useState('');
     const [availabilityLoading, setAvailabilityLoading] = useState(false);
     const [availabilityRows, setAvailabilityRows] = useState<Array<{
@@ -333,8 +334,14 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         // um link inseguro: o usuario recebe o erro e pode tentar novamente.
         try {
             setGenerating(true);
-            const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', { p_payload: data });
+            const requestKey = JSON.stringify(data);
+            const requestId = offerRequestIds.current[requestKey] || crypto.randomUUID();
+            offerRequestIds.current[requestKey] = requestId;
+            const { data: offerId, error: offerErr } = await supabase.rpc('create_enrollment_offer', {
+                p_payload: { ...data, requestId },
+            });
             if (offerErr || !offerId) throw offerErr || new Error('offer id vazio');
+            delete offerRequestIds.current[requestKey];
             setGeneratedLink(`${APP_BASE_URL}/matricula?offer=${offerId}`);
         } catch (e) {
             console.error('create_enrollment_offer falhou:', e);

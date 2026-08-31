@@ -158,6 +158,15 @@ export function queueAudience(kind: unknown): {
   if (
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||
+    normalized === "TEACHER_AGENDA" ||
+    normalized === "TEACHER_BIRTHDAY" ||
+    normalized === "SCHOOL_AI_BRIEFING" ||
+    normalized === "CRON_ALERT" ||
+    normalized === "ASAAS_HEALTH" ||
+    normalized === "INTERVIEW_BOOKED_CANDIDATE" ||
+    normalized === "INTERVIEW_BOOKED_MANAGEMENT" ||
+    normalized === "INTERVIEW_REMINDER_CANDIDATE" ||
+    normalized === "INTERVIEW_REMINDER_MANAGEMENT" ||
     normalized === "TRIAL_TEACHER_REQUESTED" ||
     normalized === "TRIAL_MANAGEMENT_ACCEPTED"
   ) return { audience: "teacher", centralOnly: true };

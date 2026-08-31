@@ -938,7 +938,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             </div>
                             <div>
                                 <h4 className="font-black text-blue-800 dark:text-blue-200 text-sm">Gerenciamento de Agenda</h4>
-                                <p className="text-xs text-blue-600 dark:text-blue-400 font-bold">Adicione dias, troque horários ou transfira de professor.</p>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 font-bold">Adicione dias, troque horários ou inicie uma transferência com aceite e data de corte.</p>
                             </div>
                         </div>
 
@@ -946,6 +946,12 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                             studentId={initialData.id}
                             tenantId={initialData.tenant_id} // Assuming initialData has tenant_id, usually filtering by it anyway
                             teachers={teachers}
+                            student={{
+                                id: initialData.id,
+                                full_name: initialData.full_name || initialData.name || 'Aluno',
+                                professor_id: initialData.professor_id || null,
+                                class_frequency: initialData.class_frequency || null,
+                            }}
                             onUpdate={() => {
                                 // Optional: Refresh parent or local state if needed
                             }}

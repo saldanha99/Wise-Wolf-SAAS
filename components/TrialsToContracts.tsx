@@ -198,6 +198,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [enrollmentLinks, setEnrollmentLinks] = useState<Record<string, EnrollmentLink>>({});
     const [appointments, setAppointments] = useState<Record<string, { start_time: string }>>({});
     const outcomeRequestIds = useRef<Record<string, string>>({});
+    const enrollmentOfferRequestIds = useRef<Record<string, string>>({});
 
     // Wizard State (Enrollment Link Modal)
     const [wizardOpp, setWizardOpp] = useState<Opportunity | null>(null);
@@ -693,12 +694,15 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 // Schedule normalizado (compatível com RegistrationLinkGenerator)
                 schedule: normalizedSchedule.length > 0 ? normalizedSchedule : null,
             };
+            const requestKey = JSON.stringify(data);
+            const requestId = enrollmentOfferRequestIds.current[requestKey] || crypto.randomUUID();
+            enrollmentOfferRequestIds.current[requestKey] = requestId;
 
             // O PublicRegistration só aceita ofertas autoritativas salvas no banco.
             // O formato legado ?data= era rejeitado (e permitia adulterar preço).
             const { data: offerId, error: offerErr } = await supabase.rpc(
                 'create_enrollment_offer',
-                { p_payload: data }
+                { p_payload: { ...data, requestId } }
             );
             if (offerErr || !offerId) {
                 console.error('create_enrollment_offer failed:', offerErr);
@@ -706,6 +710,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
             }
 
             const url = `${APP_BASE_URL}/matricula?offer=${offerId}`;
+            delete enrollmentOfferRequestIds.current[requestKey];
 
             setGeneratedLink(url);
 

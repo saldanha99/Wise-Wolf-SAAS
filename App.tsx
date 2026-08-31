@@ -1212,23 +1212,18 @@ const App: React.FC = () => {
         reschedules={reschedules}
         students={students}
         onAdd={async (data) => {
-          // Agendar uma reposição existente mexe SÓ na data/hora.
-          // O upsert antigo remontava a linha inteira com `teacher_id: user.id` —
-          // então quem clicasse em "Agendar Agora" virava dono da reposição, e ela
-          // sumia da agenda (e da folha) do professor que de fato deu a falta.
-          // O diretor, que enxerga a escola toda, movia a reposição num clique.
-          const { error } = data.id
-            ? await supabase
-                .from('reschedules')
-                .update({ date: data.date, time: data.time })
-                .eq('id', data.id)
-            : await supabase.from('reschedules').insert({
-                student_id: data.studentId,
-                teacher_id: user.id,
-                tenant_id: user.tenantId,
-                date: data.date,
-                time: data.time
-              });
+          if (!data.id) {
+            alert('Selecione uma reposição existente para agendar.');
+            return;
+          }
+
+          // A RPC aceita somente id, data e hora. Aluno, professor, tenant,
+          // booking original e fault_type nunca saem do controle do banco.
+          const { error } = await supabase.rpc('schedule_reschedule', {
+            p_reschedule_id: String(data.id),
+            p_date: data.date,
+            p_time: data.time,
+          });
           if (error) {
             console.error('Save Reschedule Error:', error);
             alert(`Erro ao salvar reposição: ${error.message}`);
@@ -1238,11 +1233,6 @@ const App: React.FC = () => {
             // a mensagem e não deixava receipt auditável.
             loadAppData();
           }
-        }}
-        onDelete={async (id) => {
-          const { error } = await supabase.from('reschedules').delete().eq('id', id);
-          if (error) alert('Erro ao deletar: ' + error.message);
-          else loadAppData();
         }}
       />,
       'evolution': <EvolutionView user={user} />,

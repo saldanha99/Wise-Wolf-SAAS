@@ -34,8 +34,12 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 .select(`
           id, time_slot, day_of_week, module,
           teacher:teacher_id(full_name, avatar_url)
-        `)
-                .eq('student_id', user.id);
+                `)
+                .eq('student_id', user.id)
+                // A grade do aluno deve refletir apenas vínculos vigentes. Sem este
+                // filtro, aulas canceladas permaneciam visíveis como se ainda fossem
+                // acontecer.
+                .in('status', ['SCHEDULED', 'scheduled']);
 
             // 3. Fetch Pending Reschedules
             // used_at nulo = reposição ainda não dada. A linha consumida SOBREVIVE ao

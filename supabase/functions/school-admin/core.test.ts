@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import {
+  enrollmentLeadMatchesTrial,
   hasExclusiveActiveTargetMembership,
   isEligibleForDunning,
   normalizeEnrollmentPlan,
@@ -81,6 +82,35 @@ Deno.test("school admin aceita somente IDs e estados normalizados", () => {
         paymentId: "pay_123),tenant_id.neq.safe",
       }),
     "filtro injetavel deveria ser rejeitado",
+  );
+});
+
+Deno.test("matricula vincula a experimental pela identidade antes do telefone", () => {
+  assert(
+    enrollmentLeadMatchesTrial("student-a", "student-a", "551199", "551188"),
+    "IDs iguais devem prevalecer mesmo se o telefone mudou",
+  );
+  assert(
+    !enrollmentLeadMatchesTrial(
+      "student-a",
+      "student-b",
+      "5511999999999",
+      "5511999999999",
+    ),
+    "telefone compartilhado nunca deve unir dois alunos identificados",
+  );
+  assert(
+    enrollmentLeadMatchesTrial(
+      "",
+      "student-a",
+      "5511999999999",
+      "5511999999999",
+    ),
+    "telefone deve continuar como fallback para registros legados sem ID",
+  );
+  assert(
+    !enrollmentLeadMatchesTrial("", "", "", ""),
+    "vinculo sem identidade nem telefone deve falhar fechado",
   );
 });
 
@@ -225,6 +255,8 @@ Deno.test("oferta de matricula exige grade completa e termos de cobranca", () =>
   const action = normalizeSchoolAdminAction({
     action: "createEnrollmentOffer",
     leadId: "00000000-0000-4000-8000-000000000001",
+    opportunityId: "00000000-0000-4000-8000-000000000004",
+    requestId: "00000000-0000-4000-8000-000000000005",
     planId: "00000000-0000-4000-8000-000000000002",
     teacherId: "00000000-0000-4000-8000-000000000003",
     schedule: [
@@ -268,6 +300,20 @@ Deno.test("oferta de matricula exige grade completa e termos de cobranca", () =>
         planId: action.planId,
       }),
     "oferta sem professor e grade deveria ser rejeitada",
+  );
+  rejects(
+    () => {
+      const { opportunityId: _opportunityId, ...withoutOpportunity } = action;
+      return normalizeSchoolAdminAction(withoutOpportunity);
+    },
+    "oferta sem oportunidade autoritativa deveria ser rejeitada",
+  );
+  rejects(
+    () => {
+      const { requestId: _requestId, ...withoutRequest } = action;
+      return normalizeSchoolAdminAction(withoutRequest);
+    },
+    "oferta sem chave de idempotencia deveria ser rejeitada",
   );
 });
 

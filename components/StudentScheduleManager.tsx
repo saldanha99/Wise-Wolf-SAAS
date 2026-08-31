@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, Calendar, Clock, User as UserIcon, Save, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, Calendar, User as UserIcon, Save, RefreshCw, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Teacher } from '../types';
+import TeacherTransferGenerator from './TeacherTransferGenerator';
 
 interface StudentScheduleManagerProps {
     studentId: string;
     tenantId: string;
     teachers: Teacher[]; // For selecting teacher
+    student?: {
+        id: string;
+        full_name: string;
+        professor_id?: string | null;
+        class_frequency?: string | null;
+    };
     onUpdate?: () => void;
 }
 
@@ -20,10 +27,11 @@ interface Booking {
 
 const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ studentId, tenantId, teachers, onUpdate }) => {
+const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ studentId, tenantId, teachers, student, onUpdate }) => {
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
+    const [showTransfer, setShowTransfer] = useState(false);
 
     // New Slot State
     const [newSlot, setNewSlot] = useState({
@@ -112,25 +120,6 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
         }
     };
 
-    const handleTransfer = async (bookingId: string, newTeacherId: string) => {
-        if (!newTeacherId) return;
-        setProcessingId(bookingId);
-        try {
-            const { error } = await supabase
-                .from('bookings')
-                .update({ teacher_id: newTeacherId })
-                .eq('id', bookingId);
-
-            if (error) throw error;
-            fetchBookings(); // Refresh to show new teacher name
-            if (onUpdate) onUpdate();
-        } catch (error: any) {
-            alert('Erro na transferência: ' + error.message);
-        } finally {
-            setProcessingId(null);
-        }
-    };
-
     const handleScheduleSave = async (bookingId: string) => {
         const currentBooking = bookings.find(booking => booking.id === bookingId);
         if (!currentBooking) return;
@@ -173,12 +162,23 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                 <h4 className="text-xs font-black uppercase tracking-widest text-brand-muted flex items-center gap-2">
                     <Calendar size={14} /> Agenda de Aulas
                 </h4>
-                <button
-                    onClick={() => setIsAdding(!isAdding)}
-                    className="text-[10px] font-bold uppercase tracking-wide text-brand-accent hover:bg-brand-accent/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-transparent hover:border-brand-accent/20"
-                >
-                    <Plus size={12} /> Adicionar Dia
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                    {student && (
+                        <button
+                            type="button"
+                            onClick={() => setShowTransfer(true)}
+                            className="text-[10px] font-bold uppercase tracking-wide text-indigo-500 hover:bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-indigo-500/20"
+                        >
+                            <ArrowRightLeft size={12} /> Transferir com aceite
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setIsAdding(!isAdding)}
+                        className="text-[10px] font-bold uppercase tracking-wide text-brand-accent hover:bg-brand-accent/10 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-transparent hover:border-brand-accent/20"
+                    >
+                        <Plus size={12} /> Adicionar Dia
+                    </button>
+                </div>
             </div>
 
             {isAdding && (
@@ -274,19 +274,13 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                             </button>
                         </div>
 
-                        {/* Teacher Transfer */}
+                        {/* Professor é somente leitura aqui. Transferência altera a
+                            grade inteira e exige o fluxo com data de corte e aceite. */}
                         <div className="flex items-center gap-2 flex-1 w-full md:w-auto">
                             <UserIcon size={12} className="text-brand-muted" />
-                            <select
-                                value={booking.teacher_id}
-                                onChange={(e) => handleTransfer(booking.id, e.target.value)}
-                                disabled={processingId === booking.id}
-                                className="flex-1 bg-transparent text-xs font-bold text-brand-text border-b border-dashed border-brand-border focus:border-brand-accent outline-none py-1 truncate"
-                            >
-                                {teachers.map(t => (
-                                    <option key={t.id} value={t.id}>Prof. {t.name}</option>
-                                ))}
-                            </select>
+                            <span className="flex-1 text-xs font-bold text-brand-text py-1 truncate">
+                                Prof. {booking.teacher?.full_name || teachers.find(t => t.id === booking.teacher_id)?.name || 'Professor'}
+                            </span>
                         </div>
 
                         {/* Delete */}
@@ -308,6 +302,14 @@ const StudentScheduleManager: React.FC<StudentScheduleManagerProps> = ({ student
                     </div>
                 )}
             </div>
+
+            {showTransfer && student && (
+                <TeacherTransferGenerator
+                    tenantId={tenantId}
+                    student={student}
+                    onClose={() => setShowTransfer(false)}
+                />
+            )}
         </div>
     );
 };

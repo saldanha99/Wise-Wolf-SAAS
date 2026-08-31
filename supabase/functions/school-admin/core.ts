@@ -20,6 +20,25 @@ export type TargetMembershipSnapshot = {
   status?: unknown;
 };
 
+export function enrollmentLeadMatchesTrial(
+  leadStudentIdValue: unknown,
+  opportunityStudentIdValue: unknown,
+  leadPhoneValue: unknown,
+  opportunityPhoneValue: unknown,
+): boolean {
+  const leadStudentId = String(leadStudentIdValue || "").trim();
+  const opportunityStudentId = String(opportunityStudentIdValue || "").trim();
+  if (leadStudentId && opportunityStudentId) {
+    return leadStudentId === opportunityStudentId;
+  }
+
+  const leadPhone = String(leadPhoneValue || "").trim();
+  const opportunityPhone = String(opportunityPhoneValue || "").trim();
+  return Boolean(
+    leadPhone && opportunityPhone && leadPhone === opportunityPhone,
+  );
+}
+
 export function hasExclusiveActiveTargetMembership(
   memberships: TargetMembershipSnapshot[],
   tenantId: string,
@@ -54,6 +73,8 @@ export type SchoolAdminAction =
   | {
     action: "createEnrollmentOffer";
     leadId: string;
+    opportunityId: string;
+    requestId: string;
     planId: string;
     teacherId: string;
     schedule: Array<{ day: string; time: string }>;
@@ -327,6 +348,8 @@ export function normalizeSchoolAdminAction(body: unknown): SchoolAdminAction {
       !hasOnlyKeys(body, [
         "action",
         "leadId",
+        "opportunityId",
+        "requestId",
         "planId",
         "teacherId",
         "schedule",
@@ -344,6 +367,8 @@ export function normalizeSchoolAdminAction(body: unknown): SchoolAdminAction {
     return {
       action: body.action,
       leadId: requiredUuid(body.leadId, "LEAD_ID"),
+      opportunityId: requiredUuid(body.opportunityId, "OPPORTUNITY_ID"),
+      requestId: requiredUuid(body.requestId, "REQUEST_ID"),
       planId: requiredUuid(body.planId, "PLAN_ID"),
       teacherId: requiredUuid(body.teacherId, "TEACHER_ID"),
       schedule: enrollmentSchedule(body.schedule),

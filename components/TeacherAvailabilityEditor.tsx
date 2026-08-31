@@ -207,30 +207,27 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
     setIsPublishing(true);
 
     try {
-      await supabase
-        .from('teacher_availability')
-        .delete()
-        .eq('teacher_id', teacherId);
+      const slots = Array.from(availableSlots).map(slotStr => {
+        const slot = slotStr as string;
+        const dashIdx = slot.indexOf('-');
+        const dIdx = parseInt(slot.substring(0, dashIdx));
+        const timeKey = slot.substring(dashIdx + 1);
+        return {
+          // DB: 1=segunda ... 6=sábado. Editor: 0=segunda ... 5=sábado.
+          day_of_week: dIdx + 1,
+          start_time: timeKey,
+        };
+      });
 
-      if (availableSlots.size > 0) {
-        const toInsert = Array.from(availableSlots).map(slotStr => {
-          const slot = slotStr as string;
-          const dashIdx = slot.indexOf('-');
-          const dIdx = parseInt(slot.substring(0, dashIdx));
-          const timeKey = slot.substring(dashIdx + 1);
-          // DB Integer: Mon=1, Sat=6
-          // Editor Index: Mon=0, Sat=5
-          // So DB = Index + 1
-          return {
-            teacher_id: teacherId,
-            tenant_id: tenantId,
-            day_of_week: dIdx + 1,
-            start_time: timeKey
-          };
-        });
-
-        const { error: insError } = await supabase.from('teacher_availability').insert(toInsert);
-        if (insError) throw insError;
+      // Uma única operação de banco evita que uma falha entre DELETE e INSERT
+      // deixe a agenda do professor vazia ou apenas parcialmente publicada.
+      const { data, error } = await supabase.rpc('replace_teacher_availability', {
+        p_teacher_id: teacherId,
+        p_slots: slots,
+      });
+      if (error) throw error;
+      if (data && (data as any).ok === false) {
+        throw new Error((data as any).error || 'Não foi possível publicar a agenda.');
       }
 
       alert("Agenda publicada com sucesso!");

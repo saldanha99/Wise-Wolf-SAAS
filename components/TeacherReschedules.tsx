@@ -3,8 +3,6 @@ import { FUNCTIONS_URL, supabase } from '../lib/supabase';
 import {
     Repeat,
     Settings,
-    Plus,
-    Trash2,
     Filter,
     Search,
     Calendar,
@@ -20,10 +18,9 @@ interface TeacherReschedulesProps {
     reschedules?: Reschedule[];
     students?: { id: string; name: string; module: string; }[];
     onAdd?: (data: any) => void;
-    onDelete?: (id: string | number) => void;
 }
 
-const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [], students = [], onAdd, onDelete }) => {
+const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [], students = [], onAdd }) => {
     const [activeTab, setActiveTab] = useState('schedule');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,7 +43,9 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (onAdd) {
+        // A origem financeira da reposição nasce somente do lançamento da
+        // falta. Esta tela agenda um crédito existente; nunca cria outro.
+        if (onAdd && editingId !== null) {
             onAdd({
                 id: editingId,
                 studentId: formData.studentId,
@@ -140,24 +139,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                     {activeTab === 'schedule' ? (
                         <>
                             {/* Actions Bar */}
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex gap-2">
-                                    {/* Não existia botão de criar: o professor só conseguia mexer
-                                        nas reposições que o sistema já tinha aberto. Resultado —
-                                        84 reposições paradas em "Pendente" e 7 com data marcada. */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setFormData({ studentId: '', date: '', time: '' });
-                                            setEditingId(null);
-                                            setIsModalOpen(true);
-                                        }}
-                                        className="bg-brand-accent hover:bg-brand-accent-hover text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center gap-2"
-                                    >
-                                        <Plus size={14} /> Nova Reposição
-                                    </button>
-                                </div>
-
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4">
                                 <div className="relative w-full md:w-64">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" size={14} />
                                     <input
@@ -293,7 +275,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                         <div className="p-8 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
                             <div>
                                 <h3 className="text-xl font-black text-brand-text flex items-center gap-2 uppercase tracking-tight">
-                                    <Repeat size={24} className="text-brand-accent drop-shadow-[0_0_8px_rgba(var(--brand-accent),0.6)]" /> {editingId ? 'Editar Reposição' : 'Agendar Reposição'}
+                                    <Repeat size={24} className="text-brand-accent drop-shadow-[0_0_8px_rgba(var(--brand-accent),0.6)]" /> Editar Reposição
                                 </h3>
                                 <p className="text-xs text-brand-muted font-medium mt-0.5">Defina a nova data e horário para a aula.</p>
                             </div>
@@ -313,15 +295,12 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                 <label className="text-[10px] font-black uppercase tracking-[0.1em] text-brand-muted flex items-center gap-2 ml-1">
                                     <User size={12} className="text-brand-accent" /> Aluno Selecionado
                                 </label>
-                                {/* Ficava sempre disabled — mesmo criando uma reposição nova o
-                                    professor não conseguia escolher o aluno. Ao remarcar um
-                                    crédito existente o aluno segue travado (ele já está definido). */}
+                                {/* Aluno e origem são imutáveis: apenas data/hora podem mudar. */}
                                 <select
                                     required
                                     value={formData.studentId}
-                                    onChange={e => setFormData({ ...formData, studentId: e.target.value })}
                                     className="w-full px-5 py-4 bg-brand-bg border border-brand-border rounded-[1.25rem] text-sm font-bold text-brand-text focus:ring-4 focus:ring-brand-accent/20 focus:border-brand-accent outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    disabled={Boolean(editingId)}
+                                    disabled
                                 >
                                     <option value="">Selecione um aluno...</option>
                                     {students.map(student => (
@@ -330,11 +309,6 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                         </option>
                                     ))}
                                 </select>
-                                {!editingId && students.length === 0 && (
-                                    <p className="ml-1 text-[11px] font-medium text-amber-500">
-                                        Nenhum aluno carregado. Recarregue a página ou fale com a coordenação.
-                                    </p>
-                                )}
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -368,7 +342,7 @@ const TeacherReschedules: React.FC<TeacherReschedulesProps> = ({ reschedules = [
                                 type="submit"
                                 className="w-full bg-brand-accent text-white py-5 rounded-[1.5rem] font-black text-[11px] uppercase tracking-[0.2em] hover:bg-brand-accent-hover hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(var(--brand-accent),0.4)] flex items-center justify-center gap-3 mt-4"
                             >
-                                <Save size={18} /> {editingId ? 'Salvar Alterações' : 'Concluir Agendamento'}
+                                <Save size={18} /> Salvar Alterações
                             </button>
                         </form>
                     </div>

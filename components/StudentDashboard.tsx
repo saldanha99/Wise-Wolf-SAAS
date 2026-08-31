@@ -14,6 +14,10 @@ import { PEDAGOGICAL_BOOKS } from '../constants';
 import { useStudentContext } from './contexts/StudentContext';
 import StudentAuditPanel from './StudentAuditPanel';
 import StudentAuditReminder from './StudentAuditReminder';
+import {
+  formatClassLogDate,
+  isCompletedClassPresence,
+} from '../lib/classLogPresentation';
 
 interface StudentDashboardProps {
   user: UserType;
@@ -114,7 +118,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
 
         // 4. Logs
         if (recentLogs.length === 0) {
-          const { data: logs } = await supabase.from('class_logs').select(`id, created_at, presence, student_confirmed, content, teacher:teacher_id(full_name)`).eq('student_id', user.id).order('created_at', { ascending: false }).limit(5);
+          const { data: logs } = await supabase.from('class_logs')
+            .select(`id, class_date, start_time, created_at, presence, student_confirmed, content, teacher:teacher_id(full_name)`)
+            .eq('student_id', user.id)
+            .order('class_date', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(5);
           setRecentLogs(logs || []);
         }
       };
@@ -489,14 +498,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
             )}
           </div>
           <div id="student-recent-history" className="space-y-4">
-            {(showAllHistory ? recentLogs : recentLogs.slice(0, 3)).map(log => (
+            {(showAllHistory ? recentLogs : recentLogs.slice(0, 3)).map(log => {
+              const attended = isCompletedClassPresence(log.presence);
+              return (
               <div key={log.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-brand-surface-2 rounded-2xl border border-brand-border hover:border-brand-accent/30 transition-colors">
                 <div className="flex items-center gap-4 min-w-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${log.presence === 'Presença' ? 'bg-emerald-400/10 text-emerald-500 border border-emerald-400/20' : 'bg-red-400/10 text-red-500 border border-red-400/20'}`}>
-                    {log.presence === 'Presença' ? <CheckCircle size={16} /> : <X size={16} />}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${attended ? 'bg-emerald-400/10 text-emerald-500 border border-emerald-400/20' : 'bg-red-400/10 text-red-500 border border-red-400/20'}`}>
+                    {attended ? <CheckCircle size={16} /> : <X size={16} />}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-brand-text text-xs">{new Date(log.created_at).toLocaleDateString('pt-BR')}</p>
+                    <p className="font-bold text-brand-text text-xs">{formatClassLogDate(log)}</p>
                     <p className="text-[9px] font-bold text-brand-muted uppercase tracking-wider truncate">{log.teacher?.full_name}</p>
                   </div>
                 </div>
@@ -504,7 +515,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ user, tenantId }) =
                   <button onClick={() => handleConfirmLog(log.id)} className="w-full sm:w-auto shrink-0 px-4 py-2.5 bg-brand-accent text-white text-[9px] font-bold uppercase tracking-widest rounded-lg hover:bg-brand-accent-hover transition-colors">Conferir</button>
                 )}
               </div>
-            ))}
+              );
+            })}
             {recentLogs.length === 0 && <p className="text-center text-brand-muted text-xs py-8">Nenhuma aula registrada ainda.</p>}
           </div>
         </div>

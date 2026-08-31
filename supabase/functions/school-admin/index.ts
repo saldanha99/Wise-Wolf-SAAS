@@ -22,6 +22,7 @@ import {
   type ResolvedAsaasIntegration,
 } from "../_shared/tenant-integration-broker.ts";
 import {
+  enrollmentLeadMatchesTrial,
   hasExclusiveActiveTargetMembership,
   type LifecycleStatus,
   normalizeEnrollmentPlan,
@@ -2166,6 +2167,8 @@ async function createEnrollmentOffer(
   context: RequestAuthContext,
   tenantId: string,
   leadId: string,
+  opportunityId: string,
+  requestId: string,
   planId: string,
   teacherId: string,
   schedule: Array<{ day: string; time: string }>,
@@ -2175,11 +2178,18 @@ async function createEnrollmentOffer(
   enableProRata: boolean,
 ): Promise<Response> {
   const admin = context.admin;
-  const [leadResult, planResult] = await Promise.all([
+  const [leadResult, opportunityResult, planResult] = await Promise.all([
     admin.from("crm_leads")
-      .select("id,tenant_id,name,phone,status")
+      .select("id,tenant_id,name,phone,status,student_id")
       .eq("tenant_id", tenantId)
       .eq("id", leadId)
+      .maybeSingle(),
+    admin.from("opportunities")
+      .select(
+        "id,tenant_id,student_id,student_name,student_phone,status,kind,conversion_status,trial_status,feedback_required,winner_teacher_id,professor_id,trial_appointment_id",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", opportunityId)
       .maybeSingle(),
     admin.from("student_pricing_plans")
       .select(
@@ -2190,14 +2200,14 @@ async function createEnrollmentOffer(
       .eq("active", true)
       .maybeSingle(),
   ]);
-  if (leadResult.error || planResult.error) {
+  if (leadResult.error || opportunityResult.error || planResult.error) {
     throw new ApiError(
       503,
       "DATA_UNAVAILABLE",
       "Could not validate enrollment",
     );
   }
-  if (!leadResult.data || !planResult.data) {
+  if (!leadResult.data || !opportunityResult.data || !planResult.data) {
     throw new ApiError(
       404,
       "ENROLLMENT_INPUT_NOT_FOUND",
@@ -2210,6 +2220,74 @@ async function createEnrollmentOffer(
       "TRIAL_NOT_COMPLETED",
       "The trial lesson must be completed before enrollment",
     );
+  }
+  const leadStudentId = String(leadResult.data.student_id || "").trim();
+  const opportunityStudentId = String(opportunityResult.data.student_id || "")
+    .trim();
+  const leadPhone = normalizedPhone(leadResult.data.phone);
+  const opportunityPhone = normalizedPhone(
+    opportunityResult.data.student_phone,
+  );
+  if (
+    !enrollmentLeadMatchesTrial(
+      leadStudentId,
+      opportunityStudentId,
+      leadPhone,
+      opportunityPhone,
+    )
+  ) {
+    throw new ApiError(
+      409,
+      "TRIAL_LEAD_BINDING_MISMATCH",
+      "The completed trial does not belong to this lead",
+    );
+  }
+  if (
+    String(opportunityResult.data.kind || "").toUpperCase() !== "TRIAL" ||
+    String(opportunityResult.data.status || "").toUpperCase() !== "CLAIMED" ||
+    String(opportunityResult.data.conversion_status || "").toUpperCase() !==
+      "OPEN" ||
+    String(opportunityResult.data.trial_status || "").toUpperCase() !==
+      "DONE" ||
+    !opportunityResult.data.trial_appointment_id ||
+    !String(
+      opportunityResult.data.winner_teacher_id ||
+        opportunityResult.data.professor_id || "",
+    ).trim()
+  ) {
+    throw new ApiError(
+      409,
+      "TRIAL_GRAPH_NOT_ELIGIBLE",
+      "The trial lifecycle is not eligible for enrollment",
+    );
+  }
+  if (opportunityResult.data.feedback_required) {
+    const { data: feedback, error: feedbackError } = await admin
+      .from("trial_feedback")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("opportunity_id", opportunityId)
+      .eq("booking_id", opportunityResult.data.trial_appointment_id)
+      .eq(
+        "teacher_id",
+        opportunityResult.data.winner_teacher_id ||
+          opportunityResult.data.professor_id,
+      )
+      .maybeSingle();
+    if (feedbackError) {
+      throw new ApiError(
+        503,
+        "DATA_UNAVAILABLE",
+        "Could not validate trial feedback",
+      );
+    }
+    if (!feedback) {
+      throw new ApiError(
+        409,
+        "TRIAL_FEEDBACK_REQUIRED",
+        "The trial feedback must be completed before enrollment",
+      );
+    }
   }
 
   let normalizedPlan: ReturnType<typeof normalizeEnrollmentPlan>;
@@ -2248,6 +2326,8 @@ async function createEnrollmentOffer(
     oldValues: { status: leadResult.data.status },
     newValues: {
       requested: true,
+      opportunity_id: opportunityId,
+      request_id: requestId,
       plan_id: planId,
       teacher_id: teacherId,
       schedule,
@@ -2275,6 +2355,8 @@ async function createEnrollmentOffer(
         enableProRata,
         studentName: leadResult.data.name || undefined,
         studentPhone: leadResult.data.phone || undefined,
+        opportunityId,
+        requestId,
         _linkOrigin: origin,
       },
     },
@@ -2316,6 +2398,8 @@ async function createEnrollmentOffer(
     oldValues: { status: leadResult.data.status },
     newValues: {
       offer_id: offerId,
+      opportunity_id: opportunityId,
+      request_id: requestId,
       plan_id: planId,
       teacher_id: teacherId,
       schedule,
@@ -2585,6 +2669,8 @@ export async function handleRequest(req: Request): Promise<Response> {
         auth.context,
         tenantId,
         action.leadId,
+        action.opportunityId,
+        action.requestId,
         action.planId,
         action.teacherId,
         action.schedule,

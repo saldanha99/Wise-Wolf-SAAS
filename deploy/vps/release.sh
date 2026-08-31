@@ -477,6 +477,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
   supabase/functions/_shared/tenant-legal-assets.test.ts \
+  supabase/functions/_shared/interview-notifications.ts \
+  supabase/functions/_shared/interview-notifications.test.ts \
   supabase/functions/accept-opportunity/core.ts \
   supabase/functions/accept-opportunity/core.test.ts \
   supabase/functions/accept-opportunity/index.ts \
@@ -597,6 +599,11 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/process-notification-queue/core.test.ts \
   supabase/functions/process-notification-queue/safety.test.ts \
   supabase/functions/process-notification-queue/index.ts \
+  supabase/functions/daily-automations/core.ts \
+  supabase/functions/daily-automations/core.test.ts \
+  supabase/functions/daily-automations/index.ts \
+  supabase/functions/book-interview/index.ts \
+  supabase/functions/sdr-followups/index.ts \
   supabase/functions/send-attendance-confirmations/core.ts \
   supabase/functions/send-attendance-confirmations/core.test.ts \
   supabase/functions/send-attendance-confirmations/index.ts \
@@ -614,6 +621,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/_shared/payment-auth.test.ts \
   supabase/functions/_shared/tenant-communication.test.ts \
   supabase/functions/_shared/tenant-legal-assets.test.ts \
+  supabase/functions/_shared/interview-notifications.test.ts \
   supabase/functions/_shared/hub-billing-safety.test.ts \
   supabase/functions/_shared/hub-provider-operations.test.ts \
   supabase/functions/_shared/student-provider-lifecycle.test.ts \
@@ -651,6 +659,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/whatsapp-evolution-proxy/index.test.ts \
   supabase/functions/reconcile-whatsapp-webhooks/core.test.ts \
   supabase/functions/process-notification-queue/core.test.ts \
+  supabase/functions/daily-automations/core.test.ts \
   supabase/functions/send-attendance-confirmations/core.test.ts \
   supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/accept-opportunity/core.test.ts \
@@ -730,6 +739,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/_shared/whatsapp-inbox.ts \
   supabase/functions/_shared/hub-provider-operations.ts \
   supabase/functions/_shared/tenant-legal-assets.ts \
+  supabase/functions/_shared/interview-notifications.ts \
   supabase/functions/wolfie-activity/index.ts \
   supabase/functions/wolfie-brain/index.ts \
   supabase/functions/wolfie-realtime-session/index.ts \
@@ -811,6 +821,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/whatsapp-notificacao-wise/index.ts \
   supabase/functions/process-notification-queue/core.ts \
   supabase/functions/process-notification-queue/index.ts \
+  supabase/functions/daily-automations/core.ts \
   supabase/functions/daily-automations/index.ts \
   supabase/functions/monthly-teacher-closing/index.ts \
   supabase/functions/register-teacher/index.ts \
@@ -1129,6 +1140,11 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260831002000_fence_authoritative_unlinked_payment_integration.sql"
   "supabase/migrations/20260831013000_exclude_offboarded_students_from_financial_forecasts.sql"
   "supabase/migrations/20260831054448_harden_trial_conversion_lifecycle.sql"
+  "supabase/migrations/20260831063906_harden_daily_automations_and_cron_health.sql"
+  "supabase/migrations/20260831070000_harden_trial_offer_authority_and_idempotency.sql"
+  "supabase/migrations/20260831071000_harden_reschedule_financial_authority.sql"
+  "supabase/migrations/20260831072000_harden_interview_notification_delivery.sql"
+  "supabase/migrations/20260831073000_atomic_teacher_availability_replacement.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"
@@ -1215,6 +1231,11 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/financial_report_message_fencing.sql"
   "supabase/tests/saas_provider_event_ordering.sql"
   "supabase/tests/teacher_offboarding_security.sql"
+  "supabase/tests/automation_health_and_daily_delivery.sql"
+  "supabase/tests/harden_trial_offer_authority_and_idempotency.sql"
+  "supabase/tests/reschedule_financial_authority.sql"
+  "supabase/tests/interview_notification_delivery.sql"
+  "supabase/tests/atomic_teacher_availability_replacement.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1263,6 +1284,7 @@ SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/finan
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
 SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE="supabase/functions/_shared/management-action-policy.ts"
 SHARED_WHATSAPP_INBOX_RELATIVE="supabase/functions/_shared/whatsapp-inbox.ts"
+SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE="supabase/functions/_shared/interview-notifications.ts"
 HARDENED_FUNCTIONS=(
   asaas-reconcile
   sync-subscription-status
@@ -1409,6 +1431,7 @@ done
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
 [[ -s "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" ]] || die "política de ações de gestão ausente"
 [[ -s "$SHARED_WHATSAPP_INBOX_RELATIVE" ]] || die "contrato canônico da inbox WhatsApp ausente"
+[[ -s "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE" ]] || die "contrato durável de notificações de entrevista ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
     die "função endurecida ausente: $function_name"
@@ -1525,7 +1548,8 @@ append_release_input_checksum() {
     "$SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE" \
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
     "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
-    "$SHARED_WHATSAPP_INBOX_RELATIVE"; do
+    "$SHARED_WHATSAPP_INBOX_RELATIVE" \
+    "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE"; do
     append_release_input_checksum \
       "$shared_relative" \
       "functions/${shared_relative#supabase/functions/}"
@@ -1700,6 +1724,8 @@ rsync -a -- "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/management-action-policy.ts"
 rsync -a -- "$SHARED_WHATSAPP_INBOX_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/whatsapp-inbox.ts"
+rsync -a -- "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/interview-notifications.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   rsync -a --delete -- "supabase/functions/$function_name/" \
     "$DEPLOY_SSH_HOST:$remote_release/functions/$function_name/"

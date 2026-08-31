@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { MoreHorizontal, Phone, Mail, User, Clock, CheckCircle, XCircle, Plus, Calendar, ArrowRight, X, RefreshCw, ThermometerSun, ThermometerSnowflake, Flame } from 'lucide-react';
 import { User as UserType } from '../../types';
@@ -48,6 +48,12 @@ const initialConversionData = () => ({
     schedule: [] as Array<{ day: string; time: string }>,
 });
 
+const canonicalPhone = (value: unknown): string | null => {
+    let digits = String(value || '').replace(/\D/g, '');
+    if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
+    return digits.length >= 12 && digits.length <= 15 ? digits : null;
+};
+
 const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
@@ -69,6 +75,7 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
     const [conversionData, setConversionData] = useState(initialConversionData);
     const [isConverting, setIsConverting] = useState(false);
+    const enrollmentOfferRequestIds = useRef<Record<string, string>>({});
     const selectedConversionPlan = useMemo(
         () => plans.find(plan => plan.id === conversionData.planId) || null,
         [plans, conversionData.planId],
@@ -260,10 +267,39 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
         }
         setIsConverting(true);
         try {
+            const leadPhone = canonicalPhone(convertingLead.phone);
+            const { data: opportunityRows, error: opportunityError } = await supabase
+                .from('opportunities')
+                .select('id, student_phone')
+                .eq('tenant_id', tenantId)
+                .eq('kind', 'TRIAL')
+                .eq('status', 'CLAIMED')
+                .eq('conversion_status', 'OPEN')
+                .eq('trial_status', 'DONE');
+            if (opportunityError) throw opportunityError;
+            const matchingOpportunities = (opportunityRows || []).filter(opportunity =>
+                leadPhone !== null && canonicalPhone(opportunity.student_phone) === leadPhone
+            );
+            if (matchingOpportunities.length !== 1) {
+                throw new Error(
+                    'Esta matrícula exige uma única experimental autoritativa concluída para o lead. Use o funil de experimentais para corrigir ou concluir o vínculo.',
+                );
+            }
+            const opportunityId = matchingOpportunities[0].id;
+            const requestKey = JSON.stringify({
+                leadId: convertingLead.id,
+                opportunityId,
+                ...conversionData,
+                enableProRata: conversionProRataEnabled,
+            });
+            const requestId = enrollmentOfferRequestIds.current[requestKey] || crypto.randomUUID();
+            enrollmentOfferRequestIds.current[requestKey] = requestId;
             const { data, error } = await supabase.functions.invoke('school-admin', {
                 body: {
                     action: 'createEnrollmentOffer',
                     leadId: convertingLead.id,
+                    opportunityId,
+                    requestId,
                     planId: conversionData.planId,
                     teacherId: conversionData.teacherId,
                     schedule: conversionData.schedule,
@@ -286,6 +322,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                 }
                 throw new Error(responseMessage || error?.message || 'Falha ao gerar a oferta segura');
             }
+
+            delete enrollmentOfferRequestIds.current[requestKey];
 
             let copied = false;
             try {

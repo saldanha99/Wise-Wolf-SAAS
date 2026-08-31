@@ -55,6 +55,31 @@ Deno.test("notificações do funil experimental usam a rota e classificação co
   });
 });
 
+Deno.test("automações internas e de professor nunca usam WhatsApp pessoal", () => {
+  for (
+    const kind of [
+      "TEACHER_AGENDA",
+      "TEACHER_BIRTHDAY",
+      "SCHOOL_AI_BRIEFING",
+      "CRON_ALERT",
+      "ASAAS_HEALTH",
+      "INTERVIEW_BOOKED_CANDIDATE",
+      "INTERVIEW_BOOKED_MANAGEMENT",
+      "INTERVIEW_REMINDER_CANDIDATE",
+      "INTERVIEW_REMINDER_MANAGEMENT",
+    ]
+  ) {
+    assertEquals(queueAudience(kind), {
+      audience: "teacher",
+      centralOnly: true,
+    });
+  }
+  assertEquals(queueAudience("BIRTHDAY"), {
+    audience: "student",
+    centralOnly: false,
+  });
+});
+
 Deno.test("somente 2xx com messageId comprova envio", () => {
   assertEquals(
     queueDeliveryDecision({

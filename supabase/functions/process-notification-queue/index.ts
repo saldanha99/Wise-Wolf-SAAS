@@ -14,6 +14,7 @@ import { resolveEvolutionIntegration } from "../_shared/tenant-integration-broke
 import {
   loadTenantCentralWhatsAppInstance,
   loadTenantWhatsAppInstance,
+  loadTenantWhatsAppRoute,
   safeCommunicationText,
 } from "../_shared/tenant-communication.ts";
 import {
@@ -84,6 +85,7 @@ type QueueItem = {
   student_id: string | null;
   source_type: string | null;
   class_date: string | null;
+  idempotency_key: string | null;
   scheduled_for: string;
   claim_token: string;
   max_attempts: number | null;
@@ -122,6 +124,7 @@ type ActiveMember = {
   lifecycle_status: string | null;
   is_test_account: boolean | null;
   date_automation_enabled: boolean | null;
+  birth_date: string | null;
   lesson_reminder_template: string | null;
 };
 
@@ -154,7 +157,7 @@ async function loadActiveMember(
 ): Promise<ActiveMember> {
   const [profileResult, membershipResult] = await Promise.all([
     supabase.from("profiles").select(
-      "id,tenant_id,role,full_name,phone,attendance_phone,meeting_link,lifecycle_status,is_test_account,date_automation_enabled,lesson_reminder_template",
+      "id,tenant_id,role,full_name,phone,attendance_phone,meeting_link,lifecycle_status,is_test_account,date_automation_enabled,birth_date,lesson_reminder_template",
     ).eq("id", userId).maybeSingle(),
     supabase.from("tenant_memberships").select("user_id")
       .eq("tenant_id", tenantId).eq("user_id", userId)
@@ -171,6 +174,123 @@ async function loadActiveMember(
     String(membershipResult.data?.user_id || "") !== userId
   ) invalid(`${role.toLowerCase()}_not_active_in_tenant`);
   return profile;
+}
+
+async function prepareTeacherDailyAutomation(
+  supabase: SupabaseClient,
+  item: QueueItem,
+  notificationKind: string,
+  now: Date,
+): Promise<PreparedQueueMessage> {
+  const tenantId = String(item.tenant_id || "");
+  const teacherId = String(relationOne(item.teacher)?.id || "");
+  if (!tenantId || !teacherId) invalid("daily_teacher_binding_missing");
+  const today = dateInSaoPaulo(now);
+  if (!today || item.class_date !== today) {
+    invalid("daily_teacher_automation_stale");
+  }
+
+  const teacher = await loadActiveMember(
+    supabase,
+    tenantId,
+    teacherId,
+    "TEACHER",
+  );
+  if (
+    teacher.is_test_account === true ||
+    teacher.date_automation_enabled === false
+  ) {
+    invalid("daily_teacher_automation_disabled");
+  }
+  if (
+    notificationKind === "TEACHER_BIRTHDAY" &&
+    String(teacher.birth_date || "").slice(5, 10) !== today.slice(5, 10)
+  ) {
+    invalid("daily_teacher_birthday_changed");
+  }
+  const destination = normalizeQueueDestination(teacher.phone || "");
+  if (!destination) invalid("daily_teacher_phone_invalid");
+  return {
+    teacherId,
+    destination,
+    message: item.message_body,
+  };
+}
+
+async function prepareStudentBirthday(
+  supabase: SupabaseClient,
+  item: QueueItem,
+  now: Date,
+): Promise<PreparedQueueMessage> {
+  const tenantId = String(item.tenant_id || "");
+  const studentId = String(relationOne(item.student)?.id || "");
+  if (!tenantId || !studentId) invalid("daily_student_binding_missing");
+  const today = dateInSaoPaulo(now);
+  if (!today || item.class_date !== today) {
+    invalid("daily_student_birthday_stale");
+  }
+
+  const student = await loadActiveMember(
+    supabase,
+    tenantId,
+    studentId,
+    "STUDENT",
+  );
+  if (
+    student.is_test_account === true ||
+    student.date_automation_enabled === false
+  ) {
+    invalid("daily_student_automation_disabled");
+  }
+  if (String(student.birth_date || "").slice(5, 10) !== today.slice(5, 10)) {
+    invalid("daily_student_birthday_changed");
+  }
+  const destination = normalizeQueueDestination(student.phone || "");
+  if (!destination) invalid("daily_student_phone_invalid");
+  return { teacherId: null, destination, message: item.message_body };
+}
+
+async function prepareInterviewNotification(
+  supabase: SupabaseClient,
+  item: QueueItem,
+  notificationKind: string,
+  now: Date,
+): Promise<PreparedQueueMessage> {
+  const tenantId = String(item.tenant_id || "");
+  const applicationId = String(item.source_id || "");
+  const expectedEpoch = String(item.idempotency_key || "").match(/:(\d+)$/)
+    ?.[1];
+  if (!tenantId || !applicationId || !expectedEpoch) {
+    invalid("interview_notification_binding_missing");
+  }
+
+  const { data: application, error } = await supabase.from("job_applications")
+    .select("id,tenant_id,whatsapp,interview_slot")
+    .eq("id", applicationId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error) unavailable("interview_revalidation_unavailable");
+  const slotEpoch = application?.interview_slot
+    ? String(Math.floor(new Date(application.interview_slot).getTime() / 1000))
+    : "";
+  if (!application || slotEpoch !== expectedEpoch) {
+    invalid("interview_slot_changed");
+  }
+  if (new Date(application.interview_slot).getTime() <= now.getTime()) {
+    invalid("interview_notification_stale");
+  }
+
+  let destination = normalizeQueueDestination(item.student_phone);
+  if (notificationKind.endsWith("_CANDIDATE")) {
+    destination = normalizeQueueDestination(application.whatsapp || "");
+  } else if (notificationKind.endsWith("_MANAGEMENT")) {
+    const route = await loadTenantWhatsAppRoute(supabase, tenantId, "teacher")
+      .catch(() => null);
+    if (!route) unavailable("interview_management_route_unavailable");
+    destination = normalizeQueueDestination(route.ownerPhone || "");
+  }
+  if (!destination) invalid("interview_destination_invalid");
+  return { teacherId: null, destination, message: item.message_body };
 }
 
 async function prepareLessonReminder(
@@ -795,6 +915,7 @@ serve(async (req) => {
         student_id,
         source_type,
         class_date,
+        idempotency_key,
         scheduled_for,
         claim_token,
         max_attempts,
@@ -905,6 +1026,29 @@ serve(async (req) => {
           prepared = await prepareConflictTeacherAlert(
             supabaseClient,
             item,
+            new Date(),
+          );
+        } else if (
+          notificationKind === "TEACHER_AGENDA" ||
+          notificationKind === "TEACHER_BIRTHDAY"
+        ) {
+          prepared = await prepareTeacherDailyAutomation(
+            supabaseClient,
+            item,
+            notificationKind,
+            new Date(),
+          );
+        } else if (notificationKind === "BIRTHDAY") {
+          prepared = await prepareStudentBirthday(
+            supabaseClient,
+            item,
+            new Date(),
+          );
+        } else if (notificationKind.startsWith("INTERVIEW_")) {
+          prepared = await prepareInterviewNotification(
+            supabaseClient,
+            item,
+            notificationKind,
             new Date(),
           );
         } else if (isTrialLifecycleNotificationKind(notificationKind)) {
