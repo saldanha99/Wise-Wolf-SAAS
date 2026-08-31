@@ -591,7 +591,12 @@ create unique index uniq_active_path_enrollment_per_student
   where status = 'ACTIVE' and completed_at is null;
 
 create schema if not exists private;
-revoke all on schema private from public, anon, authenticated;
+-- Authenticated RPC wrappers from the Hub are intentionally SECURITY INVOKER
+-- and call narrowly granted helpers in this schema. Removing schema USAGE here
+-- breaks those existing public entry points even though the helpers keep their
+-- own least-privilege EXECUTE grants.
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated, service_role;
 
 create or replace function private.enforce_student_path_enrollment_scope()
 returns trigger

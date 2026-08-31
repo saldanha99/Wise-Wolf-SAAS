@@ -96,6 +96,11 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  pg_catalog.has_schema_privilege('authenticated', 'private', 'USAGE'),
+  'student learning hardening revoked the private schema bridge used by existing authenticated RPCs'
+);
+
+select pg_temp.assert_true(
   exists (
     select 1
       from information_schema.columns
