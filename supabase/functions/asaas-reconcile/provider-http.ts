@@ -1,5 +1,10 @@
 const TRANSIENT_PROVIDER_STATUSES = new Set([0, 408, 425, 500, 502, 503, 504]);
 
+// The Edge supervisor can reuse an isolate with less than 30 seconds of wall
+// clock remaining. Stop voluntarily before that floor so the catch path can
+// persist FAILED/retryable instead of orphaning RUNNING.
+export const HISTORICAL_REPAIR_BUDGET_MS = 24_000;
+
 function retryAfterSeconds(value: string | null, nowMs: number): number | null {
   const normalized = String(value || "").trim();
   if (!normalized) return null;

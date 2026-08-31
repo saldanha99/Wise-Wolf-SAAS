@@ -20,7 +20,19 @@ import {
   runTransferAudit,
   statementPaymentId,
 } from "./diff.ts";
-import { providerRetryDelayMs, waitForProvider } from "./provider-http.ts";
+import {
+  HISTORICAL_REPAIR_BUDGET_MS,
+  providerRetryDelayMs,
+  waitForProvider,
+} from "./provider-http.ts";
+import {
+  type AuthoritativeUnlinkedRepairTarget,
+  customerBindingSnapshot,
+  parseAuthoritativeUnlinkedRepairTarget,
+  paymentBindingSnapshot,
+  sameIntegrationIdentity,
+  subscriptionBindingSnapshot,
+} from "./unlinked-repair.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -116,6 +128,321 @@ type ProviderGetOptions = {
     delayMs: number;
   }) => Promise<void>;
 };
+
+type UnlinkedRepairResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+function exactProviderIdentifier(
+  value: unknown,
+  prefix: "pay" | "cus" | "sub",
+): string | null {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return new RegExp(`^${prefix}_[A-Za-z0-9]{4,120}$`).test(normalized)
+    ? normalized
+    : null;
+}
+
+function sameResolvedIntegration(
+  left: ResolvedAsaasIntegration,
+  right: ResolvedAsaasIntegration,
+): boolean {
+  return sameIntegrationIdentity(left, right) && left.apiKey === right.apiKey;
+}
+
+async function applyAuthoritativeUnlinkedRepair(input: {
+  admin: SupabaseClient;
+  target: AuthoritativeUnlinkedRepairTarget;
+}): Promise<UnlinkedRepairResult> {
+  const deadlineAt = Date.now() + 20_000;
+  const { data: local, error: localError } = await input.admin
+    .from("student_payments")
+    .select("id,tenant_id,student_id,asaas_payment_id,asaas_id")
+    .eq("id", input.target.localPaymentId)
+    .eq("tenant_id", REFERENCE_TENANT_ID)
+    .maybeSingle();
+  if (localError) throw localError;
+  if (!local) {
+    return {
+      status: 409,
+      body: { success: false, reason: "LOCAL_PAYMENT_NOT_FOUND" },
+    };
+  }
+  if (local.student_id && local.student_id !== input.target.studentId) {
+    return {
+      status: 409,
+      body: { success: false, reason: "LOCAL_PAYMENT_ALREADY_BOUND" },
+    };
+  }
+  const providerIds = [local.asaas_payment_id, local.asaas_id]
+    .map((value) => exactProviderIdentifier(value, "pay"))
+    .filter((value): value is string => Boolean(value));
+  const uniqueProviderIds = [...new Set(providerIds)];
+  if (uniqueProviderIds.length !== 1) {
+    return {
+      status: 409,
+      body: { success: false, reason: "LOCAL_PROVIDER_PAYMENT_NOT_UNIQUE" },
+    };
+  }
+  const providerId = uniqueProviderIds[0];
+
+  const [firstPaymentIntegration, firstCustomerIntegration] = await Promise.all(
+    [
+      resolveAsaasIntegration(
+        input.admin,
+        REFERENCE_TENANT_ID,
+        "payment.read",
+      ),
+      resolveAsaasIntegration(
+        input.admin,
+        REFERENCE_TENANT_ID,
+        "customer.read",
+      ),
+    ],
+  );
+  if (
+    !sameResolvedIntegration(firstPaymentIntegration, firstCustomerIntegration)
+  ) {
+    throw new Error("integration_unlinked_repair_resolution_mismatch");
+  }
+  const firstPayment = await providerGet<ProviderPayment>(
+    firstPaymentIntegration,
+    `/payments/${encodeURIComponent(providerId)}`,
+    { deadlineAt },
+  );
+  if (firstPayment.id !== providerId) {
+    return {
+      status: 409,
+      body: { success: false, reason: "PROVIDER_PAYMENT_IDENTITY_MISMATCH" },
+    };
+  }
+  const customerId = exactProviderIdentifier(firstPayment.customer, "cus");
+  const subscriptionId = firstPayment.subscription == null
+    ? null
+    : exactProviderIdentifier(firstPayment.subscription, "sub");
+  if (!customerId || (firstPayment.subscription != null && !subscriptionId)) {
+    return {
+      status: 409,
+      body: { success: false, reason: "PROVIDER_PARENT_IDENTITY_INVALID" },
+    };
+  }
+  let firstSubscriptionIntegration: ResolvedAsaasIntegration | null = null;
+  if (subscriptionId) {
+    firstSubscriptionIntegration = await resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "subscription.read",
+    );
+    if (
+      !sameResolvedIntegration(
+        firstPaymentIntegration,
+        firstSubscriptionIntegration,
+      )
+    ) throw new Error("integration_unlinked_repair_resolution_mismatch");
+  }
+  const [firstCustomer, firstSubscription] = await Promise.all([
+    providerGet<Record<string, unknown>>(
+      firstCustomerIntegration,
+      `/customers/${encodeURIComponent(customerId)}`,
+      { deadlineAt },
+    ),
+    subscriptionId
+      ? providerGet<Record<string, unknown>>(
+        firstSubscriptionIntegration!,
+        `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        { deadlineAt },
+      )
+      : Promise.resolve(null),
+  ]);
+  if (
+    exactProviderIdentifier(firstCustomer.id, "cus") !== customerId ||
+    (subscriptionId &&
+      exactProviderIdentifier(firstSubscription?.id, "sub") !== subscriptionId)
+  ) {
+    return {
+      status: 409,
+      body: { success: false, reason: "PROVIDER_PARENT_IDENTITY_MISMATCH" },
+    };
+  }
+
+  // Re-resolve every capability and re-read every provider fact immediately
+  // before the RPC. A credential/version rotation or changing identity aborts
+  // without mutating the local binding.
+  const secondCapabilities = await Promise.all([
+    resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "payment.read",
+    ),
+    resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "customer.read",
+    ),
+    subscriptionId
+      ? resolveAsaasIntegration(
+        input.admin,
+        REFERENCE_TENANT_ID,
+        "subscription.read",
+      )
+      : Promise.resolve(null),
+  ]);
+  const [secondPaymentIntegration, secondCustomerIntegration] =
+    secondCapabilities;
+  const secondSubscriptionIntegration = secondCapabilities[2];
+  if (
+    !sameResolvedIntegration(
+      firstPaymentIntegration,
+      secondPaymentIntegration,
+    ) ||
+    !sameResolvedIntegration(
+      firstPaymentIntegration,
+      secondCustomerIntegration,
+    ) ||
+    (subscriptionId &&
+      (!secondSubscriptionIntegration ||
+        !sameResolvedIntegration(
+          firstPaymentIntegration,
+          secondSubscriptionIntegration,
+        )))
+  ) throw new Error("integration_unlinked_repair_rotated");
+
+  const secondPayment = await providerGet<ProviderPayment>(
+    secondPaymentIntegration,
+    `/payments/${encodeURIComponent(providerId)}`,
+    { deadlineAt },
+  );
+  if (
+    paymentBindingSnapshot(firstPayment) !==
+      paymentBindingSnapshot(secondPayment) ||
+    secondPayment.id !== providerId ||
+    exactProviderIdentifier(secondPayment.customer, "cus") !== customerId ||
+    (secondPayment.subscription == null ? null : exactProviderIdentifier(
+        secondPayment.subscription,
+        "sub",
+      )) !== subscriptionId
+  ) {
+    return {
+      status: 409,
+      body: { success: false, reason: "PROVIDER_PAYMENT_CHANGED" },
+    };
+  }
+  const [secondCustomer, secondSubscription] = await Promise.all([
+    providerGet<Record<string, unknown>>(
+      secondCustomerIntegration,
+      `/customers/${encodeURIComponent(customerId)}`,
+      { deadlineAt },
+    ),
+    subscriptionId
+      ? providerGet<Record<string, unknown>>(
+        secondSubscriptionIntegration!,
+        `/subscriptions/${encodeURIComponent(subscriptionId)}`,
+        { deadlineAt },
+      )
+      : Promise.resolve(null),
+  ]);
+  if (
+    customerBindingSnapshot(firstCustomer) !==
+      customerBindingSnapshot(secondCustomer) ||
+    (subscriptionId &&
+      subscriptionBindingSnapshot(firstSubscription) !==
+        subscriptionBindingSnapshot(secondSubscription))
+  ) {
+    return {
+      status: 409,
+      body: { success: false, reason: "PROVIDER_PARENT_CHANGED" },
+    };
+  }
+
+  // Resolve once more after the final provider reads. The database mutation
+  // receives this exact broker identity and locks the connection row before
+  // validating it, closing the rotation window between this check and write.
+  const finalCapabilities = await Promise.all([
+    resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "payment.read",
+    ),
+    resolveAsaasIntegration(
+      input.admin,
+      REFERENCE_TENANT_ID,
+      "customer.read",
+    ),
+    subscriptionId
+      ? resolveAsaasIntegration(
+        input.admin,
+        REFERENCE_TENANT_ID,
+        "subscription.read",
+      )
+      : Promise.resolve(null),
+  ]);
+  const [finalPaymentIntegration, finalCustomerIntegration] = finalCapabilities;
+  const finalSubscriptionIntegration = finalCapabilities[2];
+  if (
+    !sameResolvedIntegration(
+      secondPaymentIntegration,
+      finalPaymentIntegration,
+    ) ||
+    !sameResolvedIntegration(
+      secondPaymentIntegration,
+      finalCustomerIntegration,
+    ) ||
+    (subscriptionId &&
+      (!finalSubscriptionIntegration ||
+        !sameResolvedIntegration(
+          secondPaymentIntegration,
+          finalSubscriptionIntegration,
+        )))
+  ) throw new Error("integration_unlinked_repair_rotated");
+
+  const { data, error } = await input.admin.rpc(
+    "repair_authoritative_unlinked_student_payment_fenced",
+    {
+      p_expected_local_payment_id: input.target.localPaymentId,
+      p_expected_student_id: input.target.studentId,
+      p_expected_tenant_id: REFERENCE_TENANT_ID,
+      p_expected_integration_id: finalPaymentIntegration.integrationId,
+      p_expected_integration_version: finalPaymentIntegration.version,
+      p_expected_integration_mode: finalPaymentIntegration.mode,
+      p_authoritative_payment: secondPayment,
+      p_authoritative_subscription: secondSubscription,
+      p_authoritative_customer: secondCustomer,
+      p_sync_contract_due_day: input.target.syncContractDueDay,
+      p_reason:
+        "Conciliação autoritativa de cobrança legada sem vínculo, validada por CPF e contato",
+    },
+  );
+  if (error) throw error;
+  const result = data && typeof data === "object"
+    ? data as Record<string, unknown>
+    : {};
+  if (result.ok !== true) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        reason: typeof result.reason === "string"
+          ? result.reason
+          : "AUTHORITATIVE_BINDING_REJECTED",
+      },
+    };
+  }
+  if (!["BOUND", "ALREADY_BOUND"].includes(String(result.action || ""))) {
+    throw new Error("authoritative_unlinked_repair_result_invalid");
+  }
+  return {
+    status: 200,
+    body: {
+      success: true,
+      action: result.action,
+      localPaymentId: input.target.localPaymentId,
+      studentId: input.target.studentId,
+      contractDueDaySynced: result.contract_due_day_synced === true,
+      financialStatus: result.financial_status || null,
+    },
+  };
+}
 
 async function applyHistoricalFactRepairs(input: {
   admin: SupabaseClient;
@@ -303,6 +630,7 @@ async function providerGet<T>(
     if (deadlineRemainingMs <= 5_000) {
       throw new ProviderRepairDeadlineError();
     }
+    const attemptTimeoutMs = options.deadlineAt ? 8_000 : 20_000;
     let response: Response;
     try {
       response = await fetch(`${integration.baseUrl}${path}`, {
@@ -312,7 +640,7 @@ async function providerGet<T>(
           access_token: integration.apiKey,
         },
         signal: AbortSignal.timeout(
-          Math.max(1, Math.min(20_000, deadlineRemainingMs - 5_000)),
+          Math.max(1, Math.min(attemptTimeoutMs, deadlineRemainingMs - 5_000)),
         ),
       });
     } catch (error) {
@@ -321,7 +649,7 @@ async function providerGet<T>(
         0,
         null,
         attempt,
-        Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 25_000),
+        Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 13_000),
       );
       if (retryDelay === null) throw error;
       await options.onRetryWait?.({
@@ -342,7 +670,7 @@ async function providerGet<T>(
       response.status,
       response.headers.get("retry-after"),
       attempt,
-      Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 25_000),
+      Math.max(0, Number(options.deadlineAt || 0) - Date.now() - 13_000),
     );
     if (retryDelay === null) throw new ProviderGetError(response.status);
     await options.onRetryWait?.({
@@ -750,6 +1078,7 @@ serve(async (req) => {
     repairHistoricalFacts?: unknown;
     repairHistoricalCredits?: unknown;
     repairHistoricalDeletedPayments?: unknown;
+    repairUnlinkedPayment?: unknown;
   };
   const repairHistoricalCredits = request.repairHistoricalFacts === true ||
     request.repairHistoricalCredits === true;
@@ -758,11 +1087,65 @@ serve(async (req) => {
     request.repairHistoricalDeletedPayments === true;
   const repairHistoricalFacts = repairHistoricalCredits ||
     repairHistoricalDeletedPayments;
-  if (repairHistoricalFacts && !auth.context.isService) {
+  const hasUnlinkedRepair = Object.prototype.hasOwnProperty.call(
+    request,
+    "repairUnlinkedPayment",
+  );
+  const unlinkedRepairTarget = hasUnlinkedRepair
+    ? parseAuthoritativeUnlinkedRepairTarget(request.repairUnlinkedPayment)
+    : null;
+  if (hasUnlinkedRepair && !unlinkedRepairTarget) {
+    return new Response(
+      JSON.stringify({ error: "INVALID_UNLINKED_PAYMENT_REPAIR" }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+  if (unlinkedRepairTarget && repairHistoricalFacts) {
+    return new Response(
+      JSON.stringify({ error: "AMBIGUOUS_REPAIR_OPERATION" }),
+      { status: 400, headers: corsHeaders },
+    );
+  }
+  if (
+    (repairHistoricalFacts || unlinkedRepairTarget) && !auth.context.isService
+  ) {
     return new Response(
       JSON.stringify({ error: "SERVICE_ACCESS_REQUIRED_FOR_REPAIR" }),
       { status: 403, headers: corsHeaders },
     );
+  }
+  if (unlinkedRepairTarget) {
+    try {
+      const result = await applyAuthoritativeUnlinkedRepair({
+        admin: auth.context.admin,
+        target: unlinkedRepairTarget,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: corsHeaders,
+      });
+    } catch (error) {
+      console.error("[asaas-reconcile] unlinked repair failed", {
+        type: error instanceof Error ? error.name : "unknown",
+      });
+      const rateLimited = error instanceof ProviderGetError &&
+        error.status === 429;
+      const deadlineExhausted = error instanceof ProviderRepairDeadlineError;
+      return new Response(
+        JSON.stringify({
+          error: rateLimited
+            ? "ASAAS_RATE_LIMITED_RETRY_LATER"
+            : deadlineExhausted
+            ? "ASAAS_REPAIR_WINDOW_EXHAUSTED"
+            : "AUTHORITATIVE_UNLINKED_REPAIR_FAILED",
+          retryable: rateLimited || deadlineExhausted,
+        }),
+        {
+          status: rateLimited ? 429 : deadlineExhausted ? 503 : 500,
+          headers: corsHeaders,
+        },
+      );
+    }
   }
   const yesterday = new Date();
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -796,7 +1179,7 @@ serve(async (req) => {
   // Repair requests are intentionally bounded. Normal reconciliation and
   // deploy smoke checks never enter provider retry waits.
   const repairProviderDeadlineAt = repairHistoricalFacts
-    ? Date.now() + 180_000
+    ? Date.now() + HISTORICAL_REPAIR_BUDGET_MS
     : undefined;
 
   let runId: string | null = null;
@@ -840,11 +1223,11 @@ serve(async (req) => {
       if (error) throw error;
     };
     let previousRepairProviderReadAt = 0;
-    const beforeProviderRead = async () => {
+    const paceProviderRead = async (minimumIntervalMs: number) => {
       if (!repairHistoricalFacts) return;
       const delayMs = Math.max(
         0,
-        previousRepairProviderReadAt + 1_100 - Date.now(),
+        previousRepairProviderReadAt + minimumIntervalMs - Date.now(),
       );
       if (
         delayMs > 0 &&
@@ -855,21 +1238,38 @@ serve(async (req) => {
       if (delayMs > 0) await waitForProvider(delayMs);
       previousRepairProviderReadAt = Date.now();
     };
-    const repairProviderGetOptions: ProviderGetOptions = repairHistoricalFacts
-      ? {
-        retryRateLimit: true,
-        retryTransient: true,
-        deadlineAt: repairProviderDeadlineAt,
-        beforeAttempt: beforeProviderRead,
-        onRetryWait: async ({ status, delayMs }) => {
-          cursorState.provider_retry_waits =
-            (cursorState.provider_retry_waits || 0) + 1;
-          cursorState.provider_retry_status = status;
-          cursorState.provider_retry_delay_ms = delayMs;
-          await saveCursor({ ...cursorState });
-        },
-      }
-      : {};
+    const onRepairRetryWait: NonNullable<
+      ProviderGetOptions["onRetryWait"]
+    > = async ({ status, delayMs }) => {
+      cursorState.provider_retry_waits =
+        (cursorState.provider_retry_waits || 0) + 1;
+      cursorState.provider_retry_status = status;
+      cursorState.provider_retry_delay_ms = delayMs;
+      await saveCursor({ ...cursorState });
+    };
+    // Discovery GETs are read-only and short-lived; the fresh GET immediately
+    // authorizing a mutation remains deliberately slower. Both share one
+    // clock, so the first authoritative read also waits a full 1.1 seconds.
+    const repairAuditProviderGetOptions: ProviderGetOptions =
+      repairHistoricalFacts
+        ? {
+          retryRateLimit: true,
+          retryTransient: true,
+          deadlineAt: repairProviderDeadlineAt,
+          beforeAttempt: () => paceProviderRead(250),
+          onRetryWait: onRepairRetryWait,
+        }
+        : {};
+    const authoritativeRepairProviderGetOptions: ProviderGetOptions =
+      repairHistoricalFacts
+        ? {
+          retryRateLimit: true,
+          retryTransient: true,
+          deadlineAt: repairProviderDeadlineAt,
+          beforeAttempt: () => paceProviderRead(1_100),
+          onRetryWait: onRepairRetryWait,
+        }
+        : {};
 
     const paymentParams = new URLSearchParams({ includeDeleted: "true" });
     paymentParams.set("dateCreated[ge]", windowStart);
@@ -881,7 +1281,7 @@ serve(async (req) => {
       "payments_offset",
       cursorState,
       saveCursor,
-      repairProviderGetOptions,
+      repairAuditProviderGetOptions,
     );
 
     const statementParams = new URLSearchParams({
@@ -896,7 +1296,7 @@ serve(async (req) => {
       "statement_offset",
       cursorState,
       saveCursor,
-      repairProviderGetOptions,
+      repairAuditProviderGetOptions,
     );
 
     const localTransfers = await fetchTransferAttempts(
@@ -931,7 +1331,7 @@ serve(async (req) => {
           "transfers_offset",
           cursorState,
           saveCursor,
-          repairProviderGetOptions,
+          repairAuditProviderGetOptions,
         );
       },
     );
@@ -962,7 +1362,7 @@ serve(async (req) => {
         const payment = await providerGet<ProviderPayment>(
           integration,
           `/payments/${encodeURIComponent(paymentId)}`,
-          repairProviderGetOptions,
+          repairAuditProviderGetOptions,
         );
         if (payment?.id) {
           providerPayments.push(payment);
@@ -1011,7 +1411,7 @@ serve(async (req) => {
         const payment = await providerGet<ProviderPayment>(
           integration,
           `/payments/${encodeURIComponent(paymentId)}`,
-          repairProviderGetOptions,
+          repairAuditProviderGetOptions,
         );
         if (payment?.id) {
           providerPayments.push(payment);
@@ -1049,7 +1449,7 @@ serve(async (req) => {
           const transfer = await providerGet<ProviderTransfer>(
             transferIntegration,
             `/transfers/${encodeURIComponent(transferId)}`,
-            repairProviderGetOptions,
+            repairAuditProviderGetOptions,
           );
           if (transfer?.id) {
             providerTransfers.push(transfer);
@@ -1111,7 +1511,7 @@ serve(async (req) => {
         refundLedgerByPaymentId: ledgerState.refundByPaymentId,
         repairCreditDates: repairHistoricalCredits,
         repairDeletedPayments: repairHistoricalDeletedPayments,
-        providerGetOptions: repairProviderGetOptions,
+        providerGetOptions: authoritativeRepairProviderGetOptions,
         onProgress: async (progress) => {
           const { error } = await auth.context.admin
             .from("asaas_reconciliation_runs")

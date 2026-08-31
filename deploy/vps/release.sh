@@ -533,6 +533,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-reconcile/diff.test.ts \
   supabase/functions/asaas-reconcile/provider-http.ts \
   supabase/functions/asaas-reconcile/provider-http.test.ts \
+  supabase/functions/asaas-reconcile/unlinked-repair.ts \
+  supabase/functions/asaas-reconcile/unlinked-repair.test.ts \
   supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
@@ -631,6 +633,7 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/_shared/whatsapp-inbox.test.ts \
   supabase/functions/asaas-reconcile/diff.test.ts \
   supabase/functions/asaas-reconcile/provider-http.test.ts \
+  supabase/functions/asaas-reconcile/unlinked-repair.test.ts \
   supabase/functions/transfer-teacher-pay/transfer-safety.test.ts \
   supabase/functions/notify-payment-due/core.test.ts \
   supabase/functions/payment-split-notify/outbound-fence.test.ts \
@@ -1114,6 +1117,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260830221000_allow_legacy_recurring_subscription_repricing.sql"
   "supabase/migrations/20260830223000_repair_authoritative_unlinked_student_payments.sql"
   "supabase/migrations/20260830223100_surface_asaas_reconciliation_attention.sql"
+  "supabase/migrations/20260831002000_fence_authoritative_unlinked_payment_integration.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

@@ -12,7 +12,7 @@ end;
 $$;
 
 select pg_temp.assert_true(
-  has_function_privilege(
+  not has_function_privilege(
     'service_role',
     'public.repair_authoritative_unlinked_student_payment(uuid,uuid,text,jsonb,jsonb,jsonb,boolean,text)',
     'EXECUTE'
@@ -20,6 +20,16 @@ select pg_temp.assert_true(
   and not has_function_privilege(
     'authenticated',
     'public.repair_authoritative_unlinked_student_payment(uuid,uuid,text,jsonb,jsonb,jsonb,boolean,text)',
+    'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.repair_authoritative_unlinked_student_payment_fenced(uuid,uuid,text,uuid,bigint,text,jsonb,jsonb,jsonb,boolean,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.repair_authoritative_unlinked_student_payment_fenced(uuid,uuid,text,uuid,bigint,text,jsonb,jsonb,jsonb,boolean,text)',
     'EXECUTE'
   )
   and has_function_privilege(

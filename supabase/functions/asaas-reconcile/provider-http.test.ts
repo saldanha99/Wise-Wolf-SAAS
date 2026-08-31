@@ -1,4 +1,7 @@
-import { providerRetryDelayMs } from "./provider-http.ts";
+import {
+  HISTORICAL_REPAIR_BUDGET_MS,
+  providerRetryDelayMs,
+} from "./provider-http.ts";
 
 function assertEquals(actual: unknown, expected: unknown, message: string) {
   if (actual !== expected) {
@@ -70,5 +73,18 @@ Deno.test("transient provider failures use short exponential retries only", () =
     providerRetryDelayMs(404, null, 0, 999_999, 0),
     null,
     "permanent error",
+  );
+});
+
+Deno.test("historical repair budget finishes before the production gateway", () => {
+  assertEquals(
+    HISTORICAL_REPAIR_BUDGET_MS < 30_000,
+    true,
+    "edge supervisor reserve",
+  );
+  assertEquals(
+    HISTORICAL_REPAIR_BUDGET_MS >= 20_000,
+    true,
+    "useful repair window",
   );
 });
