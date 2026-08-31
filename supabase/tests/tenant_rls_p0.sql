@@ -107,6 +107,19 @@ select pg_temp.assert_true(
 );
 
 select pg_temp.assert_true(
+  not pg_catalog.has_table_privilege(
+    'authenticated', 'public.student_evaluations', 'INSERT'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.student_evaluations', 'UPDATE'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.student_evaluations', 'DELETE'
+  ),
+  'authenticated retained a direct student evaluation write surface'
+);
+
+select pg_temp.assert_true(
   (
     select pg_catalog.array_agg(policyname::text order by policyname)
     from pg_catalog.pg_policies
@@ -1237,14 +1250,17 @@ select pg_temp.assert_true(
   'student A escaped self scope or gained staff scheduling data'
 );
 
-insert into public.student_evaluations (
-  id, student_id, teacher_id, book_part, score, total_questions, tenant_id
-)
-values (
-  '10000000-0000-4000-8000-00000000a009',
-  '00000000-0000-4000-8000-00000000a003',
-  null,
-  'A1-2', 10, 10, 'tenant-rls-p0-a'
+select pg_temp.assert_direct_write_denied(
+  $$insert into public.student_evaluations (
+      id, student_id, teacher_id, book_part,
+      score, total_questions, tenant_id
+    ) values (
+      '10000000-0000-4000-8000-00000000a009',
+      '00000000-0000-4000-8000-00000000a003',
+      null,
+      'A1-2', 10, 10, 'tenant-rls-p0-a'
+    )$$,
+  'student A inserted an evaluation without authoritative grading'
 );
 
 do $test$

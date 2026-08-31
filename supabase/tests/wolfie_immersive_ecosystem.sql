@@ -1130,7 +1130,7 @@ insert into public.unit_activities (
   1,
   'quiz',
   'Verified quiz',
-  '{"questions":[{"prompt":"One","correct":0},{"prompt":"Two","correct":1}]}',
+  '{"questions":[{"id":"verified-q1","prompt":"One","options":["A","B"],"correct":0},{"id":"verified-q2","prompt":"Two","options":["A","B"],"correct":1}]}',
   40
 );
 
@@ -1147,6 +1147,17 @@ select set_config(
   '{"role":"authenticated","sub":"00000000-0000-4000-8000-000000000101"}',
   true
 );
+
+select pg_temp.assert_true(
+  public.enroll_student_learning_path(
+    '40000000-0000-4000-8000-000000000001',
+    false,
+    null,
+    null
+  ) ->> 'status' = 'ACTIVE',
+  'verified quiz fixture must have an active authoritative enrollment'
+);
+
 do $$
 declare
   v_first jsonb;
@@ -1166,9 +1177,9 @@ begin
     'verified quiz must award score-based XP once'
   );
   perform pg_temp.assert_true(
-    (v_second ->> 'xpEarned')::integer = 0
-      and (v_second ->> 'alreadyAwarded')::boolean,
-    'verified quiz replay must not farm XP'
+    (v_second ->> 'xpEarned')::integer = 40
+      and (v_second ->> 'alreadyApplied')::boolean,
+    'verified quiz replay must return the durable first result without farming XP'
   );
 end;
 $$;
