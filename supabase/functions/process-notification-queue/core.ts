@@ -150,6 +150,77 @@ export function isTrialLifecycleNotificationKind(kind: unknown): boolean {
     normalized === "TRIAL_MANAGEMENT_ACCEPTED";
 }
 
+export type StudentLifecycleNotificationDescriptor = {
+  audience: "student" | "teacher";
+  targetStatus: "suspended" | "offboarded";
+};
+
+export function studentLifecycleNotificationDescriptor(
+  kind: unknown,
+): StudentLifecycleNotificationDescriptor | null {
+  switch (normalizeNotificationKind(kind)) {
+    case "STUDENT_SUSPENDED":
+      return { audience: "student", targetStatus: "suspended" };
+    case "STUDENT_OFFBOARDED":
+      return { audience: "student", targetStatus: "offboarded" };
+    case "TEACHER_STUDENT_SUSPENDED":
+      return { audience: "teacher", targetStatus: "suspended" };
+    case "TEACHER_STUDENT_OFFBOARDED":
+      return { audience: "teacher", targetStatus: "offboarded" };
+    default:
+      return null;
+  }
+}
+
+export function isStudentLifecycleNotificationKind(kind: unknown): boolean {
+  return studentLifecycleNotificationDescriptor(kind) !== null;
+}
+
+function firstName(value: unknown, fallback: string): string {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ");
+  return normalized.split(" ")[0]?.slice(0, 80) || fallback;
+}
+
+function displayName(value: unknown, fallback: string): string {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ");
+  return normalized.slice(0, 180) || fallback;
+}
+
+function displayDate(value: unknown): string {
+  const raw = String(value || "").slice(0, 10);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "a data combinada";
+}
+
+export function renderStudentLifecycleNotification(input: {
+  kind: unknown;
+  studentName: unknown;
+  teacherName?: unknown;
+  tenantName: unknown;
+  effectiveEndDate: unknown;
+}): string | null {
+  const descriptor = studentLifecycleNotificationDescriptor(input.kind);
+  if (!descriptor) return null;
+
+  const studentFirstName = firstName(input.studentName, "tudo bem");
+  const studentName = displayName(input.studentName, "seu aluno");
+  const teacherFirstName = firstName(input.teacherName, "professor(a)");
+  const tenantName = displayName(input.tenantName, "nossa escola");
+  const effectiveDate = displayDate(input.effectiveEndDate);
+
+  if (descriptor.audience === "teacher") {
+    if (descriptor.targetStatus === "suspended") {
+      return `Oi, ${teacherFirstName}! Atualiza\u00e7\u00e3o da coordena\u00e7\u00e3o: as aulas de ${studentName} ficar\u00e3o em pausa a partir de ${effectiveDate}, e os hor\u00e1rios fixos j\u00e1 foram liberados na sua agenda. N\u00e3o \u00e9 necess\u00e1rio manter esses slots reservados. Se precisar de algum ajuste, fale com a coordena\u00e7\u00e3o.`;
+    }
+    return `Oi, ${teacherFirstName}! Atualiza\u00e7\u00e3o da coordena\u00e7\u00e3o: a matr\u00edcula de ${studentName} foi encerrada a partir de ${effectiveDate}, e os hor\u00e1rios fixos j\u00e1 foram liberados na sua agenda. Obrigado por todo o acompanhamento. Se precisar de algum ajuste, fale com a coordena\u00e7\u00e3o.`;
+  }
+
+  if (descriptor.targetStatus === "suspended") {
+    return `Oi, ${studentFirstName}! Passando para confirmar que sua jornada com a ${tenantName} ficar\u00e1 em pausa a partir de ${effectiveDate}. Seus hor\u00e1rios fixos foram liberados por enquanto. Quando for o momento de retomar, nossa equipe estar\u00e1 pronta para organizar uma nova agenda com carinho. Se precisar, conte com a gente.`;
+  }
+  return `Oi, ${studentFirstName}! Registramos o encerramento da sua matr\u00edcula na ${tenantName}, conforme alinhado com a equipe, a partir de ${effectiveDate}. Agradecemos por ter feito parte da nossa escola. Seus hor\u00e1rios fixos foram liberados e, se quiser voltar no futuro, ser\u00e1 um prazer receber voc\u00ea novamente. Conte com a gente.`;
+}
+
 export function queueAudience(kind: unknown): {
   audience: "student" | "teacher";
   centralOnly: boolean;
@@ -168,7 +239,9 @@ export function queueAudience(kind: unknown): {
     normalized === "INTERVIEW_REMINDER_CANDIDATE" ||
     normalized === "INTERVIEW_REMINDER_MANAGEMENT" ||
     normalized === "TRIAL_TEACHER_REQUESTED" ||
-    normalized === "TRIAL_MANAGEMENT_ACCEPTED"
+    normalized === "TRIAL_MANAGEMENT_ACCEPTED" ||
+    normalized === "TEACHER_STUDENT_SUSPENDED" ||
+    normalized === "TEACHER_STUDENT_OFFBOARDED"
   ) return { audience: "teacher", centralOnly: true };
   return { audience: "student", centralOnly: false };
 }

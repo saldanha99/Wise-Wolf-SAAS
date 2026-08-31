@@ -3,6 +3,7 @@ import {
     calculateEnrollmentProRataPreview,
     enrollmentOfferErrorMessage,
     normalizeEnrollmentTime,
+    resolveEnrollmentOfferVendorId,
     weekdayIndex,
 } from './enrollmentOffer';
 
@@ -156,5 +157,40 @@ describe('matrícula autoritativa', () => {
             .toContain('assinatura do representante');
         expect(enrollmentOfferErrorMessage({ message: 'dependent_guardian_contact_invalid' }))
             .toContain('responsável financeiro');
+    });
+
+    it('vincula comissão somente quando quem gera a oferta é vendedor', () => {
+        expect(resolveEnrollmentOfferVendorId({ id: ' vendor-id ', role: 'SALESPERSON' }))
+            .toBe('vendor-id');
+        expect(resolveEnrollmentOfferVendorId({ id: 'director-id', role: 'SCHOOL_ADMIN' }))
+            .toBeUndefined();
+        expect(resolveEnrollmentOfferVendorId({ id: 'superadmin-id', role: 'SUPER_ADMIN' }))
+            .toBeUndefined();
+        expect(resolveEnrollmentOfferVendorId({ id: 'coordinator-id', role: 'COORDINATOR' }))
+            .toBeUndefined();
+        expect(resolveEnrollmentOfferVendorId({ id: 'teacher-id', role: 'TEACHER' }))
+            .toBeUndefined();
+        expect(resolveEnrollmentOfferVendorId({ id: '   ', role: 'SALESPERSON' }))
+            .toBeUndefined();
+    });
+
+    it('traduz falha interna de permissão sem culpar o perfil do diretor', () => {
+        expect(enrollmentOfferErrorMessage({
+            code: '42501',
+            message: 'permission denied for table enrollment_offer_command_receipts',
+        })).toContain('temporariamente indisponível');
+    });
+
+    it('distingue os bloqueios de sessão, tenant e autoridade da oferta', () => {
+        expect(enrollmentOfferErrorMessage({ message: 'authentication_required' }))
+            .toContain('sessão expirou');
+        expect(enrollmentOfferErrorMessage({ message: 'cross_tenant_enrollment_denied' }))
+            .toContain('unidade ativa');
+        expect(enrollmentOfferErrorMessage({ message: 'inactive_enrollment_actor' }))
+            .toContain('professor ou vendedor');
+        expect(enrollmentOfferErrorMessage({ message: 'permission_denied' }))
+            .toContain('não possui autorização');
+        expect(enrollmentOfferErrorMessage({ code: '42501', message: 'unexpected privilege error' }))
+            .toContain('confirmar sua autorização');
     });
 });

@@ -66,6 +66,52 @@ Deno.test(
 );
 
 Deno.test(
+  "suspension admits the same exact proof for a frozen future charge",
+  () => {
+    const suspendedFutureCharge: ProofInput = {
+      ...exactDeletedProof(),
+      targetStatus: "suspended",
+      billingCancelFromDate: "2026-09-01",
+      frozen: {
+        ...exactDeletedProof().frozen,
+        dueDate: "2026-09-20",
+      },
+      local: {
+        ...exactDeletedProof().local,
+        dueDate: "2026-09-20",
+      },
+      provider: {
+        ...exactDeletedProof().provider,
+        dueDate: "2026-09-20",
+      },
+    };
+    assertEquals(
+      classifyExactDeletedOffboardingPaymentProof(suspendedFutureCharge),
+      "OPEN_DELETABLE",
+    );
+    assertEquals(
+      classifyExactDeletedOffboardingPaymentProof({
+        ...suspendedFutureCharge,
+        frozen: {
+          ...suspendedFutureCharge.frozen,
+          dueDate: "2026-08-20",
+        },
+        local: {
+          ...suspendedFutureCharge.local,
+          dueDate: "2026-08-20",
+        },
+        provider: {
+          ...suspendedFutureCharge.provider,
+          dueDate: "2026-08-20",
+        },
+      }),
+      null,
+      "the current competence remains outside the suspension cancellation boundary",
+    );
+  },
+);
+
+Deno.test(
   "offboarding admits an exact frozen/local OVERDUE deletion proof but never CONFIRMED",
   () => {
     const overdue: ProofInput = {
@@ -194,8 +240,8 @@ Deno.test(
   () => {
     const cases: Array<{ name: string; input: ProofInput }> = [
       {
-        name: "not a definitive offboarding",
-        input: { ...exactDeletedProof(), targetStatus: "suspended" },
+        name: "not a supported inactive lifecycle target",
+        input: { ...exactDeletedProof(), targetStatus: "active" },
       },
       {
         name: "outside the frozen cancellation period",

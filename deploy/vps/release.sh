@@ -1161,8 +1161,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260831073000_atomic_teacher_availability_replacement.sql"
   "supabase/migrations/20260831143000_student_learning_runtime_hardening.sql"
   "supabase/migrations/20260831150000_pedagogical_evaluation_catalog.sql"
+  "supabase/migrations/20260831161017_fix_enrollment_offer_and_student_lifecycle_operations.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/student_lifecycle_operations_hardening.sql"
   "supabase/tests/student_learning_runtime_hardening.sql"
   "supabase/tests/pedagogical_evaluation_catalog.sql"
   "supabase/tests/wolfie_tenant_quota_usage_hardening.sql"

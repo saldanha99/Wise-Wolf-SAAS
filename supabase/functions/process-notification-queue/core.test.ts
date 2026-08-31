@@ -1,6 +1,7 @@
 /// <reference lib="deno.ns" />
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
   lessonReminderFreshness,
   normalizeNotificationKind,
@@ -10,6 +11,8 @@ import {
   queueAudience,
   queueDeliveryDecision,
   renderConflictTeacherAlert,
+  renderStudentLifecycleNotification,
+  studentLifecycleNotificationDescriptor,
 } from "./core.ts";
 
 Deno.test("tipo da notificacao e canonico independentemente de casing", () => {
@@ -53,6 +56,49 @@ Deno.test("notificações do funil experimental usam a rota e classificação co
     audience: "teacher",
     centralOnly: true,
   });
+});
+
+Deno.test("avisos de ciclo de vida distinguem aluno, professor e destino", () => {
+  assertEquals(studentLifecycleNotificationDescriptor("student_suspended"), {
+    audience: "student",
+    targetStatus: "suspended",
+  });
+  assertEquals(
+    studentLifecycleNotificationDescriptor("TEACHER_STUDENT_OFFBOARDED"),
+    { audience: "teacher", targetStatus: "offboarded" },
+  );
+  assertEquals(isStudentLifecycleNotificationKind("STUDENT_OFFBOARDED"), true);
+  assertEquals(isStudentLifecycleNotificationKind("LESSON_REMINDER"), false);
+  assertEquals(queueAudience("TEACHER_STUDENT_SUSPENDED"), {
+    audience: "teacher",
+    centralOnly: true,
+  });
+  assertEquals(queueAudience("STUDENT_SUSPENDED"), {
+    audience: "student",
+    centralOnly: false,
+  });
+});
+
+Deno.test("avisos de ciclo de vida são acolhedores e não expõem motivo interno", () => {
+  assertEquals(
+    renderStudentLifecycleNotification({
+      kind: "STUDENT_SUSPENDED",
+      studentName: "Rafael Marquini",
+      tenantName: "Wise Wolf Languages",
+      effectiveEndDate: "2026-08-31",
+    }),
+    "Oi, Rafael! Passando para confirmar que sua jornada com a Wise Wolf Languages ficará em pausa a partir de 31/08/2026. Seus horários fixos foram liberados por enquanto. Quando for o momento de retomar, nossa equipe estará pronta para organizar uma nova agenda com carinho. Se precisar, conte com a gente.",
+  );
+  assertEquals(
+    renderStudentLifecycleNotification({
+      kind: "TEACHER_STUDENT_OFFBOARDED",
+      studentName: "Rafael Marquini",
+      teacherName: "Débora Alves",
+      tenantName: "Wise Wolf Languages",
+      effectiveEndDate: "2026-08-31",
+    }),
+    "Oi, Débora! Atualização da coordenação: a matrícula de Rafael Marquini foi encerrada a partir de 31/08/2026, e os horários fixos já foram liberados na sua agenda. Obrigado por todo o acompanhamento. Se precisar de algum ajuste, fale com a coordenação.",
+  );
 });
 
 Deno.test("automações internas e de professor nunca usam WhatsApp pessoal", () => {

@@ -5,6 +5,7 @@ import { MOCK_TENANTS, MOCK_STUDENTS_LIST, PROFILE_SAFE_COLS } from './constants
 import { groupForTab, ALL_ADMIN_TAB_IDS } from './lib/adminNav';
 import { fetchPendingLessons } from './lib/pendingLessons';
 import { calculateDaysWithoutAbsence } from './lib/teacherManagement';
+import { resolveEnrollmentOfferVendorId } from './lib/enrollmentOffer';
 import ScreenTabs from './components/ScreenTabs';
 import { TourRole } from './lib/tours';
 
@@ -1279,7 +1280,7 @@ const App: React.FC = () => {
         currentTenantId={currentTenant?.id}
       />,
       'vendor_trial': <div className="max-w-3xl mx-auto py-6"><VendorTrialLinkGenerator user={user} tenantId={currentTenant?.id} teachers={activeTeachers} /></div>,
-      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={activeTeachers} tenantId={currentTenant?.id || ''} vendorId={user.id} /></div>,
+      'vendor_enrollment': <div className="max-w-3xl mx-auto py-6"><RegistrationLinkGenerator teachers={activeTeachers} tenantId={currentTenant?.id || ''} vendorId={resolveEnrollmentOfferVendorId(user)} /></div>,
       'vendor_commissions': <VendorDashboard user={user} tenantId={currentTenant?.id} teachers={activeTeachers} onNavigate={setActiveTab} />,
     };
 

@@ -405,7 +405,8 @@ export function classifyExactDeletedOffboardingPaymentProof(
   const providerValue = Number(input.provider.value);
   const refundedAmount = Number(input.local.refundedAmount || 0);
 
-  const exactUnsettledDeletion = input.targetStatus === "offboarded" &&
+  const exactUnsettledDeletion =
+    new Set(["suspended", "offboarded"]).has(input.targetStatus) &&
     /^\d{4}-\d{2}-\d{2}$/.test(cancelFrom) &&
     input.frozen.dueDate >= cancelFrom &&
     Boolean(input.frozen.asaasPaymentId) &&
@@ -1029,9 +1030,7 @@ async function proveFrozenDeletedOffboardingPayments(
   providerPayments: AsaasSubscriptionPaymentSnapshot[],
 ): Promise<ReadonlyMap<string, ProvenDeletedOpenPaymentState>> {
   const proven = new Map<string, ProvenDeletedOpenPaymentState>();
-  if (
-    claim.targetStatus !== "offboarded" || !claim.billingCancelFromDate
-  ) return proven;
+  if (!claim.billingCancelFromDate) return proven;
 
   const liveProviderIds = new Set(
     providerPayments
@@ -1394,7 +1393,7 @@ function requireOffboardingCustomerPostcondition(
     );
   }
   if (
-    claim.targetStatus === "offboarded" && claim.billingCancelFromDate &&
+    claim.billingCancelFromDate &&
     inventory.recurringPayments.some((payment) =>
       !payment.deleted &&
       !PROVIDER_CANCELLED_PAYMENT_STATUSES.has(payment.status) &&
@@ -2942,7 +2941,7 @@ export async function handleRequest(req: Request): Promise<Response> {
                     "The subscription status requires reconciliation",
                   );
                 }
-                if (claim.targetStatus === "offboarded") {
+                if (claim.billingCancelFromDate) {
                   preservedProviderPayments =
                     await listAsaasSubscriptionPayments(
                       subscriptionIntegration,
@@ -3100,7 +3099,7 @@ export async function handleRequest(req: Request): Promise<Response> {
                     .toUpperCase()
                   : "NOT_FOUND";
                 if (
-                  claim.targetStatus === "offboarded" &&
+                  claim.billingCancelFromDate &&
                   finalSubscriptionStatus === "INACTIVE"
                 ) {
                   const finalProviderPayments =
@@ -3251,6 +3250,7 @@ export async function handleRequest(req: Request): Promise<Response> {
           periodStart: claim.billingPeriodStart,
           effectiveEndDate: claim.effectiveEndDate,
           schedulesCancelled: Number(finalized.schedules_cancelled || 0),
+          notificationsQueued: Number(finalized.notifications_queued || 0),
         };
         await writeAudit(admin, auth.context, tenantId, req, {
           action: action.action,

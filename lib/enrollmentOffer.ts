@@ -14,6 +14,26 @@ export type ProRataPreview = {
     value: number;
 };
 
+type EnrollmentOfferActor = {
+    id?: unknown;
+    role?: unknown;
+} | null | undefined;
+
+/**
+ * A comissão da oferta pertence somente a um vendedor autenticado. Diretores e
+ * outros papéis podem criar a matrícula, mas nunca devem ser serializados como
+ * vendorId apenas porque abriram a mesma tela.
+ */
+export const resolveEnrollmentOfferVendorId = (
+    actor: EnrollmentOfferActor,
+): string | undefined => {
+    if (actor?.role !== 'SALESPERSON' || typeof actor.id !== 'string') {
+        return undefined;
+    }
+    const actorId = actor.id.trim();
+    return actorId || undefined;
+};
+
 const WEEKDAY_INDEX: Record<string, number> = {
     sunday: 0,
     domingo: 0,
@@ -134,6 +154,15 @@ export function calculateEnrollmentProRataPreview(params: {
 }
 
 const ENROLLMENT_OFFER_ERRORS: Array<[string, string]> = [
+    ['permission denied for table enrollment_offer_command_receipts', 'O serviço seguro de matrícula está temporariamente indisponível. Nenhum link foi criado. Tente novamente em alguns instantes.'],
+    ['authentication_required', 'Sua sessão expirou. Entre novamente para gerar o link de matrícula.'],
+    ['active_tenant_required', 'Selecione uma unidade ativa antes de gerar o link de matrícula.'],
+    ['cross_tenant_enrollment_denied', 'A unidade do formulário não corresponde à unidade ativa da sua sessão. Atualize a página e tente novamente.'],
+    ['tenant_inactive', 'A unidade está inativa e não pode emitir novos links de matrícula.'],
+    ['inactive_enrollment_actor', 'O professor ou vendedor vinculado não está ativo nesta unidade. Atualize os responsáveis e tente novamente.'],
+    ['inactive_guardian', 'O responsável financeiro não está ativo nesta unidade. Atualize o cadastro antes de gerar o link.'],
+    ['enrollment_offer_scope_mismatch', 'A oferta não pôde ser vinculada à unidade ativa. Atualize a página e tente novamente.'],
+    ['permission_denied', 'Seu perfil não possui autorização para gerar links de matrícula nesta unidade.'],
     ['tenant_legal_identity_incomplete', 'Antes de gerar contratos, complete a Identidade da escola e envie a assinatura do representante em um arquivo privado válido: Configurações → Central da escola → Identidade da escola.'],
     ['enrollment_schedule_required', 'Selecione o professor e preencha todos os horários da grade.'],
     ['enrollment_schedule_cardinality_mismatch', 'A quantidade de horários precisa ser exatamente igual à frequência semanal do plano.'],
@@ -149,9 +178,14 @@ const ENROLLMENT_OFFER_ERRORS: Array<[string, string]> = [
     ['pro_rata_not_applicable', 'O prorrata não se aplica a plano de aula avulsa. Desative essa opção ou escolha um plano recorrente.'],
     ['invalid_enrollment_billing_period', 'Revise a data de início e o mês do primeiro vencimento.'],
     ['enrollment_first_billing_date_passed', 'O primeiro vencimento desta oferta já passou. Gere um novo link com datas atualizadas.'],
+    ['42501', 'Não foi possível confirmar sua autorização para gerar o link. Atualize a sessão e tente novamente.'],
 ];
 
 export const enrollmentOfferErrorMessage = (error: unknown): string => {
+    if (typeof error === 'string') {
+        const mapped = ENROLLMENT_OFFER_ERRORS.find(([key]) => error.toLowerCase().includes(key));
+        return mapped?.[1] || 'Não foi possível gerar o link seguro. Revise os dados e tente novamente.';
+    }
     const record = error && typeof error === 'object' ? error as Record<string, unknown> : {};
     const raw = [record.message, record.details, record.hint, record.code]
         .filter(value => typeof value === 'string')

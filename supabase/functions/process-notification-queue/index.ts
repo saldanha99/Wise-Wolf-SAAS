@@ -26,6 +26,7 @@ import {
   timeInSaoPaulo,
 } from "../send-class-notification/core.ts";
 import {
+  isStudentLifecycleNotificationKind,
   isTrialLifecycleNotificationKind,
   lessonReminderFreshness,
   normalizeNotificationKind,
@@ -34,6 +35,8 @@ import {
   queueAudience,
   queueDeliveryDecision,
   renderConflictTeacherAlert,
+  renderStudentLifecycleNotification,
+  studentLifecycleNotificationDescriptor,
 } from "./core.ts";
 
 // Processa a fila de notificações (lembretes de aula, avisos) e envia via WhatsApp.
@@ -610,6 +613,130 @@ async function prepareTrialLifecycleNotification(
   return { teacherId, destination, message };
 }
 
+async function prepareStudentLifecycleNotification(
+  supabase: SupabaseClient,
+  item: QueueItem,
+): Promise<PreparedQueueMessage> {
+  const tenantId = String(item.tenant_id || "");
+  const operationId = String(item.source_id || "");
+  const studentId = String(item.student_id || "");
+  const notificationKind = normalizeNotificationKind(item.notification_kind);
+  const descriptor = studentLifecycleNotificationDescriptor(notificationKind);
+  if (
+    !tenantId || !studentId || !descriptor ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(operationId) ||
+    String(item.source_type || "").trim().toUpperCase() !==
+      "STUDENT_LIFECYCLE" ||
+    relationOne(item.student)?.id !== studentId
+  ) invalid("invalid_student_lifecycle_notification_identity");
+
+  const [
+    operationResult,
+    studentResult,
+    membershipResult,
+    settingsResult,
+    tenantResult,
+  ] = await Promise.all([
+    supabase.from("student_offboarding_operations")
+      .select(
+        "id,tenant_id,student_id,target_lifecycle_status,status,effective_end_date,snapshot",
+      )
+      .eq("id", operationId).eq("tenant_id", tenantId)
+      .eq("student_id", studentId).maybeSingle(),
+    supabase.from("profiles")
+      .select(
+        "id,tenant_id,role,full_name,phone,attendance_phone,guardian_phone,lifecycle_status,is_test_account",
+      )
+      .eq("id", studentId).maybeSingle(),
+    supabase.from("tenant_memberships").select("user_id")
+      .eq("tenant_id", tenantId).eq("user_id", studentId)
+      .eq("role", "STUDENT").eq("status", "ACTIVE").maybeSingle(),
+    supabase.from("tenant_admin_settings")
+      .select("student_notifications_enabled,teacher_notifications_enabled")
+      .eq("tenant_id", tenantId).maybeSingle(),
+    supabase.from("tenants").select("id,name").eq("id", tenantId)
+      .maybeSingle(),
+  ]);
+  if (
+    operationResult.error || studentResult.error || membershipResult.error ||
+    settingsResult.error || tenantResult.error
+  ) unavailable("student_lifecycle_notification_revalidation_unavailable");
+
+  const operation = operationResult.data;
+  const student = studentResult.data;
+  const settings = settingsResult.data;
+  const tenant = tenantResult.data;
+  if (
+    !operation ||
+    String(operation.status || "").toUpperCase() !== "COMPLETED" ||
+    String(operation.target_lifecycle_status || "").toLowerCase() !==
+      descriptor.targetStatus ||
+    !student || String(student.tenant_id || "") !== tenantId ||
+    String(student.role || "").toUpperCase() !== "STUDENT" ||
+    String(student.lifecycle_status || "").toLowerCase() !==
+      descriptor.targetStatus ||
+    student.is_test_account === true ||
+    String(membershipResult.data?.user_id || "") !== studentId || !tenant ||
+    !settings
+  ) invalid("student_lifecycle_notification_no_longer_valid");
+
+  if (descriptor.audience === "student") {
+    if (settings.student_notifications_enabled !== true) {
+      invalid("student_notifications_disabled_before_send");
+    }
+    const destination = normalizeQueueDestination(
+      student.attendance_phone || student.phone || student.guardian_phone || "",
+    );
+    const message = renderStudentLifecycleNotification({
+      kind: notificationKind,
+      studentName: student.full_name,
+      tenantName: tenant.name,
+      effectiveEndDate: operation.effective_end_date,
+    });
+    if (!destination || !message || message.length > 4096) {
+      invalid("student_lifecycle_recipient_unavailable");
+    }
+    return { teacherId: null, destination, message };
+  }
+
+  if (settings.teacher_notifications_enabled !== true) {
+    invalid("teacher_notifications_disabled_before_send");
+  }
+  const teacherId = String(relationOne(item.teacher)?.id || "");
+  const snapshot =
+    operation.snapshot && typeof operation.snapshot === "object" &&
+      !Array.isArray(operation.snapshot)
+      ? operation.snapshot as Record<string, unknown>
+      : {};
+  const releasedTeacherIds = Array.isArray(snapshot.released_teacher_ids)
+    ? snapshot.released_teacher_ids.map(String)
+    : [];
+  if (!teacherId || !releasedTeacherIds.includes(teacherId)) {
+    invalid("student_lifecycle_teacher_binding_changed");
+  }
+  const teacher = await loadActiveMember(
+    supabase,
+    tenantId,
+    teacherId,
+    "TEACHER",
+  );
+  const destination = normalizeQueueDestination(
+    teacher.phone || teacher.attendance_phone || "",
+  );
+  const message = renderStudentLifecycleNotification({
+    kind: notificationKind,
+    studentName: student.full_name,
+    teacherName: teacher.full_name,
+    tenantName: tenant.name,
+    effectiveEndDate: operation.effective_end_date,
+  });
+  if (!destination || !message || message.length > 4096) {
+    invalid("student_lifecycle_teacher_recipient_unavailable");
+  }
+  return { teacherId, destination, message };
+}
+
 // Resolve a instância central da escola (admin do tenant com WhatsApp conectado).
 async function resolveCentralInstance(
   supabase: SupabaseClient,
@@ -1056,6 +1183,11 @@ serve(async (req) => {
             supabaseClient,
             item,
           );
+        } else if (isStudentLifecycleNotificationKind(notificationKind)) {
+          prepared = await prepareStudentLifecycleNotification(
+            supabaseClient,
+            item,
+          );
         }
       } catch (error) {
         if (!(error instanceof QueueRevalidationError)) throw error;
@@ -1392,18 +1524,20 @@ serve(async (req) => {
       }
 
       // JID resolution and the transactional SUBMITTING fence can take long
-      // enough for a trial to be canceled, converted or marked as a fixture.
+      // enough for a lifecycle state, recipient or feature setting to change.
       // Revalidate once more before the only provider POST in this worker.
-      if (isTrialLifecycleNotificationKind(notificationKind)) {
+      if (
+        isTrialLifecycleNotificationKind(notificationKind) ||
+        isStudentLifecycleNotificationKind(notificationKind)
+      ) {
         try {
-          const current = await prepareTrialLifecycleNotification(
-            supabaseClient,
-            item,
-          );
+          const current = isTrialLifecycleNotificationKind(notificationKind)
+            ? await prepareTrialLifecycleNotification(supabaseClient, item)
+            : await prepareStudentLifecycleNotification(supabaseClient, item);
           if (
             normalizeQueueDestination(current.destination) !== destination ||
             current.message !== authorizedMessage
-          ) invalid("trial_notification_changed_before_send");
+          ) invalid("lifecycle_notification_changed_before_send");
         } catch (error) {
           if (!(error instanceof QueueRevalidationError)) throw error;
           const marked = await markClaim(
