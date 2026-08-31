@@ -361,13 +361,31 @@ values
     '10000000-0000-4000-8000-000000000002',
     '10000000-0000-4000-8000-000000000004',
     to_char(
-      date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-        - interval '40 minutes',
+      case
+        when (now() at time zone 'America/Sao_Paulo')::time < time '00:40'
+          then date_trunc(
+            'day',
+            now() at time zone 'America/Sao_Paulo'
+          )
+        else date_trunc(
+          'minute',
+          now() at time zone 'America/Sao_Paulo'
+        ) - interval '40 minutes'
+      end,
       'YYYY-MM-DD'
     ),
     to_char(
-      date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-        - interval '40 minutes',
+      case
+        when (now() at time zone 'America/Sao_Paulo')::time < time '00:40'
+          then date_trunc(
+            'day',
+            now() at time zone 'America/Sao_Paulo'
+          )
+        else date_trunc(
+          'minute',
+          now() at time zone 'America/Sao_Paulo'
+        ) - interval '40 minutes'
+      end,
       'HH24:MI'
     ),
     'STUDENT', now()
@@ -379,13 +397,31 @@ values
     '10000000-0000-4000-8000-000000000002',
     '10000000-0000-4000-8000-000000000004',
     to_char(
-      date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-        - interval '10 minutes',
+      case
+        when (now() at time zone 'America/Sao_Paulo')::time < time '00:40'
+          then date_trunc(
+            'day',
+            now() at time zone 'America/Sao_Paulo'
+          ) + interval '30 minutes'
+        else date_trunc(
+          'minute',
+          now() at time zone 'America/Sao_Paulo'
+        ) - interval '10 minutes'
+      end,
       'YYYY-MM-DD'
     ),
     to_char(
-      date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-        - interval '10 minutes',
+      case
+        when (now() at time zone 'America/Sao_Paulo')::time < time '00:40'
+          then date_trunc(
+            'day',
+            now() at time zone 'America/Sao_Paulo'
+          ) + interval '30 minutes'
+        else date_trunc(
+          'minute',
+          now() at time zone 'America/Sao_Paulo'
+        ) - interval '10 minutes'
+      end,
       'HH24:MI'
     ),
     'STUDENT', now()
@@ -406,25 +442,37 @@ select pg_temp.assert_true(
   'multi-slot session was enqueued before its final slot ended +10 minutes'
 );
 
-update public.reschedules r
-   set date = to_char(
-         date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-           - case when r.id = '70000000-0000-4000-8000-000000000003'
-                  then interval '70 minutes'
-                  else interval '40 minutes' end,
-         'YYYY-MM-DD'
-       ),
-       time = to_char(
-         date_trunc('minute', now() at time zone 'America/Sao_Paulo')
-           - case when r.id = '70000000-0000-4000-8000-000000000003'
-                  then interval '70 minutes'
-                  else interval '40 minutes' end,
-         'HH24:MI'
-       )
- where r.id in (
-   '70000000-0000-4000-8000-000000000003',
-   '70000000-0000-4000-8000-000000000004'
- );
+-- Keep both ready slots on one civil date even when the suite runs shortly
+-- after midnight in Sao Paulo. A direct now()-70/40 calculation split the
+-- session across two dates between 00:00 and 01:09 and made this test flaky.
+with local_clock as (
+  select now() at time zone 'America/Sao_Paulo' as local_now
+), ready_anchor as (
+  select case
+    when local_now::time < time '01:10'
+      then date_trunc('day', local_now) - interval '100 minutes'
+    else date_trunc('minute', local_now) - interval '70 minutes'
+  end as first_start
+  from local_clock
+), ready_slots(id, start_at) as (
+  select fixture.id, ready_anchor.first_start + fixture.slot_offset
+  from ready_anchor
+  cross join (values
+    (
+      '70000000-0000-4000-8000-000000000003'::uuid,
+      interval '0 minutes'
+    ),
+    (
+      '70000000-0000-4000-8000-000000000004'::uuid,
+      interval '30 minutes'
+    )
+  ) fixture(id, slot_offset)
+)
+update public.reschedules as reschedule
+   set date = to_char(ready_slot.start_at, 'YYYY-MM-DD'),
+       time = to_char(ready_slot.start_at, 'HH24:MI')
+  from ready_slots as ready_slot
+ where reschedule.id = ready_slot.id;
 
 select public.enqueue_attendance_confirmations();
 
@@ -455,6 +503,21 @@ select pg_temp.assert_true(
           and session_end_at + interval '10 minutes' <= now()),
   'ready multi-slot session was not grouped into one canonical delivery'
 );
+
+-- This fixture has served its assertion. Remove both the derived delivery and
+-- its source occurrences so later claim-order tests cannot see/recreate a
+-- previous-day ready session when the suite runs shortly after midnight.
+delete from public.attendance_confirmations
+ where source_type = 'reschedule'
+   and source_id in (
+     '70000000-0000-4000-8000-000000000003',
+     '70000000-0000-4000-8000-000000000004'
+   );
+delete from public.reschedules
+ where id in (
+   '70000000-0000-4000-8000-000000000003',
+   '70000000-0000-4000-8000-000000000004'
+ );
 
 -- An occurrence cannot borrow a student/teacher profile from another tenant.
 insert into public.reschedules (
@@ -1951,32 +2014,56 @@ select pg_temp.assert_true(
 rollback to savepoint before_test_account_claim;
 
 -- Atomic delivery and terminal ambiguity ------------------------------------
+-- Use two contiguous, already-finished slots on one Sao Paulo civil date.
+-- Fixed 01:00/01:30 fixtures became future sessions while the suite ran in
+-- the first hours of the day, and refresh correctly made them ineligible.
+with local_clock as (
+  select now() at time zone 'America/Sao_Paulo' as local_now
+), delivery_anchor as (
+  select case
+    when local_now::time < time '01:10'
+      then date_trunc('day', local_now) - interval '100 minutes'
+    else date_trunc('minute', local_now) - interval '70 minutes'
+  end as first_start
+  from local_clock
+), delivery_slots(id, start_at, token) as (
+  select fixture.id, delivery_anchor.first_start + fixture.slot_offset,
+         fixture.token
+  from delivery_anchor
+  cross join (values
+    (
+      '50000000-0000-4000-8000-000000000001'::uuid,
+      interval '0 minutes',
+      'delivery-token-01'
+    ),
+    (
+      '50000000-0000-4000-8000-000000000002'::uuid,
+      interval '30 minutes',
+      'delivery-token-02'
+    )
+  ) fixture(id, slot_offset, token)
+)
 insert into public.attendance_confirmations (
   id, tenant_id, teacher_id, student_id, student_name, student_phone,
   teacher_name, class_date, class_time, token, token_expires_at,
   session_end_at, status, delivery_status
 )
-values
-  (
-    '50000000-0000-4000-8000-000000000001',
-    'attendance-hardening-school',
-    '10000000-0000-4000-8000-000000000002',
-    '10000000-0000-4000-8000-000000000003',
-    'Attendance Student', '5511999990003', 'Attendance Teacher',
-    (now() at time zone 'America/Sao_Paulo')::date, '01:00',
-    'delivery-token-01', now() + interval '7 days', now() - interval '20 minutes',
-    'PENDING', 'PENDING'
-  ),
-  (
-    '50000000-0000-4000-8000-000000000002',
-    'attendance-hardening-school',
-    '10000000-0000-4000-8000-000000000002',
-    '10000000-0000-4000-8000-000000000003',
-    'Attendance Student', '5511999990003', 'Attendance Teacher',
-    (now() at time zone 'America/Sao_Paulo')::date, '01:30',
-    'delivery-token-02', now() + interval '7 days', now() - interval '20 minutes',
-    'PENDING', 'PENDING'
-  );
+select
+  delivery_slot.id,
+  'attendance-hardening-school',
+  '10000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000003',
+  'Attendance Student',
+  '5511999990003',
+  'Attendance Teacher',
+  delivery_slot.start_at::date,
+  to_char(delivery_slot.start_at, 'HH24:MI'),
+  delivery_slot.token,
+  now() + interval '7 days',
+  now() - interval '20 minutes',
+  'PENDING',
+  'PENDING'
+from delivery_slots as delivery_slot;
 
 -- Simulates a row repaired after the legacy Edge sender attempted delivery but
 -- left no atomic claim metadata. A missing source occurrence must never turn
@@ -2001,7 +2088,7 @@ values (
 );
 
 select private.refresh_attendance_confirmation_sessions(
-  (now() at time zone 'America/Sao_Paulo')::date,
+  (now() at time zone 'America/Sao_Paulo')::date - 1,
   (now() at time zone 'America/Sao_Paulo')::date
 );
 
