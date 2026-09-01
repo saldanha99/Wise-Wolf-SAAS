@@ -91,6 +91,20 @@ export const dateInSaoPaulo = (now = new Date()): string => {
     return `${read('year')}-${read('month')}-${read('day')}`;
 };
 
+/**
+ * Define o mês inicial padrão da mensalidade pela data civil de São Paulo.
+ * Depois do dia 15 a cobrança começa no mês seguinte. A aritmética usa apenas
+ * ano/mês, pois `Date.setMonth()` preservaria o dia 29/30/31 e poderia avançar
+ * dois meses quando o mês de destino não tivesse esse dia.
+ */
+export const defaultBillingStartMonthInSaoPaulo = (now = new Date()): string => {
+    const [year, month, day] = dateInSaoPaulo(now).split('-').map(Number);
+    const zeroBasedTargetMonth = month - 1 + (day > 15 ? 1 : 0);
+    const targetYear = year + Math.floor(zeroBasedTargetMonth / 12);
+    const targetMonth = (zeroBasedTargetMonth % 12) + 1;
+    return `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+};
+
 const parseIsoDateUtc = (value: string): Date | null => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
     const [year, month, day] = value.split('-').map(Number);

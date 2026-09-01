@@ -14,6 +14,7 @@ import EnrollmentProRataSwitch from './EnrollmentProRataSwitch';
 import {
     calculateEnrollmentProRataPreview,
     dateInSaoPaulo,
+    defaultBillingStartMonthInSaoPaulo,
     enrollmentOfferErrorMessage,
     normalizeEnrollmentTime,
     weekdayIndex,
@@ -222,14 +223,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
 
     // Pro-rata & start date
     const [enableProRata, setEnableProRata] = useState(false);
-    const [billingStartMonth, setBillingStartMonth] = useState(() => {
-        const now = new Date();
-        // Default to next month if we're past the 15th
-        if (now.getDate() > 15) {
-            now.setMonth(now.getMonth() + 1);
-        }
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    });
+    const [billingStartMonth, setBillingStartMonth] = useState(defaultBillingStartMonthInSaoPaulo);
     const proRataEnabled = normalizeEnrollmentProRataTerms({
         enableProRata,
         planDuration: duration,
@@ -596,9 +590,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setEnableProRata(false);
         setChargeEnrollmentFee(false);
         setEnrollmentFee(49);
-        const now = new Date();
-        if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
-        setBillingStartMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+        setBillingStartMonth(defaultBillingStartMonthInSaoPaulo());
 
         // Pré-preenche a partir do que a EXPERIMENTAL já validou (frequência + horários reais
         // capturados pelo SDR por capacidade). Fallback: feedback da aula ou 2x/semana.

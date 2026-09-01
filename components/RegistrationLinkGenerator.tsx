@@ -11,6 +11,7 @@ import EnrollmentProRataSwitch from './EnrollmentProRataSwitch';
 import {
     calculateEnrollmentProRataPreview,
     dateInSaoPaulo,
+    defaultBillingStartMonthInSaoPaulo,
     enrollmentOfferErrorMessage,
     normalizeEnrollmentTime,
     weekdayIndex,
@@ -61,11 +62,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
 
     // Pro-rata & billing start month
     const [enableProRata, setEnableProRata] = useState(false);
-    const [billingStartMonth, setBillingStartMonth] = useState(() => {
-        const now = new Date();
-        if (now.getDate() > 15) now.setMonth(now.getMonth() + 1);
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    });
+    const [billingStartMonth, setBillingStartMonth] = useState(defaultBillingStartMonthInSaoPaulo);
     const proRataEnabled = normalizeEnrollmentProRataTerms({
         enableProRata,
         planDuration: duration,
