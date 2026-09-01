@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck, AlertTriangle, Repeat, RefreshCw } from 'lucide-react';
+import { CheckCircle, ShieldAlert, FileText, GraduationCap, Wallet, DollarSign, ArrowRight, CheckCheck, AlertTriangle, CalendarClock, Repeat, RefreshCw } from 'lucide-react';
 
 // =============================================================
 // Central de Pendências do diretor: lê director_pending_counts() e mostra,
@@ -38,6 +38,7 @@ const ITEMS: Item[] = [
   // R$ 4.663,05 já não faturados.
   { key: 'sem_assinatura', label: 'Alunos tendo aula sem cobrança ativa', tab: 'student-payments', icon: AlertTriangle, color: 'text-rose-600 bg-rose-100 dark:bg-rose-900/30' },
   { key: 'avisos_pagamento', label: 'Avisos de pagamento sem entrega confirmada', tab: 'student-payments', icon: AlertTriangle, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
+  { key: 'reconciliacao', label: 'Contratos vencendo e pendências financeiras', tab: 'reconciliation', icon: CalendarClock, color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30' },
   { key: 'pagamentos_sem_aluno', label: 'Pagamentos aguardando identificação do aluno', tab: 'reconciliation', icon: Wallet, color: 'text-amber-600 bg-amber-100 dark:bg-amber-900/30' },
   { key: 'conciliacao_asaas', label: 'Divergências atuais entre Asaas e plataforma', tab: 'reconciliation', icon: AlertTriangle, color: 'text-red-600 bg-red-100 dark:bg-red-900/30' },
 ];

@@ -95,4 +95,22 @@ describe('<DirectorPendingCenter />', () => {
       expect(onNavigate).toHaveBeenNthCalledWith(2, 'reconciliation');
     });
   });
+
+  it('torna contratos vencendo visíveis na central do diretor', async () => {
+    rpc.mockResolvedValue({
+      data: { reconciliacao: 4 },
+      error: null,
+    });
+    const onNavigate = vi.fn();
+
+    render(<DirectorPendingCenter onNavigate={onNavigate} />);
+
+    const renewals = await screen.findByRole('button', {
+      name: /Contratos vencendo e pendências financeiras/i,
+    });
+    expect(renewals).toHaveTextContent('4');
+
+    fireEvent.click(renewals);
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('reconciliation'));
+  });
 });
