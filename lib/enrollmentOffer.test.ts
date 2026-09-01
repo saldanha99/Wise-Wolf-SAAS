@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
     calculateEnrollmentProRataPreview,
+    defaultBillingStartMonthInSaoPaulo,
     enrollmentOfferErrorMessage,
     normalizeEnrollmentTime,
     resolveEnrollmentOfferVendorId,
     weekdayIndex,
 } from './enrollmentOffer';
+
+describe('mês inicial padrão da mensalidade', () => {
+    it('avança 31 de agosto somente para setembro, sem overflow para outubro', () => {
+        expect(defaultBillingStartMonthInSaoPaulo(
+            new Date('2026-08-31T12:00:00-03:00'),
+        )).toBe('2026-09');
+    });
+
+    it('vira dezembro para janeiro do ano seguinte', () => {
+        expect(defaultBillingStartMonthInSaoPaulo(
+            new Date('2026-12-31T12:00:00-03:00'),
+        )).toBe('2027-01');
+    });
+});
 
 describe('matrícula autoritativa', () => {
     it('calcula o pró-rata entre o início e o primeiro vencimento, não até o fim do mês atual', () => {
