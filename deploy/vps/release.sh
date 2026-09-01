@@ -534,6 +534,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-webhook/payment-classification.test.ts \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/asaas-webhook/index.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
   supabase/functions/asaas-reconcile/diff.ts \
@@ -721,6 +722,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
   supabase/functions/cancel-hub-subscription/index.test.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/manage-hub-account-status/index.test.ts \
   supabase/functions/student-context/profile-access.test.ts \
@@ -787,6 +789,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/asaas-webhook/index.ts \
   supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/create-student-account/index.ts \
@@ -1162,6 +1165,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260831143000_student_learning_runtime_hardening.sql"
   "supabase/migrations/20260831150000_pedagogical_evaluation_catalog.sql"
   "supabase/migrations/20260831161017_fix_enrollment_offer_and_student_lifecycle_operations.sql"
+  "supabase/migrations/20260901023259_student_billing_schedule_correction_operations.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/student_lifecycle_operations_hardening.sql"
@@ -1256,6 +1260,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/reschedule_financial_authority.sql"
   "supabase/tests/interview_notification_delivery.sql"
   "supabase/tests/atomic_teacher_availability_replacement.sql"
+  "supabase/tests/student_billing_schedule_correction_operations.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

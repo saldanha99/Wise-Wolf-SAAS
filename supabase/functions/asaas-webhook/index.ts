@@ -2880,29 +2880,41 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
             }`,
             {
               method: "GET",
-              headers: { access_token: subscriptionIntegration.apiKey },
+              headers: {
+                accept: "application/json",
+                access_token: subscriptionIntegration.apiKey,
+              },
               signal: AbortSignal.timeout(12_000),
             },
           );
         } catch {
-          throw new AsaasTriageError(
-            "provider_subscription_identity_lookup_unavailable",
-            subscriptionProfile.tenant_id,
-            subscriptionProfile.id,
-          );
+          throw new Error("provider_subscription_identity_lookup_unavailable");
         }
         if (!parentResponse.ok) {
-          throw new AsaasTriageError(
-            parentResponse.status === 404
-              ? "provider_subscription_identity_not_found"
-              : "provider_subscription_identity_lookup_unavailable",
-            subscriptionProfile.tenant_id,
-            subscriptionProfile.id,
+          if (parentResponse.status === 404) {
+            throw new AsaasTriageError(
+              "provider_subscription_identity_not_found",
+              subscriptionProfile.tenant_id,
+              subscriptionProfile.id,
+            );
+          }
+          throw new Error(
+            "provider_subscription_identity_lookup_unavailable",
           );
         }
-        const parentSubscription = await parentResponse.json().catch(() =>
-          null
-        ) as Record<string, unknown> | null;
+        let parentSubscription: Record<string, unknown>;
+        try {
+          const parentPayload = await parentResponse.json();
+          if (
+            !parentPayload || typeof parentPayload !== "object" ||
+            Array.isArray(parentPayload)
+          ) {
+            throw new Error("invalid_parent_subscription_payload");
+          }
+          parentSubscription = parentPayload as Record<string, unknown>;
+        } catch {
+          throw new Error("provider_subscription_identity_lookup_unavailable");
+        }
         const parentReference = String(
           parentSubscription?.externalReference || "",
         ).trim();
@@ -3339,6 +3351,77 @@ type DurableInboxClaim = {
   attempt_count: number;
 };
 
+type StudentBillingScheduleObservation = {
+  handled: boolean;
+  operation_id?: string;
+  step_kind?: string;
+  duplicate?: boolean;
+};
+
+function explicitTimezoneProviderEventAt(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(raw)
+    ? raw
+    : null;
+}
+
+async function observeStudentBillingScheduleSubscriptionEvent(
+  supabase: SupabaseClient,
+  body: AsaasWebhookBody,
+): Promise<boolean> {
+  const subscription = body.subscription;
+  if (!subscription) return false;
+
+  const providerEventId = typeof body.id === "string" ? body.id.trim() : "";
+  const eventName = typeof body.event === "string" ? body.event.trim() : "";
+  const subscriptionId = String(subscription.id || "").trim();
+  const customerId = String(subscription.customer || "").trim();
+  const providerStatus = String(subscription.status || "").trim();
+  // Asaas also sends a zone-less local timestamp. Keep that only in the raw
+  // payload; converting it with the global ordering parser would label it UTC.
+  const providerEventAt = explicitTimezoneProviderEventAt(body.dateCreated);
+  if (
+    !providerEventId || !eventName || !subscriptionId || !customerId ||
+    !providerStatus
+  ) {
+    throw new AsaasTriageError(
+      "student_billing_schedule_event_identity_missing",
+    );
+  }
+
+  const { data, error } = await supabase.rpc(
+    "observe_asaas_student_billing_schedule_event",
+    {
+      p_provider_event_id: providerEventId,
+      p_event_name: eventName,
+      p_subscription_id: subscriptionId,
+      p_customer_id: customerId,
+      p_provider_status: providerStatus,
+      p_provider_event_at: providerEventAt,
+      // The RPC validates the provider identity against the original payload;
+      // never reduce this to a hand-picked subset.
+      p_payload: body,
+    },
+  );
+  if (error) {
+    throw new Error(
+      `student_billing_schedule_observation_failed:${error.code || "unknown"}`,
+    );
+  }
+  if (
+    !data || typeof data !== "object" || Array.isArray(data) ||
+    typeof (data as StudentBillingScheduleObservation).handled !== "boolean"
+  ) {
+    throw new Error("student_billing_schedule_observation_invalid_result");
+  }
+
+  // A duplicate that was already correlated is still handled. Conversely,
+  // duplicate metadata can never promote an unhandled event.
+  return (data as StudentBillingScheduleObservation).handled === true;
+}
+
 async function dispatchPersistedAsaasEvent(
   body: AsaasWebhookBody,
 ): Promise<void> {
@@ -3374,6 +3457,13 @@ async function dispatchPersistedAsaasEvent(
       throw new AsaasTriageError("hub_checkout_unresolved");
     }
     await processHubPaymentEvent(body, hubCheckoutId);
+    return;
+  }
+
+  if (
+    body.subscription &&
+    await observeStudentBillingScheduleSubscriptionEvent(supabase, body)
+  ) {
     return;
   }
 
