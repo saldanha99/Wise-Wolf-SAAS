@@ -118,30 +118,30 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   private.student_card_schedule_move_fingerprint(
     'move:test:one', 'card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test', 'sub_card_move_test', 'pay_card_move_test',
     date '2035-10-10', date '2035-09-10', date '2035-10-10',
     date '2035-11-10', date '2036-08-10', date '2036-09-10', 169, 12
   ) = private.student_card_schedule_move_fingerprint(
     'move:test:one', 'card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test', 'sub_card_move_test', 'pay_card_move_test',
     date '2035-10-10', date '2035-09-10', date '2035-10-10',
     date '2035-11-10', date '2036-08-10', date '2036-09-10', 169, 12
   )
   and private.student_card_schedule_move_fingerprint(
     'move:test:one', 'card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test', 'sub_card_move_test', 'pay_card_move_test',
     date '2035-10-10', date '2035-09-10', date '2035-10-10',
     date '2035-11-10', date '2036-08-10', date '2036-09-10', 169, 12
   ) <> private.student_card_schedule_move_fingerprint(
     'move:test:two', 'card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test', 'sub_card_move_test', 'pay_card_move_test',
     date '2035-10-10', date '2035-09-10', date '2035-10-10',
     date '2035-11-10', date '2036-08-10', date '2036-09-10', 169, 12
@@ -156,7 +156,7 @@ insert into auth.users (
   id, aud, role, email, raw_app_meta_data, raw_user_meta_data,
   created_at, updated_at
 ) values (
-  '91000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000001',
   'authenticated', 'authenticated', 'card-move@example.invalid',
   '{"provider":"email","providers":["email"]}',
   '{"full_name":"Card Move Test"}', pg_catalog.now(), pg_catalog.now()
@@ -164,7 +164,7 @@ insert into auth.users (
 
 insert into public.profiles (id, email, full_name, role, tenant_id)
 values (
-  '91000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000001',
   'card-move@example.invalid', 'Card Move Test', 'STUDENT', 'card-move-test'
 ) on conflict (id) do nothing;
 
@@ -180,17 +180,20 @@ update public.profiles
        subscription_id = 'sub_card_move_test',
        monthly_fee = 169,
        due_day = 10,
-       is_test_account = true,
-       test_fixture_key = 'student-card-schedule-move:test'
- where id = '91000000-0000-4000-8000-000000000001';
+       start_date = date '2035-09-05',
+       asaas_subscription_status = 'ACTIVE',
+       asaas_subscription_end_date = date '2036-09-10',
+       is_test_account = false,
+       test_fixture_key = null
+ where id = '93000000-0000-4000-8000-000000000001';
 set local app.enrollment_claim = '';
 
 delete from public.tenant_memberships
- where user_id = '91000000-0000-4000-8000-000000000001';
+ where user_id = '93000000-0000-4000-8000-000000000001';
 insert into public.tenant_memberships (
   user_id, tenant_id, role, status, is_primary
 ) values (
-  '91000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000001',
   'card-move-test', 'STUDENT', 'ACTIVE', true
 );
 
@@ -200,12 +203,12 @@ insert into public.offers (
   requires_enrollment, enrollment_fee, processing_by, processing_state,
   metadata, invite_security_version
 ) values (
-  '91000000-0000-4000-8000-000000000002',
+  '93000000-0000-4000-8000-000000000002',
   'ENROLLMENT', 'card-move-test',
-  '{"planDuration":12,"value":169,"testMode":true}',
+  '{"planDuration":12,"value":169,"testMode":false,"test_fixture":true}',
   pg_catalog.now() + interval '1 day',
-  '91000000-0000-4000-8000-000000000001', true, 0,
-  '91000000-0000-4000-8000-000000000001', 'AWAITING_PAYMENT',
+  '93000000-0000-4000-8000-000000000001', true, 0,
+  '93000000-0000-4000-8000-000000000001', 'AWAITING_PAYMENT',
   '{"test_fixture":true,"notificationDisabled":true}', 1
 );
 reset request.jwt.claims;
@@ -215,8 +218,8 @@ insert into public.student_payments (
   provider_customer_id, value, amount_cents, status, provider_status,
   due_date, billing_type, payment_method, description, payment_type, raw_payload
 ) values (
-  '91000000-0000-4000-8000-000000000003',
-  '91000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000003',
+  '93000000-0000-4000-8000-000000000001',
   'card-move-test', 'pay_card_move_test', 'pay_card_move_test',
   'cus_card_move_test', 169, 16900, 'PENDING', 'PENDING',
   date '2035-10-10', 'CREDIT_CARD', null, 'October test payment',
@@ -224,25 +227,37 @@ insert into public.student_payments (
 );
 
 select pg_temp.assert_true(
+  private.student_card_schedule_profile_exact(
+    'card-move-test', '93000000-0000-4000-8000-000000000001',
+    'cus_card_move_test', 'sub_card_move_test', 169,
+    date '2035-09-10', date '2036-09-10',
+    private.student_card_schedule_profile_snapshot(
+      'card-move-test', '93000000-0000-4000-8000-000000000001'
+    )
+  ),
+  'exact non-first-day financial profile was rejected'
+);
+
+select pg_temp.assert_true(
   private.student_card_schedule_local_payment_exact(
-    '91000000-0000-4000-8000-000000000003',
-    'card-move-test', '91000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000003',
+    'card-move-test', '93000000-0000-4000-8000-000000000001',
     'pay_card_move_test', 'cus_card_move_test', date '2035-10-10', 169
   ),
   'legacy NULL payment_method rejected an exact card payment'
 );
 update public.student_payments set payment_method = 'PIX'
- where id = '91000000-0000-4000-8000-000000000003';
+ where id = '93000000-0000-4000-8000-000000000003';
 select pg_temp.assert_true(
   not private.student_card_schedule_local_payment_exact(
-    '91000000-0000-4000-8000-000000000003',
-    'card-move-test', '91000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000003',
+    'card-move-test', '93000000-0000-4000-8000-000000000001',
     'pay_card_move_test', 'cus_card_move_test', date '2035-10-10', 169
   ),
   'contradictory payment_method was accepted'
 );
 update public.student_payments set payment_method = null
- where id = '91000000-0000-4000-8000-000000000003';
+ where id = '93000000-0000-4000-8000-000000000003';
 
 create temporary table card_move_fixture on commit drop as
 select
@@ -251,7 +266,7 @@ select
     'status','ACTIVE','billingType','CREDIT_CARD','cycle','MONTHLY',
     'value',169,'maxPayments',12,'nextDueDate','2035-11-10',
     'endDate','2036-09-10',
-    'externalReference','enrollment:91000000-0000-4000-8000-000000000002:subscription',
+    'externalReference','enrollment:93000000-0000-4000-8000-000000000002:subscription',
     'cardAttached',true
   ) as original_subscription,
   pg_catalog.jsonb_build_object(
@@ -276,12 +291,12 @@ insert into public.asaas_student_billing_period_claims (
   request_fingerprint, status, claim_token, lease_expires_at,
   submit_attempt_count, provider_entity_id
 ) values (
-  '91000000-0000-4000-8000-000000000004', 'card-move-test',
-  '91000000-0000-4000-8000-000000000001', date '2035-10-10',
+  '93000000-0000-4000-8000-000000000004', 'card-move-test',
+  '93000000-0000-4000-8000-000000000001', date '2035-10-10',
   'SUBSCRIPTION',
-  'subscription:91000000-0000-4000-8000-000000000002',
+  'subscription:93000000-0000-4000-8000-000000000002',
   pg_catalog.repeat('a',64), 'BOUND',
-  '91000000-0000-4000-8000-000000000005', pg_catalog.now(), 1,
+  '93000000-0000-4000-8000-000000000005', pg_catalog.now(), 1,
   'sub_card_move_test'
 );
 
@@ -298,14 +313,14 @@ insert into public.asaas_student_card_schedule_moves (
   accept_events_until, completed_at
 )
 select
-  '91000000-0000-4000-8000-000000000006', 'move:test:failed',
-  'card-move-test', '91000000-0000-4000-8000-000000000001',
-  '91000000-0000-4000-8000-000000000002',
-  '91000000-0000-4000-8000-000000000003', null,
+  '93000000-0000-4000-8000-000000000006', 'move:test:failed',
+  'card-move-test', '93000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000002',
+  '93000000-0000-4000-8000-000000000003', null,
   private.student_card_schedule_move_fingerprint(
     'move:test:failed','card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test','sub_card_move_test','pay_card_move_test',
     date '2035-10-10',date '2035-09-10',date '2035-10-10',
     date '2035-11-10',date '2036-08-10',date '2036-09-10',169,12
@@ -315,7 +330,7 @@ select
   date '2035-11-10',date '2036-08-10',date '2036-09-10',169,12,
   original_subscription,target_subscription,original_payment,target_payment,
   pg_catalog.jsonb_build_array(original_payment),
-  '{"integrationId":"91000000-0000-4000-8000-000000000099","version":"1","mode":"DIRECT","environment":"sandbox","baseUrl":"https://api-sandbox.asaas.com/v3"}',
+  '{"integrationId":"93000000-0000-4000-8000-000000000099","version":"1","mode":"DIRECT","environment":"sandbox","baseUrl":"https://api-sandbox.asaas.com/v3"}',
   'FAILED', pg_catalog.now() + interval '1 hour', pg_catalog.now()
 from card_move_fixture;
 
@@ -325,19 +340,19 @@ insert into public.asaas_student_billing_period_claims (
   submit_attempt_count, provider_entity_id
 )
 select
-  '91000000-0000-4000-8000-000000000007', 'card-move-test',
-  '91000000-0000-4000-8000-000000000001', date '2035-09-10',
+  '93000000-0000-4000-8000-000000000007', 'card-move-test',
+  '93000000-0000-4000-8000-000000000001', date '2035-09-10',
   'SUBSCRIPTION',
-  'subscription:91000000-0000-4000-8000-000000000002',
+  'subscription:93000000-0000-4000-8000-000000000002',
   private.student_card_schedule_move_fingerprint(
     'move:test:active','card-move-test',
-    '91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000002',
+    '93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000002',
     'cus_card_move_test','sub_card_move_test','pay_card_move_test',
     date '2035-10-10',date '2035-09-10',date '2035-10-10',
     date '2035-11-10',date '2036-08-10',date '2036-09-10',169,12
   ),
-  'BOUND', '91000000-0000-4000-8000-000000000008',
+  'BOUND', '93000000-0000-4000-8000-000000000008',
   pg_catalog.now() + interval '1 hour', 1, 'sub_card_move_test';
 
 insert into public.asaas_student_card_schedule_moves (
@@ -352,11 +367,11 @@ insert into public.asaas_student_card_schedule_moves (
   accept_events_until
 )
 select
-  '91000000-0000-4000-8000-000000000009', 'move:test:active',
-  'card-move-test', '91000000-0000-4000-8000-000000000001',
-  '91000000-0000-4000-8000-000000000002',
-  '91000000-0000-4000-8000-000000000003',
-  '91000000-0000-4000-8000-000000000007',
+  '93000000-0000-4000-8000-000000000009', 'move:test:active',
+  'card-move-test', '93000000-0000-4000-8000-000000000001',
+  '93000000-0000-4000-8000-000000000002',
+  '93000000-0000-4000-8000-000000000003',
+  '93000000-0000-4000-8000-000000000007',
   claim.request_fingerprint,
   'cus_card_move_test','sub_card_move_test','pay_card_move_test',
   date '2035-10-10',date '2035-09-10',date '2035-10-10',
@@ -364,18 +379,18 @@ select
   fixture.original_subscription,fixture.target_subscription,
   fixture.original_payment,fixture.target_payment,
   pg_catalog.jsonb_build_array(fixture.original_payment),
-  '{"integrationId":"91000000-0000-4000-8000-000000000099","version":"1","mode":"DIRECT","environment":"sandbox","baseUrl":"https://api-sandbox.asaas.com/v3"}',
+  '{"integrationId":"93000000-0000-4000-8000-000000000099","version":"1","mode":"DIRECT","environment":"sandbox","baseUrl":"https://api-sandbox.asaas.com/v3"}',
   'READY', pg_catalog.now() + interval '1 hour'
 from card_move_fixture as fixture
 join public.asaas_student_billing_period_claims as claim
-  on claim.id = '91000000-0000-4000-8000-000000000007';
+  on claim.id = '93000000-0000-4000-8000-000000000007';
 
 select pg_temp.assert_true(
   (select pg_catalog.count(*) = 2
      from public.asaas_student_card_schedule_moves
     where payment_id = 'pay_card_move_test')
   and private.student_card_schedule_move_active(
-    'card-move-test','91000000-0000-4000-8000-000000000001',
+    'card-move-test','93000000-0000-4000-8000-000000000001',
     'sub_card_move_test'
   ),
   'terminal retry is blocked or active scope is invisible'
@@ -384,7 +399,7 @@ select pg_temp.assert_true(
 select pg_temp.assert_sqlstate(
   $$update public.asaas_student_card_schedule_moves
        set payment_id = 'pay_snapshot_tamper'
-     where id = '91000000-0000-4000-8000-000000000009'$$,
+     where id = '93000000-0000-4000-8000-000000000009'$$,
   '55000', 'frozen operation identity was mutable'
 );
 
@@ -393,18 +408,18 @@ select pg_temp.assert_sqlstate(
       tenant_id,student_id,due_date,source,source_key,request_fingerprint,
       status,claim_token,lease_expires_at,submit_attempt_count
     ) values (
-      'card-move-test','91000000-0000-4000-8000-000000000001',
+      'card-move-test','93000000-0000-4000-8000-000000000001',
       date '2035-12-10','SUBSCRIPTION',
-      'subscription:91000000-0000-4000-8000-000000000002',
+      'subscription:93000000-0000-4000-8000-000000000002',
       repeat('b',64),'CLAIMED',
-      '91000000-0000-4000-8000-000000000010',now()+interval '1 hour',0
+      '93000000-0000-4000-8000-000000000010',now()+interval '1 hour',0
     )$$,
   '55000', 'reciprocal period claim was allowed during an active move'
 );
 
 select pg_temp.assert_true(
   not private.student_subscription_mutation_scope_valid(
-    'card-move-test','91000000-0000-4000-8000-000000000001',
+    'card-move-test','93000000-0000-4000-8000-000000000001',
     'cus_card_move_test','sub_card_move_test'
   ),
   'canonical subscription mutation scope ignored the active move'
@@ -413,15 +428,39 @@ select pg_temp.assert_true(
 select pg_temp.assert_sqlstate(
   $$update public.offers
        set metadata = coalesce(metadata, '{}'::jsonb) || '{"blocked":true}'
-     where id = '91000000-0000-4000-8000-000000000002'$$,
+     where id = '93000000-0000-4000-8000-000000000002'$$,
   '55000', 'offer identity was mutable during an active move'
 );
+
+select pg_temp.assert_sqlstate(
+  $$update public.profiles
+       set monthly_fee = 170
+     where id = '93000000-0000-4000-8000-000000000001'$$,
+  '55000', 'financial profile was mutable during an active move'
+);
+
+select pg_temp.assert_sqlstate(
+  $$update public.profiles
+       set asaas_subscription_end_date = date '2036-08-10'
+     where id = '93000000-0000-4000-8000-000000000001'$$,
+  '55000', 'subscription end date was mutable before terminal reconcile'
+);
+
+set local app.enrollment_claim = '1';
+select pg_temp.assert_sqlstate(
+  $$update public.profiles
+       set is_test_account = true,
+           test_fixture_key = 'student-card-schedule-move:tamper'
+     where id = '93000000-0000-4000-8000-000000000001'$$,
+  '55000', 'real profile could be converted into a fixture during an active move'
+);
+set local app.enrollment_claim = '';
 
 select pg_temp.assert_sqlstate(
   $$insert into public.tenant_memberships (
       tenant_id,user_id,role,status,is_primary
     ) values (
-      'master','91000000-0000-4000-8000-000000000001',
+      'master','93000000-0000-4000-8000-000000000001',
       'STUDENT','ACTIVE',false
     )$$,
   '55000', 'cross-tenant membership was inserted during an active move'
@@ -431,29 +470,29 @@ insert into public.asaas_student_billing_period_claims (
   id,tenant_id,student_id,due_date,source,source_key,request_fingerprint,
   status,claim_token,lease_expires_at,submit_attempt_count,provider_entity_id
 ) values (
-  '91000000-0000-4000-8000-000000000012','card-move-test',
-  '91000000-0000-4000-8000-000000000001',date '2035-12-15',
+  '93000000-0000-4000-8000-000000000012','card-move-test',
+  '93000000-0000-4000-8000-000000000001',date '2035-12-15',
   'SUBSCRIPTION','subscription:claim-new-side',repeat('d',64),'BOUND',
-  '91000000-0000-4000-8000-000000000013',now()+interval '1 hour',0,
+  '93000000-0000-4000-8000-000000000013',now()+interval '1 hour',0,
   'sub_claim_new_side'
 );
 select pg_temp.assert_sqlstate(
   $$update public.asaas_student_billing_period_claims
        set due_date = date '2035-09-15'
-     where id = '91000000-0000-4000-8000-000000000012'$$,
+     where id = '93000000-0000-4000-8000-000000000012'$$,
   '55000', 'claim NEW side entered the protected target month'
 );
 delete from public.asaas_student_billing_period_claims
- where id = '91000000-0000-4000-8000-000000000012';
+ where id = '93000000-0000-4000-8000-000000000012';
 
 select pg_temp.assert_true(
   private.student_card_schedule_local_guard_clear(
-    'card-move-test','91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000003','pay_card_move_test',
+    'card-move-test','93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000003','pay_card_move_test',
     'sub_card_move_test',
     private.student_card_schedule_local_guard_baseline(
-      'card-move-test','91000000-0000-4000-8000-000000000001',
-      '91000000-0000-4000-8000-000000000003','pay_card_move_test',
+      'card-move-test','93000000-0000-4000-8000-000000000001',
+      '93000000-0000-4000-8000-000000000003','pay_card_move_test',
       'sub_card_move_test'
     )
   ),
@@ -470,8 +509,8 @@ insert into public.asaas_webhook_inbox (
 );
 select pg_temp.assert_true(
   private.student_card_schedule_local_guard_clear(
-    'card-move-test','91000000-0000-4000-8000-000000000001',
-    '91000000-0000-4000-8000-000000000003','pay_card_move_test',
+    'card-move-test','93000000-0000-4000-8000-000000000001',
+    '93000000-0000-4000-8000-000000000003','pay_card_move_test',
     'sub_card_move_test',
     '{"subscriptionCreatedOpenIssueIds":[],"subscriptionCreatedTriageEventIds":[]}'
   ) is false,
@@ -486,8 +525,8 @@ insert into public.asaas_student_card_schedule_move_steps (
   submitted_at
 )
 select
-  '91000000-0000-4000-8000-000000000014',
-  '91000000-0000-4000-8000-000000000009',
+  '93000000-0000-4000-8000-000000000014',
+  '93000000-0000-4000-8000-000000000009',
   'RESTORE_ORIGINAL_SCHEDULE','COMPENSATION',30,'SUBMITTING',repeat('f',64),
   target_subscription,original_subscription,
   '{"method":"PUT","path":"/subscriptions/sub_card_move_test","body":{"nextDueDate":"2035-11-10","endDate":"2036-09-10"}}',
@@ -508,13 +547,13 @@ select
       'status','ACTIVE','value',169,'cycle','MONTHLY',
       'billingType','CREDIT_CARD',
       'externalReference',
-        'enrollment:91000000-0000-4000-8000-000000000002:subscription'
+        'enrollment:93000000-0000-4000-8000-000000000002:subscription'
     )
   ),repeat('1',64),'PROCESSING',1,1,gen_random_uuid(),null,
   step.submitted_at+interval '1 second',step.submitted_at+interval '1 second',
   now()
 from public.asaas_student_card_schedule_move_steps as step
-where step.id = '91000000-0000-4000-8000-000000000014';
+where step.id = '93000000-0000-4000-8000-000000000014';
 select pg_temp.assert_true(
   (public.observe_asaas_student_billing_schedule_event(
     'evt_card_move_minimal_subscription','SUBSCRIPTION_UPDATED',
@@ -539,7 +578,7 @@ select pg_temp.assert_true(
 delete from public.asaas_webhook_inbox
  where provider_event_id='evt_card_move_minimal_subscription';
 delete from public.asaas_student_card_schedule_move_steps
- where id='91000000-0000-4000-8000-000000000014';
+ where id='93000000-0000-4000-8000-000000000014';
 
 insert into public.asaas_student_card_schedule_move_steps (
   id, operation_id, step_kind, route_kind, ordinal, status,
@@ -547,8 +586,8 @@ insert into public.asaas_student_card_schedule_move_steps (
   provider_response, observed_state, completed_at, last_error
 )
 select
-  '91000000-0000-4000-8000-000000000011',
-  '91000000-0000-4000-8000-000000000009',
+  '93000000-0000-4000-8000-000000000011',
+  '93000000-0000-4000-8000-000000000009',
   'UPDATE_TARGET_SCHEDULE','TARGET',20,'FAILED',pg_catalog.repeat('c',64),
   original_subscription,target_subscription,
   '{"method":"PUT","path":"/subscriptions/sub_card_move_test","body":{"nextDueDate":"2035-10-10","endDate":"2036-08-10"}}',
@@ -559,8 +598,81 @@ from card_move_fixture;
 select pg_temp.assert_sqlstate(
   $$update public.asaas_student_card_schedule_move_steps
        set provider_response = '{"tampered":true}'
-     where id = '91000000-0000-4000-8000-000000000011'$$,
+     where id = '93000000-0000-4000-8000-000000000011'$$,
   '55000', 'terminal step evidence was mutable'
+);
+
+-- The finalizer deliberately writes the ledger terminal state before its
+-- profile CAS. Both writes still live in one transaction and must roll back
+-- together if any later fence fails.
+do $target_profile_cas_rollback$
+declare
+  v_profile_updated boolean := false;
+begin
+  begin
+    update public.asaas_student_card_schedule_moves
+       set status = 'COMPLETED', completed_at = pg_catalog.clock_timestamp()
+     where id = '93000000-0000-4000-8000-000000000009';
+    update public.profiles
+       set asaas_subscription_end_date = date '2036-08-10',
+           asaas_subscription_synced_at = pg_catalog.clock_timestamp()
+     where id = '93000000-0000-4000-8000-000000000001';
+    v_profile_updated := found;
+    raise exception 'force_target_profile_cas_rollback';
+  exception when raise_exception then
+    null;
+  end;
+  if not v_profile_updated then
+    raise exception 'target profile CAS was not reached';
+  end if;
+end
+$target_profile_cas_rollback$;
+select pg_temp.assert_true(
+  (select status = 'READY' and completed_at is null
+     from public.asaas_student_card_schedule_moves
+    where id = '93000000-0000-4000-8000-000000000009')
+  and (select asaas_subscription_end_date = date '2036-09-10'
+         from public.profiles
+        where id = '93000000-0000-4000-8000-000000000001'),
+  'target ledger/profile CAS did not roll back atomically'
+);
+
+do $compensation_profile_cas_rollback$
+declare
+  v_profile_updated boolean := false;
+  v_claim_deleted boolean := false;
+begin
+  begin
+    update public.asaas_student_card_schedule_moves
+       set status = 'COMPENSATED', target_billing_claim_id = null,
+           completed_at = pg_catalog.clock_timestamp()
+     where id = '93000000-0000-4000-8000-000000000009';
+    update public.profiles
+       set asaas_subscription_synced_at = pg_catalog.clock_timestamp()
+     where id = '93000000-0000-4000-8000-000000000001';
+    v_profile_updated := found;
+    delete from public.asaas_student_billing_period_claims
+     where id = '93000000-0000-4000-8000-000000000007';
+    v_claim_deleted := found;
+    raise exception 'force_compensation_profile_cas_rollback';
+  exception when raise_exception then
+    null;
+  end;
+  if not v_profile_updated or not v_claim_deleted then
+    raise exception 'compensation profile/claim CAS was not reached';
+  end if;
+end
+$compensation_profile_cas_rollback$;
+select pg_temp.assert_true(
+  (select status = 'READY' and target_billing_claim_id =
+            '93000000-0000-4000-8000-000000000007'
+     from public.asaas_student_card_schedule_moves
+    where id = '93000000-0000-4000-8000-000000000009')
+  and exists (
+    select 1 from public.asaas_student_billing_period_claims
+     where id = '93000000-0000-4000-8000-000000000007'
+  ),
+  'compensation ledger/profile/claim CAS did not roll back atomically'
 );
 
 -- Terminal cleanup keeps the audit snapshot but releases the target claim and
@@ -568,26 +680,37 @@ select pg_temp.assert_sqlstate(
 update public.asaas_student_card_schedule_moves
    set status = 'FAILED', target_billing_claim_id = null,
        completed_at = pg_catalog.now(), last_error = 'test_terminal_cleanup'
- where id = '91000000-0000-4000-8000-000000000009';
+ where id = '93000000-0000-4000-8000-000000000009';
 delete from public.asaas_student_billing_period_claims
- where id = '91000000-0000-4000-8000-000000000007';
+ where id = '93000000-0000-4000-8000-000000000007';
 
 update public.offers
    set metadata = coalesce(metadata, '{}'::jsonb) || '{"terminalUpdate":true}'
- where id = '91000000-0000-4000-8000-000000000002';
+ where id = '93000000-0000-4000-8000-000000000002';
 select pg_temp.assert_true(
   (select metadata @> '{"terminalUpdate":true}'::jsonb
      from public.offers
-    where id = '91000000-0000-4000-8000-000000000002'),
+    where id = '93000000-0000-4000-8000-000000000002'),
   'offer trigger replaced NEW with OLD after the move became terminal'
+);
+
+update public.profiles
+   set monthly_fee = 170,
+       asaas_subscription_synced_at = pg_catalog.clock_timestamp()
+ where id = '93000000-0000-4000-8000-000000000001';
+select pg_temp.assert_true(
+  (select monthly_fee = 170
+     from public.profiles
+    where id = '93000000-0000-4000-8000-000000000001'),
+  'ordinary profile update stayed blocked after terminal cleanup'
 );
 
 select pg_temp.assert_true(
   (select status = 'FAILED' and target_billing_claim_id is null
      from public.asaas_student_card_schedule_moves
-    where id = '91000000-0000-4000-8000-000000000009')
+    where id = '93000000-0000-4000-8000-000000000009')
   and not private.student_card_schedule_move_active(
-    'card-move-test','91000000-0000-4000-8000-000000000001',
+    'card-move-test','93000000-0000-4000-8000-000000000001',
     'sub_card_move_test'
   ),
   'terminal status did not remain visible after claim release'
@@ -596,12 +719,12 @@ select pg_temp.assert_true(
 select pg_temp.assert_sqlstate(
   $$update public.asaas_student_card_schedule_moves
        set last_error = 'tampered'
-     where id = '91000000-0000-4000-8000-000000000009'$$,
+     where id = '93000000-0000-4000-8000-000000000009'$$,
   '55000', 'terminal operation evidence was mutable'
 );
 
 delete from public.student_payments
- where id = '91000000-0000-4000-8000-000000000003';
+ where id = '93000000-0000-4000-8000-000000000003';
 select pg_temp.assert_true(
   (
     select pg_catalog.count(*) = 2

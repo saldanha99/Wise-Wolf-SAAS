@@ -29,6 +29,7 @@ declare
   next_payment_exact_count integer := 0;
   payment_count integer := 0;
   duplicate_month boolean := false;
+  invalid_payment_list boolean := true;
 begin
   select * into strict args from finish_args;
   perform pg_catalog.pg_advisory_xact_lock(
@@ -67,14 +68,57 @@ begin
      and pg_catalog.jsonb_array_length(args.subscription_payments) <= 100
      and (args.observed_after - 'nextDueDate') is not distinct from
        (step_row.desired_after - 'nextDueDate')
+     and args.observed_after ->> 'id' = operation_row.subscription_id
+     and args.observed_after ->> 'customer' = operation_row.customer_id
+     and args.observed_after ->> 'status' = 'ACTIVE'
+     and args.observed_after ->> 'billingType' = 'CREDIT_CARD'
+     and args.observed_after ->> 'cycle' = 'MONTHLY'
+     and args.observed_after ->> 'externalReference' =
+       'enrollment:' || operation_row.offer_id::text || ':subscription'
+     and args.observed_after ->> 'endDate' =
+       operation_row.target_end_date::text
+     and args.observed_after -> 'value' =
+       pg_catalog.to_jsonb(operation_row.expected_value)
+     and args.observed_after -> 'maxPayments' =
+       pg_catalog.to_jsonb(operation_row.expected_max_payments)
+     and args.observed_after -> 'cardAttached' = 'true'::jsonb
   then
-    begin
-      observed_next_due := (args.observed_after ->> 'nextDueDate')::date;
-    exception when invalid_datetime_format or datetime_field_overflow then
-      observed_next_due := null;
-    end;
-    select
-      pg_catalog.count(*) filter (
+    select exists (
+      select 1
+        from pg_catalog.jsonb_array_elements(args.subscription_payments)
+          as item(payment)
+       where pg_catalog.jsonb_typeof(item.payment) <> 'object'
+          or item.payment ->> 'customer' is distinct from
+            operation_row.customer_id
+          or item.payment ->> 'subscription' is distinct from
+            operation_row.subscription_id
+          or coalesce(item.payment ->> 'id', '') !~
+            '^pay_[A-Za-z0-9_-]{4,196}$'
+          or item.payment ->> 'status' is distinct from 'PENDING'
+          or item.payment ->> 'billingType' is distinct from 'CREDIT_CARD'
+          or item.payment -> 'value' is distinct from
+            pg_catalog.to_jsonb(operation_row.expected_value)
+          or item.payment -> 'deleted' is distinct from 'false'::jsonb
+          or coalesce(item.payment ->> 'dueDate', '') !~
+            '^\d{4}-\d{2}-\d{2}$'
+          or coalesce(item.payment ->> 'originalDueDate', '') !~
+            '^\d{4}-\d{2}-\d{2}$'
+          or (
+            nullif(pg_catalog.btrim(coalesce(
+              item.payment ->> 'externalReference', ''
+            )), '') is not null
+            and item.payment ->> 'externalReference' <>
+              'enrollment:' || operation_row.offer_id::text || ':subscription'
+          )
+    ) into invalid_payment_list;
+    if not invalid_payment_list then
+      begin
+        observed_next_due := (args.observed_after ->> 'nextDueDate')::date;
+      exception when invalid_datetime_format or datetime_field_overflow then
+        observed_next_due := null;
+      end;
+      select
+        pg_catalog.count(*) filter (
         where item.payment ->> 'id' = operation_row.payment_id
           and item.payment ->> 'dueDate' = operation_row.target_due_date::text
           and item.payment ->> 'originalDueDate' =
@@ -88,15 +132,12 @@ begin
             or item.payment ->> 'externalReference' =
               'enrollment:' || operation_row.offer_id::text || ':subscription'
           )
-          and (item.payment ->> 'value')::numeric =
-            operation_row.expected_value
+          and item.payment -> 'value' =
+            pg_catalog.to_jsonb(operation_row.expected_value)
       ),
       pg_catalog.count(*) filter (
-        where pg_catalog.date_trunc(
-                'month', (item.payment ->> 'dueDate')::date
-              ) = pg_catalog.date_trunc(
-                'month', operation_row.target_next_due_date
-              )
+        where pg_catalog.left(item.payment ->> 'dueDate', 7) =
+              pg_catalog.left(operation_row.target_next_due_date::text, 7)
       ),
       pg_catalog.count(*) filter (
         where item.payment ->> 'dueDate' =
@@ -105,8 +146,8 @@ begin
               operation_row.target_next_due_date::text
           and item.payment ->> 'status' = 'PENDING'
           and item.payment ->> 'billingType' = 'CREDIT_CARD'
-          and (item.payment ->> 'value')::numeric =
-            operation_row.expected_value
+          and item.payment -> 'value' =
+            pg_catalog.to_jsonb(operation_row.expected_value)
           and (
             nullif(pg_catalog.btrim(coalesce(
               item.payment ->> 'externalReference', ''
@@ -118,29 +159,29 @@ begin
       pg_catalog.count(*)
       into target_payment_count, next_payment_count,
            next_payment_exact_count, payment_count
-      from pg_catalog.jsonb_array_elements(args.subscription_payments)
-        as item(payment);
-    select exists (
-      select 1
-        from (
-          select pg_catalog.date_trunc(
-                   'month', (item.payment ->> 'dueDate')::date
-                 ) as competence
-            from pg_catalog.jsonb_array_elements(args.subscription_payments)
-              as item(payment)
-           group by 1
-          having pg_catalog.count(*) > 1
-        ) as duplicate
-    ) into duplicate_month;
-    success_matches := target_payment_count = 1
-      and not duplicate_month
-      and (
-        (observed_next_due = operation_row.target_next_due_date
-          and next_payment_count = 0 and payment_count = 1)
-        or (observed_next_due = operation_row.original_next_due_date
-          and next_payment_count = 1 and next_payment_exact_count = 1
-          and payment_count = 2)
-      );
+        from pg_catalog.jsonb_array_elements(args.subscription_payments)
+          as item(payment);
+      select exists (
+        select 1
+          from (
+            select pg_catalog.left(item.payment ->> 'dueDate', 7)
+                     as competence
+              from pg_catalog.jsonb_array_elements(args.subscription_payments)
+                as item(payment)
+             group by 1
+            having pg_catalog.count(*) > 1
+          ) as duplicate
+      ) into duplicate_month;
+      success_matches := target_payment_count = 1
+        and not duplicate_month
+        and (
+          (observed_next_due = operation_row.target_next_due_date
+            and next_payment_count = 0 and payment_count = 1)
+          or (observed_next_due = operation_row.original_next_due_date
+            and next_payment_count = 1 and next_payment_exact_count = 1
+            and payment_count = 2)
+        );
+    end if;
   end if;
 
   if step_row.status not in ('SUBMITTING', 'UNKNOWN')
@@ -227,6 +268,16 @@ begin
          operation_row.integration_snapshot -> 'localGuardBaseline'
        ) is not true
      )
+     or private.student_card_schedule_profile_exact(
+       operation_row.tenant_id,
+       operation_row.student_id,
+       operation_row.customer_id,
+       operation_row.subscription_id,
+       operation_row.expected_value,
+       operation_row.target_due_date,
+       operation_row.original_end_date,
+       operation_row.integration_snapshot -> 'profileSnapshot'
+     ) is not true
   then
     raise exception 'student_card_schedule_move_finish_fence_refused';
   end if;

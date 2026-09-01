@@ -203,6 +203,10 @@ begin
        pg_catalog.jsonb_build_array(args.original_payment_snapshot)
      or pg_catalog.jsonb_typeof(args.integration_snapshot) <> 'object'
      or args.integration_snapshot = '{}'::jsonb
+     or args.integration_snapshot -> 'profileSnapshot' is distinct from
+       private.student_card_schedule_profile_snapshot(
+         args.tenant_id, args.student_id
+       )
      or args.integration_snapshot -> 'localGuardBaseline' is distinct from
        private.student_card_schedule_local_guard_baseline(
          args.tenant_id,
@@ -231,20 +235,22 @@ begin
 
   -- Revalidate every mutable local invariant inside the same transaction that
   -- freezes the operation and target month claim.
-  if not exists (
+  if private.student_card_schedule_profile_exact(
+       args.tenant_id,
+       args.student_id,
+       args.customer_id,
+       args.subscription_id,
+       args.expected_value,
+       args.target_due_date,
+       args.original_end_date,
+       args.integration_snapshot -> 'profileSnapshot'
+     ) is not true
+     or exists (
        select 1
          from public.profiles as profile
         where profile.id = args.student_id
           and profile.tenant_id = args.tenant_id
-          and profile.role = 'STUDENT'
-          and pg_catalog.lower(pg_catalog.btrim(coalesce(
-                profile.lifecycle_status, ''
-              ))) = 'active'
-          and coalesce(profile.is_test_account, false) is false
-          and nullif(pg_catalog.btrim(profile.asaas_customer_id), '') =
-            args.customer_id
-          and nullif(pg_catalog.btrim(profile.subscription_id), '') =
-            args.subscription_id
+          and coalesce(profile.is_test_account, false)
      )
      or not private.student_subscription_mutation_scope_before_card_move(
        args.tenant_id,

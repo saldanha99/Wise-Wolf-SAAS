@@ -321,6 +321,82 @@ as $function$
   );
 $function$;
 
+create or replace function private.student_card_schedule_profile_snapshot(
+  p_tenant_id text,
+  p_student_id uuid
+)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select pg_catalog.jsonb_build_object(
+    'status', profile.status,
+    'lifecycleStatus', profile.lifecycle_status,
+    'isTestAccount', coalesce(profile.is_test_account, false),
+    'monthlyFee', profile.monthly_fee,
+    'dueDay', profile.due_day,
+    'startDate', profile.start_date,
+    'asaasSubscriptionStatus', profile.asaas_subscription_status,
+    'asaasSubscriptionEndDate', profile.asaas_subscription_end_date
+  )
+    from public.profiles as profile
+   where profile.id = p_student_id
+     and profile.tenant_id = p_tenant_id;
+$function$;
+
+create or replace function private.student_card_schedule_profile_exact(
+  p_tenant_id text,
+  p_student_id uuid,
+  p_customer_id text,
+  p_subscription_id text,
+  p_expected_value numeric,
+  p_target_due_date date,
+  p_expected_end_date date,
+  p_expected_snapshot jsonb
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select pg_catalog.jsonb_typeof(p_expected_snapshot) = 'object'
+  and private.student_card_schedule_profile_snapshot(
+        p_tenant_id, p_student_id
+      ) is not distinct from p_expected_snapshot
+  and exists (
+    select 1
+      from public.profiles as profile
+     where profile.id = p_student_id
+       and profile.tenant_id = p_tenant_id
+       and profile.role = 'STUDENT'
+       and pg_catalog.lower(pg_catalog.btrim(coalesce(
+             profile.lifecycle_status, ''
+           ))) = 'active'
+       and pg_catalog.lower(pg_catalog.btrim(coalesce(
+             profile.status, ''
+           ))) in ('active', 'ativo')
+       and coalesce(profile.is_test_account, false) is false
+       and nullif(pg_catalog.btrim(profile.asaas_customer_id), '') =
+         p_customer_id
+       and nullif(pg_catalog.btrim(profile.subscription_id), '') =
+         p_subscription_id
+       and profile.monthly_fee = p_expected_value
+       and profile.due_day =
+         pg_catalog.date_part('day', p_target_due_date)::int
+       and profile.start_date is not null
+       and pg_catalog.date_trunc('month', profile.start_date) =
+         pg_catalog.date_trunc('month', p_target_due_date)
+       and profile.start_date <= p_target_due_date
+       and pg_catalog.upper(pg_catalog.btrim(coalesce(
+             profile.asaas_subscription_status, ''
+           ))) = 'ACTIVE'
+       and profile.asaas_subscription_end_date = p_expected_end_date
+  );
+$function$;
+
 create or replace function private.student_card_schedule_offer_exact(
   p_tenant_id text,
   p_student_id uuid,
@@ -892,7 +968,35 @@ language plpgsql
 security definer
 set search_path = ''
 as $function$
+declare
+  v_protected_change boolean;
 begin
+  v_protected_change := tg_op = 'DELETE' or (
+    old.tenant_id is distinct from new.tenant_id
+    or old.role is distinct from new.role
+    or old.status is distinct from new.status
+    or old.lifecycle_status is distinct from new.lifecycle_status
+    or old.is_test_account is distinct from new.is_test_account
+    or old.asaas_customer_id is distinct from new.asaas_customer_id
+    or old.subscription_id is distinct from new.subscription_id
+    or old.monthly_fee is distinct from new.monthly_fee
+    or old.due_day is distinct from new.due_day
+    or old.start_date is distinct from new.start_date
+    or old.asaas_subscription_status is distinct from
+      new.asaas_subscription_status
+    or old.asaas_subscription_end_date is distinct from
+      new.asaas_subscription_end_date
+    or old.asaas_subscription_synced_at is distinct from
+      new.asaas_subscription_synced_at
+  );
+  if not v_protected_change then return new; end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'student-billing-lifecycle:' || old.tenant_id || ':' || old.id::text,
+      0
+    )
+  );
   if tg_op = 'DELETE' then
     if private.student_card_schedule_move_active(
          old.tenant_id,
@@ -905,14 +1009,7 @@ begin
     end if;
     return old;
   end if;
-  if (
-       old.tenant_id is distinct from new.tenant_id
-       or old.role is distinct from new.role
-       or old.lifecycle_status is distinct from new.lifecycle_status
-       or old.asaas_customer_id is distinct from new.asaas_customer_id
-       or old.subscription_id is distinct from new.subscription_id
-     )
-     and private.student_card_schedule_move_active(
+  if private.student_card_schedule_move_active(
        old.tenant_id,
        old.id,
        old.subscription_id
@@ -1449,6 +1546,11 @@ alter function private.student_card_schedule_local_guard_clear(
 ) owner to postgres;
 alter function private.student_card_schedule_membership_exact(text,uuid)
   owner to postgres;
+alter function private.student_card_schedule_profile_snapshot(text,uuid)
+  owner to postgres;
+alter function private.student_card_schedule_profile_exact(
+  text,uuid,text,text,numeric,date,date,jsonb
+) owner to postgres;
 alter function private.student_card_schedule_offer_exact(text,uuid,uuid)
   owner to postgres;
 alter function private.student_card_schedule_claims_exact(
@@ -1493,6 +1595,11 @@ revoke all on function private.student_card_schedule_local_guard_clear(
 ) from public, anon, authenticated, service_role;
 revoke all on function private.student_card_schedule_membership_exact(text,uuid)
   from public, anon, authenticated, service_role;
+revoke all on function private.student_card_schedule_profile_snapshot(text,uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function private.student_card_schedule_profile_exact(
+  text,uuid,text,text,numeric,date,date,jsonb
+) from public, anon, authenticated, service_role;
 revoke all on function private.student_card_schedule_offer_exact(text,uuid,uuid)
   from public, anon, authenticated, service_role;
 revoke all on function private.student_card_schedule_claims_exact(

@@ -63,20 +63,24 @@ begin
     raise exception 'student_card_schedule_move_concurrent_operation';
   end if;
 
-  if not exists (
+  if private.student_card_schedule_profile_exact(
+       args.tenant_id,
+       args.student_id,
+       args.customer_id,
+       args.subscription_id,
+       args.expected_value,
+       args.target_due_date,
+       args.original_end_date,
+       private.student_card_schedule_profile_snapshot(
+         args.tenant_id, args.student_id
+       )
+     ) is not true
+     or exists (
        select 1
          from public.profiles as profile
         where profile.id = args.student_id
           and profile.tenant_id = args.tenant_id
-          and profile.role = 'STUDENT'
-          and pg_catalog.lower(pg_catalog.btrim(coalesce(
-                profile.lifecycle_status, ''
-              ))) = 'active'
-          and coalesce(profile.is_test_account, false) is false
-          and nullif(pg_catalog.btrim(profile.asaas_customer_id), '') =
-            args.customer_id
-          and nullif(pg_catalog.btrim(profile.subscription_id), '') =
-            args.subscription_id
+          and coalesce(profile.is_test_account, false)
      )
      or not private.student_subscription_mutation_scope_valid(
        args.tenant_id,
@@ -170,6 +174,9 @@ select pg_catalog.jsonb_build_object(
     'environment', args.provider_environment,
     'mode', connection.mode,
     'baseUrl', args.asaas_base_url,
+    'profileSnapshot', private.student_card_schedule_profile_snapshot(
+      args.tenant_id, args.student_id
+    ),
     'localGuardBaseline',
       private.student_card_schedule_local_guard_baseline(
         args.tenant_id,

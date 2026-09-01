@@ -86,6 +86,16 @@ begin
        operation_row.target_billing_claim_id,
        operation_row.target_claim_fingerprint
      ) is not true
+     or private.student_card_schedule_profile_exact(
+       operation_row.tenant_id,
+       operation_row.student_id,
+       operation_row.customer_id,
+       operation_row.subscription_id,
+       operation_row.expected_value,
+       operation_row.target_due_date,
+       operation_row.original_end_date,
+       operation_row.integration_snapshot -> 'profileSnapshot'
+     ) is not true
   then
     raise exception 'student_card_schedule_move_local_scope_changed';
   end if;
@@ -103,16 +113,10 @@ begin
              as item(payment)
           where item.payment ->> 'dueDate' is null
              or item.payment ->> 'originalDueDate' is null
-             or pg_catalog.date_trunc(
-                  'month', (item.payment ->> 'dueDate')::date
-                ) = pg_catalog.date_trunc(
-                  'month', operation_row.target_due_date
-                )
-             or pg_catalog.date_trunc(
-                  'month', (item.payment ->> 'originalDueDate')::date
-                ) = pg_catalog.date_trunc(
-                  'month', operation_row.target_due_date
-                )
+             or pg_catalog.left(item.payment ->> 'dueDate', 7) =
+                  pg_catalog.left(operation_row.target_due_date::text, 7)
+             or pg_catalog.left(item.payment ->> 'originalDueDate', 7) =
+                  pg_catalog.left(operation_row.target_due_date::text, 7)
        )
     then
       raise exception 'student_card_schedule_move_compensation_provider_mismatch';
@@ -152,23 +156,6 @@ begin
              operation_row.old_due_date::text
       );
 
-    if original_local and restore_webhook_causal then
-      update public.profiles as profile
-       set asaas_subscription_status = 'ACTIVE',
-           asaas_subscription_end_date = operation_row.original_end_date,
-             asaas_subscription_synced_at = pg_catalog.clock_timestamp()
-       where profile.id = operation_row.student_id
-         and profile.tenant_id = operation_row.tenant_id
-         and profile.role = 'STUDENT'
-         and nullif(pg_catalog.btrim(profile.asaas_customer_id), '') =
-           operation_row.customer_id
-         and nullif(pg_catalog.btrim(profile.subscription_id), '') =
-           operation_row.subscription_id;
-      if not found then
-        raise exception 'student_card_schedule_move_profile_scope_changed';
-      end if;
-    end if;
-
     update public.asaas_student_card_schedule_moves
        set status = case when original_local and restore_webhook_causal
               then 'COMPENSATED'
@@ -189,6 +176,25 @@ begin
            updated_at = pg_catalog.clock_timestamp()
      where id = operation_row.id;
     if original_local and restore_webhook_causal then
+      update public.profiles as profile
+       set asaas_subscription_status = 'ACTIVE',
+           asaas_subscription_end_date = operation_row.original_end_date,
+           asaas_subscription_synced_at = pg_catalog.clock_timestamp()
+       where profile.id = operation_row.student_id
+         and profile.tenant_id = operation_row.tenant_id
+         and private.student_card_schedule_profile_exact(
+           operation_row.tenant_id,
+           operation_row.student_id,
+           operation_row.customer_id,
+           operation_row.subscription_id,
+           operation_row.expected_value,
+           operation_row.target_due_date,
+           operation_row.original_end_date,
+           operation_row.integration_snapshot -> 'profileSnapshot'
+         );
+      if not found then
+        raise exception 'student_card_schedule_move_profile_scope_changed';
+      end if;
       delete from public.asaas_student_billing_period_claims as claim
        where claim.id = operation_row.target_billing_claim_id
          and claim.tenant_id = operation_row.tenant_id
@@ -233,8 +239,21 @@ begin
          from pg_catalog.jsonb_array_elements(args.subscription_payments)
            as item(payment)
         where pg_catalog.jsonb_typeof(item.payment) <> 'object'
-           or item.payment ->> 'customer' <> operation_row.customer_id
-           or item.payment ->> 'subscription' <> operation_row.subscription_id
+           or item.payment ->> 'customer' is distinct from
+             operation_row.customer_id
+           or item.payment ->> 'subscription' is distinct from
+             operation_row.subscription_id
+           or coalesce(item.payment ->> 'id', '') !~
+             '^pay_[A-Za-z0-9_-]{4,196}$'
+           or item.payment ->> 'status' is distinct from 'PENDING'
+           or item.payment ->> 'billingType' is distinct from 'CREDIT_CARD'
+           or item.payment -> 'value' is distinct from
+             pg_catalog.to_jsonb(operation_row.expected_value)
+           or item.payment -> 'deleted' is distinct from 'false'::jsonb
+           or coalesce(item.payment ->> 'dueDate', '') !~
+             '^\d{4}-\d{2}-\d{2}$'
+           or coalesce(item.payment ->> 'originalDueDate', '') !~
+             '^\d{4}-\d{2}-\d{2}$'
            or (
              nullif(pg_catalog.btrim(coalesce(
                item.payment ->> 'externalReference', ''
@@ -242,9 +261,6 @@ begin
              and item.payment ->> 'externalReference' <>
                'enrollment:' || operation_row.offer_id::text || ':subscription'
            )
-           or coalesce((item.payment ->> 'deleted')::boolean, false)
-           or item.payment ->> 'id' !~ '^pay_[A-Za-z0-9_-]{4,196}$'
-           or item.payment ->> 'dueDate' !~ '^\d{4}-\d{2}-\d{2}$'
      )
   then
     raise exception 'student_card_schedule_move_payment_list_invalid';
@@ -264,14 +280,12 @@ begin
           or item.payment ->> 'externalReference' =
             'enrollment:' || operation_row.offer_id::text || ':subscription'
         )
-        and (item.payment ->> 'value')::numeric = operation_row.expected_value
+        and item.payment -> 'value' =
+          pg_catalog.to_jsonb(operation_row.expected_value)
     ),
     pg_catalog.count(*) filter (
-      where pg_catalog.date_trunc(
-              'month', (item.payment ->> 'dueDate')::date
-            ) = pg_catalog.date_trunc(
-              'month', operation_row.target_next_due_date
-            )
+      where pg_catalog.left(item.payment ->> 'dueDate', 7) =
+            pg_catalog.left(operation_row.target_next_due_date::text, 7)
     ),
     pg_catalog.count(*) filter (
       where item.payment ->> 'dueDate' =
@@ -280,7 +294,8 @@ begin
             operation_row.target_next_due_date::text
         and item.payment ->> 'status' = 'PENDING'
         and item.payment ->> 'billingType' = 'CREDIT_CARD'
-        and (item.payment ->> 'value')::numeric = operation_row.expected_value
+        and item.payment -> 'value' =
+          pg_catalog.to_jsonb(operation_row.expected_value)
     ),
     pg_catalog.count(*)
     into target_month_count, next_month_count,
@@ -293,11 +308,8 @@ begin
       into next_provider_payment_id
       from pg_catalog.jsonb_array_elements(args.subscription_payments)
         as item(payment)
-     where pg_catalog.date_trunc(
-             'month', (item.payment ->> 'dueDate')::date
-           ) = pg_catalog.date_trunc(
-             'month', operation_row.target_next_due_date
-           );
+     where pg_catalog.left(item.payment ->> 'dueDate', 7) =
+           pg_catalog.left(operation_row.target_next_due_date::text, 7);
 
     next_payment_materialized :=
       next_month_count = 1
@@ -353,9 +365,7 @@ begin
   select exists (
     select 1
       from (
-        select pg_catalog.date_trunc(
-                 'month', (item.payment ->> 'dueDate')::date
-               ) as competence,
+        select pg_catalog.left(item.payment ->> 'dueDate', 7) as competence,
                pg_catalog.count(*) as payment_count
           from pg_catalog.jsonb_array_elements(args.subscription_payments)
             as item(payment)
@@ -375,7 +385,7 @@ begin
        select 1
          from pg_catalog.jsonb_array_elements(args.subscription_payments)
            as item(payment)
-        where (item.payment ->> 'dueDate')::date > operation_row.target_end_date
+        where item.payment ->> 'dueDate' > operation_row.target_end_date::text
      )
   then
     raise exception 'student_card_schedule_move_twelve_payment_sequence_invalid';
@@ -416,26 +426,6 @@ begin
          operation_row.target_due_date::text
   );
 
-  if target_local and target_webhook_causal and next_payment_materialized then
-    update public.profiles as profile
-       set asaas_subscription_status = 'ACTIVE',
-           asaas_subscription_end_date = operation_row.target_end_date,
-           asaas_subscription_synced_at = pg_catalog.clock_timestamp()
-     where profile.id = operation_row.student_id
-       and profile.tenant_id = operation_row.tenant_id
-       and profile.role = 'STUDENT'
-       and pg_catalog.lower(pg_catalog.btrim(coalesce(
-             profile.lifecycle_status, ''
-           ))) = 'active'
-       and nullif(pg_catalog.btrim(profile.asaas_customer_id), '') =
-         operation_row.customer_id
-       and nullif(pg_catalog.btrim(profile.subscription_id), '') =
-         operation_row.subscription_id;
-    if not found then
-      raise exception 'student_card_schedule_move_profile_scope_changed';
-    end if;
-  end if;
-
   update public.asaas_student_card_schedule_moves
      set status = case when target_local and target_webhook_causal
                             and next_payment_materialized
@@ -456,6 +446,27 @@ begin
           end,
          updated_at = pg_catalog.clock_timestamp()
    where id = operation_row.id;
+  if target_local and target_webhook_causal and next_payment_materialized then
+    update public.profiles as profile
+       set asaas_subscription_status = 'ACTIVE',
+           asaas_subscription_end_date = operation_row.target_end_date,
+           asaas_subscription_synced_at = pg_catalog.clock_timestamp()
+     where profile.id = operation_row.student_id
+       and profile.tenant_id = operation_row.tenant_id
+       and private.student_card_schedule_profile_exact(
+         operation_row.tenant_id,
+         operation_row.student_id,
+         operation_row.customer_id,
+         operation_row.subscription_id,
+         operation_row.expected_value,
+         operation_row.target_due_date,
+         operation_row.original_end_date,
+         operation_row.integration_snapshot -> 'profileSnapshot'
+       );
+    if not found then
+      raise exception 'student_card_schedule_move_profile_scope_changed';
+    end if;
+  end if;
 end
 $reconcile$;
 

@@ -430,6 +430,8 @@ npm audit --audit-level=moderate
 npm run typecheck
 npm test -- --maxWorkers=1 --minWorkers=1 --no-file-parallelism
 node --test scripts/generate-hub-static-html.test.mjs
+bash scripts/ops/move-pending-card-billing-schedule.test.sh
+bash scripts/ops/move-pending-card-billing-schedule.behavior.test.sh
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
   supabase/functions/_shared/automation-auth.ts \
@@ -536,6 +538,7 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/asaas-reconcile/diff.ts \
   supabase/functions/asaas-reconcile/diff.test.ts \
   supabase/functions/asaas-reconcile/provider-http.ts \
@@ -721,6 +724,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/create-hub-checkout/legal-acceptance.test.ts \
   supabase/functions/cancel-hub-subscription/index.test.ts \
   supabase/functions/asaas-webhook/hub-billing-routing.test.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/process-hub-fulfillment/integration.test.ts \
   supabase/functions/manage-hub-account-status/index.test.ts \
   supabase/functions/student-context/profile-access.test.ts \
@@ -788,6 +792,7 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
+  supabase/functions/asaas-webhook/student-billing-schedule-routing.test.ts \
   supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/create-student-account/index.ts \
   supabase/functions/create-student-account/safety.test.ts \
@@ -1163,6 +1168,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260831150000_pedagogical_evaluation_catalog.sql"
   "supabase/migrations/20260831161017_fix_enrollment_offer_and_student_lifecycle_operations.sql"
   "supabase/migrations/20260901130000_student_renewal_case_tracking.sql"
+  "supabase/migrations/20260901160000_move_pending_card_billing_schedule.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/student_lifecycle_operations_hardening.sql"
@@ -1258,6 +1264,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/interview_notification_delivery.sql"
   "supabase/tests/atomic_teacher_availability_replacement.sql"
   "supabase/tests/student_renewal_case_tracking.sql"
+  "supabase/tests/student_card_schedule_move.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

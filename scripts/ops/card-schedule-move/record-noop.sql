@@ -94,6 +94,16 @@ begin
        operation_row.subscription_id,
        operation_row.integration_snapshot -> 'localGuardBaseline'
      ) is not true
+     or private.student_card_schedule_profile_exact(
+       operation_row.tenant_id,
+       operation_row.student_id,
+       operation_row.customer_id,
+       operation_row.subscription_id,
+       operation_row.expected_value,
+       operation_row.target_due_date,
+       operation_row.original_end_date,
+       operation_row.integration_snapshot -> 'profileSnapshot'
+     ) is not true
      or private.student_card_schedule_membership_exact(
        operation_row.tenant_id, operation_row.student_id
      ) is not true

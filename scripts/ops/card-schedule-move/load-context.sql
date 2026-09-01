@@ -41,6 +41,16 @@ where operation.operation_key = :'operation_key'
   and operation.integration_snapshot ->> 'environment' =
     :'provider_environment'
   and operation.integration_snapshot ->> 'baseUrl' = :'asaas_base_url'
+  and private.student_card_schedule_profile_exact(
+    operation.tenant_id,
+    operation.student_id,
+    operation.customer_id,
+    operation.subscription_id,
+    operation.expected_value,
+    operation.target_due_date,
+    operation.original_end_date,
+    operation.integration_snapshot -> 'profileSnapshot'
+  )
   and claim.tenant_id = operation.tenant_id
   and claim.student_id = operation.student_id
   and claim.due_date = operation.target_due_date
