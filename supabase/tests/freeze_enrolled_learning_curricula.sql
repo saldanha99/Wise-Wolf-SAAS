@@ -577,8 +577,12 @@ select pg_temp.assert_true(
 select pg_temp.assert_true(
   public.delete_learning_unit(
     '20000000-0000-4000-8000-00000000d102'
-  ) ->> 'deleted' = 'true'
-  and not exists (
+  ) ->> 'deleted' = 'true',
+  'same-tenant SCHOOL_ADMIN could not delete a unit through the RPC'
+);
+
+select pg_temp.assert_true(
+  not exists (
     select 1
       from public.unit_activities
      where id = '30000000-0000-4000-8000-00000000d104'
