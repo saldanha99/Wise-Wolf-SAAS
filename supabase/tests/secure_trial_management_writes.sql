@@ -528,6 +528,19 @@ values
   ('30000000-0000-4000-8000-00000000e101', 'secure-trial-b', '10000000-0000-4000-8000-00000000e101', 'secure-trial-link-token-b-000001', 'https://example.invalid/b', 'Secure Read B', 'PENDING', 'ENROLLMENT', now() + interval '30 days');
 
 set local request.jwt.claims = '{"role":"service_role"}';
+do $$
+begin
+  if exists (
+    select 1
+      from pg_trigger
+     where tgrelid = 'public.crm_leads'::regclass
+       and tgname = 'trg_crm_leads_dedupe'
+  ) then
+    alter table public.crm_leads disable trigger trg_crm_leads_dedupe;
+  end if;
+end;
+$$;
+
 insert into public.crm_leads (
   id, tenant_id, name, email, phone, status, source
 ) values
@@ -549,6 +562,19 @@ insert into public.crm_leads (
     'CONTACTED',
     'secure_test'
   );
+
+do $$
+begin
+  if exists (
+    select 1
+      from pg_trigger
+     where tgrelid = 'public.crm_leads'::regclass
+       and tgname = 'trg_crm_leads_dedupe'
+  ) then
+    alter table public.crm_leads enable trigger trg_crm_leads_dedupe;
+  end if;
+end;
+$$;
 
 set local role authenticated;
 set local request.jwt.claims =
@@ -693,14 +719,27 @@ begin
     'manual RPC accepted an idempotency key with another payload'
   );
 
+  perform pg_temp.assert_true(
+    public.schedule_manual_trial_secure(
+      jsonb_set(
+        payload,
+        '{requestId}',
+        '"40000000-0000-4000-8000-00000000e002"'::jsonb
+      )
+    ) ->> 'error' = 'lead_already_has_trial',
+    'manual RPC allowed scheduling a lead that already has a trial'
+  );
+
   result := public.schedule_manual_trial_secure(
-    jsonb_set(
-      payload,
-      '{requestId}',
-      '"40000000-0000-4000-8000-00000000e002"'::jsonb
-    ) || jsonb_build_object(
-      'teacherId', '00000000-0000-4000-8000-00000000e102'
-    )
+    (
+      jsonb_set(
+        payload,
+        '{requestId}',
+        '"40000000-0000-4000-8000-00000000e002"'::jsonb
+      ) || jsonb_build_object(
+        'teacherId', '00000000-0000-4000-8000-00000000e102'
+      )
+    ) - 'leadId'
   );
   perform pg_temp.assert_true(
     result ->> 'error' = 'teacher_not_active_for_tenant',
