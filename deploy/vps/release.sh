@@ -426,7 +426,15 @@ validate_https_url "$VITE_SUPABASE_URL" ||
   die "VITE_WOLFIE_SCENARIO_UI_V2 deve ser true ou false"
 
 echo "== Validação local =="
-npm audit --audit-level=moderate
+audit_attempt=0
+until npm audit --audit-level=moderate; do
+  audit_attempt=$((audit_attempt + 1))
+  if (( audit_attempt >= 3 )); then
+    die "npm audit falhou após 3 tentativas"
+  fi
+  echo "npm audit falhou (possível oscilação de rede). Tentando novamente em 5s ($audit_attempt/3)..."
+  sleep 5
+done
 npm run typecheck
 npm test -- --maxWorkers=1 --minWorkers=1 --no-file-parallelism
 node --test scripts/generate-hub-static-html.test.mjs
