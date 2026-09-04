@@ -207,6 +207,8 @@ Deno.test("utiliza fallback slug seguro quando slug estiver vazio", () => {
     {},
     "escola-fallback",
   );
-  assert(normalized.slug === "escola-fallback", "slug deve usar fallback seguro");
+  assert(
+    normalized.slug === "escola-fallback",
+    "slug deve usar fallback seguro",
+  );
 });
-

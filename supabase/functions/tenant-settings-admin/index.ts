@@ -195,7 +195,9 @@ function normalizedSlug(value: unknown, fallback?: string): string {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 40);
-    if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(cleaned) && cleaned.length >= 3) {
+    if (
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(cleaned) && cleaned.length >= 3
+    ) {
       candidate = cleaned;
     }
   }
@@ -685,7 +687,8 @@ async function loadSettings(admin: SupabaseClient, tenantId: string) {
     tenant: {
       id: tenant.id,
       name: tenant.name,
-      slug: tenant.slug || deriveFallbackSlug(tenant.domain, tenant.name, tenant.id),
+      slug: tenant.slug ||
+        deriveFallbackSlug(tenant.domain, tenant.name, tenant.id),
       domain: tenant.domain || "",
       branding: tenant.branding || {},
       schoolInfo,
@@ -967,9 +970,10 @@ export async function handleRequest(req: Request): Promise<Response> {
       if (tenantError || !tenant) {
         throw new ApiError(404, "TENANT_NOT_FOUND", "Tenant was not found");
       }
-      const fallbackSlug = (typeof tenant.slug === "string" && tenant.slug.trim())
-        ? tenant.slug.trim()
-        : deriveFallbackSlug(tenant.domain, tenant.name, tenantId);
+      const fallbackSlug =
+        (typeof tenant.slug === "string" && tenant.slug.trim())
+          ? tenant.slug.trim()
+          : deriveFallbackSlug(tenant.domain, tenant.name, tenantId);
       const settings = normalizeSettings(
         body.settings,
         tenantId,
