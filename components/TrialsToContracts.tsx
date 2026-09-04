@@ -211,6 +211,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
     const [dueDay, setDueDay] = useState(10);
     const [monthlyFee, setMonthlyFee] = useState(0);
     const [isManualPrice, setIsManualPrice] = useState(false);
+    const [studentLevel, setStudentLevel] = useState('A1');
     // Taxa de matrícula — paridade com o link de matrícula do dashboard
     const [chargeEnrollmentFee, setChargeEnrollmentFee] = useState(false);
     const [enrollmentFee, setEnrollmentFee] = useState(49);
@@ -592,6 +593,10 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         setEnrollmentFee(49);
         setBillingStartMonth(defaultBillingStartMonthInSaoPaulo());
 
+        const recLevel = fb?.recommended_level?.trim()?.toUpperCase() || '';
+        const validRecLevel = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(recLevel) ? recLevel : 'A1';
+        setStudentLevel(validRecLevel);
+
         // Pré-preenche a partir do que a EXPERIMENTAL já validou (frequência + horários reais
         // capturados pelo SDR por capacidade). Fallback: feedback da aula ou 2x/semana.
         const mappedSlots: ScheduleSlot[] = (Array.isArray((opp as any).preferred_slots) ? (opp as any).preferred_slots : [])
@@ -669,6 +674,7 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                 planDuration: duration,
                 classesPerWeek: frequency,
                 dueDay: dueDay,
+                module: studentLevel,
                 professorId: selectedProfessor || null,
                 requiresEnrollment: duration !== 0,
                 enrollmentFee: chargeEnrollmentFee ? enrollmentFee : 0,
@@ -1162,26 +1168,45 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
                                         ))}
                                     </div>
 
-                                    {/* Frequency & Due Day */}
+                                    {/* Frequency, Due Day & Level */}
                                     <div className="space-y-3">
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Frequência</label>
-                                            <select
-                                                value={frequency}
-                                                onChange={(e) => setFrequency(Number(e.target.value))}
-                                                className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
-                                            >
-                                                {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
-                                            </select>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Frequência</label>
+                                                <select
+                                                    value={frequency}
+                                                    onChange={(e) => setFrequency(Number(e.target.value))}
+                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}x na Semana</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Vencimento</label>
+                                                <select
+                                                    value={dueDay}
+                                                    onChange={(e) => setDueDay(Number(e.target.value))}
+                                                    className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    {[5, 10, 15, 20, 25, 30].map(d => <option key={d} value={d}>Dia {d}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Vencimento</label>
+                                            <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">
+                                                Nível Pedagógico
+                                            </label>
                                             <select
-                                                value={dueDay}
-                                                onChange={(e) => setDueDay(Number(e.target.value))}
+                                                value={studentLevel}
+                                                onChange={(e) => setStudentLevel(e.target.value)}
                                                 className="w-full px-3 py-2.5 bg-brand-surface-2 border-none rounded-xl font-bold text-sm text-brand-text appearance-none outline-none focus:ring-2 focus:ring-blue-500"
                                             >
-                                                {[5, 10, 15, 20, 25, 30].map(d => <option key={d} value={d}>Dia {d}</option>)}
+                                                <option value="A1">A1 - Iniciante (A1-1)</option>
+                                                <option value="A2">A2 - Elementar (A2-1)</option>
+                                                <option value="B1">B1 - Intermediário (B1-1)</option>
+                                                <option value="B2">B2 - Independente (B2-1)</option>
+                                                <option value="C1">C1 - Avançado (C1-1)</option>
+                                                <option value="C2">C2 - Proficiente (C2-1)</option>
                                             </select>
                                         </div>
                                     </div>

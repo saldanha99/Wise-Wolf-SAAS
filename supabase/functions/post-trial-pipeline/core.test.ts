@@ -8,8 +8,66 @@ import {
   isMeaningfulEnrollmentOffer,
   isOpenConversionStatus,
   isPendingEnrollmentLinkStatus,
+  requireAutomationReceiptInsert,
+  requireRootAutomationRows,
   shouldReleaseAutomationClaim,
 } from "./core.ts";
+
+Deno.test("root automation queries fail closed instead of becoming empty runs", () => {
+  assertEquals(
+    requireRootAutomationRows("done_trials", {
+      data: [{ id: "trial-1" }],
+      error: null,
+    }),
+    [{ id: "trial-1" }],
+  );
+  let errorMessage = "";
+  try {
+    requireRootAutomationRows("pending_enrollment_links", {
+      data: null,
+      error: { code: "57014", message: "statement timeout" },
+    });
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(
+    errorMessage,
+    "pending_enrollment_links_query_failed:57014",
+  );
+
+  errorMessage = "";
+  try {
+    requireRootAutomationRows("done_trials", { data: null, error: null });
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(errorMessage, "done_trials_query_failed:missing_data");
+});
+
+Deno.test("receipt insert only treats a unique conflict as an existing claim", () => {
+  assertEquals(
+    requireAutomationReceiptInsert({ data: { id: "receipt-1" }, error: null }),
+    { id: "receipt-1" },
+  );
+  assertEquals(
+    requireAutomationReceiptInsert({
+      data: null,
+      error: { code: "23505", message: "duplicate key" },
+    }),
+    null,
+  );
+
+  let errorMessage = "";
+  try {
+    requireAutomationReceiptInsert({
+      data: null,
+      error: { code: "57014", message: "statement timeout" },
+    });
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(errorMessage, "automation_receipt_insert_failed:57014");
+});
 
 Deno.test("claim returns the exact inserted receipt and releases only that id", async () => {
   const deletedIds: string[] = [];

@@ -249,42 +249,35 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
           updates[column] = value;
         }
       };
+      const previousModule = String(loadedProfile.module || '')
+        .trim()
+        .toUpperCase()
+        .split(/\s+/)[0];
+      const requestedModule = String(profileData.levelBadge || '').trim().toUpperCase();
+      const placementChanged = Object.prototype.hasOwnProperty.call(loadedProfile, 'module')
+        && requestedModule !== ''
+        && requestedModule !== previousModule;
 
-      setIfLoaded('full_name', profileData.name);
-      setIfLoaded('module', profileData.currentModuleStatus || profileData.levelBadge);
-      setIfLoaded('occupation', profileData.occupation);
-      setIfLoaded('phone', profileData.phone);
-      setIfLoaded('meeting_link', profileData.meeting_link);
-      setIfLoaded('cpf', profileData.cpf);
-      setIfLoaded('address', profileData.address);
-      setIfLoaded('address_number', profileData.addressNumber);
-      setIfLoaded('postal_code', profileData.postalCode);
-      setIfLoaded('interests', profileData.interests);
-      setIfLoaded('private_notes', profileData.private_notes);
-      setIfLoaded('fixed_schedule', profileData.fixed_schedule);
-      setIfLoaded('professor_id', nullableUuid(profileData.professor_id));
-
-      // A mensalidade é `monthly_fee`. `monthly_tuition` virou espelho mantido
-      // pelo banco (trg_mirror_monthly_tuition) — gravar aqui recria a divergência.
-      setIfLoaded('monthly_fee', profileData.monthly_fee);
-      setIfLoaded('due_day', profileData.due_day);
-      setIfLoaded('status_financial', profileData.status_financial);
-      setIfLoaded('fidelity_plan', profileData.planDuration);
-
-      if (Object.keys(updates).length === 0) {
-        throw new Error('Os dados completos do aluno não foram carregados. Reabra o perfil e tente novamente.');
-      }
-
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', editingProfile.studentId);
-
-      if (error) throw error;
-
+      const { error: rpcError } = await supabase.rpc('update_student_pedagogical_profile', {
+        p_student_id: editingProfile.studentId,
+        p_data: {
+          full_name: profileData.name,
+          phone: profileData.phone,
+          attendance_phone: profileData.attendance_phone || null,
+          meeting_link: profileData.meeting_link,
+          occupation: profileData.occupation,
+          interests: profileData.interests,
+          private_notes: profileData.private_notes,
+          fixed_schedule: profileData.fixed_schedule,
+          is_kids: profileData.is_kids,
+          status: profileData.status,
+          module: requestedModule,
+        }
+      });
+      if (rpcError) throw rpcError;
       await loadData();
       setEditingProfile(null);
-      alert("Perfil do aluno atualizado!");
+      alert("Perfil do aluno atualizado com sucesso!");
     } catch (err: any) {
       alert("Erro ao atualizar perfil: " + err.message);
     }
@@ -484,7 +477,8 @@ const TeacherAvailabilityEditor: React.FC<TeacherAvailabilityEditorProps> = ({ t
               ...editingProfile.fullProfile,
               id: editingProfile.studentId,
               name: editingProfile.fullProfile?.full_name || editingProfile.student,
-              levelBadge: editingProfile.fullProfile?.module?.split(' ')[0] || editingProfile.module,
+              levelBadge: editingProfile.fullProfile?.module?.split(' ')[0] || editingProfile.module || 'A1',
+              status: editingProfile.fullProfile?.status || 'Ativo',
               currentModuleStatus: editingProfile.fullProfile?.module || editingProfile.module,
               img: editingProfile.fullProfile?.avatar_url,
               postalCode: editingProfile.fullProfile?.postal_code,

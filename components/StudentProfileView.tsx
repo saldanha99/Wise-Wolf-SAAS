@@ -199,6 +199,9 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   <h2 className="text-xl font-bold text-brand-text truncate">{p.full_name}</h2>
                   {p.is_kids && <span className="text-[10px] font-black bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full">🧸 KIDS</span>}
                   {p.module && <span className="text-[10px] font-black bg-brand-accent/10 text-brand-accent px-2 py-0.5 rounded-full">{p.module}</span>}
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${p.status === 'Ativo' || p.lifecycle_status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'}`}>
+                    {p.status || (p.lifecycle_status === 'suspended' ? 'Inativo' : 'Ativo')}
+                  </span>
                   {risk.lvl !== 'LOW' && (
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${risk.lvl === 'HIGH' ? 'bg-red-500 text-white' : 'bg-amber-400 text-amber-900'}`}>
                       {risk.lvl === 'HIGH' ? '⚠ ALTO RISCO' : '⚠ ATENÇÃO'}
@@ -279,7 +282,9 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
                   <div className="grid md:grid-cols-2 gap-3">
                     <InfoBox title="Dados">
                       <Row k="Profissão" v={p.occupation} />
-                      <Row k="E-mail" v={p.email} />
+                      <Row k="WhatsApp" v={p.phone || p.attendance_phone} />
+                      <Row k="Status" v={p.status || (p.lifecycle_status === 'suspended' ? 'Inativo' : 'Ativo')} />
+                      {isAdmin && <Row k="E-mail" v={p.email} />}
                       {p.is_kids && <><Row k="Responsável" v={p.guardian_name} /><Row k="Tel. responsável" v={p.guardian_phone} /></>}
                       <Row k="Interesses" v={Array.isArray(p.interests) ? p.interests.join(', ') : p.interests} />
                     </InfoBox>

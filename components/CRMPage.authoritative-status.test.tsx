@@ -12,7 +12,7 @@ vi.mock('../lib/supabase', () => ({
   supabase: { from, rpc },
 }));
 
-const lead = (status: 'NEW' | 'CONTACTED' | 'TRIAL' | 'WON' | 'LOST', id = `lead-${status}`) => ({
+const lead = (status: 'NEW' | 'CONTACTED' | 'TRIAL' | 'SCHEDULED' | 'TRIAL_DONE' | 'WON' | 'LOST', id = `lead-${status}`) => ({
   id,
   name: status === 'WON' ? 'Aluno Matriculado' : 'Lead Novo',
   email: `${id}@example.invalid`,
@@ -70,6 +70,19 @@ afterEach(() => {
 });
 
 describe('<CRMPage /> — status autoritativo de matrícula', () => {
+  it('mantém experimental agendada e concluída em etapas visíveis', async () => {
+    useCrmBuilder([{
+      data: [lead('SCHEDULED'), lead('TRIAL_DONE')],
+      error: null,
+    }]);
+    render(<CRMPage tenantId="tenant-1" />);
+
+    expect(await screen.findByTestId('crm-card-lead-SCHEDULED')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-card-lead-TRIAL_DONE')).toBeInTheDocument();
+    expect(screen.getByTestId('crm-column-SCHEDULED')).toHaveTextContent('Aula Agendada');
+    expect(screen.getByTestId('crm-column-TRIAL_DONE')).toHaveTextContent('Pós-aula');
+  });
+
   it('não oferece Matriculados no formulário manual', async () => {
     useCrmBuilder([{ data: [lead('NEW')], error: null }]);
     render(<CRMPage tenantId="tenant-1" />);
@@ -79,7 +92,7 @@ describe('<CRMPage /> — status autoritativo de matrícula', () => {
 
     const statusSelect = screen.getByRole('combobox', { name: 'Etapa' });
     expect(within(statusSelect).queryByRole('option', { name: /Matriculados/i })).not.toBeInTheDocument();
-    expect(within(statusSelect).getByRole('option', { name: /Aula Agendada/i })).toBeInTheDocument();
+    expect(within(statusSelect).queryByRole('option', { name: /Aula Agendada/i })).not.toBeInTheDocument();
   });
 
   it('bloqueia arrastar um lead para Matriculados sem chamar o Supabase', async () => {
@@ -116,6 +129,37 @@ describe('<CRMPage /> — status autoritativo de matrícula', () => {
     expect(screen.queryByRole('combobox', { name: 'Etapa' })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Nome completo'), { target: { value: 'Aluno Atualizado' } });
+    fireEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][0]).not.toHaveProperty('status');
+  });
+
+  it('mantém etapas da experimental somente leitura e não faz update por arraste', async () => {
+    const scheduled = {
+      ...lead('SCHEDULED'),
+      opportunity_id: '00000000-0000-4000-8000-000000000004',
+    };
+    const updated = { ...scheduled, name: 'Experimental Atualizada' };
+    const { update } = useCrmBuilder(
+      [{ data: [scheduled], error: null }],
+      { data: updated, error: null },
+    );
+    render(<CRMPage tenantId="tenant-1" />);
+
+    const card = await screen.findByTestId('crm-card-lead-SCHEDULED');
+    expect(card).toHaveAttribute('draggable', 'false');
+    const dataTransfer = { effectAllowed: 'move', dropEffect: 'move' };
+    fireEvent.dragStart(card, { dataTransfer });
+    fireEvent.drop(screen.getByTestId('crm-column-CONTACTED'), { dataTransfer });
+    expect(update).not.toHaveBeenCalled();
+
+    fireEvent.click(within(card).getByTitle('Editar lead'));
+    expect(screen.getAllByText('Aula Agendada')).toHaveLength(2);
+    expect(screen.queryByRole('combobox', { name: 'Etapa' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Nome completo'), {
+      target: { value: 'Experimental Atualizada' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /^salvar$/i }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));

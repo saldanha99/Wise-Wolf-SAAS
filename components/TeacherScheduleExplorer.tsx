@@ -537,11 +537,43 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
           updates[column] = value;
         }
       };
+      const previousModule = String(loadedProfile.module || '')
+        .trim()
+        .toUpperCase()
+        .split(/\s+/)[0];
+      const requestedModule = String(profileData.levelBadge || '').trim().toUpperCase();
+      const placementChanged = Object.prototype.hasOwnProperty.call(loadedProfile, 'module')
+        && requestedModule !== ''
+        && requestedModule !== previousModule;
 
       // Só persiste colunas presentes no snapshot carregado. Assim, uma falha
       // parcial de leitura não transforma campos desconhecidos em string vazia.
+      const isDirector = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN';
+      if (!isDirector) {
+        const { error: rpcError } = await supabase.rpc('update_student_pedagogical_profile', {
+          p_student_id: editingBooking.studentId,
+          p_data: {
+            full_name: profileData.name,
+            phone: profileData.phone,
+            attendance_phone: profileData.attendance_phone || null,
+            meeting_link: profileData.meeting_link,
+            occupation: profileData.occupation,
+            interests: profileData.interests,
+            private_notes: profileData.private_notes,
+            fixed_schedule: profileData.fixed_schedule,
+            is_kids: profileData.is_kids,
+            status: profileData.status,
+            module: requestedModule,
+          }
+        });
+        if (rpcError) throw rpcError;
+        await fetchDetailData();
+        setEditingBooking(null);
+        alert("Perfil pedagógico do aluno atualizado com sucesso!");
+        return;
+      }
+
       setIfLoaded('full_name', profileData.name);
-      setIfLoaded('module', profileData.currentModuleStatus || profileData.levelBadge);
       setIfLoaded('occupation', profileData.occupation);
       setIfLoaded('phone', profileData.phone);
       setIfLoaded('meeting_link', profileData.meeting_link);
@@ -575,6 +607,26 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
       if (error) throw error;
 
+      if (placementChanged) {
+        const { error: placementError } = await supabase.rpc(
+          'set_student_pedagogical_placement',
+          {
+            p_student_id: editingBooking.studentId,
+            p_module: requestedModule,
+            p_reason: 'Reposicionamento pedagógico autorizado na gestão de agenda',
+          },
+        );
+        if (placementError) throw placementError;
+      }
+
+      // Atualiza status se alterado no formulário
+      if (profileData.status && profileData.status !== (loadedProfile.status || 'Ativo')) {
+        await supabase.rpc('set_student_academic_status', {
+          p_student_id: editingBooking.studentId,
+          p_status: profileData.status,
+        });
+      }
+
       await fetchDetailData();
       setEditingBooking(null);
       alert("Perfil do aluno atualizado com sucesso!");
@@ -586,17 +638,28 @@ const TeacherScheduleExplorer: React.FC<TeacherScheduleExplorerProps> = ({ user,
 
   const openBookingEditor = async (booking: any) => {
     try {
-      const privateProfile = await loadAuthorizedProfilePrivate(booking.studentId);
+      const isDirector = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SUPER_ADMIN';
+      let privateProfile = {};
+      if (isDirector) {
+        try {
+          privateProfile = await loadAuthorizedProfilePrivate(booking.studentId);
+        } catch (_) {}
+      }
       setEditingBooking({
         ...booking,
         fullProfile: {
           ...booking.fullProfile,
           ...privateProfile,
+          name: booking.fullProfile?.full_name || booking.student,
+          phone: booking.fullProfile?.phone || '',
+          attendance_phone: booking.fullProfile?.attendance_phone || '',
+          levelBadge: booking.fullProfile?.module?.split(' ')[0] || booking.module || 'A1',
+          status: booking.fullProfile?.status || 'Ativo',
         },
       });
     } catch (error) {
-      console.error('Erro ao carregar dados privados do aluno:', error);
-      alert('Você não tem permissão para editar os dados privados deste aluno.');
+      console.error('Erro ao abrir editor do aluno:', error);
+      setEditingBooking(booking);
     }
   };
 

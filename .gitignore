@@ -40,6 +40,7 @@ supabase/.temp/
 
 # Documentos com dados pessoais de alunos NÃO entram no repo (LGPD)
 /*.pdf
+.codex-e2e-*
 
 # Exportações e prévias do importador pedagógico permanecem locais.
 /.wise-wolf-import/

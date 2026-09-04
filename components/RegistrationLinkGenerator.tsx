@@ -31,6 +31,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
     const [monthlyFee, setMonthlyFee] = useState(0);
     const [chargeEnrollmentFee, setChargeEnrollmentFee] = useState(true);
     const [enrollmentFee, setEnrollmentFee] = useState(49);
+    const [studentLevel, setStudentLevel] = useState('A1');
 
     // Academic State
     const [professors, setProfessors] = useState<any[]>([]);
@@ -110,6 +111,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
         duration, frequency, dueDay, monthlyFee, chargeEnrollmentFee, enrollmentFee,
         selectedProfessor, selectedProfessor2, isDependent, studentPhone,
         selectedGuardianId, scheduleSlots, startDate, enableProRata, billingStartMonth,
+        studentLevel,
     ]);
 
     // Update slots when frequency changes
@@ -300,6 +302,7 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
             planDuration: duration,
             classesPerWeek: frequency,
             dueDay: dueDay,
+            module: studentLevel,
             professorId: selectedProfessor || null,
             professorId2: selectedProfessor2 || null,
             schedule: validSchedule.length > 0 ? validSchedule : null,
@@ -465,18 +468,40 @@ const RegistrationLinkGenerator: React.FC<RegistrationLinkGeneratorProps> = ({ t
                                 </div>
                             </div>
 
-                            {/* Start Date Control */}
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Início das Aulas</label>
-                                <div className="relative">
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        min={dateInSaoPaulo()}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                    <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
+                            {/* Start Date & Pedagogical Level Control */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 block">Início das Aulas</label>
+                                    <div className="relative">
+                                        <input
+                                            type="date"
+                                            value={startDate}
+                                            min={dateInSaoPaulo()}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <Clock className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-brand-muted mb-1 flex items-center gap-1.5">
+                                        <BookOpen size={12} /> Nível Pedagógico
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={studentLevel}
+                                            onChange={(e) => setStudentLevel(e.target.value)}
+                                            className="w-full px-4 py-3 bg-brand-surface-2 border-none rounded-xl font-bold text-brand-text dark:text-slate-200 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="A1">A1 - Iniciante (A1-1)</option>
+                                            <option value="A2">A2 - Elementar (A2-1)</option>
+                                            <option value="B1">B1 - Intermediário (B1-1)</option>
+                                            <option value="B2">B2 - Independente (B2-1)</option>
+                                            <option value="C1">C1 - Avançado (C1-1)</option>
+                                            <option value="C2">C2 - Proficiente (C2-1)</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted pointer-events-none" size={16} />
+                                    </div>
                                 </div>
                             </div>
 

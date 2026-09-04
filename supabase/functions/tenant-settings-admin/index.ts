@@ -155,12 +155,58 @@ function normalizedHostname(value: unknown): string {
   return hostname;
 }
 
-function normalizedSlug(value: unknown): string {
-  const slug = requiredString(value, "slug", 40, 3).toLowerCase();
-  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(slug)) {
+function deriveFallbackSlug(
+  domain?: unknown,
+  name?: unknown,
+  id?: unknown,
+): string {
+  for (const candidate of [domain, name, id]) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      const cleaned = candidate
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40);
+      if (
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(cleaned) &&
+        cleaned.length >= 3
+      ) {
+        return cleaned;
+      }
+    }
+  }
+  return "escola";
+}
+
+function normalizedSlug(value: unknown, fallback?: string): string {
+  let candidate = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!candidate && fallback) {
+    candidate = fallback.trim().toLowerCase();
+  }
+  if (!candidate) {
     throw new ApiError(400, "INVALID_SETTINGS", "slug is invalid");
   }
-  return slug;
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(candidate) && fallback) {
+    const cleaned = candidate
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40);
+    if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(cleaned) && cleaned.length >= 3) {
+      candidate = cleaned;
+    }
+  }
+  if (
+    candidate.length < 3 ||
+    candidate.length > 40 ||
+    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(candidate)
+  ) {
+    throw new ApiError(400, "INVALID_SETTINGS", "slug is invalid");
+  }
+  return candidate;
 }
 
 function normalizedColor(value: unknown, field: string): string {
@@ -319,6 +365,7 @@ export function normalizeSettings(
   value: unknown,
   tenantId: string,
   currentBranding: Record<string, unknown>,
+  fallbackSlug?: string,
 ): NormalizedSettings {
   const keys = [
     "name",
@@ -388,7 +435,7 @@ export function normalizeSettings(
 
   return {
     name: requiredString(value.name, "name", 120, 2),
-    slug: normalizedSlug(value.slug),
+    slug: normalizedSlug(value.slug, fallbackSlug),
     branding: {
       primaryColor: normalizedColor(
         value.branding.primaryColor,
@@ -638,7 +685,7 @@ async function loadSettings(admin: SupabaseClient, tenantId: string) {
     tenant: {
       id: tenant.id,
       name: tenant.name,
-      slug: tenant.slug || "",
+      slug: tenant.slug || deriveFallbackSlug(tenant.domain, tenant.name, tenant.id),
       domain: tenant.domain || "",
       branding: tenant.branding || {},
       schoolInfo,
@@ -914,16 +961,20 @@ export async function handleRequest(req: Request): Promise<Response> {
       );
       const { data: tenant, error: tenantError } = await auth.context.admin
         .from("tenants")
-        .select("branding")
+        .select("branding, slug, domain, name")
         .eq("id", tenantId)
         .maybeSingle();
       if (tenantError || !tenant) {
         throw new ApiError(404, "TENANT_NOT_FOUND", "Tenant was not found");
       }
+      const fallbackSlug = (typeof tenant.slug === "string" && tenant.slug.trim())
+        ? tenant.slug.trim()
+        : deriveFallbackSlug(tenant.domain, tenant.name, tenantId);
       const settings = normalizeSettings(
         body.settings,
         tenantId,
         isRecord(tenant.branding) ? tenant.branding : {},
+        fallbackSlug,
       );
       if (settings.schoolInfo?.legalRepresentativeSignaturePath) {
         try {

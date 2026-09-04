@@ -28,6 +28,42 @@ const completedResult = (activityId: string) => ({
 });
 
 describe('ComplementaryActivityPlayer', () => {
+  it('não inventa nota zero quando uma atividade objetiva antiga não possui correção canônica', async () => {
+    const activity: ComplementaryActivity = {
+      id: 'activity-legacy-completed-quiz',
+      type: 'quiz',
+      title: 'Quiz histórico',
+      content: JSON.stringify({
+        questions: [{ id: 'q-one', q: 'Choose A', options: ['A', 'B'] }],
+      }),
+    };
+    const onSubmit = vi.fn().mockResolvedValue({
+      activityId: activity.id,
+      status: 'COMPLETED',
+      passed: true,
+      scorePercentage: null,
+      questionResults: [],
+      completedAt: '2026-08-31T12:00:00.000Z',
+      alreadyApplied: true,
+      canonicalResultAvailable: false,
+    });
+
+    render(
+      <ComplementaryActivityPlayer
+        activity={activity}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: /a\. a/i }));
+    fireEvent.click(screen.getByRole('button', { name: /conferir respostas/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Atividade concluída' })).toBeInTheDocument();
+    expect(screen.getByText(/correção detalhada dessa atividade antiga não está disponível/i)).toBeInTheDocument();
+    expect(screen.queryByText(/com 0%/i)).not.toBeInTheDocument();
+  });
+
   it('turns legacy content into evidence instead of allowing blind completion', async () => {
     const onSubmit = vi.fn().mockResolvedValue(completedResult(legacyReading.id));
     render(

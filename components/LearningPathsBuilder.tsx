@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     Plus, Edit2, Trash2, Save, X, ChevronRight, ChevronLeft, Loader2, Sparkles,
     BookOpen, Briefcase, GraduationCap, Plane, Cpu, Heart, Globe, Target,
-    Layers, FileText, Mic, HelpCircle, Pen, Check, GripVertical, UserPlus
+    Layers, FileText, Mic, HelpCircle, Pen, Check, GripVertical, UserPlus, Archive, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { generateUnitActivityContent } from '../services/geminiService';
@@ -83,6 +83,8 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
     const [paths, setPaths] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
+    const [archivingId, setArchivingId] = useState<string | null>(null);
+    const [actionMessage, setActionMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
 
     useEffect(() => {
         load();
@@ -119,10 +121,34 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
         if (data?.id) onOpen(data.id);
     };
 
-    const deletePath = async (id: string) => {
-        if (!confirm('Excluir esta trilha? Todas as units, atividades e progresso serão removidos.')) return;
-        await supabase.from('learning_paths').delete().eq('id', id);
-        onRefresh();
+    const archivePath = async (id: string) => {
+        const reason = window.prompt('Motivo do arquivamento (o histórico dos alunos será preservado):');
+        if (reason === null) return;
+        if (reason.trim().length < 5) {
+            setActionMessage({ tone: 'error', text: 'Informe um motivo com pelo menos 5 caracteres.' });
+            return;
+        }
+        setArchivingId(id);
+        setActionMessage(null);
+        try {
+            const { error } = await supabase.rpc('archive_learning_path', {
+                p_path_id: id,
+                p_reason: reason.trim(),
+            });
+            if (error) throw error;
+            setActionMessage({ tone: 'success', text: 'Trilha arquivada sem apagar matrículas, progresso ou XP.' });
+            onRefresh();
+        } catch (error) {
+            console.error('Secure learning path archive failed:', error);
+            setActionMessage({
+                tone: 'error',
+                text: String((error as any)?.message || '').includes('learning_path_has_active_students')
+                    ? 'Esta trilha ainda tem alunos em curso. Conclua ou troque essas matrículas antes de arquivar.'
+                    : 'Não foi possível arquivar a trilha. Nenhum histórico foi removido.',
+            });
+        } finally {
+            setArchivingId(null);
+        }
     };
 
     if (loading) return <Loader />;
@@ -141,6 +167,13 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
 
             {creating && <PathForm onSubmit={createPath} onCancel={() => setCreating(false)} />}
 
+            {actionMessage && (
+                <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs font-bold ${actionMessage.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-100' : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100'}`} role={actionMessage.tone === 'error' ? 'alert' : 'status'}>
+                    {actionMessage.tone === 'error' ? <AlertCircle size={15} className="shrink-0" /> : <Check size={15} className="shrink-0" />}
+                    <span>{actionMessage.text}</span>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
                 {paths.map(p => {
                     const meta = CATEGORIES.find(c => c.id === p.category) || CATEGORIES[5];
@@ -153,6 +186,7 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     {!p.tenant_id && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">Global</span>}
+                                    {!p.active && <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300">Arquivada</span>}
                                     <span className="text-[9px] font-bold uppercase tracking-widest text-violet-500">{p.target_level}</span>
                                 </div>
                             </div>
@@ -165,13 +199,16 @@ const PathList: React.FC<{ user: any; tenantId?: string; onOpen: (id: string) =>
                                 >
                                     Editar <ChevronRight size={12} />
                                 </button>
-                                {p.tenant_id && (
+                                {p.tenant_id && p.active && (
                                     <button
-                                        onClick={() => deletePath(p.id)}
-                                        className="text-xs text-rose-500 hover:text-rose-700"
-                                        title="Excluir"
+                                        type="button"
+                                        onClick={() => void archivePath(p.id)}
+                                        disabled={archivingId === p.id}
+                                        className="rounded-lg p-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-wait disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+                                        title="Arquivar sem apagar histórico"
+                                        aria-label={`Arquivar ${p.name}`}
                                     >
-                                        <Trash2 size={14} />
+                                        {archivingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
                                     </button>
                                 )}
                             </div>
@@ -224,6 +261,7 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
     const [creatingUnit, setCreatingUnit] = useState(false);
     const [assigning, setAssigning] = useState(false);
     const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [frozen, setFrozen] = useState(true);
 
     useEffect(() => { load(); }, [pathId]);
 
@@ -232,9 +270,17 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
         setPath(pathData);
         const { data: unitsData } = await supabase.from('learning_units').select('*').eq('path_id', pathId).order('order_index');
         setUnits(unitsData || []);
+        const { data: enrollments, error: enrollmentError } = await supabase
+            .from('student_path_enrollments')
+            .select('id')
+            .eq('path_id', pathId)
+            .limit(1);
+        if (enrollmentError) console.error('Learning path freeze state error:', enrollmentError);
+        setFrozen(Boolean(enrollmentError || enrollments?.length));
     };
 
     const savePath = async (form: any) => {
+        if (frozen) return;
         await supabase.from('learning_paths').update({
             name: form.name,
             description: form.description,
@@ -247,6 +293,7 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
     };
 
     const createUnit = async (form: any) => {
+        if (frozen) return;
         const nextOrder = units.length > 0 ? Math.max(...units.map(u => u.order_index)) + 1 : 1;
         await supabase.from('learning_units').insert({
             path_id: pathId,
@@ -261,8 +308,15 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
     };
 
     const deleteUnit = async (id: string) => {
+        if (frozen) return;
         if (!confirm('Excluir esta unidade e suas atividades?')) return;
-        await supabase.from('learning_units').delete().eq('id', id);
+        const { error } = await supabase.rpc('delete_learning_unit', {
+            p_unit_id: id,
+        });
+        if (error) {
+            alert('Não foi possível excluir a unidade: ' + error.message);
+            return;
+        }
         load();
     };
 
@@ -270,23 +324,23 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
     const handleDragStart = (idx: number) => setDragIndex(idx);
     const handleDragOver = (e: React.DragEvent) => e.preventDefault();
     const handleDrop = async (targetIdx: number) => {
-        if (dragIndex === null || dragIndex === targetIdx) return;
+        if (frozen || dragIndex === null || dragIndex === targetIdx) return;
         const reordered = [...units];
         const [moved] = reordered.splice(dragIndex, 1);
         reordered.splice(targetIdx, 0, moved);
         setUnits(reordered);
         setDragIndex(null);
 
-        // Persistir novos order_index (1, 2, 3...)
         try {
-            const updates = reordered.map((u, i) => supabase
-                .from('learning_units')
-                .update({ order_index: i + 1 })
-                .eq('id', u.id));
-            await Promise.all(updates);
+            const { error } = await supabase.rpc('reorder_learning_units', {
+                p_path_id: pathId,
+                p_unit_ids: reordered.map((unit) => unit.id),
+            });
+            if (error) throw error;
         } catch (err) {
             console.error('Reorder error:', err);
-            load(); // recarrega se falhar
+            alert('Não foi possível reorganizar as unidades. A ordem anterior foi restaurada.');
+            load();
         }
     };
 
@@ -315,7 +369,7 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                             >
                                 <UserPlus size={12} /> Atribuir
                             </button>
-                            {path.tenant_id && (
+                            {path.tenant_id && !frozen && (
                                 <button onClick={() => setEditing(true)} className="text-xs text-violet-600 hover:text-violet-800 flex items-center gap-1"><Edit2 size={12} /> Editar</button>
                             )}
                         </div>
@@ -332,11 +386,23 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                 />
             )}
 
+            {frozen && (
+                <div className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-100" role="status">
+                    <Archive size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <div>
+                        <p className="text-xs font-black">Conteúdo preservado como histórico acadêmico</p>
+                        <p className="mt-1 text-[11px] leading-relaxed opacity-80">Esta trilha já foi atribuída. Você pode consultá-la e atribuí-la a novos alunos, mas unidades e atividades não podem mais ser alteradas.</p>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Unidades ({units.length})</p>
-                <button onClick={() => setCreatingUnit(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
-                    <Plus size={12} /> Nova Unit
-                </button>
+                {!frozen && (
+                    <button onClick={() => setCreatingUnit(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
+                        <Plus size={12} /> Nova Unit
+                    </button>
+                )}
             </div>
 
             {creatingUnit && <UnitForm onSubmit={createUnit} onCancel={() => setCreatingUnit(false)} />}
@@ -345,15 +411,15 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                 {units.map((u, i) => (
                     <div
                         key={u.id}
-                        draggable
-                        onDragStart={() => handleDragStart(i)}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(i)}
+                        draggable={!frozen}
+                        onDragStart={frozen ? undefined : () => handleDragStart(i)}
+                        onDragOver={frozen ? undefined : handleDragOver}
+                        onDrop={frozen ? undefined : () => handleDrop(i)}
                         className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
                             dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
                         }`}
                     >
-                        <GripVertical size={14} className="text-slate-300 cursor-grab active:cursor-grabbing shrink-0" />
+                        <GripVertical size={14} className={`shrink-0 text-slate-300 ${frozen ? 'opacity-40' : 'cursor-grab active:cursor-grabbing'}`} />
                         <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 font-black text-sm shrink-0">{i + 1}</div>
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-black text-slate-800 dark:text-white">{u.title}</p>
@@ -362,7 +428,7 @@ const PathDetail: React.FC<{ pathId: string; user: any; tenantId?: string; onOpe
                         <button onClick={() => onOpenUnit(u.id)} className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1">
                             Atividades <ChevronRight size={12} />
                         </button>
-                        <button onClick={() => deleteUnit(u.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>
+                        {!frozen && <button onClick={() => deleteUnit(u.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>}
                     </div>
                 ))}
             </div>
@@ -403,23 +469,26 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
     const [creating, setCreating] = useState(false);
     const [creatingType, setCreatingType] = useState<string>('vocab_cards');
     const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [frozen, setFrozen] = useState(true);
 
     const handleDragStart = (idx: number) => setDragIndex(idx);
     const handleDragOver = (e: React.DragEvent) => e.preventDefault();
     const handleDrop = async (targetIdx: number) => {
-        if (dragIndex === null || dragIndex === targetIdx) return;
+        if (frozen || dragIndex === null || dragIndex === targetIdx) return;
         const reordered = [...activities];
         const [moved] = reordered.splice(dragIndex, 1);
         reordered.splice(targetIdx, 0, moved);
         setActivities(reordered);
         setDragIndex(null);
         try {
-            await Promise.all(reordered.map((a, i) => supabase
-                .from('unit_activities')
-                .update({ order_index: i + 1 })
-                .eq('id', a.id)));
+            const { error } = await supabase.rpc('reorder_unit_activities', {
+                p_unit_id: unitId,
+                p_activity_ids: reordered.map((activity) => activity.id),
+            });
+            if (error) throw error;
         } catch (err) {
             console.error('Reorder activities error:', err);
+            alert('Não foi possível reorganizar as atividades. A ordem anterior foi restaurada.');
             load();
         }
     };
@@ -432,9 +501,22 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
         setPath((unitData as any)?.learning_paths);
         const { data: actsData } = await supabase.from('unit_activities').select('*').eq('unit_id', unitId).order('order_index');
         setActivities(actsData || []);
+        const pathId = (unitData as any)?.learning_paths?.id;
+        if (!pathId) {
+            setFrozen(true);
+            return;
+        }
+        const { data: enrollments, error: enrollmentError } = await supabase
+            .from('student_path_enrollments')
+            .select('id')
+            .eq('path_id', pathId)
+            .limit(1);
+        if (enrollmentError) console.error('Learning unit freeze state error:', enrollmentError);
+        setFrozen(Boolean(enrollmentError || enrollments?.length));
     };
 
     const createActivity = async (form: { title: string; description: string; type: string; xp_reward: number; estimated_minutes: number; content: any }) => {
+        if (frozen) return;
         const nextOrder = activities.length > 0 ? Math.max(...activities.map(a => a.order_index)) + 1 : 1;
         const { data, error } = await supabase.from('unit_activities').insert({
             unit_id: unitId,
@@ -456,8 +538,15 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
     };
 
     const deleteActivity = async (id: string) => {
+        if (frozen) return;
         if (!confirm('Excluir esta atividade?')) return;
-        await supabase.from('unit_activities').delete().eq('id', id);
+        const { error } = await supabase.rpc('delete_unit_activity', {
+            p_activity_id: id,
+        });
+        if (error) {
+            alert('Não foi possível excluir a atividade: ' + error.message);
+            return;
+        }
         load();
     };
 
@@ -474,11 +563,23 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
                 {path && <p className="text-[10px] uppercase tracking-widest text-slate-400 mt-2">{path.name} · {path.target_level}</p>}
             </div>
 
+            {frozen && (
+                <div className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-100" role="status">
+                    <Archive size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <div>
+                        <p className="text-xs font-black">Unidade em modo de consulta</p>
+                        <p className="mt-1 text-[11px] opacity-80">O conteúdo permanece exatamente como foi atribuído aos alunos.</p>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-slate-500 dark:text-slate-400">Atividades ({activities.length})</p>
-                <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
-                    <Plus size={12} /> Nova Atividade
-                </button>
+                {!frozen && (
+                    <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-3 py-1.5 bg-violet-600 text-white text-xs font-black uppercase tracking-widest rounded-lg hover:brightness-110">
+                        <Plus size={12} /> Nova Atividade
+                    </button>
+                )}
             </div>
 
             {creating && (
@@ -497,15 +598,15 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
                     return (
                         <div
                             key={a.id}
-                            draggable
-                            onDragStart={() => handleDragStart(i)}
-                            onDragOver={handleDragOver}
-                            onDrop={() => handleDrop(i)}
+                            draggable={!frozen}
+                            onDragStart={frozen ? undefined : () => handleDragStart(i)}
+                            onDragOver={frozen ? undefined : handleDragOver}
+                            onDrop={frozen ? undefined : () => handleDrop(i)}
                             className={`flex items-center gap-3 p-3 rounded-xl border bg-white dark:bg-slate-900 transition-all ${
                                 dragIndex === i ? 'opacity-40' : 'border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700'
                             }`}
                         >
-                            <GripVertical size={14} className="text-slate-300 cursor-grab active:cursor-grabbing shrink-0" />
+                            <GripVertical size={14} className={`shrink-0 text-slate-300 ${frozen ? 'opacity-40' : 'cursor-grab active:cursor-grabbing'}`} />
                             <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 shrink-0">
                                 <Icon size={14} />
                             </div>
@@ -517,9 +618,9 @@ const UnitDetail: React.FC<{ unitId: string; user: any; tenantId?: string; onOpe
                                 <p className="text-[10px] text-slate-400 mt-0.5">{a.estimated_minutes}min · {a.xp_reward} XP</p>
                             </div>
                             <button onClick={() => onOpenActivity(a.id)} className="text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1">
-                                Editar <ChevronRight size={12} />
+                                {frozen ? 'Visualizar' : 'Editar'} <ChevronRight size={12} />
                             </button>
-                            <button onClick={() => deleteActivity(a.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>
+                            {!frozen && <button onClick={() => deleteActivity(a.id)} className="text-rose-500 hover:text-rose-700 p-1"><Trash2 size={14} /></button>}
                         </div>
                     );
                 })}
@@ -664,6 +765,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
     const [generating, setGenerating] = useState(false);
     const [path, setPath] = useState<any>(null);
     const [unit, setUnit] = useState<any>(null);
+    const [frozen, setFrozen] = useState(true);
 
     useEffect(() => { load(); }, [activityId]);
 
@@ -678,10 +780,23 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
             setContentJson(JSON.stringify(data.content || {}, null, 2));
             setUnit((data as any).learning_units);
             setPath((data as any).learning_units?.learning_paths);
+            const pathId = (data as any).learning_units?.learning_paths?.id;
+            if (!pathId) {
+                setFrozen(true);
+                return;
+            }
+            const { data: enrollments, error: enrollmentError } = await supabase
+                .from('student_path_enrollments')
+                .select('id')
+                .eq('path_id', pathId)
+                .limit(1);
+            if (enrollmentError) console.error('Learning activity freeze state error:', enrollmentError);
+            setFrozen(Boolean(enrollmentError || enrollments?.length));
         }
     };
 
     const save = async () => {
+        if (frozen) return;
         let parsedContent: any = {};
         try {
             parsedContent = JSON.parse(contentJson);
@@ -690,19 +805,26 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
             return;
         }
         setSaving(true);
-        await supabase.from('unit_activities').update({
-            title,
-            description,
-            xp_reward: xpReward,
-            estimated_minutes: estimatedMin,
-            content: parsedContent,
-        }).eq('id', activityId);
+        const { error } = await supabase.rpc('update_unit_activity', {
+            p_activity_id: activityId,
+            p_payload: {
+                title,
+                description,
+                xp_reward: xpReward,
+                estimated_minutes: estimatedMin,
+                content: parsedContent,
+            },
+        });
         setSaving(false);
+        if (error) {
+            alert('Não foi possível salvar a atividade: ' + error.message);
+            return;
+        }
         alert('Salvo com sucesso!');
     };
 
     const regenerate = async () => {
-        if (!path || !unit || !activity) return;
+        if (frozen || !path || !unit || !activity) return;
         setGenerating(true);
         try {
             const result = await generateUnitActivityContent({
@@ -735,11 +857,21 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
                 {unit && <span className="text-[10px] text-slate-400">em {unit.title}</span>}
             </div>
 
-            <Input label="Título" value={title} onChange={setTitle} />
-            <Input label="Descrição" value={description} onChange={setDescription} multiline />
+            {frozen && (
+                <div className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-950 dark:border-sky-900/50 dark:bg-sky-950/25 dark:text-sky-100" role="status">
+                    <Archive size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <div>
+                        <p className="text-xs font-black">Atividade preservada</p>
+                        <p className="mt-1 text-[11px] opacity-80">Como já há aluno vinculado à trilha, esta atividade está disponível somente para consulta.</p>
+                    </div>
+                </div>
+            )}
+
+            <Input label="Título" value={title} onChange={setTitle} disabled={frozen} />
+            <Input label="Descrição" value={description} onChange={setDescription} multiline disabled={frozen} />
             <div className="grid grid-cols-2 gap-3">
-                <Input label="XP" type="number" value={String(xpReward)} onChange={v => setXpReward(parseInt(v) || 0)} />
-                <Input label="Minutos" type="number" value={String(estimatedMin)} onChange={v => setEstimatedMin(parseInt(v) || 0)} />
+                <Input label="XP" type="number" value={String(xpReward)} onChange={v => setXpReward(parseInt(v) || 0)} disabled={frozen} />
+                <Input label="Minutos" type="number" value={String(estimatedMin)} onChange={v => setEstimatedMin(parseInt(v) || 0)} disabled={frozen} />
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-700">
@@ -747,7 +879,7 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
                     <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Conteúdo (JSON)</p>
                     <button
                         onClick={regenerate}
-                        disabled={generating}
+                        disabled={generating || frozen}
                         className="text-xs font-black uppercase tracking-widest text-white bg-gradient-to-r from-violet-600 to-pink-600 px-3 py-1.5 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-1"
                     >
                         {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
@@ -757,16 +889,19 @@ const ActivityDetail: React.FC<{ activityId: string; unitId: string; onBack: () 
                 <textarea
                     value={contentJson}
                     onChange={e => setContentJson(e.target.value)}
+                    readOnly={frozen}
                     rows={16}
-                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 read-only:cursor-default read-only:opacity-75"
                 />
             </div>
 
-            <div className="flex gap-2 justify-end">
-                <button onClick={save} disabled={saving} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
-                    {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar Alterações
-                </button>
-            </div>
+            {!frozen && (
+                <div className="flex gap-2 justify-end">
+                    <button onClick={save} disabled={saving} className="text-xs font-black uppercase tracking-widest text-white bg-violet-600 px-4 py-2 rounded-lg hover:brightness-110 disabled:opacity-50 flex items-center gap-2">
+                        {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar Alterações
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -780,7 +915,7 @@ const Loader = () => (
     </div>
 );
 
-const Input: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; multiline?: boolean }> = ({ label, value, onChange, placeholder, type = 'text', multiline }) => (
+const Input: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; multiline?: boolean; disabled?: boolean }> = ({ label, value, onChange, placeholder, type = 'text', multiline, disabled = false }) => (
     <div>
         <label className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-1">{label}</label>
         {multiline ? (
@@ -788,8 +923,9 @@ const Input: React.FC<{ label: string; value: string; onChange: (v: string) => v
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
+                disabled={disabled}
                 rows={2}
-                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
             />
         ) : (
             <input
@@ -797,7 +933,8 @@ const Input: React.FC<{ label: string; value: string; onChange: (v: string) => v
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 placeholder={placeholder}
-                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                disabled={disabled}
+                className="w-full p-2 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-default disabled:opacity-70"
             />
         )}
     </div>

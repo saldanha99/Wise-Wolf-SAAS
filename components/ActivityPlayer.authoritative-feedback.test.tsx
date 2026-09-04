@@ -329,16 +329,16 @@ describe('<ActivityPlayer /> — falhas e reprovação verificadas', () => {
                         alreadyAwarded: false,
                         leveledUp: false,
                         newLevel: 1,
+                        hearts: 4,
+                        heartsConsumed: 1,
                     },
                     error: null,
                 });
             }
-            if (name === 'consume_student_heart') {
-                return Promise.resolve({ data: { hearts: 4 }, error: null });
-            }
             return Promise.resolve({ data: null, error: null });
         });
         const onComplete = vi.fn();
+        const onHeartsChange = vi.fn();
 
         render(
             <ActivityPlayer
@@ -346,6 +346,8 @@ describe('<ActivityPlayer /> — falhas e reprovação verificadas', () => {
                 userId="student-1"
                 onComplete={onComplete}
                 onClose={vi.fn()}
+                hearts={2}
+                onHeartsChange={onHeartsChange}
             />,
         );
 
@@ -355,12 +357,8 @@ describe('<ActivityPlayer /> — falhas e reprovação verificadas', () => {
         expect(screen.getByText(/0%/)).toBeInTheDocument();
         expect(onComplete).not.toHaveBeenCalled();
 
-        const heartCall = mocks.rpc.mock.calls.find(([name]) => name === 'consume_student_heart');
-        expect(heartCall).toBeDefined();
-        expect(heartCall![1]).toEqual(expect.objectContaining({
-            p_request_key: expect.stringMatching(/-wrong-1$/),
-        }));
-        expect(heartCall![1]).not.toHaveProperty('p_activity_id');
+        expect(mocks.rpc.mock.calls.filter(([name]) => name === 'consume_student_heart')).toHaveLength(0);
+        expect(onHeartsChange).toHaveBeenCalledWith(4);
 
         fireEvent.click(retry);
 

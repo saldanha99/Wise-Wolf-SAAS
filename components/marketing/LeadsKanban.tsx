@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { MoreHorizontal, Phone, Mail, User, Clock, CheckCircle, XCircle, Plus, Calendar, ArrowRight, X, RefreshCw, ThermometerSun, ThermometerSnowflake, Flame } from 'lucide-react';
-import { User as UserType } from '../../types';
 import { calculateEnrollmentProRataPreview, dateInSaoPaulo } from '../../lib/enrollmentOffer';
 import { normalizeEnrollmentProRataTerms } from '../../lib/enrollment';
 import EnrollmentProRataSwitch from '../EnrollmentProRataSwitch';
@@ -15,6 +14,7 @@ interface Lead {
     created_at: string;
     notes?: string;
     scheduled_at?: string;
+    opportunity_id?: string | null;
 }
 
 interface LeadsKanbanProps {
@@ -48,12 +48,6 @@ const initialConversionData = () => ({
     schedule: [] as Array<{ day: string; time: string }>,
 });
 
-const canonicalPhone = (value: unknown): string | null => {
-    let digits = String(value || '').replace(/\D/g, '');
-    if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
-    return digits.length >= 12 && digits.length <= 15 ? digits : null;
-};
-
 const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
@@ -76,6 +70,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     const [conversionData, setConversionData] = useState(initialConversionData);
     const [isConverting, setIsConverting] = useState(false);
     const enrollmentOfferRequestIds = useRef<Record<string, string>>({});
+    const trialScheduleRequestIds = useRef<Record<string, string>>({});
+    const trialOutcomeRequestIds = useRef<Record<string, string>>({});
     const selectedConversionPlan = useMemo(
         () => plans.find(plan => plan.id === conversionData.planId) || null,
         [plans, conversionData.planId],
@@ -140,18 +136,62 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
     }, [tenantId]);
 
     const updateStatus = async (id: string, newStatus: Lead['status']) => {
+        const lead = leads.find(candidate => candidate.id === id);
+        if (!lead) return;
+
         if (newStatus === 'SCHEDULED') {
-            const lead = leads.find(l => l.id === id);
-            if (lead) setSchedulingLead(lead);
+            if (lead.opportunity_id) {
+                alert('Esta experimental já foi solicitada e aguarda a confirmação do professor.');
+                return;
+            }
+            setSchedulingLead(lead);
             return;
         }
 
         if (newStatus === 'WON') {
-            const lead = leads.find(l => l.id === id);
-            if (lead) {
-                setConversionData(initialConversionData());
-                setConvertingLead(lead);
+            if (!lead.opportunity_id) {
+                alert('Este lead ainda não possui uma aula experimental autoritativa vinculada.');
+                return;
             }
+            setConversionData(initialConversionData());
+            setConvertingLead(lead);
+            return;
+        }
+
+        if (newStatus === 'TRIAL_DONE' || (newStatus === 'LOST' && lead.opportunity_id)) {
+            if (!lead.opportunity_id) {
+                alert('Não é possível concluir uma experimental sem a oportunidade autoritativa vinculada.');
+                return;
+            }
+            const action = newStatus === 'TRIAL_DONE' ? 'SET_TRIAL_STATUS' : 'MARK_LOST';
+            const requestKey = `${action}:${lead.opportunity_id}:${newStatus}`;
+            const requestId = trialOutcomeRequestIds.current[requestKey] || crypto.randomUUID();
+            trialOutcomeRequestIds.current[requestKey] = requestId;
+            const p_payload = action === 'SET_TRIAL_STATUS'
+                ? {
+                    requestId,
+                    opportunityId: lead.opportunity_id,
+                    action,
+                    trialStatus: 'DONE',
+                }
+                : {
+                    requestId,
+                    opportunityId: lead.opportunity_id,
+                    action,
+                    lostReason: 'Lead marcado como perdido no CRM',
+                };
+            const { data, error } = await supabase.rpc('update_trial_outcome_secure', { p_payload });
+            if (error || data?.ok !== true) {
+                const message = data?.error === 'appointment_not_ended'
+                    ? 'A aula só pode ser concluída depois do término do horário agendado.'
+                    : data?.error === 'appointment_required'
+                        ? 'A experimental ainda aguarda a confirmação do professor.'
+                        : error?.message || 'Não foi possível atualizar esta experimental.';
+                alert(message);
+                return;
+            }
+            delete trialOutcomeRequestIds.current[requestKey];
+            await fetchLeads();
             return;
         }
 
@@ -175,63 +215,62 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
 
         setIsScheduling(true);
         try {
-            // 1. Create Provisional Profile (TRIAL)
-            // Check if profile exists first to avoid duplicates
-            const { data: existingProfile } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('email', schedulingLead.email)
-                .single();
-
-            let studentId = existingProfile?.id;
-
-            if (!studentId) {
-                const { data: newProfile, error: profileError } = await supabase
-                    .from('profiles')
-                    .insert({
-                        tenant_id: tenantId,
-                        email: schedulingLead.email || `lead_${schedulingLead.id}@temp.com`,
-                        full_name: schedulingLead.name,
-                        role: 'STUDENT',
-                        status: 'TRIAL',
-                        phone: schedulingLead.phone
-                    })
-                    .select()
-                    .single();
-
-                if (profileError) throw profileError;
-                studentId = newProfile.id;
+            const startsAt = new Date(`${scheduleData.date}T${scheduleData.time}:00-03:00`);
+            if (Number.isNaN(startsAt.getTime())) throw new Error('Data ou horário inválido.');
+            const requestKey = JSON.stringify({
+                leadId: schedulingLead.id,
+                teacherId: scheduleData.teacherId,
+                startsAt: startsAt.toISOString(),
+            });
+            const requestId = trialScheduleRequestIds.current[requestKey] || crypto.randomUUID();
+            trialScheduleRequestIds.current[requestKey] = requestId;
+            const { data, error: scheduleError } = await supabase.rpc(
+                'schedule_manual_trial_secure',
+                {
+                    p_payload: {
+                        requestId,
+                        leadId: schedulingLead.id,
+                        teacherId: scheduleData.teacherId,
+                        studentName: schedulingLead.name.trim(),
+                        studentPhone: schedulingLead.phone?.replace(/\D/g, '') || null,
+                        startsAt: startsAt.toISOString(),
+                    },
+                },
+            );
+            if (scheduleError || data?.ok !== true) {
+                const message = data?.error === 'teacher_schedule_conflict'
+                    ? 'O professor já possui outro compromisso nesse horário.'
+                    : data?.error === 'lead_already_has_trial'
+                        ? 'Este lead já possui uma experimental vinculada.'
+                        : data?.error === 'lead_identity_mismatch'
+                            ? 'Os dados do lead mudaram. Atualize a página antes de agendar.'
+                            : scheduleError?.message || 'Não foi possível solicitar a experimental.';
+                throw new Error(message);
             }
+            delete trialScheduleRequestIds.current[requestKey];
 
-            // 2. Create One-time Class (Reschedule)
-            const { error: scheduleError } = await supabase
-                .from('reschedules')
-                .insert({
-                    tenant_id: tenantId,
-                    student_id: studentId,
-                    teacher_id: scheduleData.teacherId,
-                    date: scheduleData.date,
-                    time: scheduleData.time,
-                    created_by_fault: 'SCHOOL_ADMIN' // abusing column or just ignore
-                });
-
-            if (scheduleError) throw scheduleError;
-
-            // 3. Update Lead Status
-            const scheduledAt = new Date(`${scheduleData.date}T${scheduleData.time}`).toISOString();
-            await supabase
-                .from('crm_leads')
-                .update({
-                    status: 'SCHEDULED',
-                    scheduled_at: scheduledAt
-                })
-                .eq('id', schedulingLead.id);
+            const teacherConfirmationUrl = typeof data.teacherConfirmationUrl === 'string'
+                ? data.teacherConfirmationUrl
+                : '';
+            let copied = false;
+            if (teacherConfirmationUrl) {
+                try {
+                    await navigator.clipboard.writeText(teacherConfirmationUrl);
+                    copied = true;
+                } catch {
+                    copied = false;
+                }
+            }
 
             // Success
             setSchedulingLead(null);
             setScheduleData({ date: '', time: '', teacherId: '' });
-            fetchLeads();
-            alert("Aula Experimental Agendada com Sucesso!");
+            await fetchLeads();
+            alert(copied
+                ? 'Solicitação criada e link do professor copiado. A aula será agendada após a confirmação dele.'
+                : teacherConfirmationUrl
+                    ? `Solicitação criada. Envie este link ao professor para confirmar:\n\n${teacherConfirmationUrl}`
+                    : 'Solicitação criada. A aula será agendada após a confirmação do professor.');
 
         } catch (error: any) {
             console.error('Scheduling error:', error);
@@ -267,25 +306,10 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
         }
         setIsConverting(true);
         try {
-            const leadPhone = canonicalPhone(convertingLead.phone);
-            const { data: opportunityRows, error: opportunityError } = await supabase
-                .from('opportunities')
-                .select('id, student_phone')
-                .eq('tenant_id', tenantId)
-                .eq('kind', 'TRIAL')
-                .eq('status', 'CLAIMED')
-                .eq('conversion_status', 'OPEN')
-                .eq('trial_status', 'DONE');
-            if (opportunityError) throw opportunityError;
-            const matchingOpportunities = (opportunityRows || []).filter(opportunity =>
-                leadPhone !== null && canonicalPhone(opportunity.student_phone) === leadPhone
-            );
-            if (matchingOpportunities.length !== 1) {
-                throw new Error(
-                    'Esta matrícula exige uma única experimental autoritativa concluída para o lead. Use o funil de experimentais para corrigir ou concluir o vínculo.',
-                );
+            const opportunityId = String(convertingLead.opportunity_id || '').trim();
+            if (!opportunityId) {
+                throw new Error('Esta matrícula exige uma experimental autoritativa vinculada ao lead.');
             }
-            const opportunityId = matchingOpportunities[0].id;
             const requestKey = JSON.stringify({
                 leadId: convertingLead.id,
                 opportunityId,
@@ -472,9 +496,12 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
                                             <div className="flex gap-2 w-full">
                                                 <button
                                                     onClick={() => updateStatus(lead.id, 'SCHEDULED')}
-                                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold hover:bg-purple-100 transition-colors"
+                                                    disabled={Boolean(lead.opportunity_id)}
+                                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-xs font-bold hover:bg-purple-100 transition-colors disabled:cursor-wait disabled:bg-amber-50 disabled:text-amber-700"
                                                 >
-                                                    <Calendar size={12} /> Agendar
+                                                    {lead.opportunity_id
+                                                        ? <><Clock size={12} /> Aguardando professor</>
+                                                        : <><Calendar size={12} /> Agendar</>}
                                                 </button>
                                                 <button
                                                     onClick={() => updateStatus(lead.id, 'LOST')}

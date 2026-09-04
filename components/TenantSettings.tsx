@@ -55,10 +55,25 @@ const SECTION_ITEMS: Array<{ id: SectionId; label: string; description: string; 
   { id: 'security', label: 'Segurança', description: 'Isolamento e auditoria', icon: ShieldCheck },
 ];
 
+function deriveSlug(snapshot: TenantSettingsSnapshot): string {
+  if (snapshot.tenant.slug && snapshot.tenant.slug.trim()) {
+    return snapshot.tenant.slug.trim();
+  }
+  const candidate = snapshot.tenant.name || snapshot.tenant.domain || snapshot.tenant.id || 'escola';
+  const cleaned = candidate
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return cleaned.length >= 3 ? cleaned : `${cleaned || 'escola'}-portal`.slice(0, 40);
+}
+
 function snapshotToForm(snapshot: TenantSettingsSnapshot): TenantSettingsForm {
   return {
     name: snapshot.tenant.name || '',
-    slug: snapshot.tenant.slug || '',
+    slug: deriveSlug(snapshot),
     branding: { ...DEFAULT_BRANDING, ...snapshot.tenant.branding },
     schoolInfo: { ...EMPTY_SCHOOL, ...(snapshot.tenant.schoolInfo || {}) },
     whatsappEnabled: snapshot.tenant.whatsappEnabled,
@@ -117,6 +132,7 @@ function friendlyError(error: unknown) {
     const messages: Record<string, string> = {
       SETTINGS_CONFLICT: 'As configurações mudaram em outra sessão. Recarregue antes de salvar.',
       SLUG_IN_USE: 'Este endereço do portal já está sendo usado por outra escola.',
+      INVALID_SETTINGS: 'Configurações inválidas. Verifique os campos informados.',
       INVALID_CREDENTIAL: 'O provedor recusou essa credencial. Confira a chave e o ambiente.',
       RATE_LIMITED: 'Muitas tentativas em pouco tempo. Aguarde alguns minutos.',
       DNS_NOT_READY: 'Os registros DNS ainda não foram encontrados nos dois pontos de verificação.',
@@ -221,7 +237,11 @@ const TenantSettings: React.FC<TenantSettingsProps> = ({ tenant, onUpdate }) => 
     if (!form || !snapshot) return;
     setSaving(true); setNotice(null);
     try {
-      await tenantSettingsService.save(snapshot.settings.version, form);
+      const payload: TenantSettingsForm = {
+        ...form,
+        slug: form.slug.trim() || deriveSlug(snapshot),
+      };
+      await tenantSettingsService.save(snapshot.settings.version, payload);
       clearTenantCache();
       clearSchoolInfoCache(snapshot.tenant.id);
       onUpdate({ ...form.branding });

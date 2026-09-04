@@ -57,6 +57,7 @@ export interface ComplementaryActivitySubmissionResult {
   questionResults?: ComplementaryQuestionResult[];
   completedAt?: string | null;
   alreadyApplied?: boolean;
+  canonicalResultAvailable?: boolean;
 }
 
 export interface ComplementaryActivityPlayerProps {
@@ -464,6 +465,16 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
       const authoritativeResult = await onSubmit(buildEvidence());
       if (objectiveMode) {
         setSubmissionResult(authoritativeResult);
+        if (
+          authoritativeResult.passed
+          && authoritativeResult.status === 'COMPLETED'
+          && authoritativeResult.canonicalResultAvailable === false
+        ) {
+          // Registros muito antigos podem não ter a correção detalhada
+          // persistida. Vá direto ao encerramento honesto, sem renderizar uma
+          // revisão vazia como se o aluno tivesse tirado 0%.
+          setSubmitted(true);
+        }
       } else if (authoritativeResult.passed && authoritativeResult.status === 'COMPLETED') {
         setSubmitted(true);
       } else {
@@ -566,7 +577,9 @@ const ComplementaryActivityPlayer: React.FC<ComplementaryActivityPlayerProps> = 
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
                   {objectiveMode
-                  ? `Você consolidou este desafio com ${Number(submissionResult?.scorePercentage ?? 0)}%. A correção foi validada com segurança pelo servidor.`
+                  ? submissionResult?.canonicalResultAvailable === false
+                    ? 'Esta atividade já havia sido concluída. O registro foi preservado, mas a correção detalhada dessa atividade antiga não está disponível.'
+                    : `Você consolidou este desafio com ${Number(submissionResult?.scorePercentage ?? 0)}%. A correção foi validada com segurança pelo servidor.`
                   : 'Sua evidência foi salva. Ela mostra o que você fez e refletiu, sem inventar uma avaliação automática.'}
               </p>
               <button

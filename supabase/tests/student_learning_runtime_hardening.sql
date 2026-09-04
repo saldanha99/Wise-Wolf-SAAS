@@ -334,12 +334,12 @@ select pg_temp.assert_true(
   to_regprocedure('public.grade_quiz(uuid,integer[])') is null
   and to_regprocedure('public.grade_quiz(uuid,integer[],text)') is not null
   and (
-    select procedure.pronargdefaults = 1
+    select procedure.pronargdefaults = 0
       from pg_catalog.pg_proc as procedure
      where procedure.oid =
        'public.grade_quiz(uuid,integer[],text)'::regprocedure
   ),
-  'legacy grade_quiz overload remains or request key is not optional'
+  'legacy grade_quiz overload remains or request key is not mandatory'
 );
 
 select pg_temp.assert_true(
@@ -790,8 +790,8 @@ exception
 end;
 $$;
 
--- The curriculum builder remains direct CRUD for school administrators, but
--- every write must stay inside the actor's active tenant.
+-- Curriculum inserts remain tenant-scoped, while child UPDATE/DELETE and path
+-- retirement use the path-first authoritative commands installed later.
 set local role authenticated;
 set local request.jwt.claims =
   '{"role":"authenticated","sub":"00000000-0000-4000-8000-00000000e301"}';
@@ -824,7 +824,7 @@ insert into public.learning_paths (
   '10000000-0000-4000-8000-00000000e901',
   'learning-runtime-a',
   'Builder policy fixture',
-  false,
+  true,
   auth.uid()
 );
 
@@ -856,9 +856,10 @@ insert into public.unit_activities (
   '{"text":"Tenant-scoped draft"}'::jsonb
 );
 
-update public.unit_activities
-   set title = 'Builder policy activity updated'
- where id = '30000000-0000-4000-8000-00000000e901';
+select public.update_unit_activity(
+  '30000000-0000-4000-8000-00000000e901',
+  '{"title":"Builder policy activity updated"}'::jsonb
+);
 
 select pg_temp.assert_true(
   exists (
@@ -867,7 +868,7 @@ select pg_temp.assert_true(
      where id = '30000000-0000-4000-8000-00000000e901'
        and title = 'Builder policy activity updated'
   ),
-  'school admin curriculum CRUD policy blocked its own tenant'
+  'school admin curriculum mutation RPC blocked its own tenant'
 );
 
 do $$
@@ -890,16 +891,34 @@ exception
 end;
 $$;
 
-delete from public.learning_paths
- where id = '10000000-0000-4000-8000-00000000e901';
+do $$
+begin
+  delete from public.learning_paths
+   where id = '10000000-0000-4000-8000-00000000e901';
+  raise exception 'assertion failed: direct curriculum delete remained exposed';
+exception
+  when sqlstate '42501' then
+    null;
+end;
+$$;
 
 select pg_temp.assert_true(
-  not exists (
+  public.archive_learning_path(
+    '10000000-0000-4000-8000-00000000e901',
+    'Retire obsolete builder fixture safely'
+  ) ->> 'active' = 'false'
+  and exists (
     select 1
       from public.learning_paths
      where id = '10000000-0000-4000-8000-00000000e901'
+       and active is false
+  )
+  and exists (
+    select 1
+      from public.unit_activities
+     where id = '30000000-0000-4000-8000-00000000e901'
   ),
-  'school admin curriculum delete policy blocked its own tenant'
+  'school admin could not archive a curriculum without deleting its content'
 );
 
 reset role;
@@ -1653,7 +1672,8 @@ do $$
 begin
   perform public.grade_quiz(
     '30000000-0000-4000-8000-00000000e002',
-    array[1, 0]::integer[]
+    array[1, 0]::integer[],
+    'prerequisite-guard-request-0001'
   );
   raise exception 'assertion failed: quiz bypassed the current prerequisite';
 exception
@@ -1843,23 +1863,36 @@ select pg_temp.assert_true(
   'reading was not graded with authoritative replay-safe feedback'
 );
 
-select pg_temp.assert_true(
-  not (public.grade_quiz(
+do $$
+declare
+  v_first jsonb;
+  v_replay jsonb;
+begin
+  v_first := public.grade_quiz(
     '30000000-0000-4000-8000-00000000e002',
     array[0, 1]::integer[],
     'quiz-failed-request-0001'
-  ) ->> 'passed')::boolean,
-  'wrong quiz answers unexpectedly passed'
-);
+  );
+  v_replay := public.grade_quiz(
+    '30000000-0000-4000-8000-00000000e002',
+    array[0, 1]::integer[],
+    'quiz-failed-request-0001'
+  );
 
-select pg_temp.assert_true(
-  (public.grade_quiz(
-    '30000000-0000-4000-8000-00000000e002',
-    array[0, 1]::integer[],
-    'quiz-failed-request-0001'
-  ) ->> 'alreadyApplied')::boolean,
-  'lost-response retry of a failed quiz was not replay-safe'
-);
+  perform pg_temp.assert_true(
+    not (v_first ->> 'passed')::boolean
+      and (v_first ->> 'hearts')::integer = 3
+      and (v_first ->> 'heartsConsumed')::integer = 2,
+    'wrong quiz answers did not atomically consume exactly two hearts'
+  );
+  perform pg_temp.assert_true(
+    (v_replay ->> 'alreadyApplied')::boolean
+      and (v_replay ->> 'hearts')::integer = 3
+      and (v_replay ->> 'heartsConsumed')::integer = 0,
+    'lost-response retry duplicated grading or heart consumption'
+  );
+end;
+$$;
 
 reset role;
 
@@ -1937,6 +1970,7 @@ select pg_temp.assert_true(
     select profile.xp = 40
            and profile.level = 1
            and profile.streak_count = 1
+           and profile.hearts = 3
       from public.profiles as profile
      where profile.id = '00000000-0000-4000-8000-00000000e101'
   )
@@ -1953,8 +1987,14 @@ select pg_temp.assert_true(
      where attempt.student_id = '00000000-0000-4000-8000-00000000e101'
        and attempt.activity_id = '30000000-0000-4000-8000-00000000e002'
        and attempt.attempt_kind = 'QUIZ'
+  )
+  and (
+    select count(*) = 2
+      from public.student_heart_consumptions as consumption
+     where consumption.student_id = '00000000-0000-4000-8000-00000000e101'
+       and consumption.request_key like 'learning-heart-%'
   ),
-  'quiz retry duplicated XP, streak or attempt history'
+  'quiz retry duplicated XP, streak, attempt history or heart consumption'
 );
 
 select pg_temp.assert_true(
@@ -2757,6 +2797,31 @@ begin
     (v_result ->> 'alreadyApplied')::boolean,
     'successful complementary quiz replay was not idempotent'
   );
+
+  -- A stale tab can submit a different request after another tab completed the
+  -- activity. It must receive the stored authoritative result, never a made-up
+  -- null/0 score, and must not create another attempt.
+  v_result := public.complete_student_complementary_activity(
+    v_activity_id,
+    pg_catalog.jsonb_build_object(
+      'activityId', v_activity_id::text,
+      'activityType', 'quiz',
+      'contentMode', 'structured',
+      'answers', pg_catalog.jsonb_build_array(0),
+      'questionIds', pg_catalog.jsonb_build_array('generated-q1'),
+      'completedAt', '2026-08-31T12:02:00Z'
+    ),
+    'quiz-stale-tab-request-0002'
+  );
+
+  perform pg_temp.assert_true(
+    (v_result ->> 'alreadyApplied')::boolean
+      and (v_result ->> 'canonicalResultAvailable')::boolean
+      and (v_result ->> 'passed')::boolean
+      and (v_result ->> 'scorePercentage')::integer = 100
+      and (v_result -> 'questionResults' -> 0 ->> 'correct')::boolean,
+    'stale complementary tab did not receive canonical passing feedback'
+  );
 end;
 $$;
 
@@ -2788,7 +2853,7 @@ select pg_temp.assert_true(
      where profile.id = '00000000-0000-4000-8000-00000000e101'
   )
   and (
-    select skill.total_activities = 3
+    select skill.total_activities = 4
       from public.student_skill_scores as skill
      where skill.student_id = '00000000-0000-4000-8000-00000000e101'
        and skill.skill = 'grammar'

@@ -56,6 +56,7 @@ const queryFor = (table: string) => {
     if (table === 'learning_paths') {
         query.order = vi.fn().mockResolvedValue({ data: [availablePath], error: null });
         query.limit = vi.fn().mockResolvedValue({ data: [availablePath], error: null });
+        query.maybeSingle = vi.fn().mockResolvedValue({ data: availablePath, error: null });
         return query;
     }
 
@@ -97,6 +98,76 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('<StudentLearningPaths /> — gravações autoritativas', () => {
+    it('preserva uma trilha concluída e arquivada para revisão após recarregar', async () => {
+        const completedActivity = {
+            id: 'activity-completed',
+            unit_id: 'unit-1',
+            order_index: 1,
+            type: 'quiz',
+            title: 'Revisão final',
+            description: 'Histórico preservado.',
+            content: { questions: [{ id: 'q1', q: 'Review?', options: ['A', 'B'] }] },
+            xp_reward: 20,
+            estimated_minutes: 5,
+            locked: false,
+        };
+
+        mocks.from.mockImplementation((table: string) => {
+            const query = queryFor(table);
+            if (table === 'learning_paths') {
+                query.order = vi.fn().mockResolvedValue({ data: [], error: null });
+                query.maybeSingle = vi.fn().mockResolvedValue({ data: availablePath, error: null });
+            }
+            if (table === 'student_path_enrollments') {
+                query.limit = vi.fn().mockResolvedValue({
+                    data: [{
+                        path_id: 'path-1',
+                        current_unit_id: 'unit-1',
+                        status: 'COMPLETED',
+                        completed_at: '2026-08-31T12:00:00Z',
+                        started_at: '2026-08-01T12:00:00Z',
+                    }],
+                    error: null,
+                });
+            }
+            return query;
+        });
+        mocks.rpc.mockImplementation((name: string) => {
+            if (name === 'get_student_practice_status') {
+                return Promise.resolve({
+                    data: { xp: 20, streakCount: 1, hearts: 5, dailyXp: 20, dailyXpGoal: 30 },
+                    error: null,
+                });
+            }
+            if (name === 'get_student_learning_path_runtime') {
+                return Promise.resolve({
+                    data: {
+                        units: [{
+                            id: 'unit-1',
+                            path_id: 'path-1',
+                            order_index: 1,
+                            title: 'Unidade concluída',
+                            description: 'Conteúdo histórico.',
+                            estimated_minutes: 5,
+                            skill_focus: ['grammar'],
+                        }],
+                        activities: [completedActivity],
+                        progress: [{ activity_id: completedActivity.id, status: 'COMPLETED', score: 100 }],
+                    },
+                    error: null,
+                });
+            }
+            return Promise.resolve({ data: [], error: null });
+        });
+
+        render(<StudentLearningPaths userId="student-1" />);
+
+        expect(await screen.findByText('Trilha concluída! 🎉')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /trilhas/i }));
+        expect(await screen.findByText('Concluída')).toBeInTheDocument();
+        expect(screen.getByText('Revisar')).toBeInTheDocument();
+    });
+
     it('abre nós concluídos somente em revisão e não oferece uma nova conclusão', async () => {
         const units = [{
             id: 'unit-1',

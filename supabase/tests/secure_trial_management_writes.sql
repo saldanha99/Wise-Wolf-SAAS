@@ -43,6 +43,26 @@ $$;
 
 grant execute on function pg_temp.assert_direct_write_denied(text, text) to public;
 
+create or replace function pg_temp.assert_linked_lead_delete_denied(
+  command text,
+  message text
+)
+returns void
+language plpgsql
+as $$
+begin
+  begin
+    execute command;
+  exception
+    when foreign_key_violation then return;
+  end;
+  raise exception 'assertion failed: %', message;
+end;
+$$;
+
+grant execute on function pg_temp.assert_linked_lead_delete_denied(text, text)
+  to public;
+
 select pg_temp.assert_true(
   (
     select array_agg(policyname::text order by policyname)
@@ -507,6 +527,29 @@ values
   ('30000000-0000-4000-8000-00000000e001', 'secure-trial-a', '10000000-0000-4000-8000-00000000e001', 'secure-trial-link-token-a-000001', 'https://example.invalid/a', 'Secure Read A', 'PENDING', 'ENROLLMENT', now() + interval '30 days'),
   ('30000000-0000-4000-8000-00000000e101', 'secure-trial-b', '10000000-0000-4000-8000-00000000e101', 'secure-trial-link-token-b-000001', 'https://example.invalid/b', 'Secure Read B', 'PENDING', 'ENROLLMENT', now() + interval '30 days');
 
+set local request.jwt.claims = '{"role":"service_role"}';
+insert into public.crm_leads (
+  id, tenant_id, name, email, phone, status, source
+) values
+  (
+    '70000000-0000-4000-8000-00000000e001',
+    'secure-trial-a',
+    'Secure Manual Trial',
+    'secure-manual-trial@example.invalid',
+    '5511999993301',
+    'CONTACTED',
+    'secure_test'
+  ),
+  (
+    '70000000-0000-4000-8000-00000000e002',
+    'secure-trial-a',
+    'Same Phone Must Stay Unlinked',
+    'secure-same-phone@example.invalid',
+    '5511999993301',
+    'CONTACTED',
+    'secure_test'
+  );
+
 set local role authenticated;
 set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
@@ -558,10 +601,49 @@ select pg_temp.assert_direct_write_denied(
   'authenticated deleted an enrollment link directly'
 );
 
+reset role;
+set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
+update public.tenant_memberships
+   set role = 'COORDINATOR'
+ where user_id = '00000000-0000-4000-8000-00000000e005'
+   and tenant_id = 'secure-trial-a';
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e005","role":"authenticated"}';
+select pg_temp.assert_true(
+  public.schedule_manual_trial_secure(jsonb_build_object(
+    'requestId', '40000000-0000-4000-8000-00000000e099',
+    'leadId', '70000000-0000-4000-8000-00000000e001',
+    'teacherId', '00000000-0000-4000-8000-00000000e002',
+    'studentName', 'Secure Manual Trial',
+    'studentPhone', '5511999993301',
+    'startsAt', (current_date + 20 + time '09:00')
+      at time zone 'America/Sao_Paulo'
+  )) ->> 'error' = 'forbidden',
+  'coordinator bypassed the narrower CRM management role boundary'
+);
+
+reset role;
+set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
+update public.tenant_memberships
+   set role = 'SALESPERSON'
+ where user_id = '00000000-0000-4000-8000-00000000e005'
+   and tenant_id = 'secure-trial-a';
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
+
 do $manual_schedule$
 declare
   payload jsonb := jsonb_build_object(
     'requestId', '40000000-0000-4000-8000-00000000e001',
+    'leadId', '70000000-0000-4000-8000-00000000e001',
     'teacherId', '00000000-0000-4000-8000-00000000e002',
     'studentName', 'Secure Manual Trial',
     'studentPhone', '5511999993301',
@@ -587,6 +669,14 @@ begin
     and result ->> 'state' = 'AWAITING_TEACHER'
     and coalesce((retry_result ->> 'idempotent')::boolean, false)
     and retry_result ->> 'opportunityId' = result ->> 'opportunityId'
+    and exists (
+      select 1
+        from public.crm_leads as lead
+       where lead.id = '70000000-0000-4000-8000-00000000e001'
+         and lead.opportunity_id = (result ->> 'opportunityId')::uuid
+         and lead.status = 'CONTACTED'
+         and lead.scheduled_at is null
+    )
     and not exists (
       select 1
         from public.appointments
@@ -618,6 +708,44 @@ begin
   );
 end;
 $manual_schedule$;
+
+select pg_temp.assert_direct_write_denied(
+  $$update public.crm_leads
+       set opportunity_id = null
+     where id = '70000000-0000-4000-8000-00000000e001'$$,
+  'authenticated detached an authoritative trial from its CRM lead'
+);
+select pg_temp.assert_direct_write_denied(
+  $$update public.crm_leads
+       set opportunity_id = '10000000-0000-4000-8000-00000000e001'
+     where id = '70000000-0000-4000-8000-00000000e001'$$,
+  'authenticated replaced the authoritative trial binding directly'
+);
+select pg_temp.assert_linked_lead_delete_denied(
+  $$delete from public.crm_leads
+     where id = '70000000-0000-4000-8000-00000000e001'$$,
+  'authenticated deleted a CRM lead linked to an authoritative trial'
+);
+update public.crm_leads
+   set status = 'SCHEDULED'
+ where id = '70000000-0000-4000-8000-00000000e001';
+select pg_temp.assert_true(
+  exists (
+    select 1
+      from public.crm_leads as lead
+     where lead.id = '70000000-0000-4000-8000-00000000e001'
+       and lead.status = 'CONTACTED'
+       and lead.opportunity_id is not null
+  )
+  and exists (
+    select 1
+      from public.crm_leads as lead
+     where lead.id = '70000000-0000-4000-8000-00000000e002'
+       and lead.status = 'CONTACTED'
+       and lead.opportunity_id is null
+  ),
+  'direct status update or phone matching corrupted the authoritative CRM link'
+);
 
 reset role;
 set local role authenticated;
@@ -968,6 +1096,15 @@ begin
          and appointment.teacher_id = '00000000-0000-4000-8000-00000000e002'
          and appointment.professor_id = '00000000-0000-4000-8000-00000000e002'
     )
+    and exists (
+      select 1
+        from public.crm_leads as lead
+       where lead.id = '70000000-0000-4000-8000-00000000e001'
+         and lead.opportunity_id =
+           current_setting('app.secure_manual_opportunity_id')::uuid
+         and lead.status = 'SCHEDULED'
+         and lead.scheduled_at is not null
+    )
     and (
       select count(*)
       from public.notification_queue as notification
@@ -1002,11 +1139,98 @@ end;
 $teacher_acceptance$;
 
 reset role;
-set local role service_role;
-set local request.jwt.claims = '{"role":"service_role"}';
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
 
--- Simula a passagem real do tempo: o feedback somente pode ser salvo depois
--- que a janela da experimental terminou e o lançamento autoritativo existe.
+select pg_temp.assert_true(
+  public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e000',
+    'opportunityId',
+      current_setting('app.secure_manual_opportunity_id')::uuid,
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'NO_SHOW_STUDENT'
+  )) ->> 'error' = 'appointment_not_ended'
+  and exists (
+    select 1
+      from public.appointments as appointment
+      join public.opportunities as opportunity
+        on opportunity.trial_appointment_id = appointment.id
+     where opportunity.id =
+       current_setting('app.secure_manual_opportunity_id')::uuid
+       and appointment.status in ('scheduled', 'confirmed')
+  ),
+  'future trial outcome changed appointment state'
+);
+
+select pg_temp.assert_true(
+  public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e090',
+    'opportunityId', '90000000-0000-4000-8000-00000000e090',
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'DONE'
+  )) ->> 'error' = 'opportunity_not_found'
+  and public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e091',
+    'opportunityId', '10000000-0000-4000-8000-00000000e101',
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'DONE'
+  )) ->> 'error' = 'opportunity_not_found'
+  and public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e092',
+    'opportunityId',
+      current_setting('app.secure_manual_opportunity_id')::uuid,
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'UNSUPPORTED'
+  )) ->> 'error' = 'invalid_trial_status',
+  'temporal wrapper changed the legacy validation/error contract'
+);
+
+update public.crm_leads
+   set status = 'NEW'
+ where id = '70000000-0000-4000-8000-00000000e001';
+select pg_temp.assert_true(
+  exists (
+    select 1
+      from public.crm_leads as lead
+     where lead.id = '70000000-0000-4000-8000-00000000e001'
+       and lead.status = 'SCHEDULED'
+  ),
+  'authenticated caller rewound an authoritative trial status directly'
+);
+
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+set local app.enrollment_claim = '1';
+update public.profiles
+   set role = 'SUPER_ADMIN'
+ where id = '00000000-0000-4000-8000-00000000e001';
+set local app.enrollment_claim = '';
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
+select pg_temp.assert_true(
+  coalesce((public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e093',
+    'opportunityId',
+      current_setting('app.secure_vendor_opportunity_id')::uuid,
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'DONE',
+    'overrideBeforeEnd', true,
+    'overrideReason', 'Teste controlado de exceção temporal auditada'
+  )) ->> 'ok')::boolean, false),
+  'SUPER_ADMIN could not apply the explicit audited temporal override'
+);
+
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+set local app.enrollment_claim = '1';
+update public.profiles
+   set role = 'SCHOOL_ADMIN'
+ where id = '00000000-0000-4000-8000-00000000e001';
+set local app.enrollment_claim = '';
 update public.appointments
    set start_time = now() - interval '1 hour'
  where id = (
@@ -1014,6 +1238,65 @@ update public.appointments
      from public.opportunities as opportunity
     where opportunity.id =
       current_setting('app.secure_vendor_opportunity_id')::uuid
+ );
+select pg_temp.assert_true(
+  (
+    select count(*)
+      from public.audit_logs as audit
+     where audit.user_id = '00000000-0000-4000-8000-00000000e001'
+       and audit.action = 'trial_status_override_before_appointment_end'
+       and audit.resource_id =
+         current_setting('app.secure_vendor_opportunity_id')
+  ) = 1,
+  'temporal override did not create exactly one audit event'
+);
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims =
+  '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
+select pg_temp.assert_true(
+  coalesce((public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-00000000e093',
+    'opportunityId',
+      current_setting('app.secure_vendor_opportunity_id')::uuid,
+    'action', 'SET_TRIAL_STATUS',
+    'trialStatus', 'DONE',
+    'overrideBeforeEnd', true,
+    'overrideReason', 'Teste controlado de exceção temporal auditada'
+  )) ->> 'idempotent')::boolean, false),
+  'temporal override retry changed after the appointment end boundary'
+);
+
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+
+select pg_temp.assert_true(
+  not exists (
+    select 1
+      from private.secure_trial_command_receipts as receipt
+     where receipt.actor_id = '00000000-0000-4000-8000-00000000e001'
+       and receipt.command = 'TRIAL_OUTCOME'
+       and receipt.request_id in (
+         '60000000-0000-4000-8000-00000000e000',
+         '60000000-0000-4000-8000-00000000e090',
+         '60000000-0000-4000-8000-00000000e091',
+         '60000000-0000-4000-8000-00000000e092'
+       )
+  ),
+  'rejected early/invalid trial outcome left a command receipt'
+);
+
+-- Simula a passagem real do tempo: o feedback somente pode ser salvo depois
+-- que a janela da experimental terminou e o lançamento autoritativo existe.
+update public.appointments
+   set start_time = now() - interval '1 hour'
+ where id in (
+   select opportunity.trial_appointment_id
+     from public.opportunities as opportunity
+    where opportunity.id in (
+      current_setting('app.secure_manual_opportunity_id')::uuid
+    )
  );
 
 reset role;
@@ -1023,45 +1306,50 @@ set local request.jwt.claims =
 
 do $outcomes$
 declare
-  vendor_opportunity uuid :=
-    current_setting('app.secure_vendor_opportunity_id')::uuid;
   manual_opportunity uuid;
   result jsonb;
-  retry_result jsonb;
 begin
   select id into manual_opportunity
     from public.opportunities
    where student_name = 'Secure Manual Trial';
 
   result := public.update_trial_outcome_secure(jsonb_build_object(
-    'requestId', '60000000-0000-4000-8000-00000000e001',
-    'opportunityId', vendor_opportunity,
-    'action', 'SET_TRIAL_STATUS',
-    'trialStatus', 'DONE'
-  ));
-  retry_result := public.update_trial_outcome_secure(jsonb_build_object(
-    'requestId', '60000000-0000-4000-8000-00000000e001',
-    'opportunityId', vendor_opportunity,
+    'requestId', '60000000-0000-4000-8000-00000000e002',
+    'opportunityId', manual_opportunity,
     'action', 'SET_TRIAL_STATUS',
     'trialStatus', 'DONE'
   ));
   perform pg_temp.assert_true(
     coalesce((result ->> 'ok')::boolean, false)
     and result ->> 'appointmentStatus' = 'completed'
-    and coalesce((retry_result ->> 'idempotent')::boolean, false),
-    format('DONE outcome was not atomic/idempotent: %s / %s', result, retry_result)
+    and exists (
+      select 1
+        from public.crm_leads as lead
+       where lead.id = '70000000-0000-4000-8000-00000000e001'
+         and lead.opportunity_id = manual_opportunity
+         and lead.status = 'TRIAL_DONE'
+    )
+    and exists (
+      select 1
+        from public.crm_leads as lead
+       where lead.id = '70000000-0000-4000-8000-00000000e002'
+         and lead.opportunity_id is null
+         and lead.status = 'CONTACTED'
+    ),
+    format('FK-based CRM trial completion was not exact: %s', result)
   );
 
-  result := public.update_trial_outcome_secure(jsonb_build_object(
-    'requestId', '60000000-0000-4000-8000-00000000e002',
-    'opportunityId', manual_opportunity,
-    'action', 'SET_TRIAL_STATUS',
-    'trialStatus', 'NO_SHOW_STUDENT'
-  ));
+  update public.crm_leads
+     set status = 'WON'
+   where id = '70000000-0000-4000-8000-00000000e001';
   perform pg_temp.assert_true(
-    coalesce((result ->> 'ok')::boolean, false)
-    and result ->> 'appointmentStatus' = 'no_show',
-    format('no-show outcome did not update the appointment: %s', result)
+    exists (
+      select 1
+        from public.crm_leads as lead
+       where lead.id = '70000000-0000-4000-8000-00000000e001'
+         and lead.status = 'TRIAL_DONE'
+    ),
+    'authenticated caller promoted a linked trial to WON directly'
   );
 
   result := public.update_trial_outcome_secure(jsonb_build_object(
@@ -1182,8 +1470,8 @@ select pg_temp.assert_true(
       join public.appointments appointment
         on appointment.id = opportunity.trial_appointment_id
      where opportunity.student_name = 'Secure Manual Trial'
-       and opportunity.trial_status = 'NO_SHOW_STUDENT'
-       and appointment.status = 'no_show'
+       and opportunity.trial_status = 'DONE'
+       and appointment.status = 'completed'
   ),
   'outcomes left opportunity, appointment or class log inconsistent'
 );

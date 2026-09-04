@@ -156,6 +156,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
             p_request_key: stableRequestKey,
         });
         if (error) throw new Error('Não foi possível registrar sua atividade. Tente novamente.');
+        const objectiveActivity = evidence.activityType === 'quiz' || evidence.activityType === 'grammar';
         if (
             !data
             || typeof data !== 'object'
@@ -165,6 +166,15 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
             || (data.passed === true && data.status !== 'COMPLETED')
             || (data.passed === false && data.status !== 'PENDING')
             || !Array.isArray(data.questionResults)
+            || (
+                objectiveActivity
+                && data.passed === true
+                && data.canonicalResultAvailable !== false
+                && (
+                    typeof data.scorePercentage !== 'number'
+                    || !Number.isFinite(data.scorePercentage)
+                )
+            )
         ) {
             throw new Error('Resposta inválida ao registrar a atividade.');
         }
@@ -231,8 +241,12 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
                     <button
                         type="button"
                         onClick={() => void generateNew()}
-                        disabled={generating || !canGenerate}
-                        title={!canGenerate ? 'Conclua as atividades do pacote atual antes de criar outro.' : undefined}
+                        disabled={generating || !canGenerate || !!loadError}
+                        title={loadError
+                            ? 'Recarregue suas atividades antes de criar um novo pacote.'
+                            : !canGenerate
+                                ? 'Conclua as atividades do pacote atual antes de criar outro.'
+                                : undefined}
                         className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                         {generating ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
@@ -270,9 +284,17 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
 
                 {pending.length === 0 && !generating && !loadError && (
                     <div className="rounded-3xl border border-dashed border-emerald-300 bg-emerald-50 px-5 py-10 text-center dark:border-emerald-900/50 dark:bg-emerald-950/20">
-                        <CheckCircle size={34} className="mx-auto text-emerald-600" />
-                        <p className="mt-3 text-sm font-black text-brand-text">Pacote concluído!</p>
-                        <p className="mt-1 text-xs text-brand-muted">Crie um novo pacote quando quiser continuar praticando.</p>
+                        {activities.length === 0
+                            ? <Sparkles size={34} className="mx-auto text-violet-600" />
+                            : <CheckCircle size={34} className="mx-auto text-emerald-600" />}
+                        <p className="mt-3 text-sm font-black text-brand-text">
+                            {activities.length === 0 ? 'Pronto para sua primeira prática' : 'Pacote concluído!'}
+                        </p>
+                        <p className="mt-1 text-xs text-brand-muted">
+                            {activities.length === 0
+                                ? 'Crie um pacote personalizado para começar sua jornada.'
+                                : 'Crie um novo pacote quando quiser continuar praticando.'}
+                        </p>
                     </div>
                 )}
 

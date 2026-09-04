@@ -47,6 +47,18 @@ interface LearningActivityResult {
     questionResults: LearningQuestionFeedback[];
 }
 
+const celebrateLearningResult = (leveledUp: boolean, score: number) => {
+    if (
+        typeof window !== 'undefined'
+        && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) return;
+    if (leveledUp) {
+        confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
+    } else if (score >= 80) {
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+    }
+};
+
 const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfieConfig, onComplete, onClose, hearts: heartsProp = 5, onHeartsChange, reviewOnly = false }) => {
     const [saving, setSaving] = useState(false);
     const [hearts, setHearts] = useState(heartsProp);
@@ -54,8 +66,11 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
     const [actionError, setActionError] = useState('');
     const [attemptKey, setAttemptKey] = useState(0);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const resultRegionRef = useRef<HTMLDivElement>(null);
+    const previouslyFocusedRef = useRef<HTMLElement | null>(null);
     const heartsRef = useRef(heartsProp);
     const savingRef = useRef(false);
+    const closePlayerRef = useRef<() => void>(() => undefined);
     const completionRequestKey = useRef(
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
             ? crypto.randomUUID()
@@ -74,7 +89,12 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
         onClose();
     }, [onClose, onComplete, result]);
 
+    closePlayerRef.current = closePlayer;
+
     useEffect(() => {
+        previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
         const previousOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         const dialog = dialogRef.current;
@@ -86,7 +106,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                 // Enquanto o servidor registra a tentativa, mantenha o player
                 // montado para que a resposta autoritativa sempre atualize a
                 // trilha. Isso evita reabrir uma atividade que já avançou.
-                closePlayer();
+                closePlayerRef.current();
                 return;
             }
             if (event.key !== 'Tab' || !dialog) return;
@@ -106,29 +126,17 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
         return () => {
             document.body.style.overflow = previousOverflow;
             document.removeEventListener('keydown', onKeyDown);
+            previouslyFocusedRef.current?.focus();
         };
-    }, [closePlayer]);
+        // O ciclo do modal é montado uma vez. Trocas entre exercício e resultado
+        // não podem restaurar o foco antes da hora nem jogá-lo no botão fechar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    const consumeServerGradedMistakes = async (wrongAnswers: number) => {
-        const boundedWrongAnswers = Math.max(0, Math.min(5, wrongAnswers));
-        for (let index = 0; index < boundedWrongAnswers; index += 1) {
-            try {
-                const { data, error } = await supabase.rpc('consume_student_heart', {
-                    // Derivada da tentativa: um replay após resposta HTTP perdida não
-                    // desconta a mesma vida duas vezes.
-                    p_request_key: `${completionRequestKey.current}-wrong-${index + 1}`,
-                    p_reason: 'WRONG_ANSWER',
-                });
-                if (error) throw error;
-                const nextHearts = Math.min(heartsRef.current, Number(data?.hearts ?? heartsRef.current));
-                heartsRef.current = nextHearts;
-                setHearts(nextHearts);
-                onHeartsChange?.(nextHearts);
-            } catch (error) {
-                console.error('consume_student_heart error:', error);
-            }
-        }
-    };
+    useEffect(() => {
+        if (!result) return;
+        resultRegionRef.current?.focus({ preventScroll: true });
+    }, [result]);
 
     // Anti-burla: envia só as respostas; o SERVIDOR recalcula score + XP (RPC grade_quiz)
     const handleQuizSubmit = async (answers: number[]) => {
@@ -146,15 +154,13 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
 
             const score = Number(data?.score ?? 0);
             const passed = data?.passed === true || (data?.passed !== false && score >= 60);
-            const totalQuestions = Number(data?.totalQuestions ?? answers.length);
-            const correctAnswers = Number(data?.correctAnswers ?? Math.round((score / 100) * totalQuestions));
-            await consumeServerGradedMistakes(totalQuestions - correctAnswers);
-
-            if (data?.leveledUp) {
-                confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
-            } else if (score >= 80) {
-                confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
+            if (Number.isFinite(Number(data?.hearts))) {
+                const nextHearts = Math.max(0, Math.min(5, Math.trunc(Number(data.hearts))));
+                heartsRef.current = nextHearts;
+                setHearts(nextHearts);
+                onHeartsChange?.(nextHearts);
             }
+            celebrateLearningResult(!!data?.leveledUp, score);
 
             setResult({
                 score,
@@ -196,12 +202,7 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
             if (error) throw error;
             const passed = data?.passed !== false && String(data?.status || 'COMPLETED') === 'COMPLETED';
 
-            // Celebração
-            if (data?.leveledUp) {
-                confetti({ particleCount: 160, spread: 90, origin: { y: 0.5 }, colors: ['#facc15', '#f59e0b', '#fff'] });
-            } else if (score >= 80) {
-                confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#10b981', '#3b82f6', '#8b5cf6'] });
-            }
+            celebrateLearningResult(data?.leveledUp === true, score);
 
             // Mostra a tela de vitória (onComplete só ao clicar Continuar)
             setResult({
@@ -278,11 +279,13 @@ const ActivityPlayer: React.FC<ActivityPlayerProps> = ({ activity, userId, wolfi
                         </div>
                     )}
                     {result ? (
-                        <VictoryScreen
-                            result={result}
-                            onContinue={() => onComplete(result.score)}
-                            onRetry={retryActivity}
-                        />
+                        <div ref={resultRegionRef} tabIndex={-1} role="status" aria-live="polite" className="outline-none">
+                            <VictoryScreen
+                                result={result}
+                                onContinue={() => onComplete(result.score)}
+                                onRetry={retryActivity}
+                            />
+                        </div>
                     ) : (
                     <>
                     {activity.type === 'vocab_cards' && <VocabCardsRunner key={attemptKey} content={activity.content} activityId={activity.id} onFinish={handleSubmit} saving={saving} />}
@@ -590,9 +593,12 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; onFinish: (
     return (
         <div>
             <div className="text-xs font-bold text-slate-400 mb-3">Card {idx + 1} de {cards.length}</div>
-            <div
+            <button
+                type="button"
                 onClick={() => setFlipped(f => !f)}
-                className="relative bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/30 rounded-2xl p-6 sm:p-8 min-h-[200px] sm:min-h-[260px] flex items-center justify-center cursor-pointer hover:shadow-lg transition-all"
+                aria-pressed={flipped}
+                aria-label={flipped ? `Ocultar tradução de ${card.term}` : `Mostrar tradução de ${card.term}`}
+                className="relative flex min-h-[200px] w-full cursor-pointer items-center justify-center rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-indigo-50 p-6 text-inherit transition-all hover:shadow-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-violet-300 motion-reduce:transition-none dark:border-violet-800/30 dark:from-violet-900/20 dark:to-indigo-900/20 sm:min-h-[260px] sm:p-8"
             >
                 {!flipped ? (
                     <div className="text-center">
@@ -609,7 +615,7 @@ const VocabCardsRunner: React.FC<{ content: any; activityId: string; onFinish: (
                         )}
                     </div>
                 )}
-            </div>
+            </button>
 
             {reviewError && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{reviewError}</p>}
 
@@ -699,9 +705,11 @@ const QuizRunner: React.FC<{ content: any; rulePt?: string; saving: boolean; onS
                     const showResult = showExp;
                     return (
                         <button
+                            type="button"
                             key={i}
                             onClick={() => !showExp && setSelected(i)}
                             disabled={showExp}
+                            aria-pressed={isSel}
                             className={`w-full text-left p-3 rounded-xl border-2 transition-all text-sm font-medium ${
                                 showResult && isSel
                                         ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'

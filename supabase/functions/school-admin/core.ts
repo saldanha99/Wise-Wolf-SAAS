@@ -20,22 +20,17 @@ export type TargetMembershipSnapshot = {
   status?: unknown;
 };
 
-export function enrollmentLeadMatchesTrial(
-  leadStudentIdValue: unknown,
-  opportunityStudentIdValue: unknown,
-  leadPhoneValue: unknown,
-  opportunityPhoneValue: unknown,
+export function enrollmentLeadMatchesOpportunity(
+  leadOpportunityIdValue: unknown,
+  opportunityIdValue: unknown,
 ): boolean {
-  const leadStudentId = String(leadStudentIdValue || "").trim();
-  const opportunityStudentId = String(opportunityStudentIdValue || "").trim();
-  if (leadStudentId && opportunityStudentId) {
-    return leadStudentId === opportunityStudentId;
-  }
-
-  const leadPhone = String(leadPhoneValue || "").trim();
-  const opportunityPhone = String(opportunityPhoneValue || "").trim();
+  const leadOpportunityId = String(leadOpportunityIdValue || "").trim()
+    .toLowerCase();
+  const opportunityId = String(opportunityIdValue || "").trim().toLowerCase();
   return Boolean(
-    leadPhone && opportunityPhone && leadPhone === opportunityPhone,
+    UUID_PATTERN.test(leadOpportunityId) &&
+      UUID_PATTERN.test(opportunityId) &&
+      leadOpportunityId === opportunityId,
   );
 }
 

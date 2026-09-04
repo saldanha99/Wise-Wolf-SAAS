@@ -1165,11 +1165,13 @@ declare
 begin
   v_first := public.grade_quiz(
     '40000000-0000-4000-8000-000000000003',
-    array[0, 1]
+    array[0, 1],
+    'immersive-quiz-request-0001'
   );
   v_second := public.grade_quiz(
     '40000000-0000-4000-8000-000000000003',
-    array[0, 1]
+    array[0, 1],
+    'immersive-quiz-request-0001'
   );
   perform pg_temp.assert_true(
     (v_first ->> 'score')::integer = 100

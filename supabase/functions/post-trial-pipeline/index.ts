@@ -15,6 +15,8 @@ import {
   isOpenConversionStatus,
   isPendingEnrollmentLinkStatus,
   type ProviderDeliveryOutcome,
+  requireAutomationReceiptInsert,
+  requireRootAutomationRows,
   shouldReleaseAutomationClaim,
 } from "./core.ts";
 
@@ -111,13 +113,12 @@ function automationClaimStore(sb: any): AutomationClaimStore {
       return Boolean(data?.id);
     },
     insertReceipt: async ({ kind, subjectId, refDate }) => {
-      const { data, error } = await sb.from("automation_sent").insert({
+      const result = await sb.from("automation_sent").insert({
         kind,
         subject_id: subjectId,
         ref_date: refDate,
       }).select("id").maybeSingle();
-      if (error || typeof data?.id !== "string") return null;
-      return { id: data.id };
+      return requireAutomationReceiptInsert(result);
     },
     deleteReceiptById: async (id) => {
       const { data, error } = await sb.from("automation_sent").delete().eq(
@@ -376,7 +377,7 @@ serve(async (req) => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000)
       .toISOString();
 
-    const { data: doneTrials } = await sb
+    const doneTrialsResult = await sb
       .from("opportunities")
       .select(
         "id, tenant_id, student_name, student_phone, created_at, trial_appointment_id, winner_teacher_id, professor_id, conversion_status, feedback_required",
@@ -385,8 +386,12 @@ serve(async (req) => {
       .eq("status", "CLAIMED")
       .eq("conversion_status", "OPEN")
       .not("trial_appointment_id", "is", null);
+    const doneTrials = requireRootAutomationRows(
+      "done_trials",
+      doneTrialsResult,
+    );
 
-    for (const opp of (doneTrials || [])) {
+    for (const opp of doneTrials) {
       if (looksFake(opp.student_phone || "", opp.student_name || "")) continue;
       const [studentRoute, internalRoute] = await Promise.all([
         routeFor(opp.tenant_id, "student"),
@@ -406,7 +411,7 @@ serve(async (req) => {
       }
 
       // A aula foi realmente dada? (class_log COMPLETED com subtype experimental, ligado ao appointment)
-      const { data: log } = await sb.from("class_logs")
+      const { data: log, error: logError } = await sb.from("class_logs")
         .select("created_at")
         .eq("appointment_id", String(opp.trial_appointment_id))
         .eq("presence", "COMPLETED")
@@ -415,6 +420,12 @@ serve(async (req) => {
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
+      if (logError) {
+        result.failures.push(
+          `trial_class_log_unavailable ${opp.id}: ${logError.code || "query"}`,
+        );
+        continue;
+      }
       if (!log?.created_at) continue; // aula ainda não aconteceu/lançada
       if (log.created_at > oneHourAgo) continue; // dá 1h de folga antes de cutucar
 
@@ -561,7 +572,7 @@ serve(async (req) => {
     }
 
     // ===================== B) PROPOSTA PARADA (link PENDING) =====================
-    const { data: pendingLinks } = await sb
+    const pendingLinksResult = await sb
       .from("enrollment_links")
       .select(
         "id, tenant_id, opportunity_id, student_name, student_phone, link_url, created_at",
@@ -570,8 +581,12 @@ serve(async (req) => {
       .not("offer_id", "is", null)
       .not("opportunity_id", "is", null)
       .gte("created_at", thirtyDaysAgo);
+    const pendingLinks = requireRootAutomationRows(
+      "pending_enrollment_links",
+      pendingLinksResult,
+    );
 
-    for (const link of (pendingLinks || [])) {
+    for (const link of pendingLinks) {
       if (looksFake(link.student_phone || "", link.student_name || "")) {
         continue;
       }

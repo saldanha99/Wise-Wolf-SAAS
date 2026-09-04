@@ -32,6 +32,7 @@ interface QuizQuestion {
 }
 
 interface QuizResult {
+    bookPart: string;
     score: number;
     totalQuestions: number;
     percentage: number;
@@ -223,6 +224,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
             });
             if (error) throw error;
             const nextResult: QuizResult = {
+                bookPart: currentPartKey,
                 score: Number(data?.score ?? 0),
                 totalQuestions: Number(data?.totalQuestions ?? questions.length),
                 percentage: Number(data?.percentage ?? 0),
@@ -376,7 +378,7 @@ const StudentMaterials: React.FC<StudentMaterialsProps> = ({ user }) => {
                                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">
                                         <ShieldCheck size={13} aria-hidden="true" /> Avaliação progressiva
                                     </div>
-                                    <h2 id="secure-evaluation-title" className="mt-1 truncate text-lg font-black text-brand-text sm:text-xl">Marco {currentPartKey}</h2>
+                                    <h2 id="secure-evaluation-title" className="mt-1 truncate text-lg font-black text-brand-text sm:text-xl">Marco {result?.bookPart || currentPartKey}</h2>
                                     <p id="secure-evaluation-description" className="sr-only">Responda todas as questões. Suas respostas são corrigidas com segurança no servidor.</p>
                                 </div>
                                 <button type="button" onClick={closeEvaluation} disabled={submitting} aria-label="Fechar avaliação e salvar rascunho" className="rounded-xl p-2 text-brand-muted hover:bg-brand-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50">

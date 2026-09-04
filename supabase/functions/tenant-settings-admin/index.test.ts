@@ -199,3 +199,14 @@ Deno.test("dominio exige TXT e CNAME corretos", async () => {
   assert(result.txtVerified, "TXT deveria ser validado");
   assert(result.cnameVerified, "CNAME deveria ser validado");
 });
+
+Deno.test("utiliza fallback slug seguro quando slug estiver vazio", () => {
+  const normalized = normalizeSettings(
+    settings({ slug: "" }),
+    "tenant-a",
+    {},
+    "escola-fallback",
+  );
+  assert(normalized.slug === "escola-fallback", "slug deve usar fallback seguro");
+});
+

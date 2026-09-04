@@ -61,6 +61,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
     const [loading, setLoading] = useState(true);
     const [paths, setPaths] = useState<LearningPath[]>([]);
     const [enrolledPathId, setEnrolledPathId] = useState<string | null>(null);
+    const [enrolledPathStatus, setEnrolledPathStatus] = useState<'ACTIVE' | 'COMPLETED' | null>(null);
     const [selectedPath, setSelectedPath] = useState<LearningPath | null>(null);
     const [units, setUnits] = useState<LearningUnit[]>([]);
     const [activitiesByUnit, setActivitiesByUnit] = useState<Record<string, Activity[]>>({});
@@ -121,27 +122,65 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                 .order('created_at', { ascending: true });
             if (pathsError) throw pathsError;
 
-            setPaths(pathsData || []);
+            let visiblePaths = pathsData || [];
 
-            // Pega a matrícula ATIVA mais recente. Alunos com mais de uma trilha ativa quebravam
-            // o .maybeSingle() (PGRST116) e a trilha não abria — order+limit resolve sem erro.
+            // Prefere a matrícula ativa, mas preserva a trilha concluída como
+            // revisável. Antes, completed_at=null fazia uma trilha desaparecer
+            // depois do último exercício e o card voltava incorretamente a "Iniciar".
             const { data: enrollRows, error: enrollmentError } = await supabase
                 .from('student_path_enrollments')
-                .select('path_id, current_unit_id')
+                .select('path_id, current_unit_id, status, completed_at, started_at')
                 .eq('student_id', userId)
-                .is('completed_at', null)
+                .in('status', ['ACTIVE', 'COMPLETED'])
                 .order('started_at', { ascending: false })
-                .limit(1);
+                .limit(20);
             if (enrollmentError) throw enrollmentError;
-            const enrollData = enrollRows?.[0] || null;
+            const normalizedEnrollments = Array.isArray(enrollRows) ? enrollRows : [];
+            const enrollData = normalizedEnrollments.find((enrollment: any) => (
+                String(enrollment.status || 'ACTIVE').toUpperCase() === 'ACTIVE'
+                && !enrollment.completed_at
+            )) || normalizedEnrollments.find((enrollment: any) => (
+                String(enrollment.status || '').toUpperCase() === 'COMPLETED'
+                || !!enrollment.completed_at
+            )) || null;
 
             if (enrollData) {
                 setEnrolledPathId(enrollData.path_id);
-                const path = pathsData?.find(p => p.id === enrollData.path_id);
+                setEnrolledPathStatus(
+                    String(enrollData.status || 'ACTIVE').toUpperCase() === 'COMPLETED'
+                    || !!enrollData.completed_at
+                        ? 'COMPLETED'
+                        : 'ACTIVE',
+                );
+                let path = visiblePaths.find(p => p.id === enrollData.path_id);
+                if (!path && (
+                    String(enrollData.status || '').toUpperCase() === 'COMPLETED'
+                    || !!enrollData.completed_at
+                )) {
+                    // A escola pode arquivar uma trilha depois de todos concluírem.
+                    // A política do banco mantém apenas essa trilha histórica
+                    // revisável para o próprio aluno, sem republicá-la no catálogo.
+                    const { data: archivedPath, error: archivedPathError } = await supabase
+                        .from('learning_paths')
+                        .select('*')
+                        .eq('id', enrollData.path_id)
+                        .maybeSingle();
+                    if (archivedPathError) throw archivedPathError;
+                    if (archivedPath) {
+                        path = archivedPath;
+                        visiblePaths = [...visiblePaths, archivedPath];
+                    }
+                }
+                setPaths(visiblePaths);
                 if (path) {
                     await loadPathDetails(path.id);
                     setSelectedPath(path);
                 }
+            } else {
+                setPaths(visiblePaths);
+                setEnrolledPathId(null);
+                setEnrolledPathStatus(null);
+                setSelectedPath(null);
             }
         } catch (err) {
             console.error('loadPaths error:', err);
@@ -184,6 +223,12 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             progMap[item.activity_id] = { status: item.status, score: item.score };
         });
         setProgress(progMap);
+        if (
+            activitiesData.length > 0
+            && activitiesData.every(activity => progMap[activity.id]?.status === 'COMPLETED')
+        ) {
+            setEnrolledPathStatus('COMPLETED');
+        }
     };
 
     const openEnrolledPath = async (path: LearningPath) => {
@@ -214,6 +259,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             if (error) throw error;
             await loadPathDetails(path.id);
             setEnrolledPathId(path.id);
+            setEnrolledPathStatus('ACTIVE');
             setSelectedPath(path);
         } catch (err) {
             console.error('enrollInPath error:', err);
@@ -606,7 +652,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
             )}
 
             <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {paths.length === 0 ? (
+                {paths.length === 0 && !operationError ? (
                     <div className="col-span-full text-center py-12 text-slate-400">
                         <BookOpen size={32} className="mx-auto mb-3 opacity-40" />
                         <p className="text-sm font-bold">Nenhuma trilha disponível ainda</p>
@@ -617,6 +663,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                         const meta = CATEGORY_META[path.category] || CATEGORY_META.GENERAL;
                         const Icon = meta.icon;
                         const isEnrolled = enrolledPathId === path.id;
+                        const isCompleted = isEnrolled && enrolledPathStatus === 'COMPLETED';
 
                         return (
                             <button
@@ -637,7 +684,9 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                     <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600">{meta.label}</span>
                                     <span className="text-[9px] font-bold uppercase tracking-widest text-violet-500">{path.target_level}</span>
                                     {isEnrolled && (
-                                        <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-300">Em curso</span>
+                                        <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${isCompleted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300'}`}>
+                                            {isCompleted ? 'Concluída' : 'Em curso'}
+                                        </span>
                                     )}
                                 </div>
                                 <p className="font-black text-slate-800 dark:text-white text-sm">{path.name}</p>
@@ -645,7 +694,7 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                                 <div className="flex items-center justify-between mt-3 text-[10px] text-slate-400">
                                     <span>~{path.estimated_hours}h totais</span>
                                     <span className="text-violet-500 font-bold flex items-center gap-1">
-                                        {enrollingPathId === path.id ? 'Iniciando...' : isEnrolled ? 'Continuar' : 'Iniciar'} <ChevronRight size={12} />
+                                        {enrollingPathId === path.id ? 'Iniciando...' : isCompleted ? 'Revisar' : isEnrolled ? 'Continuar' : 'Iniciar'} <ChevronRight size={12} />
                                     </span>
                                 </div>
                             </button>

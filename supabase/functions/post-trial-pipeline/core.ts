@@ -1,5 +1,40 @@
 export type ProviderDeliveryOutcome = "ACCEPTED" | "REJECTED" | "UNCERTAIN";
 
+export function requireRootAutomationRows<T>(
+  label: string,
+  result: { data: T[] | null; error: unknown },
+): T[] {
+  if (result.error) {
+    const error = result.error as { code?: unknown; message?: unknown };
+    const detail = String(error.code || error.message || "query").trim();
+    throw new Error(`${label}_query_failed:${detail || "query"}`);
+  }
+  if (!Array.isArray(result.data)) {
+    throw new Error(`${label}_query_failed:missing_data`);
+  }
+  return result.data;
+}
+
+export function requireAutomationReceiptInsert(
+  result: {
+    data: { id?: unknown } | null;
+    error: { code?: unknown; message?: unknown } | null;
+  },
+): { id: string } | null {
+  if (result.error) {
+    if (String(result.error.code || "") === "23505") return null;
+    const detail = String(
+      result.error.code || result.error.message || "query",
+    ).trim();
+    throw new Error(
+      `automation_receipt_insert_failed:${detail || "query"}`,
+    );
+  }
+  const id = String(result.data?.id || "").trim();
+  if (!id) throw new Error("automation_receipt_insert_failed:missing_id");
+  return { id };
+}
+
 export function classifyProviderHttpResponse(
   status: number,
 ): ProviderDeliveryOutcome {

@@ -67,6 +67,15 @@ import {
   hubPaymentEventRequiresIdentity,
   providerWebhookEventKey,
 } from "./billing-safety.ts";
+import {
+  authorizeStudentSubscriptionLifecycleEvent,
+  classifyStudentSubscriptionProfileBinding,
+  isStudentSubscriptionLifecycleEvent,
+  studentEnrollmentOfferMatchesBinding,
+  type StudentSubscriptionLifecycleOperation,
+  studentSubscriptionOperationQueryWindow,
+  type StudentSubscriptionProfileBinding,
+} from "./student-subscription-routing.ts";
 import { parseCanonicalAsaasReference } from "../_shared/asaas-mutation-guard.ts";
 import {
   wolfieTopupDescription,
@@ -114,6 +123,8 @@ type AsaasWebhookSubscription = {
   externalReference?: string | null;
   billingType?: string | null;
   cycle?: string | null;
+  maxPayments?: number | null;
+  deleted?: boolean | null;
 };
 
 type AsaasWebhookBody = {
@@ -3339,6 +3350,393 @@ type DurableInboxClaim = {
   attempt_count: number;
 };
 
+function studentLifecycleOperationEndAt(input: {
+  status: unknown;
+  completedAt?: unknown;
+  providerCompletedAt?: unknown;
+  reconciledAt?: unknown;
+  updatedAt?: unknown;
+}): string | null {
+  const status = String(input.status || "").trim().toUpperCase();
+  const value = status === "PROVIDER_COMPLETE"
+    ? input.providerCompletedAt
+    : ["SUCCEEDED", "COMPLETED"].includes(status)
+    ? input.completedAt || input.reconciledAt
+    : input.updatedAt;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function loadStudentSubscriptionLifecycleOperations(
+  supabase: SupabaseClient,
+  input: {
+    event: string;
+    eventAt: string;
+    binding: StudentSubscriptionProfileBinding;
+    subscription: AsaasWebhookSubscription;
+  },
+): Promise<StudentSubscriptionLifecycleOperation[]> {
+  const window = studentSubscriptionOperationQueryWindow(input.eventAt);
+  if (!window) return [];
+  const tenantId = input.binding.tenantId;
+  const studentId = input.binding.studentId;
+  const customerId = input.subscription.customer.trim();
+  const subscriptionId = input.subscription.id.trim();
+
+  if (input.event === "SUBSCRIPTION_CREATED") {
+    const { data, error } = await supabase
+      .from("asaas_provider_creation_attempts")
+      .select(
+        "id,tenant_id,status,operation,external_reference,provider_entity_id,lifecycle_student_id,lifecycle_binding_kind,lifecycle_expected_customer_id,submitted_at,completed_at,reconciled_at,updated_at",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("operation", "SUBSCRIPTION_CREATE")
+      .eq("provider_entity_id", subscriptionId)
+      .eq("lifecycle_student_id", studentId)
+      .eq("lifecycle_binding_kind", "SUBSCRIPTION")
+      .eq("lifecycle_expected_customer_id", customerId)
+      .eq("external_reference", String(input.subscription.externalReference))
+      .in("status", ["SUBMITTING", "UNKNOWN", "SUCCEEDED"])
+      .lte("submitted_at", window.latestStartAt)
+      .gte("submitted_at", window.earliestStartAt)
+      .limit(2);
+    if (error) throw error;
+    return (data || []).map((row) => ({
+      id: row.id,
+      kind: "CREATION" as const,
+      tenantId: row.tenant_id,
+      studentId: row.lifecycle_student_id,
+      customerId: row.lifecycle_expected_customer_id,
+      subscriptionId: row.provider_entity_id,
+      status: row.status,
+      startedAt: row.submitted_at,
+      endedAt: studentLifecycleOperationEndAt({
+        status: row.status,
+        completedAt: row.completed_at,
+        reconciledAt: row.reconciled_at,
+        updatedAt: row.updated_at,
+      }),
+      externalReference: row.external_reference,
+    }));
+  }
+
+  if (input.event === "SUBSCRIPTION_UPDATED") {
+    const [mutationResult, billingMethodResult, reactivationResult] =
+      await Promise.all([
+        supabase
+          .from("asaas_subscription_mutation_operations")
+          .select(
+            "id,tenant_id,student_id,customer_id,subscription_id,mutation_kind,desired_state,status,submitted_at,completed_at,updated_at",
+          )
+          .eq("tenant_id", tenantId)
+          .eq("student_id", studentId)
+          .eq("customer_id", customerId)
+          .eq("subscription_id", subscriptionId)
+          .in("status", ["SUBMITTING", "UNKNOWN", "SUCCEEDED"])
+          .lte("submitted_at", window.latestStartAt)
+          .gte("submitted_at", window.earliestStartAt)
+          .limit(2),
+        supabase
+          .from("student_billing_method_operations")
+          .select(
+            "id,tenant_id,student_id,customer_id,subscription_id,target_billing_type,status,provider_started_at,completed_at,updated_at",
+          )
+          .eq("tenant_id", tenantId)
+          .eq("student_id", studentId)
+          .eq("customer_id", customerId)
+          .eq("subscription_id", subscriptionId)
+          .in("status", ["MUTATING", "UNKNOWN", "COMPLETED"])
+          .lte("provider_started_at", window.latestStartAt)
+          .gte("provider_started_at", window.earliestStartAt)
+          .limit(2),
+        supabase
+          .from("student_offboarding_operations")
+          .select(
+            "id,tenant_id,student_id,customer_id,subscription_id,target_lifecycle_status,provider_subscription_final_status,status,provider_started_at,provider_completed_at,completed_at,updated_at",
+          )
+          .eq("tenant_id", tenantId)
+          .eq("student_id", studentId)
+          .eq("customer_id", customerId)
+          .eq("subscription_id", subscriptionId)
+          .eq("target_lifecycle_status", "active")
+          .eq("provider_subscription_final_status", "ACTIVE")
+          .in("status", [
+            "PROVIDER_MUTATING",
+            "PROVIDER_COMPLETE",
+            "UNKNOWN",
+            "COMPLETED",
+          ])
+          .lte("provider_started_at", window.latestStartAt)
+          .gte("provider_started_at", window.earliestStartAt)
+          .limit(2),
+      ]);
+    for (
+      const error of [
+        mutationResult.error,
+        billingMethodResult.error,
+        reactivationResult.error,
+      ]
+    ) {
+      if (error) throw error;
+    }
+    return [
+      ...(mutationResult.data || []).map((row) => ({
+        id: row.id,
+        kind: "SUBSCRIPTION_MUTATION" as const,
+        tenantId: row.tenant_id,
+        studentId: row.student_id,
+        customerId: row.customer_id,
+        subscriptionId: row.subscription_id,
+        status: row.status,
+        startedAt: row.submitted_at,
+        endedAt: studentLifecycleOperationEndAt({
+          status: row.status,
+          completedAt: row.completed_at,
+          updatedAt: row.updated_at,
+        }),
+        mutationKind: row.mutation_kind,
+        desiredState: row.desired_state,
+      })),
+      ...(billingMethodResult.data || []).map((row) => ({
+        id: row.id,
+        kind: "BILLING_METHOD" as const,
+        tenantId: row.tenant_id,
+        studentId: row.student_id,
+        customerId: row.customer_id,
+        subscriptionId: row.subscription_id,
+        status: row.status,
+        startedAt: row.provider_started_at,
+        endedAt: studentLifecycleOperationEndAt({
+          status: row.status,
+          completedAt: row.completed_at,
+          updatedAt: row.updated_at,
+        }),
+        targetBillingType: row.target_billing_type,
+      })),
+      ...(reactivationResult.data || []).map((row) => ({
+        id: row.id,
+        kind: "OFFBOARDING" as const,
+        tenantId: row.tenant_id,
+        studentId: row.student_id,
+        customerId: row.customer_id,
+        subscriptionId: row.subscription_id,
+        status: row.status,
+        startedAt: row.provider_started_at,
+        endedAt: studentLifecycleOperationEndAt({
+          status: row.status,
+          providerCompletedAt: row.provider_completed_at,
+          completedAt: row.completed_at,
+          updatedAt: row.updated_at,
+        }),
+        targetLifecycleStatus: row.target_lifecycle_status,
+        providerSubscriptionFinalStatus: row.provider_subscription_final_status,
+      })),
+    ];
+  }
+
+  const expectedFinalStatus = input.event === "SUBSCRIPTION_INACTIVATED"
+    ? "INACTIVE"
+    : "NOT_FOUND";
+  const offboardingPromise = supabase
+    .from("student_offboarding_operations")
+    .select(
+      "id,tenant_id,student_id,customer_id,subscription_id,target_lifecycle_status,provider_subscription_final_status,status,provider_started_at,provider_completed_at,completed_at,updated_at",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("student_id", studentId)
+    .eq("customer_id", customerId)
+    .eq("subscription_id", subscriptionId)
+    .eq("provider_subscription_final_status", expectedFinalStatus)
+    .in("status", [
+      "PROVIDER_MUTATING",
+      "PROVIDER_COMPLETE",
+      "UNKNOWN",
+      "COMPLETED",
+    ])
+    .lte("provider_started_at", window.latestStartAt)
+    .gte("provider_started_at", window.earliestStartAt)
+    .limit(2);
+
+  if (input.event === "SUBSCRIPTION_INACTIVATED") {
+    const { data, error } = await offboardingPromise;
+    if (error) throw error;
+    return (data || []).map((row) => ({
+      id: row.id,
+      kind: "OFFBOARDING" as const,
+      tenantId: row.tenant_id,
+      studentId: row.student_id,
+      customerId: row.customer_id,
+      subscriptionId: row.subscription_id,
+      status: row.status,
+      startedAt: row.provider_started_at,
+      endedAt: studentLifecycleOperationEndAt({
+        status: row.status,
+        providerCompletedAt: row.provider_completed_at,
+        completedAt: row.completed_at,
+        updatedAt: row.updated_at,
+      }),
+      targetLifecycleStatus: row.target_lifecycle_status,
+      providerSubscriptionFinalStatus: row.provider_subscription_final_status,
+    }));
+  }
+
+  const [offboardingResult, deletionResult] = await Promise.all([
+    offboardingPromise,
+    supabase
+      .from("student_account_deletion_claims")
+      .select(
+        "id,tenant_id,student_id,customer_id,subscription_id,status,provider_started_at,provider_completed_at,completed_at,updated_at",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("student_id", studentId)
+      .eq("customer_id", customerId)
+      .eq("subscription_id", subscriptionId)
+      .in("status", [
+        "PROVIDER_MUTATING",
+        "PROVIDER_COMPLETE",
+        "UNKNOWN",
+        "COMPLETED",
+      ])
+      .lte("provider_started_at", window.latestStartAt)
+      .gte("provider_started_at", window.earliestStartAt)
+      .limit(2),
+  ]);
+  if (offboardingResult.error) throw offboardingResult.error;
+  if (deletionResult.error) throw deletionResult.error;
+  return [
+    ...(offboardingResult.data || []).map((row) => ({
+      id: row.id,
+      kind: "OFFBOARDING" as const,
+      tenantId: row.tenant_id,
+      studentId: row.student_id,
+      customerId: row.customer_id,
+      subscriptionId: row.subscription_id,
+      status: row.status,
+      startedAt: row.provider_started_at,
+      endedAt: studentLifecycleOperationEndAt({
+        status: row.status,
+        providerCompletedAt: row.provider_completed_at,
+        completedAt: row.completed_at,
+        updatedAt: row.updated_at,
+      }),
+      targetLifecycleStatus: row.target_lifecycle_status,
+      providerSubscriptionFinalStatus: row.provider_subscription_final_status,
+    })),
+    ...(deletionResult.data || []).map((row) => ({
+      id: row.id,
+      kind: "ACCOUNT_DELETION" as const,
+      tenantId: row.tenant_id,
+      studentId: row.student_id,
+      customerId: row.customer_id,
+      subscriptionId: row.subscription_id,
+      status: row.status,
+      startedAt: row.provider_started_at,
+      endedAt: studentLifecycleOperationEndAt({
+        status: row.status,
+        providerCompletedAt: row.provider_completed_at,
+        completedAt: row.completed_at,
+        updatedAt: row.updated_at,
+      }),
+    })),
+  ];
+}
+
+async function processStudentSubscriptionLifecycleEvent(
+  supabase: SupabaseClient,
+  body: AsaasWebhookBody,
+): Promise<boolean> {
+  const subscription = body.subscription;
+  if (
+    !subscription || !isStudentSubscriptionLifecycleEvent(body.event)
+  ) return false;
+
+  const subscriptionId = String(subscription.id || "").trim();
+  const customerId = String(subscription.customer || "").trim();
+  if (!subscriptionId || !customerId) {
+    throw new AsaasTriageError("student_subscription_identity_incomplete");
+  }
+
+  const { data: candidates, error: candidatesError } = await supabase
+    .from("profiles")
+    .select("id,tenant_id,role,asaas_customer_id,subscription_id")
+    .eq("subscription_id", subscriptionId)
+    .eq("asaas_customer_id", customerId)
+    .eq("role", "STUDENT")
+    .limit(2);
+  if (candidatesError) throw candidatesError;
+
+  const binding = classifyStudentSubscriptionProfileBinding(
+    subscription,
+    candidates || [],
+  );
+  if (!binding.ok) {
+    throw new AsaasTriageError(
+      binding.reason,
+      binding.tenantId,
+      binding.studentId,
+    );
+  }
+
+  if (binding.reference.kind === "ENROLLMENT") {
+    const { data: offer, error: offerError } = await supabase
+      .from("offers")
+      .select("id,tenant_id,kind,processing_by,consumed_by")
+      .eq("id", binding.reference.offerId)
+      .eq("tenant_id", binding.tenantId)
+      .eq("kind", "ENROLLMENT")
+      .maybeSingle();
+    if (offerError) throw offerError;
+    if (!studentEnrollmentOfferMatchesBinding(binding, offer)) {
+      throw new AsaasTriageError(
+        "student_subscription_enrollment_mismatch",
+        binding.tenantId,
+        binding.studentId,
+      );
+    }
+  }
+
+  const eventAt = asaasDateToIso(body.dateCreated);
+  if (!eventAt) {
+    throw new AsaasTriageError(
+      "student_subscription_event_timestamp_invalid",
+      binding.tenantId,
+      binding.studentId,
+    );
+  }
+  const operations = await loadStudentSubscriptionLifecycleOperations(
+    supabase,
+    { event: body.event || "", eventAt, binding, subscription },
+  );
+  const authorization = authorizeStudentSubscriptionLifecycleEvent({
+    eventName: body.event || "",
+    eventAt,
+    binding,
+    subscription,
+    operations,
+  });
+  if (!authorization.ok) {
+    throw new AsaasTriageError(
+      authorization.reason,
+      binding.tenantId,
+      binding.studentId,
+    );
+  }
+
+  // Student access and financial state are driven by PAYMENT_* events. These
+  // signed lifecycle notifications are acknowledged only when a unique,
+  // purpose-specific provider operation proves that this exact transition was
+  // requested. Unplanned suspension/deletion and uncorrelated updates remain
+  // durable TRIAGE entries.
+  console.info("[Webhook] Student subscription lifecycle acknowledged", {
+    event: body.event,
+    subscriptionId,
+    tenantId: binding.tenantId,
+    studentId: binding.studentId,
+    operationId: authorization.operationId,
+    operationKind: authorization.operationKind,
+  });
+  return true;
+}
+
 async function dispatchPersistedAsaasEvent(
   body: AsaasWebhookBody,
 ): Promise<void> {
@@ -3376,6 +3774,8 @@ async function dispatchPersistedAsaasEvent(
     await processHubPaymentEvent(body, hubCheckoutId);
     return;
   }
+
+  if (await processStudentSubscriptionLifecycleEvent(supabase, body)) return;
 
   if (!body.payment) {
     throw new AsaasTriageError("unsupported_unrouted_asaas_event");

@@ -14,6 +14,9 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentBookPart, setCurrentBookPart] = useState(student.currentBookPart || 'A1-1');
+    const [currentModule, setCurrentModule] = useState(student.module || student.levelBadge || 'A1');
+    const [currentStatus, setCurrentStatus] = useState(student.status || 'Ativo');
+    const [savingAcademic, setSavingAcademic] = useState(false);
     const [evaluationUnlocked, setEvaluationUnlocked] = useState(student.evaluationUnlocked === true);
     const [evaluationSaving, setEvaluationSaving] = useState(false);
     const [evaluationError, setEvaluationError] = useState('');
@@ -98,14 +101,16 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
                 setAssignments(assignmentsData);
             }
 
-            // 3. Fonte canônica da avaliação progressiva.
+            // 3. Fonte canônica da avaliação progressiva, nível e status
             const { data: studentProfile } = await supabase
                 .from('profiles')
-                .select('current_book_part,evaluation_unlocked')
+                .select('module,current_book_part,evaluation_unlocked,status,lifecycle_status')
                 .eq('id', student.id)
                 .single();
 
             if (studentProfile) {
+                setCurrentModule(studentProfile.module || student.levelBadge || 'A1');
+                setCurrentStatus(studentProfile.status || (studentProfile.lifecycle_status === 'suspended' ? 'Inativo' : 'Ativo'));
                 setCurrentBookPart(studentProfile.current_book_part || 'A1-1');
                 setEvaluationUnlocked(studentProfile.evaluation_unlocked === true);
             }
@@ -114,6 +119,47 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleModuleChange = async (newModule: string) => {
+        if (!newModule || newModule === currentModule) return;
+        setSavingAcademic(true);
+        try {
+            const { error } = await supabase.rpc('set_student_pedagogical_placement', {
+                p_student_id: student.id,
+                p_module: newModule,
+                p_reason: 'Reposicionamento pedagógico autorizado na Gestão de Materiais',
+            });
+            if (error) throw error;
+            setCurrentModule(newModule);
+            await fetchData();
+            alert(`Nível do aluno alterado para ${newModule} com sucesso!`);
+        } catch (err: any) {
+            alert('Erro ao alterar nível: ' + (err.message || 'Falha de permissão'));
+        } finally {
+            setSavingAcademic(false);
+        }
+    };
+
+    const handleStatusToggle = async () => {
+        const isInactive = currentStatus === 'Inativo' || currentStatus === 'suspended';
+        const targetStatus = isInactive ? 'Ativo' : 'Inativo';
+        if (!window.confirm(isInactive ? `Reativar o aluno ${student.name}?` : `Pausar temporariamente o aluno ${student.name}?`)) return;
+        setSavingAcademic(true);
+        try {
+            const { error } = await supabase.rpc('set_student_academic_status', {
+                p_student_id: student.id,
+                p_status: targetStatus,
+                p_reason: isInactive ? 'Reativado na Gestão Pedagógica' : 'Pausado na Gestão Pedagógica',
+            });
+            if (error) throw error;
+            setCurrentStatus(targetStatus);
+            alert(`Status do aluno alterado para ${targetStatus}.`);
+        } catch (err: any) {
+            alert('Erro ao alterar status: ' + (err.message || 'Falha de permissão'));
+        } finally {
+            setSavingAcademic(false);
         }
     };
 
@@ -193,12 +239,39 @@ const TeacherPedagogicalModal: React.FC<TeacherPedagogicalModalProps> = ({ stude
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="pedagogical-management-title" className="flex max-h-[96dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] bg-brand-surface shadow-2xl sm:max-h-[90vh] sm:rounded-[2rem]">
 
                 {/* Header */}
-                <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50">
-                    <div>
+                <div className="p-6 border-b border-brand-border flex justify-between items-center bg-brand-surface-2/50 gap-4">
+                    <div className="min-w-0">
                         <h2 id="pedagogical-management-title" className="text-xl font-black text-brand-text">Gestão Pedagógica</h2>
-                        <p className="text-sm text-brand-muted font-medium">Aluno: <span className="text-indigo-500">{student.name}</span></p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            <p className="text-sm text-brand-muted font-medium truncate">Aluno: <span className="text-indigo-500 font-bold">{student.name}</span></p>
+                            <div className="flex items-center gap-1.5">
+                                <label className="text-[10px] font-black uppercase text-brand-muted">Nível:</label>
+                                <select
+                                    disabled={savingAcademic}
+                                    value={currentModule}
+                                    onChange={e => handleModuleChange(e.target.value)}
+                                    className="text-xs font-black px-2 py-0.5 rounded-lg bg-brand-surface dark:bg-slate-900 border border-brand-border text-tenant-primary focus:ring-2 focus:ring-tenant-primary outline-none"
+                                >
+                                    <option value="A1">A1</option>
+                                    <option value="A2">A2</option>
+                                    <option value="B1">B1</option>
+                                    <option value="B2">B2</option>
+                                    <option value="C1">C1</option>
+                                    <option value="C2">C2</option>
+                                </select>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={savingAcademic}
+                                onClick={handleStatusToggle}
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg border transition-colors ${currentStatus === 'Ativo' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300'}`}
+                                title="Clique para alternar o status do aluno"
+                            >
+                                {currentStatus === 'Ativo' ? '✓ Ativo' : '⏸ Pausado'}
+                            </button>
+                        </div>
                     </div>
-                    <button type="button" aria-label="Fechar gestão pedagógica" onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
+                    <button type="button" aria-label="Fechar gestão pedagógica" onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors shrink-0">
                         <X size={20} className="text-brand-muted" />
                     </button>
                 </div>

@@ -15,7 +15,7 @@ interface Lead {
     name: string;
     email: string | null;
     phone: string | null;
-    status: 'NEW' | 'CONTACTED' | 'TRIAL' | 'WON' | 'LOST';
+    status: 'NEW' | 'CONTACTED' | 'TRIAL' | 'SCHEDULED' | 'TRIAL_DONE' | 'WON' | 'LOST';
     source: string | null;
     notes: string | null;
     created_at: string;
@@ -26,21 +26,38 @@ interface Lead {
     level?: string | null;
     goal?: string | null;
     assigned_teacher_id?: string | null;
+    opportunity_id?: string | null;
 }
 
-type StatusType = 'NEW' | 'CONTACTED' | 'TRIAL' | 'WON' | 'LOST';
-type ManualStatusType = Exclude<StatusType, 'WON'>;
+type StatusType = Lead['status'];
+type ManualStatusType = Extract<StatusType, 'NEW' | 'CONTACTED' | 'LOST'>;
 
 const COLUMN_CONFIG: Record<string, { label: string; color: string; text: string; dot: string; border: string }> = {
     NEW:       { label: 'Novos Leads',    color: 'from-blue-500/10',    text: 'text-blue-500',    dot: 'bg-blue-500',    border: 'border-blue-500/30' },
     CONTACTED: { label: 'Em Contato',     color: 'from-amber-500/10',   text: 'text-amber-500',   dot: 'bg-amber-500',   border: 'border-amber-500/30' },
     TRIAL:     { label: 'Aula Agendada',  color: 'from-violet-500/10',  text: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30' },
+    SCHEDULED: { label: 'Aula Agendada',  color: 'from-violet-500/10',  text: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30' },
+    TRIAL_DONE:{ label: 'Pós-aula',       color: 'from-orange-500/10',  text: 'text-orange-500',  dot: 'bg-orange-500',   border: 'border-orange-500/30' },
     WON:       { label: 'Matriculados',   color: 'from-emerald-500/10', text: 'text-emerald-500', dot: 'bg-emerald-500', border: 'border-emerald-500/30' },
 };
 
-const VISIBLE_COLUMNS: StatusType[] = ['NEW', 'CONTACTED', 'TRIAL', 'WON'];
-const MANUAL_ACTIVE_STATUSES: ManualStatusType[] = ['NEW', 'CONTACTED', 'TRIAL'];
+const VISIBLE_COLUMNS: StatusType[] = ['NEW', 'CONTACTED', 'SCHEDULED', 'TRIAL_DONE', 'WON'];
+const MANUAL_ACTIVE_STATUSES: ManualStatusType[] = ['NEW', 'CONTACTED'];
 const WON_MANUAL_BLOCK_MESSAGE = 'A etapa Matriculados é automática e só é liberada após a matrícula autoritativa.';
+const TRIAL_MANUAL_BLOCK_MESSAGE = 'As etapas da aula experimental são atualizadas automaticamente pela agenda e pelo lançamento da aula.';
+
+const isAuthoritativeLeadStage = (lead: Partial<Lead>): boolean => Boolean(
+    lead.opportunity_id
+    || lead.status === 'TRIAL'
+    || lead.status === 'SCHEDULED'
+    || lead.status === 'TRIAL_DONE'
+    || lead.status === 'WON'
+);
+
+const normalizeLeadForBoard = (lead: Lead): Lead => ({
+    ...lead,
+    status: lead.status === 'TRIAL' ? 'SCHEDULED' : lead.status,
+});
 
 const SOURCE_OPTIONS = ['Instagram', 'Facebook', 'Indicação', 'Google', 'WhatsApp', 'Site', 'Evento', 'Outro'];
 const LEVEL_OPTIONS  = ['Iniciante', 'Básico', 'Intermediário', 'Avançado', 'Nativo'];
@@ -94,6 +111,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
     const [tagInput, setTagInput] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const isAuthoritativeWon = initial?.status === 'WON';
+    const isAuthoritativeStage = isAuthoritativeLeadStage(initial || {});
 
     const set = (key: keyof Lead, val: unknown) => {
         setForm(f => ({ ...f, [key]: val }));
@@ -118,7 +136,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
 
     const handleSubmit = async () => {
         const e = validate();
-        if (!isAuthoritativeWon && form.status === 'WON') e.status = WON_MANUAL_BLOCK_MESSAGE;
+        if (!isAuthoritativeStage && form.status === 'WON') e.status = WON_MANUAL_BLOCK_MESSAGE;
         if (Object.keys(e).length > 0) { setErrors(e); return; }
         await onSave(form);
     };
@@ -201,9 +219,13 @@ const LeadForm: React.FC<LeadFormProps> = ({ initial, onSave, onCancel, saving, 
                 </div>
                 <div>
                     <label className="text-xs font-bold uppercase tracking-wider text-brand-muted mb-1 block">Etapa</label>
-                    {isAuthoritativeWon ? (
-                        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5">
-                            <p className="text-sm font-bold text-emerald-600">Matriculado pelo fluxo de matrícula</p>
+                    {isAuthoritativeStage ? (
+                        <div className={`rounded-xl border px-4 py-2.5 ${isAuthoritativeWon ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-violet-500/30 bg-violet-500/10'}`}>
+                            <p className={`text-sm font-bold ${isAuthoritativeWon ? 'text-emerald-600' : 'text-violet-600'}`}>
+                                {isAuthoritativeWon
+                                    ? 'Matriculado pelo fluxo de matrícula'
+                                    : COLUMN_CONFIG[normalizeLeadForBoard(initial as Lead).status]?.label || 'Aula experimental'}
+                            </p>
                             <p className="mt-0.5 text-[10px] text-brand-muted">Esta etapa é reconciliada automaticamente e não pode ser alterada aqui.</p>
                         </div>
                     ) : (
@@ -441,7 +463,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
             if (error) throw error;
             if (requestId !== fetchRequestIdRef.current) return;
-            setLeads(data || []);
+            setLeads(((data || []) as Lead[]).map(normalizeLeadForBoard));
         } catch (err) {
             console.error('Erro ao buscar leads:', err);
             if (requestId === fetchRequestIdRef.current) {
@@ -508,9 +530,9 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
     // DRAG & DROP
     // ---------------------------------------------------------
     const handleDragStart = (e: React.DragEvent, lead: Lead) => {
-        if (lead.status === 'WON') {
+        if (isAuthoritativeLeadStage(lead)) {
             e.preventDefault();
-            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+            setActionError(lead.status === 'WON' ? WON_MANUAL_BLOCK_MESSAGE : TRIAL_MANUAL_BLOCK_MESSAGE);
             return;
         }
         setActionError('');
@@ -520,7 +542,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
     const handleDragOver = (e: React.DragEvent, col: string) => {
         e.preventDefault();
-        if (col === 'WON' || draggedLead?.status === 'WON') {
+        if (col === 'WON' || col === 'SCHEDULED' || col === 'TRIAL_DONE' || (draggedLead && isAuthoritativeLeadStage(draggedLead))) {
             e.dataTransfer.dropEffect = 'none';
             setDragOverCol(null);
             return;
@@ -537,8 +559,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
         const lead = draggedLead;
         setDraggedLead(null);
         if (!lead || lead.status === targetStatus) return;
-        if (targetStatus === 'WON' || lead.status === 'WON') {
-            setActionError(WON_MANUAL_BLOCK_MESSAGE);
+        if (targetStatus === 'WON' || targetStatus === 'SCHEDULED' || targetStatus === 'TRIAL_DONE' || isAuthoritativeLeadStage(lead)) {
+            setActionError(targetStatus === 'WON' || lead.status === 'WON'
+                ? WON_MANUAL_BLOCK_MESSAGE
+                : TRIAL_MANUAL_BLOCK_MESSAGE);
             return;
         }
 
@@ -555,7 +579,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                 .maybeSingle();
             if (error) throw error;
             if (!updated) throw new Error('lead_update_not_applied');
-            setLeads(prev => prev.map(item => item.id === lead.id ? (updated as Lead) : item));
+            setLeads(prev => prev.map(item => item.id === lead.id ? normalizeLeadForBoard(updated as Lead) : item));
         } catch (err) {
             console.error('Erro ao mover lead:', err);
             setActionError('Não foi possível mover o lead. A etapa anterior foi mantida; tente novamente.');
@@ -581,7 +605,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
             }).select().single();
 
             if (error) throw error;
-            setLeads(prev => [inserted as Lead, ...prev]);
+            setLeads(prev => [normalizeLeadForBoard(inserted as Lead), ...prev]);
             setShowNewModal(false);
         } catch (err) {
             console.error('Erro ao criar lead:', err);
@@ -593,18 +617,19 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
 
     const handleSaveEdit = async (data: Partial<Lead>) => {
         if (!editLead) return;
-        if (editLead.status !== 'WON' && data.status === 'WON') {
+        const authoritativeStage = isAuthoritativeLeadStage(editLead);
+        if (!authoritativeStage && data.status === 'WON') {
             setActionError(WON_MANUAL_BLOCK_MESSAGE);
             return;
         }
         setSaving(true);
         setActionError('');
         try {
-            const statusChanged = editLead.status !== 'WON'
+            const statusChanged = !authoritativeStage
                 && data.status !== undefined
                 && data.status !== editLead.status;
             const payload: Record<string, unknown> = editableLeadPayload(data);
-            if (editLead.status !== 'WON') payload.status = data.status || editLead.status;
+            if (!authoritativeStage) payload.status = data.status || editLead.status;
             if (statusChanged) payload.last_status_change = new Date().toISOString();
 
             const { data: updated, error } = await supabase.from('crm_leads')
@@ -615,7 +640,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                 .single();
 
             if (error) throw error;
-            setLeads(prev => prev.map(l => l.id === editLead.id ? (updated as Lead) : l));
+            setLeads(prev => prev.map(l => l.id === editLead.id ? normalizeLeadForBoard(updated as Lead) : l));
             setEditLead(null);
         } catch (err) {
             console.error('Erro ao editar lead:', err);
@@ -810,10 +835,10 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                                                 <div
                                                     key={lead.id}
                                                     data-testid={`crm-card-${lead.id}`}
-                                                    draggable={lead.status !== 'WON'}
+                                                    draggable={!isAuthoritativeLeadStage(lead)}
                                                     onDragStart={e => handleDragStart(e, lead)}
                                                     onDragEnd={() => { setDraggedLead(null); setDragOverCol(null); }}
-                                                    className={`group bg-brand-surface-2 p-3.5 rounded-xl border transition-all select-none hover:shadow-md ${lead.status === 'WON' ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} ${stagnant ? 'border-amber-500/30 hover:border-amber-500/60' : 'border-brand-border hover:border-brand-accent/50'}`}
+                                                    className={`group bg-brand-surface-2 p-3.5 rounded-xl border transition-all select-none hover:shadow-md ${isAuthoritativeLeadStage(lead) ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} ${stagnant ? 'border-amber-500/30 hover:border-amber-500/60' : 'border-brand-border hover:border-brand-accent/50'}`}
                                                 >
                                                     {/* Header */}
                                                     <div className="flex items-start gap-2.5 mb-2.5">

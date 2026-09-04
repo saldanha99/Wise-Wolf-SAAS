@@ -1,7 +1,7 @@
 /// <reference lib="deno.ns" />
 
 import {
-  enrollmentLeadMatchesTrial,
+  enrollmentLeadMatchesOpportunity,
   hasExclusiveActiveTargetMembership,
   isEligibleForDunning,
   normalizeEnrollmentPlan,
@@ -85,32 +85,27 @@ Deno.test("school admin aceita somente IDs e estados normalizados", () => {
   );
 });
 
-Deno.test("matricula vincula a experimental pela identidade antes do telefone", () => {
+Deno.test("matricula vincula a experimental somente pela FK autoritativa", () => {
   assert(
-    enrollmentLeadMatchesTrial("student-a", "student-a", "551199", "551188"),
-    "IDs iguais devem prevalecer mesmo se o telefone mudou",
-  );
-  assert(
-    !enrollmentLeadMatchesTrial(
-      "student-a",
-      "student-b",
-      "5511999999999",
-      "5511999999999",
+    enrollmentLeadMatchesOpportunity(
+      "00000000-0000-4000-8000-000000000004",
+      "00000000-0000-4000-8000-000000000004",
     ),
-    "telefone compartilhado nunca deve unir dois alunos identificados",
+    "FK exata da oportunidade deveria ser aceita",
   );
   assert(
-    enrollmentLeadMatchesTrial(
-      "",
-      "student-a",
-      "5511999999999",
-      "5511999999999",
+    !enrollmentLeadMatchesOpportunity(
+      "00000000-0000-4000-8000-000000000004",
+      "00000000-0000-4000-8000-000000000005",
     ),
-    "telefone deve continuar como fallback para registros legados sem ID",
+    "uma oportunidade diferente nunca deve converter o lead",
   );
   assert(
-    !enrollmentLeadMatchesTrial("", "", "", ""),
-    "vinculo sem identidade nem telefone deve falhar fechado",
+    !enrollmentLeadMatchesOpportunity(
+      null,
+      "00000000-0000-4000-8000-000000000004",
+    ),
+    "telefone legado não pode substituir o vínculo autoritativo",
   );
 });
 

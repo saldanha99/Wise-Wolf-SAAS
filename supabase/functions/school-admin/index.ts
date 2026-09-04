@@ -22,7 +22,7 @@ import {
   type ResolvedAsaasIntegration,
 } from "../_shared/tenant-integration-broker.ts";
 import {
-  enrollmentLeadMatchesTrial,
+  enrollmentLeadMatchesOpportunity,
   hasExclusiveActiveTargetMembership,
   type LifecycleStatus,
   normalizeEnrollmentPlan,
@@ -2179,7 +2179,7 @@ async function createEnrollmentOffer(
   const admin = context.admin;
   const [leadResult, opportunityResult, planResult] = await Promise.all([
     admin.from("crm_leads")
-      .select("id,tenant_id,name,phone,status,student_id")
+      .select("id,tenant_id,name,phone,status,student_id,opportunity_id")
       .eq("tenant_id", tenantId)
       .eq("id", leadId)
       .maybeSingle(),
@@ -2220,25 +2220,16 @@ async function createEnrollmentOffer(
       "The trial lesson must be completed before enrollment",
     );
   }
-  const leadStudentId = String(leadResult.data.student_id || "").trim();
-  const opportunityStudentId = String(opportunityResult.data.student_id || "")
-    .trim();
-  const leadPhone = normalizedPhone(leadResult.data.phone);
-  const opportunityPhone = normalizedPhone(
-    opportunityResult.data.student_phone,
-  );
   if (
-    !enrollmentLeadMatchesTrial(
-      leadStudentId,
-      opportunityStudentId,
-      leadPhone,
-      opportunityPhone,
+    !enrollmentLeadMatchesOpportunity(
+      leadResult.data.opportunity_id,
+      opportunityId,
     )
   ) {
     throw new ApiError(
       409,
-      "TRIAL_LEAD_BINDING_MISMATCH",
-      "The completed trial does not belong to this lead",
+      "TRIAL_LEAD_LINK_REQUIRED",
+      "The completed trial is not authoritatively linked to this lead",
     );
   }
   if (
@@ -2354,6 +2345,7 @@ async function createEnrollmentOffer(
         enableProRata,
         studentName: leadResult.data.name || undefined,
         studentPhone: leadResult.data.phone || undefined,
+        leadId,
         opportunityId,
         requestId,
         _linkOrigin: origin,

@@ -242,7 +242,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
             id: s.id,
             name: s.full_name || 'Nome Indefinido',
             levelBadge: s.module?.split(' ')[0] || 'N/A',
-            currentModuleStatus: s.module || 'Não iniciado',
+            currentModuleStatus: s.current_book_part || s.module || 'Não iniciado',
             interests: s.interests || [],
             occupation: s.occupation || 'Não informado',
             phone: s.phone || '',
@@ -390,7 +390,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           email: normalizedEmail,
           role: 'STUDENT',
           tenant_id: targetTenantId,
-          module: formData.currentModuleStatus,
           phone: formData.phone,
           attendance_phone: formData.attendance_phone || null,
           occupation: formData.occupation,
@@ -426,6 +425,18 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
         const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
         if (profileError) throw profileError;
+
+        // O nível pedagógico não é mais um campo solto do perfil. Para um novo
+        // cadastro, o RPC define o primeiro marco publicado e registra o ator.
+        const { error: placementError } = await supabase.rpc(
+          'set_student_pedagogical_placement',
+          {
+            p_student_id: finalStudentId,
+            p_module: formData.levelBadge,
+            p_reason: 'Atualização autorizada no cadastro do aluno',
+          },
+        );
+        if (placementError) throw placementError;
 
         // --- INJEÇÃO NO ASAAS (Idêntico ao Mapa de Aulas) ---
         let billingConfirmed = !(formData.monthly_fee > 0);
@@ -501,10 +512,43 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
     // UPDATE LÓGICA (Para aluno já existente)
     try {
+      const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
       const studentCpf = formData.cpf?.replace(/\D/g, '') || null;
       const contractSigned = !!(editingStudent.accepted_at || editingStudent.documentation_status === 'APPROVED');
+      const previousModule = String(editingStudent.module || editingStudent.levelBadge || '')
+        .trim()
+        .toUpperCase()
+        .split(/\s+/)[0];
+      const requestedModule = String(formData.levelBadge || '').trim().toUpperCase();
+      const placementChanged = requestedModule !== '' && requestedModule !== previousModule;
 
-      // Campos que podem sempre ser alterados
+      if (!isDirector) {
+        // Professor responsável: atualiza apenas campos pedagógicos e acadêmicos autorizados
+        const { error: updateErr } = await supabase.rpc('update_student_pedagogical_profile', {
+          p_student_id: editingStudent.id,
+          p_data: {
+            full_name: formData.name,
+            phone: formData.phone,
+            attendance_phone: formData.attendance_phone || null,
+            meeting_link: formData.meeting_link,
+            occupation: formData.occupation,
+            interests: formData.interests,
+            private_notes: formData.private_notes,
+            fixed_schedule: formData.fixed_schedule,
+            is_kids: formData.is_kids,
+            status: formData.status,
+            module: requestedModule,
+          }
+        });
+        if (updateErr) throw updateErr;
+
+        alert('Perfil do aluno atualizado com sucesso!');
+        setEditingStudent(null);
+        fetchStudents();
+        return;
+      }
+
+      // Diretor: atualização completa
       const updatePayload: Record<string, any> = {
         interests: formData.interests,
         occupation: formData.occupation,
@@ -523,7 +567,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
       // Campos contratuais — só editáveis se o contrato ainda não foi assinado
       if (!contractSigned) {
         updatePayload.full_name = formData.name;
-        updatePayload.module = formData.currentModuleStatus;
         updatePayload.cpf = studentCpf;
         updatePayload.postal_code = formData.postalCode;
         updatePayload.address = formData.address;
@@ -539,8 +582,40 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
       if (error) throw error;
 
+      if (placementChanged) {
+        const { error: placementError } = await supabase.rpc(
+          'set_student_pedagogical_placement',
+          {
+            p_student_id: editingStudent.id,
+            p_module: requestedModule,
+            p_reason: 'Reposicionamento pedagógico autorizado no cadastro do aluno',
+          },
+        );
+        if (placementError) throw placementError;
+      }
+
+      // Atualiza status se alterado no formulário
+      if (formData.status && formData.status !== (editingStudent.status || (isInactive(editingStudent) ? 'Inativo' : 'Ativo'))) {
+        const targetInactive = formData.status === 'Inativo' || formData.status === 'Trancado';
+        try {
+          await supabase.functions.invoke('school-admin', {
+            body: {
+              action: 'setStudentLifecycle',
+              studentId: editingStudent.id,
+              status: targetInactive ? 'suspended' : 'active',
+              reason: 'Alterado no formulário de edição do aluno',
+            },
+          });
+        } catch (_) {
+          await supabase.rpc('set_student_academic_status', {
+            p_student_id: editingStudent.id,
+            p_status: formData.status,
+          });
+        }
+      }
+
       if (contractSigned) {
-        alert('Perfil atualizado! Os dados contratuais (valor, CPF, endereço, etc.) não foram alterados pois o contrato já foi assinado.');
+        alert(`Perfil atualizado! Os dados contratuais (valor, CPF, endereço, etc.) não foram alterados pois o contrato já foi assinado.${placementChanged ? ' O nível pedagógico foi atualizado separadamente.' : ''}`);
       } else {
         alert('Perfil do aluno atualizado com sucesso!');
       }
@@ -572,10 +647,37 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
 
   const openStudentEditor = async (student: any) => {
     try {
+      const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+      if (!isDirector) {
+        // Professor responsável: carrega apenas os dados permitidos, sem PII sensível (CPF, email, preço)
+        setEditingStudent({
+          ...student,
+          name: student.name,
+          phone: student.phone || '',
+          attendance_phone: student.attendance_phone || '',
+          levelBadge: student.levelBadge || 'A1',
+          currentModuleStatus: student.currentModuleStatus || '',
+          status: student.status || (isInactive(student) ? 'Inativo' : 'Ativo'),
+          lifecycle_status: student.lifecycle_status || (isInactive(student) ? 'suspended' : 'active'),
+          interests: student.interests || [],
+          occupation: student.occupation || '',
+          meeting_link: student.meetingLink || '',
+          fixed_schedule: student.fixed_schedule || '',
+          private_notes: student.private_notes || '',
+          professor_id: student.professor_id || '',
+          email: '',
+          cpf: '',
+          monthly_fee: 0,
+          due_day: 10,
+        });
+        return;
+      }
+
       const privateProfile = await loadAuthorizedProfilePrivate(student.id);
       setEditingStudent({
         ...student,
         ...privateProfile,
+        status: student.status || (isInactive(student) ? 'Inativo' : 'Ativo'),
         meeting_link: student.meetingLink,
         fixed_schedule: student.fixed_schedule,
         postalCode: privateProfile.postal_code || '',
@@ -583,20 +685,43 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         asaasCustomerId: privateProfile.asaas_customer_id || '',
       });
     } catch (error) {
-      console.error('Erro ao carregar dados privados do aluno:', error);
+      console.error('Erro ao carregar dados do aluno:', error);
       alert('Você não tem permissão para abrir os dados privados deste aluno.');
     }
   };
 
-  // Suspender (adormecido) ↔ reativar — usa o eixo canônico lifecycle_status via school-admin.
-  // Ao suspender, a edge function pausa a assinatura no Asaas, preserva a
-  // competência atual e cancela cobranças abertas dos meses seguintes.
+  // Suspender (adormecido) ↔ reativar — usa o eixo canônico lifecycle_status via school-admin ou RPC pedagógica.
   const handleToggleStatus = async (student: any) => {
     const makeInactive = !isInactive(student);
+    const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
     const msg = makeInactive
       ? `Pausar temporariamente a matrícula de ${student.name}?\n\nPAUSA: é reversível. O acesso e as mensagens automáticas são interrompidos, a assinatura fica inativa no Asaas, a competência atual é preservada e cobranças abertas dos meses seguintes são canceladas. Os horários fixos serão liberados da agenda do professor.\n\nPara uma saída definitiva, use “Encerrar”.`
       : `Reativar a matrícula de ${student.name}?\n\nO acesso, a assinatura e as notificações automáticas voltam ao fluxo ativo. Os horários liberados durante a pausa não voltam automaticamente: será preciso escolher e agendar novos horários.`;
     if (!window.confirm(msg)) return;
+
+    if (!isDirector) {
+      // Professor responsável: altera status diretamente via RPC segura
+      try {
+        const { error } = await supabase.rpc('set_student_academic_status', {
+          p_student_id: student.id,
+          p_status: makeInactive ? 'Inativo' : 'Ativo',
+          p_reason: makeInactive ? 'Pausado pelo professor responsável' : 'Reativado pelo professor responsável',
+        });
+        if (error) throw error;
+        const newLifecycle = makeInactive ? 'suspended' : 'active';
+        setStudents(prev => prev.map(s => s.id === student.id ? {
+          ...s,
+          status: makeInactive ? 'Inativo' : 'Ativo',
+          lifecycle_status: newLifecycle,
+        } : s));
+        alert(makeInactive ? 'Aluno pausado temporariamente pelo professor.' : 'Aluno reativado com sucesso.');
+        fetchStudents();
+      } catch (err: any) {
+        alert('Erro ao alterar status: ' + (err.message || 'Falha de permissão'));
+      }
+      return;
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke('school-admin', {
         body: {
@@ -621,10 +746,11 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           `Matrícula pausada com segurança. ${Number(billing.schedulesCancelled || 0)} horário(s) liberado(s) e ${Number(billing.notificationsQueued || 0)} aviso(s) preparado(s).`,
         );
       } else {
-        alert('Matrícula reativada. Agora escolha novos horários; os slots liberados durante a pausa não são reassumidos automaticamente.');
+        alert('Matrícula reativada com sucesso.');
       }
+      fetchStudents();
     } catch (err: any) {
-      alert('Erro ao alterar status do aluno: ' + (err.message || 'tente novamente.'));
+      alert('Erro ao alterar status do aluno: ' + err.message);
     }
   };
 
@@ -1010,7 +1136,10 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
               </div>
             ) : filteredStudents.map((student, i) => {
               const ov = overviewMap[student.id];
-              const canEdit = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+              const isDirector = user?.role === UserRole.SCHOOL_ADMIN || user?.role === UserRole.SUPER_ADMIN;
+              const isTeacher = user?.role === UserRole.TEACHER;
+              const isMyStudent = isTeacher && (student.professor_id === user?.id || (student.assignedTeacherIds || []).includes(user?.id));
+              const canEdit = isDirector || isMyStudent;
               const inactive = isInactive(student);
               const lifecycleStatus = String(student.lifecycle_status || '').trim().toLowerCase();
               const isSuspended = lifecycleStatus === 'suspended';
@@ -1196,7 +1325,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                   </button>
                   {canEdit && !isOffboarded && (
                     <button
-                      className={`min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border text-[11px] font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/20'}`}
+                      className={`${isDirector ? '' : 'col-span-2 '}min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border text-[11px] font-black uppercase transition-colors ${inactive ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/20' : 'border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/20'}`}
                       onClick={() => handleToggleStatus(student)}
                       title={inactive ? 'Reativar matrícula e assinatura' : 'Pausar temporariamente; ação reversível'}
                       aria-label={inactive ? `Reativar matrícula de ${student.name}` : `Pausar temporariamente a matrícula de ${student.name}`}
@@ -1205,7 +1334,7 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
                       {inactive ? 'Reativar' : 'Pausar'}
                     </button>
                   )}
-                  {canEdit && !isOffboarded && (
+                  {isDirector && !isOffboarded && (
                     <button
                       className="min-h-11 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20 text-[11px] font-black uppercase transition-colors"
                       onClick={() => handleOffboard(student)}

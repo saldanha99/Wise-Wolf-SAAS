@@ -139,10 +139,16 @@ const StudentPedagogicalView: React.FC<StudentPedagogicalViewProps> = ({ user })
                     {loading && <RefreshCw size={18} className="animate-spin text-indigo-500" aria-label="Carregando materiais" />}
                 </div>
 
-                <MaterialsLibrary
-                    materials={assignedMaterials}
-                    emptyText={loading ? 'Carregando seus materiais...' : 'Sua próxima recomendação aparecerá aqui assim que o professor enviar.'}
-                />
+                {loadError ? (
+                    <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 px-5 py-8 text-center text-xs font-bold text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-100" role="status">
+                        Não foi possível confirmar sua biblioteca. Use “Tentar novamente” acima para recarregar sem perder seu progresso.
+                    </div>
+                ) : (
+                    <MaterialsLibrary
+                        materials={assignedMaterials}
+                        emptyText={loading ? 'Carregando seus materiais...' : 'Sua próxima recomendação aparecerá aqui assim que o professor enviar.'}
+                    />
+                )}
             </div>
 
         </div>
