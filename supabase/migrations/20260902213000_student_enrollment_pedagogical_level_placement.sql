@@ -394,8 +394,7 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.claim_enrollment_offer(uuid, jsonb) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.claim_enrollment_offer(uuid, jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION public.claim_enrollment_offer(uuid, jsonb) FROM PUBLIC, anon, authenticated;
 
 -- ==============================================================================
 -- Sanitização dos dados legados: alunos que ainda estão com 'General' ou nulo
