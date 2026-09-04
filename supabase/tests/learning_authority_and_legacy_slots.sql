@@ -849,6 +849,7 @@ end;
 $$;
 
 reset role;
+set local request.jwt.claims = '';
 
 update public.profiles
    set status = 'Inativo',
