@@ -213,7 +213,11 @@ values
     'STUDENT',
     'ACTIVE',
     true
-  );
+  )
+on conflict (user_id, tenant_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    is_primary = excluded.is_primary;
 
 insert into public.learning_paths (
   id,
