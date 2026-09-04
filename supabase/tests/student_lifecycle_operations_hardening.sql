@@ -770,7 +770,8 @@ select pg_temp.assert_true(
 -- Once active again, payment truth must remain authoritative over the reset.
 update public.student_payments
    set status = 'OVERDUE',
-       provider_status = 'OVERDUE'
+       provider_status = 'OVERDUE',
+       due_date = least(due_date, (select today from lifecycle_clock))
  where id = '6a000000-0000-4000-8000-000000000101';
 insert into lifecycle_results (label, payload)
 select 'reactivate_overdue_recompute',
