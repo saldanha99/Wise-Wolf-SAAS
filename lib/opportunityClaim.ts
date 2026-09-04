@@ -9,6 +9,8 @@ export interface OpportunityClaimRecord {
   winner_teacher_id: string | null;
   trial_appointment_id: string | null;
   claim_generation: number;
+  is_staff_preview?: boolean;
+  actor_role?: string;
 }
 
 export interface OpportunityClaimSlot {

@@ -163,6 +163,21 @@ Deno.test("tenant communication identity is canonical and server-derived", () =>
     identity?.portalUrl === "https://escola-a.wisewolflanguage.com.br",
     "tenant portal was not derived",
   );
+
+  const wiseWolfIdentity = resolveTenantCommunicationIdentity({
+    id: "school-wise-wolf",
+    name: "Wise Wolf Languages",
+    saas_status: "ACTIVE",
+    whatsapp_enabled: true,
+    slug: "wisewolf",
+    domain: "wisewolf",
+    branding: {},
+    school_info: {},
+  }, "school-wise-wolf");
+  assert(
+    wiseWolfIdentity?.portalUrl === "https://system.wisewolflanguage.com.br",
+    "Wise Wolf default tenant must resolve to system.wisewolflanguage.com.br",
+  );
 });
 
 Deno.test("tenant communication fails closed without exact active tenant linkage", () => {

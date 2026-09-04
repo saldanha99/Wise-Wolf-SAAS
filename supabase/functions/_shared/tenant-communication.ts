@@ -185,9 +185,16 @@ export function resolveTenantCommunicationIdentity(
     ? hostnameUrl(tenant.custom_domain)
     : null;
   const tenantDomain = hostnameUrl(tenant.domain);
-  const slug = typeof tenant.slug === "string" &&
-      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(tenant.slug.trim().toLowerCase())
-    ? `https://${tenant.slug.trim().toLowerCase()}.wisewolflanguage.com.br`
+  const normalizedSlug = typeof tenant.slug === "string"
+    ? tenant.slug.trim().toLowerCase()
+    : "";
+  const slug = (normalizedSlug === "wisewolf" || normalizedSlug === "system" || tenantId === "school-wise-wolf")
+    ? "https://system.wisewolflanguage.com.br"
+    : (normalizedSlug && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(normalizedSlug)
+      ? `https://${normalizedSlug}.wisewolflanguage.com.br`
+      : null);
+  const fallbackPortal = tenantId === "school-wise-wolf"
+    ? "https://system.wisewolflanguage.com.br"
     : null;
 
   return {
@@ -201,7 +208,7 @@ export function resolveTenantCommunicationIdentity(
     secondaryColor: safeColor(branding.secondaryColor, "#0F766E"),
     supportEmail: safeEmail(schoolInfo.email),
     supportPhone: safePhone(schoolInfo.phone),
-    portalUrl: customDomain || tenantDomain || slug,
+    portalUrl: customDomain || tenantDomain || slug || fallbackPortal,
     talentGroupUrl: safeHttpsUrl(tenant.talent_group_link),
   };
 }

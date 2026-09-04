@@ -7,6 +7,7 @@ import {
   Clock,
   Lock,
   MessageCircle,
+  ShieldCheck,
   TrendingUp,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -18,6 +19,7 @@ import {
   normalizeWhatsAppPhone,
   type OpportunityClaimRecord,
 } from "../lib/opportunityClaim";
+import { parseFunctionError } from "../lib/functionInvokeErrors";
 
 interface ClaimProps {
   opportunityId: string | null;
@@ -77,7 +79,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
     let active = true;
 
     const init = async () => {
-      if (!isOpportunityId(opportunityId) || !isClaimGeneration(generation)) {
+      if (!isOpportunityId(opportunityId)) {
         window.history.replaceState(null, "", "/claim-opportunity");
         if (active) {
           setError("Este link de oportunidade é inválido.");
@@ -86,7 +88,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
         return;
       }
 
-      const claimGeneration = Number(generation);
+      const claimGeneration = isClaimGeneration(generation) ? Number(generation) : 1;
       const cleanPath = canonicalClaimPath(opportunityId, claimGeneration);
       if (`${window.location.pathname}${window.location.search}` !== cleanPath) {
         window.history.replaceState(null, "", cleanPath);
@@ -138,6 +140,18 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
         if (opportunityError || !preview?.ok) {
           if (preview?.error === "claim_link_expired") {
             setError("Este link pertence a uma rodada anterior da oportunidade.");
+            return;
+          }
+          if (preview?.error === "forbidden") {
+            setError(
+              "Este link é exclusivo para professores. Sua conta conectada não possui permissão de professor nesta escola.",
+            );
+            return;
+          }
+          if (preview?.error === "tenant_not_operational") {
+            setError(
+              "Esta escola não está disponível para novos agendamentos no momento.",
+            );
             return;
           }
           setError("Esta oportunidade não foi encontrada ou não pertence à sua escola.");
@@ -192,7 +206,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
   }, [generation, opportunityId]);
 
   const handleClaim = async () => {
-    if (!opportunity || !currentUserId || !slot || claiming) return;
+    if (!opportunity || !currentUserId || !slot || claiming || opportunity.is_staff_preview) return;
     setClaiming(true);
     setError("");
     try {
@@ -206,10 +220,13 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
         },
       );
       if (invokeError || !data?.ok) {
-        throw new Error(
-          data?.message ||
+        const parsed = parseFunctionError({
+          error: invokeError,
+          data,
+          fallbackMessage:
             "Não foi possível aceitar esta oportunidade. Atualize a página e tente novamente.",
-        );
+        });
+        throw new Error(parsed.message);
       }
       setClaimResult(data);
       setProfessorName(data.teacherName || professorName);
@@ -377,6 +394,22 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
               </div>
             )}
 
+            {opportunity?.is_staff_preview && (
+              <div className="mb-6 p-4 bg-sky-50 rounded-2xl border border-sky-200">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="text-sky-600 shrink-0 mt-0.5" size={18} />
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wider text-sky-800">
+                      Visualização de Gestão ({opportunity.actor_role || "COORDENAÇÃO/DIREÇÃO"})
+                    </p>
+                    <p className="text-xs text-sky-700 font-medium mt-1 leading-relaxed">
+                      Você está conectado com perfil administrativo. O link está ativo para os professores destinatários, mas apenas contas com perfil de Professor podem aceitar a aula.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-100/50 mb-6">
               <p className="text-amber-800 text-xs font-semibold leading-relaxed text-center flex items-start justify-center gap-2">
                 <Clock size={14} className="mt-0.5 shrink-0" />
@@ -389,30 +422,30 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
 
             <button
               onClick={handleClaim}
-              disabled={claiming || !slot}
+              disabled={claiming || !slot || Boolean(opportunity?.is_staff_preview)}
               className="group w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-lg shadow-xl shadow-indigo-200 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:grayscale"
             >
-              {claiming
-                ? (
-                  <>
-                    <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>VALIDANDO AGENDA...</span>
-                  </>
-                )
-                : (
-                  <>
-                    <span>
-                      {isTraining
-                        ? "PARTICIPAR DO TREINAMENTO"
-                        : "ACEITAR AULA"}
-                    </span>
-                    <ArrowRight
-                      className="group-hover:translate-x-1 transition-transform"
-                      strokeWidth={3}
-                      size={20}
-                    />
-                  </>
-                )}
+              {claiming ? (
+                <>
+                  <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>VALIDANDO AGENDA...</span>
+                </>
+              ) : opportunity?.is_staff_preview ? (
+                <span>VISUALIZAÇÃO DA GESTÃO (APENAS PROFESSORES PODEM ACEITAR)</span>
+              ) : (
+                <>
+                  <span>
+                    {isTraining
+                      ? "PARTICIPAR DO TREINAMENTO"
+                      : "ACEITAR AULA"}
+                  </span>
+                  <ArrowRight
+                    className="group-hover:translate-x-1 transition-transform"
+                    strokeWidth={3}
+                    size={20}
+                  />
+                </>
+              )}
             </button>
           </div>
         </div>

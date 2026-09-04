@@ -340,6 +340,17 @@ const App: React.FC = () => {
   }, [user?.role, user?.tenantId]);
 
   useEffect(() => {
+    if (!user || isRestoringSession) return;
+    const params = new URLSearchParams(window.location.search);
+    const redirectTo = params.get('redirectTo');
+    if (redirectTo && (window.location.pathname === '/' || window.location.pathname === '/login')) {
+      if (redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
+        window.location.replace(redirectTo);
+      }
+    }
+  }, [user, isRestoringSession]);
+
+  useEffect(() => {
     if (!searchOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -878,8 +889,22 @@ const App: React.FC = () => {
   if (path === '/claim-opportunity') {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
-    const generation = params.get('g');
+    const generation = params.get('g') || params.get('generation') || '1';
     return <ClaimOpportunity opportunityId={id} generation={generation} />;
+  }
+
+  if (path === '/login') {
+    if (user) {
+      const params = new URLSearchParams(window.location.search);
+      const redirectTo = params.get('redirectTo');
+      if (redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')) {
+        window.location.replace(redirectTo);
+        return null;
+      }
+      window.location.replace('/');
+      return null;
+    }
+    return <Login onLogin={setUser} />;
   }
 
   // Candidato a professor agenda a entrevista com o diretor (link enviado pela Michelle/RH)
