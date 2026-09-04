@@ -87,17 +87,28 @@ begin
     raise exception using errcode = '42501', message = 'teacher_student_link_required';
   end if;
 
-  -- Determina o livro inicial do nível CEFR
-  select catalog.book_part
-    into v_book_part
-    from public.pedagogical_evaluation_catalog as catalog
-   where catalog.module = v_module
-     and catalog.active = true
-   order by catalog.part asc
-   limit 1;
-
-  if v_book_part is null then
-    v_book_part := v_module || '-1';
+  -- Reapplying the same placement is a true no-op: ordinary profile edits must
+  -- never send a student from part 2 back to part 1 or clear an evaluation that
+  -- was already released. Only a real module change starts its first published
+  -- milestone. Advanced CEFR badges without a published milestone keep the
+  -- existing COMPLETED convention instead of inventing `${module}-1`.
+  if pg_catalog.upper(pg_catalog.btrim(coalesce(v_student.module, ''))) = v_module
+     and nullif(
+       pg_catalog.btrim(coalesce(v_student.current_book_part, '')),
+       ''
+     ) is not null then
+    v_book_part := pg_catalog.btrim(v_student.current_book_part);
+  else
+    select catalog.book_part
+      into v_book_part
+      from public.pedagogical_evaluation_catalog as catalog
+     where catalog.module = v_module
+       and catalog.active is true
+     order by catalog.part asc
+     limit 1;
+    if not found then
+      v_book_part := 'COMPLETED';
+    end if;
   end if;
 
   if pg_catalog.upper(pg_catalog.btrim(coalesce(v_student.module, ''))) = v_module
