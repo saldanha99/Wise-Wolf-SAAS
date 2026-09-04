@@ -97,23 +97,22 @@ WHERE public.tenants.id = sub.id
   );
 
 -- Part 3: Update apply_tenant_admin_settings to handle optional/empty slug gracefully
+DROP FUNCTION IF EXISTS public.apply_tenant_admin_settings(text, uuid, integer, jsonb);
+
 CREATE OR REPLACE FUNCTION public.apply_tenant_admin_settings(
   p_tenant_id text,
   p_actor_id uuid,
-  p_expected_version integer,
+  p_expected_version bigint,
   p_settings jsonb
 )
-RETURNS TABLE (
-  version integer,
-  updated_at timestamptz
-)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
-  current_version integer;
-  next_version integer;
+  current_version bigint;
+  next_version bigint;
   current_slug text;
   current_domain text;
   current_name text;
@@ -122,18 +121,18 @@ DECLARE
   normalized_branding jsonb;
   normalized_school_info jsonb;
   actor_role text;
-  changes_payload jsonb;
 BEGIN
-  IF p_tenant_id IS NULL OR p_actor_id IS NULL OR p_settings IS NULL THEN
-    RAISE EXCEPTION 'invalid_parameters' USING ERRCODE = '22023';
-  END IF;
-
   actor_role := private.active_tenant_role(p_actor_id);
-  IF actor_role NOT IN ('SCHOOL_ADMIN', 'ADMIN', 'SUPER_ADMIN') THEN
-    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  IF p_actor_id IS NULL
+    OR actor_role NOT IN ('SCHOOL_ADMIN', 'SUPER_ADMIN')
+    OR private.active_tenant_id(p_actor_id) IS DISTINCT FROM p_tenant_id
+  THEN
+    RAISE EXCEPTION 'cross_tenant_access_denied' USING ERRCODE = '42501';
   END IF;
 
-  PERFORM private.assert_operational_tenant(p_tenant_id);
+  IF NOT private.tenant_is_operational(p_tenant_id) THEN
+    RAISE EXCEPTION 'tenant_not_operational' USING ERRCODE = '55000';
+  END IF;
 
   IF jsonb_typeof(p_settings) <> 'object'
     OR NOT p_settings ?& ARRAY[
@@ -191,14 +190,14 @@ BEGIN
     RAISE EXCEPTION 'settings_version_conflict' USING ERRCODE = '40001';
   END IF;
 
+  normalized_name := trim(p_settings ->> 'name');
+  normalized_slug := lower(trim(coalesce(p_settings ->> 'slug', '')));
+
   -- Look up existing tenant attributes for safe fallback
   SELECT tenant.slug, tenant.domain, tenant.name
   INTO current_slug, current_domain, current_name
   FROM public.tenants AS tenant
   WHERE tenant.id = p_tenant_id;
-
-  normalized_name := trim(p_settings ->> 'name');
-  normalized_slug := lower(trim(coalesce(p_settings ->> 'slug', '')));
 
   -- Safe fallback to current tenant slug if not provided or empty
   IF normalized_slug = '' THEN
@@ -301,24 +300,21 @@ BEGIN
     p_tenant_id,
     p_actor_id,
     actor_role,
-    'save',
-    'settings',
+    'settings_published',
+    'school',
     jsonb_build_object(
       'version', next_version,
-      'name', normalized_name,
-      'slug', normalized_slug,
-      'brandingUpdated', true,
-      'schoolInfoUpdated', normalized_school_info IS NOT NULL,
-      'whatsappEnabled', (p_settings ->> 'whatsappEnabled')::boolean,
-      'financialCutoffDay', (p_settings ->> 'financialCutoffDay')::integer
+      'sections', jsonb_build_array(
+        'identity', 'branding', 'operations', 'communications'
+      )
     )
   );
 
-  RETURN QUERY
-  SELECT next_version, now();
+  RETURN jsonb_build_object('ok', true, 'version', next_version);
 END;
 $function$;
 
-ALTER FUNCTION public.apply_tenant_admin_settings(text, uuid, integer, jsonb) OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.apply_tenant_admin_settings(text, uuid, integer, jsonb) FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.apply_tenant_admin_settings(text, uuid, integer, jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.apply_tenant_admin_settings(text, uuid, bigint, jsonb)
+  FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_tenant_admin_settings(text, uuid, bigint, jsonb)
+  TO service_role;
