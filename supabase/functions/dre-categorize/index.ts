@@ -40,8 +40,10 @@ const PROVIDER_ATTEMPT_MS = 9_000;
 const MODEL_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i;
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",
+  "google/gemini-2.5-flash",
+  "google/gemini-3.5-flash",
   "google/gemini-3.6-flash",
-  "openai/gpt-5-mini",
+  "openai/gpt-4o-mini",
 ];
 
 // Teto do que vai no prompt. Uma base com centenas de categorias soltas indica

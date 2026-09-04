@@ -2009,8 +2009,10 @@ Return ONLY one raw valid JSON object with exactly this structure:
 
 const OPENROUTER_FALLBACK_MODELS = [
   "anthropic/claude-haiku-4.5",
+  "google/gemini-2.5-flash",
+  "google/gemini-3.5-flash",
   "google/gemini-3.6-flash",
-  "openai/gpt-5-mini",
+  "openai/gpt-4o-mini",
 ] as const;
 
 function getModelsToTry(): string[] {

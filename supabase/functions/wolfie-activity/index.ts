@@ -207,8 +207,10 @@ const AI_DEADLINE_MS = 38_000;
 const AI_ATTEMPT_MS = 30_000;
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",
+  "google/gemini-2.5-flash",
+  "google/gemini-3.5-flash",
   "google/gemini-3.6-flash",
-  "openai/gpt-5-mini",
+  "openai/gpt-4o-mini",
 ];
 const listeningAudioCache = new Map<
   string,

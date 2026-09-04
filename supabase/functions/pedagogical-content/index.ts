@@ -115,8 +115,10 @@ const MODEL_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/i;
 const CALENDAR_DAY_MS = 86_400_000;
 const DEFAULT_MODELS = [
   "anthropic/claude-haiku-4.5",
+  "google/gemini-2.5-flash",
+  "google/gemini-3.5-flash",
   "google/gemini-3.6-flash",
-  "openai/gpt-5-mini",
+  "openai/gpt-4o-mini",
 ];
 const PLANNER_TASK_MODES = new Set<PlannerTaskMode>(NATIVE_PLANNER_TASK_MODES);
 const HUB_PLANNER_PROMPT_VERSION = WISE_WOLF_PROMPT_VERSION;
