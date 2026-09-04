@@ -902,24 +902,31 @@ exception
 end;
 $$;
 
-select pg_temp.assert_true(
-  public.archive_learning_path(
+do $$
+declare
+  v_res jsonb;
+begin
+  v_res := public.archive_learning_path(
     '10000000-0000-4000-8000-00000000e901',
     'Retire obsolete builder fixture safely'
-  ) ->> 'active' = 'false'
-  and exists (
-    select 1
-      from public.learning_paths
-     where id = '10000000-0000-4000-8000-00000000e901'
-       and active is false
-  )
-  and exists (
-    select 1
-      from public.unit_activities
-     where id = '30000000-0000-4000-8000-00000000e901'
-  ),
-  'school admin could not archive a curriculum without deleting its content'
-);
+  );
+  perform pg_temp.assert_true(
+    v_res ->> 'active' = 'false'
+    and exists (
+      select 1
+        from public.learning_paths
+       where id = '10000000-0000-4000-8000-00000000e901'
+         and active is false
+    )
+    and exists (
+      select 1
+        from public.unit_activities
+       where id = '30000000-0000-4000-8000-00000000e901'
+    ),
+    'school admin could not archive a curriculum without deleting its content'
+  );
+end;
+$$;
 
 reset role;
 
