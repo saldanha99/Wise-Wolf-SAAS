@@ -188,9 +188,11 @@ export function resolveTenantCommunicationIdentity(
   const normalizedSlug = typeof tenant.slug === "string"
     ? tenant.slug.trim().toLowerCase()
     : "";
-  const slug = (normalizedSlug === "wisewolf" || normalizedSlug === "system" || tenantId === "school-wise-wolf")
+  const slug = (normalizedSlug === "wisewolf" || normalizedSlug === "system" ||
+      tenantId === "school-wise-wolf")
     ? "https://system.wisewolflanguage.com.br"
-    : (normalizedSlug && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(normalizedSlug)
+    : (normalizedSlug &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(normalizedSlug)
       ? `https://${normalizedSlug}.wisewolflanguage.com.br`
       : null);
   const fallbackPortal = tenantId === "school-wise-wolf"
