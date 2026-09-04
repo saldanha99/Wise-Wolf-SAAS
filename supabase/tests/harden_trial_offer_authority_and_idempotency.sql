@@ -48,14 +48,36 @@ select pg_temp.assert_true(
           and coalesce(procedure.proconfig @> array['search_path=""']::text[], false)
      from pg_catalog.pg_proc as procedure
     where procedure.oid = 'public.create_enrollment_offer(jsonb)'::regprocedure)
-  and (select pg_get_functiondef('public.create_enrollment_offer(jsonb)'::regprocedure)
+  and (select pg_get_functiondef(
+        coalesce(
+          to_regprocedure('public.create_enrollment_offer_pre_crm_lead_lock_impl(jsonb)'),
+          'public.create_enrollment_offer(jsonb)'::regprocedure
+        )
+      )
         ilike '%idempotency_key_reused%'
-        and pg_get_functiondef('public.create_enrollment_offer(jsonb)'::regprocedure)
+        and pg_get_functiondef(
+          coalesce(
+            to_regprocedure('public.create_enrollment_offer_pre_crm_lead_lock_impl(jsonb)'),
+            'public.create_enrollment_offer(jsonb)'::regprocedure
+          )
+        )
         ilike '%SCHOOL_ADMIN%'
-        and pg_get_functiondef('public.create_enrollment_offer(jsonb)'::regprocedure)
+        and pg_get_functiondef(
+          coalesce(
+            to_regprocedure('public.create_enrollment_offer_pre_crm_lead_lock_impl(jsonb)'),
+            'public.create_enrollment_offer(jsonb)'::regprocedure
+          )
+        )
           ilike '%SALESPERSON%'
-        and pg_get_functiondef('public.create_enrollment_offer(jsonb)'::regprocedure)
-          not ilike '%''TEACHER''%'),
+        and pg_get_functiondef(
+          coalesce(
+            to_regprocedure('public.create_enrollment_offer_pre_crm_lead_lock_impl(jsonb)'),
+            'public.create_enrollment_offer(jsonb)'::regprocedure
+          )
+        )
+          not ilike '%''TEACHER''%')
+  and (select pg_get_functiondef('public.create_enrollment_offer(jsonb)'::regprocedure)
+        not ilike '%''TEACHER''%'),
   'offer wrapper does not fence teacher authority or idempotency reuse'
 );
 
@@ -64,11 +86,26 @@ select pg_temp.assert_true(
           and coalesce(procedure.proconfig @> array['search_path=""']::text[], false)
      from pg_catalog.pg_proc as procedure
     where procedure.oid = 'public.update_trial_outcome_secure(jsonb)'::regprocedure)
-  and (select pg_get_functiondef('public.update_trial_outcome_secure(jsonb)'::regprocedure)
+  and (select pg_get_functiondef(
+        coalesce(
+          to_regprocedure('public.update_trial_outcome_secure_pre_crm_temporal_guard_impl(jsonb)'),
+          'public.update_trial_outcome_secure(jsonb)'::regprocedure
+        )
+      )
         ilike '%completed_class_log_required%'
-        and pg_get_functiondef('public.update_trial_outcome_secure(jsonb)'::regprocedure)
+        and pg_get_functiondef(
+          coalesce(
+            to_regprocedure('public.update_trial_outcome_secure_pre_crm_temporal_guard_impl(jsonb)'),
+            'public.update_trial_outcome_secure(jsonb)'::regprocedure
+          )
+        )
           ilike '%appointment_not_ended%'
-        and pg_get_functiondef('public.update_trial_outcome_secure(jsonb)'::regprocedure)
+        and pg_get_functiondef(
+          coalesce(
+            to_regprocedure('public.update_trial_outcome_secure_pre_crm_temporal_guard_impl(jsonb)'),
+            'public.update_trial_outcome_secure(jsonb)'::regprocedure
+          )
+        )
           ilike '%interval ''30 minutes''%'),
   'teacher feedback can still manufacture attendance before the appointment ends'
 );
