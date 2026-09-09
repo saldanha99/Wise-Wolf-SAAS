@@ -1196,6 +1196,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260905162623_serialize_sdr_conversations.sql"
   "supabase/migrations/20260906165120_sdr_attention_quality_and_slots.sql"
   "supabase/migrations/20260908230000_fix_monthly_closing_execute_grants.sql"
+  "supabase/migrations/20260908235000_teacher_payroll_reconciliation.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"

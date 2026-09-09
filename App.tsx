@@ -66,6 +66,7 @@ const TeacherInsightsBoard = lazy(() => import('./components/TeacherInsightsBoar
 const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ReferralAdmin = lazy(() => import('./components/ReferralAdmin'));
 const CashflowPanel = lazy(() => import('./components/CashflowPanel'));
+const PayrollReconciliationPanel = lazy(() => import('./components/PayrollReconciliationPanel'));
 const DreGerencialPanel = lazy(() => import('./components/DreGerencialPanel'));
 const BalanceteProfessores = lazy(() => import('./components/BalanceteProfessores'));
 const FinancialReconciliation = lazy(() => import('./components/FinancialReconciliation'));
@@ -164,6 +165,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'cashflow', label: 'Fluxo de Caixa', group: 'Financeiro' },
     { tab: 'dre', label: 'Resultado (DRE)', group: 'Financeiro' },
     { tab: 'balancete', label: 'Balancete por Professor', group: 'Financeiro' },
+    { tab: 'payroll-reconciliation', label: 'Caixinha × Folha', group: 'Financeiro' },
     { tab: 'ai-costs', label: 'Custo de IA', group: 'Financeiro' },
     { tab: 'verify-rooms', label: 'Verificar Salas', group: 'Aulas' },
     { tab: 'financial', label: 'Lançamentos do Caixa', group: 'Financeiro' },
@@ -1281,6 +1283,7 @@ const App: React.FC = () => {
       'vendors-mgmt': <VendorManagement user={user} tenantId={currentTenant?.id} />,
       'referral-admin': <ReferralAdmin user={user} tenantId={currentTenant?.id} />,
       'cashflow': <CashflowPanel user={user} tenantId={currentTenant?.id} />,
+      'payroll-reconciliation': <PayrollReconciliationPanel user={user} tenantId={currentTenant?.id} />,
       'dre': <DreGerencialPanel user={user} tenantId={currentTenant?.id} />,
       'balancete': <BalanceteProfessores user={user} tenantId={currentTenant?.id} />,
       'reconciliation': <FinancialReconciliation user={user} tenantId={currentTenant?.id} onNavigate={setActiveTab} />,
