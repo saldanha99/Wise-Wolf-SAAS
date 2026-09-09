@@ -602,6 +602,17 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/wolfie-live-proxy/index.ts \
   supabase/functions/wolf-tutor-api/index.ts \
   supabase/functions/whatsapp-inbound/index.ts \
+  supabase/functions/whatsapp-inbound/sdr-work.ts \
+  supabase/functions/whatsapp-inbound/sdr-work.test.ts \
+  supabase/functions/whatsapp-inbound/sdr-conversation.ts \
+  supabase/functions/whatsapp-inbound/sdr-conversation.test.ts \
+  supabase/functions/_shared/trial-timeout.ts \
+  supabase/functions/_shared/sdr-scheduling.ts \
+  supabase/functions/_shared/sdr-lifecycle.ts \
+  supabase/functions/_shared/sdr-teacher-reminders.ts \
+  supabase/functions/_shared/trial-timeout.test.ts \
+  supabase/functions/_shared/sdr-scheduling.test.ts \
+  supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-evolution-proxy/index.ts \
@@ -649,6 +660,11 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/generate-student-manual-pix/core.test.ts \
   supabase/functions/generate-student-insights/tenant-scope.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
+  supabase/functions/whatsapp-inbound/sdr-work.test.ts \
+  supabase/functions/whatsapp-inbound/sdr-conversation.test.ts \
+  supabase/functions/_shared/trial-timeout.test.ts \
+  supabase/functions/_shared/sdr-scheduling.test.ts \
+  supabase/functions/_shared/sdr-lifecycle.test.ts \
   supabase/functions/whatsapp-inbound/trial-reschedule.test.ts \
   supabase/functions/whatsapp-inbound/conversation-log.test.ts \
   supabase/functions/_shared/lead-contact.test.ts \
@@ -1176,8 +1192,15 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260902213000_student_enrollment_pedagogical_level_placement.sql"
   "supabase/migrations/20260902223000_student_status_and_level_management.sql"
   "supabase/migrations/20260903180000_fix_student_contracts_and_tenant_slug.sql"
+  "supabase/migrations/20260905160347_sdr_confirmation_timeout_and_dedup.sql"
+  "supabase/migrations/20260905162623_serialize_sdr_conversations.sql"
+  "supabase/migrations/20260906165120_sdr_attention_quality_and_slots.sql"
+  "supabase/migrations/20260908230000_fix_monthly_closing_execute_grants.sql"
 )
 DATABASE_TEST_RELATIVES=(
+  "supabase/tests/sdr_confirmation_timeout.sql"
+  "supabase/tests/sdr_conversation_work.sql"
+  "supabase/tests/sdr_attention_quality.sql"
   "supabase/tests/student_status_and_level_management.sql"
   "supabase/tests/enrollment_pedagogical_level_placement.sql"
   "supabase/tests/student_lifecycle_operations_hardening.sql"
@@ -1324,6 +1347,10 @@ SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-int
 SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE="supabase/functions/_shared/management-action-policy.ts"
 SHARED_WHATSAPP_INBOX_RELATIVE="supabase/functions/_shared/whatsapp-inbox.ts"
 SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE="supabase/functions/_shared/interview-notifications.ts"
+SHARED_TRIAL_TIMEOUT_RELATIVE="supabase/functions/_shared/trial-timeout.ts"
+SHARED_SDR_SCHEDULING_RELATIVE="supabase/functions/_shared/sdr-scheduling.ts"
+SHARED_SDR_LIFECYCLE_RELATIVE="supabase/functions/_shared/sdr-lifecycle.ts"
+SHARED_SDR_REMINDERS_RELATIVE="supabase/functions/_shared/sdr-teacher-reminders.ts"
 HARDENED_FUNCTIONS=(
   asaas-reconcile
   sync-subscription-status
@@ -1470,6 +1497,8 @@ done
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
 [[ -s "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" ]] || die "política de ações de gestão ausente"
 [[ -s "$SHARED_WHATSAPP_INBOX_RELATIVE" ]] || die "contrato canônico da inbox WhatsApp ausente"
+[[ -s "$SHARED_SDR_SCHEDULING_RELATIVE" && -s "$SHARED_SDR_LIFECYCLE_RELATIVE" && -s "$SHARED_SDR_REMINDERS_RELATIVE" ]] || die "módulos de qualidade SDR ausentes"
+[[ -s "$SHARED_TRIAL_TIMEOUT_RELATIVE" ]] || die "política de retorno comercial ausente"
 [[ -s "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE" ]] || die "contrato durável de notificações de entrevista ausente"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "supabase/functions/$function_name/index.ts" ]] ||
@@ -1588,6 +1617,10 @@ append_release_input_checksum() {
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
     "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
     "$SHARED_WHATSAPP_INBOX_RELATIVE" \
+    "$SHARED_TRIAL_TIMEOUT_RELATIVE" \
+    "$SHARED_SDR_SCHEDULING_RELATIVE" \
+    "$SHARED_SDR_LIFECYCLE_RELATIVE" \
+    "$SHARED_SDR_REMINDERS_RELATIVE" \
     "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE"; do
     append_release_input_checksum \
       "$shared_relative" \
@@ -1763,6 +1796,11 @@ rsync -a -- "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/management-action-policy.ts"
 rsync -a -- "$SHARED_WHATSAPP_INBOX_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/whatsapp-inbox.ts"
+rsync -a -- "$SHARED_SDR_SCHEDULING_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-scheduling.ts"
+rsync -a -- "$SHARED_SDR_LIFECYCLE_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-lifecycle.ts"
+rsync -a -- "$SHARED_SDR_REMINDERS_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-teacher-reminders.ts"
+rsync -a -- "$SHARED_TRIAL_TIMEOUT_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/trial-timeout.ts"
 rsync -a -- "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/interview-notifications.ts"
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
@@ -2117,6 +2155,8 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
 [[ -s "$release_dir/functions/_shared/management-action-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/whatsapp-inbox.ts" ]]
+[[ -s "$release_dir/functions/_shared/trial-timeout.ts" ]]
+[[ -s "$release_dir/functions/_shared/sdr-scheduling.ts" && -s "$release_dir/functions/_shared/sdr-lifecycle.ts" && -s "$release_dir/functions/_shared/sdr-teacher-reminders.ts" ]]
 [[ -s "$release_dir/functions/_shared/interview-notifications.ts" ]]
 for function_name in "${HARDENED_FUNCTIONS[@]}"; do
   [[ -s "$release_dir/functions/$function_name/index.ts" ]]
@@ -3673,7 +3713,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts interview-notifications.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts interview-notifications.ts trial-timeout.ts sdr-scheduling.ts sdr-lifecycle.ts sdr-teacher-reminders.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
