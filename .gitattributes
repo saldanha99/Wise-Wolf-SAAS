@@ -1,0 +1,6 @@
+# Os receipts dos videos do Hub guardam o sha das legendas. Com core.autocrlf
+# ligado, um checkout Windows converte os .vtt para CRLF, o hash deixa de bater
+# e `npm run build` falha em "captions diverge do receipt". Estes arquivos sao
+# comparados por conteudo exato, entao precisam de LF em qualquer plataforma.
+public/assets/hub/videos/captions/*.vtt text eol=lf
+public/assets/hub/videos/receipts/*.json text eol=lf
