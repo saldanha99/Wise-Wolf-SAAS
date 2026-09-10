@@ -71,6 +71,23 @@ const SmartFinder: React.FC<{ user?: any }> = () => {
             return;
         }
 
+        // O broadcast-opportunity valida tudo de uma vez e responde só
+        // "Invalid opportunity payload", sem dizer qual campo reprovou. Estas
+        // checagens espelham as regras do servidor para apontar o campo aqui.
+        const phoneDigits = studentPhone.replace(/\D/g, '');
+        if (kind === 'TRIAL' && phoneDigits.length < 10) {
+            alert('WhatsApp incompleto: informe DDD + número (ao menos 10 dígitos).');
+            return;
+        }
+        const badSlot = preferredSlots.findIndex(
+            (slot) => !WEEKDAYS.some((day) => day.value === slot.weekday)
+                || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(slot.time),
+        );
+        if (badSlot >= 0) {
+            alert(`Preferência de horário ${badSlot + 1} está incompleta. Preencha o dia e a hora, ou remova a linha.`);
+            return;
+        }
+
         setLoading(true);
         try {
             // "Smart Connect" Integration:
