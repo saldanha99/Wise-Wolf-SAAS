@@ -4,6 +4,7 @@ import StudentProfileView from './StudentProfileView';
 import { supabase } from '../lib/supabase';
 import { nullableUuid } from '../lib/dbValues';
 import { safeMeetingLink } from '../lib/meetingLink';
+import { parseFunctionErrorAsync } from '../lib/functionInvokeErrors';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { asaasService } from '../services/asaasService';
 import { User as UserType, UserRole, Teacher } from '../types';
@@ -732,7 +733,14 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
         },
       });
       if (error || (data && (data as any).ok === false)) {
-        throw new Error(error?.message || (data as any)?.error || 'falha');
+        const parsed = await parseFunctionErrorAsync({
+          error,
+          data,
+          fallbackMessage: 'Não foi possível alterar o status do aluno.',
+        });
+        throw new Error(parsed.message + (parsed.details ? `
+
+${parsed.details}` : ''));
       }
       const newLifecycle = makeInactive ? 'suspended' : 'active';
       setStudents(prev => prev.map(s => s.id === student.id ? {

@@ -82,8 +82,13 @@ export const parseFunctionError = (params: {
   const status =
     asNumber((params.error as { status?: unknown } | undefined)?.status) ??
     asNumber(context.status);
+  // Em erro, o supabase-js devolve data: null — nesse caso o corpo util esta no
+  // context, nao em data. Tratar null como "sem corpo" evita descartar a
+  // mensagem que o servidor mandou.
   const rawBody = parseJsonBody(
-    params.data !== undefined ? params.data : extractBody(context),
+    params.data !== undefined && params.data !== null
+      ? params.data
+      : extractBody(context),
   );
   const source = isRecord(rawBody) ? rawBody : null;
   const fallback = params.fallbackMessage;
@@ -133,6 +138,66 @@ export const parseFunctionError = (params: {
     providerError,
     retryable,
   };
+};
+
+const isResponseLike = (value: unknown): value is Response =>
+  Boolean(value) &&
+  typeof value === 'object' &&
+  typeof (value as Response).status === 'number' &&
+  typeof (value as Response).clone === 'function' &&
+  typeof (value as Response).text === 'function';
+
+/**
+ * Em um erro de functions.invoke, o supabase-js entrega `error.context` como o
+ * objeto Response cru — o corpo é um ReadableStream que ninguém consumiu. Sem
+ * ler esse corpo, toda falha vira a mensagem genérica "Edge Function returned a
+ * non-2xx status code" e a explicação do servidor se perde.
+ *
+ * Aqui o Response é clonado (para não queimar o corpo de quem também for ler) e
+ * transformado num contexto simples que parseFunctionError consegue interpretar.
+ */
+export const readFunctionErrorContext = async (
+  error: unknown,
+): Promise<SupabaseFunctionErrorContext | undefined> => {
+  if (!isRecord(error)) return undefined;
+  const context = (error as { context?: unknown }).context;
+  if (!isResponseLike(context)) {
+    return isRecord(context) ? (context as SupabaseFunctionErrorContext) : undefined;
+  }
+  let responseText: string | undefined;
+  try {
+    responseText = await context.clone().text();
+  } catch {
+    responseText = undefined;
+  }
+  return {
+    status: context.status,
+    statusText: context.statusText,
+    responseText,
+  };
+};
+
+/**
+ * Mesma leitura de parseFunctionError, mas lendo antes o corpo da resposta.
+ * Prefira esta versão em qualquer chamada a supabase.functions.invoke: a
+ * síncrona só enxerga o que já estiver desserializado.
+ */
+export const parseFunctionErrorAsync = async (params: {
+  error?: unknown;
+  data?: unknown;
+  fallbackMessage: string;
+}): Promise<ParsedFunctionError> => {
+  const context = await readFunctionErrorContext(params.error);
+  if (!context) return parseFunctionError(params);
+  const source = params.error as { message?: unknown; status?: unknown } | undefined;
+  return parseFunctionError({
+    ...params,
+    error: {
+      message: typeof source?.message === 'string' ? source.message : undefined,
+      status: source?.status,
+      context,
+    },
+  });
 };
 
 export const buildBroadcastErrorMessage = (error: ParsedFunctionError): string => {
