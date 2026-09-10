@@ -45,6 +45,11 @@ const TERMINAL_PAYMENT_STATUSES = new Set([
   "DUNNING_REQUESTED",
 ]);
 const DELETABLE_PAYMENT_STATUSES = new Set(["PENDING", "OVERDUE"]);
+// O Asaas encerra uma assinatura de duas formas: INACTIVE, quando nos a
+// desligamos, e EXPIRED, quando ela chega sozinha ao fim do ciclo. Nenhuma das
+// duas gera cobranca nova, entao as duas satisfazem uma suspensao — a diferenca
+// e que so ACTIVE ainda precisa de mutacao no provedor.
+const SUBSCRIPTION_NON_BILLING_STATUSES = new Set(["INACTIVE", "EXPIRED"]);
 const DELETED_UNSETTLED_PAYMENT_STATUSES = new Set([
   ...DELETABLE_PAYMENT_STATUSES,
   "CANCELLED",
@@ -2914,7 +2919,8 @@ export async function handleRequest(req: Request): Promise<Response> {
                 if (claim.providerSubscriptionFinalStatus === "INACTIVE") {
                   subscriptionMutationNeeded = providerStatus === "ACTIVE";
                   if (
-                    !new Set(["ACTIVE", "INACTIVE"]).has(providerStatus)
+                    providerStatus !== "ACTIVE" &&
+                    !SUBSCRIPTION_NON_BILLING_STATUSES.has(providerStatus)
                   ) {
                     throw new ApiError(
                       409,
@@ -3092,7 +3098,7 @@ export async function handleRequest(req: Request): Promise<Response> {
                   : "NOT_FOUND";
                 if (
                   claim.billingCancelFromDate &&
-                  finalSubscriptionStatus === "INACTIVE"
+                  SUBSCRIPTION_NON_BILLING_STATUSES.has(finalSubscriptionStatus)
                 ) {
                   const finalProviderPayments =
                     await listAsaasSubscriptionPayments(
@@ -3106,10 +3112,14 @@ export async function handleRequest(req: Request): Promise<Response> {
                   );
                 }
               }
-              if (
-                finalSubscriptionStatus !==
-                  claim.providerSubscriptionFinalStatus
-              ) {
+              const subscriptionPostconditionMet =
+                claim.providerSubscriptionFinalStatus === "INACTIVE"
+                  ? SUBSCRIPTION_NON_BILLING_STATUSES.has(
+                    finalSubscriptionStatus,
+                  )
+                  : finalSubscriptionStatus ===
+                    claim.providerSubscriptionFinalStatus;
+              if (!subscriptionPostconditionMet) {
                 throw new ApiError(
                   409,
                   "OFFBOARDING_SUBSCRIPTION_POSTCONDITION_FAILED",
