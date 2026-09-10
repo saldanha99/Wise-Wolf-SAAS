@@ -74,7 +74,7 @@ const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => 
           <div className="min-w-0">
             <h3 className="font-black text-gray-800 dark:text-slate-100">Ofensiva do Turbo</h3>
             <p className="text-xs text-gray-500 dark:text-brand-muted">
-              Ativa com 10 alunos e 30 dias corridos sem falta do professor.
+              Exige a carteira mínima indicada abaixo e 30 dias corridos sem falta do professor.
             </p>
           </div>
         </div>
