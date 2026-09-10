@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { buildBroadcastErrorMessage, parseFunctionError } from '../lib/functionInvokeErrors';
+import { buildBroadcastErrorMessage, parseFunctionErrorAsync } from '../lib/functionInvokeErrors';
 
 // =====================================================
 // WEEKDAY CONFIG
@@ -96,17 +96,14 @@ const SmartFinder: React.FC<{ user?: any }> = () => {
                 },
             });
 
-            const parsedError = parseFunctionError({
-                error,
-                data,
-                fallbackMessage: 'Falha ao divulgar oportunidade.',
-            });
-            const friendlyMessage = buildBroadcastErrorMessage(parsedError);
-            if (parsedError.code || parsedError.status === 409 || parsedError.status === 502 || parsedError.status === 503) {
-                throw new Error(friendlyMessage + (parsedError.details ? `\n\n${parsedError.details}` : ''));
-            }
             if (error || data?.error) {
-                throw new Error(data?.error || error?.message || 'Falha ao divulgar oportunidade.');
+                const parsedError = await parseFunctionErrorAsync({
+                    error,
+                    data,
+                    fallbackMessage: 'Falha ao divulgar oportunidade.',
+                });
+                const friendlyMessage = buildBroadcastErrorMessage(parsedError);
+                throw new Error(friendlyMessage + (parsedError.details ? `\n\n${parsedError.details}` : ''));
             }
 
             const isGroupMode = data.mode === 'group';
