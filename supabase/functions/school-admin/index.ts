@@ -3367,6 +3367,17 @@ export async function handleRequest(req: Request): Promise<Response> {
             }
             const providerStatus = String(presence.entity.status || "")
               .trim().toUpperCase();
+            // Assinatura vencida nao volta a ativa: o ciclo dela acabou e o
+            // provedor nao gera cobranca nova. Nao e "revisar o status" — e
+            // matricular de novo. Separado do erro generico abaixo para a
+            // coordenacao saber o que fazer sem abrir o Asaas.
+            if (providerStatus === "EXPIRED") {
+              throw new ApiError(
+                409,
+                "NEW_ENROLLMENT_REQUIRED",
+                "The previous subscription expired and cannot be reactivated",
+              );
+            }
             if (!new Set(["ACTIVE", "INACTIVE"]).has(providerStatus)) {
               throw new ApiError(
                 409,
