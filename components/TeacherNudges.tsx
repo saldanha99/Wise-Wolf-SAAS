@@ -135,7 +135,7 @@ const TeacherNudges: React.FC<Props> = ({ userId, pendingLessons = 0, onNavigate
                         found.push({
                             id: 'turboLockedStudents', tone: 'amber', icon: <Flame size={18} />,
                             title: `Faltam ${studentsMissing} aluno${studentsMissing === 1 ? '' : 's'} para você poder ativar o turbo`,
-                            text: comFaixas(`O Turbo destrava a partir de 10 alunos na carteira — hoje você tem ${Number(turbo.students_active || 0)} — e 30 dias consecutivos sem falta.`),
+                            text: comFaixas(`O Turbo destrava a partir de 7 alunos na carteira — hoje você tem ${Number(turbo.students_active || 0)} — e 30 dias consecutivos sem falta.`),
                         });
                     } else if (daysToActivate > 0) {
                         found.push({
