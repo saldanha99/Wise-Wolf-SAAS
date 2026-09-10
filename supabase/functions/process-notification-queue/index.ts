@@ -1139,7 +1139,22 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (
+        if (notificationKind.startsWith("TEACHER_TRAINING_")) {
+          if (item.source_type !== "teacher_training" || !item.source_id || !tenant_id) invalid("training_binding_missing");
+          const { data: training, error: trainingError } = await supabaseClient.from("teacher_training_sessions")
+            .select("tenant_id,trainer_id,trainee_id,trainee_phone,starts_at,status,test_fixture")
+            .eq("id", item.source_id).eq("tenant_id", tenant_id).maybeSingle();
+          if (trainingError) unavailable("training_revalidation_unavailable");
+          if (!training || training.test_fixture || ["CANCELLED", "COMPLETED"].includes(training.status)) invalid("training_inactive");
+          const isInvite = notificationKind === "TEACHER_TRAINING_INVITE";
+          if (isInvite && (training.status !== "PENDING" || new Date(training.starts_at).getTime() <= Date.now())) invalid("training_invite_stale");
+          if (!isInvite && !["CONFIRMED", "DECLINED"].includes(training.status)) invalid("training_response_stale");
+          const member = await loadActiveMember(supabaseClient, tenant_id, isInvite ? training.trainee_id : training.trainer_id, "TEACHER");
+          if (member.is_test_account) invalid("training_test_fixture");
+          const destination = normalizeQueueDestination(member.attendance_phone || member.phone);
+          if (!destination || destination !== normalizeQueueDestination(student_phone)) invalid("training_phone_changed");
+          prepared = { teacherId: null, destination, message: message_body };
+        } else if (
           notificationKind === "LESSON_REMINDER"
         ) {
           prepared = await prepareLessonReminder(
