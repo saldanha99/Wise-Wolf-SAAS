@@ -1,0 +1,18 @@
+services:
+  frontend:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./src/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [wisewolf]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=wisewolf
+      - traefik.http.routers.wisewolf-app.rule=Host(`app.wisewolflanguage.com.br`) || Host(`system.wisewolflanguage.com.br`)
+      - traefik.http.routers.wisewolf-app.entrypoints=websecure
+      - traefik.http.routers.wisewolf-app.tls.certresolver=le
+      - traefik.http.services.wisewolf-app.loadbalancer.server.port=80
+networks:
+  wisewolf:
+    external: true
