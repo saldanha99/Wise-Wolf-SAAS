@@ -1,0 +1,18 @@
+services:
+  frontend:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "wisewolf"
+      traefik.http.routers.wisewolf-hub.rule: "Host(`hub.wisewolflanguage.com.br`)"
+      traefik.http.routers.wisewolf-hub.entrypoints: "websecure"
+      traefik.http.routers.wisewolf-hub.service: "wisewolf-app"
+      traefik.http.routers.wisewolf-hub.middlewares: "wisewolf-hub-security"
+      traefik.http.routers.wisewolf-hub.tls: "true"
+      traefik.http.routers.wisewolf-hub.tls.certresolver: "le"
+      traefik.http.middlewares.wisewolf-hub-security.headers.contenttypenosniff: "true"
+      traefik.http.middlewares.wisewolf-hub-security.headers.framedeny: "true"
+      traefik.http.middlewares.wisewolf-hub-security.headers.referrerpolicy: "strict-origin-when-cross-origin"
+      traefik.http.middlewares.wisewolf-hub-security.headers.stsseconds: "31536000"
+      traefik.http.middlewares.wisewolf-hub-security.headers.stsincludesubdomains: "false"
+      traefik.http.middlewares.wisewolf-hub-security.headers.stspreload: "false"
+      traefik.http.middlewares.wisewolf-hub-security.headers.forcestsheader: "true"

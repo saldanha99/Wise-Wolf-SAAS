@@ -1,0 +1,20 @@
+services:
+  functions:
+    env_file:
+      - .env.functions
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+  kong:
+    networks:
+      default: {}
+      wisewolf: {}
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=wisewolf
+      - traefik.http.routers.wisewolf-api.rule=Host(`api.wisewolflanguage.com.br`)
+      - traefik.http.routers.wisewolf-api.entrypoints=websecure
+      - traefik.http.routers.wisewolf-api.tls.certresolver=le
+      - traefik.http.services.wisewolf-api.loadbalancer.server.port=8000
+networks:
+  wisewolf:
+    external: true

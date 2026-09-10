@@ -3,8 +3,20 @@
 /// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  claimSdrNotice,
+  readAllTimeoutRows,
+} from "../_shared/trial-timeout.ts";
 import { handoffAtivo } from "../_shared/lead-contact.ts";
-import { sendWhatsText } from "../_shared/evolution-send.ts";
+import {
+  claimSdrEvent,
+  followupStage,
+  stageFollowupMessage,
+} from "../_shared/sdr-lifecycle.ts";
+import {
+  sendWhatsText,
+  sendWhatsTextDetailed,
+} from "../_shared/evolution-send.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -182,88 +194,179 @@ serve(async (req) => {
         a.tenant_id === tenantId && phonesMatch(a.whatsapp, phone)
       );
 
-    // ---- 1) Follow-up de leads ----
-    //
-    // O HANDOFF HUMANO AQUI TAMBÉM VENCE (mudou em 13/08/2026).
-    //
-    // O filtro era `ai_handoff = false` sem prazo nenhum: uma única resposta
-    // manual tirava o lead da prospecção ATIVA para sempre. Medido antes da
-    // mudança: 28 dos 47 leads CONTACTED estavam nesse limbo, e 73 leads nunca
-    // receberam follow-up nenhum. "O humano assumiu" vira, depois de 72h em
-    // silêncio, apenas "ninguém está cuidando deste lead".
-    //
-    // O filtro sai do SQL e vira `handoffAtivo` (mesma regra do caminho
-    // reativo, em `_shared/lead-contact.ts`), porque a decisão depende do
-    // carimbo e não só do booleano.
-    const cutoff = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
-    const { data: leads } = await sb.from("crm_leads").select(
-      "id, tenant_id, name, phone, status, last_inbound_at, last_outbound_at, followup_count, ai_handoff, ai_handoff_at, ai_handled",
-    )
-      .eq("ai_handled", true).in("status", ["NEW", "CONTACTED"]).not(
-        "last_outbound_at",
-        "is",
-        null,
-      ).lt("last_outbound_at", cutoff);
-    for (const lead of (leads || [])) {
-      if (handoffAtivo(lead)) {
-        result.skipped_handoff++;
+    // Stage-specific follow-ups share the reactive conversation lease. Existing
+    // appointment reminders own pre-class messages, and pending teachers own their timeout.
+    const cutoff = new Date(Date.now() - 20 * 3600000).toISOString();
+    const leads = await readAllTimeoutRows(() =>
+      sb.from("crm_leads").select(
+        "id,tenant_id,phone",
+      ).eq("ai_handled", true).in("status", ["NEW", "CONTACTED", "TRIAL_DONE"])
+        .not("last_outbound_at", "is", null).lt("last_outbound_at", cutoff)
+        .order("last_outbound_at").order("id")
+    );
+    for (const candidate of leads || []) {
+      if (result.followups >= 15) break;
+      const phone = cleanPhone(candidate.phone || "");
+      if (phone.length < 12 || isCandidatePhone(candidate.tenant_id, phone)) {
         continue;
       }
-      if ((lead.followup_count ?? 0) >= 2) continue;
-      if (
-        lead.last_inbound_at && lead.last_inbound_at > lead.last_outbound_at
-      ) continue;
-      const t = await routeFor(lead.tenant_id, "student");
-      if (!t || cfgOf(lead.tenant_id)?.sdr?.enabled === false) continue;
-      const facts = await factsFor(lead.tenant_id);
-      if (!facts) continue; // fail closed: sem fonte de verdade, não envia venda
-      const suppression = evaluateCommercialSuppression({
-        tenantId: lead.tenant_id,
-        phone: lead.phone,
-        name: lead.name,
-        leadStatus: lead.status,
-      }, facts);
-      if (suppression.suppressed) {
-        await reconcileSuppressedLead(sb, lead.id, suppression);
-        result.skipped_contracted++;
-        continue;
+      const t = await routeFor(candidate.tenant_id, "student");
+      if (!t || cfgOf(candidate.tenant_id)?.sdr?.enabled === false) continue;
+      const lease = await claimSdrNotice(sb, candidate.tenant_id, phone);
+      if (!lease.ok) continue;
+      let success = true;
+      try {
+        const [current, requests, trials] = await Promise.all([
+          sb.from("crm_leads").select("*").eq("tenant_id", candidate.tenant_id)
+            .eq("id", candidate.id).maybeSingle(),
+          sb.from("trial_reschedule_requests").select("id").eq(
+            "tenant_id",
+            candidate.tenant_id,
+          ).eq("lead_id", candidate.id).eq("status", "PENDING").limit(1),
+          sb.from("opportunities").select(
+            "id,student_phone,status,trial_status,created_at,trial_appointment_id,conversion_status",
+          )
+            .eq("tenant_id", candidate.tenant_id).eq("kind", "TRIAL")
+            .gte(
+              "created_at",
+              new Date(Date.now() - 30 * 86400000).toISOString(),
+            ).order("created_at", { ascending: false }),
+        ]);
+        if ([current, requests, trials].some((r) => r.error)) {
+          throw new Error("sdr_followup_state_unavailable");
+        }
+        const lead = current.data;
+        if (
+          !lead || !lead.ai_handled || !lead.last_outbound_at ||
+          lead.last_outbound_at >= cutoff ||
+          (lead.last_inbound_at &&
+            lead.last_inbound_at >= cutoff) ||
+          requests.data?.length
+        ) continue;
+        if (handoffAtivo(lead)) {
+          result.skipped_handoff++;
+          continue;
+        }
+        const matchingTrials = (trials.data || []).filter((o: any) =>
+          phonesMatch(o.student_phone, phone)
+        );
+        const ongoing = matchingTrials.some((o: any) =>
+          ["OPEN", "CLAIMED", "FILLED", "TAKEN"].includes(o.status) &&
+          ![
+            "DONE",
+            "COMPLETED",
+            "CANCELLED",
+            "CANCELED",
+            "NO_SHOW",
+            "NO_SHOW_STUDENT",
+            "NO_SHOW_TEACHER",
+          ].includes(String(o.trial_status || "").toUpperCase())
+        );
+        if (ongoing) continue;
+        const trial = matchingTrials.find((o: any) =>
+          o.id === lead.opportunity_id
+        ) || matchingTrials[0];
+        // Refresh financial truth within the lease, never reuse an earlier tenant snapshot.
+        const facts = await loadCommercialContactFacts(sb, lead.tenant_id);
+        const suppression = evaluateCommercialSuppression({
+          tenantId: lead.tenant_id,
+          phone,
+          name: lead.name,
+          leadStatus: lead.status,
+          opportunityId: lead.opportunity_id,
+        }, facts);
+        const enrollmentPending =
+          suppression.reason === "enrollment_in_progress";
+        if (suppression.suppressed && !enrollmentPending) {
+          await reconcileSuppressedLead(sb, lead.id, suppression);
+          result.skipped_contracted++;
+          continue;
+        }
+        const stage = followupStage(
+          lead.status,
+          trial?.trial_status || null,
+          enrollmentPending,
+        );
+        if (!stage) continue;
+        if (
+          stage !== "qualification" &&
+          lead.last_outbound_at <
+            new Date(Date.now() - 14 * 86400000).toISOString()
+        ) continue;
+        if (
+          stage === "after_trial" &&
+          (!lead.last_status_change || lead.last_status_change >= cutoff)
+        ) continue;
+        const scope = `${lead.tenant_id}:${lead.id}:${stage}:${
+          stage === "qualification" ? "initial" : trial?.id || "enrollment"
+        }`;
+        const { data: marks, error: marksError } = await sb.from(
+          "automation_sent",
+        ).select("subject_id")
+          .eq("kind", "SDR_STAGE_FOLLOWUP").in("subject_id", [
+            `${scope}:0`,
+            `${scope}:1`,
+          ]);
+        if (marksError) throw new Error("sdr_followup_history_unavailable");
+        const used = new Set((marks || []).map((m: any) => m.subject_id));
+        const touch = stage === "qualification"
+          ? Math.max(used.size, lead.followup_count || 0)
+          : used.size;
+        if (touch >= 2) continue;
+        const event = await claimSdrEvent(
+          sb,
+          "SDR_STAGE_FOLLOWUP",
+          `${scope}:${touch}`,
+        );
+        if (!event.ok) continue;
+        const msg = stageFollowupMessage(
+          stage,
+          lead.name || "",
+          t.identity.brandName,
+          touch,
+          lead.goal || "",
+        );
+        const delivery = await sendWhatsTextDetailed({
+          base: EVOLUTION_API_URL,
+          keys: EVOLUTION_KEYS,
+          instance: t.instanceName,
+          to: phone,
+          text: msg,
+        });
+        const { error: logError } = await sb.from("ai_wa_messages").insert({
+          tenant_id: lead.tenant_id,
+          phone,
+          agent: "sdr",
+          direction: "out",
+          content: msg,
+          meta: {
+            lead_id: lead.id,
+            kind: "stage_followup",
+            stage,
+            touch,
+            entregue: delivery.outcome === "accepted",
+            delivery_outcome: delivery.outcome,
+          },
+        });
+        if (delivery.outcome === "rejected") await event.undo();
+        if (delivery.outcome === "ambiguous") success = false;
+        if (logError) throw new Error("sdr_followup_log_failed");
+        if (delivery.outcome === "accepted") {
+          const { error } = await sb.from("crm_leads").update({
+            last_outbound_at: new Date().toISOString(),
+            ...(stage === "qualification" ? { followup_count: touch + 1 } : {}),
+          }).eq("tenant_id", lead.tenant_id).eq("id", lead.id);
+          if (error) throw new Error("sdr_followup_lead_update_failed");
+          result.followups++;
+        } else result.failures.push(`followup ${lead.id}: ${delivery.outcome}`);
+      } catch (error) {
+        success = false;
+        result.failures.push(
+          `followup ${candidate.id}: ${(error as Error).message}`,
+        );
+      } finally {
+        await lease.finish(success);
       }
-      // TRAVA: se o telefone é de um candidato (professor/vendedor), não cutuca como lead.
-      if (isCandidatePhone(lead.tenant_id, lead.phone || "")) {
-        result.skipped_candidates++;
-        continue;
-      }
-      if (await alreadySent(sb, "SDR_FOLLOWUP", String(lead.id))) continue;
-      const phone = cleanPhone(lead.phone || "");
-      if (phone.length < 12) continue;
-      const first = (lead.name || "").trim().split(" ")[0];
-      const msg = (lead.followup_count ?? 0) === 0
-        ? `Oi${
-          first ? ", " + first : ""
-        }! 😊 Passando pra saber se ainda tem interesse na aula experimental de inglês da ${t.identity.brandName}. Posso te ajudar a escolher um dia e horário?`
-        : `Oi${
-          first ? ", " + first : ""
-        }! Vou deixar seu atendimento por aqui pra não incomodar 🙏 Quando quiser retomar, é só mandar um \"oi\" que a gente agenda sua aula experimental!`;
-      // Log sempre, entrega como campo (mesma convenção do `whatsapp-inbound`):
-      // sem isso, o follow-up que a Evolution recusa não deixa rastro nenhum e
-      // parece que o lead nunca foi procurado.
-      const entregue = await sendWhats(t.instanceName, phone, msg);
-      await sb.from("ai_wa_messages").insert({
-        tenant_id: lead.tenant_id,
-        phone,
-        agent: "sdr",
-        direction: "out",
-        content: msg,
-        meta: { lead_id: lead.id, kind: "followup", entregue },
-      });
-      if (entregue) {
-        await sb.from("crm_leads").update({
-          followup_count: (lead.followup_count ?? 0) + 1,
-          last_outbound_at: new Date().toISOString(),
-        }).eq("id", lead.id);
-        await markSent(sb, "SDR_FOLLOWUP", String(lead.id));
-        result.followups++;
-      } else result.failures.push(`followup ${lead.id}`);
     }
 
     // ---- 2) Lembrete de pré-entrevista (RH) ----

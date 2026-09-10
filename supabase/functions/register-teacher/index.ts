@@ -155,6 +155,9 @@ async function handleRequest(req: Request): Promise<Response> {
 
   try {
     const body = await requestBody(req);
+    if (body.rateUnit !== "PER_LESSON") {
+      return json({ error: "Atualize a pagina para revisar o valor por aula antes de assinar." }, 409);
+    }
     const email = normalizedEmail(body.email);
     const password = requiredString(body.password, "password", 8, 128);
     const name = requiredString(body.name, "name", 2, 120);
@@ -248,7 +251,7 @@ async function handleRequest(req: Request): Promise<Response> {
           birthDate,
         },
         legal_snapshot: schoolInfo,
-        commercial_snapshot: { hourlyRate, subject },
+        commercial_snapshot: { hourlyRate, subject, rateUnit: "PER_LESSON" },
         signed_document_path: signedDocumentPath,
         accepted_at: acceptedAt,
         accepted_ip: trustedIp,
