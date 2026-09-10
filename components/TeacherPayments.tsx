@@ -5,6 +5,7 @@ import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarS
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 import AjusteRepasseModal from './AjusteRepasseModal';
+import TeacherPixKey from './TeacherPixKey';
 
 interface InvoiceManagerProps {
     tenantId?: string;
@@ -256,6 +257,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     />
                                     <div className="min-w-0">
                                         <p className="font-bold text-brand-text text-sm truncate">{invoice.teacher?.full_name}</p>
+                                        <TeacherPixKey teacherId={invoice.teacher_id} />
                                         <p className="text-xs text-brand-muted truncate">{invoice.teacher?.email}</p>
                                     </div>
                                 </div>
