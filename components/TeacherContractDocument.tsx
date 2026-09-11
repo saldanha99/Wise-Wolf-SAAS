@@ -10,7 +10,8 @@ interface TeacherContractProps {
     teacherAddress: string;
     teacherBirthDate: string;
     school?: SchoolInfo | null;
-    hourlyRate?: number; // Valor dinâmico vindo do gerador
+    hourlyRate?: number; // Campo legado: valor por aula de 30 minutos nos novos contratos.
+    rateUnit?: string;
     contractDate?: string; // Ex: 19 de agosto de 2025
     acceptedAt?: string;
     userIp?: string;
@@ -30,7 +31,7 @@ export function getTeacherContractReadiness(school?: SchoolInfo | null, hourlyRa
         isReady: schoolIdentity.isReady && hasValidHourlyRate,
         missingFields: hasValidHourlyRate
             ? schoolIdentity.missingFields
-            : [...schoolIdentity.missingFields, 'valor da hora/aula'],
+            : [...schoolIdentity.missingFields, 'valor por aula'],
     };
 }
 
@@ -42,6 +43,7 @@ export function TeacherContractDocument({
     teacherBirthDate,
     school,
     hourlyRate,
+    rateUnit,
     contractDate,
     acceptedAt,
     userIp,
@@ -67,7 +69,9 @@ export function TeacherContractDocument({
 
     // Cálculos dinâmicos
     const finalHourlyRate = schoolIdentity.hourlyRate || 0;
-    const halfHourlyRate = finalHourlyRate / 2;
+    // Contratos já assinados sem unidade mantêm a redação e os valores originais.
+    const legacyHourlyContract = Boolean(acceptedAt) && rateUnit !== 'PER_LESSON';
+    const lessonRate = legacyHourlyContract ? finalHourlyRate / 2 : finalHourlyRate;
 
     // Data do contrato: quando já assinado, CONGELA na data da assinatura (acceptedAt) —
     // acceptedAt tem PRIORIDADE sobre contractDate, senão um contractDate=hoje passado pelo
@@ -190,8 +194,8 @@ export function TeacherContractDocument({
                         <h3 className="font-bold uppercase text-[#002366] mb-1">CLÁUSULA 3ª – REMUNERAÇÃO</h3>
                         <p className="text-justify">3.1 Pelos serviços prestados, o CONTRATADO receberá:</p>
                         <div className="pl-4 space-y-1 mt-1">
-                            <p>a) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de aula ministrada, equivalente a R$ {finalHourlyRate.toFixed(2).replace('.', ',')} por hora;</p>
-                            <p>b) R$ {halfHourlyRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de participação em treinamentos internos promovidos pela CONTRATANTE;</p>
+                            <p>a) R$ {lessonRate.toFixed(2).replace('.', ',')} {legacyHourlyContract ? 'por cada 30 (trinta) minutos de aula ministrada' : 'por aula de 30 (trinta) minutos ministrada'}{legacyHourlyContract ? `, equivalente a R$ ${finalHourlyRate.toFixed(2).replace('.', ',')} por hora` : ''};</p>
+                            <p>b) R$ {lessonRate.toFixed(2).replace('.', ',')} por cada 30 (trinta) minutos de participação em treinamentos internos promovidos pela CONTRATANTE;</p>
                         </div>
                         <p className="text-justify mt-2">
                             3.2 O pagamento será realizado até o dia 10 (dez) de cada mês, via PIX ou transferência bancária, mediante apuração das atividades realizadas no mês anterior.
@@ -200,13 +204,13 @@ export function TeacherContractDocument({
                             3.3 Os valores ajustados possuem natureza exclusivamente civil, referentes à prestação de serviços autônomos, não configurando salário ou qualquer verba de natureza trabalhista.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4 <strong>VALOR DA AULA.</strong> Cada aula de 30 (trinta) minutos ministrada é remunerada em R$ {halfHourlyRate.toFixed(2).replace('.', ',')}, conforme a hora/aula expressamente definida neste instrumento. Bonificações ou faixas progressivas somente produzirão efeito quando formalizadas pela CONTRATANTE em política ou aditivo aplicável ao CONTRATADO.
+                            3.4 <strong>VALOR DA AULA.</strong> Cada aula de 30 (trinta) minutos ministrada é remunerada em R$ {lessonRate.toFixed(2).replace('.', ',')}, conforme {legacyHourlyContract ? 'a hora/aula expressamente definida' : 'o valor por aula expressamente definido'} neste instrumento. Bonificações ou faixas progressivas somente produzirão efeito quando formalizadas pela CONTRATANTE em política ou aditivo aplicável ao CONTRATADO.
                         </p>
                         <p className="text-justify mt-2">
                             3.4.1 Considera-se <strong>conflito de lançamento</strong> a divergência entre a aula registrada pelo CONTRATADO e a confirmação de presença do aluno. Valores adicionais eventualmente previstos ficam suspensos enquanto houver conflito em aberto, sem alteração do valor-base expresso neste contrato.
                         </p>
                         <p className="text-justify mt-2">
-                            3.4.2 A aula em que o ALUNO falta é remunerada pelo valor-base de R$ {halfHourlyRate.toFixed(2).replace('.', ',')}, desde que o CONTRATADO tenha comparecido. A aula em que o CONTRATADO falta não é remunerada, passando a sê-lo apenas por meio da respectiva reposição. A reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.
+                            3.4.2 A aula em que o ALUNO falta é remunerada pelo valor-base de R$ {lessonRate.toFixed(2).replace('.', ',')}, desde que o CONTRATADO tenha comparecido. A aula em que o CONTRATADO falta não é remunerada, passando a sê-lo apenas por meio da respectiva reposição. A reposição de falta do ALUNO não gera nova remuneração, por já ter sido remunerada a aula de origem.
                         </p>
                         <p className="text-justify mt-2">
                             3.5 <strong>TREINAMENTO DE PROFESSORES.</strong> Quando formalmente solicitado pela CONTRATANTE, o treinamento é remunerado segundo o valor e a duração previamente registrados para a atividade, vedada a aplicação automática de valores pertencentes a outra escola ou contratação.

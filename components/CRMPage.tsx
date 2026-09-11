@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import SDRQualityPanel from './SDRQualityPanel';
 import {
     Kanban, User, Phone, Mail, MessageCircle, Search, Filter, Plus,
     X, Clock, DollarSign, MoreHorizontal, Edit2, Tag, ChevronDown,
@@ -397,6 +398,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ filters, onChange, onClose })
 // COMPONENTE PRINCIPAL
 // ===========================================================
 const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
+    const [view, setView] = useState<'pipeline' | 'quality'>('pipeline');
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
@@ -741,6 +743,11 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                 </div>
             </header>
 
+            <nav className="shrink-0 flex gap-2 px-4 pt-3" aria-label="Visão do atendimento">
+                <button type="button" aria-pressed={view === 'pipeline'} onClick={() => setView('pipeline')} className={`px-4 py-2 rounded-xl text-sm font-bold ${view === 'pipeline' ? 'bg-brand-accent text-white' : 'text-brand-muted border border-brand-border'}`}>Pipeline de vendas</button>
+                <button type="button" aria-pressed={view === 'quality'} onClick={() => setView('quality')} className={`px-4 py-2 rounded-xl text-sm font-bold ${view === 'quality' ? 'bg-brand-accent text-white' : 'text-brand-muted border border-brand-border'}`}>Qualidade da IA</button>
+            </nav>
+
             {actionError && !showNewModal && !editLead && (
                 <div role="alert" className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-xs font-bold text-red-600">
                     <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -750,7 +757,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
             )}
 
             {/* ── BOARD ── */}
-            <main className="flex-1 min-h-0 p-4 overflow-x-auto overflow-y-hidden">
+            {view === 'quality' ? <SDRQualityPanel key={tenantId} tenantId={tenantId} onLeadChange={() => void fetchLeads()} /> : <main className="flex-1 min-h-0 p-4 overflow-x-auto overflow-y-hidden">
                 {loading ? (
                     <div className="flex items-center justify-center h-full text-brand-muted">
                         <RefreshCw size={24} className="animate-spin mr-2" /> Carregando leads...
@@ -945,7 +952,7 @@ const CRMPage: React.FC<CRMPageProps> = ({ tenantId }) => {
                         })}
                     </div>
                 )}
-            </main>
+            </main>}
 
             {/* ── MODAL: NOVA OPORTUNIDADE ── */}
             {showNewModal && (

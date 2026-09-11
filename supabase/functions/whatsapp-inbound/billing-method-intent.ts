@@ -2,12 +2,12 @@
 // resposta autônoma segura para o WhatsApp da escola.
 
 function normalizeText(raw: string): string {
-  return (raw || '')
+  return (raw || "")
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -16,13 +16,14 @@ function normalizeText(raw: string): string {
  * uma nova forma de pagamento (ex.: de Pix para Cartão de Crédito).
  */
 export function isStudentBillingMethodChangeIntent(text: string): boolean {
-  if (!text || typeof text !== 'string') return false;
+  if (!text || typeof text !== "string") return false;
   const n = normalizeText(text);
   if (n.length < 5) return false;
 
   // Frases que são apenas confirmação de pagamento passado ou envio de comprovante não são troca
   const isPastConfirmation =
-    /^(ja )?(paguei|fiz o pagamento|mandei o pix|ta pago|transferi|comprovante)\b/.test(n) &&
+    /^(ja )?(paguei|fiz o pagamento|mandei o pix|ta pago|transferi|comprovante)\b/
+      .test(n) &&
     !/(mas |so que |queria |quero |como |troc|mud|alter)/.test(n);
   if (isPastConfirmation) return false;
 
@@ -81,12 +82,13 @@ export interface StudentBillingMethodChangeReplyOptions {
 export function studentBillingMethodChangeReply(
   options?: StudentBillingMethodChangeReplyOptions,
 ): string {
-  const rawFirst = (options?.studentName || '')
+  const rawFirst = (options?.studentName || "")
     .trim()
     .split(/\s+/)[0]
-    .replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, '');
-  const greeting = rawFirst ? `Oi, ${rawFirst}!` : 'Oi!';
-  const portal = (options?.portalUrl || 'https://system.wisewolflanguage.com.br').trim();
+    .replace(/[^A-Za-zÀ-ÖØ-öø-ÿ]/g, "");
+  const greeting = rawFirst ? `Oi, ${rawFirst}!` : "Oi!";
+  const portal =
+    (options?.portalUrl || "https://system.wisewolflanguage.com.br").trim();
 
   return `${greeting} Você pode alterar sua forma de pagamento com total segurança diretamente pelo seu Portal do Aluno:
 

@@ -36,7 +36,7 @@ const TeacherOnboarding: React.FC = () => {
 
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (encodedOffer && UUID_RE.test(encodedOffer.trim())) {
-            // Caminho seguro: offer_id (UUID) → hora-aula AUTORITATIVA do servidor.
+            // Caminho seguro: offer_id (UUID) → valor por aula AUTORITATIVO do servidor.
             (async () => {
                 try {
                     const payload = await tenantLegalAssetsService.teacherOffer(encodedOffer.trim());
@@ -154,13 +154,19 @@ const TeacherOnboarding: React.FC = () => {
                     address,
                     birthDate,
                     contractAccepted: true,
+                    rateUnit: 'PER_LESSON',
                     acceptedAt: new Date().toISOString(),
                     userIp: userIp || 'Pendente',
                     contractPdfBase64
                 }
             });
 
-            if (fnError) throw new Error(fnError.message || "Erro ao conectar com o servidor.");
+            if (fnError) {
+                if (fnError.context instanceof Response && fnError.context.status === 409) {
+                    throw new Error('O convite foi atualizado. Recarregue a página para revisar o valor por aula antes de assinar.');
+                }
+                throw new Error(fnError.message || "Erro ao conectar com o servidor.");
+            }
             if (data?.error) throw new Error(data.error);
 
             // A função register-teacher já consome o convite e envia a mensagem
@@ -262,6 +268,7 @@ const TeacherOnboarding: React.FC = () => {
                         teacherBirthDate={birthDate}
                         school={schoolInfo}
                         hourlyRate={offerData?.hourlyRate}
+                        rateUnit="PER_LESSON"
                         contractDate={new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
                         acceptedAt={teacherContractReadiness.isReady && contractAccepted ? new Date().toISOString() : undefined}
                         userIp={userIp}
@@ -310,10 +317,11 @@ const TeacherOnboarding: React.FC = () => {
                             </div>
 
                             <div className="bg-brand-surface/10 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-                                <h3 className="text-xs font-black uppercase tracking-widest text-emerald-200 mb-1">Valor Hora/Aula</h3>
+                                <h3 className="text-xs font-black uppercase tracking-widest text-emerald-200 mb-1">Valor por aula</h3>
                                 <p className="text-4xl font-black text-emerald-400 flex items-center gap-2">
-                                    <span className="text-2xl text-emerald-300/80">R$</span> {Number(offerData.hourlyRate || 0).toFixed(2)}
+                                    <span className="text-2xl text-emerald-300/80">R$</span> {Number(offerData.hourlyRate || 0).toFixed(2).replace('.', ',')}
                                 </p>
+                                <p className="text-sm text-emerald-200 mt-2">Por aula de 30 minutos</p>
                             </div>
                         </div>
                     </div>
@@ -536,7 +544,7 @@ const MANIFESTO: { emoji: string; title: string; text: string }[] = [
     // ⚠️ Sem valor de aula escrito aqui: a tabela é `teacher_pay_tiers` e muda por
     // decisão da direção. Quando esta tela citava "R$ 9,50/10,50", prometia uma
     // faixa que não existia — o professor via na tela e não via na folha.
-    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, a partir de 7 alunos na carteira e 30 dias consecutivos sem falta, destrava o turbo — a aula passa a valer mais conforme a antiguidade do aluno. O card "Turbo" no seu painel mostra sua ofensiva e os valores da carteira. Uma falta reinicia a ofensiva em zero.' },
+    { emoji: '📈', title: 'Seu ganho cresce com a sua seriedade', text: 'Todo mundo começa com poucos alunos. Quem é assíduo e entrega qualidade recebe mais alunos e, ao atingir a carteira mínima indicada no painel e 30 dias consecutivos sem falta, destrava o turbo — a aula passa a valer mais conforme a antiguidade do aluno. O card "Turbo" no seu painel mostra sua ofensiva e os valores da carteira. Uma falta reinicia a ofensiva em zero.' },
     { emoji: '🛡️', title: 'Aqui tudo é verificado', text: 'Cada aula é confirmada com o aluno por WhatsApp. Lançamento honesto é inegociável — divergência trava o pagamento e chama a coordenação.' },
     { emoji: '📅', title: 'Suas obrigações de rotina', text: 'Lançar a aula no mesmo dia, manter o calendário de disponibilidade sempre atualizado, repor falta combinando com o aluno e emitir a NFS-e após cada repasse.' },
     { emoji: '🎓', title: 'O aluno é sagrado', text: 'Aluno que fica pulando de professor em professor desiste do inglês. Sua constância é o que segura o sonho dele — e a sua carteira.' },

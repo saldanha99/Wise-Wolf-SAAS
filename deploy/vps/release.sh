@@ -604,6 +604,15 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/whatsapp-inbound/index.ts \
   supabase/functions/whatsapp-inbound/sdr-work.ts \
   supabase/functions/whatsapp-inbound/sdr-work.test.ts \
+  supabase/functions/whatsapp-inbound/billing-method-intent.test.ts \
+  supabase/functions/whatsapp-inbound/holidays.test.ts \
+  supabase/functions/whatsapp-inbound/wise-wolf-lead-training.test.ts \
+  supabase/functions/whatsapp-inbound/billing-method-intent.ts \
+  supabase/functions/whatsapp-inbound/holidays.ts \
+  supabase/functions/whatsapp-inbound/wise-wolf-lead-training.ts \
+  supabase/functions/asaas-webhook/legacy-subscription-origin.ts \
+  supabase/functions/teacher-training-invite/index.ts \
+  supabase/functions/teacher-training-invite/page.ts \
   supabase/functions/whatsapp-inbound/sdr-conversation.ts \
   supabase/functions/whatsapp-inbound/sdr-conversation.test.ts \
   supabase/functions/_shared/trial-timeout.ts \
@@ -661,6 +670,9 @@ npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
   supabase/functions/generate-student-insights/tenant-scope.test.ts \
   supabase/functions/whatsapp-inbound/triagem.test.ts \
   supabase/functions/whatsapp-inbound/sdr-work.test.ts \
+  supabase/functions/whatsapp-inbound/billing-method-intent.test.ts \
+  supabase/functions/whatsapp-inbound/holidays.test.ts \
+  supabase/functions/whatsapp-inbound/wise-wolf-lead-training.test.ts \
   supabase/functions/whatsapp-inbound/sdr-conversation.test.ts \
   supabase/functions/_shared/trial-timeout.test.ts \
   supabase/functions/_shared/sdr-scheduling.test.ts \
@@ -812,6 +824,8 @@ npx --yes deno@2.9.5 check --frozen \
   supabase/functions/asaas-webhook/saas-event-ordering.test.ts \
   supabase/functions/asaas-webhook/saas-owner-activation.test.ts \
   supabase/functions/asaas-webhook/index.ts \
+  supabase/functions/asaas-webhook/legacy-subscription-origin.ts \
+  supabase/functions/teacher-training-invite/index.ts \
   supabase/functions/asaas-reconcile/index.ts \
   supabase/functions/create-student-account/index.ts \
   supabase/functions/create-student-account/safety.test.ts \
@@ -1192,11 +1206,13 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260902213000_student_enrollment_pedagogical_level_placement.sql"
   "supabase/migrations/20260902223000_student_status_and_level_management.sql"
   "supabase/migrations/20260903180000_fix_student_contracts_and_tenant_slug.sql"
+  "supabase/migrations/20260904180000_seed_a2_adult_learning_paths.sql"
   "supabase/migrations/20260905160347_sdr_confirmation_timeout_and_dedup.sql"
   "supabase/migrations/20260905162623_serialize_sdr_conversations.sql"
   "supabase/migrations/20260906165120_sdr_attention_quality_and_slots.sql"
   "supabase/migrations/20260908230000_fix_monthly_closing_execute_grants.sql"
   "supabase/migrations/20260908235000_teacher_payroll_reconciliation.sql"
+  "supabase/migrations/20260909185734_turbo_seventh_student_effective_september9.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1418,6 +1434,7 @@ HARDENED_FUNCTIONS=(
   register-vendor
   resolve-offer
   school-admin
+  teacher-training-invite
   send-attendance-confirmations
   send-class-notification
   send-rejection-email

@@ -76,3 +76,36 @@ export function normalizeWhatsAppPhone(value: unknown): string | null {
   }
   return null;
 }
+
+export function deriveAlternateWhatsAppPhone(value: unknown): string | null {
+  const normalized = normalizeWhatsAppPhone(value);
+  if (!normalized || !normalized.startsWith("55")) return null;
+  // Brazilian numbers:
+  // 12 digits: 55 + 2 DDD + 8 digits -> alternate adds 9
+  // 13 digits: 55 + 2 DDD + 9 digits starting with 9 -> alternate removes 9
+  if (normalized.length === 12) {
+    const ddd = normalized.slice(2, 4);
+    const rest = normalized.slice(4);
+    return `55${ddd}9${rest}`;
+  }
+  if (normalized.length === 13 && normalized[4] === "9") {
+    const ddd = normalized.slice(2, 4);
+    const rest = normalized.slice(5);
+    return `55${ddd}${rest}`;
+  }
+  return null;
+}
+
+export function formatPhoneDisplay(value: unknown): string {
+  const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  if (!digits) return "";
+  const d = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+  if (d.length === 11) {
+    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  }
+  if (d.length === 10) {
+    return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  }
+  return value ? String(value).trim() : "";
+}
+
