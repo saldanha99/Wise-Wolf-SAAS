@@ -1,3 +1,11 @@
+-- ⚠️ ARQUIVO DE ESTADO — NÃO REGISTRAR EM MIGRATION_RELATIVES (deploy/vps/release.sh).
+--
+-- Cópia fiel do SQL aplicado à mão na VPS em 09/09/2026 (trazida pelo sync de
+-- 10/09). Serve para documentar o que o banco de produção tem; não foi escrito
+-- para rodar de novo: tem `create table`/`create function` sem `if not exists`
+-- nem `or replace`, e o release.sh re-executa a lista inteira a cada deploy.
+-- Registrar este arquivo derruba o próximo release na segunda execução.
+-- O equivalente re-executável, quando precisar, deve ser uma migration nova.
 begin;
 -- The acceptance URL is available even while the trainer is setting up a meeting room.
 create or replace function private.schedule_teacher_training(p_tenant text,p_actor uuid,p_request text,p_trainer uuid,p_trainee uuid,p_start timestamptz)
