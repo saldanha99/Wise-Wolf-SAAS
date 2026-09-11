@@ -39,3 +39,8 @@ entrypoint = "./functions/tenant-legal-assets/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/public-tenant-branding/index.ts"
+
+[functions.google-meet]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-meet/index.ts"

@@ -372,9 +372,11 @@ const StudentLearningPaths: React.FC<Props> = ({ userId, tenantId, wolfieConfig 
                     <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
                     <button
                         onClick={() => setSelectedPath(null)}
-                        className="absolute top-4 right-4 text-xs font-bold uppercase tracking-widest opacity-70 hover:opacity-100 transition-opacity z-10"
+                        className="absolute top-4 right-4 text-xs font-bold px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all flex items-center gap-1.5 z-10 shadow-sm"
+                        title="Ver todas as trilhas disponíveis"
                     >
-                        ← Trilhas
+                        <span>←</span>
+                        <span>Ver todas as trilhas</span>
                     </button>
                     <Icon size={28} className="mb-3 opacity-90 relative" />
                     <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 relative">{meta.label} · {selectedPath.target_level}</p>

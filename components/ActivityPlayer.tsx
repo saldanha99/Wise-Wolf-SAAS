@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, Heart, Zap } from 'lucide-react';
+import { X, Check, ChevronRight, ChevronLeft, Loader2, Trophy, BookOpen, RefreshCw, Mic, MessageSquare, Heart, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import confetti from 'canvas-confetti';
@@ -787,6 +787,7 @@ const ReadingRunner: React.FC<{ content: any; onSubmitAnswers: (answers: number[
 // ─────────────────────────────────────────────────────────────
 const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConfig: any; onFinish: (score: number, evidence?: Record<string, unknown>) => void }> = ({ activity, userId, wolfieConfig, onFinish }) => {
     const [launched, setLaunched] = useState(false);
+    const [voiceMode, setVoiceMode] = useState(true);
     const [practiceNotice, setPracticeNotice] = useState('');
 
     if (launched) {
@@ -817,7 +818,7 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
             }>
                 <WolfieTutor
                     user={userForWolfie}
-                    voiceMode={true}
+                    voiceMode={voiceMode}
                     topic={topicForWolfie}
                     onClose={(summary: WolfieTutorSessionSummary) => {
                         setLaunched(false);
@@ -864,12 +865,20 @@ const SpeakingWolfieRunner: React.FC<{ activity: any; userId: string; wolfieConf
                     </div>
                 )}
             </div>
-            <button
-                onClick={() => { setPracticeNotice(''); setLaunched(true); }}
-                className="w-full py-3 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
-            >
-                <Mic size={14} /> Começar com Wolfie
-            </button>
+            <div className="space-y-2">
+                <button
+                    onClick={() => { setPracticeNotice(''); setVoiceMode(true); setLaunched(true); }}
+                    className="w-full py-3 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <Mic size={14} /> Começar com Wolfie (Voz)
+                </button>
+                <button
+                    onClick={() => { setPracticeNotice(''); setVoiceMode(false); setLaunched(true); }}
+                    className="w-full py-2.5 rounded-xl font-bold text-xs border border-violet-200 dark:border-violet-800/40 bg-white/80 dark:bg-slate-900/60 hover:bg-violet-50 dark:hover:bg-slate-800 text-violet-700 dark:text-violet-300 transition-colors flex items-center justify-center gap-2"
+                >
+                    <MessageSquare size={14} /> Praticar por Mensagens de Texto
+                </button>
+            </div>
         </div>
     );
 };

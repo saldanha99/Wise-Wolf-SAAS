@@ -2,8 +2,11 @@
 /// <reference lib="deno.ns" />
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { pickAlternatives } from "../_shared/lead-contact.ts";
-import { sendWhatsText } from "../_shared/evolution-send.ts";
+import { handoffAtivo } from "../_shared/lead-contact.ts";
+import {
+  sendWhatsText,
+  sendWhatsTextDetailed,
+} from "../_shared/evolution-send.ts";
 import {
   evaluateCommercialSuppression,
   loadCommercialContactFacts,
@@ -16,15 +19,30 @@ import {
   type TenantCommunicationIdentity,
 } from "../_shared/tenant-communication.ts";
 import { loadOpportunityDispatchGuard } from "../_shared/opportunity-dispatch.ts";
+import {
+  claimSdrNotice,
+  claimTrialTimeoutNotice,
+  loadExpiredRescheduleContext,
+  readAllTimeoutRows,
+  rescheduleTimeoutMessage,
+} from "../_shared/trial-timeout.ts";
 
-// FUNNEL-SWEEPER — cron a cada 15 min. Três varreduras anti-vazamento do funil de alunos:
+import {
+  alternativeQuestion,
+  loadAvailableTrialSlots,
+  rankTrialAlternatives,
+} from "../_shared/sdr-scheduling.ts";
+import { teacherReminderDue } from "../_shared/sdr-lifecycle.ts";
+import { deliverTeacherReminder } from "../_shared/sdr-teacher-reminders.ts";
+
+// FUNNEL-SWEEPER — cron a cada 5 min. Três varreduras anti-vazamento do funil de alunos:
 //
 // A) PRIMEIRO TOQUE: leads NEW que nunca receberam NADA da IA. Dedup por TELEFONE (não
 //    lead.id) — dois leads duplicados do mesmo número NÃO disparam 2 boas-vindas (foi a
 //    causa da restrição do número).
-// B) ESCALONAMENTO DE CLAIM: oportunidade TRIAL OPEN sem aceite. >20min re-envia aos
-//    professores ATIVOS (individual); >60min alerta ao diretor.
-// C) EXPIRAÇÃO: OPEN >48h ou slot no passado → LOST (silencioso).
+// B) ESCALONAMENTO DE CLAIM: oportunidade TRIAL OPEN sem aceite. >=30min lembra uma vez aos
+//    professores ATIVOS (individual); 60min encerra a espera e negocia outra opção com o lead.
+// C) EXPIRAÇÃO: TRIAL genérica OPEN >=60min ou slot no passado → expira, seguida do retorno ao lead. Solicitações dirigidas mantêm sua política própria.
 // D) CONVITE DE ENTREVISTA (RH): aprovados recebem link de agendamento + follow-ups.
 //
 // Dedupe: automation_sent com verificação "ever" — cada lead/opp recebe cada tipo UMA vez.
@@ -54,7 +72,7 @@ const INTERVIEW_INVITE_DAILY_CAP = 5;
 // Retorno ao lead cuja experimental não teve professor. Cabe mais volume que o
 // primeiro toque (é gente que JÁ conversou com a escola, não contato frio),
 // mas segue com teto — o número já foi restringido uma vez.
-const ORPHAN_LEAD_DAILY_CAP = 15;
+const ORPHAN_LEAD_BATCH = 15;
 
 // Professor inativo (suspenso/desligado) NUNCA recebe convite de experimental —
 // mesma regra do is_teacher_notifiable. lifecycle_status é a fonte de verdade.
@@ -119,6 +137,7 @@ async function claim(
   sb: any,
   kind: string,
   subjectId: string,
+  refDate = todayBRT(),
 ): Promise<{ ok: boolean; undo: () => Promise<void> }> {
   if (await sentEver(sb, kind, subjectId)) {
     return { ok: false, undo: async () => {} };
@@ -126,7 +145,7 @@ async function claim(
   const { error } = await sb.from("automation_sent").insert({
     kind,
     subject_id: subjectId,
-    ref_date: todayBRT(),
+    ref_date: refDate,
   });
   if (error) return { ok: false, undo: async () => {} };
   return {
@@ -135,7 +154,7 @@ async function claim(
       await sb.from("automation_sent").delete().eq("kind", kind).eq(
         "subject_id",
         subjectId,
-      ).eq("ref_date", todayBRT());
+      ).eq("ref_date", refDate);
     },
   };
 }
@@ -229,6 +248,8 @@ serve(async (req) => {
       interview_followups: 0,
       expired: 0,
       orphan_leads: 0,
+      reschedule_timeouts: 0,
+      teacher_reminders: 0,
       orphan_skipped: 0,
       failures: [] as string[],
     };
@@ -511,7 +532,7 @@ serve(async (req) => {
 
     // ============ B) ESCALONAMENTO DE CLAIM + C) EXPIRAÇÃO ============
     const cutoff48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
-    const cutoff20m = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const cutoff30m = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const cutoff60m = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const { data: expiredCandidates, error: expErr } = await sb.from(
@@ -521,7 +542,7 @@ serve(async (req) => {
       .eq("status", "OPEN")
       .eq("conversion_status", "OPEN")
       .eq("kind", "TRIAL")
-      .lt("opened_at", cutoff48h);
+      .lte("opened_at", cutoff60m);
     if (expErr) result.failures.push(`expire_bulk: ${expErr.message}`);
     for (const candidate of (expiredCandidates || [])) {
       const expiration = await expireTrialOpportunity(
@@ -540,7 +561,7 @@ serve(async (req) => {
       )
       .eq("status", "OPEN").eq("conversion_status", "OPEN")
       .eq("kind", "TRIAL")
-      .gte("opened_at", cutoff48h).lt("opened_at", cutoff20m);
+      .gte("opened_at", cutoff48h).lte("opened_at", cutoff30m);
 
     for (const opp of (opps || [])) {
       const slot = Array.isArray(opp.slots_proposed)
@@ -582,57 +603,143 @@ serve(async (req) => {
       }&g=${opp.claim_generation}`;
       const roundSubject = `${opp.id}:${opp.claim_generation}`;
 
-      // Degrau 1 (>20min): reenvio individual uma vez por rodada da oportunidade.
-      if (!(await sentEver(sb, "OPP_REBROADCAST", roundSubject))) {
-        const c1 = await claim(sb, "OPP_REBROADCAST", roundSubject);
-        if (c1.ok) {
-          const msg =
-            `⏳ *Ainda sem professor!* Experimental aguardando aceite:\n\n📅 *${formatted} às ${slot.time}*\n📋 *Aluno:* ${
-              opp.student_name || "-"
-            }\n🎯 *Objetivo:* ${
-              opp.interests || "Não informado"
-            }\n\n🏆 O primeiro a clicar garante a aula:\n👇 ${claimLink}`;
-          const phones = await activeTeacherPhones(sb, opp.tenant_id);
-          let anySent = false;
-          if (!t.teacherInstance) {
-            await c1.undo();
-            continue;
-          }
-          for (const ph of phones) {
-            if (await sendWhats(t.teacherInstance, ph, msg)) anySent = true;
-          }
-          if (anySent) result.rebroadcasts++;
-          else {
-            await c1.undo();
-            result.failures.push(`rebroadcast ${opp.id}`);
-          }
-        }
+      if (await sentEver(sb, "OPP_REBROADCAST", roundSubject)) continue;
+      const recipients = await loadAvailableTrialSlots(
+        sb,
+        opp.tenant_id,
+        slot.date,
+        null,
+        1,
+      );
+      const phones = [
+        ...new Set(
+          recipients.filter((r) => r.time === slot.time).map((r) =>
+            cleanPhone(r.phone)
+          ).filter((p) => p.length >= 12),
+        ),
+      ];
+      if (!t.teacherInstance || cfgOf(opp.tenant_id)?.sdr?.enabled === false) {
         continue;
       }
+      for (const ph of phones) {
+        const msg =
+          `Lembrete da experimental de ${formatted} às ${slot.time}, para ${
+            opp.student_name || "o aluno"
+          }. Ainda precisamos do aceite. Se o pedido estiver disponível, aceite pelo link: ${claimLink}\nA solicitação encerra 60 minutos após a abertura; sem aceite, vamos negociar outro horário com o aluno.`;
+        const outcome = await deliverTeacherReminder(sb, {
+          tenantId: opp.tenant_id,
+          subject: `trial:${roundSubject}`,
+          phone: ph,
+          message: msg,
+          stillPending: async () => {
+            const { data, error } = await sb.from("opportunities").select(
+              "status,conversion_status,opened_at,claim_generation",
+            )
+              .eq("tenant_id", opp.tenant_id).eq("id", opp.id).maybeSingle();
+            if (error) throw new Error("teacher_reminder_state_unavailable");
+            return data?.status === "OPEN" &&
+              data.conversion_status === "OPEN" &&
+              data.claim_generation === opp.claim_generation &&
+              teacherReminderDue(
+                data.opened_at,
+                new Date(Date.parse(data.opened_at) + 3600000).toISOString(),
+                "PENDING",
+              );
+          },
+          send: () =>
+            sendWhatsTextDetailed({
+              base: EVOLUTION_API_URL,
+              keys: EVOLUTION_KEYS,
+              instance: t.teacherInstance!,
+              to: ph,
+              text: msg,
+            }),
+        });
+        if (outcome === "sent") result.teacher_reminders++;
+        else if (outcome === "failed") {
+          result.failures.push(`teacher_reminder ${opp.id}`);
+        }
+      }
+    }
 
-      const isOld = opp.opened_at < cutoff60m;
-      if (
-        isOld && t.ownerPhone.length >= 12 &&
-        !(await sentEver(sb, "OPP_DIRECTOR_ALERT", roundSubject))
-      ) {
-        const c2 = await claim(sb, "OPP_DIRECTOR_ALERT", roundSubject);
-        if (c2.ok) {
-          const ageMin = Math.round(
-            (Date.now() - new Date(opp.opened_at).getTime()) / 60000,
-          );
-          const msg = `⚠️ *Experimental sem aceite há ${ageMin} min*\n\n📋 *${
-            opp.student_name || "-"
-          }* — ${formatted} às ${slot.time}\n🎯 ${
-            opp.interests || "-"
-          }\n📱 Lead: ${
-            cleanPhone(opp.student_phone || "") || "-"
-          }\n\nNenhum professor pegou (equipe já foi avisada 2x). Vale atribuir manualmente ou falar com o lead.\n${claimLink}`;
-          if (await sendWhats(t.centralInstance, t.ownerPhone, msg)) {
-            result.director_alerts++;
-          } else {
-            await c2.undo();
-            result.failures.push(`alert ${opp.id}`);
-          }
+    // Directed reschedules remind only the owner of the existing appointment.
+    if (businessHours) {
+      const reminders = await readAllTimeoutRows(() =>
+        sb.from("trial_reschedule_requests")
+          .select(
+            "id,tenant_id,teacher_id,lead_id,reply_code,requested_start_time,created_at,expires_at,status",
+          )
+          .eq("status", "PENDING").lte("created_at", cutoff30m).gt(
+            "created_at",
+            cutoff60m,
+          )
+          .gt("expires_at", new Date().toISOString()).order("created_at").order(
+            "id",
+          )
+      );
+      for (const request of reminders) {
+        const route = byTenant[request.tenant_id];
+        if (
+          !route?.teacherInstance ||
+          cfgOf(request.tenant_id)?.sdr?.enabled === false
+        ) continue;
+        const [profile, member] = await Promise.all([
+          sb.from("profiles").select("phone,lifecycle_status,status").eq(
+            "id",
+            request.teacher_id,
+          ).maybeSingle(),
+          sb.from("tenant_memberships").select("user_id").eq(
+            "tenant_id",
+            request.tenant_id,
+          ).eq("user_id", request.teacher_id).eq("role", "TEACHER").eq(
+            "status",
+            "ACTIVE",
+          ).maybeSingle(),
+        ]);
+        if (profile.error || member.error) {
+          throw new Error("teacher_reminder_profile_unavailable");
+        }
+        const phone = cleanPhone(profile.data?.phone || "");
+        if (
+          !member.data || profile.data?.lifecycle_status !== "active" ||
+          INACTIVE_STATUS.includes(profile.data?.status || "") ||
+          phone.length < 12
+        ) continue;
+        const when = new Date(
+          Date.parse(request.requested_start_time) - 3 * 3600000,
+        ).toISOString();
+        const msg = `Lembrete da remarcação #${request.reply_code}: ${
+          when.slice(0, 10).split("-").reverse().join("/")
+        } às ${
+          when.slice(11, 16)
+        }. Se ainda estiver pendente, responda SIM #${request.reply_code} ou NÃO #${request.reply_code}. O pedido encerra 60 minutos após a abertura. A agenda só muda com aceite válido.`;
+        const outcome = await deliverTeacherReminder(sb, {
+          tenantId: request.tenant_id,
+          subject: `reschedule:${request.id}`,
+          phone,
+          message: msg,
+          stillPending: async () => {
+            const { data, error } = await sb.from("trial_reschedule_requests")
+              .select("status,created_at,expires_at").eq(
+                "tenant_id",
+                request.tenant_id,
+              ).eq("id", request.id).maybeSingle();
+            if (error) throw new Error("teacher_reminder_state_unavailable");
+            return !!data &&
+              teacherReminderDue(data.created_at, data.expires_at, data.status);
+          },
+          send: () =>
+            sendWhatsTextDetailed({
+              base: EVOLUTION_API_URL,
+              keys: EVOLUTION_KEYS,
+              instance: route.teacherInstance!,
+              to: phone,
+              text: msg,
+            }),
+        });
+        if (outcome === "sent") result.teacher_reminders++;
+        else if (outcome === "failed") {
+          result.failures.push(`teacher_reminder ${request.id}`);
         }
       }
     }
@@ -654,20 +761,21 @@ serve(async (req) => {
     // oportunidade só é varrida no horário comercial seguinte, e a idempotência
     // (`automation_sent`) garante um único toque por experimental.
     if (businessHours) {
-      const { count: orfaosHoje } = await sb.from("automation_sent")
-        .select("id", { count: "exact", head: true })
-        .eq("kind", "TRIAL_NO_TEACHER").eq("ref_date", todayBRT());
-      let restam = Math.max(0, ORPHAN_LEAD_DAILY_CAP - (orfaosHoje ?? 0));
+      // This is a promised conversational return, not cold outreach. Limit each
+      // run instead of silently abandoning contacts after a daily quota.
+      let restam = ORPHAN_LEAD_BATCH;
 
       // Janela de 3 dias: passar disso é remexer em lead frio com uma desculpa
       // velha — e evita que a primeira execução dispare para os 69 do histórico.
       const desde = new Date(Date.now() - 3 * 86400000).toISOString();
-      const { data: orfas } = await sb.from("opportunities")
-        .select(
-          "id, tenant_id, student_name, student_phone, slots_proposed, lost_reason, created_at",
-        )
-        .eq("kind", "TRIAL").eq("status", "EXPIRED").gte("created_at", desde)
-        .order("created_at", { ascending: false }).limit(40);
+      const orfas = await readAllTimeoutRows(() =>
+        sb.from("opportunities")
+          .select(
+            "id, tenant_id, student_name, student_phone, slots_proposed, lost_reason, created_at, opened_at, claim_generation",
+          )
+          .eq("kind", "TRIAL").eq("status", "EXPIRED").gte("opened_at", desde)
+          .order("created_at", { ascending: false }).order("id")
+      );
 
       for (const opp of (orfas || [])) {
         if (restam <= 0) break;
@@ -702,119 +810,246 @@ serve(async (req) => {
           continue;
         }
 
-        // Conseguiu aula por outro caminho (outra oportunidade aceita)? Então
-        // não existe órfão nenhum — e mandar isso derrubaria uma aula marcada.
-        const { data: comDono } = await sb.from("opportunities")
-          .select("id, student_phone").eq("tenant_id", opp.tenant_id).eq(
-            "kind",
-            "TRIAL",
-          )
-          .in("status", ["CLAIMED", "FILLED", "TAKEN"]).gte(
-            "created_at",
-            desde,
-          );
-        if (
-          (comDono || []).some((o: any) =>
-            phonesMatch(String(o.student_phone || ""), phone)
-          )
-        ) {
-          result.orphan_skipped++;
-          continue;
-        }
-
-        // Virou aluno no meio do caminho? A trava comercial vale aqui como em
-        // todo contato de venda — e falha fechada quando não há fonte de verdade.
-        const facts = commercialFacts.get(opp.tenant_id);
-        if (!facts) {
-          result.orphan_skipped++;
-          continue;
-        }
-        const { data: leadRows } = await sb.from("crm_leads")
-          .select("id, name, phone, status").eq("tenant_id", opp.tenant_id).not(
-            "phone",
-            "is",
-            null,
-          );
-        const lead = (leadRows || []).find((l: any) =>
-          phonesMatch(String(l.phone || ""), phone)
-        );
-        const suppression = evaluateCommercialSuppression({
-          tenantId: opp.tenant_id,
-          phone: opp.student_phone || "",
-          name: lead?.name ?? opp.student_name,
-          leadStatus: lead?.status,
-        }, facts);
-        if (suppression.suppressed) {
-          if (lead?.id) await reconcileSuppressedLead(sb, lead.id, suppression);
-          result.orphan_skipped++;
-          continue;
-        }
-
-        const c = await claim(sb, "TRIAL_NO_TEACHER", String(opp.id));
-        if (!c.ok) continue;
-
-        const dow = dowOf(String(slot.date));
-        const { data: grade } = await sb.from("teacher_availability")
-          .select("day_of_week, start_time").eq("tenant_id", opp.tenant_id);
-        const alt = pickAlternatives(grade || [], dow, String(slot.time));
-        const partes: string[] = [];
-        if (alt.days.length) {
-          partes.push(
-            `o horário das ${slot.time} eu tenho livre na ${
-              alt.days.map((d) => DAY_MAP[d]).join(", ")
-            }`,
-          );
-        }
-        if (alt.times.length) {
-          partes.push(
-            `na ${DAY_MAP[dow]} consigo nesses horários: ${
-              alt.times.slice(0, 8).join(", ")
-            }`,
-          );
-        }
-
-        const first = greetName(opp.student_name);
-        const quando = `${
-          String(slot.date).split("-").reverse().join("/")
-        } às ${slot.time}`;
-        const msg = partes.length
-          ? `Oi${
-            first ? ", " + first : ""
-          }! Sobre sua aula experimental de ${quando}: não consegui encaixar um professor nesse horário 😕 Mas ${
-            partes.join("; e ")
-          }. Qual fica melhor pra você?`
-          : `Oi${
-            first ? ", " + first : ""
-          }! Sobre sua aula experimental de ${quando}: não consegui encaixar um professor nesse horário 😕 Me diz outro dia e horário que eu verifico a disponibilidade pra você!`;
-
-        const entregue = await sendWhats(t.studentInstance, phone, msg);
-        // O registro não depende do envio — mesma regra do `whatsapp-inbound`:
-        // envio é entrega, log é memória.
-        await sb.from("ai_wa_messages").insert({
-          tenant_id: opp.tenant_id,
-          phone,
-          agent: "sdr",
-          direction: "out",
-          content: msg,
-          meta: {
-            lead_id: lead?.id ?? null,
-            opportunity_id: opp.id,
-            kind: "trial_no_teacher",
-            entregue,
-          },
-        });
-        if (entregue) {
-          if (lead?.id) {
-            await sb.from("crm_leads").update({
-              last_outbound_at: new Date().toISOString(),
-            }).eq("id", lead.id);
+        const noticeLease = await claimSdrNotice(sb, opp.tenant_id, phone);
+        if (!noticeLease.ok) continue;
+        let noticeSuccess = true;
+        try {
+          // Conseguiu aula por outro caminho (outra oportunidade aceita)? Então
+          // não existe órfão nenhum — e mandar isso derrubaria uma aula marcada.
+          const { data: comDono } = await sb.from("opportunities")
+            .select("id, student_phone").eq("tenant_id", opp.tenant_id).eq(
+              "kind",
+              "TRIAL",
+            )
+            .in("status", ["OPEN", "CLAIMED", "FILLED", "TAKEN"]).gte(
+              "created_at",
+              desde,
+            );
+          if (
+            (comDono || []).some((o: any) =>
+              phonesMatch(String(o.student_phone || ""), phone)
+            )
+          ) {
+            result.orphan_skipped++;
+            continue;
           }
-          result.orphan_leads++;
-          restam--;
-        } else {
-          await c.undo();
-          result.failures.push(`orphan_lead ${opp.id}`);
+
+          // Virou aluno no meio do caminho? A trava comercial vale aqui como em
+          // todo contato de venda — e falha fechada quando não há fonte de verdade.
+          const facts = commercialFacts.get(opp.tenant_id);
+          if (!facts) {
+            result.orphan_skipped++;
+            continue;
+          }
+          const { data: leadRows } = await sb.from("crm_leads")
+            .select(
+              "id, name, phone, status, weekly_availability, ai_handoff, ai_handoff_at",
+            ).eq(
+              "tenant_id",
+              opp.tenant_id,
+            ).not(
+              "phone",
+              "is",
+              null,
+            );
+          const lead = (leadRows || []).find((l: any) =>
+            phonesMatch(String(l.phone || ""), phone)
+          );
+          if (!lead || handoffAtivo(lead)) continue;
+          const suppression = evaluateCommercialSuppression({
+            tenantId: opp.tenant_id,
+            phone: opp.student_phone || "",
+            name: lead?.name ?? opp.student_name,
+            leadStatus: lead?.status,
+          }, facts);
+          if (suppression.suppressed) {
+            if (lead?.id) {
+              await reconcileSuppressedLead(sb, lead.id, suppression);
+            }
+            result.orphan_skipped++;
+            continue;
+          }
+
+          const subject = `${opp.id}:${opp.claim_generation}`;
+          if (await sentEver(sb, "TRIAL_NO_TEACHER", String(opp.id))) continue;
+          const c = await claim(sb, "TRIAL_NO_TEACHER", subject, "1970-01-01");
+          if (!c.ok) continue;
+
+          const alternatives = rankTrialAlternatives(
+            await loadAvailableTrialSlots(sb, opp.tenant_id),
+            slot,
+            lead.weekly_availability || "",
+          );
+          const first = greetName(opp.student_name);
+          const quando = `${
+            String(slot.date).split("-").reverse().join("/")
+          } às ${slot.time}`;
+          const msg =
+            `Oi${
+              first ? ", " + first : ""
+            }! Ainda não recebi o aceite de um professor para sua experimental de ${quando}. ` +
+            alternativeQuestion(alternatives);
+
+          const delivery = await sendWhatsTextDetailed({
+            base: EVOLUTION_API_URL,
+            keys: EVOLUTION_KEYS,
+            instance: t.studentInstance,
+            to: phone,
+            text: msg,
+          });
+          const entregue = delivery.outcome === "accepted";
+          // O registro não depende do envio — mesma regra do `whatsapp-inbound`:
+          // envio é entrega, log é memória.
+          await sb.from("ai_wa_messages").insert({
+            tenant_id: opp.tenant_id,
+            phone,
+            agent: "sdr",
+            direction: "out",
+            content: msg,
+            meta: {
+              lead_id: lead?.id ?? null,
+              opportunity_id: opp.id,
+              kind: "trial_no_teacher",
+              delivery_outcome: delivery.outcome,
+              entregue,
+            },
+          });
+          if (entregue) {
+            if (lead?.id) {
+              await sb.from("crm_leads").update({
+                last_outbound_at: new Date().toISOString(),
+              }).eq("id", lead.id);
+            }
+            result.orphan_leads++;
+            restam--;
+          } else {
+            if (delivery.outcome === "rejected") await c.undo();
+            result.failures.push(`orphan_lead ${opp.id}: ${delivery.outcome}`);
+          }
+        } catch (error) {
+          noticeSuccess = false;
+          throw error;
+        } finally {
+          await noticeLease.finish(noticeSuccess);
         }
+      }
+    }
+
+    // A remarcação tem professor definido: expire só o pedido, nunca a aula.
+    const recentSince = new Date(Date.now() - 3 * 86400000).toISOString();
+    const pendingChanges = await readAllTimeoutRows(() =>
+      sb.from(
+        "trial_reschedule_requests",
+      )
+        .select(
+          "id,tenant_id,opportunity_id,appointment_id,teacher_id,lead_id,created_at,expires_at,from_start_time,requested_start_time",
+        )
+        .in("status", ["PENDING", "EXPIRED"]).gte("created_at", recentSince)
+        .lte("expires_at", new Date().toISOString()).order("created_at", {
+          ascending: true,
+        }).order("id")
+    );
+    for (const request of pendingChanges || []) {
+      try {
+        const context = await loadExpiredRescheduleContext(sb, request);
+        if (!context || !businessHours || handoffAtivo(context.lead)) continue;
+        const route = byTenant[request.tenant_id];
+        const facts = commercialFacts.get(request.tenant_id);
+        if (
+          !route?.studentInstance || !facts ||
+          cfgOf(request.tenant_id)?.sdr?.enabled === false
+        ) continue;
+        const phone = cleanPhone(
+          context.lead.phone || context.opportunity.student_phone || "",
+        );
+        if (phone.length < 12 || isCandidatePhone(request.tenant_id, phone)) {
+          continue;
+        }
+        const suppression = evaluateCommercialSuppression({
+          tenantId: request.tenant_id,
+          phone,
+          name: context.lead.name,
+          leadStatus: context.lead.status,
+        }, facts);
+        if (suppression.suppressed) continue;
+        const noticeLease = await claimSdrNotice(sb, request.tenant_id, phone);
+        if (!noticeLease.ok) continue;
+        let noticeSuccess = true;
+        try {
+          if (!(await loadExpiredRescheduleContext(sb, request))) continue;
+          const claim = await claimTrialTimeoutNotice(
+            sb,
+            request.tenant_id,
+            request.id,
+          );
+          if (!claim.ok) continue;
+          const requestedLocal = new Date(
+            Date.parse(request.requested_start_time) - 3 * 3600000,
+          ).toISOString();
+          const alternatives = rankTrialAlternatives(
+            await loadAvailableTrialSlots(
+              sb,
+              request.tenant_id,
+              undefined,
+              request.teacher_id,
+            ),
+            {
+              date: requestedLocal.slice(0, 10),
+              time: requestedLocal.slice(11, 16),
+            },
+            context.lead.weekly_availability || "",
+          );
+          const message =
+            rescheduleTimeoutMessage(request.requested_start_time).split(
+              "Qual outro dia",
+            )[0] + alternativeQuestion(alternatives);
+          const delivery = await sendWhatsTextDetailed({
+            base: EVOLUTION_API_URL,
+            keys: EVOLUTION_KEYS,
+            instance: route.studentInstance,
+            to: phone,
+            text: message,
+          });
+          const delivered = delivery.outcome === "accepted";
+          const { error: logError } = await sb.from("ai_wa_messages").insert({
+            tenant_id: request.tenant_id,
+            phone,
+            agent: "sdr",
+            direction: "out",
+            content: message,
+            meta: {
+              lead_id: context.lead.id,
+              request_id: request.id,
+              opportunity_id: request.opportunity_id,
+              kind: "trial_reschedule_timeout",
+              delivery_outcome: delivery.outcome,
+              entregue: delivered,
+            },
+          });
+          if (logError) {
+            result.failures.push(`reschedule_timeout_log ${request.id}`);
+          }
+          if (!delivered) {
+            if (delivery.outcome === "rejected") await claim.undo();
+            result.failures.push(
+              `reschedule_timeout_delivery ${request.id}: ${delivery.outcome}`,
+            );
+            continue;
+          }
+          await sb.from("crm_leads").update({
+            last_outbound_at: new Date().toISOString(),
+          }).eq("id", context.lead.id);
+          result.reschedule_timeouts++;
+        } catch (error) {
+          noticeSuccess = false;
+          throw error;
+        } finally {
+          await noticeLease.finish(noticeSuccess);
+        }
+      } catch (error) {
+        result.failures.push(
+          `reschedule_timeout ${request.id}: ${(error as Error).message}`,
+        );
       }
     }
 

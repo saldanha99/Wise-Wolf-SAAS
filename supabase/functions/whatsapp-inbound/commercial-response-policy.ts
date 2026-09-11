@@ -86,11 +86,71 @@ export function applyCommercialReplyPolicy(opts: {
   modelReply: string;
   trialRequested: boolean;
   commercialPolicy: CommercialPolicy | null;
+  consultativeLead?: {
+    goal?: string | null;
+    level?: string | null;
+    afterTrial?: boolean;
+  };
 }): { reply: string; policy: string | null } {
   const asksPrice = isPriceRequest(opts.currentMessage);
   const asksDuration = DURATION_REQUEST.test(opts.currentMessage || "");
   const priceRequests = countPriceRequests(opts.history, opts.currentMessage);
   const leakedPrice = PRICE_IN_REPLY.test(opts.modelReply || "");
+  if (opts.consultativeLead) {
+    const lead = opts.consultativeLead;
+    const onlyPrice =
+      /\b(?:so|somente|apenas)\b[^.!?\n]{0,35}\b(?:pre[cç]o|valor|valores|quanto|mensalidade)\b/i
+        .test(
+          opts.currentMessage.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+        );
+    const mayQuote = asksPrice && (priceRequests >= 2 || onlyPrice ||
+      lead.afterTrial || Boolean(lead.goal?.trim() && lead.level?.trim()));
+    const wrongDuration = opts.modelReply.split(/[.!?\n]/).some((sentence) =>
+      /\b(?:aula|aulas|experimental)\b/i.test(sentence) &&
+      hasWrongDuration(sentence, CLASS_DURATION_MINUTES)
+    );
+    const facts: string[] = [];
+    const asksClassDuration = asksDuration &&
+      /\b(?:aula|aulas|experimental)\b/i.test(opts.currentMessage);
+    if (wrongDuration || asksClassDuration) {
+      facts.push("A aula experimental é gratuita e dura 30 minutos.");
+    }
+    if (mayQuote) {
+      facts.push(
+        opts.commercialPolicy
+          ? `Temos planos a partir de R$ ${opts.commercialPolicy.minimumPlanPriceBrl}/mês. O valor varia conforme a quantidade de aulas por semana.`
+          : "Não tenho um valor confirmado aqui. A coordenação pode te informar os planos e valores.",
+      );
+      return {
+        reply: facts.join("\n\n"),
+        policy: opts.commercialPolicy
+          ? "consultative_price_answer"
+          : "price_unavailable",
+      };
+    }
+    if (asksPrice || leakedPrice) {
+      facts.push(
+        "Os valores variam conforme a quantidade de aulas por semana.",
+      );
+      facts.push(
+        !lead.goal?.trim()
+          ? "Para te orientar melhor, qual é seu principal objetivo com o inglês?"
+          : !lead.level?.trim()
+          ? "E como você considera seu inglês hoje: iniciante, intermediário ou já consegue se comunicar?"
+          : "Podemos escolher a frequência de aulas de acordo com sua rotina e seu objetivo.",
+      );
+      return {
+        reply: facts.join("\n\n"),
+        policy: asksPrice
+          ? "understand_before_price"
+          : "blocked_unsolicited_price",
+      };
+    }
+    if (facts.length) {
+      return { reply: facts.join("\n\n"), policy: "corrected_duration" };
+    }
+    return { reply: opts.modelReply, policy: null };
+  }
   const wrongDuration = opts.commercialPolicy
     ? hasWrongDuration(
       opts.modelReply,

@@ -27,6 +27,7 @@ import { User } from '../types';
 import TeacherActivityReport from './TeacherActivityReport';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
 import TeacherPayoutDetails from './TeacherPayoutDetails';
+import TeacherPixKey from './TeacherPixKey';
 import NfIssuanceTour from './NfIssuanceTour';
 
 // Linha do resumo por aluno (get_teacher_closing_report → students[]).
@@ -1070,6 +1071,7 @@ const TeacherFinancials: React.FC<TeacherFinancialsProps> = ({ user, tenantId, v
             )}
 
             {/* Dados de recebimento + nota fiscal, na mesma tela (antes eram outras duas). */}
+            {directorMode && <TeacherPixKey teacherId={user.id} />}
             <TeacherPayoutDetails
                 teacherId={user.id}
                 teacherName={(user as any).full_name || user.name}

@@ -72,6 +72,7 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [activeActivity, setActiveActivity] = useState<StudentActivity | null>(null);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [generationError, setGenerationError] = useState('');
     const [loadError, setLoadError] = useState('');
     const completionKeys = useRef(new Map<string, string>());
@@ -225,6 +226,39 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
                 />
             )}
 
+            {showConfirmModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+                    <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-3xl border border-brand-border bg-brand-surface p-6 shadow-2xl">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                            <Sparkles size={24} />
+                        </div>
+                        <h4 className="mt-4 text-base font-black text-brand-text">Gerar novo pacote de atividades?</h4>
+                        <p className="mt-2 text-xs leading-relaxed text-brand-muted">
+                            Você ainda tem <strong className="text-brand-text">{pending.length} atividade{pending.length > 1 ? 's' : ''} pendente{pending.length > 1 ? 's' : ''}</strong> no pacote atual. Deseja criar novos desafios agora mesmo?
+                        </p>
+                        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirmModal(false)}
+                                className="rounded-xl border border-brand-border px-4 py-2.5 text-xs font-bold text-brand-text hover:bg-brand-surface-2"
+                            >
+                                Continuar praticando
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowConfirmModal(false);
+                                    void generateNew();
+                                }}
+                                className="rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-700"
+                            >
+                                Sim, criar novo pacote
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <header className="border-b border-brand-border bg-gradient-to-r from-violet-50 via-brand-surface to-indigo-50 p-5 dark:from-violet-950/30 dark:via-brand-surface dark:to-indigo-950/30 sm:p-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
@@ -240,17 +274,21 @@ const StudentActivities: React.FC<StudentActivitiesProps> = ({ userId }) => {
                     </div>
                     <button
                         type="button"
-                        onClick={() => void generateNew()}
-                        disabled={generating || !canGenerate || !!loadError}
+                        onClick={() => {
+                            if (pending.length > 0) {
+                                setShowConfirmModal(true);
+                            } else {
+                                void generateNew();
+                            }
+                        }}
+                        disabled={generating || !!loadError}
                         title={loadError
                             ? 'Recarregue suas atividades antes de criar um novo pacote.'
-                            : !canGenerate
-                                ? 'Conclua as atividades do pacote atual antes de criar outro.'
-                                : undefined}
+                            : undefined}
                         className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                         {generating ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                        {generating ? 'Criando...' : canGenerate ? 'Criar novo pacote' : 'Pacote em andamento'}
+                        {generating ? 'Criando...' : 'Criar novo pacote'}
                     </button>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wider">

@@ -1177,8 +1177,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       resetRealtimeGate();
       detachTransportSession("handoff_to_classic");
       setVoiceTransport("classic");
+      setShowTextInput(true);
       setState("IDLE");
-      setError(`${message} O Wolfie mudou para a voz clássica.`);
+      setError(`${message} O Wolfie ativou o modo clássico (você pode falar ou digitar).`);
       window.setTimeout(() => {
         if (isMountedRef.current) setError(null);
       }, 6000);
@@ -2795,10 +2796,13 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       const name = cause instanceof Error ? cause.name : "";
       setError(
         name === "AbortError"
-          ? "A transcrição demorou mais que o esperado. Tente novamente."
-          : "Não consegui entender o áudio agora. Tente novamente.",
+          ? "A transcrição demorou mais que o esperado. Tente novamente ou use o teclado."
+          : "Não foi possível transcrever a gravação agora. Você pode tentar novamente ou digitar sua resposta abaixo.",
       );
-      setTimeout(() => setError(null), 5000);
+      setShowTextInput(true);
+      setTimeout(() => {
+        if (isMountedRef.current) setError(null);
+      }, 5000);
     }
   };
 
@@ -3079,6 +3083,9 @@ const WolfieTutor: React.FC<WolfieTutorProps> = ({
       releaseAudioStream();
       stopIOSKeepAlive();
       setState("IDLE");
+      setShowTextInput(true);
+      setError("Dica: pressione e segure para falar por voz, ou digite sua mensagem no campo de texto abaixo.");
+      setTimeout(() => setError(null), 5000);
       return;
     }
     const recorder = mediaRecorderRef.current;

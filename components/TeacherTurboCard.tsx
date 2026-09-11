@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { describePayTiers, brl } from '../lib/payTiers';
 
 // Card do professor: a fonte autoritativa é teacher_pay_projection. A regra do
-// Turbo é uma ofensiva contínua de 30 dias e exige carteira de 10 alunos.
+// Turbo é uma ofensiva contínua de 30 dias e exige carteira mínima definida pela escola.
 // Valores/faixas continuam vindo do servidor; nada financeiro é fixado na UI.
 
 interface Props { teacherId: string; }
@@ -31,7 +31,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const potential = Number(p.amount_potential_turbo || 0);
   const leftOnTable = Math.max(0, potential - logged);
   const toNext = p.students_to_next;
-  // Regra 04/07/2026: turbo só destrava a partir de 10 alunos ativos
+  const studentsRequired = Number(turbo.students_required ?? 7);
   const studentsActive = Number(turbo.students_active || 0);
   const studentsMissing = Number(turbo.students_missing || 0);
   const streakDays = Number(turbo.streak_days || turbo.days_clean || 0);
@@ -41,7 +41,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
   const faixas = describePayTiers(p.tiers);
   // Por que o turbo está desligado, na linguagem da regra de ofensiva.
   const bloqueio: Record<string, string> = {
-    carteira: 'O Turbo fica disponível a partir de 10 alunos ativos na carteira.',
+    carteira: `O Turbo fica disponível a partir de ${studentsRequired} alunos ativos na carteira.`,
     ofensiva: `Faltam ${daysToActivate} dia${daysToActivate === 1 ? '' : 's'} sem falta para ativar o Turbo.`,
     conflito: 'Há um relato de falta em análise. O Turbo fica suspenso até a diretoria decidir.',
   };
@@ -110,7 +110,7 @@ const TeacherTurboCard: React.FC<Props> = ({ teacherId }) => {
           <div className="space-y-2">
             {studentsMissing > 0 && (
               <div className="text-xs font-bold rounded-xl px-3 py-2 bg-brand-surface-2 border border-brand-border text-brand-text">
-                🎯 Faltam <b>{studentsMissing} aluno{studentsMissing === 1 ? '' : 's'}</b> para você poder ativar o turbo: o benefício destrava a partir de <b>10 alunos na carteira</b> (hoje você tem {studentsActive}). Quanto mais assiduidade e qualidade, mais alunos a escola te envia.
+                🎯 Faltam <b>{studentsMissing} aluno{studentsMissing === 1 ? '' : 's'}</b> para você poder ativar o turbo: o benefício destrava a partir de <b>{studentsRequired} alunos na carteira</b> (hoje você tem {studentsActive}). Quanto mais assiduidade e qualidade, mais alunos a escola te envia.
               </div>
             )}
             {motivo && (

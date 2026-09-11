@@ -3,6 +3,7 @@ export const MANAGEMENT_ACTION_SCHEMA_VERSION = 1;
 export type ManagementActionRisk = "medium" | "high" | "critical";
 
 export type ManagementActionType =
+  | "agendar_treinamento"
   | "conta_pagar"
   | "ajuste_repasse"
   | "cobertura_aula"
@@ -11,6 +12,7 @@ export type ManagementActionType =
   | "alterar_horario_aluno";
 
 export type ManagementToolName =
+  | "academics.schedule_teacher_training"
   | "finance.create_payable"
   | "finance.adjust_teacher_payout"
   | "academics.request_lesson_coverage"
@@ -33,6 +35,14 @@ export const MANAGEMENT_TOOL_POLICIES: Record<
   ManagementActionType,
   ManagementToolPolicy
 > = {
+  agendar_treinamento: {
+    actionType: "agendar_treinamento",
+    toolName: "academics.schedule_teacher_training",
+    risk: "high",
+    allowedMembershipRoles: ACADEMIC_MANAGERS,
+    confirmation: "same_actor",
+    description: "Agendar treinamento de 30 minutos para um teacher cadastrado; R$ 16 ao treinador após realização.",
+  },
   conta_pagar: {
     actionType: "conta_pagar",
     toolName: "finance.create_payable",
@@ -100,9 +110,11 @@ export function canUseManagementTool(input: {
   profileRole: string | null | undefined;
   membershipRole: string | null | undefined;
   actionType: unknown;
+  verifiedGroupMember?: boolean;
 }): boolean {
   const policy = managementToolPolicy(input.actionType);
   if (!policy) return false;
+  if (input.verifiedGroupMember === true) return true;
   if (input.profileRole === "SUPER_ADMIN") return true;
   return policy.allowedMembershipRoles.includes(
     input.membershipRole as "SCHOOL_ADMIN" | "COORDINATOR",
@@ -227,4 +239,37 @@ export async function constantTimeTokenMatches(
     difference |= suppliedBytes[index] ^ expectedBytes[index];
   }
   return difference === 0;
+}
+
+/** Only call after authenticating Evolution ingress and resolving its tenant.
+ * A group message is membership evidence at the time of sending. Never accept
+ * `sender` (the instance itself) or pushName as an authorization credential.
+ */
+export function managementGroupParticipant(item: unknown, groupJid: string): string | null {
+  if (!groupJid.endsWith("@g.us") || !item || typeof item !== "object") return null;
+  const row = item as Record<string, any>;
+  const key = row.key || {};
+  if (key.fromMe === true || key.remoteJid !== groupJid || !String(key.id || "").trim()) return null;
+  const candidates = [key.participant, key.participantAlt, row.participant, row.participantAlt];
+  // LID is stable even when the provider alternates participant and participantAlt.
+  for (const suffix of ["@lid", "@s.whatsapp.net"]) {
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string") continue;
+      const normalized = candidate.trim().replace(/:\d+(?=@)/, "");
+      if (normalized.endsWith(suffix) && /^\d{6,20}@(lid|s\.whatsapp\.net)$/.test(normalized)) return normalized;
+    }
+  }
+  return null;
+}
+
+export function managementConfirmationMatches(input: {
+  requestedJid: unknown; confirmingJid: unknown;
+  requestedUserId: unknown; confirmingUserId: unknown;
+}): boolean {
+  // New requests always carry the provider's participant identity. A profile
+  // fallback is reserved for pending actions created before this release.
+  if (typeof input.requestedJid === "string" && input.requestedJid) {
+    return input.requestedJid === input.confirmingJid;
+  }
+  return confirmationBelongsToActor(input.requestedUserId, input.confirmingUserId);
 }

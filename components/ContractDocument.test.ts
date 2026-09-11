@@ -1,6 +1,8 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { getSchoolContractIdentity, type SchoolInfo } from './ContractDocument';
-import { getTeacherContractReadiness } from './TeacherContractDocument';
+import { TeacherContractDocument, getTeacherContractReadiness } from './TeacherContractDocument';
 import { SUPABASE_URL } from '../lib/supabase-config';
 
 const signedSignatureUrl = (tenantId: string) =>
@@ -97,8 +99,27 @@ describe('identidade jurídica multi-tenant dos contratos', () => {
 
     expect(missingRate.isReady).toBe(false);
     expect(missingRate.hourlyRate).toBeNull();
-    expect(missingRate.missingFields).toContain('valor da hora/aula');
+    expect(missingRate.missingFields).toContain('valor por aula');
     expect(explicitRate.isReady).toBe(true);
     expect(explicitRate.hourlyRate).toBe(42.5);
+  });
+});
+
+
+describe('remuneração por aula no contrato', () => {
+  const render = (rate: number, extra = {}) => renderToStaticMarkup(React.createElement(TeacherContractDocument, {
+    teacherName: 'Professor de teste', teacherRG: '', teacherCPF: '', teacherAddress: '', teacherBirthDate: '',
+    school: completeSchool(), hourlyRate: rate, showPrintButton: false, ...extra,
+  }));
+  it.each([8, 12.5])('exibe R$ %s integral por aula sem converter para hora', (rate) => {
+    const html = render(rate);
+    expect(html).toContain(`R$ ${rate.toFixed(2).replace('.', ',')} por aula de 30`);
+    expect(html).not.toContain('equivalente a');
+  });
+  it('preserva valores dos contratos antigos já assinados', () => {
+    expect(render(16, { acceptedAt: '2026-09-09T17:00:00Z' })).toContain('R$ 8,00 por cada 30');
+  });
+  it('mantém o valor integral na consulta de um novo contrato assinado', () => {
+    expect(render(8, { acceptedAt: '2026-09-09T19:00:00Z', rateUnit: 'PER_LESSON' })).toContain('R$ 8,00 por aula de 30');
   });
 });

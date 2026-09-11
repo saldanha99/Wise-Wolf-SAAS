@@ -288,6 +288,7 @@ async function resolveContract(
     address: party.address,
     birth_date: party.birthDate,
     hourly_rate: commercial.hourlyRate,
+    rateUnit: commercial.rateUnit,
     contract_accepted: true,
     accepted_at: data.accepted_at,
     user_ip: data.accepted_ip,

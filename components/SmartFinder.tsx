@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import TeacherTrainingScheduler from './TeacherTrainingScheduler';
 import { Sparkles, X, Clock, User, Phone, Send, Zap, Calendar, Plus, Minus, Users, MessageCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { buildBroadcastErrorMessage, parseFunctionError } from '../lib/functionInvokeErrors';
@@ -22,7 +23,7 @@ interface PreferredSlot {
     time: string;
 }
 
-const SmartFinder: React.FC<{ user?: any }> = () => {
+const SmartFinder: React.FC<{ user?: any }> = ({ user }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     // Form State
@@ -164,6 +165,30 @@ const SmartFinder: React.FC<{ user?: any }> = () => {
                             </button>
                         </div>
 
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind('TRIAL')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRIAL'
+                                            ? 'bg-indigo-600 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        Aula experimental
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setKind('TRAINING')}
+                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRAINING'
+                                            ? 'bg-indigo-600 text-white shadow'
+                                            : 'text-brand-muted hover:bg-brand-surface'
+                                            }`}
+                                    >
+                                        Treinamento de professor
+                                    </button>
+                                </div>
+
+                        {kind === 'TRAINING' ? <TeacherTrainingScheduler tenantId={user?.tenantId || user?.tenant_id || ''} /> : <>
                         <div className="flex-1 space-y-8">
 
                             {/* Student Info */}
@@ -276,39 +301,7 @@ const SmartFinder: React.FC<{ user?: any }> = () => {
                                 )}
                             </div>
 
-                            {/* Dispatch Mode Toggle */}
                             <div className="space-y-3">
-                                <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2">
-                                    <Zap size={14} /> Tipo da oportunidade
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 p-1 bg-brand-surface-2 border-2 border-brand-border dark:border-brand-border rounded-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setKind('TRIAL')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRIAL'
-                                            ? 'bg-indigo-600 text-white shadow'
-                                            : 'text-brand-muted hover:bg-brand-surface'
-                                            }`}
-                                    >
-                                        Aula experimental
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setKind('TRAINING')}
-                                        className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors ${kind === 'TRAINING'
-                                            ? 'bg-indigo-600 text-white shadow'
-                                            : 'text-brand-muted hover:bg-brand-surface'
-                                            }`}
-                                    >
-                                        Treinamento de professor
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-brand-muted font-medium px-1">
-                                    {kind === 'TRIAL'
-                                        ? 'Aluno novo experimentando. Entra na folha a R$ 8,00 e só paga depois que o comparecimento for registrado.'
-                                        : 'Professor treinando professor. Quem MINISTRA recebe R$ 16,00 e quem é TREINADO recebe R$ 8,00.'}
-                                </p>
-
                                 <p className="text-xs font-bold text-brand-muted uppercase tracking-wider flex items-center gap-2 pt-2">
                                     <Send size={14} /> Como disparar
                                 </p>
@@ -369,6 +362,7 @@ const SmartFinder: React.FC<{ user?: any }> = () => {
                             </p>
                         </div>
 
+                        </>}
                     </div>
                 </div>
             )}

@@ -4,6 +4,7 @@ import { localMonth } from '../lib/dateUtils';
 import { FileText, Search, CheckCircle2, AlertCircle, Loader2, Download, DollarSign, XCircle, Calendar, ShieldCheck } from 'lucide-react';
 import InvoiceReviewModal from './InvoiceReviewModal';
 import TeacherPayrollReportModal from './TeacherPayrollReportModal';
+import TeacherPixKey from './TeacherPixKey';
 import AjusteRepasseModal from './AjusteRepasseModal';
 
 interface InvoiceManagerProps {
@@ -256,6 +257,7 @@ const TeacherPayments: React.FC<InvoiceManagerProps> = ({ tenantId }) => {
                                     />
                                     <div className="min-w-0">
                                         <p className="font-bold text-brand-text text-sm truncate">{invoice.teacher?.full_name}</p>
+                                        <TeacherPixKey teacherId={invoice.teacher_id} />
                                         <p className="text-xs text-brand-muted truncate">{invoice.teacher?.email}</p>
                                     </div>
                                 </div>

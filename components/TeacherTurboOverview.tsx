@@ -74,7 +74,7 @@ const TeacherTurboOverview: React.FC<{ tenantId?: string }> = ({ tenantId }) => 
           <div className="min-w-0">
             <h3 className="font-black text-gray-800 dark:text-slate-100">Ofensiva do Turbo</h3>
             <p className="text-xs text-gray-500 dark:text-brand-muted">
-              Ativa com 10 alunos e 30 dias corridos sem falta do professor.
+              Exige a carteira mínima indicada abaixo e 30 dias corridos sem falta do professor.
             </p>
           </div>
         </div>
@@ -146,7 +146,7 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
     return {
       icon: <LockKeyhole size={18} />,
       title: `Faltam ${row.students_missing} aluno${row.students_missing === 1 ? '' : 's'}`,
-      detail: `${row.students_active} de ${row.students_required || 10} alunos necessários · ofensiva atual: ${row.streak_days} dias`,
+      detail: `${row.students_active} de ${row.students_required || 7} alunos necessários · ofensiva atual: ${row.streak_days} dias`,
       badge: 'Carteira mínima',
       cls: 'border-gray-200 dark:border-brand-border bg-gray-50/60 dark:bg-brand-surface-2/40 text-gray-600 dark:text-slate-300',
     };

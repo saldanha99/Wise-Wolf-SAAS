@@ -54,7 +54,7 @@ const TeacherProfileView: React.FC<Props> = ({ teacherId, onClose }) => {
                 <p className="text-xs text-brand-muted mt-1 flex items-center gap-3 flex-wrap">
                   {p.email && <span>{p.email}</span>}
                   {p.phone && <span className="flex items-center gap-1"><Phone size={11} />{p.phone}</span>}
-                  <span className="flex items-center gap-1"><Wallet size={11} />{money(p.hourly_rate)}/h</span>
+                  <span className="flex items-center gap-1"><Wallet size={11} />{money(p.hourly_rate)}/aula</span>
                 </p>
               </div>
               <button onClick={() => setShowReport(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-tenant-primary/10 text-tenant-primary text-xs font-bold" title="Gerar folha/relatório em PDF para enviar"><FileDown size={14} /> Folha/PDF</button>

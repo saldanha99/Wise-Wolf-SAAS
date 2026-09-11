@@ -24,6 +24,7 @@ import { Menu, X, Sun, Moon, Bell, Search, User as UserIcon, Shield, LogOut, Loa
 import { resolveTenantFromHostname, getTenantPublicUrl, ResolvedTenant } from './lib/tenant-resolver';
 import { loadAppUser } from './lib/auth-user';
 import { applyTenantBranding, resetTenantBranding } from './lib/tenant-branding';
+import { isStaleClientError, reloadStaleClient } from './lib/staleClient';
 
 // Lazy Load Components
 const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
@@ -454,6 +455,10 @@ const App: React.FC = () => {
 
         if (mounted) setUser(restoredUser);
       } catch (error) {
+        // Bundle antigo com sessão válida: o select do próprio perfil dá 42501
+        // e o app cairia na tela de login, onde o mesmo erro viraria "conta
+        // desativada". Recarregar traz a versão atual e a sessão continua.
+        if (isStaleClientError(error) && reloadStaleClient()) return;
         console.error('Session restore error:', error);
       } finally {
         if (mounted) setIsRestoringSession(false);
@@ -558,11 +563,15 @@ const App: React.FC = () => {
       }
 
       // 2. Fetch Teachers (sem o trio financeiro — vem via get_tenant_teacher_pay p/ admin)
-      const { data: teachersData } = await supabase
+      const { data: teachersData, error: teachersError } = await supabase
         .from('profiles')
         .select(PROFILE_SAFE_COLS)
         .eq('role', 'TEACHER')
         .eq('tenant_id', user.tenantId);
+
+      // Sessão viva num bundle antigo: este select (e o de alunos abaixo) é o
+      // que falha em silêncio e faz "todos os alunos sumirem" da agenda.
+      if (isStaleClientError(teachersError) && reloadStaleClient()) return;
 
       // 2b. Pay autoritativo (hourly_rate/pix) — RPC só retorna p/ admin/coordenador.
       const { data: payRows } = await supabase.rpc('get_tenant_teacher_pay');
