@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video, Search, ExternalLink, Copy, CheckCircle, Smartphone, Monitor, Shield, Zap, RefreshCw, Edit2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import GoogleMeetClassroom from './GoogleMeetClassroom';
 import { safeMeetingLink } from '../lib/meetingLink';
 import { User as UserType, UserRole } from '../types';
 
@@ -151,9 +152,11 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                 <p className="text-brand-muted mt-1">
                     {user.role === UserRole.TEACHER
                         ? 'Acesse e gerencie as salas virtuais dos seus alunos.'
-                        : 'Sua sala de aula fixa para todos os encontros virtuais.'}
+                        : 'Acesse as salas vinculadas às suas aulas.'}
                 </p>
             </header>
+
+            <GoogleMeetClassroom key={`${tenantId || user.tenantId}:${user.id}`} studentView={user.role === UserRole.STUDENT} />
 
             {user.role === UserRole.STUDENT && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -164,9 +167,9 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                             <div className="p-4 bg-white/10 rounded-2xl w-fit mb-6 sm:mb-8 backdrop-blur-md border border-white/20">
                                 <Video size={32} className="text-white" />
                             </div>
-                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Sua Sala Virtual</h3>
+                            <h3 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">Sala cadastrada</h3>
                             <p className="text-blue-100 text-base sm:text-lg mb-7 sm:mb-10 max-w-md leading-relaxed">
-                                Este é o seu link permanente. Utilize-o para todas as suas aulas com qualquer professor da nossa rede.
+                                Se o seu professor utiliza uma sala cadastrada manualmente, o acesso está disponível aqui.
                             </p>
 
                             {studentLink ? (
@@ -190,7 +193,7 @@ const MeetingLinksView: React.FC<MeetingLinksViewProps> = ({ user, tenantId }) =
                                 </div>
                             ) : (
                                 <div className="rounded-2xl border border-amber-300/40 bg-amber-300/10 p-4 text-sm font-bold text-amber-100" role="status">
-                                    Seu link ainda não foi cadastrado. Fale com a secretaria ou com seu professor.
+                                    Nenhum link adicional foi cadastrado. Utilize a sala conectada acima, quando disponível, ou fale com seu professor.
                                 </div>
                             )}
                         </div>
