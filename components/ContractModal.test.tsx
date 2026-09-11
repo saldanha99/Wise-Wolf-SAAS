@@ -52,11 +52,14 @@ describe('Contrato: fluxo de assinatura digital', () => {
 
     const setupIntersectionObserverMock = () => {
         if (!window.IntersectionObserver) {
-            window.IntersectionObserver = vi.fn().mockImplementation(() => ({
-                observe: vi.fn(),
-                unobserve: vi.fn(),
-                disconnect: vi.fn(),
-            }));
+            // vitest 4 respeita `new`: implementação arrow não é construtora.
+            window.IntersectionObserver = vi.fn(function () {
+                return {
+                    observe: vi.fn(),
+                    unobserve: vi.fn(),
+                    disconnect: vi.fn(),
+                };
+            }) as unknown as typeof IntersectionObserver;
         }
     };
 
