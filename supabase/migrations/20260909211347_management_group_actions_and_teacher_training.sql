@@ -1,3 +1,11 @@
+-- ⚠️ ARQUIVO DE ESTADO — NÃO REGISTRAR EM MIGRATION_RELATIVES (deploy/vps/release.sh).
+--
+-- Cópia fiel do SQL aplicado à mão na VPS em 09/09/2026 (trazida pelo sync de
+-- 10/09). Serve para documentar o que o banco de produção tem; não foi escrito
+-- para rodar de novo: tem `create table`/`create function` sem `if not exists`
+-- nem `or replace`, e o release.sh re-executa a lista inteira a cada deploy.
+-- Registrar este arquivo derruba o próximo release na segunda execução.
+-- O equivalente re-executável, quando precisar, deve ser uma migration nova.
 begin;
 alter table public.dre_report_settings add column if not exists allow_group_member_actions boolean not null default false;
 comment on column public.dre_report_settings.allow_group_member_actions is 'Owner opt-in: authenticated messages from participants of the configured management WhatsApp group can prepare and confirm management actions without a platform profile.';

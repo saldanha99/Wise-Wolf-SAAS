@@ -1,3 +1,11 @@
+-- ⚠️ ARQUIVO DE ESTADO — NÃO REGISTRAR EM MIGRATION_RELATIVES (deploy/vps/release.sh).
+--
+-- Cópia fiel do SQL aplicado à mão na VPS em 09/09/2026 (trazida pelo sync de
+-- 10/09). Serve para documentar o que o banco de produção tem; não foi escrito
+-- para rodar de novo: tem `create table`/`create function` sem `if not exists`
+-- nem `or replace`, e o release.sh re-executa a lista inteira a cada deploy.
+-- Registrar este arquivo derruba o próximo release na segunda execução.
+-- O equivalente re-executável, quando precisar, deve ser uma migration nova.
 -- hourly_rate is the legacy storage name for the amount per 30-minute lesson.
 -- Only contracts explicitly issued in PER_LESSON units opt into the agreed base;
 -- historical teacher/tier policies remain unchanged.
