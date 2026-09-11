@@ -436,7 +436,7 @@ until npm audit --audit-level=moderate; do
   sleep 5
 done
 npm run typecheck
-npm test -- --maxWorkers=1 --minWorkers=1 --no-file-parallelism
+npm test -- --maxWorkers=1 --no-file-parallelism
 node --test scripts/generate-hub-static-html.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
