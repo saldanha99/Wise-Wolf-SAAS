@@ -146,7 +146,7 @@ const TurboTeacherCard: React.FC<{ row: TeacherTurboRow }> = ({ row }) => {
     return {
       icon: <LockKeyhole size={18} />,
       title: `Faltam ${row.students_missing} aluno${row.students_missing === 1 ? '' : 's'}`,
-      detail: `${row.students_active} de ${row.students_required || 10} alunos necessários · ofensiva atual: ${row.streak_days} dias`,
+      detail: `${row.students_active} de ${row.students_required || 7} alunos necessários · ofensiva atual: ${row.streak_days} dias`,
       badge: 'Carteira mínima',
       cls: 'border-gray-200 dark:border-brand-border bg-gray-50/60 dark:bg-brand-surface-2/40 text-gray-600 dark:text-slate-300',
     };

@@ -84,7 +84,7 @@ const TeacherManagement: React.FC<TeacherManagementProps> = ({ teachers, current
         email: '',
         phone: '',
         module: 'Inglês Geral',
-        hourlyRate: '35.00',
+        hourlyRate: '8.00',
         pixKey: '',
         bio: '',
         status: 'Ativo',

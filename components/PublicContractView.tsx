@@ -144,6 +144,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     teacherBirthDate={profile.birth_date}
                     school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
+                    rateUnit={profile.rateUnit}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}
@@ -163,6 +164,7 @@ const PublicContractView: React.FC<PublicContractViewProps> = ({ id: propId }) =
                     teacherBirthDate={profile.birth_date}
                     school={schoolInfo}
                     hourlyRate={profile.hourly_rate}
+                    rateUnit={profile.rateUnit}
                     acceptedAt={profile.accepted_at}
                     userIp={profile.user_ip}
                     subscriptionId={resolvedId || undefined}

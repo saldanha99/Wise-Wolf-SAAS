@@ -73,11 +73,11 @@ import {
 } from "../_shared/sdr-scheduling.ts";
 import {
   canUseManagementTool,
-  managementConfirmationMatches,
-  managementGroupParticipant,
   MANAGEMENT_ACTION_SCHEMA_VERSION,
   type ManagementActionRisk,
   managementActorPhoneCandidates,
+  managementConfirmationMatches,
+  managementGroupParticipant,
   managementPhonesMatch,
   managementToolPolicy,
   shortManagementActionCode,
@@ -2106,7 +2106,10 @@ async function handleGestao(
   // The school can authorize all participants of its configured management group.
   // Participant identity remains mandatory, including for every confirmation.
   const { data: conf } = await sb.from("dre_report_settings")
-    .select("destino, is_active, allow_group_member_actions").eq("tenant_id", tenantId).maybeSingle();
+    .select("destino, is_active, allow_group_member_actions").eq(
+      "tenant_id",
+      tenantId,
+    ).maybeSingle();
   if (!conf?.is_active || String(conf.destino || "") !== groupJid) return;
 
   const participant = managementGroupParticipant(item, groupJid);
@@ -2116,7 +2119,8 @@ async function handleGestao(
       userId: actor?.userId || null,
       profileRole: actor?.profileRole || "MANAGEMENT_GROUP_MEMBER",
       membershipRole: actor?.membershipRole || "MANAGEMENT_GROUP_MEMBER",
-      displayName: actor?.displayName || String(item?.pushName || "Participante da gestão").trim().slice(0, 80),
+      displayName: actor?.displayName ||
+        String(item?.pushName || "Participante da gestão").trim().slice(0, 80),
       phone: actor?.phone || "",
       jid: participant,
       verifiedGroupMember: true,
@@ -2248,7 +2252,12 @@ async function handleGestao(
     const pendingPolicy = managementToolPolicy(pendingAction?.tipo);
     if (
       !pendingPolicy || !actionId ||
-      !managementConfirmationMatches({ requestedJid: pend.requested_by_jid, confirmingJid: actor.jid, requestedUserId: pend.requested_by_user_id, confirmingUserId: actor.userId })
+      !managementConfirmationMatches({
+        requestedJid: pend.requested_by_jid,
+        confirmingJid: actor.jid,
+        requestedUserId: pend.requested_by_user_id,
+        confirmingUserId: actor.userId,
+      })
     ) {
       const owner = String(pend.pedido_por || "quem fez o pedido");
       await sendWhats(
@@ -2404,9 +2413,12 @@ async function handleGestao(
       let erroExecucao = "";
       if (tipo === "agendar_treinamento") {
         const resp = await sb.rpc("gestao_schedule_teacher_training", {
-          p_tenant: tenantId, p_actor_id: actor.userId,
+          p_tenant: tenantId,
+          p_actor_id: actor.userId,
           p_request_id: String(requestId || ""),
-          p_trainer: String(a.trainer_id || ""), p_trainee: String(a.trainee_id || ""), p_start: String(a.starts_at || ""),
+          p_trainer: String(a.trainer_id || ""),
+          p_trainee: String(a.trainee_id || ""),
+          p_start: String(a.starts_at || ""),
         });
         if (resp.error) erroExecucao = String(resp.error.message || "falha");
         else res = resp.data;
@@ -2528,7 +2540,9 @@ async function handleGestao(
       if (tipo === "agendar_treinamento") {
         txt = r?.ok
           ? "✅ Treinamento registrado. O convite está na fila do WhatsApp do teacher para aceite. O treinador recebe R$ 16,00 depois de realizar e lançar o treinamento na plataforma."
-          : `Não consegui agendar: ${String(r?.error || erroExecucao || "falha")} Nenhum pagamento foi lançado.`;
+          : `Não consegui agendar: ${
+            String(r?.error || erroExecucao || "falha")
+          } Nenhum pagamento foi lançado.`;
       } else if (tipo === "conta_pagar") {
         txt = r?.ok
           ? `✅ Lançada: ${pend.resumo}.` +
@@ -2778,25 +2792,86 @@ Responda em JSON: {"responder": true, "resposta": "<texto para o WhatsApp>"}`;
     const date = String(acao.data || "").trim();
     const time = String(acao.horario || "").trim();
     const start = new Date(`${date}T${time}:00-03:00`);
-    if (!trainerName || !traineeName || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):(00|30)$/.test(time) || !Number.isFinite(start.getTime()) || start.getTime() <= Date.now() || new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(start) !== date) {
-      await sendWhats(instance, groupJid, "Para agendar, preciso de quem ministra, do nome do teacher cadastrado, da data e de um horário futuro (ex.: amanhã às 16h30). O treinamento dura 30 minutos.");
+    if (
+      !trainerName || !traineeName || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !/^([01]\d|2[0-3]):(00|30)$/.test(time) ||
+      !Number.isFinite(start.getTime()) || start.getTime() <= Date.now() ||
+      new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" })
+          .format(start) !== date
+    ) {
+      await sendWhats(
+        instance,
+        groupJid,
+        "Para agendar, preciso de quem ministra, do nome do teacher cadastrado, da data e de um horário futuro (ex.: amanhã às 16h30). O treinamento dura 30 minutos.",
+      );
       return;
     }
     const resolve = async (name: string) => {
-      let result = await sb.rpc("gestao_resolve_professor", { p_tenant: tenantId, p_nome: name });
-      if (!result.error && result.data?.error === "professor_nao_encontrado" && /\bmatheus\b/i.test(name)) result = await sb.rpc("gestao_resolve_professor", { p_tenant: tenantId, p_nome: name.replace(/\bmatheus\b/i, "Mateus") });
+      let result = await sb.rpc("gestao_resolve_professor", {
+        p_tenant: tenantId,
+        p_nome: name,
+      });
+      if (
+        !result.error && result.data?.error === "professor_nao_encontrado" &&
+        /\bmatheus\b/i.test(name)
+      ) {
+        result = await sb.rpc("gestao_resolve_professor", {
+          p_tenant: tenantId,
+          p_nome: name.replace(/\bmatheus\b/i, "Mateus"),
+        });
+      }
       return result;
     };
-    const [trainer, trainee] = await Promise.all([resolve(trainerName), resolve(traineeName)]);
-    if (trainer.error || trainee.error || !trainer.data?.ok || !trainee.data?.ok || trainer.data.id === trainee.data.id) {
-      await sendWhats(instance, groupJid, "Não consegui identificar dois teachers diferentes com esses nomes. Informe os nomes completos como estão cadastrados na plataforma.");
+    const [trainer, trainee] = await Promise.all([
+      resolve(trainerName),
+      resolve(traineeName),
+    ]);
+    if (
+      trainer.error || trainee.error || !trainer.data?.ok ||
+      !trainee.data?.ok || trainer.data.id === trainee.data.id
+    ) {
+      await sendWhats(
+        instance,
+        groupJid,
+        "Não consegui identificar dois teachers diferentes com esses nomes. Informe os nomes completos como estão cadastrados na plataforma.",
+      );
       return;
     }
-    const { data: trainerProfile } = await sb.from("profiles").select("is_trainer").eq("id", trainer.data.id).eq("tenant_id", tenantId).maybeSingle();
-    if (!trainerProfile?.is_trainer) { await sendWhats(instance, groupJid, "Esse professor ainda não está habilitado como treinador. Habilite-o no cadastro antes de agendar."); return; }
-    const summary = `treinamento de ${trainee.data.nome} com ${trainer.data.nome} em ${date.split('-').reverse().join('/')} às ${time} (Brasília), 30 minutos, R$ 16 ao treinador após realização`;
-    const pending = await savePendingManagementAction(sb, { tenantId, groupJid, messageId: msgId, actor, summary, action: { tipo: "agendar_treinamento", trainer_id: trainer.data.id, trainee_id: trainee.data.id, starts_at: start.toISOString() } });
-    await sendWhats(instance, groupJid, pending.ok ? `Entendi: *${summary}*.\nPara agendar e enviar o convite, responda *sim #${pending.code}*. Para cancelar, responda *não*.` : "Não consegui preparar o treinamento. Confira se já existe outra ação em andamento e tente novamente.");
+    const { data: trainerProfile } = await sb.from("profiles").select(
+      "is_trainer",
+    ).eq("id", trainer.data.id).eq("tenant_id", tenantId).maybeSingle();
+    if (!trainerProfile?.is_trainer) {
+      await sendWhats(
+        instance,
+        groupJid,
+        "Esse professor ainda não está habilitado como treinador. Habilite-o no cadastro antes de agendar.",
+      );
+      return;
+    }
+    const summary =
+      `treinamento de ${trainee.data.nome} com ${trainer.data.nome} em ${
+        date.split("-").reverse().join("/")
+      } às ${time} (Brasília), 30 minutos, R$ 16 ao treinador após realização`;
+    const pending = await savePendingManagementAction(sb, {
+      tenantId,
+      groupJid,
+      messageId: msgId,
+      actor,
+      summary,
+      action: {
+        tipo: "agendar_treinamento",
+        trainer_id: trainer.data.id,
+        trainee_id: trainee.data.id,
+        starts_at: start.toISOString(),
+      },
+    });
+    await sendWhats(
+      instance,
+      groupJid,
+      pending.ok
+        ? `Entendi: *${summary}*.\nPara agendar e enviar o convite, responda *sim #${pending.code}*. Para cancelar, responda *não*.`
+        : "Não consegui preparar o treinamento. Confira se já existe outra ação em andamento e tente novamente.",
+    );
     return;
   }
 
@@ -4434,7 +4509,11 @@ async function handleSDR(
   const commercialRules = leadTraining
     ? `- A experimental Wise Wolf é gratuita e dura 30 minutos.
 - Entenda e personalize antes de convidar para a experiência. Na primeira pergunta de preço sem contexto, faça uma pergunta relevante; não conduza diretamente ao agendamento.
-- Com objetivo e nível conhecidos, ou se o lead insistir ou pedir somente preço, informe o valor configurado sem exigir experimental: ${commercialConfig ? `planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês` : "valor indisponível; encaminhe à coordenação sem inventar"}. Não invente tabela, descontos ou condições.
+- Com objetivo e nível conhecidos, ou se o lead insistir ou pedir somente preço, informe o valor configurado sem exigir experimental: ${
+      commercialConfig
+        ? `planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês`
+        : "valor indisponível; encaminhe à coordenação sem inventar"
+    }. Não invente tabela, descontos ou condições.
 - Siga a BASE OBRIGATÓRIA DE ATENDIMENTO WISE WOLF abaixo.`
     : commercialConfig
     ? `- TODAS as aulas duram ${commercialConfig.classDurationMinutes} minutos, inclusive a experimental. NUNCA diga outra duração.\n- Na PRIMEIRA pergunta sobre preço, NÃO informe nenhum valor: explique que os planos variam e conduza para a aula experimental gratuita.\n- Somente se o lead INSISTIR em preço numa mensagem posterior, informe apenas: \"planos a partir de R$ ${commercialConfig.minimumPlanPriceBrl}/mês\". NUNCA liste a tabela completa e NUNCA informe outro valor.\n- Se perguntarem sobre troca de forma de pagamento (ex.: de Pix para Cartão de Crédito), explique que o aluno pode alterar com total segurança diretamente pelo Portal do Aluno (no menu Financeiro > Forma de Pagamento > Cartão de crédito), sem passar dados de cartão no WhatsApp.`
@@ -4482,7 +4561,9 @@ async function handleSDR(
       lead.goal || "?"
     }, nível=${lead.level || "?"}, disponibilidade=${
       lead.weekly_availability || "ainda não informada"
-    }, contexto já informado=${lead.notes || "ainda não informado"}, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
+    }, contexto já informado=${
+      lead.notes || "ainda não informado"
+    }, status=${lead.status}.\nResponda SOMENTE com JSON válido:\n{\"reply\": \"mensagem ao lead\", \"updates\": {\"name\": null, \"goal\": null, \"level\": null, \"notes\": null, \"weekly_availability\": null}, \"schedule_trial\": null, \"handoff\": false}\nEm updates, só campos NOVOS aprendidos (senão null). schedule_trial quando o lead escolher um horário DA LISTA: {\"date\":\"YYYY-MM-DD\",\"time\":\"HH:MM\"}.`;
 
   const diag: string[] = [];
   const ai = await callAI(
@@ -4560,11 +4641,13 @@ async function handleSDR(
     modelReply: reply,
     trialRequested: Boolean(st?.date && st?.time),
     commercialPolicy: commercialConfig,
-    consultativeLead: leadTraining ? {
-      goal: freshLead.goal,
-      level: freshLead.level,
-      afterTrial,
-    } : undefined,
+    consultativeLead: leadTraining
+      ? {
+        goal: freshLead.goal,
+        level: freshLead.level,
+        afterTrial,
+      }
+      : undefined,
   });
   reply = commercialReply.reply;
   if (commercialReply.policy === "price_unavailable") ai.handoff = true;

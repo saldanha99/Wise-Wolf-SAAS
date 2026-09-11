@@ -2924,18 +2924,57 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
           "subscription",
         );
         let verifiedLegacyOrigin = false;
-        if (!parentReference && !String(payment.externalReference || "").trim() && SETTLED_PAYMENT_EVENTS.has(event)) {
-          const readIntegration = await resolveAsaasIntegration(supabase, subscriptionProfile.tenant_id, "payment.read");
-          if (readIntegration.integrationId !== subscriptionIntegration.integrationId || readIntegration.version !== subscriptionIntegration.version) {
-            throw new AsaasTriageError("legacy_subscription_integration_changed", subscriptionProfile.tenant_id, subscriptionProfile.id);
+        if (
+          !parentReference && !String(payment.externalReference || "").trim() &&
+          SETTLED_PAYMENT_EVENTS.has(event)
+        ) {
+          const readIntegration = await resolveAsaasIntegration(
+            supabase,
+            subscriptionProfile.tenant_id,
+            "payment.read",
+          );
+          if (
+            readIntegration.integrationId !==
+              subscriptionIntegration.integrationId ||
+            readIntegration.version !== subscriptionIntegration.version
+          ) {
+            throw new AsaasTriageError(
+              "legacy_subscription_integration_changed",
+              subscriptionProfile.tenant_id,
+              subscriptionProfile.id,
+            );
           }
-          const authoritativeResponse = await fetch(`${readIntegration.baseUrl}/payments/${encodeURIComponent(payment.id)}`, {
-            headers: { access_token: readIntegration.apiKey }, signal: AbortSignal.timeout(12_000),
+          const authoritativeResponse = await fetch(
+            `${readIntegration.baseUrl}/payments/${
+              encodeURIComponent(payment.id)
+            }`,
+            {
+              headers: { access_token: readIntegration.apiKey },
+              signal: AbortSignal.timeout(12_000),
+            },
+          );
+          if (!authoritativeResponse.ok) {
+            throw new AsaasTriageError(
+              "legacy_subscription_payment_lookup_unavailable",
+              subscriptionProfile.tenant_id,
+              subscriptionProfile.id,
+            );
+          }
+          const authoritativePayment = await authoritativeResponse.json().catch(
+            () => null,
+          );
+          verifiedLegacyOrigin = verifiedLegacySubscriptionPayment({
+            eventName: event,
+            eventPayment: payment,
+            authoritativePayment,
+            authoritativeSubscription: parentSubscription,
+            expected: {
+              studentId: subscriptionProfile.id,
+              customerId: String(subscriptionProfile.asaas_customer_id || "")
+                .trim(),
+              subscriptionId: providerSubscriptionId,
+            },
           });
-          if (!authoritativeResponse.ok) throw new AsaasTriageError("legacy_subscription_payment_lookup_unavailable", subscriptionProfile.tenant_id, subscriptionProfile.id);
-          const authoritativePayment = await authoritativeResponse.json().catch(() => null);
-          verifiedLegacyOrigin = verifiedLegacySubscriptionPayment({ eventName: event, eventPayment: payment, authoritativePayment, authoritativeSubscription: parentSubscription,
-            expected: { studentId: subscriptionProfile.id, customerId: String(subscriptionProfile.asaas_customer_id || "").trim(), subscriptionId: providerSubscriptionId } });
           if (verifiedLegacyOrigin) canonicalReference = { kind: "STUDENT" };
         }
         if (
@@ -2979,7 +3018,9 @@ async function processarPagamento(body: AsaasWebhookBody): Promise<void> {
         }
         studentId = subscriptionProfile.id;
         studentTenantId = subscriptionProfile.tenant_id;
-        canonicalPaymentReference = verifiedLegacyOrigin ? subscriptionProfile.id : parentReference;
+        canonicalPaymentReference = verifiedLegacyOrigin
+          ? subscriptionProfile.id
+          : parentReference;
       }
 
       if (!studentId || !studentTenantId || !canonicalPaymentReference) {

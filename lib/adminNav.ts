@@ -85,6 +85,7 @@ export const ADMIN_NAV: NavGroup[] = [
     tabs: [
       { id: 'dre', label: 'Resultado (DRE)' },
       { id: 'balancete', label: 'Balancete por prof' },
+      { id: 'payroll-reconciliation', label: 'Caixinha × folha' },
       { id: 'cashflow', label: 'Fluxo de caixa' },
       { id: 'margin', label: 'Custo e margem' },
       { id: 'ai-costs', label: 'Custo de IA' },

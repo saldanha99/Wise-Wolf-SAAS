@@ -10,7 +10,7 @@ interface TeacherInviteGeneratorProps {
 }
 
 const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantId }) => {
-    const [hourlyRate, setHourlyRate] = useState('35');
+    const [hourlyRate, setHourlyRate] = useState('8');
     const [subject, setSubject] = useState('');
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
@@ -27,8 +27,8 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
         }
 
         const parsedHourlyRate = Number(hourlyRate);
-        if (!Number.isFinite(parsedHourlyRate) || parsedHourlyRate <= 0) {
-            setGenerationError('Informe um valor de hora/aula válido.');
+        if (!Number.isFinite(parsedHourlyRate) || parsedHourlyRate < 1 || parsedHourlyRate > 10000) {
+            setGenerationError('Informe um valor por aula entre R$ 1,00 e R$ 10.000,00.');
             return;
         }
 
@@ -83,18 +83,21 @@ const TeacherInviteGenerator: React.FC<TeacherInviteGeneratorProps> = ({ tenantI
                 {/* Inputs */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Valor da Hora (60 min)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Valor por aula (30 min)</label>
                         <div className="relative">
                             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                             <input
                                 type="number"
+                                min="1"
+                                max="10000"
+                                step="0.01"
                                 value={hourlyRate}
                                 onChange={e => setHourlyRate(e.target.value)}
                                 className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-brand-surface-2 border-transparent rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-tenant-primary"
                             />
                         </div>
                         <p className="text-[10px] text-tenant-primary font-bold mt-1 ml-1 animate-pulse">
-                            Equivale a R$ {(parseFloat(hourlyRate || '0') / 2).toFixed(2)} por aula de 30 min.
+                            O professor receberá este valor por aula de 30 minutos.
                         </p>
                     </div>
 

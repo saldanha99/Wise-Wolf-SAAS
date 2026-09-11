@@ -403,7 +403,7 @@ async function loadPlannerContext(
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
       .order("generated_at", { ascending: false }).limit(3),
     db.from("student_learning_memories").select(
-      "source_type,occurred_at,lesson_objective,content_practiced,new_vocabulary,recurring_errors,corrections_mastered,strengths_observed,homework_assigned,recommended_next_step,confidence_level,notes_to_verify,verification_status",
+      "source_type,occurred_at,lesson_objective,content_practiced,new_vocabulary,recurring_errors,corrections_mastered,strengths_observed,homework_assigned,recommended_next_step,confidence_level,notes_to_verify,verification_status,metadata",
     ).eq("tenant_id", tenantId).eq("student_id", studentId)
       .neq("verification_status", "REJECTED")
       .order("occurred_at", { ascending: false }).limit(12),
@@ -551,6 +551,12 @@ function buildModelInput(
         row.verification_status === "VERIFIED"
       ) ?? [],
       (row) => ({
+        meet_context: row.source_type === "GOOGLE_MEET" && isRecord(row.metadata) ? {
+          interests: safeArray(row.metadata.interests),
+          professional_context: boundedText(row.metadata.professional_context, 700),
+          teacher_preparation: safeArray(row.metadata.teacher_preparation),
+          oral_test: safeArray(row.metadata.oral_test),
+        } : null,
         source_type: boundedText(row.source_type, 40),
         occurred_at: boundedText(row.occurred_at, 40),
         lesson_objective: boundedText(row.lesson_objective, 700),

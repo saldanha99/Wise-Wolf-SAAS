@@ -5,6 +5,7 @@ import {
   Calendar,
   Check,
   Clock,
+  Copy,
   Lock,
   MessageCircle,
   ShieldCheck,
@@ -13,7 +14,9 @@ import {
 import { supabase } from "../lib/supabase";
 import {
   canonicalClaimPath,
+  deriveAlternateWhatsAppPhone,
   deriveOpportunityClaimSlot,
+  formatPhoneDisplay,
   isClaimGeneration,
   isOpportunityId,
   normalizeWhatsAppPhone,
@@ -62,6 +65,7 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
     null,
   );
   const [claimResult, setClaimResult] = useState<ClaimResult | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const slot = useMemo(
     () => deriveOpportunityClaimSlot(opportunity?.slots_proposed),
@@ -287,11 +291,16 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
   if (claimResult?.ok) {
     const firstName = studentName.trim().split(/\s+/)[0] || "Olá";
     const phone = normalizeWhatsAppPhone(studentPhone);
+    const altPhone = deriveAlternateWhatsAppPhone(studentPhone);
+    const displayPhone = formatPhoneDisplay(studentPhone || phone);
     const message = isTraining
       ? `Olá ${firstName}, sou ${professorName}. Confirmei minha participação no treinamento de ${confirmedDate}.`
       : `Olá ${firstName}, sou o professor ${professorName}! Sua aula experimental foi confirmada para ${confirmedDate}. Tudo certo para nosso encontro?`;
     const whatsappLink = phone
       ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+      : null;
+    const altWhatsappLink = altPhone
+      ? `https://wa.me/${altPhone}?text=${encodeURIComponent(message)}`
       : null;
 
     return (
@@ -302,9 +311,33 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
         <h1 className="text-3xl font-black text-brand-text mb-2">
           {isTraining ? "🎉 Participação Confirmada!" : "🎉 Aula Confirmada!"}
         </h1>
-        <p className="text-brand-muted mb-8 max-w-md mx-auto leading-relaxed">
+        <p className="text-brand-muted mb-4 max-w-md mx-auto leading-relaxed">
           O agendamento está confirmado para <strong>{confirmedDate}</strong>.
         </p>
+
+        {displayPhone && !isTraining && (
+          <div className="bg-white border border-emerald-200 rounded-2xl p-4 mb-6 w-full max-w-xs mx-auto text-left shadow-sm">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contato do Aluno</p>
+            <div className="flex items-center justify-between mt-1">
+              <span className="font-mono text-sm font-bold text-slate-800">{displayPhone}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (displayPhone) {
+                    navigator.clipboard.writeText(displayPhone.replace(/\D/g, ""));
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+                className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-1 font-bold transition-colors"
+                title="Copiar número"
+              >
+                {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                {copied ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 w-full max-w-xs">
           {whatsappLink && !isTraining && (
@@ -316,6 +349,16 @@ const ClaimOpportunity: React.FC<ClaimProps> = ({ opportunityId, generation }) =
             >
               <MessageCircle size={24} />
               CHAMAR ALUNO AGORA
+            </a>
+          )}
+          {altWhatsappLink && !isTraining && (
+            <a
+              href={altWhatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 bg-emerald-100/70 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all border border-emerald-200"
+            >
+              <span>Se não abrir, tentar {altPhone?.length === 13 ? "com 9º dígito" : "sem 9º dígito"}</span>
             </a>
           )}
           <button

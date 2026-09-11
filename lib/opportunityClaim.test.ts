@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalClaimPath,
+  deriveAlternateWhatsAppPhone,
   deriveOpportunityClaimSlot,
+  formatPhoneDisplay,
   isClaimGeneration,
   normalizeWhatsAppPhone,
 } from "./opportunityClaim";
@@ -50,4 +52,25 @@ describe("opportunity claim", () => {
     expect(normalizeWhatsAppPhone("55 11 99999-9999")).toBe("5511999999999");
     expect(normalizeWhatsAppPhone("123")).toBeNull();
   });
+
+  it("deriva formato alternativo de telefone brasileiro (8 vs 9 digitos)", () => {
+    // Caso Renato: registrado sem o 9 (12 digitos) -> alternativo tem o 9 (13 digitos)
+    expect(deriveAlternateWhatsAppPhone("553183176569")).toBe("5531983176569");
+    expect(deriveAlternateWhatsAppPhone("(31) 8317-6569")).toBe("5531983176569");
+
+    // Caso inverso: fornecido com o 9 (13 digitos) -> alternativo retira o 9 (12 digitos)
+    expect(deriveAlternateWhatsAppPhone("5531983176569")).toBe("553183176569");
+    expect(deriveAlternateWhatsAppPhone("(31) 98317-6569")).toBe("553183176569");
+
+    // Numeros invalidos
+    expect(deriveAlternateWhatsAppPhone("123")).toBeNull();
+    expect(deriveAlternateWhatsAppPhone("")).toBeNull();
+  });
+
+  it("formata telefone para exibicao amigavel", () => {
+    expect(formatPhoneDisplay("553183176569")).toBe("(31) 8317-6569");
+    expect(formatPhoneDisplay("5531983176569")).toBe("(31) 98317-6569");
+    expect(formatPhoneDisplay("(31) 98317-6569")).toBe("(31) 98317-6569");
+  });
 });
+

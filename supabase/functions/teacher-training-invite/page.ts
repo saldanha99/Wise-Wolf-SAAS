@@ -1,7 +1,55 @@
-const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+const escapeHtml = (value: unknown) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 export function renderTrainingInvite(data: any, token: string): string {
-  const statuses: Record<string,string> = { CONFIRMED: 'Treinamento confirmado', DECLINED: 'Convite recusado', CANCELLED: 'Treinamento cancelado', COMPLETED: 'Treinamento concluído' };
-  const time = data?.starts_at ? new Date(data.starts_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' }) : '';
-  const link = /^https:\/\/[^\s]+$/.test(String(data?.meeting_link || '')) ? data.meeting_link : '';
-  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Convite para treinamento</title><style>body{margin:0;background:#f6f5f2;color:#202a35;font:16px system-ui,sans-serif;padding:48px 20px}main{max-width:480px;margin:auto;background:white;padding:32px;border:1px solid #e1e3e5;border-radius:22px}small{color:#6c737d}h1{font-size:28px;line-height:1.2}p{line-height:1.6}.card{background:#f7f7f7;padding:18px;border-radius:12px}button,a{display:block;width:100%;box-sizing:border-box;text-align:center;font:600 16px system-ui;padding:15px;border-radius:12px;margin-top:14px;background:#d54e24;color:white;border:0;text-decoration:none}button.secondary{background:#f0f1f3;color:#303842}form{margin-top:24px}</style></head><body><main><small>FORMAÇÃO DE PROFESSORES</small><h1>${escapeHtml(!data?.ok ? 'Confira seu convite' : statuses[data.status] || 'Seu treinamento está marcado')}</h1>${!data?.ok ? `<p>${escapeHtml(data?.error || 'Convite indisponível.')}</p>` : `<p>Olá, <strong>${escapeHtml(data.trainee)}</strong>.</p><div class="card"><strong>Com ${escapeHtml(data.trainer)}</strong><p>${escapeHtml(time)}<br>Horário de Brasília · 30 minutos</p></div>${data.status === 'PENDING' ? `<p>Confirme sua participação para reservar o horário.</p><form method="post"><input type="hidden" name="token" value="${escapeHtml(token)}"><button name="decision" value="accept">Aceitar treinamento</button><button class="secondary" name="decision" value="decline">Não posso participar</button></form>` : data.status === 'CONFIRMED' && link ? `<p>Sua participação está confirmada. Guarde o link da sala para o horário combinado.</p><a href="${escapeHtml(link)}" rel="noreferrer noopener">Abrir sala do treinamento</a>` : data.status === 'CONFIRMED' ? '<p>Sua participação está confirmada. Combine o link da sala com o treinador.</p>' : '<p>Se precisar de outro horário, fale com a gestão da escola.</p>'}`}</main></body></html>`;
+  const statuses: Record<string, string> = {
+    CONFIRMED: "Treinamento confirmado",
+    DECLINED: "Convite recusado",
+    CANCELLED: "Treinamento cancelado",
+    COMPLETED: "Treinamento concluído",
+  };
+  const time = data?.starts_at
+    ? new Date(data.starts_at).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      dateStyle: "full",
+      timeStyle: "short",
+    })
+    : "";
+  const link = /^https:\/\/[^\s]+$/.test(String(data?.meeting_link || ""))
+    ? data.meeting_link
+    : "";
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Convite para treinamento</title><style>body{margin:0;background:#f6f5f2;color:#202a35;font:16px system-ui,sans-serif;padding:48px 20px}main{max-width:480px;margin:auto;background:white;padding:32px;border:1px solid #e1e3e5;border-radius:22px}small{color:#6c737d}h1{font-size:28px;line-height:1.2}p{line-height:1.6}.card{background:#f7f7f7;padding:18px;border-radius:12px}button,a{display:block;width:100%;box-sizing:border-box;text-align:center;font:600 16px system-ui;padding:15px;border-radius:12px;margin-top:14px;background:#d54e24;color:white;border:0;text-decoration:none}button.secondary{background:#f0f1f3;color:#303842}form{margin-top:24px}</style></head><body><main><small>FORMAÇÃO DE PROFESSORES</small><h1>${
+    escapeHtml(
+      !data?.ok
+        ? "Confira seu convite"
+        : statuses[data.status] || "Seu treinamento está marcado",
+    )
+  }</h1>${
+    !data?.ok
+      ? `<p>${escapeHtml(data?.error || "Convite indisponível.")}</p>`
+      : `<p>Olá, <strong>${
+        escapeHtml(data.trainee)
+      }</strong>.</p><div class="card"><strong>Com ${
+        escapeHtml(data.trainer)
+      }</strong><p>${
+        escapeHtml(time)
+      }<br>Horário de Brasília · 30 minutos</p></div>${
+        data.status === "PENDING"
+          ? `<p>Confirme sua participação para reservar o horário.</p><form method="post"><input type="hidden" name="token" value="${
+            escapeHtml(token)
+          }"><button name="decision" value="accept">Aceitar treinamento</button><button class="secondary" name="decision" value="decline">Não posso participar</button></form>`
+          : data.status === "CONFIRMED" && link
+          ? `<p>Sua participação está confirmada. Guarde o link da sala para o horário combinado.</p><a href="${
+            escapeHtml(link)
+          }" rel="noreferrer noopener">Abrir sala do treinamento</a>`
+          : data.status === "CONFIRMED"
+          ? "<p>Sua participação está confirmada. Combine o link da sala com o treinador.</p>"
+          : "<p>Se precisar de outro horário, fale com a gestão da escola.</p>"
+      }`
+  }</main></body></html>`;
 }

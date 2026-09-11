@@ -41,7 +41,8 @@ export const MANAGEMENT_TOOL_POLICIES: Record<
     risk: "high",
     allowedMembershipRoles: ACADEMIC_MANAGERS,
     confirmation: "same_actor",
-    description: "Agendar treinamento de 30 minutos para um teacher cadastrado; R$ 16 ao treinador após realização.",
+    description:
+      "Agendar treinamento de 30 minutos para um teacher cadastrado; R$ 16 ao treinador após realização.",
   },
   conta_pagar: {
     actionType: "conta_pagar",
@@ -245,31 +246,52 @@ export async function constantTimeTokenMatches(
  * A group message is membership evidence at the time of sending. Never accept
  * `sender` (the instance itself) or pushName as an authorization credential.
  */
-export function managementGroupParticipant(item: unknown, groupJid: string): string | null {
-  if (!groupJid.endsWith("@g.us") || !item || typeof item !== "object") return null;
+export function managementGroupParticipant(
+  item: unknown,
+  groupJid: string,
+): string | null {
+  if (!groupJid.endsWith("@g.us") || !item || typeof item !== "object") {
+    return null;
+  }
   const row = item as Record<string, any>;
   const key = row.key || {};
-  if (key.fromMe === true || key.remoteJid !== groupJid || !String(key.id || "").trim()) return null;
-  const candidates = [key.participant, key.participantAlt, row.participant, row.participantAlt];
+  if (
+    key.fromMe === true || key.remoteJid !== groupJid ||
+    !String(key.id || "").trim()
+  ) return null;
+  const candidates = [
+    key.participant,
+    key.participantAlt,
+    row.participant,
+    row.participantAlt,
+  ];
   // LID is stable even when the provider alternates participant and participantAlt.
   for (const suffix of ["@lid", "@s.whatsapp.net"]) {
     for (const candidate of candidates) {
       if (typeof candidate !== "string") continue;
       const normalized = candidate.trim().replace(/:\d+(?=@)/, "");
-      if (normalized.endsWith(suffix) && /^\d{6,20}@(lid|s\.whatsapp\.net)$/.test(normalized)) return normalized;
+      if (
+        normalized.endsWith(suffix) &&
+        /^\d{6,20}@(lid|s\.whatsapp\.net)$/.test(normalized)
+      ) return normalized;
     }
   }
   return null;
 }
 
 export function managementConfirmationMatches(input: {
-  requestedJid: unknown; confirmingJid: unknown;
-  requestedUserId: unknown; confirmingUserId: unknown;
+  requestedJid: unknown;
+  confirmingJid: unknown;
+  requestedUserId: unknown;
+  confirmingUserId: unknown;
 }): boolean {
   // New requests always carry the provider's participant identity. A profile
   // fallback is reserved for pending actions created before this release.
   if (typeof input.requestedJid === "string" && input.requestedJid) {
     return input.requestedJid === input.confirmingJid;
   }
-  return confirmationBelongsToActor(input.requestedUserId, input.confirmingUserId);
+  return confirmationBelongsToActor(
+    input.requestedUserId,
+    input.confirmingUserId,
+  );
 }
