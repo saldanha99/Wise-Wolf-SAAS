@@ -15,7 +15,7 @@ describe("installPwaFreshnessGuard", () => {
     vi.useRealTimers();
   });
 
-  it("checks for updates and announces a replacement worker only once", async () => {
+  it("checks for updates, announces a replacement worker once and repeats it when the tab returns to the foreground", async () => {
     vi.useFakeTimers();
     const workerListeners = new Map<string, EventListener>();
     const visibilityListeners = new Map<string, EventListener>();
@@ -60,6 +60,8 @@ describe("installPwaFreshnessGuard", () => {
     );
     await flushPromises();
     expect(update).toHaveBeenCalledTimes(2);
+    // Worker novo continua esperando o reload: o aviso volta ao primeiro plano.
+    expect(onUpdateReady).toHaveBeenCalledTimes(2);
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(update).toHaveBeenCalledTimes(3);
@@ -88,6 +90,36 @@ describe("installPwaFreshnessGuard", () => {
 
     workerListeners.get("controllerchange")?.(new Event("controllerchange"));
     expect(onUpdateReady).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+
+  it("does not announce on foreground when no replacement worker is pending", async () => {
+    const workerListeners = new Map<string, EventListener>();
+    const visibilityListeners = new Map<string, EventListener>();
+    const onUpdateReady = vi.fn();
+    const serviceWorker: PwaServiceWorkerLike = {
+      controller: {},
+      addEventListener: (type, listener) => workerListeners.set(type, listener),
+      removeEventListener: (type) => workerListeners.delete(type),
+      getRegistration: vi.fn().mockResolvedValue({ update: vi.fn().mockResolvedValue(undefined) }),
+    };
+    const visibilityTarget: PwaVisibilityTargetLike = {
+      visibilityState: "visible",
+      addEventListener: (type, listener) =>
+        visibilityListeners.set(type, listener),
+      removeEventListener: (type) => visibilityListeners.delete(type),
+    };
+
+    const dispose = installPwaFreshnessGuard({
+      serviceWorker,
+      visibilityTarget,
+      onUpdateReady,
+    });
+    visibilityListeners.get("visibilitychange")?.(
+      new Event("visibilitychange"),
+    );
+    await flushPromises();
+    expect(onUpdateReady).not.toHaveBeenCalled();
     dispose();
   });
 
