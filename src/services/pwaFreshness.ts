@@ -51,7 +51,9 @@ export function installPwaFreshnessGuard(
   const updateIntervalMs = runtime.updateIntervalMs ??
     DEFAULT_UPDATE_INTERVAL_MS;
   let hasController = Boolean(serviceWorker.controller);
-  let updateAnnounced = false;
+  // Fica `true` do momento em que um worker novo assume até o reload. Não há
+  // como "desatualizar" de volta: só a página recarregada sai desse estado.
+  let updatePending = false;
 
   const requestUpdate = () => {
     void serviceWorker.getRegistration()
@@ -64,12 +66,19 @@ export function installPwaFreshnessGuard(
       hasController = true;
       return;
     }
-    if (updateAnnounced) return;
-    updateAnnounced = true;
+    if (updatePending) return;
+    updatePending = true;
     onUpdateReady();
   };
+  // Ao voltar ao primeiro plano, o aviso é repetido enquanto houver worker
+  // novo esperando o reload. Antes ele saía UMA vez: quem tocava em "Depois"
+  // num PWA instalado ficava no bundle antigo por semanas — foi assim que um
+  // professor rodou, em 11/09/2026, um app de antes de 25/08 e viu a agenda
+  // vazia e "conta desativada" (ver lib/staleClient.ts).
   const handleVisibilityChange: EventListener = () => {
-    if (visibilityTarget?.visibilityState === "visible") requestUpdate();
+    if (visibilityTarget?.visibilityState !== "visible") return;
+    requestUpdate();
+    if (updatePending) onUpdateReady();
   };
 
   serviceWorker.addEventListener("controllerchange", handleControllerChange);

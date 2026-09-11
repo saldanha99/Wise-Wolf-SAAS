@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { PROFILE_SAFE_COLS } from '../constants';
 import { mapProfileToAppUser } from '../lib/auth-user';
+import { STALE_CLIENT_MESSAGE, isStaleClientError, reloadStaleClient } from '../lib/staleClient';
 import { User } from '../types';
 import { SignInCard2 } from './ui/sign-in-card-2';
 
@@ -39,6 +40,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         .select(PROFILE_SAFE_COLS)
         .eq('id', authData.user.id)
         .single();
+
+      // 42501 aqui não é conta ruim: é o bundle antigo pedindo coluna que o
+      // servidor já revogou (ver lib/staleClient.ts). A sessão fica válida e
+      // a página recarrega com a versão atual — o usuário volta logado.
+      if (isStaleClientError(profileError)) {
+        if (reloadStaleClient()) return;
+        await supabase.auth.signOut();
+        throw new Error(STALE_CLIENT_MESSAGE);
+      }
 
       // O login nunca cria perfil ou tenant. Provisionamento e matrícula usam
       // fluxos server-side autorizados; uma conta órfã deve parar aqui.
