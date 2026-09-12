@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import StudentScheduleManager from './StudentScheduleManager';
 import BillingMethodManager from './BillingMethodManager';
 import StudentManualPixManager from './StudentManualPixManager';
+import ContactQualityManager from './ContactQualityManager';
 
 interface StudentProfileFormProps {
     initialData?: any;
@@ -558,6 +559,7 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <Phone size={12} /> Telefone (WhatsApp)
                                 </label>
                                 <input
+                                    disabled={!isDirector}
                                     value={formData.phone}
                                     onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                     className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono"
@@ -570,12 +572,13 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                     <Phone size={12} /> WhatsApp do aluno (confirmação de aula)
                                 </label>
                                 <input
+                                    disabled={!isDirector}
                                     value={formData.attendance_phone}
                                     onChange={e => setFormData({ ...formData, attendance_phone: e.target.value })}
                                     className="w-full px-4 py-3 bg-brand-surface-2 dark:bg-slate-950 border border-brand-border dark:border-brand-border rounded-xl text-sm font-bold text-brand-text dark:text-slate-200 focus:ring-2 focus:ring-tenant-primary outline-none font-mono"
                                     placeholder="Só se diferente do contato acima"
                                 />
-                                <p className="text-[10px] text-brand-muted leading-snug">Quem <b>assiste</b> a aula recebe a confirmação de presença aqui. Use quando o aluno é dependente ou está sob o contrato de um responsável. Vazio = usa o telefone principal.</p>
+                                <p className="text-[10px] text-brand-muted leading-snug">Contato legado de presença. Solicite abaixo a confirmação de um contato independente de qualidade pela escola.</p>
                             </div>
 
                             <div className="space-y-2">
@@ -591,6 +594,8 @@ const StudentProfileForm: React.FC<StudentProfileFormProps> = ({ initialData, on
                                 />
                             </div>
                         </div>
+
+                        {initialData?.id && <ContactQualityManager studentId={initialData.id} studentName={formData.name} manager={isDirector || currentUserRole === 'COORDINATOR'} />}
 
                         {/* Aluno KIDS — responsável (relatório semanal aos pais) */}
                         <div className="pt-4 border-t border-brand-border">

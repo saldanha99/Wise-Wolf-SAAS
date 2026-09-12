@@ -33,13 +33,14 @@ export interface PendingLesson {
     id: string;
     bookingId?: string;
     rescheduleId?: string;
+    lessonAdvanceId?: string;
     studentId?: string;
     student: string;
     module: string;
     date: string;      // dd/mm/aaaa (exibição)
     rawDate: string;   // YYYY-MM-DD
     time: string;
-    type: 'REGULAR' | 'REPOSIÇÃO';
+    type: 'REGULAR' | 'REPOSIÇÃO' | 'ANTECIPAÇÃO';
 }
 
 export interface PendingBookingRow {
@@ -62,6 +63,15 @@ export interface PendingLogRow {
     reschedule_id?: string | null;
     student_id?: string | null;
     class_date?: string | null;
+    lesson_advance_id?: string | null;
+    start_time?: string | null;
+}
+
+export interface PendingOccurrenceRow {
+    booking_id: string;
+    class_date: string;
+    start_time: string;
+    lesson_advance_id: string | null;
 }
 
 const sameId = (a: unknown, b: unknown): boolean =>
@@ -80,6 +90,7 @@ export const computePendingLessons = (input: {
     bookings: PendingBookingRow[];
     reschedules: PendingRescheduleRow[];
     logs: PendingLogRow[];
+    occurrences?: PendingOccurrenceRow[];
     today?: Date;
 }): PendingLesson[] => {
     const today = input.today || new Date();
@@ -90,13 +101,14 @@ export const computePendingLessons = (input: {
 
     for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
         const dayName = DAY_NAMES[cursor.getDay()];
-        if (dayName === 'Domingo') continue;
+        if (dayName === 'Domingo' && !input.occurrences) continue;
 
         const rawDate = localYMD(cursor);
         const label = cursor.toLocaleDateString('pt-BR');
 
         const dayIndex = cursor.getDay() - 1; // 0 = segunda ... 5 = sábado
         for (const b of input.bookings) {
+            if (input.occurrences) continue;
             if (normalizeWeekdayToIndex(b.day_of_week) !== dayIndex) continue;
             if (b.start_date && rawDate < b.start_date) continue; // aluno ainda não tinha começado
             expected.push({
@@ -109,6 +121,20 @@ export const computePendingLessons = (input: {
                 rawDate,
                 time: b.time_slot || '',
                 type: 'REGULAR',
+            });
+        }
+
+        for (const occurrence of input.occurrences || []) {
+            if (occurrence.class_date !== rawDate) continue;
+            const booking = input.bookings.find(b => b.id === occurrence.booking_id);
+            if (!booking?.student) continue;
+            expected.push({
+                id: occurrence.lesson_advance_id ? `advance-${occurrence.lesson_advance_id}` : `book-${booking.id}-${rawDate}`,
+                bookingId: occurrence.lesson_advance_id ? undefined : booking.id,
+                lessonAdvanceId: occurrence.lesson_advance_id || undefined,
+                studentId: booking.student.id, student: booking.student.full_name || 'Aluno',
+                module: booking.student.module || 'N/A', date: label, rawDate,
+                time: occurrence.start_time, type: occurrence.lesson_advance_id ? 'ANTECIPAÇÃO' : 'REGULAR',
             });
         }
 
@@ -147,6 +173,7 @@ export const computePendingLessons = (input: {
         if (exp.type === 'REPOSIÇÃO' && sameId(log.reschedule_id, exp.rescheduleId)) {
             return true; // reposição é lançada uma vez só, a data pode divergir
         }
+        if (exp.type === 'ANTECIPAÇÃO' && sameId(log.lesson_advance_id, exp.lessonAdvanceId)) return true;
         return false;
     };
 
@@ -164,7 +191,8 @@ export const computePendingLessons = (input: {
     // nulo e escondia a pendência de verdade.
     return semOrigem.filter(exp => {
         const log = input.logs.find(l =>
-            !consumidos.has(l) && sameId(l.student_id, exp.studentId) && l.class_date === exp.rawDate,
+            !consumidos.has(l) && sameId(l.student_id, exp.studentId) && l.class_date === exp.rawDate
+              && (!l.start_time || l.start_time.substring(0, 5) === exp.time.substring(0, 5)),
         );
         if (log) { consumidos.add(log); return false; }
         return true;
@@ -182,7 +210,7 @@ export const fetchPendingLessons = async (params: {
     const today = params.today || new Date();
     const { startYMD, endYMD } = pendingWindow(today);
 
-    const [bookingsRes, reschedulesRes, logsRes] = await Promise.all([
+    const [bookingsRes, reschedulesRes, logsRes, occurrencesRes] = await Promise.all([
         supabase
             .from('bookings')
             .select('id, time_slot, start_date, day_of_week, student:student_id(id, full_name, module)')
@@ -199,17 +227,22 @@ export const fetchPendingLessons = async (params: {
             .lte('date', endYMD),
         supabase
             .from('class_logs')
-            .select('booking_id, reschedule_id, student_id, class_date')
+            .select('booking_id, reschedule_id, student_id, class_date, start_time, lesson_advance_id')
             .eq('teacher_id', params.teacherId)
             .eq('tenant_id', params.tenantId)
             .gte('class_date', startYMD)
             .lte('class_date', endYMD),
+        supabase.rpc('list_teacher_lesson_booking_occurrences', { p_from: startYMD, p_to: endYMD }),
     ]);
+
+    const failure = [bookingsRes, reschedulesRes, logsRes, occurrencesRes].find(result => result.error);
+    if (failure?.error) throw failure.error;
 
     return computePendingLessons({
         bookings: (bookingsRes.data as unknown as PendingBookingRow[]) || [],
         reschedules: (reschedulesRes.data as unknown as PendingRescheduleRow[]) || [],
         logs: (logsRes.data as unknown as PendingLogRow[]) || [],
+        occurrences: (occurrencesRes.data as PendingOccurrenceRow[]) || [],
         today,
     });
 };

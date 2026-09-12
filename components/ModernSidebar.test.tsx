@@ -62,6 +62,7 @@ describe('ModernSidebar do professor', () => {
             'dashboard',
             'schedule',
             'lessons',
+            'lesson-sessions',
             'pending',
             'reschedules',
             'students',

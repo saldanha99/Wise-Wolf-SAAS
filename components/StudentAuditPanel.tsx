@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, CheckCircle, XCircle, UserX, Clock, Loader2, CalendarClock, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import LessonQualityFeedback from './LessonQualityFeedback';
 
 // Área autenticada do aluno. A projeção e a gravação passam por RPCs que
 // resolvem a identidade no servidor; nenhum token público de WhatsApp chega ao navegador.
@@ -165,6 +166,7 @@ const StudentAuditPanel: React.FC = () => {
               </div>
               <p className="text-xs font-bold text-brand-text mb-2">Qual situação descreve melhor o que aconteceu?</p>
               {responseButtons(audit)}
+              <LessonQualityFeedback confirmationId={audit.id} />
             </div>
           ))}
         </div>
@@ -197,6 +199,7 @@ const StudentAuditPanel: React.FC = () => {
                       </button>
                     )}
                   </div>
+                  {audit.can_correct && <div className="w-full"><LessonQualityFeedback confirmationId={audit.id} /></div>}
                 </div>
               );
             })}

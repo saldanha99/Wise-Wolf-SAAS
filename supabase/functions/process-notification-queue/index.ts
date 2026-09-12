@@ -1139,7 +1139,27 @@ serve(async (req) => {
         message: message_body,
       };
       try {
-        if (notificationKind.startsWith("TEACHER_TRAINING_")) {
+        if (notificationKind === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+          const { data: snapshot, error: snapshotError } = await supabaseClient
+            .rpc(
+              "get_schedule_change_delivery_snapshot",
+              { p_notification_id: item.id },
+            );
+          if (snapshotError) {
+            unavailable("schedule_acceptance_revalidation_unavailable");
+          }
+          if (!snapshot || snapshot.ok !== true) {
+            invalid(
+              String(snapshot?.reason || "schedule_acceptance_no_longer_valid"),
+            );
+          }
+          const destination = normalizeQueueDestination(snapshot.destination);
+          const message = String(snapshot.message || "");
+          if (!destination || !message || message.length > 4096) {
+            invalid("invalid_schedule_acceptance_payload");
+          }
+          prepared = { teacherId: null, destination, message };
+        } else if (notificationKind.startsWith("TEACHER_TRAINING_")) {
           if (
             item.source_type !== "teacher_training" || !item.source_id ||
             !tenant_id

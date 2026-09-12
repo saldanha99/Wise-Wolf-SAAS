@@ -3,6 +3,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Calendar, Clock, MapPin, User, Video, RefreshCw } from 'lucide-react';
 import { User as UserType } from '../types';
+import { localYMD } from '../lib/dateUtils';
+import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
 
 interface StudentScheduleProps {
     user: UserType;
@@ -14,6 +16,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
     const [regularLessons, setRegularLessons] = useState<any[]>([]);
     const [reschedules, setReschedules] = useState<any[]>([]);
     const [profile, setProfile] = useState<any>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         if (user && tenantId) {
@@ -23,23 +26,22 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
 
     const fetchSchedule = async () => {
         setLoading(true);
+        setError(null);
         try {
             // 1. Fetch Profile for meeting link
             const { data: prof } = await supabase.from('profiles').select('meeting_link').eq('id', user.id).single();
             setProfile(prof);
 
             // 2. Fetch Regular Bookings
-            const { data: bookings } = await supabase
-                .from('bookings')
-                .select(`
-          id, time_slot, day_of_week, module,
-          teacher:teacher_id(full_name, avatar_url)
-                `)
-                .eq('student_id', user.id)
-                // A grade do aluno deve refletir apenas vínculos vigentes. Sem este
-                // filtro, aulas canceladas permaneciam visíveis como se ainda fossem
-                // acontecer.
-                .in('status', ['SCHEDULED', 'scheduled']);
+            const today = new Date();
+            const end = new Date(today);
+            end.setDate(end.getDate() + 14);
+            const { data: bookings, error: occurrenceError } = await supabase.rpc('list_student_scheduled_lesson_occurrences', {
+                p_from: localYMD(today), p_to: localYMD(end),
+            });
+            if (occurrenceError) throw occurrenceError;
+            const { data: rooms, error: roomError } = await supabase.rpc('get_my_lesson_rooms', { p_from: localYMD(today), p_to: localYMD(end) });
+            if (roomError) throw roomError;
 
             // 3. Fetch Pending Reschedules
             // used_at nulo = reposição ainda não dada. A linha consumida SOBREVIVE ao
@@ -58,14 +60,14 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
 
             // PROCESS REGULAR: Unique slots based on Day + Time
             const processedRegular = (bookings || []).map(b => ({
-                id: b.id,
-                title: 'Aula Fixa',
-                day: b.day_of_week,
-                time: (b as any).time_slot,
-                teacher: (b.teacher as any)?.full_name,
-                teacherAvatar: (b.teacher as any)?.avatar_url,
-                module: b.module,
-                dayIndex: DAYS_ORDER.indexOf(b.day_of_week)
+                id: `${b.booking_id}|${b.class_date}`,
+                title: b.lesson_advance_id ? 'Aula antecipada' : 'Aula agendada',
+                day: new Date(`${b.class_date}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+                time: b.start_time,
+                teacher: b.teacher_name,
+                teacherAvatar: b.teacher_avatar,
+                meetLink: lessonMeetingLink((rooms || []) as LessonRoom[], 'booking', b.booking_id, b.class_date, prof?.meeting_link),
+                dayIndex: b.class_date,
             }));
 
             // Deduplicate (Simple approach: key = day+time)
@@ -74,7 +76,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 index === self.findIndex((t) => (
                     t.day === lesson.day && t.time === lesson.time
                 ))
-            ).sort((a, b) => a.dayIndex - b.dayIndex);
+            ).sort((a, b) => a.dayIndex.localeCompare(b.dayIndex) || a.time.localeCompare(b.time));
 
             // PROCESS RESCHEDULES
             const processedReschedules = (rescheds || []).map(r => ({
@@ -85,6 +87,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                 time: r.time,
                 teacher: (r.teacher as any)?.full_name,
                 teacherAvatar: (r.teacher as any)?.avatar_url,
+                meetLink: lessonMeetingLink((rooms || []) as LessonRoom[], 'reschedule', r.id, r.date, prof?.meeting_link),
             })).sort((a, b) => {
                 if (a.dateRaw === 'Pendente') return 1;
                 if (b.dateRaw === 'Pendente') return -1;
@@ -96,6 +99,8 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
 
         } catch (err) {
             console.error('Schedule Fetch Error:', err);
+            setRegularLessons([]);
+            setError('Não foi possível confirmar sua agenda. Atualize a página para tentar novamente.');
         } finally {
             setLoading(false);
         }
@@ -112,8 +117,9 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
         <div className="space-y-12 animate-in fade-in duration-700 pb-20">
             <header>
                 <h2 className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-brand-text tracking-tight">Minha Agenda</h2>
-                <p className="text-brand-muted mt-1 font-medium">Confira sua grade fixa semanal e aulas extras.</p>
+                <p className="text-brand-muted mt-1 font-medium">Confira os próximos 14 dias, incluindo alterações aprovadas e antecipações.</p>
             </header>
+            {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
 
             {/* SECTION 1: Fixed Schedule */}
             <section>
@@ -121,7 +127,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                     <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg border border-blue-500/20">
                         <Calendar size={20} />
                     </div>
-                    <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Grade Fixa Semanal</h3>
+                    <h3 className="text-xl font-[family-name:var(--font-display)] font-extrabold text-brand-text">Próximas aulas</h3>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -139,6 +145,7 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                         <span className="text-xs font-bold">{lesson.time}</span>
                                     </div>
                                 </div>
+                                <p className="text-xs text-brand-muted">{lesson.title}</p>
 
                                 <div className="flex items-center gap-3 mt-2">
                                     <div className="w-10 h-10 rounded-xl overflow-hidden bg-brand-surface-2 shrink-0 border border-brand-border shadow-sm">
@@ -150,9 +157,9 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     </div>
                                 </div>
 
-                                {profile?.meeting_link && (
+                                {lesson.meetLink && (
                                     <a
-                                        href={profile.meeting_link}
+                                        href={lesson.meetLink}
                                         target="_blank"
                                         className="mt-2 w-full py-3 bg-brand-surface-2 text-brand-text hover:bg-brand-accent hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all border border-brand-border hover:border-brand-accent shadow-sm"
                                     >
@@ -205,9 +212,9 @@ const StudentSchedule: React.FC<StudentScheduleProps> = ({ user, tenantId }) => 
                                     </p>
                                 </div>
 
-                                {profile?.meeting_link && (
+                                {lesson.meetLink && (
                                     <a
-                                        href={profile.meeting_link}
+                                        href={lesson.meetLink}
                                         target="_blank"
                                         className="absolute inset-0 z-10"
                                         title="Acessar Aula"

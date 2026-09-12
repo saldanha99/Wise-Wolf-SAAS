@@ -1,6 +1,7 @@
 export const PLATFORM_ATTENDANCE_PORTAL =
   "https://system.wisewolflanguage.com.br";
-export const ATTENDANCE_CLAIM_LIMIT = 5;
+export const ATTENDANCE_CLAIM_LIMIT = 15;
+export const ATTENDANCE_DELIVERY_CONCURRENCY = 3;
 
 const BRAZIL_TIME_ZONE = "America/Sao_Paulo";
 

@@ -5,6 +5,19 @@
 
 begin;
 
+-- These legacy financial fixtures now supply explicit pedagogical commands.
+-- Assertions continue to exercise the public API and its real authorization.
+create or replace function pg_temp.log_teacher_classes_fixture(entries jsonb)
+returns jsonb language sql as $$
+ select public.log_teacher_classes((select jsonb_agg(jsonb_build_object(
+   'presence','COMPLETED','lesson_objective','Objetivo pedagógico de fixture',
+   'content_covered','Conteúdo praticado na fixture','student_difficulties','Nenhuma observada',
+   'homework_assigned','Sem tarefa','recommended_next_step','Retomar prática na próxima aula',
+   'late_logging_reason','Regularização de fixture histórica') || value)
+   from jsonb_array_elements(entries)))
+$$;
+grant execute on function pg_temp.log_teacher_classes_fixture(jsonb) to public;
+
 create or replace function pg_temp.assert_true(value boolean, message text)
 returns void
 language plpgsql
@@ -397,7 +410,7 @@ select pg_temp.assert_true(
   'lancador nao separou reposicao paga por prova autoritativa'
 )
 from (
-  select public.log_teacher_classes(
+  select pg_temp.log_teacher_classes_fixture(
     pg_catalog.jsonb_build_array(
       pg_catalog.jsonb_build_object(
         'ref', 'student-fault',
@@ -481,7 +494,7 @@ select pg_temp.assert_true(
   'lancador consumiu reposicao pendente/inativa sem slot valido'
 )
 from (
-  select public.log_teacher_classes(
+  select pg_temp.log_teacher_classes_fixture(
     pg_catalog.jsonb_build_array(
       pg_catalog.jsonb_build_object(
         'reschedule_id', 'a4000000-0000-4000-8000-000000000004',

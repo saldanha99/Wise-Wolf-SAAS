@@ -1,24 +1,42 @@
+\set ON_ERROR_STOP on
+begin;
+
+insert into public.tenants(id,name,saas_status)
+values ('directed-training-fixture-school','Directed training transaction fixture','active');
+insert into public.dre_report_settings(tenant_id,destino,allow_group_member_actions,is_active)
+values ('directed-training-fixture-school','120363000000000081@g.us',true,true);
+-- These legacy financial fixtures now supply explicit pedagogical commands.
+-- Assertions continue to exercise the public API and its real authorization.
+create or replace function pg_temp.log_teacher_classes_fixture(entries jsonb)
+returns jsonb language sql as $$
+ select public.log_teacher_classes((select jsonb_agg(jsonb_build_object(
+   'presence','COMPLETED','lesson_objective','Objetivo pedagógico de fixture',
+   'content_covered','Conteúdo praticado na fixture','student_difficulties','Nenhuma observada',
+   'homework_assigned','Sem tarefa','recommended_next_step','Retomar prática na próxima aula',
+   'late_logging_reason','Regularização de fixture histórica') || value)
+   from jsonb_array_elements(entries)))
+$$;
+grant execute on function pg_temp.log_teacher_classes_fixture(jsonb) to public;
 -- Transaction-only integration fixture: never commit, no external invitations.
 set local request.jwt.claims = '{"role":"service_role"}';
 insert into auth.users(id,email,raw_user_meta_data) values
- ('00000000-0000-4000-8000-000000000081','training-trainer-20260909@example.invalid','{"full_name":"Training fixture trainer"}'),
- ('00000000-0000-4000-8000-000000000082','training-trainee-20260909@example.invalid','{"full_name":"Training fixture trainee"}');
-update public.profiles set role='TEACHER',tenant_id='school-wise-wolf',is_test_account=true,test_fixture_key='directed-training-20260909-'||id::text,phone='5511999999981',meeting_link='https://example.invalid/training',is_trainer=true where id in ('00000000-0000-4000-8000-000000000081','00000000-0000-4000-8000-000000000082');
+ ('00000000-0000-4000-8000-000000000081','training-trainer-20260909@example.invalid','{"full_name":"Training fixture trainer","test_fixture":true}'),
+ ('00000000-0000-4000-8000-000000000082','training-trainee-20260909@example.invalid','{"full_name":"Training fixture trainee","test_fixture":true}');
+update public.profiles set role='TEACHER',tenant_id='directed-training-fixture-school',is_test_account=true,test_fixture_key='directed-training-20260909-'||id::text,phone='5511999999981',meeting_link='https://example.invalid/training',is_trainer=true where id in ('00000000-0000-4000-8000-000000000081','00000000-0000-4000-8000-000000000082');
 do $$
 declare r jsonb; r2 jsonb; s public.teacher_training_sessions%rowtype; v_start timestamptz:=((now() at time zone 'America/Sao_Paulo')::date+2)::text||'T16:30:00-03:00'; v_token text:=repeat('a',64);
 begin
- update public.dre_report_settings set destino='120363000000000081@g.us',allow_group_member_actions=true,is_active=true where tenant_id='school-wise-wolf';
  insert into public.gestao_acao_pendente(group_jid,tenant_id,acao,resumo,request_id,tool_name,status,requested_by_jid,confirmed_by_jid,confirmed_at,expires_at)
- values('120363000000000081@g.us','school-wise-wolf',jsonb_build_object('tipo','agendar_treinamento','trainer_id','00000000-0000-4000-8000-000000000081','trainee_id','00000000-0000-4000-8000-000000000082','starts_at',to_char(v_start at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),'Training fixture','fixture-training-01','academics.schedule_teacher_training','executing','123456789012345@lid','123456789012345@lid',now(),now()+interval '5 minutes');
- r:=public.gestao_schedule_teacher_training('school-wise-wolf',null,'fixture-training-01','00000000-0000-4000-8000-000000000081','00000000-0000-4000-8000-000000000082',v_start);
+ values('120363000000000081@g.us','directed-training-fixture-school',jsonb_build_object('tipo','agendar_treinamento','trainer_id','00000000-0000-4000-8000-000000000081','trainee_id','00000000-0000-4000-8000-000000000082','starts_at',to_char(v_start at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),'Training fixture','fixture-training-01','academics.schedule_teacher_training','executing','123456789012345@lid','123456789012345@lid',now(),now()+interval '5 minutes');
+ r:=public.gestao_schedule_teacher_training('directed-training-fixture-school',null,'fixture-training-01','00000000-0000-4000-8000-000000000081','00000000-0000-4000-8000-000000000082',v_start);
  assert r->>'ok'='true';
  select * into s from public.teacher_training_sessions where id=(r->>'id')::uuid;
  assert s.status='PENDING' and s.appointment_id is null and s.test_fixture;
  assert not exists(select 1 from public.notification_queue where source_id=s.id), 'Test identities must never receive notifications';
- r2:=private.schedule_teacher_training('school-wise-wolf',null,'fixture-training-01',s.trainer_id,s.trainee_id,v_start);
+ r2:=private.schedule_teacher_training('directed-training-fixture-school',null,'fixture-training-01',s.trainer_id,s.trainee_id,v_start);
  assert r2->>'id'=s.id::text and r2->>'idempotent'='true';
  begin
-   perform private.schedule_teacher_training('school-wise-wolf',null,'fixture-training-02',s.trainer_id,s.trainee_id,v_start);
+   perform private.schedule_teacher_training('directed-training-fixture-school',null,'fixture-training-02',s.trainer_id,s.trainee_id,v_start);
    raise exception 'Conflicting training was allowed';
  exception when others then assert sqlerrm='Um dos teachers já possui compromisso ou ausência nesse horário.',sqlerrm; end;
  update private.teacher_training_invite_tokens set token_hash=encode(extensions.digest(v_token,'sha256'),'hex') where session_id=s.id;
@@ -45,17 +63,17 @@ begin
  update public.teacher_training_sessions set starts_at=v_start,ends_at=v_start+interval '30 minutes' where id=s.id;
  update public.appointments set start_time=v_start where id=s.appointment_id;
  perform set_config('request.jwt.claims',jsonb_build_object('role','authenticated','sub',s.trainer_id)::text,true);
- r:=public.log_teacher_classes(jsonb_build_array(jsonb_build_object('appointment_id',s.appointment_id::text,'class_date',(v_start at time zone 'America/Sao_Paulo')::date,'presence','COMPLETED','content_covered','Training fixture completed')));
+ r:=pg_temp.log_teacher_classes_fixture(jsonb_build_array(jsonb_build_object('appointment_id',s.appointment_id::text,'class_date',(v_start at time zone 'America/Sao_Paulo')::date,'presence','COMPLETED','content_covered','Training fixture completed')));
  assert (select status from public.teacher_training_sessions where id=s.id)='COMPLETED',r::text;
  assert (select rate_override from public.class_logs where appointment_id=s.appointment_id::text)=16;
- r:=public.log_teacher_classes(jsonb_build_array(jsonb_build_object('appointment_id',s.appointment_id::text,'class_date',(v_start at time zone 'America/Sao_Paulo')::date,'presence','COMPLETED','content_covered','Training fixture duplicate')));
+ r:=pg_temp.log_teacher_classes_fixture(jsonb_build_array(jsonb_build_object('appointment_id',s.appointment_id::text,'class_date',(v_start at time zone 'America/Sao_Paulo')::date,'presence','COMPLETED','content_covered','Training fixture duplicate')));
  assert (select count(*) from public.class_logs where appointment_id=s.appointment_id::text)=1;
  assert (select rate_efetivo from public.v_payable_class_logs where appointment_id=s.appointment_id::text)=16;
  -- The invitation must remain usable when the trainer has not set a room yet.
  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
  update public.profiles set meeting_link=null where id=s.trainer_id;
  v_start:=((now() at time zone 'America/Sao_Paulo')::date+3)::text||'T16:30:00-03:00';
- r:=private.schedule_teacher_training('school-wise-wolf',null,'fixture-training-no-room',s.trainer_id,s.trainee_id,v_start);
+ r:=private.schedule_teacher_training('directed-training-fixture-school',null,'fixture-training-no-room',s.trainer_id,s.trainee_id,v_start);
  select * into s from public.teacher_training_sessions where id=(r->>'id')::uuid;
  assert s.meeting_link='';
  update private.teacher_training_invite_tokens set token_hash=encode(extensions.digest(repeat('b',64),'sha256'),'hex') where session_id=s.id;
@@ -64,3 +82,5 @@ begin
 
 end;
 $$;
+
+rollback;

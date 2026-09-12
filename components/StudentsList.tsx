@@ -529,9 +529,6 @@ const StudentsList: React.FC<StudentsListProps> = ({ tenantId, user, teachers = 
           p_student_id: editingStudent.id,
           p_data: {
             full_name: formData.name,
-            phone: formData.phone,
-            attendance_phone: formData.attendance_phone || null,
-            meeting_link: formData.meeting_link,
             occupation: formData.occupation,
             interests: formData.interests,
             private_notes: formData.private_notes,

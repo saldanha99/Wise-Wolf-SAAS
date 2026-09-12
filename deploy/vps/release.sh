@@ -438,8 +438,15 @@ done
 npm run typecheck
 npm test -- --maxWorkers=1 --no-file-parallelism
 node --test scripts/generate-hub-static-html.test.mjs
+node --test scripts/operational-tracking-privacy.test.mjs
 npm run wolfie:assets:verify
 npx --yes deno@2.9.5 fmt --check \
+  supabase/functions/_shared/lesson-quality-reply.ts \
+  supabase/functions/_shared/lesson-quality-reply.test.ts \
+  supabase/functions/google-meet/core.ts \
+  supabase/functions/google-meet/core.test.ts \
+  supabase/functions/google-meet/provider.ts \
+  supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/automation-auth.ts \
   supabase/functions/_shared/automation-auth.test.ts \
   supabase/functions/_shared/invite-registration.ts \
@@ -646,6 +653,8 @@ npx --yes deno@2.9.5 fmt --check \
   supabase/functions/send-class-notification/core.test.ts \
   supabase/functions/send-class-notification/index.ts
 npx --yes deno@2.9.5 test --allow-env=RESEND_API_KEY --frozen \
+  supabase/functions/_shared/lesson-quality-reply.test.ts \
+  supabase/functions/google-meet/core.test.ts \
   supabase/functions/_shared/asaas-creation-guard.test.ts \
   supabase/functions/_shared/asaas-mutation-guard.test.ts \
   supabase/functions/_shared/asaas-subscription-mutation.test.ts \
@@ -765,6 +774,7 @@ npx --yes deno@2.9.5 test --allow-read --frozen \
   supabase/functions/school-admin/offboarding-provider-proof.test.ts
 node scripts/provision-wolfie-rag.mjs --validate-only
 npx --yes deno@2.9.5 check --frozen \
+  supabase/functions/google-meet/index.ts \
   supabase/functions/_shared/asaas-creation-guard.ts \
   supabase/functions/_shared/asaas-capability-fence.ts \
   supabase/functions/_shared/asaas-capability-fence.test.ts \
@@ -1214,6 +1224,10 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260908235000_teacher_payroll_reconciliation.sql"
   "supabase/migrations/20260909185734_turbo_seventh_student_effective_september9.sql"
   "supabase/migrations/20260912192839_lesson_advances.sql"
+  "supabase/migrations/20260912203132_schedule_contact_quality.sql"
+  "supabase/migrations/20260912203137_lesson_advance_integrity_and_explicit_logging.sql"
+  "supabase/migrations/20260912203213_lesson_quality_sessions_and_feedback.sql"
+  "supabase/migrations/20260912203245_google_meet_pedagogical_documentation.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1317,6 +1331,10 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/interview_notification_delivery.sql"
   "supabase/tests/atomic_teacher_availability_replacement.sql"
   "supabase/tests/lesson_advances.sql"
+  "supabase/tests/schedule_contact_quality.sql"
+  "supabase/tests/lesson_advance_integrity_and_explicit_logging.sql"
+  "supabase/tests/lesson_quality_sessions_and_feedback.sql"
+  "supabase/tests/google_meet_pedagogical_documentation.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"
@@ -1438,6 +1456,7 @@ HARDENED_FUNCTIONS=(
   school-admin
   teacher-training-invite
   send-attendance-confirmations
+  google-meet
   send-class-notification
   send-rejection-email
   send-welcome-contract

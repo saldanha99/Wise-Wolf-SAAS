@@ -93,6 +93,13 @@ export const ADMIN_NAV: NavGroup[] = [
   },
 
   // ── Aulas ─────────────────────────────────────────────────────────────────
+  { id: 'lesson-quality', label: 'Qualidade das aulas', icon: ShieldAlert, section: 'Aulas', tabs: [
+    { id: 'lesson-quality', label: 'Acompanhamento' },
+    { id: 'schedule-requests', label: 'Aceites de horário' },
+    { id: 'quality-contacts', label: 'Contatos verificados' },
+    { id: 'lesson-sessions', label: 'Salas e continuidade' },
+    { id: 'google-meet', label: 'Conta central Google' },
+  ] },
   { id: 'attendance-disputes', label: 'Verificar Presença', icon: ShieldAlert, section: 'Aulas', badgeKey: 'presenca', tabs: [] },
   {
     id: 'trials', label: 'Experimentais e Treinos', icon: Zap, section: 'Aulas', badgeKey: 'trials',

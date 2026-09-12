@@ -5,6 +5,7 @@ import { whatsappService } from '../services/whatsappService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { FUNCTIONS_URL, SUPABASE_ANON_KEY, supabase } from '../lib/supabase';
 import { localMonth, localYMD } from '../lib/dateUtils';
+import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
 import { User as UserType } from '../types';
 import FinancialClosingModal from './FinancialClosingModal';
@@ -229,7 +230,13 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
 
       // 2. Classes Today
       const todayIndex = (now.getDay() + 6) % 7;
-      const todayBookings = (bookings || []).filter((b: any) => normalizeWeekdayToIndex((b as any).day_of_week) === todayIndex);
+      const { data: todayOccurrences, error: occurrencesError } = await supabase.rpc('list_teacher_lesson_booking_occurrences', {
+        p_from: todayISO, p_to: todayISO,
+      });
+      if (occurrencesError) throw occurrencesError;
+      const todayBookings = todayOccurrences || [];
+      const { data: lessonRooms, error: roomsError } = await supabase.rpc('get_my_lesson_rooms', { p_from: todayISO, p_to: todayISO });
+      if (roomsError) throw roomsError;
 
       const { data: todayRepos } = await supabase
         .from('reschedules')
@@ -290,7 +297,10 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
         .eq('status', 'SCHEDULED')
         .or(`start_date.lte.${todayISO},start_date.is.null`);
 
-      const todayFixed = (bComplete || []).filter((b: any) => normalizeWeekdayToIndex((b as any).day_of_week) === todayIndex);
+      const todayFixed = (todayOccurrences || []).flatMap((occurrence: any) => {
+        const booking = (bComplete || []).find((row: any) => row.id === occurrence.booking_id);
+        return booking ? [{ ...booking, time_slot: occurrence.start_time, lesson_advance_id: occurrence.lesson_advance_id }] : [];
+      });
 
       // 3. Trials Today (from appointments table)
       const { data: trials } = await supabase
@@ -313,9 +323,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: b.time_slot,
           module: (b.student as any)?.module || 'N/A',
           img: (b.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(b.student as any)?.full_name}`,
-          meet: (b.student as any)?.meeting_link,
+          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'booking', b.id, todayISO, (b.student as any)?.meeting_link),
           phone: (b.student as any)?.phone,
-          type: 'REGULAR',
+          type: b.lesson_advance_id ? 'ANTECIPAÇÃO' : 'REGULAR',
           source_id: b.id,
           source_type: 'BOOKING',
           class_date: todayISO,
@@ -328,7 +338,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: r.time,
           module: (r.student as any)?.module || 'N/A',
           img: (r.student as any)?.avatar_url || `https://ui-avatars.com/api/?name=${(r.student as any)?.full_name || 'R'}`,
-          meet: (r.student as any)?.meeting_link,
+          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'reschedule', r.id, todayISO, (r.student as any)?.meeting_link),
           phone: (r.student as any)?.phone,
           type: 'REPOSIÇÃO',
           source_id: r.id,
@@ -344,7 +354,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ user, tenantId, onN
           time: local?.time || '',
           module: 'EXPERIMENTAL',
           img: `https://ui-avatars.com/api/?name=${t.student_name || 'E'}`,
-          meet: user.meeting_link, // Usually teacher's own link
+          meet: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, todayISO, user.meeting_link),
           phone: t.student_phone,
           type: 'TRIAL',
           source_id: t.id,

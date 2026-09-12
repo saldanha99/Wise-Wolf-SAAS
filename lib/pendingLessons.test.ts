@@ -27,6 +27,12 @@ const bookingSegunda1700: PendingBookingRow = {
 };
 
 describe('computePendingLessons — o badge tem de bater com a tela', () => {
+    it('uses authorized occurrences, including advances, without rebuilding the consumed origin', () => {
+        const result = computePendingLessons({ bookings: [bookingSegunda], reschedules: [], logs: [], today: HOJE,
+            occurrences: [{ booking_id: 'book-seg', class_date: '2026-08-12', start_time: '12:00', lesson_advance_id: 'advance-1' }] });
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({ type: 'ANTECIPAÇÃO', lessonAdvanceId: 'advance-1', rawDate: '2026-08-12', time: '12:00' });
+    });
     it('aula de 1h partida: metade lançada deixa a OUTRA metade pendente', () => {
         // A rede por aluno+data usava `some()`, que não consome o lançamento: um
         // único log escondia os dois agendamentos e o professor perdia 30 min.

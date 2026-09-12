@@ -133,8 +133,13 @@ const LessonAdvancesManager: React.FC<Props> = ({ tenantId }) => {
       })),
     });
     if (createError) {
-      setError(createError.message === 'lesson_advance_origin_already_used'
-        ? 'Uma das aulas escolhidas já foi antecipada.' : createError.message);
+      const messages: Record<string, string> = {
+        lesson_advance_origin_already_used: 'Uma das aulas escolhidas já foi antecipada.',
+        lesson_advance_actual_date_has_regular_occurrence: 'Esse agendamento já possui uma aula regular na data escolhida. Escolha outra data para antecipar esta ocorrência.',
+        lesson_advance_actual_slot_conflict: 'Há outra antecipação nesse horário ou para o mesmo agendamento nessa data. Escolha outro horário/data.',
+        lesson_advance_occurrence_already_logged: 'Uma dessas ocorrências já possui aula lançada. Peça à coordenação para conferir o histórico.',
+      };
+      setError(messages[createError.message] || createError.message);
     } else {
       setCandidates(current => current.map(row => ({ ...row, selected: false, advanceDate: '' })));
       await loadBase();

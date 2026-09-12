@@ -9,6 +9,7 @@ import {
 } from "../_shared/tenant-communication.ts";
 import {
   ATTENDANCE_CLAIM_LIMIT,
+  ATTENDANCE_DELIVERY_CONCURRENCY,
   type AttendanceDeliveryClaim,
   attendanceDeliveryHttpStatus,
   type AttendanceParticipantProfile,
@@ -94,7 +95,7 @@ async function resolveCentralContext(
 async function loadCurrentDeliveryRecipient(
   admin: AdminClient,
   row: AttendanceDeliveryClaim,
-): Promise<{ allowed: boolean; phone: string | null }> {
+): Promise<{ allowed: boolean; phone: string | null; verified?: boolean }> {
   if (!row.student_id || !row.teacher_id || !row.tenant_id) {
     return { allowed: false, phone: null };
   }
@@ -106,10 +107,26 @@ async function loadCurrentDeliveryRecipient(
     .eq("tenant_id", row.tenant_id)
     .in("id", [row.student_id, row.teacher_id]);
   if (error) throw new Error("attendance_participant_revalidation_failed");
-  return resolveAttendanceDeliveryRecipient(
+  const fallback = resolveAttendanceDeliveryRecipient(
     row,
     (data || []) as AttendanceParticipantProfile[],
   );
+  if (!fallback.allowed) return fallback;
+  const { data: contacts, error: contactError } = await admin.from(
+    "student_quality_contacts",
+  )
+    .select("phone,verified_at").eq("tenant_id", row.tenant_id).eq(
+      "student_id",
+      row.student_id,
+    )
+    .eq("active", true).not("verified_at", "is", null).order("verified_at", {
+      ascending: false,
+    }).limit(1);
+  if (contactError) throw new Error("quality_contact_revalidation_failed");
+  const contact = contacts?.[0];
+  return contact
+    ? { allowed: true, phone: contact.phone, verified: true }
+    : { ...fallback, verified: false };
 }
 
 async function markAcceptedStateAmbiguous(
@@ -149,9 +166,8 @@ serve(async (req) => {
     const { data, error } = await admin.rpc(
       "claim_attendance_confirmation_deliveries",
       // Mantém a execução bem abaixo do lease mesmo quando a Evolution demora.
-      // A rota detalhada tem até 10s para JID + 15s para envio: 5 linhas
-      // sequenciais consomem no pior caso ~125s de um lease de 5 minutos.
-      // O cron roda a cada 15 minutos e busca o próximo lote na rodada seguinte.
+      // Até 15 entregas em três workers: 5 chamadas de até 25s por worker
+      // (~125s), abaixo do timeout HTTP 180s e lease de 5 minutos.
       { p_limit: ATTENDANCE_CLAIM_LIMIT },
     );
     if (error) throw error;
@@ -180,144 +196,165 @@ serve(async (req) => {
     >();
     const now = new Date();
 
-    for (const row of deliveries) {
-      try {
-        // Fixtures e identidades sem elegibilidade atual nunca atravessam a
-        // fronteira externa, mesmo se foram marcadas depois do claim no banco.
-        const recipient = await loadCurrentDeliveryRecipient(admin, row);
-        if (!recipient.allowed) {
+    let nextDelivery = 0;
+    const worker = async () => {
+      while (nextDelivery < deliveries.length) {
+        const row = deliveries[nextDelivery++];
+        try {
+          // Fixtures e identidades sem elegibilidade atual nunca atravessam a
+          // fronteira externa, mesmo se foram marcadas depois do claim no banco.
+          const recipient = await loadCurrentDeliveryRecipient(admin, row);
+          if (!recipient.allowed) {
+            await failDelivery(
+              admin,
+              row,
+              "test_or_ineligible_participant_suppressed",
+            );
+            suppressed++;
+            continue;
+          }
+
+          // Defesa independente do SQL: um rollout desalinhado jamais despacha o
+          // backlog de vários dias acumulado durante uma pane.
+          if (
+            !isFreshAttendanceOccurrence(row.class_date, row.class_time, now)
+          ) {
+            await failDelivery(admin, row, "stale_delivery_suppressed");
+            suppressed++;
+            continue;
+          }
+
+          const phone = recipient.phone;
+          if (!phone) {
+            await failDelivery(admin, row, "invalid_attendance_phone");
+            failed++;
+            failureCodes.push("invalid_attendance_phone");
+            continue;
+          }
+
+          const tenantKey = row.tenant_id || "";
+          if (!contextCache.has(tenantKey)) {
+            contextCache.set(
+              tenantKey,
+              await resolveCentralContext(admin, row.tenant_id),
+            );
+          }
+          const context = contextCache.get(tenantKey) || null;
+          if (!context) {
+            await failDelivery(admin, row, "central_whatsapp_unavailable");
+            failed++;
+            failureCodes.push("central_whatsapp_unavailable");
+            continue;
+          }
+
+          const portal = resolveAttendancePortal(
+            context.identity.portalUrl,
+            APP_PUBLIC_URL,
+          );
+          const confirmationUrl = buildAttendanceConfirmationUrl(
+            portal,
+            row.token,
+          );
+          if (!confirmationUrl) {
+            await failDelivery(admin, row, "invalid_confirmation_token");
+            failed++;
+            failureCodes.push("invalid_confirmation_token");
+            continue;
+          }
+
+          const studentFirstName = safeCommunicationText(
+            (row.student_name || "").trim().split(/\s+/)[0],
+            60,
+          );
+          const teacherName = safeCommunicationText(row.teacher_name, 120) ||
+            "seu professor";
+          const brandName = safeCommunicationText(
+            context.identity.brandName,
+            120,
+          ) || "sua escola";
+          const todayInSaoPaulo = now.toLocaleDateString("en-CA", {
+            timeZone: "America/Sao_Paulo",
+          });
+          const when = row.class_date === todayInSaoPaulo
+            ? "hoje"
+            : `no dia ${
+              new Date(`${row.class_date}T12:00:00Z`).toLocaleDateString(
+                "pt-BR",
+                { day: "2-digit", month: "2-digit", timeZone: "UTC" },
+              )
+            }`;
+          const greeting = studentFirstName ? `Oi ${studentFirstName}!` : "Oi!";
+          const text =
+            `${greeting} Aqui é a equipe de qualidade da ${brandName}.\n\n` +
+            `Sua aula com *${teacherName}* estava marcada para ${when}. ` +
+            `O que aconteceu? Conte pelo link se houve aula, atraso ou mudança de horário:\n\n` +
+            `${confirmationUrl}\n\nSe preferir, use RESPONDER nesta mensagem: 1 = tudo no horário; 2 = houve um problema; 3 = não acompanhei. Seu retorno vai para a escola.`;
+
+          const bound = await admin.rpc("bind_attendance_quality_delivery", {
+            p_confirmation_id: row.id,
+            p_claim_token: row.claim_token,
+            p_instance: context.instanceName,
+            p_phone: phone,
+            p_verified: recipient.verified === true,
+          });
+          if (bound.error || bound.data?.ok !== true) {
+            throw new Error("quality_delivery_binding_failed");
+          }
+
+          const providerResult = await sendWhatsTextDetailed({
+            base: EVOLUTION_API_BASE,
+            keys: [API_TOKEN],
+            instance: context.instanceName,
+            to: phone,
+            text,
+            delayMs: 1000,
+          });
+          const finalization = finalizationForEvolutionResult(providerResult);
+          if (finalization.action === "complete") {
+            try {
+              await completeDelivery(
+                admin,
+                row,
+                finalization.providerMessageId,
+              );
+              sent++;
+            } catch {
+              // O provedor aceitou; uma nova tentativa de envio seria duplicidade.
+              await markAcceptedStateAmbiguous(admin, row);
+              failed++;
+              ambiguous++;
+              failureCodes.push("completion_state_unknown");
+            }
+            continue;
+          }
+
           await failDelivery(
             admin,
             row,
-            "test_or_ineligible_participant_suppressed",
+            finalization.errorCode,
+            finalization.ambiguous,
           );
-          suppressed++;
-          continue;
-        }
-
-        // Defesa independente do SQL: um rollout desalinhado jamais despacha o
-        // backlog de vários dias acumulado durante uma pane.
-        if (!isFreshAttendanceOccurrence(row.class_date, row.class_time, now)) {
-          await failDelivery(admin, row, "stale_delivery_suppressed");
-          suppressed++;
-          continue;
-        }
-
-        const phone = recipient.phone;
-        if (!phone) {
-          await failDelivery(admin, row, "invalid_attendance_phone");
           failed++;
-          failureCodes.push("invalid_attendance_phone");
-          continue;
-        }
-
-        const tenantKey = row.tenant_id || "";
-        if (!contextCache.has(tenantKey)) {
-          contextCache.set(
-            tenantKey,
-            await resolveCentralContext(admin, row.tenant_id),
-          );
-        }
-        const context = contextCache.get(tenantKey) || null;
-        if (!context) {
-          await failDelivery(admin, row, "central_whatsapp_unavailable");
+          if (finalization.ambiguous) ambiguous++;
+          failureCodes.push(finalization.errorCode);
+        } catch (inner) {
+          console.error("attendance_delivery_failed", {
+            confirmationId: row.id,
+            errorType: inner instanceof Error ? inner.message : "unknown",
+          });
           failed++;
-          failureCodes.push("central_whatsapp_unavailable");
-          continue;
-        }
-
-        const portal = resolveAttendancePortal(
-          context.identity.portalUrl,
-          APP_PUBLIC_URL,
-        );
-        const confirmationUrl = buildAttendanceConfirmationUrl(
-          portal,
-          row.token,
-        );
-        if (!confirmationUrl) {
-          await failDelivery(admin, row, "invalid_confirmation_token");
-          failed++;
-          failureCodes.push("invalid_confirmation_token");
-          continue;
-        }
-
-        const studentFirstName = safeCommunicationText(
-          (row.student_name || "").trim().split(/\s+/)[0],
-          60,
-        );
-        const teacherName = safeCommunicationText(row.teacher_name, 120) ||
-          "seu professor";
-        const brandName = safeCommunicationText(
-          context.identity.brandName,
-          120,
-        ) || "sua escola";
-        const todayInSaoPaulo = now.toLocaleDateString("en-CA", {
-          timeZone: "America/Sao_Paulo",
-        });
-        const when = row.class_date === todayInSaoPaulo
-          ? "hoje"
-          : `no dia ${
-            new Date(`${row.class_date}T12:00:00Z`).toLocaleDateString(
-              "pt-BR",
-              { day: "2-digit", month: "2-digit", timeZone: "UTC" },
-            )
-          }`;
-        const greeting = studentFirstName ? `Oi ${studentFirstName}!` : "Oi!";
-        const text = `${greeting} Aqui é a ${brandName}.\n\n` +
-          `Sua aula com *${teacherName}* estava marcada para ${when}. ` +
-          `O que aconteceu? Confirme rapidinho (1 toque):\n\n` +
-          `${confirmationUrl}\n\nLeva 5 segundos. Obrigado!`;
-
-        const providerResult = await sendWhatsTextDetailed({
-          base: EVOLUTION_API_BASE,
-          keys: [API_TOKEN],
-          instance: context.instanceName,
-          to: phone,
-          text,
-          delayMs: 1000,
-        });
-        const finalization = finalizationForEvolutionResult(providerResult);
-        if (finalization.action === "complete") {
+          failureCodes.push("delivery_processing_failed");
           try {
-            await completeDelivery(
-              admin,
-              row,
-              finalization.providerMessageId,
-            );
-            sent++;
+            await failDelivery(admin, row, "delivery_processing_failed");
           } catch {
-            // O provedor aceitou; uma nova tentativa de envio seria duplicidade.
-            await markAcceptedStateAmbiguous(admin, row);
-            failed++;
-            ambiguous++;
-            failureCodes.push("completion_state_unknown");
+            failureCodes.push("failure_state_unknown");
           }
-          continue;
-        }
-
-        await failDelivery(
-          admin,
-          row,
-          finalization.errorCode,
-          finalization.ambiguous,
-        );
-        failed++;
-        if (finalization.ambiguous) ambiguous++;
-        failureCodes.push(finalization.errorCode);
-      } catch (inner) {
-        console.error("attendance_delivery_failed", {
-          confirmationId: row.id,
-          errorType: inner instanceof Error ? inner.message : "unknown",
-        });
-        failed++;
-        failureCodes.push("delivery_processing_failed");
-        try {
-          await failDelivery(admin, row, "delivery_processing_failed");
-        } catch {
-          failureCodes.push("failure_state_unknown");
         }
       }
-    }
+    };
+    await Promise.all(
+      Array.from({ length: ATTENDANCE_DELIVERY_CONCURRENCY }, worker),
+    );
 
     const summary = {
       claimed: claimed.length,

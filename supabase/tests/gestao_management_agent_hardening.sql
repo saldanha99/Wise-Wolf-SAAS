@@ -89,7 +89,7 @@ select pg_temp.assert_true(
     'EXECUTE'
   )
   and pg_get_functiondef(
-    'public.gestao_change_booking_schedule(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
+    'private.gestao_change_booking_schedule_before_quality(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
   ) ilike '%pg_advisory_xact_lock%'
   and pg_get_functiondef(
     'public.gestao_change_booking_schedule(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
@@ -99,12 +99,20 @@ select pg_temp.assert_true(
 
 select pg_temp.assert_true(
   pg_get_functiondef(
-    'public.gestao_change_booking_schedule(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
+    'private.gestao_change_booking_schedule_before_quality(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
   ) ilike '%v_booking.date IS NOT NULL%'
   and pg_get_functiondef(
-    'public.gestao_change_booking_schedule(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
+    'private.gestao_change_booking_schedule_before_quality(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure
   ) ilike '%ocorrencia_pontual_exige_remarcacao_por_data%',
   'recurring schedule action can mutate a fixed-date occurrence'
+);
+
+select pg_temp.assert_true(
+  pg_get_functiondef('public.gestao_change_booking_schedule(text,uuid,uuid,uuid,text,text,text,text)'::regprocedure)
+    ilike '%school_schedule_review_required%'
+  and not has_function_privilege('authenticated','private.gestao_change_booking_schedule_before_quality(text,uuid,uuid,uuid,text,text,text,text)','EXECUTE')
+  and not has_function_privilege('service_role','private.gestao_change_booking_schedule_before_quality(text,uuid,uuid,uuid,text,text,text,text)','EXECUTE'),
+  'management schedule legacy engine bypasses school authority'
 );
 
 select pg_temp.assert_true(

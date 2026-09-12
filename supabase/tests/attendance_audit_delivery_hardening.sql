@@ -1067,6 +1067,7 @@ delete from public.bookings
 -- actually taught the class. Use a real, active, non-test substitute identity
 -- and a recently finished occurrence so this exercises the production enqueue
 -- path instead of manufacturing the expected confirmation.
+savepoint before_covered_attendance_fixture;
 insert into auth.users (
   id, aud, role, email,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at
@@ -1329,27 +1330,10 @@ select pg_temp.assert_true(
   'covered-occurrence rejection mutated attendance, coverage or Turbo state'
 );
 
-delete from public.attendance_confirmations
- where id = :'covered_confirmation_id'::uuid;
-delete from public.class_coverages
- where id = '60000000-0000-4000-8000-00000000000f';
-delete from public.teacher_absences
- where id = '50000000-0000-4000-8000-00000000000f';
-delete from public.bookings
- where id = '20000000-0000-4000-8000-00000000000f';
-delete from public.tenant_memberships
- where user_id = '10000000-0000-4000-8000-000000000007'
-   and tenant_id = 'attendance-hardening-school';
-delete from public.teacher_turbo_disputes
- where teacher_id = '10000000-0000-4000-8000-000000000007';
-delete from public.teacher_turbo_events
- where teacher_id = '10000000-0000-4000-8000-000000000007';
-delete from public.teacher_turbo_state
- where teacher_id = '10000000-0000-4000-8000-000000000007';
-delete from public.profiles
- where id = '10000000-0000-4000-8000-000000000007';
-delete from auth.users
- where id = '10000000-0000-4000-8000-000000000007';
+-- Quality sessions intentionally retain audit references. Undo the complete
+-- isolated scenario after its assertions instead of weakening those FKs or
+-- maintaining a brittle list of child tables to delete.
+rollback to savepoint before_covered_attendance_fixture;
 
 select pg_temp.assert_true(
   not exists (

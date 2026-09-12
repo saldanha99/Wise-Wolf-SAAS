@@ -228,6 +228,7 @@ const ModernSidebar: React.FC<ModernSidebarProps> = ({
         { id: 'dashboard', label: 'Início', icon: LayoutDashboard, section: 'Dia a dia', primary: true },
         { id: 'schedule', label: 'Agenda', icon: Calendar, section: 'Dia a dia', primary: true },
         { id: 'lessons', label: 'Lançar Aula', icon: BookOpen, section: 'Dia a dia', primary: true },
+        { id: 'lesson-sessions', label: 'Salas e continuidade', icon: Video, section: 'Dia a dia' },
         { id: 'pending', label: 'Pendentes', icon: AlertCircle, section: 'Dia a dia', badge: pendingLessonsCount, primary: true },
         { id: 'reschedules', label: 'Reposições', icon: Repeat, section: 'Dia a dia' },
         { id: 'students', label: 'Alunos', icon: Users, section: 'Dia a dia' },

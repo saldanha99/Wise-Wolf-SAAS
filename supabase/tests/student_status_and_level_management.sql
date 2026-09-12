@@ -29,7 +29,7 @@ grant execute on function pg_temp.assert_equals(text, text, text) to public;
 
 do $$
 declare
-  v_tenant_id text;
+  v_tenant_id text := 'student-status-fixture-' || gen_random_uuid()::text;
   v_director uuid := gen_random_uuid();
   v_teacher uuid := gen_random_uuid();
   v_unlinked_teacher uuid := gen_random_uuid();
@@ -43,16 +43,30 @@ declare
   v_unlinked_blocked boolean := false;
 begin
   perform set_config('role', 'postgres', true);
+  perform set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
-  select id into v_tenant_id from public.tenants limit 1;
+  -- A schema-only QA database has no school rows. Never borrow a real tenant.
+  insert into public.tenants(id, name, saas_status)
+  values (v_tenant_id, 'Student status transaction fixture', 'active');
+
+  -- The placement RPC selects the first published milestone; a schema-only
+  -- database intentionally has no catalogue seeds. Existing publication data
+  -- is not changed, and both fixture rows disappear with the rollback.
+  insert into public.pedagogical_evaluation_catalog(book_part,module,part,title,active)
+  values ('A2-1','A2',1,'A2 fixture milestone',true),
+         ('B1-1','B1',1,'B1 fixture milestone',true)
+  on conflict (book_part) do nothing;
 
   -- Fixture de auth users
-  insert into auth.users (id, email)
+  insert into auth.users (id, email, raw_user_meta_data)
   values 
-    (v_director, 'director_test@example.com'),
-    (v_teacher, 'teacher_test@example.com'),
-    (v_unlinked_teacher, 'unlinked_teacher@example.com'),
-    (v_student, 'student_test@example.com');
+    (v_director, v_director::text || '@example.invalid', '{"test_fixture":true}'),
+    (v_teacher, v_teacher::text || '@example.invalid', '{"test_fixture":true}'),
+    (v_unlinked_teacher, v_unlinked_teacher::text || '@example.invalid', '{"test_fixture":true}'),
+    (v_student, v_student::text || '@example.invalid', '{"test_fixture":true}');
+
+  update public.profiles set is_test_account = true
+   where id in (v_director, v_teacher, v_unlinked_teacher, v_student);
 
   -- Atualiza perfis criados
   update public.profiles
@@ -85,7 +99,7 @@ begin
    where id = v_student;
 
   -- 1. Diretor altera nível para B1 e status para Inativo
-  perform set_config('request.jwt.claims', json_build_object('sub', v_director::text)::text, true);
+  perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', v_director::text)::text, true);
   v_res := public.update_student_pedagogical_profile(
     v_student,
     jsonb_build_object(
@@ -106,7 +120,7 @@ begin
   perform pg_temp.assert_equals(v_lifecycle, 'suspended', 'lifecycle atualizado pelo diretor');
 
   -- 2. Professor responsável altera nível para A2 e status de volta para Ativo
-  perform set_config('request.jwt.claims', json_build_object('sub', v_teacher::text)::text, true);
+  perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', v_teacher::text)::text, true);
   v_res := public.update_student_pedagogical_profile(
     v_student,
     jsonb_build_object(
@@ -140,7 +154,7 @@ begin
   perform pg_temp.assert_true(v_sensitive_blocked, 'professor nao pode alterar CPF');
 
   -- 4. Professor NÃO VINCULADO tentando alterar aluno DEVE SER BLOQUEADO
-  perform set_config('request.jwt.claims', json_build_object('sub', v_unlinked_teacher::text)::text, true);
+  perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', v_unlinked_teacher::text)::text, true);
   begin
     v_res := public.update_student_pedagogical_profile(
       v_student,

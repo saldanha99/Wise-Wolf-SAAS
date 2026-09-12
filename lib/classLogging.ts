@@ -40,39 +40,32 @@ export async function logTeacherClasses(entries: ClassLogEntryInput[]): Promise<
         presence: e.presence,
         absence_reason: e.absenceReason || null,
         content_covered: e.contentCovered || null,
+        lesson_objective: e.lessonObjective || null,
+        student_difficulties: e.studentDifficulties || null,
+        homework_assigned: e.homeworkAssigned || null,
+        recommended_next_step: e.recommendedNextStep || null,
+        late_logging_reason: e.lateLoggingReason || null,
         observations: e.observations || null,
         assessment_level: e.assessmentLevel || null,
         psychological_profile: e.psychologicalProfile || null,
         teacher_verdict: e.teacherVerdict || null,
     });
 
-    const regularEntries = entries.filter(e => !e.lessonAdvanceId);
-    const advancedEntries = entries.filter(e => !!e.lessonAdvanceId);
-
-    const calls: PromiseLike<{ data: any; error: any }>[] = [];
-    if (regularEntries.length > 0) {
-        calls.push(supabase.rpc('log_teacher_classes', { p_entries: regularEntries.map(toPayload) }));
-    }
-    if (advancedEntries.length > 0) {
-        calls.push(supabase.rpc('log_advanced_teacher_classes', { p_entries: advancedEntries.map(toPayload) }));
-    }
-
-    const responses = await Promise.all(calls);
-    const failed = responses.find(response => response.error);
-    if (failed?.error) throw failed.error;
-
-    const raws = responses.map(response => (response.data || {}) as any);
-    const raw = raws[raws.length - 1] || {};
+    // Mixed batches share one server transaction, with a savepoint per row.
+    // Its final projection includes every committed successful row.
+    const response = await supabase.rpc('log_teacher_classes', { p_entries: entries.map(toPayload) });
+    if (response.error) throw new Error('Não foi possível confirmar o resultado. Atualize a lista antes de tentar novamente; algumas aulas podem ter sido registradas.');
+    const raw = (response.data || {}) as any;
     return {
-        inserted: raws.reduce((sum, item) => sum + Number(item.inserted || 0), 0),
-        skipped: raws.reduce((sum, item) => sum + Number(item.skipped || 0), 0),
-        reschedulesCreated: raws.reduce((sum, item) => sum + Number(item.reschedules_created || 0), 0),
-        deltaAmount: raws.reduce((sum, item) => sum + Number(item.delta_amount || 0), 0),
-        deltaLessons: raws.reduce((sum, item) => sum + Number(item.delta_lessons || 0), 0),
+        inserted: Number(raw.inserted || 0),
+        skipped: Number(raw.skipped || 0),
+        reschedulesCreated: Number(raw.reschedules_created || 0),
+        deltaAmount: Number(raw.delta_amount || 0),
+        deltaLessons: Number(raw.delta_lessons || 0),
         monthAmount: Number(raw.month_amount || 0),
         monthLessons: Number(raw.month_lessons || 0),
         turboActive: raw.turbo_active === true,
-        entries: raws.flatMap(item => item.entries || []).map((e: any): ClassLogEntryResult => ({
+        entries: (raw.entries || []).map((e: any): ClassLogEntryResult => ({
             ref: e.ref ?? null,
             id: e.id ?? null,
             status: e.status === 'lancada' ? 'lancada' : 'ignorada',

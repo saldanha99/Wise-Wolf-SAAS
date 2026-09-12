@@ -1,6 +1,10 @@
 /// <reference lib="deno.ns" />
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  quotedLessonMessageId,
+  routeLessonQualityReply,
+} from "../_shared/lesson-quality-reply.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   escapePostgresLikePattern,
@@ -5672,6 +5676,32 @@ serve(async (req) => {
       }).eq("tenant_id", tenantId).eq("phone", phone).eq("direction", "out")
         .gte("created_at", hourAgo);
       const rateLimited = (outCount ?? 0) >= 12;
+
+      // Family feedback must not fall through to recruiting/SDR. The server
+      // binds tenant + current contact + quoted delivery (or one unique audit).
+      const qualityReply = await routeLessonQualityReply(sb, {
+        tenantId,
+        instance,
+        phone,
+        messageId: msgId,
+        text,
+        quotedId: quotedLessonMessageId(msg),
+      });
+      if (qualityReply.handled) {
+        if (!qualityReply.already && !rateLimited) {
+          const reply = qualityReply.needs_context
+            ? "Para relacionar seu retorno à aula certa, use o link da confirmação ou a opção RESPONDER na mensagem da aula correspondente."
+            : qualityReply.needs_school
+            ? "O prazo de correção deste retorno terminou. Fale com a equipe da escola para revisar a informação."
+            : "Seu retorno foi registrado para a equipe de qualidade da escola. Obrigado! Ele não altera pagamentos automaticamente.";
+          await sendWhats(instance, phone, reply);
+          await logMsg(sb, tenantId, phone, "support", "out", reply, {
+            msg_id: msgId,
+            lesson_quality: true,
+          });
+        }
+        continue;
+      }
 
       // Confirmação de remarcação vem antes do RH. Professores antigos também
       // permanecem em `job_applications`; sem esta prioridade, o "não consigo"

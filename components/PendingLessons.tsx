@@ -81,10 +81,16 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
           ref,
           bookingId: lesson.type === 'REGULAR' ? lesson.bookingId : null,
           rescheduleId: lesson.type === 'REPOSIÇÃO' ? lesson.rescheduleId : null,
+          lessonAdvanceId: lesson.lessonAdvanceId || null,
           classDate: lesson.rawDate,
-          presence: data.type || 'COMPLETED',
+          presence: data.type,
           absenceReason: data.subtype || null,
           contentCovered: data.lastApplied || null,
+          lessonObjective: data.lessonObjective || null,
+          studentDifficulties: data.studentDifficulties || null,
+          homeworkAssigned: data.homeworkAssigned || null,
+          recommendedNextStep: data.recommendedNextStep || null,
+          lateLoggingReason: data.lateLoggingReason || null,
           observations: data.observation || null,
         });
         lateFlags.push(true); // esta tela só lista aula de 7+ dias atrás
@@ -98,8 +104,10 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
 
       setReward({ result, xp });
       await fetchPendingLessons();
-      setSelectedLesson(null);
-      setIsBulkRegularizing(false);
+      if (result.skipped === 0) {
+        setSelectedLesson(null);
+        setIsBulkRegularizing(false);
+      }
       onRefresh?.();
     } catch (err: any) {
       console.error('Error regularizing lessons:', err);
@@ -225,6 +233,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
                 id: selectedLesson.id,
                 name: selectedLesson.student,
                 date: `${selectedLesson.date} às ${selectedLesson.time}`,
+                isLate: true,
                 level: selectedLesson.module.split('•')[0].trim() || 'N/A'
               }]}
               onCancel={() => setSelectedLesson(null)}
@@ -245,6 +254,7 @@ const PendingLessons: React.FC<PendingLessonsProps> = ({ user, tenantId, onRegis
                 id: p.id,
                 name: p.student,
                 date: `${p.date} às ${p.time}`,
+                isLate: true,
                 level: p.module.split('•')[0].trim() || 'N/A'
               }))}
               onCancel={() => setIsBulkRegularizing(false)}

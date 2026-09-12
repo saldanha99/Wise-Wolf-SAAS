@@ -226,6 +226,9 @@ export function queueAudience(kind: unknown): {
   centralOnly: boolean;
 } {
   const normalized = normalizeNotificationKind(kind);
+  if (normalized === "SCHEDULE_CHANGE_FAMILY_ACCEPTANCE") {
+    return { audience: "student", centralOnly: true };
+  }
   if (
     normalized === "SCHEDULE_CHANGE_GROUP" ||
     normalized === "CONFLICT_TEACHER_ALERT" ||

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import LessonQualityFeedback from './LessonQualityFeedback';
 
 // Página PÚBLICA (sem login) de confirmação de presença pelo aluno.
 // Acessada pelo link 1-clique enviado no WhatsApp: /confirmar-presenca?token=...
@@ -84,10 +85,16 @@ const ConfirmAttendance: React.FC = () => {
   const [editingExisting, setEditingExisting] = useState(false);
   const [error, setError] = useState<string>('');
   const [rated, setRated] = useState(false);
+  const [rating, setRating] = useState(false);
 
   const rate = async (stars: number) => {
-    setRated(true);
-    await supabase.rpc('rate_attendance', { p_token: token, p_stars: stars });
+    setRating(true); setError('');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('rate_attendance', { p_token: token, p_stars: stars });
+      if (rpcError || data?.ok !== true) throw new Error('rating_failed');
+      setRated(true);
+    } catch { setError('Não foi possível salvar sua avaliação. Tente novamente.'); }
+    finally { setRating(false); }
   };
 
   useEffect(() => {
@@ -178,7 +185,7 @@ const ConfirmAttendance: React.FC = () => {
             <p style={{ fontSize: 13, color: '#334155', marginBottom: 10 }}>Como foi a aula com <b>{prof}</b>?</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
               {[1, 2, 3, 4, 5].map(n => (
-                <button key={n} onClick={() => rate(n)} aria-label={`${n} estrelas`}
+                <button key={n} disabled={rating} onClick={() => rate(n)} aria-label={`${n} estrelas`}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 32, lineHeight: 1, padding: 0 }}>⭐</button>
               ))}
             </div>
@@ -186,6 +193,8 @@ const ConfirmAttendance: React.FC = () => {
           </div>
         )
       )}
+      {!info?.expired && !info?.cancelled && <LessonQualityFeedback token={token} />}
+      {error && <p role="alert" style={{ color: '#dc2626', marginTop: 12 }}>{error}</p>}
       {canCorrectResponse(info) && done !== 'already' && (
         <div style={{ marginTop: 18, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
           <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
@@ -234,6 +243,7 @@ const ConfirmAttendance: React.FC = () => {
       {btn('TEACHER_NO_SHOW', '❌ O professor não compareceu', '#ef4444', '#fff')}
       {optionalResponse && btn(optionalResponse, '📅 A aula foi cancelada ou remarcada', '#fff7ed', '#9a3412', '1px solid #fed7aa')}
     </div>
+    {!info?.expired && !info?.cancelled && <LessonQualityFeedback token={token} />}
     {error && <p role="alert" style={{ color: '#ef4444', fontSize: 13, marginTop: 12 }}>{error}</p>}
     <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 18 }}>Wise Wolf · Escola de Idiomas</p>
   </>);

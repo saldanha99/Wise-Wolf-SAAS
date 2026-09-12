@@ -39,8 +39,8 @@ function validClaim(index = 1) {
   };
 }
 
-Deno.test("claim inteiro é validado antes do primeiro envio e limitado a cinco", () => {
-  assertEquals(ATTENDANCE_CLAIM_LIMIT, 5);
+Deno.test("claim inteiro é validado antes do primeiro envio e limitado a quinze", () => {
+  assertEquals(ATTENDANCE_CLAIM_LIMIT, 15);
   assertEquals(parseAttendanceDeliveryClaims(null), []);
   assertEquals(parseAttendanceDeliveryClaims([validClaim(1)]).length, 1);
   assertThrows(
@@ -55,7 +55,8 @@ Deno.test("claim inteiro é validado antes do primeiro envio e limitado a cinco"
   assertThrows(
     () =>
       parseAttendanceDeliveryClaims(
-        Array.from({ length: 6 }, (_, index) => validClaim(index + 1)),
+        Array.from({ length: ATTENDANCE_CLAIM_LIMIT + 1 }, (_, index) =>
+          validClaim(index + 1)),
       ),
     Error,
     "attendance_claim_limit_exceeded",

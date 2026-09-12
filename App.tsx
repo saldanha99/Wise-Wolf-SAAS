@@ -87,6 +87,12 @@ const WiseWolfLanding = lazy(() => import('./components/landing/WiseWolfLanding'
 const StudentLandingTemplate = lazy(() => import('./components/landing/StudentLandingTemplate'));
 const PublicRegistration = lazy(() => import('./components/PublicRegistration'));
 const ConfirmAttendance = lazy(() => import('./components/ConfirmAttendance'));
+const FamilyScheduleChangeConfirmation = lazy(() => import('./components/FamilyScheduleChangeConfirmation'));
+const LessonQualityCenter = lazy(() => import('./components/LessonQualityCenter'));
+const ScheduleChangeRequests = lazy(() => import('./components/ScheduleChangeRequests'));
+const ContactQualityManager = lazy(() => import('./components/ContactQualityManager'));
+const GoogleMeetSettings = lazy(() => import('./components/GoogleMeetSettings'));
+const LessonSessionsPanel = lazy(() => import('./components/LessonSessionsPanel'));
 const TeacherTransferAccept = lazy(() => import('./components/TeacherTransferAccept'));
 const PlanChangeSign = lazy(() => import('./components/PlanChangeSign'));
 const TeacherOnboarding = lazy(() => import('./components/TeacherOnboarding'));
@@ -142,6 +148,11 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'automation', label: 'Smart', group: 'Administração' },
   ],
   [UserRole.SCHOOL_ADMIN]: [
+    { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Aulas', keywords: 'auditoria atraso reclamações' },
+    { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Aulas' },
+    { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Aulas' },
+    { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Aulas' },
+    { tab: 'google-meet', label: 'Conta central Google', group: 'Configurações' },
     { tab: 'dashboard', label: 'Início', group: 'Visão geral', keywords: 'dashboard painel' },
     { tab: 'wolfie-lab', label: 'Wolfie Lab', group: 'Visão geral' },
     { tab: 'students', label: 'Alunos', group: 'Pessoas' },
@@ -184,7 +195,15 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'admin_workflows', label: 'Workflows', group: 'Configurações' },
     { tab: 'profile', label: 'Meu Perfil', group: 'Conta' },
   ],
+  [UserRole.COORDINATOR]: [
+    { tab: 'lesson-quality', label: 'Qualidade das aulas', group: 'Qualidade' },
+    { tab: 'schedule-requests', label: 'Aceites de horário', group: 'Qualidade' },
+    { tab: 'quality-contacts', label: 'Contatos verificados', group: 'Qualidade' },
+    { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Qualidade' },
+    { tab: 'profile', label: 'Meu perfil', group: 'Conta' },
+  ],
   [UserRole.TEACHER]: [
+    { tab: 'lesson-sessions', label: 'Salas e continuidade', group: 'Professor' },
     { tab: 'dashboard', label: 'Dashboard', group: 'Professor' },
     { tab: 'lessons', label: 'Lançar Aula', group: 'Professor' },
     { tab: 'pending', label: 'Pendentes', group: 'Professor' },
@@ -964,6 +983,9 @@ const App: React.FC = () => {
   }
 
   // Confirmação de presença pelo aluno (link 1-clique do WhatsApp) — público, sem login
+  if (path === '/confirmar-alteracao') {
+    return <Suspense fallback={<div className="p-8">Carregando…</div>}><FamilyScheduleChangeConfirmation /></Suspense>;
+  }
   if (path === '/confirmar-presenca' || path.startsWith('/confirmar-presenca')) {
     return <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-emerald-400" size={32} /></div>}>
       <ConfirmAttendance />
@@ -1141,6 +1163,10 @@ const App: React.FC = () => {
     }
 
     // SECURITY GUARD: Strict Teacher Access Check
+    if (user.role === UserRole.COORDINATOR && !ROLE_NAVIGATION_ITEMS[UserRole.COORDINATOR].some(item => item.tab === activeTab)) {
+      setActiveTab('lesson-quality');
+      return null;
+    }
     if (user.role === UserRole.TEACHER) {
       const allowedTeacherTabs = ROLE_NAVIGATION_ITEMS[UserRole.TEACHER].map((item) => item.tab);
       if (!allowedTeacherTabs.includes(activeTab)) {
@@ -1280,6 +1306,11 @@ const App: React.FC = () => {
       'meeting_links': <MeetingLinksView user={user} tenantId={currentTenant?.id} />,
       'teacher-financials': <TeacherFinancials user={user} tenantId={currentTenant?.id} />,
       'attendance-disputes': <AttendanceDisputes user={user} tenantId={currentTenant?.id} />,
+      'lesson-quality': <LessonQualityCenter />,
+      'schedule-requests': <ScheduleChangeRequests tenantId={currentTenant?.id} />,
+      'quality-contacts': <ContactQualityManager manager />,
+      'lesson-sessions': <LessonSessionsPanel tenantId={currentTenant?.id} manager={user.role === UserRole.SCHOOL_ADMIN || user.role === UserRole.COORDINATOR} />,
+      'google-meet': <GoogleMeetSettings tenantId={currentTenant?.id} />,
       'trial-settlement': <TrialTrainingSettlement user={user} tenantId={currentTenant?.id} />,
       'student-insights': <StudentInsightsBoard user={user} tenantId={currentTenant?.id} />,
       'teacher-insights': <TeacherInsightsBoard user={user} tenantId={currentTenant?.id} />,
@@ -1360,6 +1391,7 @@ const App: React.FC = () => {
         <ModernSidebar
           tenant={{ ...currentTenant, branding: currentBranding } as any}
           user={user}
+          menuItemsOverride={user.role === UserRole.COORDINATOR ? ROLE_NAVIGATION_ITEMS[UserRole.COORDINATOR].filter(item => item.tab !== 'profile').map(item => ({ id: item.tab, label: item.label, icon: Shield, section: 'Qualidade' })) : undefined}
           activeTab={activeTab}
           setActiveTab={(tab) => {
             setActiveTab(tab);

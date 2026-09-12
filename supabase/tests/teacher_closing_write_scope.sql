@@ -35,6 +35,12 @@ $$;
 insert into public.tenants (id, name)
 values ('closing-scope-school', 'Closing Scope School');
 
+-- Storage object policies still run as the teacher below. Supply only the
+-- bucket fixture missing from schema-only QA; preserve existing configuration.
+insert into storage.buckets(id, name, public)
+values ('invoices', 'invoices', false)
+on conflict (id) do nothing;
+
 insert into auth.users (
   id, aud, role, email,
   raw_app_meta_data, raw_user_meta_data, created_at, updated_at

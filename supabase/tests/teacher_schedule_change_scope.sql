@@ -1,5 +1,5 @@
--- Professor troca somente o dia/horário de um aluno próprio. A função precisa
--- validar disponibilidade/conflito, auditar e enfileirar o aviso ao grupo.
+-- Professores solicitam mudança; somente a escola mantém a compatibilidade
+-- administrativa da RPC. Disponibilidade, conflito e histórico continuam válidos.
 
 \set ON_ERROR_STOP on
 
@@ -69,14 +69,21 @@ values
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000951","role":"authenticated"}';
 
-select public.change_booking_schedule(
-  '00000000-0000-4000-8000-00000000095a', 'Terça', '09:00'
-);
+do $$ begin
+  perform public.change_booking_schedule('00000000-0000-4000-8000-00000000095a', 'Terça', '09:00');
+  raise exception 'assertion failed: professor alterou agenda sem aceite da familia';
+exception when insufficient_privilege then null;
+end; $$;
+
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-000000000955","role":"authenticated"}';
+select public.change_booking_schedule('00000000-0000-4000-8000-00000000095a', 'Terça', '09:00');
 
 reset role;
 select pg_temp.assert_true(
   (select day_of_week='Terça' and time_slot='09:00' from public.bookings where id='00000000-0000-4000-8000-00000000095a'),
-  'professor nao alterou booking proprio'
+  'direcao nao alterou booking do tenant'
 );
 select pg_temp.assert_true(
   exists (select 1 from public.audit_logs where action='booking_schedule_changed' and resource_id='00000000-0000-4000-8000-00000000095a'),

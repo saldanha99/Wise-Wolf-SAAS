@@ -38,6 +38,13 @@ Deno.test("CONFLICT_TEACHER_ALERT usa audiência professor e somente central", (
   });
 });
 
+Deno.test("aceite familiar usa exclusivamente a central e audiência aluno", () => {
+  assertEquals(queueAudience("SCHEDULE_CHANGE_FAMILY_ACCEPTANCE"), {
+    audience: "student",
+    centralOnly: true,
+  });
+});
+
 Deno.test("notificações do funil experimental usam a rota e classificação corretas", () => {
   assertEquals(
     isTrialLifecycleNotificationKind("trial_teacher_requested"),

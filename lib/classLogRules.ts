@@ -29,6 +29,11 @@ export interface ClassLogEntryInput {
     /** Motivo da falta (Doença/Trabalho/Viagem/Outros) — só quando houve falta. */
     absenceReason?: string | null;
     contentCovered?: string | null;
+    lessonObjective?: string | null;
+    studentDifficulties?: string | null;
+    homeworkAssigned?: string | null;
+    recommendedNextStep?: string | null;
+    lateLoggingReason?: string | null;
     observations?: string | null;
     assessmentLevel?: string | null;
     psychologicalProfile?: string | null;
@@ -78,6 +83,12 @@ const SKIP_MESSAGES: Record<string, string> = {
     aula_cedida_para_outro_professor: 'esta aula foi cedida por cobertura — quem lança é quem deu a aula',
     antecipacao_inexistente_ou_consumida: 'a antecipação já foi lançada ou cancelada',
     lesson_advance_date_mismatch: 'a data não corresponde à antecipação autorizada',
+    ocorrencia_antecipada: 'esta ocorrência já foi antecipada; use a data realizada',
+    aula_ainda_nao_terminou: 'aguarde o término do horário da aula para lançar',
+    registro_pedagogico_incompleto: 'preencha objetivo, conteúdo, dificuldades, tarefa e próximo passo',
+    motivo_retroativo_obrigatorio: 'informe o motivo do lançamento em data passada',
+    falha_no_lancamento: 'não foi possível lançar esta aula; as demais linhas foram preservadas',
+    falha_de_comunicacao: 'a resposta do servidor não chegou; atualize a lista antes de tentar novamente',
 };
 
 /** Motivos de "não entrou na folha" — dito na cara, sem fingir festa. */

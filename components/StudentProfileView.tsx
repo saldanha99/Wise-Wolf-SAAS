@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { User as UserType } from '../types';
 import TeacherTransferGenerator from './TeacherTransferGenerator';
+import StudentHandover from './StudentHandover';
 import StudentPlanChangeModal from './StudentPlanChangeModal';
 import StudentManualPixManager from './StudentManualPixManager';
 import { hasActiveAsaasSubscription } from '../lib/studentSubscriptionStatus';
@@ -55,7 +56,7 @@ const fmtClassTime = (value: unknown) => {
 const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
-  const [tab, setTab] = useState<'overview' | 'classes' | 'notes' | 'financial' | 'history'>('overview');
+  const [tab, setTab] = useState<'overview' | 'classes' | 'notes' | 'financial' | 'history' | 'handover'>('overview');
   const [newNote, setNewNote] = useState('');
   const [noteCat, setNoteCat] = useState('GERAL');
   const [savingNote, setSavingNote] = useState(false);
@@ -175,6 +176,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
     ['overview', 'Visão Geral'],
     ['classes', 'Aulas'],
     ['notes', 'Observações'],
+    ['handover', 'Continuidade pedagógica'],
     ...(isAdmin ? [['financial', 'Financeiro'], ['history', 'Histórico']] as [string, string][] : []),
   ];
 
@@ -262,6 +264,7 @@ const StudentProfileView: React.FC<Props> = ({ studentId, user, onClose }) => {
             </div>
 
             <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {tab === 'handover' && <StudentHandover studentId={studentId} />}
               {/* OVERVIEW */}
               {tab === 'overview' && (
                 <div className="space-y-5">

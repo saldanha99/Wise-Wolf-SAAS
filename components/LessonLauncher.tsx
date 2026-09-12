@@ -4,6 +4,7 @@ import ClassLogForm from './ClassLogForm';
 import TrialFeedbackForm from './TrialFeedbackForm';
 import { supabase } from '../lib/supabase';
 import { localYMD } from '../lib/dateUtils';
+import { lessonMeetingLink, type LessonRoom } from '../lib/lessonRooms';
 import { logTeacherClasses, calcularXp, ClassLogEntryInput, ClassLogResult, XpBreakdown } from '../lib/classLogging';
 import { bookingsAindaNaoLancados, uniqueBookingsById } from '../lib/lessonMatching';
 import { normalizeWeekdayToIndex } from '../lib/weekday';
@@ -101,8 +102,8 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
     }
   }, [user, effectiveTenantId]);
 
-  const fetchTodaySchedule = async () => {
-    setLoading(true);
+  const fetchTodaySchedule = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setLoadError(null);
     setFeedbackLoadError(null);
     const pendingFeedbackPromise = loadPendingTrialFeedback()
@@ -143,6 +144,12 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .or(`teacher_id.eq.${user.id},professor_id.eq.${user.id}`)
         .in('type', ['experimental', 'training']);
       const allTrialAppointments = trialAppts || [];
+      const { data: occurrenceRows, error: occurrenceError } = await supabase.rpc('list_teacher_lesson_booking_occurrences', {
+        p_from: startStr, p_to: endStr,
+      });
+      if (occurrenceError) throw new Error('Não foi possível confirmar as ocorrências da agenda. Atualize antes de lançar.');
+      const { data: lessonRooms, error: roomError } = await supabase.rpc('get_my_lesson_rooms', { p_from: startStr, p_to: endStr });
+      if (roomError) throw new Error('Não foi possível confirmar as salas oficiais. Atualize antes de enviar links.');
 
       // BUSCAS EM LOTE (1x cada) — antes eram N consultas por dia; com 45 dias isso
       // ficaria lento. Buscamos tudo da janela e filtramos em memória por dia.
@@ -229,12 +236,11 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const dateStr = localYMD(checkDate);
         const dayName = DAYS[checkDate.getDay()];
 
-        if (dayName === 'Domingo') continue;
-
-        const dayIdxOfDate = checkDate.getDay() - 1;
-        const bookings = dayIdxOfDate >= 0
-          ? (allBookings || []).filter((b: any) => normalizeWeekdayToIndex(b.day_of_week) === dayIdxOfDate)
-          : [];
+        const bookings = (occurrenceRows || []).filter((occurrence: any) => occurrence.class_date === dateStr && !occurrence.lesson_advance_id)
+          .flatMap((occurrence: any) => {
+            const booking = (allBookings || []).find((row: any) => row.id === occurrence.booking_id);
+            return booking ? [{ ...booking, time_slot: occurrence.start_time }] : [];
+          });
         const reschedules = (allReschedules || []).filter((r: any) => r.date === dateStr);
         const advances = (allAdvances || []).filter((advance: any) =>
           advance.advance_date === dateStr && advance.status === 'SCHEDULED'
@@ -275,7 +281,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
             email: student.email, // Added email
             time, // horário HH:MM da aula (para o botão "Avisar aluno")
             phone: student.phone || null,
-            meetLink: teacherMeetLink || student.meeting_link || null,
+            meetLink: lessonMeetingLink((lessonRooms || []) as LessonRoom[], type === 'REPOSIÇÃO' ? 'reschedule' : 'booking', type === 'ANTECIPAÇÃO' ? b.booking_id : b.id, dateStr, teacherMeetLink || student.meeting_link),
             date: i === 0
               ? `Hoje às ${time}${type === 'ANTECIPAÇÃO' ? ' · antecipada' : ''}`
               : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : type === 'ANTECIPAÇÃO' ? ' (Antecipada)' : ''}`,
@@ -303,7 +309,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           if (isNaN(h) || isNaN(m)) return false;
           const classTs = new Date();
           classTs.setHours(h, m, 0, 0);
-          return classTs.getTime() > Date.now();
+          return classTs.getTime() + 30 * 60 * 1000 > Date.now();
         };
 
         // Bookings
@@ -409,7 +415,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
               leadPhone: t.student_phone,
               time: timeStr, // horário HH:MM (para o botão "Avisar aluno")
               phone: t.student_phone || null,
-              meetLink: teacherMeetLink || null,
+              meetLink: lessonMeetingLink((lessonRooms || []) as LessonRoom[], 'appointment', t.id, dateStr, teacherMeetLink),
               name: t.student_name || (isTraining ? 'Treinamento' : 'Aula Experimental'),
               date: i === 0 ? `Hoje às ${timeStr}` : `${checkDate.toLocaleDateString('pt-BR')} às ${timeStr}`,
               dateObj: dateStr,
@@ -485,9 +491,14 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           appointmentId: isTrial ? ref.replace('trial-', '') : null,
           lessonAdvanceId: isAdvance ? ref.replace('advance-', '') : null,
           classDate: item.dateObj,
-          presence: data.type || 'COMPLETED',
+          presence: data.type,
           absenceReason: data.subtype || null,
           contentCovered: data.lastApplied || null,
+          lessonObjective: data.lessonObjective || null,
+          studentDifficulties: data.studentDifficulties || null,
+          homeworkAssigned: data.homeworkAssigned || null,
+          recommendedNextStep: data.recommendedNextStep || null,
+          lateLoggingReason: data.lateLoggingReason || null,
           observations: data.observation || null,
           assessmentLevel: item.type === 'AULA EXPERIMENTAL' ? data.assessment_level : null,
           psychologicalProfile: item.type === 'AULA EXPERIMENTAL' ? data.psychological_profile : null,
@@ -506,7 +517,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
       setReward({ result, xp });
       if (onRefresh) onRefresh();
-      await fetchTodaySchedule();
+      await fetchTodaySchedule(false);
     } catch (err: any) {
       console.error('Save Error:', err);
       alert(`Erro ao lançar: ${err.message || 'tente novamente'}`);

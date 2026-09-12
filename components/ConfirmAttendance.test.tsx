@@ -26,6 +26,15 @@ beforeEach(() => {
 });
 
 describe('<ConfirmAttendance />', () => {
+  it('não agradece avaliação por estrelas antes da confirmação do servidor', async () => {
+    rpc.mockResolvedValueOnce({ data: confirmation({ already: true, student_response: 'STUDENT_PRESENT' }), error: null })
+      .mockResolvedValueOnce({ data: { ok: false }, error: null });
+    render(<ConfirmAttendance />);
+    fireEvent.click(await screen.findByRole('button', { name: '5 estrelas' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByText(/Obrigado pela avaliação/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '5 estrelas' })).toBeEnabled();
+  });
   it('faz uma pergunta neutra e explica o uso da resposta sem prometer confidencialidade', async () => {
     rpc.mockResolvedValueOnce({ data: confirmation(), error: null });
 
