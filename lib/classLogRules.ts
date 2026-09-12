@@ -23,6 +23,7 @@ export interface ClassLogEntryInput {
     bookingId?: string | null;
     rescheduleId?: string | null;
     appointmentId?: string | null;
+    lessonAdvanceId?: string | null;
     classDate: string; // YYYY-MM-DD
     presence: ClassLogPresence;
     /** Motivo da falta (Doença/Trabalho/Viagem/Outros) — só quando houve falta. */
@@ -40,7 +41,7 @@ export interface ClassLogEntryResult {
     status: 'lancada' | 'ignorada';
     /** Por que foi ignorada (só quando status = 'ignorada'). */
     reason: string | null;
-    kind: 'REGULAR' | 'REPOSICAO' | 'TRIAL' | 'TRAINING' | null;
+    kind: 'REGULAR' | 'REPOSICAO' | 'TRIAL' | 'TRAINING' | 'ADVANCE' | null;
     subtype: string | null;
     /** Valor autoritativo que esta aula somou ao caixa. 0 quando não entra na folha. */
     amount: number;
@@ -75,6 +76,8 @@ const SKIP_MESSAGES: Record<string, string> = {
     reposicao_inexistente: 'a reposição não existe mais',
     agendamento_inexistente: 'o agendamento não existe mais',
     aula_cedida_para_outro_professor: 'esta aula foi cedida por cobertura — quem lança é quem deu a aula',
+    antecipacao_inexistente_ou_consumida: 'a antecipação já foi lançada ou cancelada',
+    lesson_advance_date_mismatch: 'a data não corresponde à antecipação autorizada',
 };
 
 /** Motivos de "não entrou na folha" — dito na cara, sem fingir festa. */

@@ -1213,6 +1213,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260908230000_fix_monthly_closing_execute_grants.sql"
   "supabase/migrations/20260908235000_teacher_payroll_reconciliation.sql"
   "supabase/migrations/20260909185734_turbo_seventh_student_effective_september9.sql"
+  "supabase/migrations/20260912192839_lesson_advances.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1315,6 +1316,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/reschedule_financial_authority.sql"
   "supabase/tests/interview_notification_delivery.sql"
   "supabase/tests/atomic_teacher_availability_replacement.sql"
+  "supabase/tests/lesson_advances.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

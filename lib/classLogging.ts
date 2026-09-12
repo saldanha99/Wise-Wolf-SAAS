@@ -30,11 +30,12 @@ export async function logTeacherClasses(entries: ClassLogEntryInput[]): Promise<
         };
     }
 
-    const payload = entries.map(e => ({
+    const toPayload = (e: ClassLogEntryInput) => ({
         ref: e.ref,
         booking_id: e.bookingId || null,
         reschedule_id: e.rescheduleId || null,
         appointment_id: e.appointmentId || null,
+        lesson_advance_id: e.lessonAdvanceId || null,
         class_date: e.classDate,
         presence: e.presence,
         absence_reason: e.absenceReason || null,
@@ -43,22 +44,35 @@ export async function logTeacherClasses(entries: ClassLogEntryInput[]): Promise<
         assessment_level: e.assessmentLevel || null,
         psychological_profile: e.psychologicalProfile || null,
         teacher_verdict: e.teacherVerdict || null,
-    }));
+    });
 
-    const { data, error } = await supabase.rpc('log_teacher_classes', { p_entries: payload });
-    if (error) throw error;
+    const regularEntries = entries.filter(e => !e.lessonAdvanceId);
+    const advancedEntries = entries.filter(e => !!e.lessonAdvanceId);
 
-    const raw = (data || {}) as any;
+    const calls: PromiseLike<{ data: any; error: any }>[] = [];
+    if (regularEntries.length > 0) {
+        calls.push(supabase.rpc('log_teacher_classes', { p_entries: regularEntries.map(toPayload) }));
+    }
+    if (advancedEntries.length > 0) {
+        calls.push(supabase.rpc('log_advanced_teacher_classes', { p_entries: advancedEntries.map(toPayload) }));
+    }
+
+    const responses = await Promise.all(calls);
+    const failed = responses.find(response => response.error);
+    if (failed?.error) throw failed.error;
+
+    const raws = responses.map(response => (response.data || {}) as any);
+    const raw = raws[raws.length - 1] || {};
     return {
-        inserted: Number(raw.inserted || 0),
-        skipped: Number(raw.skipped || 0),
-        reschedulesCreated: Number(raw.reschedules_created || 0),
-        deltaAmount: Number(raw.delta_amount || 0),
-        deltaLessons: Number(raw.delta_lessons || 0),
+        inserted: raws.reduce((sum, item) => sum + Number(item.inserted || 0), 0),
+        skipped: raws.reduce((sum, item) => sum + Number(item.skipped || 0), 0),
+        reschedulesCreated: raws.reduce((sum, item) => sum + Number(item.reschedules_created || 0), 0),
+        deltaAmount: raws.reduce((sum, item) => sum + Number(item.delta_amount || 0), 0),
+        deltaLessons: raws.reduce((sum, item) => sum + Number(item.delta_lessons || 0), 0),
         monthAmount: Number(raw.month_amount || 0),
         monthLessons: Number(raw.month_lessons || 0),
         turboActive: raw.turbo_active === true,
-        entries: (raw.entries || []).map((e: any): ClassLogEntryResult => ({
+        entries: raws.flatMap(item => item.entries || []).map((e: any): ClassLogEntryResult => ({
             ref: e.ref ?? null,
             id: e.id ?? null,
             status: e.status === 'lancada' ? 'lancada' : 'ignorada',

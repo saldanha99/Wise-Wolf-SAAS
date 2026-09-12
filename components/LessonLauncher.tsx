@@ -192,13 +192,29 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         .eq('teacher_id', user.id)
         .gte('date', startStr);
 
+      // Antecipações são ocorrências próprias. A data antecipada entra no
+      // lançamento; a data original é suprimida sem apagar o booking semanal.
+      const { data: allAdvances, error: advancesError } = await supabase
+        .from('lesson_advances')
+        .select('id, booking_id, original_date, advance_date, advance_time, status, student:student_id(id, full_name, email, phone, meeting_link, avatar_url, module, current_topic_id, status)')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('teacher_id', user.id)
+        .neq('status', 'CANCELLED')
+        .gte('original_date', startStr);
+      if (advancesError) {
+        throw new Error('Não foi possível confirmar as aulas antecipadas. Atualize a tela antes de lançar.');
+      }
+      const blockedAdvanceOrigins = new Set(
+        (allAdvances || []).map((advance: any) => `${advance.booking_id}|${advance.original_date}`)
+      );
+
       // `student_id` entra aqui porque o casamento por booking_id não basta: quando
       // o agendamento é trocado (aluno muda de horário), o log antigo continua
       // apontando para um booking que não existe mais e a aula JÁ LANÇADA voltava
       // para a lista. Medido no Flávio: 12 aulas de julho nessa situação.
       const { data: allLogs } = await supabase
         .from('class_logs')
-        .select('booking_id, reschedule_id, appointment_id, student_id, class_date, start_time')
+        .select('booking_id, reschedule_id, appointment_id, lesson_advance_id, student_id, class_date, start_time')
         .eq('tenant_id', effectiveTenantId)
         .eq('teacher_id', user.id)
         .gte('class_date', startStr);
@@ -220,6 +236,9 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           ? (allBookings || []).filter((b: any) => normalizeWeekdayToIndex(b.day_of_week) === dayIdxOfDate)
           : [];
         const reschedules = (allReschedules || []).filter((r: any) => r.date === dateStr);
+        const advances = (allAdvances || []).filter((advance: any) =>
+          advance.advance_date === dateStr && advance.status === 'SCHEDULED'
+        );
 
         // Filtrar os trials deste professor para este dia específico
         const appointments = allTrialAppointments.filter(t => {
@@ -230,7 +249,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         const logs = (allLogs || []).filter((l: any) => l.class_date === dateStr);
 
         // Helper to process lesson
-        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO', time: string) => {
+        const processLesson = async (b: any, type: 'REGULAR' | 'REPOSIÇÃO' | 'ANTECIPAÇÃO', time: string) => {
           const student = b.student as any;
           if (!student) return;
 
@@ -248,20 +267,25 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           const isTrial = student.status === 'TRIAL' || student.status === 'Aula Experimental';
 
           allLessons.push({
-            id: type === 'REGULAR' ? lessonRef(b.id, dateStr) : `repo-${b.id}`,
+            id: type === 'REGULAR'
+              ? lessonRef(b.id, dateStr)
+              : type === 'REPOSIÇÃO' ? `repo-${b.id}` : `advance-${b.id}`,
             studentId: student.id,
             name: student.full_name || 'Estudante',
             email: student.email, // Added email
             time, // horário HH:MM da aula (para o botão "Avisar aluno")
             phone: student.phone || null,
             meetLink: teacherMeetLink || student.meeting_link || null,
-            date: i === 0 ? `Hoje às ${time}` : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : ''}`,
+            date: i === 0
+              ? `Hoje às ${time}${type === 'ANTECIPAÇÃO' ? ' · antecipada' : ''}`
+              : `${checkDate.toLocaleDateString('pt-BR')} às ${time}${type === 'REPOSIÇÃO' && !isTrial ? ' (Rep)' : type === 'ANTECIPAÇÃO' ? ' (Antecipada)' : ''}`,
             dateObj: dateStr,
             avatar: student.avatar_url || `https://ui-avatars.com/api/?name=${student.full_name}`,
             level: student.module?.split(' ')[0] || 'N/A',
             type: isTrial ? 'AULA EXPERIMENTAL' : type,
             // Origem da reposição (só relevante para REPOSIÇÃO): TEACHER paga, STUDENT não
             faultType: type === 'REPOSIÇÃO' ? (b.fault_type || 'STUDENT') : null,
+            originDate: type === 'ANTECIPAÇÃO' ? b.original_date : null,
             isLate: i > 0,
             suggestedTopic: topicInfo?.title || null,
             suggestedMaterial: topicInfo?.base_material?.title || null,
@@ -286,6 +310,7 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
         if (bookings) {
           const candidatos: any[] = [];
           for (const b of bookings) {
+            if (blockedAdvanceOrigins.has(`${b.id}|${dateStr}`)) continue;
             // Cedida por cobertura: quem dá a aula é outro professor.
             if (cedidas.has(`${b.id}|${dateStr}`)) continue;
             // Matrícula que ainda não começou nesta data: não vira aula a lançar.
@@ -336,6 +361,15 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
           for (const item of faltando) {
             await processLesson(item.raw, 'REGULAR', item.raw.time_slot);
           }
+        }
+
+        // A antecipação aparece como aula independente na data em que de fato
+        // acontece e só depois do horário pode ser lançada e paga.
+        for (const advance of advances) {
+          const advanceTime = String(advance.advance_time || '').substring(0, 5);
+          if (i === 0 && isStillFutureToday(advanceTime)) continue;
+          if (logs?.some(log => log.lesson_advance_id === advance.id)) continue;
+          await processLesson(advance, 'ANTECIPAÇÃO', advanceTime);
         }
 
         // Coberturas ASSUMIDAS neste dia: entram na lista de quem vai dar a aula.
@@ -440,14 +474,16 @@ const LessonLauncher: React.FC<LessonLauncherProps> = ({ user, tenantId, onRefre
 
         const isReschedule = ref.startsWith('repo-');
         const isTrial = ref.startsWith('trial-');
+        const isAdvance = ref.startsWith('advance-');
 
         entries.push({
           ref,
           // O ref carrega agendamento + data (`<booking>|<YYYY-MM-DD>`); o servidor
           // recebe só o agendamento, e a data vem de `item.dateObj`.
-          bookingId: (!isReschedule && !isTrial) ? bookingFromRef(ref) : null,
+          bookingId: (!isReschedule && !isTrial && !isAdvance) ? bookingFromRef(ref) : null,
           rescheduleId: isReschedule ? ref.replace('repo-', '') : null,
           appointmentId: isTrial ? ref.replace('trial-', '') : null,
+          lessonAdvanceId: isAdvance ? ref.replace('advance-', '') : null,
           classDate: item.dateObj,
           presence: data.type || 'COMPLETED',
           absenceReason: data.subtype || null,

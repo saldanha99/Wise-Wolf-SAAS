@@ -37,6 +37,7 @@ const SuperAdminMetrics = lazy(() => import('./components/SuperAdminMetrics'));
 const PendingLessons = lazy(() => import('./components/PendingLessons'));
 const TeacherAvailabilityEditor = lazy(() => import('./components/TeacherAvailabilityEditor'));
 const TeacherScheduleExplorer = lazy(() => import('./components/TeacherScheduleExplorer'));
+const LessonAdvancesManager = lazy(() => import('./components/LessonAdvancesManager'));
 const SchoolAdminDashboard = lazy(() => import('./components/SchoolAdminDashboard'));
 const PedagogicalConfig = lazy(() => import('./components/PedagogicalConfig'));
 const LearningPathsBuilder = lazy(() => import('./components/LearningPathsBuilder'));
@@ -151,6 +152,7 @@ const ROLE_NAVIGATION_ITEMS: Record<UserRole, NavigationSearchItem[]> = {
     { tab: 'recruiting', label: 'Recrutamento', group: 'Pessoas' },
     { tab: 'hr', label: 'Recursos Humanos', group: 'Pessoas', keywords: 'rh' },
     { tab: 'schedule_explorer', label: 'Mapa de Aulas', group: 'Aulas', keywords: 'agenda horários' },
+    { tab: 'lesson-advances', label: 'Antecipações', group: 'Aulas', keywords: 'adiantamento viagem competência' },
     { tab: 'attendance-disputes', label: 'Verificar Presença', group: 'Aulas' },
     { tab: 'trials', label: 'Agendar Experimental', group: 'Aulas' },
     { tab: 'trial-settlement', label: 'Pagar Experimental/Treino', group: 'Aulas' },
@@ -1236,6 +1238,7 @@ const App: React.FC = () => {
         currentTenantId={currentTenant?.id}
         onRefresh={loadAppData}
       />,
+      'lesson-advances': <LessonAdvancesManager tenantId={currentTenant?.id} />,
       'schedule': user.role === UserRole.STUDENT ?
         <StudentSchedule user={user} tenantId={currentTenant?.id} /> :
         <TeacherAvailabilityEditor teacherId={user.id} tenantId={currentTenant?.id} />,
