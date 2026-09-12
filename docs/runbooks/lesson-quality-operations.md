@@ -60,3 +60,7 @@ As notas importadas são rascunhos. Revisão humana gera nova versão; apenas um
 - Nenhuma conta Google, chamada paga de IA, mensagem real de teste, folha ou cadastro real foi alterado durante o desenvolvimento.
 
 Depois do deploy, conferir abas, jobs e falhas de entrega. Cadastrar/verificar os contatos prioritários e conectar a conta Google apenas após o piloto. Não ativar a documentação automaticamente para todos os alunos nem preencher retroativamente evidência que nunca foi coletada.
+
+### Recuperação do pacote de 12/09/2026
+
+A release `20260912T223800Z-6a2a75eb267a` confirmou todas as migrações e testes SQL, mas o smoke do inbound detectou uma dependência compartilhada ausente no pacote. O helper `lesson-quality-reply.ts`, já testado e presente no commit `d4a496e`, foi reposto com hash conferido; nenhum lançamento, relato ou pagamento foi reconstruído. Os scripts específicos em `deploy/vps/hotpatch/quality-shared-20260912-*` preservam a falha original e só reconciliam a ativação após verificar artefato imutável, arquivos ativos, commit do banco e os smokes restantes. A evidência fica no backup da release. O publisher passou a incluir esse helper e `authorized-resume-path.ts` em manifesto, envio e ativação; um teste de imports transitivos cobre as três etapas.

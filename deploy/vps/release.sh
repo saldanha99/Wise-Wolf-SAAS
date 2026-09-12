@@ -1383,6 +1383,8 @@ SHARED_FINANCIAL_REPORT_MESSAGE_FENCE_RELATIVE="supabase/functions/_shared/finan
 SHARED_TENANT_INTEGRATION_BROKER_RELATIVE="supabase/functions/_shared/tenant-integration-broker.ts"
 SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE="supabase/functions/_shared/management-action-policy.ts"
 SHARED_WHATSAPP_INBOX_RELATIVE="supabase/functions/_shared/whatsapp-inbox.ts"
+SHARED_LESSON_QUALITY_REPLY_RELATIVE="supabase/functions/_shared/lesson-quality-reply.ts"
+SHARED_AUTHORIZED_RESUME_PATH_RELATIVE="supabase/functions/_shared/authorized-resume-path.ts"
 SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE="supabase/functions/_shared/interview-notifications.ts"
 SHARED_TRIAL_TIMEOUT_RELATIVE="supabase/functions/_shared/trial-timeout.ts"
 SHARED_SDR_SCHEDULING_RELATIVE="supabase/functions/_shared/sdr-scheduling.ts"
@@ -1536,6 +1538,8 @@ done
 [[ -s "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" ]] || die "broker tenant-aware de integrações ausente"
 [[ -s "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" ]] || die "política de ações de gestão ausente"
 [[ -s "$SHARED_WHATSAPP_INBOX_RELATIVE" ]] || die "contrato canônico da inbox WhatsApp ausente"
+[[ -s "$SHARED_LESSON_QUALITY_REPLY_RELATIVE" ]] || die "classificador de retorno de qualidade ausente"
+[[ -s "$SHARED_AUTHORIZED_RESUME_PATH_RELATIVE" ]] || die "validação de caminho de currículo ausente"
 [[ -s "$SHARED_SDR_SCHEDULING_RELATIVE" && -s "$SHARED_SDR_LIFECYCLE_RELATIVE" && -s "$SHARED_SDR_REMINDERS_RELATIVE" ]] || die "módulos de qualidade SDR ausentes"
 [[ -s "$SHARED_TRIAL_TIMEOUT_RELATIVE" ]] || die "política de retorno comercial ausente"
 [[ -s "$SHARED_INTERVIEW_NOTIFICATIONS_RELATIVE" ]] || die "contrato durável de notificações de entrevista ausente"
@@ -1656,6 +1660,8 @@ append_release_input_checksum() {
     "$SHARED_TENANT_INTEGRATION_BROKER_RELATIVE" \
     "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
     "$SHARED_WHATSAPP_INBOX_RELATIVE" \
+    "$SHARED_LESSON_QUALITY_REPLY_RELATIVE" \
+    "$SHARED_AUTHORIZED_RESUME_PATH_RELATIVE" \
     "$SHARED_TRIAL_TIMEOUT_RELATIVE" \
     "$SHARED_SDR_SCHEDULING_RELATIVE" \
     "$SHARED_SDR_LIFECYCLE_RELATIVE" \
@@ -1835,6 +1841,10 @@ rsync -a -- "$SHARED_MANAGEMENT_ACTION_POLICY_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/management-action-policy.ts"
 rsync -a -- "$SHARED_WHATSAPP_INBOX_RELATIVE" \
   "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/whatsapp-inbox.ts"
+rsync -a -- "$SHARED_LESSON_QUALITY_REPLY_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/lesson-quality-reply.ts"
+rsync -a -- "$SHARED_AUTHORIZED_RESUME_PATH_RELATIVE" \
+  "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/authorized-resume-path.ts"
 rsync -a -- "$SHARED_SDR_SCHEDULING_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-scheduling.ts"
 rsync -a -- "$SHARED_SDR_LIFECYCLE_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-lifecycle.ts"
 rsync -a -- "$SHARED_SDR_REMINDERS_RELATIVE" "$DEPLOY_SSH_HOST:$remote_release/functions/_shared/sdr-teacher-reminders.ts"
@@ -2194,6 +2204,8 @@ if [[ "$preserve_remote_functions" != "1" ]]; then
 [[ -s "$release_dir/functions/_shared/tenant-integration-broker.ts" ]]
 [[ -s "$release_dir/functions/_shared/management-action-policy.ts" ]]
 [[ -s "$release_dir/functions/_shared/whatsapp-inbox.ts" ]]
+[[ -s "$release_dir/functions/_shared/lesson-quality-reply.ts" ]]
+[[ -s "$release_dir/functions/_shared/authorized-resume-path.ts" ]]
 [[ -s "$release_dir/functions/_shared/trial-timeout.ts" ]]
 [[ -s "$release_dir/functions/_shared/sdr-scheduling.ts" && -s "$release_dir/functions/_shared/sdr-lifecycle.ts" && -s "$release_dir/functions/_shared/sdr-teacher-reminders.ts" ]]
 [[ -s "$release_dir/functions/_shared/interview-notifications.ts" ]]
@@ -3752,7 +3764,7 @@ shared_swapped=1
 cp -a -- "$release_dir/functions/_shared/request-auth.ts" \
   "$functions_dir/_shared/request-auth.ts"
 
-for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts interview-notifications.ts trial-timeout.ts sdr-scheduling.ts sdr-lifecycle.ts sdr-teacher-reminders.ts; do
+for shared_name in automation-auth.ts invite-registration.ts opportunity-dispatch.ts payment-auth.ts enrollment-progress.ts asaas-creation-guard.ts asaas-capability-fence.ts asaas-mutation-guard.ts asaas-subscription-mutation.ts student-billing-period-guard.ts student-provider-lifecycle.ts saas-owner-activation.ts tenant-communication.ts tenant-legal-assets.ts tenant-integration-broker.ts hub-provider-operations.ts financial-report-message-fence.ts management-action-policy.ts whatsapp-inbox.ts lesson-quality-reply.ts authorized-resume-path.ts interview-notifications.ts trial-timeout.ts sdr-scheduling.ts sdr-lifecycle.ts sdr-teacher-reminders.ts; do
   if [[ -f "$functions_dir/_shared/$shared_name" ]]; then
     cp -a -- "$functions_dir/_shared/$shared_name" \
       "$backup_dir/$shared_name"
