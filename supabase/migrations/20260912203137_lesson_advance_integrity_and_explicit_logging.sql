@@ -173,6 +173,97 @@ drop trigger if exists trg_zy_require_finished_lesson_slot on public.class_logs;
 create trigger trg_zy_require_finished_lesson_slot before insert on public.class_logs
 for each row execute function private.require_finished_lesson_slot();
 
+-- The legacy trial command had a SUPER_ADMIN override that wrote a payable
+-- COMPLETED log before the appointment ended. Keep all authorization and
+-- replay contracts, but return a product error before any new write. A saved
+-- historical override may only replay its exact successful receipt; it cannot
+-- recreate the log or authorize a different/new early completion.
+do $harden_trial_end$
+declare d text; anchor text:=$anchor$
+      if not v_override_receipt_exists then
+        insert into private.trial_temporal_override_receipts (
+$anchor$; addition text:=$addition$
+      -- New financial completion cannot bypass the actual trial end.
+      if v_trial_status='DONE' then
+        if v_override_receipt_exists then
+          select receipt.response into v_response
+            from private.secure_trial_command_receipts receipt
+           where receipt.tenant_id=v_tenant_id and receipt.actor_id=v_actor_id
+             and receipt.command='TRIAL_OUTCOME' and receipt.request_id=v_request_id
+             and receipt.payload_fingerprint=private.secure_trial_payload_fingerprint(v_request_payload)
+             and receipt.response->>'ok'='true';
+          if found then return v_response || jsonb_build_object('idempotent',true); end if;
+        end if;
+        return jsonb_build_object('ok',false,'error','appointment_not_ended');
+      end if;
+$addition$;
+begin
+  select pg_get_functiondef('public.update_trial_outcome_secure(jsonb)'::regprocedure) into d;
+  if strpos(d,'New financial completion cannot bypass the actual trial end')=0 then
+    if strpos(d,anchor)=0 then raise exception 'unexpected trial temporal command'; end if;
+    execute replace(d,anchor,addition || anchor);
+  end if;
+  select pg_get_functiondef('public.update_trial_outcome_secure(jsonb)'::regprocedure) into d;
+  if strpos(d,'Legacy receipt replay retains the tenant operational gate')=0 then
+    execute replace(d,$old$if found then return v_response || jsonb_build_object('idempotent',true); end if;$old$,$new$
+          if found then
+            -- Legacy receipt replay retains the tenant operational gate.
+            if not private.tenant_is_operational(v_tenant_id) then
+              return jsonb_build_object('ok',false,'error','tenant_not_operational');
+            end if;
+            return v_response || jsonb_build_object('idempotent',true);
+          end if;$new$);
+  end if;
+
+  -- The other director settlement screen previously listed appointments as
+  -- soon as they STARTED. Its public command now validates the locked exact
+  -- appointment and returns the same error instead of leaking a trigger error.
+  select pg_get_functiondef('public.settle_trial_session(uuid,boolean)'::regprocedure) into d;
+  if strpos(d,'target_appointment_start')=0 then
+    if strpos(d,'  RETURN public.settle_trial_session_unchecked(')=0
+       or strpos(d,'  target_tenant_id text;')=0 then raise exception 'unexpected trial settlement command'; end if;
+    d:=replace(d,'  target_tenant_id text;',E'  target_tenant_id text;\n  target_appointment_start timestamptz;');
+    d:=replace(d,'  RETURN public.settle_trial_session_unchecked(', $guard$
+  -- Lock only AFTER target authorization; never hold another tenant's row.
+  SELECT appointment.start_time INTO target_appointment_start
+    FROM public.appointments appointment
+    WHERE appointment.id=p_appointment_id AND appointment.tenant_id=target_tenant_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok',false,'error','nao_encontrado');
+  END IF;
+  IF target_appointment_start IS NULL THEN
+    RETURN jsonb_build_object('ok',false,'error','appointment_time_missing');
+  END IF;
+  IF p_attended AND target_appointment_start + interval '30 minutes' > now() THEN
+    RETURN jsonb_build_object('ok',false,'error','appointment_not_ended');
+  END IF;
+  RETURN public.settle_trial_session_unchecked($guard$);
+    execute d;
+  end if;
+  -- Keep iterative/replayed development definitions on the same scoped lock.
+  if strpos(d,'WHERE appointment.id = p_appointment_id FOR UPDATE;')>0 then
+    d:=replace(d,E'  SELECT appointment.tenant_id, appointment.start_time\n  INTO target_tenant_id, target_appointment_start',
+      E'  SELECT appointment.tenant_id\n  INTO target_tenant_id');
+    d:=replace(d,'  WHERE appointment.id = p_appointment_id FOR UPDATE;','  WHERE appointment.id = p_appointment_id;');
+    d:=replace(d,'  IF target_appointment_start IS NULL THEN',$guard$
+  -- Lock only AFTER target authorization; never hold another tenant's row.
+  SELECT appointment.start_time INTO target_appointment_start
+    FROM public.appointments appointment
+    WHERE appointment.id=p_appointment_id AND appointment.tenant_id=target_tenant_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok',false,'error','nao_encontrado');
+  END IF;
+  IF target_appointment_start IS NULL THEN$guard$);
+    execute d;
+  end if;
+  select pg_get_functiondef('public.list_pending_trial_sessions_unchecked()'::regprocedure) into d;
+  if strpos(d,$needle$a.start_time + interval '30 minutes' <= now()$needle$)=0 then
+    if strpos(d,'a.start_time <= now()')=0 then raise exception 'unexpected pending trial sessions query'; end if;
+    execute replace(d,'a.start_time <= now()', 'a.start_time + interval ''30 minutes'' <= now()');
+  end if;
+end;
+$harden_trial_end$;
+
 do $preserve_engines$
 declare d text;
 begin

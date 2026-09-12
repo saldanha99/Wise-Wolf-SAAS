@@ -30,16 +30,20 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
   const [sessions, setSessions] = useState<PendingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const { data, error } = await supabase.rpc('list_pending_trial_sessions');
       if (error) throw error;
-      setSessions(Array.isArray(data) ? data : []);
+      if (!Array.isArray(data)) throw new Error('Resposta inválida ao carregar sessões pendentes.');
+      setSessions(data);
     } catch (err) {
       console.error('Erro ao carregar sessões pendentes:', err);
       setSessions([]);
+      setLoadError('Não foi possível consultar as aulas pendentes. Atualize a lista antes de confirmar qualquer lançamento.');
     } finally {
       setLoading(false);
     }
@@ -60,7 +64,14 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
         p_appointment_id: s.appointment_id,
         p_attended: attended,
       });
-      if (error || !data?.ok) throw new Error(data?.error || error?.message || 'Falha');
+      if (error || data?.ok !== true) {
+        const message = data?.error === 'appointment_not_ended'
+          ? 'Aguarde o término dos 30 minutos agendados para confirmar esta aula. Nenhum lançamento foi realizado.'
+          : data?.error === 'appointment_time_missing'
+            ? 'O agendamento está sem um horário válido. Peça à gestão para revisar a aula antes de confirmá-la.'
+            : error?.message || data?.error || 'Não foi possível confirmar o lançamento. Atualize a lista e tente novamente.';
+        throw new Error(message);
+      }
       setSessions(prev => prev.filter(x => x.appointment_id !== s.appointment_id));
     } catch (err: any) {
       alert('Erro ao liquidar: ' + (err.message || 'desconhecido'));
@@ -84,7 +95,7 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-3xl font-black text-brand-text tracking-tight">Experimentais & Treinamentos</h2>
-          <p className="text-brand-muted text-sm">Confirme as aulas realizadas para que o professor seja remunerado.</p>
+          <p className="text-brand-muted text-sm">Confirme as aulas realizadas, após o término dos 30 minutos agendados, para que o professor seja remunerado.</p>
         </div>
         <button onClick={load} className="inline-flex items-center gap-2 px-4 py-2 bg-brand-surface-2 rounded-xl text-xs font-black uppercase tracking-widest text-brand-muted hover:text-brand-text transition-colors">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
@@ -108,6 +119,8 @@ const TrialTrainingSettlement: React.FC<Props> = ({ user }) => {
         <div className="flex justify-center items-center h-48 text-brand-muted gap-2">
           <RefreshCw className="animate-spin" /> Carregando...
         </div>
+      ) : loadError ? (
+        <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{loadError}</div>
       ) : sessions.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-brand-border rounded-3xl">
           <CheckCircle className="mx-auto text-emerald-400 mb-3" size={40} />

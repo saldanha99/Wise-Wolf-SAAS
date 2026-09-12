@@ -184,6 +184,8 @@ const LeadsKanban: React.FC<LeadsKanbanProps> = ({ tenantId }) => {
             if (error || data?.ok !== true) {
                 const message = data?.error === 'appointment_not_ended'
                     ? 'A aula só pode ser concluída depois do término do horário agendado.'
+                    : data?.error === 'appointment_time_missing'
+                        ? 'O agendamento está sem um horário válido. Peça à gestão para revisar a aula antes de concluí-la.'
                     : data?.error === 'appointment_required'
                         ? 'A experimental ainda aguarda a confirmação do professor.'
                         : error?.message || 'Não foi possível atualizar esta experimental.';

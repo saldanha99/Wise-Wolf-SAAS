@@ -318,6 +318,11 @@ select pg_temp.assert_true(
           'public.apply_student_response(text,text)',
           'public.apply_teacher_candidate(text,text,text)',
           'public.get_confirmation_public(text)',
+          -- Family quality routes use scoped, expiring bearer tokens, with
+          -- contact revocation and replay checks covered by their SQL suites.
+          'public.get_schedule_change_public(text)',
+          'public.respond_schedule_change_public(text,boolean)',
+          'public.submit_lesson_quality_feedback(text,jsonb)',
           'public.get_plan_change_public(text)',
           'public.get_referrer_name(uuid)',
           'public.get_transfer_public(text)',
@@ -342,6 +347,9 @@ begin
     'public.sign_student_plan_change(text,text)',
     'public.get_transfer_public(text)',
     'public.respond_teacher_transfer(text,boolean,text)',
+    'public.get_schedule_change_public(text)',
+    'public.respond_schedule_change_public(text,boolean)',
+    'public.submit_lesson_quality_feedback(text,jsonb)',
     'public.resolve_public_tenant(text)',
     'public.hub_get_public_settings()'
   ]

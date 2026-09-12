@@ -439,7 +439,11 @@ const TrialsToContracts: React.FC<TrialsToContractsProps> = ({ tenantId, user })
         const { data, error } = await supabase.rpc('update_trial_outcome_secure', { p_payload });
         if (error || data?.ok !== true) {
             const code = data?.error;
-            const message = code === 'appointment_required'
+            const message = code === 'appointment_not_ended'
+                ? 'Aguarde o término dos 30 minutos agendados para concluir a aula experimental. Nenhum lançamento foi realizado.'
+                : code === 'appointment_time_missing'
+                    ? 'O agendamento está sem um horário válido. Peça à gestão para revisar a aula antes de concluí-la.'
+                : code === 'appointment_required'
                 ? 'Esta experimental não possui um agendamento válido.'
                 : code === 'appointment_tenant_mismatch'
                     ? 'O agendamento não pertence a esta escola ou professor.'

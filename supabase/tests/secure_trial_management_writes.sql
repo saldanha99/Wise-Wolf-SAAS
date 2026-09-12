@@ -1251,7 +1251,7 @@ set local role authenticated;
 set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
 select pg_temp.assert_true(
-  coalesce((public.update_trial_outcome_secure(jsonb_build_object(
+  public.update_trial_outcome_secure(jsonb_build_object(
     'requestId', '60000000-0000-4000-8000-00000000e093',
     'opportunityId',
       current_setting('app.secure_vendor_opportunity_id')::uuid,
@@ -1259,10 +1259,48 @@ select pg_temp.assert_true(
     'trialStatus', 'DONE',
     'overrideBeforeEnd', true,
     'overrideReason', 'Teste controlado de exceção temporal auditada'
-  )) ->> 'ok')::boolean, false),
-  'SUPER_ADMIN could not apply the explicit audited temporal override'
+  )) ->> 'error' = 'appointment_not_ended',
+  'SUPER_ADMIN override created a new payable future completion'
 );
 
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+select pg_temp.assert_true(
+  not exists(select 1 from private.secure_trial_command_receipts where request_id='60000000-0000-4000-8000-00000000e093')
+  and not exists(select 1 from private.trial_temporal_override_receipts where request_id='60000000-0000-4000-8000-00000000e093')
+  and not exists(select 1 from public.class_logs where appointment_id=(select trial_appointment_id::text from public.opportunities
+    where id=current_setting('app.secure_vendor_opportunity_id')::uuid))
+  and exists(select 1 from public.opportunities o join public.appointments a on a.id=o.trial_appointment_id
+    where o.id=current_setting('app.secure_vendor_opportunity_id')::uuid and o.trial_status is distinct from 'DONE'
+      and a.status in('scheduled','confirmed')),
+  'rejected SUPER_ADMIN future completion left receipt, status or payable log'
+);
+
+-- A started experimental is not a finished one. All three entry points must
+-- agree, and even a privileged direct INSERT must retain the final DB guard.
+update public.appointments set start_time=now()-interval '5 minutes'
+ where id=(select trial_appointment_id from public.opportunities where id=current_setting('app.secure_vendor_opportunity_id')::uuid);
+do $direct_future_log$ declare blocked boolean:=false; begin
+  begin
+    insert into public.class_logs(tenant_id,teacher_id,appointment_id,presence,subtype,date,class_date,start_time)
+      select a.tenant_id,a.teacher_id,a.id::text,'COMPLETED','AULA EXPERIMENTAL',
+        (a.start_time at time zone 'America/Sao_Paulo')::date,(a.start_time at time zone 'America/Sao_Paulo')::date,
+        (a.start_time at time zone 'America/Sao_Paulo')::time
+      from public.appointments a join public.opportunities o on o.trial_appointment_id=a.id
+      where o.id=current_setting('app.secure_vendor_opportunity_id')::uuid;
+  exception when check_violation then blocked:=sqlerrm='aula_ainda_nao_terminou'; end;
+  perform pg_temp.assert_true(blocked,'privileged direct INSERT bypassed actual experimental end');
+end $direct_future_log$;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
+select pg_temp.assert_true(
+  public.settle_trial_session((select trial_appointment_id from public.opportunities
+    where id=current_setting('app.secure_vendor_opportunity_id')::uuid),true)->>'error'='appointment_not_ended'
+  and not exists(select 1 from jsonb_array_elements(public.list_pending_trial_sessions()) pending
+    where pending->>'appointment_id'=(select trial_appointment_id::text from public.opportunities
+      where id=current_setting('app.secure_vendor_opportunity_id')::uuid)),
+  'director settlement listed or paid an experimental before its end'
+);
 reset role;
 set local request.jwt.claims = '{"role":"service_role"}';
 set local app.enrollment_claim = '1';
@@ -1286,8 +1324,8 @@ select pg_temp.assert_true(
        and audit.action = 'trial_status_override_before_appointment_end'
        and audit.resource_id =
          current_setting('app.secure_vendor_opportunity_id')
-  ) = 1,
-  'temporal override did not create exactly one audit event'
+  ) = 0,
+  'rejected temporal override created a successful override audit event'
 );
 
 reset role;
@@ -1295,7 +1333,7 @@ set local role authenticated;
 set local request.jwt.claims =
   '{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}';
 select pg_temp.assert_true(
-  coalesce((public.update_trial_outcome_secure(jsonb_build_object(
+  public.update_trial_outcome_secure(jsonb_build_object(
     'requestId', '60000000-0000-4000-8000-00000000e093',
     'opportunityId',
       current_setting('app.secure_vendor_opportunity_id')::uuid,
@@ -1303,8 +1341,19 @@ select pg_temp.assert_true(
     'trialStatus', 'DONE',
     'overrideBeforeEnd', true,
     'overrideReason', 'Teste controlado de exceção temporal auditada'
-  )) ->> 'idempotent')::boolean, false),
-  'temporal override retry changed after the appointment end boundary'
+  )) ->> 'error' = 'override_not_required',
+  'rejected override was treated as an accepted historical receipt'
+);
+select pg_temp.assert_true(
+  public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId','60000000-0000-4000-8000-00000000e093',
+    'opportunityId',current_setting('app.secure_vendor_opportunity_id')::uuid,
+    'action','SET_TRIAL_STATUS','trialStatus','DONE'))->>'ok'='true'
+  and public.update_trial_outcome_secure(jsonb_build_object(
+    'requestId','60000000-0000-4000-8000-00000000e093',
+    'opportunityId',current_setting('app.secure_vendor_opportunity_id')::uuid,
+    'action','SET_TRIAL_STATUS','trialStatus','DONE'))->>'idempotent'='true',
+  'normal completion after actual end or its idempotent retry failed'
 );
 
 reset role;
@@ -1337,6 +1386,32 @@ update public.appointments
       current_setting('app.secure_manual_opportunity_id')::uuid
     )
  );
+
+-- The teacher launcher uses the same explicit pedagogical payload for a trial
+-- as for a regular lesson. Missing notes fail per item; the valid item keeps
+-- its structured content and does not create a second financial log when
+-- school management subsequently records DONE.
+do $teacher_trial_logging$
+declare a public.appointments; payload jsonb; result jsonb; begin
+  select appointment.* into a from public.appointments appointment join public.opportunities opportunity
+    on opportunity.trial_appointment_id=appointment.id
+    where opportunity.id=current_setting('app.secure_manual_opportunity_id')::uuid;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',a.teacher_id,'role','authenticated')::text,true);
+  payload:=jsonb_build_object('ref','trial-launcher-fixture','appointment_id',a.id,
+    'class_date',(a.start_time at time zone 'America/Sao_Paulo')::date,'presence','COMPLETED',
+    'lesson_objective','Diagnosticar inglês para viagens','content_covered','Perguntas de apresentação e simulação de aeroporto',
+    'student_difficulties','Vocabulário de embarque','homework_assigned','Sem tarefa nesta avaliação',
+    'recommended_next_step','Revisar perguntas de viagem','late_logging_reason','Regularização da fixture experimental');
+  result:=public.log_teacher_classes(jsonb_build_array(payload-'lesson_objective',payload));
+  perform pg_temp.assert_true(result->>'inserted'='1' and result->>'skipped'='1'
+    and result->'entries'->0->>'reason'='registro_pedagogico_incompleto',
+    'experimental teacher launcher did not enforce explicit notes or preserve valid partial success: '||result::text);
+  perform pg_temp.assert_true(exists(select 1 from public.class_logs cl where cl.appointment_id=a.id::text
+    and cl.subtype='AULA EXPERIMENTAL' and cl.lesson_objective='Diagnosticar inglês para viagens'
+    and cl.content_covered='Perguntas de apresentação e simulação de aeroporto'
+    and cl.recommended_next_step='Revisar perguntas de viagem'),
+    'experimental structured pedagogy was discarded by the financial engine');
+end $teacher_trial_logging$;
 
 reset role;
 set local role authenticated;
@@ -1514,5 +1589,53 @@ select pg_temp.assert_true(
   ),
   'outcomes left opportunity, appointment or class log inconsistent'
 );
+
+-- A response already committed by the legacy override remains replayable.
+-- Reconstruct only its private receipts from the successful past fixture,
+-- then move the appointment clock forward: replay must not INSERT another log
+-- or mutate its authoritative historical snapshot.
+reset role;
+do $legacy_override_replay$
+declare
+  payload jsonb; saved_response jsonb; result jsonb; target_appointment uuid;
+  original_log jsonb; original_count integer;
+begin
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+  select trial_appointment_id into target_appointment from public.opportunities
+    where id=current_setting('app.secure_vendor_opportunity_id')::uuid;
+  select count(*),jsonb_agg(to_jsonb(cl) order by cl.id) into original_count,original_log
+    from public.class_logs cl where cl.appointment_id=target_appointment::text;
+  select response into saved_response from private.secure_trial_command_receipts
+    where actor_id='00000000-0000-4000-8000-00000000e001' and command='TRIAL_OUTCOME'
+      and request_id='60000000-0000-4000-8000-00000000e093';
+  payload:=jsonb_build_object('requestId','60000000-0000-4000-8000-00000000e094',
+    'opportunityId',current_setting('app.secure_vendor_opportunity_id')::uuid,
+    'action','SET_TRIAL_STATUS','trialStatus','DONE','overrideBeforeEnd',true,
+    'overrideReason','Recibo legado autorizado antes da regra atual, somente fixture');
+  insert into private.trial_temporal_override_receipts(tenant_id,actor_id,request_id,opportunity_id,payload_fingerprint)
+    values('secure-trial-a','00000000-0000-4000-8000-00000000e001','60000000-0000-4000-8000-00000000e094',
+      current_setting('app.secure_vendor_opportunity_id')::uuid,private.secure_trial_payload_fingerprint(payload));
+  insert into private.secure_trial_command_receipts(tenant_id,actor_id,command,request_id,payload_fingerprint,response)
+    values('secure-trial-a','00000000-0000-4000-8000-00000000e001','TRIAL_OUTCOME','60000000-0000-4000-8000-00000000e094',
+      private.secure_trial_payload_fingerprint(payload-'overrideBeforeEnd'-'overrideReason'),saved_response);
+  update public.appointments set start_time=now()+interval '1 day' where id=target_appointment;
+  perform set_config('app.enrollment_claim','1',true);
+  update public.profiles set role='SUPER_ADMIN' where id='00000000-0000-4000-8000-00000000e001';
+  perform set_config('app.enrollment_claim','',true);
+  perform set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}',true);
+  result:=public.update_trial_outcome_secure(payload);
+  perform pg_temp.assert_true(result->>'ok'='true' and result->>'idempotent'='true','saved historical override replay was rejected');
+  perform pg_temp.assert_true((select count(*)=original_count and jsonb_agg(to_jsonb(cl) order by cl.id)=original_log
+    from public.class_logs cl where cl.appointment_id=target_appointment::text),'legacy replay recreated or rewrote financial history');
+  result:=public.update_trial_outcome_secure(payload||jsonb_build_object('overrideReason','Tentativa de reusar o recibo com outro conteúdo'));
+  perform pg_temp.assert_true(result->>'error'='idempotency_key_reused','historical override receipt authorized a different payload');
+  result:=public.update_trial_outcome_secure(payload||jsonb_build_object('requestId','60000000-0000-4000-8000-00000000e095'));
+  perform pg_temp.assert_true(result->>'error'='appointment_not_ended','historical override opened a new future-completion bypass');
+  perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+  update public.tenants set saas_status='blocked' where id='secure-trial-a';
+  perform set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-00000000e001","role":"authenticated"}',true);
+  result:=public.update_trial_outcome_secure(payload);
+  perform pg_temp.assert_true(result->>'error'='tenant_not_operational','historical replay bypassed suspended tenant authorization');
+end $legacy_override_replay$;
 
 rollback;

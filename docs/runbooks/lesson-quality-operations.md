@@ -13,6 +13,7 @@ O professor encontra **Salas e continuidade** e o dossiê na ficha do aluno. Pro
 - Nenhuma linha começa marcada como aula concluída. O professor escolhe as ocorrências que efetivamente deseja lançar.
 - Aula concluída exige objetivo, conteúdo trabalhado, dificuldades observadas, tarefa e próximo passo. Quando não houve dificuldade ou tarefa, isso deve ser declarado; um plano sugerido nunca é preenchido como conteúdo realizado.
 - O servidor impede lançamento de conclusão antes do fim e exige justificativa quando o lançamento for tardio, conforme a regra exibida no formulário.
+- A conclusão remunerável de aula experimental também aguarda o fim: a antiga exceção de superadministrador não pode criar novos lançamentos futuros. Repetições exatas de comandos históricos já concluídos preservam a idempotência.
 - Cada item do lote tem resultado próprio. Erros em uma aula não escondem as aulas salvas; repetição não paga novamente.
 - Antecipação consome a ocorrência futura e remunera na data real. O horário autorizado de antecipação prevalece sobre o horário semanal original, inclusive na auditoria independente.
 - Limitação explícita da identidade financeira legada: não se podem lançar duas ocorrências financeiras do mesmo booking na mesma data real. A criação da antecipação rejeita esse choque, sem esconder a aula regular.

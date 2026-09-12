@@ -107,6 +107,8 @@ const TrialFeedbackForm: React.FC<TrialFeedbackFormProps> = ({
                                 ? 'A aula ainda não está concluída no sistema. Atualize a agenda e tente novamente.'
                                 : code === 'appointment_not_ended'
                                     ? 'Aguarde o término da aula experimental antes de salvar a avaliação.'
+                                    : code === 'appointment_time_missing'
+                                        ? 'O agendamento está sem um horário válido. Peça à gestão para revisar a aula antes de salvar a avaliação.'
                                     : code === 'completed_class_log_required'
                                         ? 'Primeiro lance a aula experimental como realizada na sua agenda; depois conclua o feedback.'
                                 : code === 'class_log_tenant_mismatch'
