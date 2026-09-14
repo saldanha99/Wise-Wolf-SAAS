@@ -117,9 +117,18 @@ select pg_temp.assert_true(not exists(select 1 from public.lesson_occurrences o 
 
 -- Insert a past-origin authorized fixture to exercise the future-origin guard
 -- after the original date has arrived (the creation RPC rightly requires a future origin).
+-- The advance date only needs to be a past date of the previous month that is
+-- NOT a regular occurrence of booking ...0003 (weekday of today). Without the
+-- one-day shift this failed whenever the last day of the previous month minus 7
+-- fell on today's weekday (Monday 14/09/2026 → Monday 24/08), and the whole
+-- release rolled back.
 insert into public.lesson_advances(tenant_id,booking_id,teacher_id,student_id,original_date,advance_date,advance_time,created_by)
 select 'lesson-integrity-fixture','ed200000-0000-4000-8000-000000000003','ed100000-0000-4000-8000-000000000001',
- 'ed100000-0000-4000-8000-000000000002',today-7,(date_trunc('month',today)-interval '1 day')::date-7,'11:00',
+ 'ed100000-0000-4000-8000-000000000002',today-7,
+ (date_trunc('month',today)-interval '1 day')::date-7
+   - case when extract(dow from (date_trunc('month',today)-interval '1 day')::date-7) = extract(dow from today)
+          then 1 else 0 end,
+ '11:00',
  'ed100000-0000-4000-8000-000000000003' from fixture_dates;
 set local role authenticated;
 do $$ declare result jsonb; d date; begin
