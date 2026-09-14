@@ -16,7 +16,10 @@ import {
   resolveEvolutionIntegration,
 } from "../_shared/tenant-integration-broker.ts";
 import {
+  collectionBlockReason,
+  type CollectionBlocks,
   overdueNotificationKind,
+  parseCollectionBlocks,
   paymentNotificationFinish,
   resolvePaymentRecipient,
 } from "./core.ts";
@@ -83,11 +86,26 @@ serve(async (req) => {
     const instCache: Record<string, TenantCentralWhatsAppContext | null> = {};
     const integrationCache: Record<string, ResolvedEvolutionIntegration> = {};
 
+    // Antes de qualquer aviso: o Asaas já disse que esta cobrança foi paga,
+    // estornada ou mudou de vencimento? (ver CollectionBlocks em core.ts)
+    const blocosVencer = await loadCollectionBlocks(
+      supabase,
+      (charges || []).map((c: { id: string }) => c.id),
+    );
+    let suprimidas = 0;
+
     // `|| []` é obrigatório: sem o return antecipado, `charges` nulo (nenhuma
     // cobrança a vencer) faria o for-of lançar e a régua de vencidas nunca
     // rodaria — justamente nos dias mais tranquilos.
     for (const c of charges || []) {
       try {
+        const bloqueio = collectionBlockReason(c.id, blocosVencer);
+        if (bloqueio) {
+          suprimidas++;
+          registrarSupressao(c.id, bloqueio);
+          failures.push(`${c.id}: cobrança suprimida (${bloqueio})`);
+          continue;
+        }
         const dest = await resolveRecipient(supabase, c, instCache);
         if (!dest.ok) {
           failures.push(`${c.id}: ${dest.motivo}`);
@@ -139,6 +157,7 @@ serve(async (req) => {
       JSON.stringify({
         sent,
         overdue_sent: regua.enviados,
+        suppressed: suprimidas + regua.suprimidas,
         failures: failures.length + regua.motivos.length,
         reasons: [...failures, ...regua.motivos].slice(0, 10),
       }),
@@ -365,8 +384,15 @@ async function reguaVencidas(
     return {
       enviados,
       motivos: ["consulta de cobranças vencidas indisponível"],
+      suprimidas: 0,
     };
   }
+
+  const blocos = await loadCollectionBlocks(
+    supabase,
+    (vencidas || []).map((c: { id: string }) => c.id),
+  );
+  let suprimidas = 0;
 
   for (const c of vencidas || []) {
     try {
@@ -380,6 +406,14 @@ async function reguaVencidas(
         diasVencida >= m
       );
       if (!marco) continue;
+
+      const bloqueio = collectionBlockReason(c.id, blocos);
+      if (bloqueio) {
+        suprimidas++;
+        registrarSupressao(c.id, bloqueio);
+        motivos.push(`${c.id}: cobrança suprimida (${bloqueio})`);
+        continue;
+      }
 
       const kind = overdueNotificationKind(marco);
       const { data: jaEnviado, error: markerError } = await supabase.from(
@@ -444,7 +478,38 @@ async function reguaVencidas(
     }
   }
 
-  return { enviados, motivos };
+  return { enviados, motivos, suprimidas };
+}
+
+/**
+ * Uma consulta por lote: o Asaas já resolveu estas cobranças?
+ * Falha na consulta = nenhuma cobrança nesta rodada (fail-closed).
+ */
+async function loadCollectionBlocks(
+  supabase: any,
+  ids: string[],
+): Promise<CollectionBlocks> {
+  if (ids.length === 0) return { available: true, reasons: new Map() };
+  const { data, error } = await supabase.rpc(
+    "student_payment_collection_blocks",
+    { p_payment_ids: ids },
+  );
+  if (error) {
+    console.error(
+      "[cobranca] estado do Asaas indisponível — nenhuma cobrança sai nesta rodada",
+      { code: error.code },
+    );
+    return { available: false, reasons: new Map() };
+  }
+  return { available: true, reasons: parseCollectionBlocks(data) };
+}
+
+/** Visível no log: sem isto, supressão vira um item num JSON que ninguém lê. */
+function registrarSupressao(paymentId: string, motivo: string) {
+  console.warn("[cobranca] suprimida: o Asaas contradiz o status local", {
+    payment_id: paymentId,
+    motivo,
+  });
 }
 
 type DurableDelivery = {
