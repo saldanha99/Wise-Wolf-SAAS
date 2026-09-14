@@ -1228,6 +1228,7 @@ MIGRATION_RELATIVES=(
   "supabase/migrations/20260912203137_lesson_advance_integrity_and_explicit_logging.sql"
   "supabase/migrations/20260912203213_lesson_quality_sessions_and_feedback.sql"
   "supabase/migrations/20260912203245_google_meet_pedagogical_documentation.sql"
+  "supabase/migrations/20260914020000_cobranca_respeita_estado_do_asaas.sql"
 )
 DATABASE_TEST_RELATIVES=(
   "supabase/tests/sdr_confirmation_timeout.sql"
@@ -1335,6 +1336,7 @@ DATABASE_TEST_RELATIVES=(
   "supabase/tests/lesson_advance_integrity_and_explicit_logging.sql"
   "supabase/tests/lesson_quality_sessions_and_feedback.sql"
   "supabase/tests/google_meet_pedagogical_documentation.sql"
+  "supabase/tests/cobranca_respeita_estado_do_asaas.sql"
 )
 FUNCTION_RELATIVE="supabase/functions/wolfie-activity"
 CONVERSATION_FUNCTION_RELATIVE="supabase/functions/wolfie-brain"

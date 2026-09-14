@@ -134,3 +134,42 @@ export function overdueNotificationKind(
   if (milestone === 20) return "PAYMENT_OVERDUE_20";
   throw new Error("unsupported_payment_overdue_milestone");
 }
+
+/**
+ * Travas de cobrança vindas do último estado que o Asaas informou (RPC
+ * student_payment_collection_blocks). Existe porque o webhook deixa em TRIAGE
+ * pagamentos que não consegue corroborar, e a linha local fica PENDING mesmo
+ * com o dinheiro recebido — foi assim que a régua cobrou quem já tinha pago
+ * (13/09/2026).
+ *
+ * `available = false` quando a consulta falhou: aí NENHUMA cobrança sai.
+ * Cobrar quem já pagou é pior que atrasar um lembrete em um dia.
+ *
+ * Forma plana (sem união discriminada): o `deno check` deste projeto não
+ * estreita `if (!x.ok)`.
+ */
+export type CollectionBlocks = {
+  available: boolean;
+  reasons: Map<string, string>;
+};
+
+export function parseCollectionBlocks(rows: unknown): Map<string, string> {
+  const reasons = new Map<string, string>();
+  if (!Array.isArray(rows)) return reasons;
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const id = typeof r.payment_id === "string" ? r.payment_id.trim() : "";
+    const reason = typeof r.reason === "string" ? r.reason.trim() : "";
+    if (id && reason) reasons.set(id, reason);
+  }
+  return reasons;
+}
+
+export function collectionBlockReason(
+  paymentId: string,
+  blocks: CollectionBlocks,
+): string | null {
+  if (!blocks.available) return "estado_do_asaas_indisponivel";
+  return blocks.reasons.get(paymentId) ?? null;
+}

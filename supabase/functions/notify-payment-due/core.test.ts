@@ -3,7 +3,9 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  collectionBlockReason,
   overdueNotificationKind,
+  parseCollectionBlocks,
   paymentNotificationFinish,
   resolvePaymentRecipient,
 } from "./core.ts";
@@ -131,5 +133,39 @@ Deno.test("overdue milestones have a closed durable notification kind", () => {
     () => overdueNotificationKind(4),
     Error,
     "unsupported_payment_overdue_milestone",
+  );
+});
+
+Deno.test("collection blocks keep only rows with a payment id and a reason", () => {
+  const reasons = parseCollectionBlocks([
+    { payment_id: "pay-1", reason: "asaas_ja_recebeu" },
+    { payment_id: "pay-2", reason: null },
+    { payment_id: " pay-3 ", reason: " asaas_vencimento_mudou " },
+    { reason: "sem_id" },
+    null,
+    "lixo",
+    ["pay-4", "asaas_ja_recebeu"],
+  ]);
+  assertEquals([...reasons.entries()], [
+    ["pay-1", "asaas_ja_recebeu"],
+    ["pay-3", "asaas_vencimento_mudou"],
+  ]);
+  assertEquals(parseCollectionBlocks(null).size, 0);
+});
+
+Deno.test("a payment the provider already received is never collected", () => {
+  const blocks = {
+    available: true,
+    reasons: new Map([["pay-1", "asaas_ja_recebeu"]]),
+  };
+  assertEquals(collectionBlockReason("pay-1", blocks), "asaas_ja_recebeu");
+  assertEquals(collectionBlockReason("pay-2", blocks), null);
+});
+
+Deno.test("an unavailable provider check blocks every collection (fail-closed)", () => {
+  const blocks = { available: false, reasons: new Map<string, string>() };
+  assertEquals(
+    collectionBlockReason("pay-2", blocks),
+    "estado_do_asaas_indisponivel",
   );
 });
